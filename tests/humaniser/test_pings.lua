@@ -21,6 +21,8 @@ function GetUnitList(t)
 end
 function AddAvoidanceZone(v, d) table.insert(ZONES_ADDED, v) return #ZONES_ADDED end
 function RemoveAvoidanceZone(h) table.insert(ZONES_REMOVED, h) end
+VISIBLE = true
+function IsLocationVisible() return VISIBLE end
 
 local function building(team, name, loc)
 	local b = setmetatable({ pid = -1, team = team, bot = true, alive = true, loc = loc, modifiers = {} }, { __index = UnitMeta })
@@ -35,6 +37,7 @@ local RUNE = Vector(-1600, 1200)
 local function reset()
 	ResetWorld()
 	BUILDINGS, ZONES_ADDED, ZONES_REMOVED, PINGS_SENT = {}, {}, {}, {}
+	VISIBLE = true
 end
 local function fresh(cfg)
 	local H = FreshHumaniser(cfg or { Enable = true })
@@ -253,6 +256,76 @@ do
 	check("healthy + order: capped below the order floor", near(H.Orders.CapRetreatDesire(b, 1.1), 0.75), H.Orders.CapRetreatDesire(b, 1.1))
 	b.hp = 40
 	check("below half HP: retreat untouched", H.Orders.CapRetreatDesire(b, 1.1) == 1.1)
+end
+
+-- A bot avoids an AVOID zone only after reading the ping; units inside it are filtered out
+do
+	reset()
+	local H = fresh()
+	MakeUnit({ pid = 0, bot = false })
+	local b = MakeUnit({ pid = 1, loc = Vector(3000, 0) })
+	local inside, outside = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }), MakeUnit({ pid = 8, team = 3, loc = Vector(2000, 0) })
+	local list = { inside, outside }
+	check("no AVOID: list passes through", H.Orders.FilterAvoided(b, list) == list)
+	H.Orders.Post(2, { type = "AVOID", sourceKey = "a", issuerPID = 0, location = Vector(0, 0), radius = 1200, duration = 10, maxResponders = 5 })
+	T = 0.1
+	check("not avoided before the bot reads the ping", H.Orders.AvoidsLocation(b, Vector(0, 0)) == false)
+	T = 3
+	check("avoided inside the radius", H.Orders.AvoidsLocation(b, Vector(1000, 0)) == true)
+	check("not avoided outside the radius", H.Orders.AvoidsLocation(b, Vector(1300, 0)) == false)
+	local kept = H.Orders.FilterAvoided(b, list)
+	check("filter drops units inside the zone", #kept == 1 and kept[1] == outside, #kept)
+end
+
+-- AVOID is never declined: a dead bot says nothing and still avoids the zone after respawning
+do
+	reset()
+	local H = fresh()
+	local said = {}
+	H.Orders.SetAnnouncer(function(bot, key) table.insert(said, key) end)
+	MakeUnit({ pid = 0, bot = false })
+	local b = MakeUnit({ pid = 1, alive = false })
+	H.Orders.Post(2, { type = "AVOID", sourceKey = "a", issuerPID = 0, location = Vector(0, 0), radius = 1200, duration = 10, maxResponders = 5 })
+	T = 3
+	H.Orders.GetFor(b)
+	b.alive = true
+	T = 4
+	local declined = false
+	for _, key in ipairs(said) do if key:find("decline") then declined = true end end
+	check("dead bot did not decline AVOID", not declined and H.Orders.AvoidsLocation(b, Vector(0, 0)) == true, table.concat(said, " "))
+end
+
+-- Danger pings are forgotten early once the team can see the area is clear, never before MinSeconds
+do
+	local function setup()
+		reset()
+		local H = fresh()
+		MakeUnit({ pid = 0, bot = false })
+		local b = MakeUnit({ pid = 1, loc = Vector(3000, 0) })
+		H.Orders.Post(2, { type = "AVOID", sourceKey = "a", issuerPID = 0, location = Vector(0, 0), radius = 1200, duration = 10, maxResponders = 5 })
+		T = 1.5
+		H.Orders.GetFor(b)
+		return H, b
+	end
+	local function run(H, from, to)
+		for t = from, to, 0.5 do T = t H.Pings.ForgetClearedDangers(2) end
+		return #H.Orders.GetActive(2)
+	end
+
+	local H = setup()
+	check("clear area kept before MinSeconds", run(H, 2, 3.5) == 1)
+	check("clear area forgotten after MinSeconds + ClearSeconds", run(H, 4, 6) == 0)
+	check("forgetting removes the avoidance zone", #ZONES_REMOVED == 1)
+
+	H = setup()
+	local enemy = MakeUnit({ pid = 7, team = 3, loc = Vector(500, 0) })
+	check("enemy seen in the area keeps it", run(H, 4, 9.5) == 1)
+	enemy.loc = Vector(5000, 0)
+	check("enemy leaving restarts the clear timer", run(H, 9.5, 9.5) == 1)
+
+	H = setup()
+	VISIBLE = false
+	check("unseen area kept until expiry", run(H, 4, 9.5) == 1 and run(H, 10, 10) == 0)
 end
 
 -- Kill switch: Pings disabled means no orders and legacy readers stay in charge

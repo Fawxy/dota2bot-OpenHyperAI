@@ -250,6 +250,10 @@ do
 	H.Lane.PreThink(support, {}, {}, { hero })
 	check("swap: draws tower aggro off the low-HP core", #attacks(5) == 1 and attacks(5)[1].args[1] == hero)
 	check("swap commits the aggro pull", H.Lane.LanePlanner.Committed(support) == "aggro_pull")
+	check("precondition: not held before the swap's idle wait", H.Intent.HeldBy(support) == nil)
+	T = T + 0.1
+	check("swap waits for the tower without a new order", H.Lane.PreThink(support, {}, {}, { hero }) == true and #attacks(5) == 1)
+	check("swap wait is a deliberate hold for intent's stuck detector", H.Intent.HeldBy(support) == "lane:swap", H.Intent.HeldBy(support))
 end
 
 -- Shove worlds: Radiant safe lane, no enemy laner, wave at the default front; c2 is under the Dire T1.
@@ -321,6 +325,7 @@ do
 	local out = H.Lane.AdjustPosition(bot, input)
 	local ourT1 = Vector(-2800, BOT_Y)
 	check("freeze holds nearer our tower", dist(out, ourT1) < dist(input, ourT1), out.x)
+	check("freeze posture is a deliberate hold for intent's stuck detector", H.Intent.HeldBy(bot) == "lane:freeze", H.Intent.HeldBy(bot))
 end
 
 do

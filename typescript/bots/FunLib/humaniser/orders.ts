@@ -12,6 +12,7 @@
 import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as Intent from "bots/FunLib/humaniser/intent";
 
 export type OrderType =
     | "GATHER"
@@ -290,6 +291,8 @@ export function IsSpokesperson(bot: Unit, order: TeamOrder): boolean {
 export function DeclineReason(bot: Unit, order: TeamOrder): string | undefined {
     // A dead bot still adopts the lane plan once it respawns.
     if (isLaneOrder(order.type)) return undefined;
+    // Staying out of an area needs nothing from the bot, and a declined AVOID would be ignored after respawning.
+    if (order.type === "AVOID") return undefined;
     if (!bot.IsAlive()) return "dead";
     if (bot.IsChanneling()) return "channeling";
     if (bot.GetActiveMode() === BotMode.Retreat && bot.GetHealth() / bot.GetMaxHealth() < 0.35) return "low_hp";
@@ -417,13 +420,44 @@ export function GetAcceptedForLane(bot: Unit, type: OrderType, lane: Lane): Team
     return undefined;
 }
 
-/** Caps retreat desire while the bot is committed to an accepted order and still healthy. */
+function insideZone(order: TeamOrder, loc: Vector): boolean {
+    if (order.location === undefined) return false;
+    const dx = loc.x - order.location.x;
+    const dy = loc.y - order.location.y;
+    const r = order.radius ?? 0;
+    return dx * dx + dy * dy <= r * r;
+}
+
+/** True when this bot has read a danger ping whose zone covers `loc`. */
+export function AvoidsLocation(bot: Unit, loc: Vector): boolean {
+    for (const order of acceptedFor(bot).accepted) {
+        if (order.type === "AVOID" && insideZone(order, loc)) return true;
+    }
+    return false;
+}
+
+/** `units` without those inside a zone this bot avoids; the same table when nothing is removed. */
+export function FilterAvoided<T extends { GetLocation(): Vector }>(bot: Unit, units: T[]): T[] {
+    let avoiding = false;
+    for (const order of acceptedFor(bot).accepted) if (order.type === "AVOID") avoiding = true;
+    if (!avoiding) return units;
+    const result: T[] = [];
+    for (const unit of units) if (!AvoidsLocation(bot, unit.GetLocation())) result.push(unit);
+    return result.length === units.length ? units : result;
+}
+
+/**
+ * Caps retreat desire while the bot is committed to an accepted order and still healthy.
+ * Also posts the cap as a HUMAN_ORDER claim, so Intent.Resolve keeps it above lower tiers.
+ */
 export function CapRetreatDesire(bot: Unit, desire: number): number {
     if (!Config.IsEnabled()) return desire;
     if (bot.GetHealth() / bot.GetMaxHealth() <= COMMIT_MIN_HP) return desire;
     const order = GetFor(bot);
     if (order === undefined || order.type === "BACK") return desire;
-    return math.min(desire, Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN);
+    const cap = Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN;
+    Intent.Claim(bot, { source: `orders:${order.type}`, tier: "HUMAN_ORDER", mode: BotMode.Retreat, cap, until: GameTime() });
+    return math.min(desire, cap);
 }
 
 function modeMatches(order: TeamOrder, botMode: BotMode, lane: Lane | undefined): boolean {
@@ -450,12 +484,22 @@ function modeMatches(order: TeamOrder, botMode: BotMode, lane: Lane | undefined)
     }
 }
 
-/** A desire floor for this mode if an accepted order maps to it, else 0. Combine with math.max. */
-export function DesireFloor(bot: Unit, botMode: BotMode, lane?: Lane): number {
+/** The desire floor an accepted order gives this mode, else 0. Pure: posts no claim. */
+export function OrderFloor(bot: Unit, botMode: BotMode, lane?: Lane): number {
     if (!Config.IsEnabled()) return 0;
     const order = GetFor(bot);
     if (order === undefined || !modeMatches(order, botMode, lane)) return 0;
     return Config.Get().Orders.DesireFloor;
+}
+
+/**
+ * OrderFloor, also posted as a same-frame HUMAN_ORDER claim so Intent.Resolve keeps it above lower tiers.
+ * Call it only on the path that returns the floor: the claim must not outlive the call site's own gates.
+ */
+export function DesireFloor(bot: Unit, botMode: BotMode, lane?: Lane): number {
+    const floor = OrderFloor(bot, botMode, lane);
+    if (floor > 0) Intent.Claim(bot, { source: `orders:${GetFor(bot)!.type}`, tier: "HUMAN_ORDER", mode: botMode, floor, until: GameTime() });
+    return floor;
 }
 
 export function Describe(order: TeamOrder): string {

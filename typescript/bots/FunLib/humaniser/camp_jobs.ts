@@ -17,6 +17,7 @@ import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Intent from "bots/FunLib/humaniser/intent";
 
 export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -855,6 +856,7 @@ function step(bot: Unit, job: Job): boolean {
             if (!there) return moveTo(bot, job.stand);
             // Holding still at the stand point: the job owns the frame without a new order.
             job.phase = "wait";
+            Intent.Hold(bot, "lane:job_wait");
             return true;
         }
         if (!there) {
@@ -896,6 +898,7 @@ function step(bot: Unit, job: Job): boolean {
                 return false;
             }
             if (!job.aggroTarget.IsAlive() || !job.aggroTarget.CanBeSeen()) job.aggroTarget = undefined;
+            Intent.Hold(bot, "lane:job_aggro");
             return true;
         }
         if (job.stage === 1) job.actualAggro = now;
@@ -915,6 +918,7 @@ function step(bot: Unit, job: Job): boolean {
         while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
         if (job.waypoint < job.path.length) return moveTo(bot, job.path[job.waypoint]);
         // At the end of the exit path: stay out of the box until :00 + StackExitUntil.
+        Intent.Hold(bot, "lane:stack_exit");
         return true;
     }
     if (job.phase === "lead") {
@@ -932,6 +936,7 @@ function step(bot: Unit, job: Job): boolean {
         }
         const last = job.path[job.path.length - 1];
         if (last !== undefined && !arrived(bot, last)) return moveTo(bot, last);
+        Intent.Hold(bot, "lane:job_watch");
         return true;
     }
     return false;

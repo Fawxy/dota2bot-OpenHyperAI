@@ -107,13 +107,24 @@ Allied bots leave a human core's lane creeps alone. `Customize.Humaniser.AllyLas
 ### Design
 - **Predicate:** `J.Humaniser.AllyLastHit.MayLastHit(bot, creep) -> (allowed, reason)` in `FunLib/humaniser/ally_last_hit.lua`. Reasons start with `skip:` (held back), `take:` (a protected human is near but etiquette allows it) or `free:` (etiquette does not apply). Allied creeps (denies) are always allowed.
 - **Protected human:** an alive, non-bot ally whose `J.GetPosition` is in `ProtectPositions` (default `{1, 2, 3}`), within `ProtectRange` (1000) of the creep, during `J.IsInLaningPhase()`. A bot in `OwnFarmPositions` (default `{1, 2}`) is only restricted when the human has the same `GetAssignedLane()`.
-- **Tiers** from `Profile.deference`: Polite `d >= PoliteMin` (0.75), Helpful `d >= HelpfulMin` (0.4), otherwise Teammate. Behaviour follows the handoff table. Helpful and Teammate both refuse the human's current attack target.
-- **Config:** all thresholds live in `DEFAULTS` in `ally_last_hit.ts`, shallow-merged with `Customize.Humaniser.AllyLastHit` (lists replace the default list).
+- **One rule at every difficulty:** near a protected human the bot denies, and takes an enemy creep only when the human is going to miss it. It never takes the human's current attack target. This replaces the handoff's tier table, where Polite never last-hit and Teammate last-hit normally.
+- **Tiers** from `Profile.deference` (Polite `d >= PoliteMin` 0.75, Helpful `d >= HelpfulMin` 0.4, otherwise Teammate) only change what counts as a miss, through `MissRules`:
+
+  | Tier | Away: beyond attack range + | Idle for | Deny race | Human trading with a hero |
+  |---|---|---|---|---|
+  | Polite | 400 | 6 s | no | no |
+  | Helpful | 150 | 3 s | yes | no |
+  | Teammate | 75 | 1.5 s | yes | yes |
+
+  "Away" also needs the human not to be walking towards the creep. Reasons on the overlay: `skip: human-target`, `skip: <tier>`, `take: human-away|human-idle|deny-race|human-busy`.
+- **Config:** all thresholds live in `DEFAULTS` in `ally_last_hit.ts`, shallow-merged with `Customize.Humaniser.AllyLastHit` (lists replace the default list). `MissRules` merges per tier and per field, e.g. `MissRules = { polite = { IdleSeconds = 4 } }`.
 - **Laning (`mode_laning_generic.lua`, option A):** `Think()` is also defined when `AllyLastHit.OwnsLaning(bot)` is true at file load: the feature is on and the team has a human. Valve's C++ laning cannot be filtered and a defined `Think()` cannot hand back to it, so these bots use OHA's laning `Think()` for the whole game, also when no human is near. The load-time check uses `GetTeamPlayers`/`IsPlayerBot`, which upstream already reads at load (`teamHumans`). Human positions are deliberately not part of the load-time decision, because they can still change before the horn.
   - Candidate last-hit creeps go through a filter. A `take:` verdict is final. Otherwise upstream's rule applies: pos 1–2, or no other core within 700.
   - The 0.9 last-hit desire in `GetDesire()` is gated by the same filter. It is not extended to the new bots, so mode selection stays as upstream and only `Think()` changes.
+  - `Think()` runs small steps in order: `LastHitThink`, `DenyThink`, `HarassThink` (humaniser bots only), then `PositionThink`. Last hit comes before deny on purpose: near a human, a last hit is only allowed when the human will miss it. Lane management (07) adds steps here.
   - **Support idle behaviour:** last hit, then deny, then harass, then move to the lane front (existing code). Harass is one right-click on the nearest enemy hero within attack range + 300 every `HarassInterval` (2.5 s). It needs a protected human near the bot, `J.WeAreStronger(bot, 1200)`, HP ≥ 50%, and neither unit within 850 of an enemy tower.
 - **Farm (`mode_farm_generic.lua`):** the lane-creep lists used for desire and for the attack target go through `AllyLastHit.FilterCreeps`. That returns the same table when etiquette is off.
+- **Team roam (`mode_team_roam_generic.lua`):** its own last-hit grab (`X.GetLastHitCreep`, desire 1.5, which outranks laning) also checks `MayLastHit`. Without this a pos 3 bot could still take the human's creeps.
 - **Overlay** (`Debug = true`): line `lasthit: <tier> d=<deference> <last skip reason> @<time>`.
 
 ### Assumptions to confirm in-game
@@ -126,9 +137,11 @@ Allied bots leave a human core's lane creeps alone. `Customize.Humaniser.AllyLas
 
 ### Manual test checklist
 Setup: human pos 1 safelane, bot pos 5 and bot pos 4 in the same lane. Log `GetLastHits()` for bots and human at 5 and 10 min.
-- [ ] Low (Valve Easy / FretBots 1): support last hits near the human = 0, denies > 0.
-- [ ] Mid (Medium / 5): the support only takes creeps while the human is away or idle. Walk out of lane for 30 s.
-- [ ] High (Unfair / 9): the support never takes the creep you are attacking, but does take creeps you clearly miss.
+- [ ] Every difficulty: while you are farming actively, support last hits near you = 0 and denies > 0.
+- [ ] Low (Valve Easy / FretBots 1): the support only takes creeps after you leave the lane or stop attacking for 6 s.
+- [ ] Mid (Medium / 5): it takes creeps once you are away or idle for 3 s, or an enemy is about to deny them.
+- [ ] High (Unfair / 9): it also takes creeps while you trade hits with an enemy hero, but never the creep you are attacking.
+- [ ] A pos 3 bot in your lane does not take your creeps through team roam.
 - [ ] Human pos 5, bot pos 1: the bot carry farms normally; nothing is protected.
 - [ ] Regression: with `AllyLastHit.Enable = false`, laning and farm match upstream.
 - [ ] No idle support: the bot never stands still for more than 3 s in lane. Watch the overlay mode text and the `lasthit:` line.
@@ -178,7 +191,9 @@ Module: `typescript/bots/FunLib/humaniser/perception.ts`. Tuning lives in its `D
 - **Accepting and acknowledging:** the core read delay (`Profile.SampleDelay('ping')`) and decline reasons apply. The spokesperson answers in team chat and pings back once at the order location. Every humaniser line is limited to 1 per bot per 10 s (`Orders.Say`), and ack pings to 1 per bot per 10 s.
 - **AVOID:** the first bot in a module instance to accept calls `AddAvoidanceZone(Vector(x, y, radius), duration)`; the zone is removed when the order expires or is cancelled. AVOID does not hide the order a bot is executing (`GetFor` skips it).
 - **Commitment:** `mode_retreat_generic.lua` passes its desire through `Orders.CapRetreatDesire`. With an accepted order (not `BACK`) and HP above 50%, retreat is capped at `DesireFloor - 0.1` (0.75); below 50% the bot retreats normally.
-- **Not done:** lowering farm and roam desire inside AVOID zones. `mode_farm_generic.lua` belongs to task 04 and roam has no single target to test; `Orders.GetActive(team)` exposes the zones for a follow-up.
+- **Staying out:** `Orders.AvoidsLocation(bot, loc)` and `Orders.FilterAvoided(bot, units)` apply once the bot has read the ping. Farm skips camps (`ClosestCamp`), lane fronts and lane creeps inside a zone, and drops a preferred camp that falls inside one. Team roam skips hero targets inside a zone unless the bot is already in it. Plain roam needs nothing: its only travel-to-target code, lane ganking, is commented out upstream.
+- **AVOID is never declined:** before this change a dead, channeling or low-HP bot declined it, said a decline line, and ignored the zone after respawning.
+- **Forgetting:** a danger ping lasts `Avoid.Duration` (10 s) at most. After `Avoid.MinSeconds` (4 s) it is forgotten early once the pinged spot is visible (`IsLocationVisible`) and no enemy hero has been seen within the radius for `Avoid.ClearSeconds` (2 s). The enemy check reads the perception-filtered unit list, so if modules are not shared, bots may forget it a moment apart.
 
 **TODO (in-game) — step 0, ping semantics.** With Debug on, every new ping logs `[H:pings] <context> by <pid> @<time> danger=<bool>`. Do each of these once and record `danger` (and so `normal_ping`) in the table:
 
@@ -314,7 +329,7 @@ All other tuning (`Gates`, `Curves`, `Eq`, `Planner`, `Timing`, `Thresholds`, `R
 ### Design notes
 - **Shared lane snapshot, per-observer perception:** `lane_state` keeps one snapshot per (team, lane). Exposure and `laneScore` depend on what the observer may see, so they are computed per observer in `ScoreFor`, never stored in the snapshot. At most one allied and one enemy creep scan per team per refresh and one enemy-hero scan per observer per refresh.
 - **Planner:** `LanePlanner.Plan` re-decides live every call from current inputs. It keeps only one attempt roll per (cycle, technique) and one committed technique per wave cycle (`Commit`); `hold`, `none`, hands-off and safety aborts apply immediately. Freeze and hold are postures and never commit. A technique chosen under an order (`!pull`, `!stack`) skips the roll only for the ordered technique.
-- **Camp-job window:** the start window (`aggro - travel - JobStartSlack` to `aggro + JobStartLate`) only gates the start. A running job holds `Timing.JobDesire` (0.7) until it finishes or aborts.
+- **Camp-job window:** the start window (`aggro - travel - JobStartSlack` to `aggro + JobStartLate`) only gates the start. A running job holds `Timing.JobDesire` (0.7) until it finishes or aborts (as a CAMP_JOB claim when intent is on, see "Intent integration (09)").
 - **Aggro confirmation:** a pull confirms the aggro hit (`GetLastAttackTime` or a neutral targeting the bot) before leading; no confirmation within `Timing.AggroConfirm` aborts the job.
 - **Stack outcome:** the peak neutral count in the box, sampled from :02 to :05 while the box is in sight.
 - **Human mid:** a passing bot never touches a human mid's wave (deny included); the mid-assigned bot still acts. The passing bot still sheds tower aggro (the safety drop), attacking only creeps it may touch.
@@ -322,6 +337,17 @@ All other tuning (`Gates`, `Curves`, `Eq`, `Planner`, `Timing`, `Thresholds`, `R
 - **One shared harass tool** for 04 and 07, see above.
 - **Counter-play telegraphs** are deduplicated per team per signal instance: two laners noticing one pull post one line.
 - **Orders:** `LANE_*` orders sit on the 05/06 orders bus at priority -1, are never declined and never hide an executed order. Durations: freeze/shove 90 s, pull/nopull 120 s, stack 60 s, lane-front hands-off 30 s.
+
+### Intent integration (09)
+Intent arbitration (`intent.ts`) arrived on `humaniser` while 07 was in progress; these are the integration points as merged. With `Intent.Enable = false` every one of them falls back to 07's own behaviour.
+- **Camp-job desire is a claim.** `mode_farm_generic.lua` returns `Lane.CampJobRawDesire(bot, CampJobDesire(bot))` for a live job: with intent on that posts a same-frame `CAMP_JOB` floor (`lane:<kind>`, 0.7, or 0.65 for a contest) on FARM and returns a raw 0, so the job counts as a lifted floor: `intent:survival` caps it below a low-HP retreat and any HUMAN_ORDER/SURVIVAL claim outranks it. Without intent (or for Meepo / a tempest double, which intent leaves out) it returns the job's desire as before. `CampJobDesire` itself (side effects: starting a job, committing the one-technique lock) is unchanged and still runs every farm `GetDesire`, so a job farm loses to a higher claim is ended `preempted` after `JobPreemptAfter` (1 s) without Think, releasing the cycle's lock when it never acted.
+- **Stickiness.** The same call posts a `lane:camp_job` claim with `unsticks = true` (normal `ClaimTTL`): while it is live no other mode gets the dwell/thrash bonus, so laning's (or any active mode's) stickiness cannot push a pull past its short start window. FARM itself keeps its bonus once active.
+- **Stuck detector.** `Intent.Hold(bot, source)` (new, a no-op with intent off) marks deliberate stand-stills, which the stuck detector skips and after which its idle/still timers restart: camp-job wait at the stand point (`lane:job_wait`), waiting for the aggro hit to land (`lane:job_aggro`), the stack exit hold until `:00 + StackExitUntil` (`lane:stack_exit`), the end-of-path pull watch (`lane:job_watch`), the freeze/hold posture (`lane:freeze` / `lane:hold`) and the tower-swap wait (`lane:swap`). While a job runs, farm's raw desire is 0 (below `Stuck.MinDesire`), so the detector does not watch camp jobs at all; 07's own late / no-aggro / preempted timeouts end stalled jobs. The holds still cover the laning-mode stand-stills and keep the job phases correct if the raw path changes.
+- **Laning last-hit suppression** (`and not Lane.CampJobActive(bot)` on laning's 0.9 return) stays as raw-desire logic: it must work without intent, and a CAMP_JOB cap on laning would only duplicate it.
+- **Rune contest** stays `math.max(PowerRuneDesire, RuneContestDesire)` inside the power-rune branch, then through `Intent.Resolve`. As a floor claim it would also lift rune mode past that branch's own early-outs (enemy picking the rune, other runes), which 07 never did.
+- **Lane orders.** `LANE_*` (priority -1, never declined) are skipped when `Orders.GetFor` picks the executed order, so `DesireFloor` / `CapRetreatDesire` never turn them into HUMAN_ORDER claims: no mode floors, no retreat cap, stickiness stays on. The lane-front ping during laning still posts `LANE_HANDSOFF`, not GATHER.
+- **Run mode** (`runMode`) still aborts the job (`CampJobAbort(bot, "run")`) and skips `CampJobThink`; that frame's raw is ABSOLUTE × 1.1 and posts no job claim.
+- **Laning `Think()`**: 14's step layout with 07's steps added: `Lane.PreThink`, `LastHitThink` (self-test first), `DenyThink` (07's `MayDeny`/`PickDeny`), `Lane.Think`, harass (07's shared tool or 04's), upstream, `PositionThink` (07's `AdjustPosition`). Defined when `bHumaniserLaning or bLaneLaning or bTrainerSelfTest` (or upstream's own conditions).
 
 ### Data method
 - **Seeds:** `camps_data.ts` seed entries come from public guides (Liquipedia "Pulling", Dotafire, bo3.gg; accessed 21/10/2026). Small camp pull :15/:45, hard camp :18/:48, half pulls +2 s, stacks small 54.5, medium 54.0, large 53.5, ancient 53.0. The off-lane hard camp is `unverified`. The old `aba_site.ts` stack data is never used (pre-7.33).
@@ -437,3 +463,173 @@ Also to confirm:
 - Farm desire 0.7 wins over the laning mode at :45 for a laning support, and after laning over whatever a support would otherwise do.
 - Two supports after laning can pick the same camp: the second skips it only once the first stands in the box.
 - Stack pull (scenario 4): a stacked pull camp kills the whole wave; it is graded with the full-pull threshold (`FullPullMin`).
+
+## Intent arbitration (09)
+`FunLib/humaniser/intent.lua` (TS: `intent.ts`), exposed as `J.Humaniser.Intent`. Tuning in its `DEFAULTS`, overridable via `Customize.Humaniser.Intent`. Kill switch: `Intent.Enable = false` makes `Resolve` return the raw desire.
+
+### API
+- `Intent.Claim(bot, { source, tier, mode, floor?, cap?, scale?, until?, except?, allowRisk? })`. Claims are keyed by `source` + `mode`, so re-posting replaces. `mode = "ANY"` applies to every mode not in `except`.
+- `Intent.Resolve(bot, mode, rawDesire)` runs at the end of every OHA `GetDesire()`. Non-numbers (nil, `false`) pass through untouched, as does a nil `mode`.
+- `Intent.Explain(bot, mode)` gives `<mode> <desire> by <source>[+sticky]`, or `(valve)` when the mode is Valve's C++.
+- `Intent.Release(bot, source, mode)` drops a claim early.
+- `Claim` returns false when intent is off or leaves the unit out, so a caller that moved its desire into a claim can fall back to applying it itself.
+- `unsticks = true` on a claim: while it is live, every other mode gets no stickiness bonus (07's camp jobs).
+- `Intent.Hold(bot, source, until?)` marks a deliberate stand-still for `ClaimTTL` (or until `until`); the stuck detector skips the bot meanwhile and restarts its idle/still timers afterwards. `Intent.HeldBy(bot)` reports the live hold's source.
+- `onlyLifted = true` makes a claim clamp a mode only where a claim floor has already lifted it above its scaled raw desire.
+- State is keyed by player ID. Meepo and Arc Warden's tempest double share a player ID between units, so `Claim`, `Resolve` and `Tick` ignore every Meepo and the double: their desires pass through unresolved (upstream behaviour).
+
+### Resolution
+1. Multiply all `scale` claims together, clamp to `1 ± ScaleClamp` (0.3), apply to the raw desire.
+2. Sort the floor/cap claims by tier (`MOOD < TRANSITION < CAMP_JOB < LANE_PLAN < FIGHT < HUMAN_ORDER < SURVIVAL`), then expiry, then `source`, and apply them in that order. Each one clamps the running value, so a higher tier always has the last word and, within a tier, the later-expiring claim does; equal expiry falls back to the source name, so every bot resolves the same way.
+3. SURVIVAL claims are skipped for a mode that has a HUMAN_ORDER claim with `allowRisk = true`.
+4. Stickiness, then floor at 0. The resolved value goes to `HDebug.RecordDesire`, so the overlay's top-3 now covers every OHA mode.
+
+### Claim lifetime
+Claims without `until` live `ClaimTTL` (0.2 s), not "until end of frame" as the handoff says. The engine evaluates modes in its own order and `Tick` runs from `ItemUsageThink`, so a same-frame lifetime would hide a claim from modes evaluated before it was posted. Claims that are consumed by the `GetDesire()` that posts them use `until = GameTime()`.
+
+### Order hooks (migrated)
+- `Orders.DesireFloor` still returns the floor and now also posts a same-frame HUMAN_ORDER floor claim. `Orders.OrderFloor` is the pure query. Every call site returns the floor immediately after calling `DesireFloor`, so the claim never outlives the call site's own gates (ancient under attack for push, close enemies for defend). Roshan was reordered for this: it checks its HP and pit-enemy gates with `OrderFloor` first, then calls `DesireFloor`.
+- `Orders.CapRetreatDesire` still returns the capped desire and also posts it as a HUMAN_ORDER cap on RETREAT (only while HP > 50%, as before).
+- Both are deliberately not post-hoc floors in `Resolve`: applying the order floor after the fact would override push's "ancient under attack" gate and Roshan's HP gate.
+
+### Survival
+When retreat resolves to at least `Survival.MinRetreat` (0.5) and HP is below `Survival.HP` (25%), retreat posts a SURVIVAL cap (`intent:survival`, `onlyLifted`) on every other mode at retreat's desire − 0.05. It only touches a mode that a claim floor (camp job, lane plan, mood) lifted above its own raw desire; OHA's raw desires (a buggy-hero attack override at 0.9 to finish a kill, defend near the ancient) are left exactly as upstream. 08's guard rails add their own SURVIVAL claims.
+
+### Stickiness and thrash
+- The active mode gets +`Sticky.Bonus` (0.06) for `MinDwell` (1 s) after it became active, decaying to 0 over `Decay` (1 s). No bonus:
+  - on a zero desire;
+  - on a mode with any cap claim (including the stuck cap), so stickiness never lifts a mode past a feature's cap;
+  - while any SURVIVAL/HUMAN_ORDER claim was posted in the last `ClaimTTL`;
+  - when retreat's latest resolved desire (within 0.5 s) is at least the mode's desire, so stickiness never keeps a bot in a fight it wants out of.
+- Valve C++ modes (attack for most heroes) never get a bonus, so OHA modes have a slight edge over them for 1-2 s after becoming active.
+- More than `Thrash.MaxSwitches` (4) switches in `Thrash.Window` (5 s): the mode switched into gets 0.12 for 3 s, and `[H:intent] thrash pid=... now=<mode> <competing modes and desires>` is logged.
+
+### Stuck-mode detector (#167)
+- Frozen = active mode unchanged ≥ 1.5 s, active desire ≥ 0.1, and **both** idle (`GetCurrentActionType()` IDLE/NONE with nothing queued) and within 50 units for ≥ 1.5 s. The handoff says idle **or** still; that would flag a laner standing to wait for a last hit and knock its laning desire down. `Stuck.Match = "idle_or_still"` restores the handoff's rule.
+- Excluded: pre-horn, dead, mode NONE, channeling, using/casting an ability, stunned, hexed, within 2,600 of the fountain, and while a feature holds the bot (`Intent.Hold`, e.g. 07's camp-job waits and freeze posture).
+- The 0.1 minimum is checked against the mode's raw desire where it is ours, because the active desire already includes the stuck cap.
+- Known false positive: the rune mode's wisdom shrine wait (`Action_ClearActions`, 3.5 s standing at ABSOLUTE desire) counts as an episode. Harmless, since 0.85 still wins, but it shows in the counts as `rune`.
+- Response: `[H:intent] stuck pid= mode= desire= since=` once per episode, a per-mode episode count, and an `intent:stuck` LANE_PLAN cap of raw − 0.15 that is refreshed while the bot stays frozen and expires 2 s after it moves. Orders (HUMAN_ORDER) and SURVIVAL still win over it. On a Valve C++ mode the cap has no effect; the log still names the mode.
+
+### Wiring
+- Lua: farm, outpost, roam, roshan, secret/side shop, team_roam, ward and retreat wrap their existing `return res`. Laning, rune and assemble keep their `GetDesire()` untouched and are wrapped right after it (`local GetDesireRaw = GetDesire`). `mode_attack_generic.lua` wraps the buggy-hero override only; other heroes' attack desire is Valve's.
+- TS: `GetPushDesire` / `GetDefendDesire` wrap their helper, so `bot.pushDesire` / `bot.defendDesire` hold the resolved value.
+- Not wrapped: `mode_assemble_with_humans_generic.lua` (always 0, nothing to arbitrate) and `mode_retreat_generic_wip.lua` (not a mode file the engine loads).
+- `Intent.Tick` runs from `Humaniser.Tick` (mode-switch tracking, stuck detection, summary).
+
+### Telemetry
+- Overlay (Debug): `intent: <active mode> <desire> by <source>`.
+- End of game (always printed, once per bot, when an ancient falls or the game reaches POST_GAME; `Intent.Summary = false` turns it off): `[H:intent] summary pid= <hero> switches= thrash= stuck=<mode>:<n>,... conflicts=<winner>><loser>:<n>,...`. A conflict is counted once per episode: from the first frame one claim overrides another claim's value on a mode until a frame where that mode resolves with no override.
+
+### For 07, 08, 11, 12
+Post claims instead of editing desires: camp jobs as `CAMP_JOB` floors on the job's mode, the lane plan as `LANE_PLAN`, tilt and mistakes as `MOOD` scales, 08's guard rails as `SURVIVAL` caps. 07's `PlanSustain` / `PlanMinDwell` stay: they damp the plan, this damps the modes.
+
+**TODO (in-game):**
+- `BOT_MODE_OUTPOST` exists as a global. If it is nil, outpost desire passes through unresolved (no error).
+- `GetCurrentActionType()` returns IDLE/NONE for a bot frozen as in #167, rather than a MOVE_TO to its own position. If the freezes don't get logged, try `Stuck.Match = "idle_or_still"` in a test game and check the false-positive rate in lane.
+- Bot scripts still run when the ancient dies, so the summary prints.
+
+**Manual test checklist:**
+- [ ] #167 repro: pos 3/4 bots in lane for 10 min. Compare `[H:intent] thrash` / `stuck` counts and the summary with `Intent.Enable = false`; freezes over 3 s are gone or logged with the mode named.
+- [ ] `!def mid` while a bot is on a camp job (07) or tilted (08): the order wins every time.
+- [ ] A bot under 20% HP with a stack job due: retreat wins.
+- [ ] `Intent.Enable = false`: behaviour matches the `humaniser` branch (the overlay's top-3 desire line goes back to empty).
+- [ ] No visible FPS drop at `host_timescale 2`.
+
+## Last-hit trainer (task 14)
+`FunLib/humaniser/trainer/` (TS: `api.ts`, `settings.ts`, `incoming.ts`, `predict.ts`, `judge.ts`, `stats.ts`, `format.ts`, `watch.ts`, `draw.ts`, `trainer.ts`, `spike.ts`). Tuning in `settings.ts` `DEFAULTS`, overridable via `Customize.Humaniser.Trainer.LastHit`. Kill switch: `Trainer.LastHit.Enable = false`. The trainer then does nothing: no helper calls, no chat, no `[H:trainer]` lines. Only the lowest-PID bot on each team runs it, and nothing happens in game until `!trainer on` (or `SelfTest = true`).
+
+### Commands
+| Command | Effect |
+|---|---|
+| `!trainer` | Status line: `trainer off - bar on - chat off - denies on` |
+| `!trainer on` / `off` | Start (stats reset; already on just replies the status) or stop all drawing, text and chat |
+| `!trainer bar on\|off` | Show or hide the bar |
+| `!trainer denies on\|off` | Grade denies |
+| `!trainer chat off\|misses\|all` | Send verdicts to team chat |
+| `!trainer stats` | Print the summary and the biggest leak; also shown as screen text for 15 s |
+| `!trainer stats selftest` | The trainer bot's own score (see self-test) |
+| `!trainer reset` | Clear stats; replies `trainer stats reset` |
+| `!trainer spike` | Toggle the spike probe (only with `Debug = true`) |
+
+`trainer` takes no bot selector (`!lion trainer` and `!2 trainer on` don't parse). Unknown subcommands print the usage line. Replies are queued per team (capped at 8 lines) and spoken by the trainer bot, one line per 0.5 s.
+
+### Config keys (`Customize.Humaniser.Trainer.LastHit`)
+| Key | Default | Meaning |
+|---|---|---|
+| `Enable` | `true` | Kill switch |
+| `Bar` / `BarStyle` | `true` / `'time'` | Draw the bar; `'time'` or `'hp'` |
+| `OutcomeOnly` | `false` | Spike fallback: grade outcomes only if swing timing can't be read |
+| `ScreenText` | `true` | `false` sends verdicts and summaries to team chat |
+| `Denies` / `Chat` | `true` / `'off'` | Grade denies; `'off'`, `'misses'` or `'all'` |
+| `EasyWindow` | `0.3` | Seconds of window that make a creep an "easy" one |
+| `Checkpoints` | `{300, 600}` | Summary times in game seconds |
+| `SelfTest` | `false` | The trainer bot times its last hits from the trainer's window |
+| `TextX`, `TextY` | `560`, `40` | Screen text position (not in `general.lua`) |
+| `WatchInterval`, `MaxWatched` | `0.1`, `2` | Prediction refresh and watched-creep budget (not in `general.lua`) |
+
+### Spike results (Phase 0, Task 1 Step 7)
+The spike has not been run. Every result below is **pending (run `!trainer spike`)**: Local Host lobby, cheats on, `Debug = true`, `!trainer spike`.
+
+| # | Question | Result |
+|---|---|---|
+| 1 | Are draws visible with `Debug = true`, and with `Debug = false` (change `HDebug.IsEnabled()` locally)? | pending |
+| 2 | Bars smooth or flickering? Think rate? | pending |
+| 3 | Which human-hero reads work? | pending |
+| 4 | Is `GetAttackProDelayTime` sane on the human? | pending |
+| 5 | Which bar style does the user prefer? | pending |
+| 6 | Optional: latency from a bot `ActionImmediate_Chat` line to a FretBots `player_chat` listener (probed by hand, no code) | pending |
+| 7 | Does a Unicode text line render (plan correction 4)? | pending |
+
+Decisions still to record, in `settings.ts` and `general.lua` in one small commit: `BarStyle`, `OutcomeOnly`, `ScreenText`.
+
+### Plan corrections
+The plan overrides the spec in four places:
+1. **Incoming damage is ported, not called.** OHA's helpers scan creeps around `GetBot()` (the trainer bot, possibly in another lane), add bot-level fudge factors, and see only attacks already under way. The trainer needs the subject's lane, no fudge, and projected idle swings.
+2. **`SetHelpers` exposes only `GetAttackProDelayTime` and `IsInLaningPhase`.**
+3. **`IsFeatureEnabled` is not extended.** The config is nested (`Trainer.LastHit.Enable`), so the trainer has its own `IsEnabled()`.
+4. **Screen text uses ASCII `-`** instead of `–`/`−`, because `DebugDrawText` may not render non-ASCII text (spike item 7).
+
+### Behaviour decisions
+- **Time bar:** the track spans now-0.5 .. now+2.0 s. The white "now" tick sits at 0.5/2.5 of the width, so your swing start (the blue tick) shows next to the window (R14).
+- **`uncertain` (amber):** compares the close edge always, and the open edge only when it's in the future. A close capped at the 2 s horizon is ignored (R15, R15b).
+- **Cancelled swings:** a creep whose only swings were cancelled still counts as an easy miss, with no swing. EARLY hits shield the creep (R9).
+- **One verdict per creep death** (R7). When two swings are in flight and the creep dies to the player, the older swing is credited if its landing time was no more than 0.1 s ago (R8).
+- **Allied heroes:** their denies count against our own creeps, and their last hits against enemy creeps (R10).
+- **Prediction budget:** 2 bars + `MaxWatched` applies per subject. A self-test lobby with a human runs up to 8 predictions per frame (R11).
+- **Counter matching:** last-hit counters are matched looking back up to 0.15 s before the death frame (R12).
+- **Bar stickiness:** bars stay put unless another creep's window closes more than 0.2 s sooner (`BAR_STICKINESS`). Keep it at or above `WatchInterval`.
+- **Creep ids** are `tostring(handle)`.
+- **SelfTest** switches the trainer on at game start; `!trainer off` still turns it off.
+- **One-player warning** goes through `HDebug.Log`, so it only prints with Debug on.
+
+### Merge note with 07 (lane management)
+Done in the `h-07-lane` merge as described below; the resulting step order is in "Lane management (07) > Intent integration (09)".
+
+07 (`h-07-lane`) branched from `535087f`, before the laning `Think()` step refactor this branch builds on, so 07's `mode_laning_generic.lua` still has the older inline `Think()`. That file will not merge textually:
+- Take the step layout (`LastHitThink`, `DenyThink`, `HarassThink`, `PositionThink`) from this branch, then port 07's lane-management logic into it as steps by hand.
+- Keep the self-test branches at the top of `LastHitThink` (`SelfTestHolding`, then `SelfTestTarget`) and `DenyThink` (return false) as they are. They must run before any of 07's steps can issue an order, or the self-test bot's swings get cancelled.
+- The `Think()` definition condition needs both 07's `or bLaneLaning` and this branch's `or bTrainerSelfTest`.
+
+The other shared files (`general.lua`, `config.ts`, `index.ts`, `commands.ts`, `jmz_func.lua`, this document) only gained additions next to existing blocks, so their conflicts are additive siblings: keep both sides. New Dota API typings live in `trainer/api.ts`, not `ts_libs/dota/*`.
+
+### Self-test lobby recipe
+Calibrates the predictor against a bot that last-hits from the trainer's own window.
+1. Put the human in a different lane from the trainer bot (the lowest-PID bot on the team).
+2. Set `Humaniser.Lane.Enable = false` (07) and `Trainer.LastHit.SelfTest = true`.
+3. Play 10 minutes.
+4. Run `!trainer stats selftest`. Pass: at least 85% `PERFECT` + `OK` and under 5% `MISSED_EASY`.
+
+### Regression check
+`Trainer.LastHit.Enable = false` (with `Debug = true`): `!trainer on`, then play. No `[H:trainer]` lines, no trainer chat, no draws.
+
+**TODO (in-game):**
+- `GetLastAttackTime` semantics (attack start vs projectile release). The idle-swing projection assumes attack start.
+- `IsAlive()` on cached handles that may have gone invalid.
+- Do `GetLastHits` and `GetDenies` rise on the creep's death frame, or within the 0.15 s look-back? If counters update later, every last hit reads LATE. The fix would be a short death hold in `creepObservations` (R12).
+- `ACTIVITY_ATTACK2` (1504) is treated as an attack.
+- Swing-timing units: `cycle < GetAttackPoint()` and `swingStart = now - cycle / GetAttackSpeed()`.
+- Unit-handle identity is stable across frames (`SelectCreeps` target matching and the ids rely on it).
+- Frame cost with 2 bars and 2 watched creeps (spike item 7).
+
+**Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).

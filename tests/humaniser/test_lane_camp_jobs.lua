@@ -521,4 +521,63 @@ do
 	check("farm skips the job's Think during a run", src:find("if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", 1, true) ~= nil)
 end
 
+-- Intent arbitration (task 09): the job's desire reaches farm as a CAMP_JOB floor claim over a raw 0.
+do
+	local H, _, support = jobWorld(1, { away = 900 })
+	local I = H.Intent
+	local FARM, LANING, RETREAT = dota.BotMode.Farm, dota.BotMode.Laning, dota.BotMode.Retreat
+	T = 70
+	local d = H.Lane.CampJobDesire(support)
+	check("precondition: a job registers", near(d, 0.7), d)
+	local raw = H.Lane.CampJobRawDesire(support, d)
+	check("intent on: farm's raw desire is 0", raw == 0, raw)
+	check("intent on: the claim carries the job's desire", near(I.Resolve(support, FARM, raw), 0.7), I.Resolve(support, FARM, raw))
+	check("overlay names the job claim", I.Explain(support, FARM):find("by lane:full_pull", 1, true) ~= nil, I.Explain(support, FARM))
+	T = 70.1
+	check("the floor lasts only its frame", near(I.Resolve(support, FARM, 0), 0), I.Resolve(support, FARM, 0))
+
+	-- Survival outranks the job: a low-HP bot whose retreat wants out gets farm capped below retreat.
+	T = 70.2
+	d = H.Lane.CampJobDesire(support)
+	support.hp = 20
+	raw = H.Lane.CampJobRawDesire(support, d)
+	I.Resolve(support, RETREAT, 0.7)
+	check("low HP: retreat beats the job's floor", near(I.Resolve(support, FARM, raw), 0.65), I.Resolve(support, FARM, raw))
+	support.hp = 100
+
+	-- The active laning mode's dwell bonus must not push the pull late.
+	support.mode = LANING
+	I.Tick(support)
+	T = 70.5
+	d = H.Lane.CampJobDesire(support)
+	raw = H.Lane.CampJobRawDesire(support, d)
+	check("no laning dwell bonus against a job", near(I.Resolve(support, LANING, 0.66), 0.66), I.Resolve(support, LANING, 0.66))
+	check("job's farm beats laning", I.Resolve(support, FARM, raw) > I.Resolve(support, LANING, 0.66))
+end
+do
+	local H, _, support = jobWorld(1, { away = 900 })
+	H.Config.Get().Intent.Enable = false
+	T = 70
+	local d = H.Lane.CampJobDesire(support)
+	check("intent off: farm returns the job's own desire", near(H.Lane.CampJobRawDesire(support, d), 0.7), tostring(d) .. " " .. tostring(H.Lane.CampJobRawDesire(support, d)))
+end
+
+-- Waiting at the stand point is a deliberate hold: intent's stuck detector leaves the bot alone.
+do
+	local H, _, support = jobWorld(1, { t = 60 })
+	local FARM = dota.BotMode.Farm
+	H.Lane.CampJobs.Start(support, { kind = "full_pull", campIdx = 1 })
+	local job = H.Lane.CampJobs.Current(support)
+	support.mode, support.desire = FARM, 0.5
+	for t = job.aggroAt - 8, job.aggroAt - 5, 0.1 do
+		T = t
+		H.Lane.CampJobThink(support)
+		H.Intent.Resolve(support, FARM, 0.5)
+		H.Intent.Tick(support)
+	end
+	check("precondition: still waiting", job.phase == "wait")
+	check("job wait held", H.Intent.HeldBy(support) == "lane:job_wait", H.Intent.HeldBy(support))
+	check("job wait is not a stuck mode", H.Intent.SummaryLine(support):find("stuck=-", 1, true) ~= nil, H.Intent.SummaryLine(support))
+end
+
 finish()

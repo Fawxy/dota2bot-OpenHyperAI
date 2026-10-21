@@ -6,6 +6,7 @@ import { IsValidUnit, GetLocationToLocationDistance, RadiantFountainTpPoint, Dir
 import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache, getCachedData } from "./global_cache";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
+import * as Intent from "bots/FunLib/humaniser/intent";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -248,7 +249,8 @@ export function GetPushDesire(bot: Unit, lane: Lane): BotModeDesire {
     // }
 
     // 2) compute and publish
-    const res = GetPushDesireHelper(bot, lane);
+    const mode = lane === Lane.Top ? BotMode.PushTowerTop : lane === Lane.Bot ? BotMode.PushTowerBot : BotMode.PushTowerMid;
+    const res = Intent.Resolve(bot, mode, GetPushDesireHelper(bot, lane)) as BotModeDesire;
     // jmz.Utils.SetCachedVars(cacheKey, res);
     (bot as any).pushDesire = res;
     return res;

@@ -78,7 +78,7 @@ function GetDesire()
     res = CapForLanePush(res)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
-    return res
+    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
 end
 function GetDesireHelper()
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
@@ -163,7 +163,7 @@ function GetDesireHelper()
     elseif #nearbyAllies >= #nearbyEnemies then
         if IsHeroCore then
             local botTarget, targetDesire = X.CarryFindTarget()
-            if botTarget ~= nil then
+            if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget
                 bot:SetTarget(botTarget)
                 return RemapValClamped(J.GetHP(bot), 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
@@ -171,7 +171,7 @@ function GetDesireHelper()
         end
         if IsSupport then
             local botTarget, targetDesire = X.SupportFindTarget()
-            if botTarget ~= nil then
+            if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget
                 bot:SetTarget(botTarget)
                 return RemapValClamped(J.GetHP(bot), 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
@@ -200,6 +200,12 @@ function GetDesireHelper()
     return 0.0
 end
 
+-- A target inside a danger-pinged zone (task 05 AVOID) is skipped unless the bot is already in that zone.
+function X.IsIntoAvoidZone(target)
+	local HOrders = J.Humaniser.Orders
+	return HOrders.AvoidsLocation(bot, target:GetLocation()) and not HOrders.AvoidsLocation(bot, bot:GetLocation())
+end
+
 function X.GetLastHitCreep()
 	if J.IsRetreating(bot)
 	or (not J.IsCore(bot) and J.IsThereCoreNearby(800))
@@ -216,6 +222,7 @@ function X.GetLastHitCreep()
 		and J.IsInRange(bot, creep, bot:GetAttackRange() + 300)
 		and not J.IsRoshan(creep)
 		and not J.IsTormentor(creep)
+		and J.Humaniser.AllyLastHit.MayLastHit(bot, creep)
 		then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
 			if J.WillKillTarget(creep, bot:GetAttackDamage()-1, DAMAGE_TYPE_PHYSICAL, nDelay)

@@ -1,24 +1,39 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local cached, nearbyEnemyHeroes, enemyHeroesByPlayer
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
-local BotScriptEnums = ____dota.BotScriptEnums
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+function cached(store, key, compute)
+    local now = DotaTime()
+    local entry = store[key]
+    if entry ~= nil and entry.time == now then
+        return entry.value
+    end
+    local value = compute()
+    store[key] = {time = now, value = value}
+    return value
+end
+function nearbyEnemyHeroes(bot)
+    return cached(
+        enemyHeroesByPlayer,
+        bot:GetPlayerID(),
+        function() return bot:GetNearbyHeroes(1600, true, BotMode.None) end
+    )
+end
 ____exports.DEFAULTS = {
     ProtectPositions = {1, 2, 3},
     OwnFarmPositions = {1, 2},
     ProtectRange = 1000,
     PoliteMin = 0.75,
     HelpfulMin = 0.4,
-    OutOfRangeBuffer = 150,
-    IdleSeconds = 3,
+    MissRules = {polite = {AwayBuffer = 400, IdleSeconds = 6, DenyRace = false, Busy = false}, helpful = {AwayBuffer = 150, IdleSeconds = 3, DenyRace = true, Busy = false}, teammate = {AwayBuffer = 75, IdleSeconds = 1.5, DenyRace = true, Busy = true}},
     ApproachLookahead = 0.5,
     ApproachEpsilon = 25,
     DeniableHealth = 0.5,
-    SwingRangeBuffer = 50,
     HarassInterval = 2.5,
     HarassWindow = 1.2,
     HarassExtraRange = 300,
@@ -28,8 +43,7 @@ ____exports.DEFAULTS = {
 local helpers = {}
 local settings
 local humansByTeam = {}
-local enemyHeroesByPlayer = {}
-local enemyCreepsByPlayer = {}
+enemyHeroesByPlayer = {}
 local lastSkipByPlayer = {}
 function ____exports.SetHelpers(h)
     helpers = h
@@ -40,9 +54,29 @@ function ____exports.Settings()
         for k, v in pairs(____exports.DEFAULTS) do
             result[k] = v
         end
-        for k, v in pairs(Config.Get().AllyLastHit or ({})) do
+        local overrides = Config.Get().AllyLastHit or ({})
+        for k, v in pairs(overrides) do
             result[k] = v
         end
+        local rules = {}
+        for tier, rule in pairs(____exports.DEFAULTS.MissRules) do
+            local merged = {}
+            for k, v in pairs(rule) do
+                merged[k] = v
+            end
+            local ____opt_0 = overrides.MissRules
+            if ____opt_0 ~= nil then
+                ____opt_0 = ____opt_0[tier]
+            end
+            local o = ____opt_0
+            if o ~= nil and type(o) == "table" then
+                for k, v in pairs(o) do
+                    merged[k] = v
+                end
+            end
+            rules[tier] = merged
+        end
+        result.MissRules = rules
         settings = result
     end
     return settings
@@ -62,23 +96,13 @@ local function positionOf(unit)
     return helpers.GetPosition ~= nil and helpers.GetPosition(unit) or nil
 end
 local function inLaningPhase()
-    local ____temp_0
+    local ____temp_2
     if helpers.IsInLaningPhase ~= nil then
-        ____temp_0 = helpers.IsInLaningPhase()
+        ____temp_2 = helpers.IsInLaningPhase()
     else
-        ____temp_0 = DotaTime() < 600
+        ____temp_2 = DotaTime() < 600
     end
-    return ____temp_0
-end
-local function cached(store, key, compute)
-    local now = DotaTime()
-    local entry = store[key]
-    if entry ~= nil and entry.time == now then
-        return entry.value
-    end
-    local value = compute()
-    store[key] = {time = now, value = value}
-    return value
+    return ____temp_2
 end
 --- True when this bot's laning Think() should be owned by OHA so etiquette can apply. Evaluated at file load.
 function ____exports.OwnsLaning(bot)
@@ -108,15 +132,15 @@ local function protectedHumans(bot)
                 local i = 1
                 while i <= #players do
                     do
-                        local __continue22
+                        local __continue26
                         repeat
                             local member = GetTeamMember(i)
                             if member == nil or member == nil or not member:IsAlive() or member:IsIllusion() then
-                                __continue22 = true
+                                __continue26 = true
                                 break
                             end
                             if IsPlayerBot(member:GetPlayerID()) then
-                                __continue22 = true
+                                __continue26 = true
                                 break
                             end
                             if contains(
@@ -125,9 +149,9 @@ local function protectedHumans(bot)
                             ) then
                                 result[#result + 1] = member
                             end
-                            __continue22 = true
+                            __continue26 = true
                         until true
-                        if not __continue22 then
+                        if not __continue26 then
                             break
                         end
                     end
@@ -168,14 +192,10 @@ function ____exports.GetProtectedHuman(bot, location)
     end
     return nearest, ""
 end
-local function isAttackAnimation(unit)
-    local activity = unit:GetAnimActivity()
-    return activity == ACTIVITY_ATTACK or activity == ACTIVITY_ATTACK2
-end
-local function canHumanReach(human, creep)
+local function canHumanReach(human, creep, rule)
     local s = ____exports.Settings()
     local dist = GetUnitToUnitDistance(human, creep)
-    if dist <= human:GetAttackRange() + s.OutOfRangeBuffer then
+    if dist <= human:GetAttackRange() + rule.AwayBuffer then
         return true
     end
     local ahead = GetUnitToLocationDistance(
@@ -188,69 +208,51 @@ local function isAboutToBeDenied(bot, creep)
     if creep:GetHealth() >= creep:GetMaxHealth() * ____exports.Settings().DeniableHealth then
         return false
     end
-    local enemies = cached(
-        enemyHeroesByPlayer,
-        bot:GetPlayerID(),
-        function() return bot:GetNearbyHeroes(1600, true, BotMode.None) end
-    )
-    for ____, enemy in ipairs(enemies) do
+    for ____, enemy in ipairs(nearbyEnemyHeroes(bot)) do
         if enemy:GetAttackTarget() == creep then
             return true
         end
     end
     return false
 end
-local function isLowestInHumanRange(bot, human, creep)
-    local range = human:GetAttackRange() + ____exports.Settings().SwingRangeBuffer
-    local creeps = cached(
-        enemyCreepsByPlayer,
-        bot:GetPlayerID(),
-        function() return bot:GetNearbyLaneCreeps(1600, true) end
-    )
-    local lowest
-    for ____, c in ipairs(creeps) do
-        do
-            local __continue45
-            repeat
-                if not c:IsAlive() or GetUnitToUnitDistance(human, c) > range then
-                    __continue45 = true
-                    break
-                end
-                if lowest == nil or c:GetHealth() < lowest:GetHealth() then
-                    lowest = c
-                end
-                __continue45 = true
-            until true
-            if not __continue45 then
-                break
-            end
+local function isAttackingHero(bot, human)
+    local target = human:GetAttackTarget()
+    if target == nil or target == nil then
+        return false
+    end
+    for ____, enemy in ipairs(nearbyEnemyHeroes(bot)) do
+        if enemy == target then
+            return true
         end
     end
-    return lowest == creep
+    return false
+end
+--- Why the human is going to miss `creep` under this tier's rules, or undefined if they should get it.
+local function missReason(bot, human, creep, tier)
+    local rule = ____exports.Settings().MissRules[tier]
+    if not canHumanReach(human, creep, rule) then
+        return "human-away"
+    end
+    if GameTime() - human:GetLastAttackTime() > rule.IdleSeconds then
+        return "human-idle"
+    end
+    if rule.DenyRace and isAboutToBeDenied(bot, creep) then
+        return "deny-race"
+    end
+    if rule.Busy and isAttackingHero(bot, human) then
+        return "human-busy"
+    end
+    return nil
 end
 local function decide(bot, human, creep, tier)
-    if tier == "polite" then
-        return false, "skip: polite"
-    end
     if human:GetAttackTarget() == creep then
         return false, "skip: human-target"
     end
-    if tier == "helpful" then
-        if not canHumanReach(human, creep) then
-            return true, "take: human-away"
-        end
-        if GameTime() - human:GetLastAttackTime() > ____exports.Settings().IdleSeconds then
-            return true, "take: human-idle"
-        end
-        if isAboutToBeDenied(bot, creep) then
-            return true, "take: deny-race"
-        end
-        return false, "skip: helpful"
+    local miss = missReason(bot, human, creep, tier)
+    if miss == nil then
+        return false, "skip: " .. tier
     end
-    if isAttackAnimation(human) and isLowestInHumanRange(bot, human, creep) then
-        return false, "skip: human-swing"
-    end
-    return true, "take: teammate"
+    return true, "take: " .. miss
 end
 local function showOverlay(bot, tier, allowed, reason)
     if not HDebug.IsEnabled() then

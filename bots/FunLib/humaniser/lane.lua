@@ -1,6 +1,8 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local nearestVisibleEnemy
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -16,6 +18,7 @@ local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
 function nearestVisibleEnemy(bot, s)
@@ -160,6 +163,28 @@ end
 function ____exports.CampJobDesire(bot)
     return CampJobs.Desire(bot)
 end
+--- mode_farm_generic GetDesire's return for a running job (`desire` from CampJobDesire). With intent arbitration
+-- the job's desire is a same-frame CAMP_JOB floor over a raw 0, so survival and order claims outrank it and the
+-- survival cap treats it as lifted; a second claim keeps the active mode's stickiness from making the pull late.
+-- Without intent, or for a unit intent leaves out, it is the desire itself.
+function ____exports.CampJobRawDesire(bot, desire)
+    local ____opt_0 = CampJobs.Current(bot)
+    local kind = ____opt_0 and ____opt_0.kind or "job"
+    if not Intent.Claim(
+        bot,
+        {
+            source = "lane:" .. kind,
+            tier = "CAMP_JOB",
+            mode = BotMode.Farm,
+            floor = desire,
+            ["until"] = GameTime()
+        }
+    ) then
+        return desire
+    end
+    Intent.Claim(bot, {source = "lane:camp_job", tier = "CAMP_JOB", mode = BotMode.Farm, unsticks = true})
+    return 0
+end
 --- mode_farm_generic Think: true when the camp job owns this frame.
 function ____exports.CampJobThink(bot)
     return CampJobs.Think(bot)
@@ -188,10 +213,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue42
+            local __continue44
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue42 = true
+                    __continue44 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -202,9 +227,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue42 = true
+                __continue44 = true
             until true
-            if not __continue42 then
+            if not __continue44 then
                 break
             end
         end

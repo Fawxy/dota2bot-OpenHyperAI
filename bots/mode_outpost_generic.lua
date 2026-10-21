@@ -19,7 +19,7 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- J.Utils.SetCachedVars(cacheKey, res)
-	return res
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_OUTPOST, res)
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end

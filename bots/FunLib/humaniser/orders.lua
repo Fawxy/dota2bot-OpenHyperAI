@@ -133,6 +133,7 @@ local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function teamOrders(team)
     local list = ordersByTeam[team]
     if list == nil then
@@ -435,6 +436,9 @@ function ____exports.DeclineReason(bot, order)
     if isLaneOrder(order.type) then
         return nil
     end
+    if order.type == "AVOID" then
+        return nil
+    end
     if not bot:IsAlive() then
         return "dead"
     end
@@ -493,23 +497,23 @@ local function acceptedFor(bot)
     local best
     for ____, order in ipairs(____exports.GetActive(bot:GetTeam())) do
         do
-            local __continue76
+            local __continue77
             repeat
                 if not ____exports.TryAccept(bot, order) then
-                    __continue76 = true
+                    __continue77 = true
                     break
                 end
                 accepted[#accepted + 1] = order
                 if order.type == "AVOID" or isLaneOrder(order.type) then
-                    __continue76 = true
+                    __continue77 = true
                     break
                 end
                 if best == nil or PRIORITY[order.type] > PRIORITY[best.type] then
                     best = order
                 end
-                __continue76 = true
+                __continue77 = true
             until true
-            if not __continue76 then
+            if not __continue77 then
                 break
             end
         end
@@ -540,7 +544,48 @@ function ____exports.GetAcceptedForLane(bot, ____type, lane)
     end
     return nil
 end
+local function insideZone(order, loc)
+    if order.location == nil then
+        return false
+    end
+    local dx = loc.x - order.location.x
+    local dy = loc.y - order.location.y
+    local r = order.radius or 0
+    return dx * dx + dy * dy <= r * r
+end
+--- True when this bot has read a danger ping whose zone covers `loc`.
+function ____exports.AvoidsLocation(bot, loc)
+    for ____, order in ipairs(acceptedFor(bot).accepted) do
+        if order.type == "AVOID" and insideZone(order, loc) then
+            return true
+        end
+    end
+    return false
+end
+--- `units` without those inside a zone this bot avoids; the same table when nothing is removed.
+function ____exports.FilterAvoided(bot, units)
+    local avoiding = false
+    for ____, order in ipairs(acceptedFor(bot).accepted) do
+        if order.type == "AVOID" then
+            avoiding = true
+        end
+    end
+    if not avoiding then
+        return units
+    end
+    local result = {}
+    for ____, unit in ipairs(units) do
+        if not ____exports.AvoidsLocation(
+            bot,
+            unit:GetLocation()
+        ) then
+            result[#result + 1] = unit
+        end
+    end
+    return #result == #units and units or result
+end
 --- Caps retreat desire while the bot is committed to an accepted order and still healthy.
+-- Also posts the cap as a HUMAN_ORDER claim, so Intent.Resolve keeps it above lower tiers.
 function ____exports.CapRetreatDesire(bot, desire)
     if not Config.IsEnabled() then
         return desire
@@ -552,28 +597,36 @@ function ____exports.CapRetreatDesire(bot, desire)
     if order == nil or order.type == "BACK" then
         return desire
     end
-    return math.min(
-        desire,
-        Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN
+    local cap = Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN
+    Intent.Claim(
+        bot,
+        {
+            source = "orders:" .. order.type,
+            tier = "HUMAN_ORDER",
+            mode = BotMode.Retreat,
+            cap = cap,
+            ["until"] = GameTime()
+        }
     )
+    return math.min(desire, cap)
 end
 local function modeMatches(order, botMode, lane)
     repeat
-        local ____switch95 = order.type
-        local ____cond95 = ____switch95 == "GATHER" or ____switch95 == "ATTACK" or ____switch95 == "SMOKE" or ____switch95 == "BACK"
-        if ____cond95 then
+        local ____switch110 = order.type
+        local ____cond110 = ____switch110 == "GATHER" or ____switch110 == "ATTACK" or ____switch110 == "SMOKE" or ____switch110 == "BACK"
+        if ____cond110 then
             return botMode == BotMode.Assemble
         end
-        ____cond95 = ____cond95 or ____switch95 == "ROSHAN"
-        if ____cond95 then
+        ____cond110 = ____cond110 or ____switch110 == "ROSHAN"
+        if ____cond110 then
             return botMode == BotMode.Roshan
         end
-        ____cond95 = ____cond95 or ____switch95 == "DEFEND"
-        if ____cond95 then
+        ____cond110 = ____cond110 or ____switch110 == "DEFEND"
+        if ____cond110 then
             return (botMode == BotMode.DefendTowerTop or botMode == BotMode.DefendTowerMid or botMode == BotMode.DefendTowerBot) and (order.lane == nil or order.lane == lane)
         end
-        ____cond95 = ____cond95 or ____switch95 == "PUSH"
-        if ____cond95 then
+        ____cond110 = ____cond110 or ____switch110 == "PUSH"
+        if ____cond110 then
             return (botMode == BotMode.PushTowerTop or botMode == BotMode.PushTowerMid or botMode == BotMode.PushTowerBot) and (order.lane == nil or order.lane == lane)
         end
         do
@@ -581,8 +634,8 @@ local function modeMatches(order, botMode, lane)
         end
     until true
 end
---- A desire floor for this mode if an accepted order maps to it, else 0. Combine with math.max.
-function ____exports.DesireFloor(bot, botMode, lane)
+--- The desire floor an accepted order gives this mode, else 0. Pure: posts no claim.
+function ____exports.OrderFloor(bot, botMode, lane)
     if not Config.IsEnabled() then
         return 0
     end
@@ -591,6 +644,24 @@ function ____exports.DesireFloor(bot, botMode, lane)
         return 0
     end
     return Config.Get().Orders.DesireFloor
+end
+--- OrderFloor, also posted as a same-frame HUMAN_ORDER claim so Intent.Resolve keeps it above lower tiers.
+-- Call it only on the path that returns the floor: the claim must not outlive the call site's own gates.
+function ____exports.DesireFloor(bot, botMode, lane)
+    local floor = ____exports.OrderFloor(bot, botMode, lane)
+    if floor > 0 then
+        Intent.Claim(
+            bot,
+            {
+                source = "orders:" .. ____exports.GetFor(bot).type,
+                tier = "HUMAN_ORDER",
+                mode = botMode,
+                floor = floor,
+                ["until"] = GameTime()
+            }
+        )
+    end
+    return floor
 end
 function ____exports.Describe(order)
     local left = math.max(

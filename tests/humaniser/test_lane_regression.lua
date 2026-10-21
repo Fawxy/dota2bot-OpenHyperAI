@@ -269,7 +269,7 @@ local laningSrc, farmSrc = source("mode_laning_generic.lua"), source("mode_farm_
 for _, line in ipairs({
 	"if bLaneLaning and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end",
 	"if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end",
-	"if not bLaneLaning or Lane.MayDeny(bot, nAllyCreeps) then",
+	"if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end",
 	"denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)",
 	"if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end",
 	"if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then",
@@ -277,7 +277,7 @@ for _, line in ipairs({
 }) do
 	check("laning mode guard: " .. line, laningSrc:find(line, 1, true) ~= nil)
 end
-check("laning mode: Think() is defined only when 04 or 07 owns the bot or upstream already did", laningSrc:find("if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning then", 1, true) ~= nil)
+check("laning mode: Think() is defined only when 04, 07 or the 14 self-test owns the bot or upstream already did", laningSrc:find("if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest then", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
 	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do
 	check("farm mode hook: " .. call, farmSrc:find(call, 1, true) ~= nil)
@@ -307,7 +307,8 @@ do
 			IsFacingLocation = function() return true end, FindItemSlot = function() return -1 end,
 		} })
 	end
-	local function runeDesire(laneFacade)
+	local PASSTHROUGH = { Resolve = function(_, _, d) return d end }
+	local function runeDesire(laneFacade, intent)
 		T = 1000
 		local bot = hero({ loc = Vector(-300, 300) })
 		bot.GetNearbyHeroes = function() return {} end
@@ -328,7 +329,7 @@ do
 			IsCore = function() return true end, IsEarlyGame = function() return true end,
 			IsValidHero = function(u) return u ~= nil end, GetDistanceFromEnemyFountain = function() return 9000 end,
 			Utils = { IsTeamPushingSecondTierOrHighGround = function() return false end, CountEnemyHeroesNear = function() return 0 end },
-			Humaniser = { Lane = laneFacade },
+			Humaniser = { Lane = laneFacade, Intent = intent or PASSTHROUGH },
 		}, { __index = function() return function() return false end end })
 		package.loaded["bots/FunLib/jmz_func"] = J
 		package.loaded["bots/Customize/general"] = { Enable = false }
@@ -342,7 +343,7 @@ do
 		local H = fresh(entry)
 		T = 1000
 		GETUNITLIST_CALLS = {}
-		local d = runeDesire(H.Lane)
+		local d = runeDesire(H.Lane, H.Intent)
 		check(entry.name .. ": rune desire is the unmodified one", near(d, base) and scans() == 0, d)
 	end
 	check("rune control: a contest desire changes the mode's desire",

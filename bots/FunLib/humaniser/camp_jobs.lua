@@ -216,6 +216,7 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function settings()
     return LaneConfig.Settings()
 end
@@ -1317,6 +1318,7 @@ local function step(bot, job)
                 return moveTo(bot, job.stand)
             end
             job.phase = "wait"
+            Intent.Hold(bot, "lane:job_wait")
             return true
         end
         if not there then
@@ -1359,6 +1361,7 @@ local function step(bot, job)
             if not job.aggroTarget:IsAlive() or not job.aggroTarget:CanBeSeen() then
                 job.aggroTarget = nil
             end
+            Intent.Hold(bot, "lane:job_aggro")
             return true
         end
         if job.stage == 1 then
@@ -1383,6 +1386,7 @@ local function step(bot, job)
         if job.waypoint < #job.path then
             return moveTo(bot, job.path[job.waypoint + 1])
         end
+        Intent.Hold(bot, "lane:stack_exit")
         return true
     end
     if job.phase == "lead" then
@@ -1413,6 +1417,7 @@ local function step(bot, job)
         if last ~= nil and not arrived(bot, last) then
             return moveTo(bot, last)
         end
+        Intent.Hold(bot, "lane:job_watch")
         return true
     end
     return false

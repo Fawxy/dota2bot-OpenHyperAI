@@ -59,7 +59,7 @@ local function load(contest, opts)
 		IsValidHero = function(u) return u ~= nil end,
 		GetDistanceFromEnemyFountain = function() return 9000 end,
 		Utils = { IsTeamPushingSecondTierOrHighGround = function() return false end, CountEnemyHeroesNear = function() return 0 end },
-		Humaniser = { Lane = { RuneContestDesire = function() return contest end } },
+		Humaniser = { Lane = { RuneContestDesire = function() return contest end }, Intent = { Resolve = function(_, _, d) return d end } },
 	}, { __index = function() return function() return false end end })
 	package.loaded["bots/FunLib/jmz_func"] = J
 	package.loaded["bots/Customize/general"] = { Enable = false }

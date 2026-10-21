@@ -55,6 +55,8 @@ export const DEFAULTS = {
     Pings: { Enable: true } as Record<string, any>,
     Commands: { Enable: true } as Record<string, any>,
     Lane: { Enable: true } as Record<string, any>,
+    Intent: { Enable: true } as Record<string, any>,
+    Trainer: { LastHit: { Enable: true } } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
@@ -87,7 +89,7 @@ export function IsEnabled(): boolean {
 }
 
 /** True when the humaniser and the named sub-feature are both enabled. */
-export function IsFeatureEnabled(feature: "Perception" | "AllyLastHit" | "Pings" | "Commands" | "Lane"): boolean {
+export function IsFeatureEnabled(feature: "Perception" | "AllyLastHit" | "Pings" | "Commands" | "Lane" | "Intent"): boolean {
     const cfg = Get();
     return cfg.Enable === true && cfg[feature] !== undefined && cfg[feature].Enable === true;
 }

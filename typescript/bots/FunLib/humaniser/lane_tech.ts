@@ -13,6 +13,7 @@ import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Intent from "bots/FunLib/humaniser/intent";
 
 type Phase = "approach" | "block" | "walk" | "swap";
 
@@ -459,7 +460,10 @@ function runAggro(bot: Unit, seq: Sequence, allyCreeps: Unit[]): boolean {
     const walkBack = settings().Timing.WalkBack;
     if (seq.phase === "swap") {
         // The tower drop above takes over once the tower switches to the bot.
-        if (now - seq.startedAt < walkBack) return true;
+        if (now - seq.startedAt < walkBack) {
+            Intent.Hold(bot, "lane:swap");
+            return true;
+        }
         finish(bot);
         return false;
     }
@@ -587,6 +591,7 @@ export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     const posture = postureOf(bot, s, choice);
     if (posture === undefined) return loc;
     noteStart(bot, posture, choice.reason);
+    Intent.Hold(bot, `lane:${posture}`);
     const cfg = settings();
     const pos = LaneConfig.PositionOf(bot);
     if (pos !== undefined && pos >= 4) {

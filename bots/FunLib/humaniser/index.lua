@@ -12,6 +12,8 @@ local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_h
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -23,6 +25,8 @@ ____exports.AllyLastHit = AllyLastHit
 ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Lane = Lane
+____exports.Intent = Intent
+____exports.Trainer = Trainer
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -118,6 +122,16 @@ local function drawOverlay(bot)
             "avoid",
             avoid ~= nil and Orders.Describe(avoid) or "-"
         )
+        if Intent.IsActive() then
+            HDebug.Text(
+                bot,
+                "intent",
+                Intent.Explain(
+                    bot,
+                    bot:GetActiveMode()
+                )
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -141,7 +155,9 @@ function ____exports.Tick(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
+    Trainer.Tick(bot)
     Orders.GetFor(bot)
+    Intent.Tick(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
 end

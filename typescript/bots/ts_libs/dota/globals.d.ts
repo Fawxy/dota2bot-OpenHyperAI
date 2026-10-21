@@ -29,6 +29,7 @@ declare global {
     function GameTime(): number;
 
     function IsLocationPassable(loc: Vector): boolean;
+    function IsLocationVisible(loc: Vector): boolean;
 
     function IsPlayerBot(playerId: number): boolean;
 

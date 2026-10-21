@@ -48,6 +48,7 @@ local autoCleanupCache = ____global_cache.autoCleanupCache
 local getCachedData = ____global_cache.getCachedData
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function updateGameStateCache()
     local now = DotaTime()
     if gameStateCache and now - gameStateCache.lastUpdate < PUSH_CACHE_TTL then
@@ -621,7 +622,12 @@ function ____exports.GetPushDesire(bot, lane)
     if bot:GetLevel() < 3 then
         return BotModeDesire.None
     end
-    local res = ____exports.GetPushDesireHelper(bot, lane)
+    local mode = lane == Lane.Top and BotMode.PushTowerTop or (lane == Lane.Bot and BotMode.PushTowerBot or BotMode.PushTowerMid)
+    local res = Intent.Resolve(
+        bot,
+        mode,
+        ____exports.GetPushDesireHelper(bot, lane)
+    )
     bot.pushDesire = res
     return res
 end

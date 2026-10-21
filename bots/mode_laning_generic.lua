@@ -47,6 +47,9 @@ local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
 -- Humaniser lane management (task 07): in-lane techniques run inside this Think(); also decided once at load.
 local Lane = J.Humaniser.Lane
 local bLaneLaning = Lane.OwnsLaning(bot)
+-- Task 14 self-test: this bot times its last hits from the trainer's own start window.
+local Trainer = J.Humaniser.Trainer
+local bTrainerSelfTest = Trainer.IsSelfTestBot(bot)
 
 function GetDesire()
 	PickOneAnnouncer()
@@ -141,6 +144,10 @@ function GetDesire()
 	return 0.01
 end
 
+-- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
+local GetDesireRaw = GetDesire
+function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_LANING, GetDesireRaw()) end
+
 function GetFurthestEnemyAttackRange(enemyList)
 	local attackRange = 0
 	for _, enemy in pairs(enemyList) do
@@ -226,36 +233,62 @@ local function HarassThink()
 	return true
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning then
+-- Laning Think() steps, each returning true when it issued an action. Kept separate so later humaniser work
+-- (lane management) can add steps without rewriting Think().
+local function LastHitThink()
+	if bTrainerSelfTest then
+		if Trainer.SelfTestHolding(bot) then return true end
+		local creep = Trainer.SelfTestTarget(bot)
+		if not J.IsValid(creep) then return false end
+		bot:SetTarget(creep)
+		bot:Action_AttackUnit(creep, true)
+		return true
+	end
+	local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
+	if not J.IsValid(hitCreep) then return false end
+	if not (fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)) then return false end
+	if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
+	or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
+		bot:Action_MoveToUnit(hitCreep)
+	else
+		bot:SetTarget(hitCreep)
+		bot:Action_AttackUnit(hitCreep, true)
+	end
+	return true
+end
+
+local function DenyThink()
+	if bTrainerSelfTest then return false end
+	if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end
+	local denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
+	if not J.IsValid(denyCreep) then return false end
+	bot:SetTarget(denyCreep)
+	bot:Action_AttackUnit(denyCreep, true)
+	return true
+end
+
+local function PositionThink()
+	local fLaneFrontAmount = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
+	local fLaneFrontAmount_enemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
+
+	local nLongestAttackRange = math.max(botAttackRange, 250, nFurthestEnemyAttackRange)
+
+	local target_loc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -nLongestAttackRange)
+	if fLaneFrontAmount_enemy < fLaneFrontAmount then
+		target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
+	end
+
+	if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end
+	bot:Action_MoveToLocation(target_loc + RandomVector(50))
+end
+
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest then
 	function Think()
 		if bLaneLaning and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
-
-		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
-		if J.IsValid(hitCreep) then
-			if fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
-			then
-				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
-				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
-					bot:Action_MoveToUnit(hitCreep)
-					return
-				else
-					bot:SetTarget(hitCreep)
-					bot:Action_AttackUnit(hitCreep, true)
-					return
-				end
-			end
-		end
-
-		local denyCreep = nil
-		if not bLaneLaning or Lane.MayDeny(bot, nAllyCreeps) then
-			denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
-		end
-		if J.IsValid(denyCreep) then
-			bot:SetTarget(denyCreep)
-			bot:Action_AttackUnit(denyCreep, true)
-			return
-		end
-
+		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
+		-- so taking it before a deny is intended.
+		if LastHitThink() then return end
+		if DenyThink() then return end
 		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
 
 		if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
@@ -266,18 +299,7 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			local_mode_laning_generic.Think()
 		end
 
-		local fLaneFrontAmount = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
-		local fLaneFrontAmount_enemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
-
-		local nLongestAttackRange = math.max(botAttackRange, 250, nFurthestEnemyAttackRange)
-
-		local target_loc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -nLongestAttackRange)
-		if fLaneFrontAmount_enemy < fLaneFrontAmount then
-			target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
-		end
-
-		if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end
-		bot:Action_MoveToLocation(target_loc + RandomVector(50))
+		PositionThink()
 	end
 end
 

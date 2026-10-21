@@ -18,6 +18,17 @@ local sec = 0;
 local preferedCamp = nil;
 local availableCamp = {};
 local hLaneCreepList = {};
+local HOrders = J.Humaniser.Orders
+
+-- Camps inside a danger-pinged zone (task 05 AVOID) are skipped until the ping is forgotten.
+local function ClosestCamp(camps)
+	if HOrders.GetAccepted(bot, 'AVOID') == nil then return J.Site.GetClosestNeutralSpwan(bot, camps) end
+	local safe = {}
+	for _, camp in ipairs(camps) do
+		if not HOrders.AvoidsLocation(bot, camp.cattr.location) then table.insert(safe, camp) end
+	end
+	return J.Site.GetClosestNeutralSpwan(bot, safe)
+end
 local farmState = 0;
 local FARM_STATE_NONE = 0;
 local FARM_STATE_FARM = 1;
@@ -60,7 +71,7 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- J.Utils.SetCachedVars(cacheKey, res)
-	return res
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_FARM, res)
 end
 
 function GetDesireHelper()
@@ -103,7 +114,7 @@ function GetDesireHelper()
 	end
 
 	local nLaneJobDesire = J.Humaniser.Lane.CampJobDesire(bot)
-	if nLaneJobDesire > 0 then return nLaneJobDesire end
+	if nLaneJobDesire > 0 then return J.Humaniser.Lane.CampJobRawDesire(bot, nLaneJobDesire) end
 
 	if not bInitDone
 	then
@@ -183,6 +194,7 @@ function GetDesireHelper()
 	end
 	
 	availableCamp = J.Role['availableCampTable'];
+	if preferedCamp ~= nil and HOrders.AvoidsLocation(bot, preferedCamp.cattr.location) then preferedCamp = nil end
 
     local nEnemyHeroes = J.GetEnemiesNearLoc(bot:GetLocation(), 1600)
     if #nEnemyHeroes > 0 then
@@ -251,7 +263,7 @@ function GetDesireHelper()
                     if (J.IsRoshan(hTarget) and J.GetHP(hTarget) < 0.4)
                     or (botActiveMode == BOT_MODE_ITEM)
                     then
-						if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+						if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp) end
                         return RemapValClamped(J.GetHP(bot), 0.2, 0.7, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
 					end
                 end
@@ -272,7 +284,7 @@ function GetDesireHelper()
                     if (J.IsRoshan(hTarget) and J.GetHP(hTarget) < 0.25)
                     or (botActiveMode == BOT_MODE_ITEM)
                     then
-						if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+						if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp) end
                         return RemapValClamped(J.GetHP(bot), 0.2, 0.7, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
                     end
                 end
@@ -330,7 +342,7 @@ function GetDesireHelper()
 
     local hItem = J.IsItemAvailable('item_hand_of_midas')
     if J.IsInAllyArea(bot) and J.CanCastAbility(hItem) then
-        if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp) end;
+        if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp) end;
         return RemapValClamped(J.GetHP(bot), 0.2, 0.7, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
     end
 
@@ -387,7 +399,7 @@ function GetDesireHelper()
 			then
 				hLaneCreepList = bot:GetNearbyLaneCreeps(1600, false);
 			end
-			hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, hLaneCreepList)
+			hLaneCreepList = HOrders.FilterAvoided(bot, J.Humaniser.AllyLastHit.FilterCreeps(bot, hLaneCreepList))
 		end;
 
 		if #hLaneCreepList > 0
@@ -411,7 +423,7 @@ function GetDesireHelper()
 					local dist = GetUnitToLocationDistance(bot, laneFront)
 					local nEnemiesAtLane = J.GetEnemiesNearLoc(laneFront, 1400)
 					-- Only consider safe lanes (no enemies or we're stronger)
-					if #nEnemiesAtLane == 0 and dist < bestDist then
+					if #nEnemiesAtLane == 0 and dist < bestDist and not HOrders.AvoidsLocation(bot, laneFront) then
 						bestDist = dist
 						bestLane = lane
 					end
@@ -425,7 +437,7 @@ function GetDesireHelper()
 			end
 
 			-- Late game or dangerous lanes: farm jungle camps
-			if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp);end
+			if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp);end
 
 			if preferedCamp ~= nil then
 				-- Don't farm a camp where an ally is already farming
@@ -457,8 +469,8 @@ function GetDesireHelper()
 	end
 
 	if not J.IsInLaningPhase() and (bCore or J.IsLateGame() or bot:GetLevel() >= 18) then
-		hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(1600, true))
-		if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+		hLaneCreepList = HOrders.FilterAvoided(bot, J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(1600, true)))
+		if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp) end
 		return Min(BOT_MODE_DESIRE_LOW, nFarmCap)
 	end
 
@@ -556,7 +568,7 @@ function Think()
 		nEffectiveRange = InnerFire:GetSpecialValueInt('radius')
 	end
 
-	hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(900, true)) -- always refresh to avoid stale data
+	hLaneCreepList = HOrders.FilterAvoided(bot, J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(900, true))) -- always refresh to avoid stale data
 	if hLaneCreepList ~= nil and #hLaneCreepList > 0 and J.IsValid(hLaneCreepList[1]) then
 		local farmTarget = J.Site.GetFarmLaneTarget(hLaneCreepList);
 		local nSearchRange = bot:GetAttackRange() + 180
@@ -593,7 +605,7 @@ function Think()
 			local oldDist = old and GetUnitToLocationDistance(bot, old.cattr.location) or 9e9
 	
 			local avail = J.Role['availableCampTable']
-			local nearest = J.Site.GetClosestNeutralSpwan(bot, avail)
+			local nearest = ClosestCamp(avail)
 	
 			if nearest then
 				local newDist = GetUnitToLocationDistance(bot, nearest.cattr.location)
@@ -603,12 +615,12 @@ function Think()
 				end
 			end
 		else
-			preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp);
+			preferedCamp = ClosestCamp(availableCamp);
 		end
 	end
 	
 	
-	if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp);end
+	if preferedCamp == nil then preferedCamp = ClosestCamp(availableCamp);end
 	preferedCamp = J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp
 	if preferedCamp ~= nil then
 		local targetFarmLoc = preferedCamp.cattr.location;
@@ -629,7 +641,7 @@ function Think()
 			-- Pick a different camp instead
 			J.Role['availableCampTable'], preferedCamp = J.Site.UpdateAvailableCamp(bot, preferedCamp, J.Role['availableCampTable']);
 			availableCamp = J.Role['availableCampTable']
-			preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp)
+			preferedCamp = ClosestCamp(availableCamp)
 			if preferedCamp == nil then return end
 			targetFarmLoc = preferedCamp.cattr.location
 			cDist = GetUnitToLocationDistance(bot, targetFarmLoc)
@@ -704,7 +716,7 @@ function Think()
 					farmState = FARM_STATE_NONE;
 					J.Role['availableCampTable'], preferedCamp = J.Site.UpdateAvailableCamp(bot, preferedCamp, J.Role['availableCampTable']);
 					availableCamp = J.Role['availableCampTable'];	
-					preferedCamp  = J.Site.GetClosestNeutralSpwan(bot, availableCamp);
+					preferedCamp  = ClosestCamp(availableCamp);
 
 
 					local farmTarget = J.Site.FindFarmNeutralTarget(neutralCreeps)

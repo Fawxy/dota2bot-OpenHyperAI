@@ -24,7 +24,9 @@ export const DEFAULTS = {
     Attack: { Duration: 8, MaxResponders: 2, MaxDistance: 4000, AlsoWithin: 1600 },
     Push: { Duration: 20, MaxResponders: 3 },
     Defend: { Duration: 20, MaxResponders: 2, AlsoTpBeyond: 5000 },
-    Avoid: { Duration: 10, Radius: 1200 },
+    // A danger ping lasts Duration at most. After MinSeconds it is forgotten early once the team can see the
+    // pinged spot and no enemy hero has been seen within Radius of it for ClearSeconds.
+    Avoid: { Duration: 10, Radius: 1200, MinSeconds: 4, ClearSeconds: 2 },
     Gather: { Duration: 8, MaxResponders: 2 },
 };
 
@@ -257,6 +259,7 @@ export function Classify(issuerPID: number, ping: Ping, issuerSmoked: boolean, t
 // Last ping time handled per human; GetMostRecentPing keeps returning the same ping until a new one.
 const lastPingTime: Record<number, number> = {};
 const scannedAt: Record<number, number> = {};
+const clearSince: Record<number, number | undefined> = {};
 let lastSummary = "-";
 
 function cancelSmokeFrom(team: number, issuerPID: number): void {
@@ -294,6 +297,28 @@ export function Scan(team: number): void {
     }
 }
 
+/** Cancels AVOID orders whose area the team can see is clear. Inputs are team-visible, so every bot agrees. */
+export function ForgetClearedDangers(team: number): void {
+    const cfg = Get().Avoid;
+    const now = GameTime();
+    for (const order of Orders.GetActive(team)) {
+        if (order.type !== "AVOID" || order.location === undefined) continue;
+        if (now - order.createdAt < cfg.MinSeconds) continue;
+        const radius = order.radius ?? cfg.Radius;
+        if (!IsLocationVisible(order.location) || NearestVisibleEnemyHero(order.location, radius) !== undefined) {
+            clearSince[order.id] = undefined;
+            continue;
+        }
+        const since = clearSince[order.id] ?? now;
+        clearSince[order.id] = since;
+        if (now - since >= cfg.ClearSeconds) {
+            clearSince[order.id] = undefined;
+            HDebug.Log("pings", `forgot danger ping ${order.id}: area clear`);
+            Orders.Cancel(team, order.id);
+        }
+    }
+}
+
 export function Tick(bot: Unit): void {
     if (!IsActive() || GetGameState() !== GameState.GameInProgress) return;
     const team = bot.GetTeam();
@@ -301,6 +326,7 @@ export function Tick(bot: Unit): void {
     if (scannedAt[team] !== now) {
         scannedAt[team] = now;
         Scan(team);
+        ForgetClearedDangers(team);
     }
     HDebug.Text(bot, "ping", lastSummary);
 }

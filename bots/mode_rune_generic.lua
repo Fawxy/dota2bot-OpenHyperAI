@@ -202,6 +202,10 @@ function GetDesire()
 	return BOT_MODE_DESIRE_NONE
 end
 
+-- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
+local GetDesireRaw = GetDesire
+function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_RUNE, GetDesireRaw()) end
+
 --------------------------------------------------------------------
 -- PowerRuneDesire  (power/water rune branch of GetDesire)
 --------------------------------------------------------------------

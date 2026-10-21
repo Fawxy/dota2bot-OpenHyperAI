@@ -2,7 +2,7 @@
  * Lane management facade (task 07). Imports every lane module so their load-time registrations run;
  * later tasks add behaviour to Tick.
  */
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -18,6 +18,7 @@ import * as Harass from "bots/FunLib/humaniser/harass";
 import * as Counter from "bots/FunLib/humaniser/counterplay";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Intent from "bots/FunLib/humaniser/intent";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
 export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, Stacking, Harass, Counter };
@@ -117,6 +118,19 @@ export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], 
 /** mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off). */
 export function CampJobDesire(bot: Unit): number {
     return CampJobs.Desire(bot);
+}
+
+/**
+ * mode_farm_generic GetDesire's return for a running job (`desire` from CampJobDesire). With intent arbitration
+ * the job's desire is a same-frame CAMP_JOB floor over a raw 0, so survival and order claims outrank it and the
+ * survival cap treats it as lifted; a second claim keeps the active mode's stickiness from making the pull late.
+ * Without intent, or for a unit intent leaves out, it is the desire itself.
+ */
+export function CampJobRawDesire(bot: Unit, desire: number): number {
+    const kind = CampJobs.Current(bot)?.kind ?? "job";
+    if (!Intent.Claim(bot, { source: `lane:${kind}`, tier: "CAMP_JOB", mode: BotMode.Farm, floor: desire, until: GameTime() })) return desire;
+    Intent.Claim(bot, { source: "lane:camp_job", tier: "CAMP_JOB", mode: BotMode.Farm, unsticks: true });
+    return 0;
 }
 
 /** mode_farm_generic Think: true when the camp job owns this frame. */

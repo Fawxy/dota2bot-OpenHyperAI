@@ -31,7 +31,7 @@ ____exports.DEFAULTS = {
     Attack = {Duration = 8, MaxResponders = 2, MaxDistance = 4000, AlsoWithin = 1600},
     Push = {Duration = 20, MaxResponders = 3},
     Defend = {Duration = 20, MaxResponders = 2, AlsoTpBeyond = 5000},
-    Avoid = {Duration = 10, Radius = 1200},
+    Avoid = {Duration = 10, Radius = 1200, MinSeconds = 4, ClearSeconds = 2},
     Gather = {Duration = 8, MaxResponders = 2}
 }
 local function merge(defaults, overrides)
@@ -332,6 +332,7 @@ function ____exports.Classify(issuerPID, ping, issuerSmoked, team)
 end
 local lastPingTime = {}
 local scannedAt = {}
+local clearSince = {}
 local lastSummary = "-"
 local function cancelSmokeFrom(team, issuerPID)
     for ____, order in ipairs(Orders.GetActive(team)) do
@@ -402,6 +403,46 @@ function ____exports.Scan(team)
         end
     end
 end
+--- Cancels AVOID orders whose area the team can see is clear. Inputs are team-visible, so every bot agrees.
+function ____exports.ForgetClearedDangers(team)
+    local cfg = ____exports.Get().Avoid
+    local now = GameTime()
+    for ____, order in ipairs(Orders.GetActive(team)) do
+        do
+            local __continue61
+            repeat
+                if order.type ~= "AVOID" or order.location == nil then
+                    __continue61 = true
+                    break
+                end
+                if now - order.createdAt < cfg.MinSeconds then
+                    __continue61 = true
+                    break
+                end
+                local radius = order.radius or cfg.Radius
+                if not IsLocationVisible(order.location) or ____exports.NearestVisibleEnemyHero(order.location, radius) ~= nil then
+                    clearSince[order.id] = nil
+                    __continue61 = true
+                    break
+                end
+                local since = clearSince[order.id] or now
+                clearSince[order.id] = since
+                if now - since >= cfg.ClearSeconds then
+                    clearSince[order.id] = nil
+                    HDebug.Log(
+                        "pings",
+                        ("forgot danger ping " .. tostring(order.id)) .. ": area clear"
+                    )
+                    Orders.Cancel(team, order.id)
+                end
+                __continue61 = true
+            until true
+            if not __continue61 then
+                break
+            end
+        end
+    end
+end
 function ____exports.Tick(bot)
     if not ____exports.IsActive() or GetGameState() ~= GameState.GameInProgress then
         return
@@ -411,6 +452,7 @@ function ____exports.Tick(bot)
     if scannedAt[team] ~= now then
         scannedAt[team] = now
         ____exports.Scan(team)
+        ____exports.ForgetClearedDangers(team)
     end
     HDebug.Text(bot, "ping", lastSummary)
 end

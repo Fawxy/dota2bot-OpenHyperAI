@@ -84,6 +84,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
+local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 ____exports.DEFAULTS = {
     Enable = true,
     Def = {Duration = 25, MaxResponders = 5},
@@ -569,6 +570,11 @@ local COMMANDS = {
         end
     },
     {
+        name = "trainer",
+        aliases = {},
+        handler = function(ctx) return Trainer.OnCommand(ctx.team, ctx.issuerPID, ctx.args) end
+    },
+    {
         name = "bhelp",
         aliases = {},
         handler = function(ctx)
@@ -607,18 +613,18 @@ local COMMANDS = {
 local function findCommand(word)
     for ____, def in ipairs(COMMANDS) do
         do
-            local __continue96
+            local __continue97
             repeat
                 if def.needsLanePlan == true and not LaneConfig.IsOn("Plan") then
-                    __continue96 = true
+                    __continue97 = true
                     break
                 end
                 if def.name == word or __TS__ArrayIndexOf(def.aliases, word) >= 0 then
                     return def
                 end
-                __continue96 = true
+                __continue97 = true
             until true
-            if not __continue96 then
+            if not __continue97 then
                 break
             end
         end
@@ -660,7 +666,7 @@ function ____exports.Parse(text, team)
     end
     local second = string.sub(words[2], 1, 1) == "!" and string.sub(words[2], 2) or words[2]
     local def = findCommand(second)
-    if def == nil or def.name == "bhelp" or def.name == "farm" then
+    if def == nil or def.name == "bhelp" or def.name == "farm" or def.name == "trainer" then
         return nil
     end
     return {
@@ -728,14 +734,14 @@ function ____exports.ShouldUseOrderedSmoke(bot)
     local holder
     for ____, pid in ipairs(order.responders) do
         do
-            local __continue119
+            local __continue120
             repeat
                 local member = ____exports.memberByPID(
                     bot:GetTeam(),
                     pid
                 )
                 if member == nil then
-                    __continue119 = true
+                    __continue120 = true
                     break
                 end
                 local slot = member:FindItemSlot("item_smoke_of_deceit")
@@ -743,9 +749,9 @@ function ____exports.ShouldUseOrderedSmoke(bot)
                     holder = pid
                     break
                 end
-                __continue119 = true
+                __continue120 = true
             until true
-            if not __continue119 then
+            if not __continue120 then
                 break
             end
         end

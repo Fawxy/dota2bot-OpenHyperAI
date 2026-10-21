@@ -169,6 +169,7 @@ local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planne
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local IN_LANE_FLAGS = {
     "Block",
     "AggroPull",
@@ -795,6 +796,7 @@ local function runAggro(bot, seq, allyCreeps)
     local walkBack = settings().Timing.WalkBack
     if seq.phase == "swap" then
         if now - seq.startedAt < walkBack then
+            Intent.Hold(bot, "lane:swap")
             return true
         end
         finish(bot)
@@ -983,6 +985,7 @@ function ____exports.AdjustPosition(bot, loc)
         return loc
     end
     noteStart(bot, posture, choice.reason)
+    Intent.Hold(bot, "lane:" .. posture)
     local cfg = settings()
     local pos = LaneConfig.PositionOf(bot)
     if pos ~= nil and pos >= 4 then
