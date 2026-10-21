@@ -48,13 +48,30 @@ end
 
 local function may(H, bot, creep) return H.AllyLastHit.MayLastHit(bot, creep) end
 
--- Polite: never last-hits near a protected human, but may deny.
+-- Polite: denies, and takes only clear misses (human well out of reach, or idle for a long time).
 do
 	local H, human, bot = Setup({ skill = 0 })
 	local creep = MakeCreep(3, 100)
 	local ok, reason = may(H, bot, creep)
-	check("polite skips enemy creep", ok == false and reason == "skip: polite", reason)
-	check("polite skips even when human is idle", (function() human.lastAttack = T - 10 return may(H, bot, creep) == false end)())
+	check("polite holds back for an active human", ok == false and reason == "skip: polite", reason)
+	human.lastAttack = T - 4
+	check("polite still holds back after a short pause", may(H, bot, creep) == false)
+	human.lastAttack = T - 7
+	local okIdle, reasonIdle = may(H, bot, creep)
+	check("polite takes when the human is idle for long", okIdle == true and reasonIdle == "take: human-idle", reasonIdle)
+	human.lastAttack = T - 1
+
+	check("polite holds back just outside attack range", may(H, bot, MakeCreep(3, 500)) == false)
+	local okAway, reasonAway = may(H, bot, MakeCreep(3, 700))
+	check("polite takes when the human is well out of reach", okAway == true and reasonAway == "take: human-away", reasonAway)
+
+	local enemy = MakeUnit({ pid = 5, team = 3, loc = Vector(300, 0) })
+	ENEMY_HEROES = { enemy }
+	enemy.target = creep
+	T = T + 0.1
+	human.lastAttack = T - 1
+	check("polite ignores a deny race", may(H, bot, creep) == false)
+
 	local ok2, reason2 = may(H, bot, MakeCreep(2, 100))
 	check("polite may deny", ok2 == true and reason2 == "free: deny", reason2)
 end
@@ -111,30 +128,38 @@ do
 	check("helpful never takes the human's target", ok5 == false and reason5 == "skip: human-target", reason5)
 end
 
--- Teammate: normal last-hitting except the human's target, and the lowest creep in range mid-swing.
+-- Teammate: same miss-only rule, but notices misses sooner and when the human is trading with a hero.
 do
 	local H, human, bot = Setup({ skill = 1 })
+	check("tier teammate", H.AllyLastHit.GetTier(bot) == "teammate", H.AllyLastHit.GetTier(bot))
 	local a, b = MakeCreep(3, 100, 30), MakeCreep(3, 120, 50)
-	ENEMY_CREEPS = { a, b }
-	human.target = a
-	local ok, reason = may(H, bot, a)
-	check("teammate skips human's target", ok == false and reason == "skip: human-target", reason)
-	local ok2, reason2 = may(H, bot, b)
-	check("teammate takes other creeps", ok2 == true and reason2 == "take: teammate", reason2)
+	local ok, reason = may(H, bot, b)
+	check("teammate holds back for an active human", ok == false and reason == "skip: teammate", reason)
 
-	human.target = nil
-	human.anim = ACTIVITY_ATTACK
-	local ok3, reason3 = may(H, bot, a)
-	check("teammate skips lowest creep in range mid-swing", ok3 == false and reason3 == "skip: human-swing", reason3)
-	check("teammate takes higher-HP creep mid-swing", may(H, bot, b) == true)
-	human.anim = ACTIVITY_RUN
-	check("teammate takes lowest creep when human not swinging", may(H, bot, a) == true)
+	human.lastAttack = T - 2
+	local okIdle, reasonIdle = may(H, bot, b)
+	check("teammate takes after a short pause", okIdle == true and reasonIdle == "take: human-idle", reasonIdle)
+	human.lastAttack = T - 1
 
-	human.anim = ACTIVITY_ATTACK
-	local farLow = MakeCreep(3, 700, 10)
-	ENEMY_CREEPS = { a, b, farLow }
+	check("teammate counts a nearer creep as away", may(H, bot, MakeCreep(3, 280)) == true)
+
+	local enemy = MakeUnit({ pid = 5, team = 3, loc = Vector(300, 0) })
+	ENEMY_HEROES = { enemy }
+	human.target = enemy
 	T = T + 0.1
-	check("lowest is judged within human range only", may(H, bot, a) == false and may(H, bot, farLow) == true)
+	human.lastAttack = T - 1
+	local okBusy, reasonBusy = may(H, bot, b)
+	check("teammate takes while the human trades with a hero", okBusy == true and reasonBusy == "take: human-busy", reasonBusy)
+
+	human.target = a
+	local ok2, reason2 = may(H, bot, a)
+	check("teammate never takes the human's target", ok2 == false and reason2 == "skip: human-target", reason2)
+	check("attacking a creep is not busy", may(H, bot, b) == false)
+end
+
+do
+	local H, _, bot = Setup({ skill = 0.5 })
+	check("helpful does not count the same creep as away", may(H, bot, MakeCreep(3, 280)) == false)
 end
 
 -- Position rules: human supports are not protected; bot cores keep their farm outside the human's lane.
@@ -164,6 +189,12 @@ do
 	check("PoliteMin threshold respected", H2.AllyLastHit.GetTier(bot2) == "helpful", H2.AllyLastHit.GetTier(bot2))
 	local H3, _, bot3 = Setup({ skill = 0.15 })
 	check("default thresholds: d=0.85 is polite", H3.AllyLastHit.GetTier(bot3) == "polite", H3.AllyLastHit.GetTier(bot3))
+
+	local H4, human4, bot4 = Setup({ skill = 0, allyLastHit = { Enable = true, MissRules = { polite = { IdleSeconds = 1 } } } })
+	human4.lastAttack = T - 2
+	check("MissRules override one field", may(H4, bot4, MakeCreep(3, 100)) == true)
+	check("MissRules keeps the other fields", H4.AllyLastHit.Settings().MissRules.polite.AwayBuffer == 400
+		and H4.AllyLastHit.Settings().MissRules.teammate.IdleSeconds == 1.5)
 end
 
 -- Kill switches: always allowed, FilterCreeps passes the list through untouched, laning not owned.

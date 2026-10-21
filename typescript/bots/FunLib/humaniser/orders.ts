@@ -244,6 +244,8 @@ export function IsSpokesperson(bot: Unit, order: TeamOrder): boolean {
 
 /** Why this bot cannot respond right now, or undefined if it can. */
 export function DeclineReason(bot: Unit, order: TeamOrder): string | undefined {
+    // Staying out of an area needs nothing from the bot, and a declined AVOID would be ignored after respawning.
+    if (order.type === "AVOID") return undefined;
     if (!bot.IsAlive()) return "dead";
     if (bot.IsChanneling()) return "channeling";
     if (bot.GetActiveMode() === BotMode.Retreat && bot.GetHealth() / bot.GetMaxHealth() < 0.35) return "low_hp";
@@ -361,6 +363,32 @@ export function GetAccepted(bot: Unit, type: OrderType): TeamOrder | undefined {
         if (order.type === type) return order;
     }
     return undefined;
+}
+
+function insideZone(order: TeamOrder, loc: Vector): boolean {
+    if (order.location === undefined) return false;
+    const dx = loc.x - order.location.x;
+    const dy = loc.y - order.location.y;
+    const r = order.radius ?? 0;
+    return dx * dx + dy * dy <= r * r;
+}
+
+/** True when this bot has read a danger ping whose zone covers `loc`. */
+export function AvoidsLocation(bot: Unit, loc: Vector): boolean {
+    for (const order of acceptedFor(bot).accepted) {
+        if (order.type === "AVOID" && insideZone(order, loc)) return true;
+    }
+    return false;
+}
+
+/** `units` without those inside a zone this bot avoids; the same table when nothing is removed. */
+export function FilterAvoided<T extends { GetLocation(): Vector }>(bot: Unit, units: T[]): T[] {
+    let avoiding = false;
+    for (const order of acceptedFor(bot).accepted) if (order.type === "AVOID") avoiding = true;
+    if (!avoiding) return units;
+    const result: T[] = [];
+    for (const unit of units) if (!AvoidsLocation(bot, unit.GetLocation())) result.push(unit);
+    return result.length === units.length ? units : result;
 }
 
 /** Caps retreat desire while the bot is committed to an accepted order and still healthy. */

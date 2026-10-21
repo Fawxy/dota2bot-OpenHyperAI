@@ -1,6 +1,7 @@
 /**
- * Allied last-hit etiquette: allied bots leave a protected human core's lane creeps alone,
- * scaled by Profile.deference (Polite on easy, Teammate on hard).
+ * Allied last-hit etiquette: near a protected human core, allied bots deny rather than last-hit, and only take
+ * an enemy creep the human is going to miss. Every tier follows that rule; Profile.deference picks the tier
+ * (Polite on easy, Teammate on hard), which sets how quickly and how many kinds of miss the bot notices.
  *
  * MayLastHit returns (allowed, reason). Reasons are prefixed so callers can tell who decided:
  *   "skip: ..."  held back for a protected human
@@ -10,7 +11,7 @@
  * jmz_func cannot be required from here (it requires the humaniser), so J.GetPosition and
  * J.IsInLaningPhase are injected with SetHelpers.
  */
-import { BotMode, BotScriptEnums, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -23,14 +24,20 @@ export const DEFAULTS = {
     ProtectRange: 1000,
     PoliteMin: 0.75,
     HelpfulMin: 0.4,
-    OutOfRangeBuffer: 150,
-    IdleSeconds: 3,
+    // Per tier, what counts as the human missing a creep:
+    //   AwayBuffer  creep is beyond the human's attack range plus this, and the human is not walking to it
+    //   IdleSeconds human has not attacked for this long
+    //   DenyRace    an enemy hero is attacking the deniable creep
+    //   Busy        human is attacking an enemy hero
+    MissRules: {
+        polite: { AwayBuffer: 400, IdleSeconds: 6, DenyRace: false, Busy: false },
+        helpful: { AwayBuffer: 150, IdleSeconds: 3, DenyRace: true, Busy: false },
+        teammate: { AwayBuffer: 75, IdleSeconds: 1.5, DenyRace: true, Busy: true },
+    },
     ApproachLookahead: 0.5,
     ApproachEpsilon: 25,
     // Lane creeps can only be denied below half health.
     DeniableHealth: 0.5,
-    // Attack range is measured edge to edge; unit distance is centre to centre.
-    SwingRangeBuffer: 50,
     HarassInterval: 2.5,
     HarassWindow: 1.2,
     HarassExtraRange: 300,
@@ -40,6 +47,7 @@ export const DEFAULTS = {
 
 export type AllyLastHitSettings = typeof DEFAULTS;
 export type Tier = "polite" | "helpful" | "teammate";
+export type MissRule = AllyLastHitSettings["MissRules"]["polite"];
 
 export interface Helpers {
     GetPosition?: (this: void, unit: Unit) => number;
@@ -57,7 +65,6 @@ interface FrameCache<T> {
 }
 const humansByTeam: Record<number, FrameCache<Unit[]>> = {};
 const enemyHeroesByPlayer: Record<number, FrameCache<Unit[]>> = {};
-const enemyCreepsByPlayer: Record<number, FrameCache<Unit[]>> = {};
 const lastSkipByPlayer: Record<number, string> = {};
 
 export function SetHelpers(h: Helpers): void {
@@ -68,8 +75,19 @@ export function Settings(): AllyLastHitSettings {
     if (settings === undefined) {
         const result: any = {};
         for (const [k, v] of pairs(DEFAULTS)) result[k] = v;
+        const overrides: any = Config.Get().AllyLastHit ?? {};
         // Shallow on purpose: list values such as ProtectPositions replace the default list.
-        for (const [k, v] of pairs(Config.Get().AllyLastHit ?? {})) result[k] = v;
+        for (const [k, v] of pairs(overrides)) result[k] = v;
+        // MissRules merges per tier and per field, so one value can be tuned without restating the rest.
+        const rules: any = {};
+        for (const [tier, rule] of pairs(DEFAULTS.MissRules)) {
+            const merged: any = {};
+            for (const [k, v] of pairs(rule)) merged[k] = v;
+            const o = overrides.MissRules?.[tier];
+            if (o !== undefined && type(o) === "table") for (const [k, v] of pairs(o)) merged[k] = v;
+            rules[tier] = merged;
+        }
+        result.MissRules = rules;
         settings = result as AllyLastHitSettings;
     }
     return settings;
@@ -151,50 +169,50 @@ export function GetProtectedHuman(bot: Unit, location: Vector): LuaMultiReturn<[
     return $multi(nearest, "");
 }
 
-function isAttackAnimation(unit: Unit): boolean {
-    const activity = unit.GetAnimActivity();
-    return activity === BotScriptEnums.ACTIVITY_ATTACK || activity === BotScriptEnums.ACTIVITY_ATTACK2;
-}
-
-function canHumanReach(human: Unit, creep: Unit): boolean {
+function canHumanReach(human: Unit, creep: Unit, rule: MissRule): boolean {
     const s = Settings();
     const dist = GetUnitToUnitDistance(human, creep);
-    if (dist <= human.GetAttackRange() + s.OutOfRangeBuffer) return true;
+    if (dist <= human.GetAttackRange() + rule.AwayBuffer) return true;
     const ahead = GetUnitToLocationDistance(creep, (human as LaneUnit).GetExtrapolatedLocation(s.ApproachLookahead));
     return ahead < dist - s.ApproachEpsilon;
 }
 
 function isAboutToBeDenied(bot: Unit, creep: Unit): boolean {
     if (creep.GetHealth() >= creep.GetMaxHealth() * Settings().DeniableHealth) return false;
-    const enemies = cached(enemyHeroesByPlayer, bot.GetPlayerID(), () => bot.GetNearbyHeroes(1600, true, BotMode.None));
-    for (const enemy of enemies) {
+    for (const enemy of nearbyEnemyHeroes(bot)) {
         if (enemy.GetAttackTarget() === creep) return true;
     }
     return false;
 }
 
-function isLowestInHumanRange(bot: Unit, human: Unit, creep: Unit): boolean {
-    const range = human.GetAttackRange() + Settings().SwingRangeBuffer;
-    const creeps = cached(enemyCreepsByPlayer, bot.GetPlayerID(), () => bot.GetNearbyLaneCreeps(1600, true));
-    let lowest: Unit | undefined;
-    for (const c of creeps) {
-        if (!c.IsAlive() || GetUnitToUnitDistance(human, c) > range) continue;
-        if (lowest === undefined || c.GetHealth() < lowest.GetHealth()) lowest = c;
+function isAttackingHero(bot: Unit, human: Unit): boolean {
+    const target = human.GetAttackTarget();
+    if (target === null || target === undefined) return false;
+    for (const enemy of nearbyEnemyHeroes(bot)) {
+        if (enemy === target) return true;
     }
-    return lowest === creep;
+    return false;
+}
+
+function nearbyEnemyHeroes(bot: Unit): Unit[] {
+    return cached(enemyHeroesByPlayer, bot.GetPlayerID(), () => bot.GetNearbyHeroes(1600, true, BotMode.None));
+}
+
+/** Why the human is going to miss `creep` under this tier's rules, or undefined if they should get it. */
+function missReason(bot: Unit, human: Unit, creep: Unit, tier: Tier): string | undefined {
+    const rule = Settings().MissRules[tier];
+    if (!canHumanReach(human, creep, rule)) return "human-away";
+    if (GameTime() - human.GetLastAttackTime() > rule.IdleSeconds) return "human-idle";
+    if (rule.DenyRace && isAboutToBeDenied(bot, creep)) return "deny-race";
+    if (rule.Busy && isAttackingHero(bot, human)) return "human-busy";
+    return undefined;
 }
 
 function decide(bot: Unit, human: Unit, creep: Unit, tier: Tier): LuaMultiReturn<[boolean, string]> {
-    if (tier === "polite") return $multi(false, "skip: polite");
     if (human.GetAttackTarget() === creep) return $multi(false, "skip: human-target");
-    if (tier === "helpful") {
-        if (!canHumanReach(human, creep)) return $multi(true, "take: human-away");
-        if (GameTime() - human.GetLastAttackTime() > Settings().IdleSeconds) return $multi(true, "take: human-idle");
-        if (isAboutToBeDenied(bot, creep)) return $multi(true, "take: deny-race");
-        return $multi(false, "skip: helpful");
-    }
-    if (isAttackAnimation(human) && isLowestInHumanRange(bot, human, creep)) return $multi(false, "skip: human-swing");
-    return $multi(true, "take: teammate");
+    const miss = missReason(bot, human, creep, tier);
+    if (miss === undefined) return $multi(false, `skip: ${tier}`);
+    return $multi(true, `take: ${miss}`);
 }
 
 function showOverlay(bot: Unit, tier: Tier, allowed: boolean, reason: string): void {

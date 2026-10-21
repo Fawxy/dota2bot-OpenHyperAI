@@ -411,6 +411,9 @@ function ____exports.IsResponder(bot, order)
 end
 --- Why this bot cannot respond right now, or undefined if it can.
 function ____exports.DeclineReason(bot, order)
+    if order.type == "AVOID" then
+        return nil
+    end
     if not bot:IsAlive() then
         return "dead"
     end
@@ -469,23 +472,23 @@ local function acceptedFor(bot)
     local best
     for ____, order in ipairs(____exports.GetActive(bot:GetTeam())) do
         do
-            local __continue70
+            local __continue71
             repeat
                 if not ____exports.TryAccept(bot, order) then
-                    __continue70 = true
+                    __continue71 = true
                     break
                 end
                 accepted[#accepted + 1] = order
                 if order.type == "AVOID" then
-                    __continue70 = true
+                    __continue71 = true
                     break
                 end
                 if best == nil or PRIORITY[order.type] > PRIORITY[best.type] then
                     best = order
                 end
-                __continue70 = true
+                __continue71 = true
             until true
-            if not __continue70 then
+            if not __continue71 then
                 break
             end
         end
@@ -507,6 +510,46 @@ function ____exports.GetAccepted(bot, ____type)
     end
     return nil
 end
+local function insideZone(order, loc)
+    if order.location == nil then
+        return false
+    end
+    local dx = loc.x - order.location.x
+    local dy = loc.y - order.location.y
+    local r = order.radius or 0
+    return dx * dx + dy * dy <= r * r
+end
+--- True when this bot has read a danger ping whose zone covers `loc`.
+function ____exports.AvoidsLocation(bot, loc)
+    for ____, order in ipairs(acceptedFor(bot).accepted) do
+        if order.type == "AVOID" and insideZone(order, loc) then
+            return true
+        end
+    end
+    return false
+end
+--- `units` without those inside a zone this bot avoids; the same table when nothing is removed.
+function ____exports.FilterAvoided(bot, units)
+    local avoiding = false
+    for ____, order in ipairs(acceptedFor(bot).accepted) do
+        if order.type == "AVOID" then
+            avoiding = true
+        end
+    end
+    if not avoiding then
+        return units
+    end
+    local result = {}
+    for ____, unit in ipairs(units) do
+        if not ____exports.AvoidsLocation(
+            bot,
+            unit:GetLocation()
+        ) then
+            result[#result + 1] = unit
+        end
+    end
+    return #result == #units and units or result
+end
 --- Caps retreat desire while the bot is committed to an accepted order and still healthy.
 function ____exports.CapRetreatDesire(bot, desire)
     if not Config.IsEnabled() then
@@ -526,21 +569,21 @@ function ____exports.CapRetreatDesire(bot, desire)
 end
 local function modeMatches(order, botMode, lane)
     repeat
-        local ____switch85 = order.type
-        local ____cond85 = ____switch85 == "GATHER" or ____switch85 == "ATTACK" or ____switch85 == "SMOKE" or ____switch85 == "BACK"
-        if ____cond85 then
+        local ____switch100 = order.type
+        local ____cond100 = ____switch100 == "GATHER" or ____switch100 == "ATTACK" or ____switch100 == "SMOKE" or ____switch100 == "BACK"
+        if ____cond100 then
             return botMode == BotMode.Assemble
         end
-        ____cond85 = ____cond85 or ____switch85 == "ROSHAN"
-        if ____cond85 then
+        ____cond100 = ____cond100 or ____switch100 == "ROSHAN"
+        if ____cond100 then
             return botMode == BotMode.Roshan
         end
-        ____cond85 = ____cond85 or ____switch85 == "DEFEND"
-        if ____cond85 then
+        ____cond100 = ____cond100 or ____switch100 == "DEFEND"
+        if ____cond100 then
             return (botMode == BotMode.DefendTowerTop or botMode == BotMode.DefendTowerMid or botMode == BotMode.DefendTowerBot) and (order.lane == nil or order.lane == lane)
         end
-        ____cond85 = ____cond85 or ____switch85 == "PUSH"
-        if ____cond85 then
+        ____cond100 = ____cond100 or ____switch100 == "PUSH"
+        if ____cond100 then
             return (botMode == BotMode.PushTowerTop or botMode == BotMode.PushTowerMid or botMode == BotMode.PushTowerBot) and (order.lane == nil or order.lane == lane)
         end
         do

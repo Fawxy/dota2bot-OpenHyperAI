@@ -23,7 +23,7 @@ These answers decide whether code needs to change. Record each result in `HUMANI
 Each section of HUMANISER_DEV.md has its own checklist, taken from the handoffs:
 - [ ] Perception (03): fog exit, Lotus/BKB timing at `SkillOverride = 0.1` vs `0.9`, juke, smoke gank, FPS at `host_timescale 2`.
 - [ ] Ally last-hit (04): human pos 1 with bot pos 5 and pos 4, at low, mid and high difficulty; log last hits at 5 and 10 minutes.
-- [ ] Pings (05): hero, Roshan, tower and danger pings; two humans pinging at once; a dead bot declining.
+- [ ] Pings (05): hero, Roshan, tower and danger pings; two humans pinging at once; a dead bot declining. Danger-ping a jungle camp a bot is farming: it switches camp, then returns once a bot sees the camp is clear (about 6 s), or after 10 s if nobody can see it.
 - [ ] Commands (06): `!def mid`, `!rosh`, `!smoke`, `!lion push bot`, `!back`, `!farm`, `!bhelp`, `-都来守家`; confirm FretBots `!diff` and `!info` still work.
 
 ## Session 4: regression
