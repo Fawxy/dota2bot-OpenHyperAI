@@ -44,6 +44,9 @@ local function CanTakeLastHit(creep)
 	return J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
 end
 local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
+-- Task 14 self-test: this bot times its last hits from the trainer's own start window.
+local Trainer = J.Humaniser.Trainer
+local bTrainerSelfTest = Trainer.IsSelfTestBot(bot)
 
 function GetDesire()
 	PickOneAnnouncer()
@@ -225,6 +228,13 @@ end
 -- Laning Think() steps, each returning true when it issued an action. Kept separate so later humaniser work
 -- (lane management) can add steps without rewriting Think().
 local function LastHitThink()
+	if bTrainerSelfTest then
+		local creep = Trainer.SelfTestTarget(bot)
+		if not J.IsValid(creep) then return false end
+		bot:SetTarget(creep)
+		bot:Action_AttackUnit(creep, true)
+		return true
+	end
 	local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 	if not J.IsValid(hitCreep) then return false end
 	if not (fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)) then return false end
@@ -239,6 +249,7 @@ local function LastHitThink()
 end
 
 local function DenyThink()
+	if bTrainerSelfTest then return false end
 	local denyCreep = GetBestDenyCreep(nAllyCreeps)
 	if not J.IsValid(denyCreep) then return false end
 	bot:SetTarget(denyCreep)
@@ -260,7 +271,7 @@ local function PositionThink()
 	bot:Action_MoveToLocation(target_loc + RandomVector(50))
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning then
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest then
 	function Think()
 		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
 		-- so taking it before a deny is intended.

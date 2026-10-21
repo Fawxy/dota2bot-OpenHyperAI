@@ -319,6 +319,21 @@ export function SubjectPredictions(team: number, pid: number): Prediction[] {
     return teams[team]?.subjects[pid]?.predictions ?? [];
 }
 
+/** Decided at laning-file load, so it uses only GetTeamPlayers and IsPlayerBot. */
+export function IsSelfTestBot(bot: Unit): boolean {
+    return Settings.IsEnabled() && Settings.Get().SelfTest && bot.GetPlayerID() === TrainerBotPID(bot.GetTeam());
+}
+
+/** The bot's own creep whose start window has reached now; the earliest-closing one wins. */
+export function SelfTestTarget(bot: Unit): Unit | undefined {
+    const now = DotaTime();
+    let best: Prediction | undefined;
+    for (const p of SubjectPredictions(bot.GetTeam(), bot.GetPlayerID())) {
+        if (p.startOpen <= now && now < p.startClose && (best === undefined || p.startClose < best.startClose)) best = p;
+    }
+    return best?.creep;
+}
+
 interface Candidate {
     id: string;
     creep: Unit;
