@@ -11,7 +11,7 @@ local sRole = J.Item.GetRoleItemsBuyList( bot )
 local tTalentTreeList = {
 {--冰雷
     ['t25'] = {10, 0},
-    ['t20'] = {10, 0},
+    ['t20'] = {0, 10}, -- 7.41b: +1 Orb Levels replaced with Forged Spirit armor reduction; take extra Chaos Meteors
     ['t15'] = {10, 0},
     ['t10'] = {10, 0}},
 {--冰火

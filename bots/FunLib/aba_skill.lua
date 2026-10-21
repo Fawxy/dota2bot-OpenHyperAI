@@ -209,6 +209,8 @@ function X.GetSkillList( sAbilityList, nAbilityBuildList, sTalentList, nTalentBu
 	end
 	if botName == 'npc_dota_hero_invoker'
 	then
+		-- 7.41b: Invoke grants a bonus ability point at levels 6, 12 and 18, so the
+		-- entry consumed at level 10/15/20 is 11/17/23 rather than 10/15/20.
 		sSkillList = {
 						[1] = sAbilityList[nAbilityBuildList[1]],
 						[2] = sAbilityList[nAbilityBuildList[2]],
@@ -219,20 +221,20 @@ function X.GetSkillList( sAbilityList, nAbilityBuildList, sTalentList, nTalentBu
 						[7] = sAbilityList[nAbilityBuildList[7]],
 						[8] = sAbilityList[nAbilityBuildList[8]],
 						[9] = sAbilityList[nAbilityBuildList[9]],
-						[10] = sTalentList[nTalentBuildList[1]],
-						[11] = sAbilityList[nAbilityBuildList[10]],
+						[10] = sAbilityList[nAbilityBuildList[10]],
+						[11] = sTalentList[nTalentBuildList[1]],
 						[12] = sAbilityList[nAbilityBuildList[11]],
 						[13] = sAbilityList[nAbilityBuildList[12]],
 						[14] = sAbilityList[nAbilityBuildList[13]],
-						[15] = sTalentList[nTalentBuildList[2]],
-						[16] = sAbilityList[nAbilityBuildList[14]],
-						[17] = sAbilityList[nAbilityBuildList[15]],
+						[15] = sAbilityList[nAbilityBuildList[14]],
+						[16] = sAbilityList[nAbilityBuildList[15]],
+						[17] = sTalentList[nTalentBuildList[2]],
 						[18] = sAbilityList[nAbilityBuildList[16]],
 						[19] = sAbilityList[nAbilityBuildList[17]],
-						[20] = sTalentList[nTalentBuildList[3]],
-						[21] = sAbilityList[nAbilityBuildList[18]],
-						[22] = sAbilityList[nAbilityBuildList[19]],
-						[23] = sAbilityList[nAbilityBuildList[20]],
+						[20] = sAbilityList[nAbilityBuildList[18]],
+						[21] = sAbilityList[nAbilityBuildList[19]],
+						[22] = sAbilityList[nAbilityBuildList[20]],
+						[23] = sTalentList[nTalentBuildList[3]],
 						[24] = sAbilityList[nAbilityBuildList[21]],
 						[25] = sTalentList[nTalentBuildList[4]],
 						[26] = sTalentList[nTalentBuildList[5]],

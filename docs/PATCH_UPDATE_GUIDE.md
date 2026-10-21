@@ -2,7 +2,7 @@
 
 This is a step-by-step runbook for quickly updating the bot scripts when Valve releases a new Dota 2 patch. Designed to be followed by a developer or AI assistant without needing to re-read the entire codebase.
 
-**Last updated for:** Patch 7.41a (March 2026)
+**Last updated for:** Patch 7.41f (September 2026)
 
 ---
 
@@ -487,3 +487,10 @@ Things we missed on the first pass and had to fix later:
 3. **New abilities replacing old slots** (OD's Objurgation) -- we checked some heroes but not all
 4. **Special skill progression** (Meepo ult levels) -- we didn't check non-standard heroes
 5. **Patch note inaccuracy** -- issue #129's AI-generated list had wrong info (Lina/Sven innates, "Snakebite", "Reprimand" name). Always verify on Liquipedia.
+
+## Lessons Learned (7.41b - 7.41f)
+
+1. **Patch notes JSON uses numeric IDs** -- resolve them with `https://www.dota2.com/datafeed/abilitylist?language=english`, `.../itemlist` and `.../herolist`.
+2. **Talent swaps: check the slot, not just the level** -- `tTalentTreeList` picks a talent by its position within the level (`{0, 10}` = first, `{10, 0}` = second, in `npc_heroes.txt` order). Diff the hero's talent list in d2vpkr at the old and new client commits (`https://api.github.com/repos/dotabuff/d2vpkr/commits?path=dota/scripts/npc/npc_heroes.txt`); only a swap that touches the side the bot picks needs a change. After 7.41e, d2vpkr moved each hero into `scripts/npc/heroes/npc_dota_hero_<name>.txt`.
+3. **Extra ability points** (7.41b Invoke at levels 6/12/18) shift which `sSkillList` entry is consumed at each level -- move talent entries so they line up with the talent levels, otherwise points sit unused.
+4. **Liquipedia may block scripted fetches** (HTTP 403). `https://www.dota2.com/datafeed/herodata?language=english&hero_id=N` is a usable fallback for ability descriptions and max levels.

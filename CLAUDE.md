@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is the **dota2bot-OpenHyperAI** project -- Lua bot scripts for Dota 2 that run in custom lobbies. Currently supports Patch 7.41/7.41a with 127 heroes.
+This is the **dota2bot-OpenHyperAI** project -- Lua bot scripts for Dota 2 that run in custom lobbies. Currently supports Patch 7.41 through 7.41f with 127 heroes.
 
 ## Key Documentation
 
