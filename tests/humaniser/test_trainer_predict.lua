@@ -97,6 +97,7 @@ end
 do
 	local curve = Predict.BuildCurve(100, 0, { { at = 0.6, damage = 110 } })
 	check("tower shot closes the window early", Predict.KillWindow(curve, 40, 0.3) == nil)
+	check("KillWindow marks a close with no other kill as capped", Predict.KillWindow(Predict.BuildCurve(50, 0, {}), 60, 0.3).capped == true and Predict.KillWindow(curve, 110, 0.3).capped == false)
 	check("a shot before the killing blow leaves a window", Predict.KillWindow(curve, 110, 0.3) ~= nil)
 end
 
@@ -251,6 +252,18 @@ do
 	future:Push(10, 11.0, 12.0)
 	r = future:Push(10.33, 11.3, 12.0)
 	check("smoother: a future open edge jumping 0.3 is flagged", r.uncertain == true)
+end
+
+do
+	local s = NewSmoother()
+	local r
+	for i = 0, 15 do
+		local t = 10 + i / 30
+		r = s:Push(t, t - 0.4, t + 1.65, true)
+	end
+	check("smoother: a horizon-capped close tracking now stays certain over 0.5 s", r.uncertain == false)
+	r = s:Push(10.8, 10.4, 12.3, false)
+	check("smoother: a real close appearing after capped samples is not compared", r.uncertain == false)
 end
 
 finish()

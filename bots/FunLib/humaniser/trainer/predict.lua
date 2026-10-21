@@ -48,6 +48,7 @@ end
 --- Start times, relative to now, at which the subject's attack lands after the creep is low enough but before anyone else kills it.
 function ____exports.KillWindow(curve, effDmg, delay, startFloor)
     local tOther = ____exports.HORIZON + ____exports.STEP
+    local capped = true
     local tLandMin
     do
         local i = 0
@@ -58,6 +59,7 @@ function ____exports.KillWindow(curve, effDmg, delay, startFloor)
             end
             if curve[i + 1] <= 0 then
                 tOther = t
+                capped = false
                 break
             end
             i = i + 1
@@ -71,7 +73,7 @@ function ____exports.KillWindow(curve, effDmg, delay, startFloor)
     if open >= close then
         return nil
     end
-    return {open = open, close = close}
+    return {open = open, close = close, capped = capped}
 end
 ____exports.Smoother = __TS__Class()
 local Smoother = ____exports.Smoother
@@ -79,9 +81,12 @@ Smoother.name = "Smoother"
 function Smoother.prototype.____constructor(self)
     self.history = {}
 end
-function Smoother.prototype.Push(self, now, open, close)
+function Smoother.prototype.Push(self, now, open, close, capped)
+    if capped == nil then
+        capped = false
+    end
     local ____self_history_0 = self.history
-    ____self_history_0[#____self_history_0 + 1] = {t = now, open = open, close = close}
+    ____self_history_0[#____self_history_0 + 1] = {t = now, open = open, close = close, capped = capped}
     while #self.history > 1 and now - self.history[1].t > HISTORY_SECONDS do
         table.remove(self.history, 1)
     end
@@ -106,7 +111,8 @@ function Smoother.prototype.Push(self, now, open, close)
                     break
                 end
                 local openMoved = open > now and s.open > s.t and math.abs(open - s.open) > JUMP_SIZE
-                if openMoved or math.abs(close - s.close) > JUMP_SIZE then
+                local closeMoved = not capped and not s.capped and math.abs(close - s.close) > JUMP_SIZE
+                if openMoved or closeMoved then
                     uncertain = true
                 end
                 __continue15 = true
@@ -166,7 +172,7 @@ function ____exports.Predict(subject, creep, isDeny, now, smoother)
     if window == nil then
         return nil
     end
-    local smoothed = smoother:Push(now, now + window.open, now + window.close)
+    local smoothed = smoother:Push(now, now + window.open, now + window.close, window.capped)
     local ideal = smoothed.close - smoothed.open < MIN_WINDOW and smoothed.open + SHORT_WINDOW_LEAD or (smoothed.open + smoothed.close) / 2
     return {
         creep = creep,

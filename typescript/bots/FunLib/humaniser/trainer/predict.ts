@@ -17,6 +17,8 @@ const SHORT_WINDOW_LEAD = 0.05;
 export interface Window {
     open: number;
     close: number;
+    /** The close is the horizon edge, not a kill by someone else, so it moves with now. */
+    capped?: boolean;
 }
 
 export interface Prediction {
@@ -52,12 +54,14 @@ export function BuildCurve(hp: number, regen: number, hits: Hit[]): number[] {
 /** Start times, relative to now, at which the subject's attack lands after the creep is low enough but before anyone else kills it. */
 export function KillWindow(curve: number[], effDmg: number, delay: number, startFloor?: number): Window | undefined {
     let tOther = HORIZON + STEP;
+    let capped = true;
     let tLandMin: number | undefined;
     for (let i = 0; i < curve.length; i++) {
         const t = i * STEP;
         if (tLandMin === undefined && curve[i] <= effDmg) tLandMin = t;
         if (curve[i] <= 0) {
             tOther = t;
+            capped = false;
             break;
         }
     }
@@ -65,20 +69,21 @@ export function KillWindow(curve: number[], effDmg: number, delay: number, start
     const open = math.max(tLandMin - delay, startFloor ?? -math.huge);
     const close = tOther - delay;
     if (open >= close) return undefined;
-    return { open, close };
+    return { open, close, capped };
 }
 
 interface Sample {
     t: number;
     open: number;
     close: number;
+    capped: boolean;
 }
 
 export class Smoother {
     private history: Sample[] = [];
 
-    Push(now: number, open: number, close: number): { open: number; close: number; uncertain: boolean } {
-        this.history.push({ t: now, open, close });
+    Push(now: number, open: number, close: number, capped: boolean = false): { open: number; close: number; uncertain: boolean } {
+        this.history.push({ t: now, open, close, capped });
         while (this.history.length > 1 && now - this.history[0].t > HISTORY_SECONDS) {
             table.remove(this.history, 1);
         }
@@ -96,7 +101,8 @@ export class Smoother {
         for (const s of this.history) {
             if (now - s.t < JUMP_AGE) continue;
             const openMoved = open > now && s.open > s.t && math.abs(open - s.open) > JUMP_SIZE;
-            if (openMoved || math.abs(close - s.close) > JUMP_SIZE) uncertain = true;
+            const closeMoved = !capped && !s.capped && math.abs(close - s.close) > JUMP_SIZE;
+            if (openMoved || closeMoved) uncertain = true;
         }
         return { open: openSum / count, close: closeSum / count, uncertain };
     }
@@ -137,7 +143,7 @@ export function Predict(subject: Unit, creep: Unit, isDeny: boolean, now: number
     const window = KillWindow(curve, effDmg, delay, floor);
     if (window === undefined) return undefined;
 
-    const smoothed = smoother.Push(now, now + window.open, now + window.close);
+    const smoothed = smoother.Push(now, now + window.open, now + window.close, window.capped);
     const ideal =
         smoothed.close - smoothed.open < MIN_WINDOW
             ? smoothed.open + SHORT_WINDOW_LEAD
