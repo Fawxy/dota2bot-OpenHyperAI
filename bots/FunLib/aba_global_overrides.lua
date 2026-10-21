@@ -71,6 +71,8 @@ end
 
 -- Override the print function
 local orig_print = print
+-- Lets humaniser debug logging bypass the DebugMode gate below.
+Utils.RawPrint = Utils.RawPrint or orig_print
 function print(...)
     if not Utils.DebugMode then return end
 

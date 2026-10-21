@@ -126,6 +126,14 @@ Customize.Fretbots = {
 -- This won't be very effective for FPS improvement because Valve has a lot of compute on their side that your PC have to handle for Local Hosting.
 Customize.ThinkLess = 1;
 
+-- Humaniser: makes bots perceive and react at human speed and behave like teammates.
+-- Every sub-feature has its own Enable flag; with Enable = false behaviour matches upstream OHA.
+Customize.Humaniser = {
+    Enable = true,
+    -- Draws per-bot debug text on screen and enables HDebug.Log output. Requires sv_cheats 1 to see draws.
+    Debug = false,
+}
+
 return Customize
 
 

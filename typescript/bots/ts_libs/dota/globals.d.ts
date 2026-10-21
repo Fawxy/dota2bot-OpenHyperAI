@@ -50,6 +50,9 @@ declare global {
 
     function DebugDrawCircle(vCenter: Vector, fRadius: number, nRed: number, nGreen: number, nBlue: number): void;
 
+    /** Screen-space text; drawn for the current frame only. */
+    function DebugDrawText(fX: number, fY: number, sText: string, nRed: number, nGreen: number, nBlue: number): void;
+
     function GetSelectedHeroName(nPlayerID: number): string;
 
     function GetHeroLevel(playerId: number): number;
