@@ -21,16 +21,20 @@ end
 
 local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
 
--- The stack job implementation the scenarios below run against.
-local PATHS = { "legacy" }
+-- The stack job implementation the scenarios below run against: camp_jobs' own, or stack_task.ts (Tasks.Stack).
+local PATHS = { "legacy", "task" }
 local PATH = "legacy"
+local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
 
 -- Radiant bot lane: core pid 1 (pos 1) at the front, support pid 5 (pos 5) at `at`, one enemy far away.
 -- `camps` is a list of { type, location }; spawner idx follows list order.
 local function world(skill, opts)
 	opts = opts or {}
-	assert(PATH == "legacy", "unknown stack job path " .. tostring(PATH))
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry })
+	assert(PATH == "legacy" or PATH == "task", "unknown stack job path " .. tostring(PATH))
+	-- The runner's state lives in the bundle, which FreshHumaniser does not reload.
+	package.loaded[BUNDLE] = nil
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry,
+		tasks = { Enable = true, Stack = PATH == "task" } })
 	T = opts.t or 100
 	CURRENT_TEAM = 2
 	OBSERVER = 5
@@ -53,17 +57,37 @@ local function standOf(H, idx)
 	return H.Lane.Stacking.StandPoint(C.SpawnerByIdx(idx), C.ByIdx(idx))
 end
 
+-- Whether an ally at camp 1's stand point may choose that camp for its next stack once `bot` has stepped out of
+-- the box: false only while a reservation holds it.
+local function claimable(H, bot)
+	local other = unit({ pid = 4, pos = 4, loc = standOf(H, 1) })
+	H.Lane.Config.SkillOf(other)
+	local at = bot.loc
+	bot.loc = Vector(at.x, at.y + 1500)
+	local ok = H.Lane.Stacking.ChooseCamp(other, H.Lane.LaneState.ForBot(other), math.floor(T / 60) + 1) ~= nil
+	bot.loc = at
+	return ok
+end
+
 local function eligible(H, bot)
 	local s = H.Lane.LaneState.ForBot(bot)
 	return H.Lane.Stacking.Eligible(bot, s, H.Lane.LaneState.Enemies(bot, Lane.Bot))
 end
 
-local function capture(fn)
+-- Every captured line, per path, for the cross-path comparison at the end. The bundle's one support line is left
+-- out: it prints wherever the bundle first loads, which is the first task on one path and the first tick on the other.
+local LOG = { legacy = {}, task = {} }
+
+-- `own`: a scenario only one path runs, kept out of the comparison.
+local function capture(fn, own)
 	local printed, old = {}, print
 	print = function(s) table.insert(printed, s) end
 	local ok, err = pcall(fn)
 	print = old
 	if not ok then error(err) end
+	for _, l in ipairs(own and {} or printed) do
+		if not tostring(l):find("[H:tasks] support", 1, true) then table.insert(LOG[PATH], tostring(l)) end
+	end
 	return printed
 end
 
@@ -73,16 +97,28 @@ local function find(lines, prefix)
 	return found
 end
 
+-- Farm's GetDesire, then its Think when it wins the frame, then the humaniser's per-frame task tick.
 local function frame(H, bot, t)
 	T = t
 	local d = H.Lane.CampJobDesire(bot)
-	if d > 0 then H.Lane.CampJobThink(bot) end
+	if d > 0 then
+		bot.mode = dota.BotMode.Farm
+		H.Lane.CampJobThink(bot)
+	end
+	H.Tasks.Tick(bot)
 	return d
 end
 
 -- The bot's stack job as the assertions read it, whichever path runs it: nil when none was started; `ended` is
 -- "done" once it finished and "aborted" once it was aborted, nil while it runs.
 local function current(H, bot)
+	if PATH == "task" then
+		local job = H.Lane.StackTask.Job(bot)
+		if job == nil then return nil end
+		local p = job.plan
+		return { kind = "stack", campIdx = p.campIdx, forced = p.forced, aggroAt = p.aggroAt, baseAggro = p.baseAggro,
+			exitUntil = p.exitUntil, phase = job.label, ended = job.ended }
+	end
 	local job = H.Lane.CampJobs.Current(bot)
 	if job == nil then return nil end
 	local ended = job.phase == "done" and "done" or job.phase == "return" and "aborted" or nil
@@ -104,7 +140,7 @@ end
 
 -- Drives a stack job on `idx` started at minute + :40 with a zero jitter (Gauss u1 = 1): 3 neutrals before the aggro,
 -- `added` more spawned at the next :00, then settled by :05. Returns the job as `current` reads it at the start, with
--- `ended` read at the end, the desires at :58 and the next :01,
+-- `ended` read at the end and `ended01` after the :01 frame, the desires at :58 and the next :01,
 -- the attacks issued 0.1 s before the aggro, and the camp's original neutrals. `partial` stops after :01.
 local function runStack(H, bot, idx, at, minute, added, partial)
 	local m0 = minute * 60
@@ -113,6 +149,8 @@ local function runStack(H, bot, idx, at, minute, added, partial)
 	SetRandomSequence({ 1.0, 0.25 })
 	check("precondition: stack job starts", H.Lane.CampJobs.Start(bot, { kind = "stack", campIdx = idx }))
 	local job = current(H, bot)
+	-- Farm thinks in the frame the job starts, as in game; a task left unstepped for 1 s is cancelled.
+	frame(H, bot, T)
 	NEUTRALS = {}
 	local camp = neutrals(at, 3)
 	frame(H, bot, job.aggroAt - 0.1)
@@ -124,6 +162,7 @@ local function runStack(H, bot, idx, at, minute, added, partial)
 	teleport(bot)
 	local d58 = frame(H, bot, m0 + 58)
 	local d01 = frame(H, bot, m0 + 61)
+	job.ended01 = current(H, bot).ended
 	if not partial then
 		neutrals(at, added)
 		frame(H, bot, m0 + 62)
@@ -308,7 +347,9 @@ for _, path in ipairs(PATHS) do
 		check("one attack on a neutral, queued", #attacks == 1 and attacks[1].args[2] == true)
 		check("desire held at :58 while walking off", near(d58, 0.7) and job.exitUntil == 121)
 		check("walks the exit path", dist(ActionsOf(5, "MoveToLocation")[1].args[1], H.Lane.Camps.ByIdx(1).stack.exitPath[1]) <= 20 + 1e-6)
-		check("no desire at :01", d01 == 0 and job.ended == "done")
+		-- The task ends inside the :01 frame's Think, after GetDesire has already returned the job's desire.
+		local d01Want = PATH == "task" and 0.7 or 0
+		check("desire at :01: 0 (legacy) or the last frame's 0.7 (task)", near(d01, d01Want) and job.ended01 == "done" and job.ended == "done", d01)
 
 		local line = find(lines, "[H:lane] stack pid")
 		local pattern = "^%[H:lane%] stack pid=%d+ camp=%d+ type=%a+ aggro=%d+%.%d planned=%d+%.%d before=%d+ after=[%d%?]+ grade=%S+ stacked=[01]$"
@@ -386,6 +427,7 @@ for _, path in ipairs(PATHS) do
 			SetRandomSequence({ 1.0, 0.25 })
 			H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 })
 			local job = current(H, support)
+			frame(H, support, T)
 			local camp = neutrals(LARGE, 3)
 			frame(H, support, job.aggroAt)
 			camp[1].target = support
@@ -470,6 +512,198 @@ for _, path in ipairs(PATHS) do
 	end
 
 	do
+		-- Pushed off the stand point while waiting: the bot walks back, still waiting, and aggroes on time.
+		local H, support = world(1, { camps = { { "large", LARGE } } })
+		local stand = standOf(H, 1)
+		support.loc = stand
+		SetRandomSequence({ 1.0, 0.25 })
+		H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 })
+		frame(H, support, 100)
+		check("precondition: waiting at the stand", current(H, support).phase == "wait" and #ActionsOf(5, "MoveToLocation") == 0)
+		support.loc = Vector(stand.x, stand.y + 400)
+		frame(H, support, 101)
+		local moves = ActionsOf(5, "MoveToLocation")
+		-- The stand point the job walks to carries the 20-unit path noise.
+		check("pushed off while waiting: walks back to the stand", #moves == 1 and dist(moves[1].args[1], stand) <= 20 + 1e-6
+			and current(H, support).phase == "wait")
+		teleport(support)
+		neutrals(LARGE, 3)
+		frame(H, support, 113.5)
+		check("back at the stand: aggroes on time", #ActionsOf(5, "AttackUnit") == 1)
+	end
+
+	do
+		-- The rotation probe: a stack whose aggro is within JobUpcoming (10 s) while travelling or waiting.
+		local H, support = world(1, { camps = { { "large", LARGE } } })
+		support.loc = standOf(H, 1)
+		SetRandomSequence({ 1.0, 0.25 })
+		H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 })
+		frame(H, support, 100)
+		T = 103.4
+		check("aggro 10.1 s away: no rotation planned", H.Lane.Hooks.IsRotationPlanned(support) == false)
+		frame(H, support, 103.5)
+		check("aggro 10 s away while waiting: rotation planned", H.Lane.Hooks.IsRotationPlanned(support) == true)
+		NEUTRALS[1] = nil
+		local camp = neutrals(LARGE, 1)
+		frame(H, support, 113.5)
+		camp[1].target = support
+		frame(H, support, 113.5)
+		check("walking off after the aggro: no rotation planned", current(H, support).phase == "exit" and H.Lane.Hooks.IsRotationPlanned(support) == false)
+	end
+
+	do
+		-- Every way a started stack ends early: the job-abort line and the lane_job_abort event carry the legacy
+		-- reason, phase and acted flag on both paths.
+		local CASES = {
+			{ name = "late", reason = "late", phase = "travel", acted = true, setup = function(H, bot)
+				bot.loc = Vector(LARGE.x, LARGE.y + 600)
+			end, run = function(H, bot, job)
+				frame(H, bot, job.aggroAt + 1)
+				frame(H, bot, job.aggroAt + 2)
+			end },
+			{ name = "no-camp", reason = "mistake:no-camp", phase = "aggro", acted = true, setup = function(H)
+				NEUTRALS = {}
+				H.Lane.Stacking.NoteStackAttempt(1, 0, 3)
+				H.Lane.Stacking.NoteStackOutcome(1, 1, 6)
+			end, run = function(H, bot, job)
+				frame(H, bot, job.aggroAt)
+				frame(H, bot, job.aggroAt + 1)
+			end },
+			{ name = "no-aggro", reason = "mistake:no-aggro", phase = "aggro", acted = true, run = function(H, bot, job)
+				frame(H, bot, job.aggroAt)
+				frame(H, bot, job.aggroAt + 1.9)
+				frame(H, bot, job.aggroAt + 2)
+			end },
+			{ name = "preempted", reason = "preempted", phase = "wait", acted = true, run = function(H, bot)
+				bot.mode = dota.BotMode.Laning
+				for _, t in ipairs({ 100.5, 101.6 }) do T = t H.Lane.CampJobDesire(bot) H.Tasks.Tick(bot) end
+			end },
+			{ name = "mode-end", reason = "mode-end", phase = "wait", acted = true, run = function(H, bot) H.Lane.CampJobOnEnd(bot) end },
+			{ name = "mode-end before acting", reason = "mode-end", phase = "travel", acted = false, think = false,
+				run = function(H, bot) H.Lane.CampJobOnEnd(bot) end },
+			{ name = "run", reason = "run", phase = "wait", acted = true, run = function(H, bot) H.Lane.CampJobAbort(bot, "run") end },
+			{ name = "flag-off", reason = "flag-off", phase = "wait", acted = true, run = function(H, bot)
+				H.Lane.Config.Settings().Stack = false
+				frame(H, bot, 101)
+			end },
+			{ name = "dead", reason = "dead", phase = "wait", acted = true, run = function(H, bot)
+				bot.alive = false
+				frame(H, bot, 101)
+			end },
+			-- Farm stays active but never thinks (a stun): only the time limit after the aggro second ends the job.
+			{ name = "timeout", reason = "timeout", phase = "wait", acted = true, run = function(H, bot, job)
+				for _, t in ipairs({ job.aggroAt, job.aggroAt + 15 }) do T = t H.Lane.CampJobDesire(bot) H.Tasks.Tick(bot) end
+				check("timeout: kept up to aggro + 15 s", current(H, bot).ended == nil)
+				frame(H, bot, job.aggroAt + 15.1)
+			end },
+			{ name = "low-hp", reason = "low-hp", phase = "wait", acted = true, setup = function() LANING = false end,
+				run = function(H, bot)
+					bot.hp = 10
+					frame(H, bot, 101)
+				end },
+			{ name = "handsoff", reason = "handsoff", phase = "wait", acted = true, run = function(H, bot)
+				H.Orders.Post(2, { type = "LANE_HANDSOFF", sourceKey = "ping", issuerPID = 0, lane = Lane.Bot, duration = 30,
+					maxResponders = 1, onlyPIDs = { 5 }, delayKind = "ping" })
+				frame(H, bot, 103)
+			end },
+		}
+		for _, case in ipairs(CASES) do
+			local H, support = world(1, { camps = { { "large", LARGE } }, debug = true, telemetry = { Enable = true } })
+			support.loc = standOf(H, 1)
+			neutrals(LARGE, 3)
+			if case.setup then case.setup(H, support) end
+			local events = {}
+			H.Telemetry.SetSink(function(l) table.insert(events, l) end)
+			local job, reserved
+			local lines = capture(function()
+				SetRandomSequence({ 1.0, 0.25 })
+				H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 })
+				job = current(H, support)
+				if case.think ~= false then frame(H, support, 100) end
+				reserved = not claimable(H, support)
+				case.run(H, support, job)
+			end)
+			for _, e in ipairs(events) do table.insert(LOG[PATH], e) end
+			local line = find(lines, "[H:lane] job-abort")
+			local want = string.format("[H:lane] job-abort pid=5 kind=stack camp=1 key=%s reason=%s divert=0.00", H.Lane.Camps.ByIdx(1).key or "-", case.reason)
+			check(case.name .. ": job-abort line", line == want, line)
+			local ev
+			for _, e in ipairs(events) do if e:find(" ev=lane_job_abort ", 1, true) then ev = e end end
+			local function field(key) return ev and (ev:match(" " .. key .. '="([^"]*)"') or ev:match(" " .. key .. "=(%S+)")) end
+			check(case.name .. ": event reason, phase and acted", field("reason") == case.reason and field("phase") == case.phase
+				and field("acted") == (case.acted and "1" or "0"), ev)
+			check(case.name .. ": ended aborted, desire dropped", current(H, support).ended == "aborted" and H.Lane.CampJobDesire(support) == 0)
+			-- The timeout lands after the walk-off's end, where the reservation lapses by itself.
+			if case.name ~= "timeout" then check(case.name .. ": reservation released", reserved and claimable(H, support)) end
+			-- The timeout lands in the next wave cycle, past the commit's own.
+			if case.name ~= "timeout" then
+				check(case.name .. ": planner commit " .. (case.acted and "kept" or "released"),
+					(H.Lane.LanePlanner.Committed(support) ~= nil) == case.acted, H.Lane.LanePlanner.Committed(support))
+			end
+			if case.name == "no-camp" then check("no-camp: stack cleared", H.Lane.Stacking.IsStacked(1) == false) end
+			if case.name == "late" then check("late: never attacked", #ActionsOf(5, "AttackUnit") == 0) end
+		end
+	end
+
+	do
+		-- With Tasks.Stack off, the task machinery stays silent: no task line, no task claim.
+		if PATH == "legacy" then
+			local H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
+			local lines = capture(function() runStack(H, support, 1, LARGE, 1, 3) end, true)
+			local taskLine
+			for _, l in ipairs(lines) do
+				if l:find("[H:tasks]", 1, true) and not l:find("[H:tasks] support", 1, true) then taskLine = l end
+			end
+			check("flag off: a full stack logs no task line", taskLine == nil, taskLine)
+			check("flag off: the stack ran as the legacy job", H.Lane.CampJobs.Current(support).phase == "done" and H.Lane.StackTask.Job(support) == nil)
+		end
+	end
+
+	do
+		-- Started from farm's GetDesire but never stepped while farm IS the active mode (Think returns early): the
+		-- runner cancels it after its 1 s grace, and the abort releases what an unacted legacy abort releases.
+		if PATH == "task" then
+			local H, support = world(1, { camps = { { "medium", MEDIUM } }, debug = true, telemetry = { Enable = true } })
+			support.loc = standOf(H, 1)
+			support.mode = dota.BotMode.Farm
+			local events = {}
+			H.Telemetry.SetSink(function(l) table.insert(events, l) end)
+			local FARM, RAW = dota.BotMode.Farm, 0.1
+			local function farmDesire(t)
+				T = t
+				H.Tasks.Tick(support)
+				local d = H.Lane.CampJobDesire(support)
+				if d > 0 then H.Lane.CampJobRawDesire(support, d) end
+				return d
+			end
+			local lines = capture(function()
+				check("precondition: the task starts from GetDesire", near(farmDesire(105), 0.7) and current(H, support).ended == nil)
+				farmDesire(105.5)
+				check("precondition: within the grace farm holds the floor", H.Intent.Resolve(support, FARM, RAW) >= 0.7)
+				check("precondition: camp reserved", not claimable(H, support))
+				-- The runner's own claim, posted by Tick alone, holds farm's floor before the task's first Step.
+				T = 105.7
+				H.Tasks.Tick(support)
+				check("precondition: the unstepped task's claim holds farm", near(H.Intent.Resolve(support, FARM, RAW), 0.7)
+					and H.Intent.Explain(support, FARM):find("by task:stack", 1, true) ~= nil, H.Intent.Explain(support, FARM))
+				farmDesire(106.05)
+			end, true)
+			check("unstepped: ended after the grace", current(H, support).ended == "aborted")
+			T = 106.05 + H.Intent.Get().ClaimTTL
+			check("unstepped: farm's floor gone within ClaimTTL", near(H.Intent.Resolve(support, FARM, RAW), RAW), H.Intent.Resolve(support, FARM, RAW))
+			check("unstepped: no task claim left", H.Intent.Explain(support, FARM):find("task:", 1, true) == nil, H.Intent.Explain(support, FARM))
+			local line = find(lines, "[H:lane] job-abort")
+			check("unstepped: logged as preempted", line ~= nil and line:find("reason=preempted", 1, true), line)
+			local ev
+			for _, e in ipairs(events) do if e:find(" ev=lane_job_abort ", 1, true) then ev = e end end
+			check("unstepped: acted=false, phase travel", ev ~= nil and ev:find(" acted=0", 1, true) and ev:find(" phase=travel", 1, true), ev)
+			check("unstepped: planner commit released", H.Lane.LanePlanner.Committed(support) == nil)
+			check("unstepped: reservation released", claimable(H, support))
+			check("unstepped: the same attempt is not started again", farmDesire(106.2) == 0 and current(H, support).ended == "aborted")
+		end
+	end
+
+	do
 		local H, support = world(1, { camps = { { "large", LARGE } }, debug = true, at = Vector(1500, -6000) })
 		unit({ pid = 0, bot = false, loc = Vector(1400, -6000) })
 		local far = unit({ pid = 2, pos = 3, loc = Vector(5000, 0) })
@@ -485,6 +719,20 @@ for _, path in ipairs(PATHS) do
 		check("hstacktest leaves other bots", current(H, far) == nil)
 		check("hstacktest logged", find(lines, "hstacktest pid=5 camp=1 started=true") ~= nil)
 	end
+end
+
+-- Both paths ran the same scenarios: every captured log line and every abort event must match, in order.
+do
+	local a, b = LOG.legacy, LOG.task
+	local first
+	for i = 1, math.max(#a, #b) do
+		if a[i] ~= b[i] and first == nil then first = i end
+	end
+	check("legacy and task paths log identical lines and abort events", first == nil and #a > 0,
+		first and string.format("#%d legacy=%s task=%s", first, tostring(a[first]), tostring(b[first])))
+	local generic
+	for _, l in ipairs(b) do if l:find("interrupted", 1, true) or l:find("cancelled", 1, true) then generic = l end end
+	check("task path: no runner-generic reason in any log line", generic == nil and #b > 0, generic)
 end
 
 finish()

@@ -13,6 +13,7 @@ import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as LaneMid from "bots/FunLib/humaniser/lane_mid";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as StackTask from "bots/FunLib/humaniser/stack_task";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as Harass from "bots/FunLib/humaniser/harass";
 import * as Counter from "bots/FunLib/humaniser/counterplay";
@@ -22,6 +23,7 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
 export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, Stacking, Harass, Counter };
+export { StackTask };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();

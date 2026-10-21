@@ -13,6 +13,7 @@ local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planne
 local LaneMid = require(GetScriptDirectory().."/FunLib/humaniser/lane_mid")
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local StackTask = require(GetScriptDirectory().."/FunLib/humaniser/stack_task")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
@@ -59,6 +60,7 @@ ____exports.CampJobs = CampJobs
 ____exports.Stacking = Stacking
 ____exports.Harass = Harass
 ____exports.Counter = Counter
+____exports.StackTask = StackTask
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()
 end

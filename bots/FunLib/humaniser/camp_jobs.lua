@@ -218,6 +218,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 function settings()
     return LaneConfig.Settings()
 end
@@ -352,6 +353,15 @@ pendingStacks = {}
 local skipped = {}
 --- Gates of the bot's lane_plan events in its latest wave cycle.
 local planNoted = {}
+local stackTask
+function ____exports.SetStackTask(t)
+    stackTask = t
+end
+--- The only thing camp jobs ask of a stack task.
+local function stackTaskRunning(bot)
+    local ____opt_0 = Tasks.Current(bot)
+    return (____opt_0 and ____opt_0.name) == "stack"
+end
 function ____exports.ResetCache()
     jobs = {}
     doneCycle = {}
@@ -470,17 +480,17 @@ local function leadPath(pull, meet)
         local i = 0
         while i < n do
             do
-                local __continue37
+                local __continue39
                 repeat
                     local p = pull.path[i + 1]
                     if i == n - 1 and dist2D(p, pull.meetPoint) < 1 then
-                        __continue37 = true
+                        __continue39 = true
                         break
                     end
                     result[#result + 1] = p
-                    __continue37 = true
+                    __continue39 = true
                 until true
-                if not __continue37 then
+                if not __continue39 then
                     break
                 end
             end
@@ -594,6 +604,9 @@ local function startStack(bot, req)
     local plan = ____exports.PlanStack(bot, req)
     if plan == nil then
         return false
+    end
+    if stackTask ~= nil and stackTask.Start(bot, plan) then
+        return true
     end
     Stacking.Reserve(
         plan.campIdx,
@@ -732,9 +745,12 @@ function ____exports.Active(bot)
     if not LaneConfig.IsActive() then
         return false
     end
-    return isLive(jobs[bot:GetPlayerID()])
+    return isLive(jobs[bot:GetPlayerID()]) or stackTaskRunning(bot)
 end
 function ____exports.UpcomingWithin(bot, seconds)
+    if stackTask ~= nil and stackTask.UpcomingWithin(bot, seconds) then
+        return true
+    end
     local job = jobs[bot:GetPlayerID()]
     if job == nil or job.phase ~= "travel" and job.phase ~= "wait" then
         return false
@@ -808,34 +824,34 @@ function ____exports.NoteJobAbort(bot, info, reason, keepStack)
         Stacking.Release(info.campIdx, pid)
     end
     local token = string.gsub(reason, "%s+", "-")
-    local ____Telemetry_Event_7 = Telemetry.Event
-    local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[info.kind]}, {"camp", info.campIdx})
-    local ____opt_4 = Camps.ByIdx(info.campIdx)
+    local ____Telemetry_Event_9 = Telemetry.Event
+    local ____array_8 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[info.kind]}, {"camp", info.campIdx})
+    local ____opt_6 = Camps.ByIdx(info.campIdx)
     __TS__SparseArrayPush(
-        ____array_6,
-        {"key", ____opt_4 and ____opt_4.key},
+        ____array_8,
+        {"key", ____opt_6 and ____opt_6.key},
         {"reason", token},
         {"phase", info.phase},
         {"acted", info.acted},
         {"divert", info.divert}
     )
-    ____Telemetry_Event_7(
+    ____Telemetry_Event_9(
         "lane_job_abort",
-        {__TS__SparseArraySpread(____array_6)}
+        {__TS__SparseArraySpread(____array_8)}
     )
-    local ____HDebug_Log_12 = HDebug.Log
-    local ____string_format_11 = string.format
-    local ____array_10 = __TS__SparseArrayNew(
+    local ____HDebug_Log_14 = HDebug.Log
+    local ____string_format_13 = string.format
+    local ____array_12 = __TS__SparseArrayNew(
         "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
         bot:GetPlayerID(),
         LOG_KIND[info.kind],
         info.campIdx
     )
-    local ____opt_8 = Camps.ByIdx(info.campIdx)
-    __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, info.divert)
-    ____HDebug_Log_12(
+    local ____opt_10 = Camps.ByIdx(info.campIdx)
+    __TS__SparseArrayPush(____array_12, ____opt_10 and ____opt_10.key or "-", token, info.divert)
+    ____HDebug_Log_14(
         "lane",
-        ____string_format_11(__TS__SparseArraySpread(____array_10))
+        ____string_format_13(__TS__SparseArraySpread(____array_12))
     )
 end
 --- A double pull aborted in its second stage still grades the first pull.
@@ -1057,13 +1073,13 @@ local function notePlan(bot, s, now, fields)
         s,
         LaneState.Enemies(bot, s.lane)
     )
-    local ____Telemetry_Event_16 = Telemetry.Event
-    local ____array_15 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_18 = Telemetry.Event
+    local ____array_17 = __TS__SparseArrayNew(
         {"pid", pid},
         unpack(fields)
     )
     __TS__SparseArrayPush(
-        ____array_15,
+        ____array_17,
         {"owner", mayRun and "ok" or why},
         {"eq", s.eqPos},
         {"meet", s.meetAmount},
@@ -1078,9 +1094,9 @@ local function notePlan(bot, s, now, fields)
         {"tower", s.ourTowerAmount},
         {"etower", s.theirTowerAmount}
     )
-    ____Telemetry_Event_16(
+    ____Telemetry_Event_18(
         "lane_plan",
-        {__TS__SparseArraySpread(____array_15)}
+        {__TS__SparseArraySpread(____array_17)}
     )
 end
 local function schedule(bot)
@@ -1186,13 +1202,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_27
+    local ____temp_29
     if data ~= nil then
-        ____temp_27 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_29 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_27 = nil
+        ____temp_29 = nil
     end
-    local spawner = ____temp_27
+    local spawner = ____temp_29
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1225,6 +1241,9 @@ function ____exports.Abort(bot, reason)
     if not LaneConfig.IsActive() then
         return
     end
+    if stackTaskRunning(bot) then
+        Tasks.Cancel(bot, "cancelled", reason)
+    end
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
         abort(bot, job, reason)
@@ -1236,6 +1255,10 @@ function ____exports.Desire(bot)
     end
     local now = DotaTime()
     settleStack(bot, now)
+    if stackTaskRunning(bot) then
+        Tasks.Tick(bot)
+        return stackTaskRunning(bot) and ____exports.DesireOf("stack") or 0
+    end
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
         if job.kind == "stack" and job.phase == "exit" and now >= (job.exitUntil or now) then
@@ -1270,11 +1293,10 @@ function ____exports.Desire(bot)
     if not bot:IsAlive() then
         return 0
     end
-    local started = anyJobFlag() and schedule(bot)
-    if not started and LaneConfig.IsOn("Stack") then
-        started = scheduleStack(bot, now)
+    if anyJobFlag() and schedule(bot) then
+        return ____exports.DesireOf(jobs[bot:GetPlayerID()].kind)
     end
-    return started and ____exports.DesireOf(jobs[bot:GetPlayerID()].kind) or 0
+    return LaneConfig.IsOn("Stack") and scheduleStack(bot, now) and ____exports.DesireOf("stack") or 0
 end
 local function overlay(bot, job)
     HDebug.Text(
@@ -1322,17 +1344,17 @@ function ____exports.CampNeutral(bot, campIdx)
         false
     ) or ({})) do
         do
-            local __continue169
+            local __continue175
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue169 = true
+                    __continue175 = true
                     break
                 end
                 if not Camps.InBox(
                     campIdx,
                     n:GetLocation()
                 ) then
-                    __continue169 = true
+                    __continue175 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1343,9 +1365,9 @@ function ____exports.CampNeutral(bot, campIdx)
                     best = n
                     bestDist = d
                 end
-                __continue169 = true
+                __continue175 = true
             until true
-            if not __continue169 then
+            if not __continue175 then
                 break
             end
         end
@@ -1394,10 +1416,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue196
+            local __continue202
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue196 = true
+                    __continue202 = true
                     break
                 end
                 if dist2D(
@@ -1406,9 +1428,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue196 = true
+                __continue202 = true
             until true
-            if not __continue196 then
+            if not __continue202 then
                 break
             end
         end
@@ -1491,10 +1513,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue210
+            local __continue216
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue210 = true
+                    __continue216 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1504,9 +1526,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue210 = true
+                __continue216 = true
             until true
-            if not __continue210 then
+            if not __continue216 then
                 break
             end
         end
@@ -1650,6 +1672,10 @@ function ____exports.Think(bot)
     if not LaneConfig.IsActive() then
         return false
     end
+    if stackTaskRunning(bot) then
+        Tasks.Step(bot, BotMode.Farm)
+        return stackTaskRunning(bot)
+    end
     local job = jobs[bot:GetPlayerID()]
     if not isLive(job) then
         return false
@@ -1664,6 +1690,9 @@ end
 function ____exports.OnEnd(bot)
     if not LaneConfig.IsActive() then
         return
+    end
+    if stackTaskRunning(bot) then
+        Tasks.Cancel(bot, "cancelled", "mode-end")
     end
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then

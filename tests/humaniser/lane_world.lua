@@ -175,7 +175,7 @@ function LaneFresh(laneCfg, extra)
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry })
+		Telemetry = extra.telemetry, Tasks = extra.tasks })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

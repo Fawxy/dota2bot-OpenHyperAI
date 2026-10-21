@@ -19,6 +19,7 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -110,6 +111,23 @@ let pendingStacks: Record<number, PendingStack> = {};
 let skipped: Record<number, number> = {};
 /** Gates of the bot's lane_plan events in its latest wave cycle. */
 let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
+
+/** stack_task.ts, registered at its load (it imports this module). */
+export interface StackTask {
+    Start(this: void, bot: Unit, plan: StackPlan): boolean;
+    UpcomingWithin(this: void, bot: Unit, seconds: number): boolean;
+}
+
+let stackTask: StackTask | undefined;
+
+export function SetStackTask(t: StackTask): void {
+    stackTask = t;
+}
+
+/** The only thing camp jobs ask of a stack task. */
+function stackTaskRunning(bot: Unit): boolean {
+    return Tasks.Current(bot)?.name === "stack";
+}
 
 export function ResetCache(): void {
     jobs = {};
@@ -319,6 +337,7 @@ export function PlanStack(bot: Unit, req: JobRequest): StackPlan | undefined {
 function startStack(bot: Unit, req: JobRequest): boolean {
     const plan = PlanStack(bot, req);
     if (plan === undefined) return false;
+    if (stackTask !== undefined && stackTask.Start(bot, plan)) return true;
     Stacking.Reserve(plan.campIdx, bot.GetPlayerID(), plan.exitUntil);
 
     register(
@@ -437,10 +456,11 @@ function isLive(job: Job | undefined): job is Job {
 /** Cheap: a config read, then a table lookup; false before any engine call when the lane system is off. */
 export function Active(bot: Unit): boolean {
     if (!LaneConfig.IsActive()) return false;
-    return isLive(jobs[bot.GetPlayerID()]);
+    return isLive(jobs[bot.GetPlayerID()]) || stackTaskRunning(bot);
 }
 
 export function UpcomingWithin(bot: Unit, seconds: number): boolean {
+    if (stackTask !== undefined && stackTask.UpcomingWithin(bot, seconds)) return true;
     const job = jobs[bot.GetPlayerID()];
     if (job === undefined || (job.phase !== "travel" && job.phase !== "wait")) return false;
     return job.aggroAt - DotaTime() <= seconds;
@@ -807,6 +827,7 @@ function preempted(bot: Unit, job: Job, now: number): boolean {
 /** Ends a live job from outside the executor (farm mode starting a run). */
 export function Abort(bot: Unit, reason: string): void {
     if (!LaneConfig.IsActive()) return;
+    if (stackTaskRunning(bot)) Tasks.Cancel(bot, "cancelled", reason);
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) abort(bot, job, reason);
 }
@@ -815,6 +836,11 @@ export function Desire(bot: Unit): number {
     if (!LaneConfig.IsActive()) return 0;
     const now = DotaTime();
     settleStack(bot, now);
+    if (stackTaskRunning(bot)) {
+        // Ticked here as well, so the task's checks end it in GetDesire as the legacy job's do.
+        Tasks.Tick(bot);
+        return stackTaskRunning(bot) ? DesireOf("stack") : 0;
+    }
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) {
         if (job.kind === "stack" && job.phase === "exit" && now >= (job.exitUntil ?? now)) {
@@ -834,9 +860,8 @@ export function Desire(bot: Unit): number {
         return DesireOf(job.kind);
     }
     if (!bot.IsAlive()) return 0;
-    let started = anyJobFlag() && schedule(bot);
-    if (!started && LaneConfig.IsOn("Stack")) started = scheduleStack(bot, now);
-    return started ? DesireOf(jobs[bot.GetPlayerID()].kind) : 0;
+    if (anyJobFlag() && schedule(bot)) return DesireOf(jobs[bot.GetPlayerID()].kind);
+    return LaneConfig.IsOn("Stack") && scheduleStack(bot, now) ? DesireOf("stack") : 0;
 }
 
 // ---------------------------------------------------------------------------------------------- think
@@ -1153,6 +1178,10 @@ function step(bot: Unit, job: Job): boolean {
 
 export function Think(bot: Unit): boolean {
     if (!LaneConfig.IsActive()) return false;
+    if (stackTaskRunning(bot)) {
+        Tasks.Step(bot, BotMode.Farm);
+        return stackTaskRunning(bot);
+    }
     const job = jobs[bot.GetPlayerID()];
     if (!isLive(job)) return false;
     job.acted = true;
@@ -1165,6 +1194,7 @@ export function Think(bot: Unit): boolean {
 
 export function OnEnd(bot: Unit): void {
     if (!LaneConfig.IsActive()) return;
+    if (stackTaskRunning(bot)) Tasks.Cancel(bot, "cancelled", "mode-end");
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) abort(bot, job, "mode-end");
 }
