@@ -531,7 +531,7 @@ Skip this task and record why in `HUMANISER_DEV.md` if the spike found draws unu
   - track `now..now+2` in grey (128,128,128)
   - start window green (0,255,0), or cyan (0,255,255) for a deny, or amber (255,191,0) when uncertain
   - a white "now" tick at the left end
-  - once the subject is swinging at this creep, a blue (80,160,255) tick at `swingStart`
+  - once the subject's `anim` is `swing` or `followthrough` on this creep, a blue (80,160,255) tick at `swingStart`
 - **HP style:**
   - axis `0..maxHP`, with the current HP filled in grey
   - a white line at `effDmg`
