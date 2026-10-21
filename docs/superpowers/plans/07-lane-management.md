@@ -76,7 +76,7 @@ These are this plan's resolutions of unspecified numbers. Keep them as named con
 - Cooldowns: `pulling in 5` 60 s; counter-play telegraphs 60 s each; `stacked big camp` 120 s (spec).
 - Aggro: `AggroCooldown = 2.3` s between draws by the same bot; walk-back 1.5 s / up to 400 units.
 - Block window: 0:00 to 0:30, or until enemy lane creeps are within 700 of our lead creep.
-- Harass positioning for high skill from `HarassPositionSkill = 0.6`; random-time harass interval 4–8 s for skill < 0.5.
+- Harass positioning for high skill from `HarassPositionSkill = 0.6`; random-time harass interval 4–8 s for skill < 0.5. That random poke is the shared tool's idle poke on a different interval (task 11).
 - Partner-danger radius 1,200; contest-camp path safety: no other enemy last seen within 1,500 of the route in the last 5 s.
 - Mid pre-rune shove window: rune spawn − 20 s to rune spawn − 15 s (spec "15–20 s").
 - Pull data second formats (PF8): pull and half-pull seconds are stored as `[s, s + 30]` with `s` in [0, 30) (both waves of the minute); stack seconds are stored mod 60.
@@ -97,7 +97,7 @@ These are this plan's resolutions of unspecified numbers. Keep them as named con
 8. In-lane techniques: block, aggro pull and drop, tower aggro, freeze, shove; laning `Think()` hooks
 9. Camp-job executor and pulls (full, half, double), farm-mode hooks, `!hpulltest`
 10. Stacking (Phase D), stack pull, `!hstacktest`
-11. Harass timed to last hits (Phase E)
+11. One shared harass tool: timed last-hit punish plus 04's idle poke (Phase E)
 12. Mid lane playbook (B3) and the rune-time helper
 13. Counter-play (Phase F)
 14. Docs, test plan, regression consolidation
@@ -721,7 +721,7 @@ Build twice + clean status; `npm run check`.
 - Create `typescript/bots/FunLib/humaniser/lane_tech.ts`.
 - Modify `lane.ts`: export `OwnsLaning`, `PreThink`, `Think`, `AdjustPosition`, `PickDeny` (returns undefined until task 12), `SupersedesHarass` (false until task 11).
 - Modify `localization.lua`: `say_lane_shove_rotate = {"shoving then rotating"}` (en + other tables, PF14: used by the shove-before-rotating start below).
-- Modify `bots/mode_laning_generic.lua` (minimal diff). Keep `bHumaniserLaning = AllyLastHit.OwnsLaning(bot)` and `fLastHitFilter` exactly as they are (PF5: 04's last-hit filter and 04's harass stay tied to 04's ownership, so enemy bots under `'all'` do not get 04 etiquette). Add below them:
+- Modify `bots/mode_laning_generic.lua` (minimal diff). Keep `bHumaniserLaning = AllyLastHit.OwnsLaning(bot)` and `fLastHitFilter` exactly as they are (04's last-hit filter stays tied to 04's ownership, so enemy bots under `'all'` do not get 04 etiquette; task 11 replaces the harass step with the shared tool). Add below them:
   ```lua
   local Lane = J.Humaniser.Lane
   local bLaneLaning = Lane.OwnsLaning(bot)
@@ -730,7 +730,7 @@ Build twice + clean status; `npm run check`.
   - first line: `if bLaneLaning and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end`
   - deny: `local denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)`
   - after deny, before 04's harass: `if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end`
-  - 04 harass line becomes `if bHumaniserLaning and not (bLaneLaning and Lane.SupersedesHarass(bot)) and HarassThink() then return end` (PF5)
+  - 04's harass line `if bHumaniserLaning and HarassThink() then return end` is left unchanged in this task; task 11 replaces it with the shared-tool call
   - before the final move: `if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end`
 - Create `tests/humaniser/test_lane_tech.lua`.
 
@@ -914,43 +914,82 @@ Build twice + clean status; `npm run check`.
 
 ---
 
-## Task 11: Harass timed to last hits (Phase E)
+## Task 11: One shared harass tool (Phase E, merged with 04's idle poke)
+
+**Goal:** `harass.ts` is the single harass implementation. It does Phase E's timed last-hit punish. When no punish fires, it does an idle poke equivalent to 04's `HarassThink`; Phase E's low-skill random poke is the same idle poke on a different interval, not a second mechanism. Both laning-Think owners call it: 04 (allies of humans) and 07 (`Lane.OwnLaningThink`). With `Lane.Harass` on, every bot whose laning Think is taken over, by 04 or by 07, uses the shared tool. This replaces PF5's "only bots 07 owns" rule. With `Lane.Harass` off, or every lane flag off, 04's `HarassThink` runs unchanged (regression scenario 15). 04's last-hit etiquette (`fLastHitFilter`, `MayLastHit`, `FilterCreeps`) is not touched.
 
 ### Files
 - Create `typescript/bots/FunLib/humaniser/harass.ts`.
-- Modify `lane.ts`: `SupersedesHarass(bot)` returns `LaneTech.OwnsLaning(bot) && LaneConfig.IsOn("Harass")` (PF5: only bots whose laning Think task 07 owns; Lua also checks `bLaneLaning`); `Think` calls `Harass.Think` after the technique logic (so a running technique wins); `AdjustPosition` uses `Harass.StandPoint` when no technique overrides.
+- Modify `lane.ts`: export `SupersedesHarass(bot)` = `LaneConfig.IsActive() && LaneConfig.IsOn("Harass")`. It no longer checks `LaneTech.OwnsLaning`, because the Lua only asks for bots whose Think is owned by 04 or 07. Also export `HarassThink(bot, allyCreeps, enemyCreeps, enemies, etiquette)` → `Harass.Think`. `Lane.Think` (task 8) does **not** call harass, so harass runs exactly once per frame, at 04's Harass step. `AdjustPosition` uses `Harass.StandPoint` when no technique overrides (07-owned bots only, since only they call `AdjustPosition`).
+- Modify `lane_config.ts` `LaneHelpers`: add `IsValidHero?: (this: void, u: Unit) => boolean` and `IsSuspiciousIllusion?: (this: void, u: Unit) => boolean`. Modify `jmz_func.lua`'s `Lane.SetHelpers` table: `IsValidHero = function(u) return J.IsValidHero(u) end`, `IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end`. `lane_world.lua`'s `LaneFresh` stubs both: valid if alive; illusion if `u.illusion`.
+- Modify `bots/mode_laning_generic.lua`: only the harass line inside `Think()` changes. `local function HarassThink()` and its state locals (`harassTarget`, `harassStartTime`, `lastHarassTime`) stay byte-for-byte as they are now. The line `if bHumaniserLaning and HarassThink() then return end` (as task 8 left it) becomes:
+  ```lua
+  if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
+      if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return end
+  elseif bHumaniserLaning and HarassThink() then return end
+  ```
+- Create `tests/humaniser/ref_harass_04.lua`. It holds a verbatim copy of 04's `HarassThink` body from `bots/mode_laning_generic.lua`, wrapped as `return function(env) ... end`: `bot`, `J`, `AllyLastHit`, `nInRangeEnemy`, `botAttackRange` and the three state locals come from `env`, and the body text is unchanged. It is the reference for the equivalence tests.
 - Create `tests/humaniser/test_lane_harass.lua`.
 
 ### Exports
 ```ts
+export interface HarassGates {          // the inputs that differ by owner
+    etiquette: boolean;                 // true when 04 owns this bot (ally of a human)
+    interval: number; window: number; idleExtraRange: number; minHP: number; towerAvoidRange: number;
+    needProtectedHuman: boolean; needStronger: boolean;
+}
+export function GatesFor(bot: Unit, etiquette: boolean): HarassGates;
 export function IsLastHitAttempt(enemy: Unit, ourCreeps: Unit[]): Unit | undefined; // the creep the enemy is about to last-hit, or undefined
 export function TowerForbids(botLevel: number, nearEnemyTower: boolean, targetHP: number): boolean; // level < HarassTowerLevel (6) && near && targetHP >= HarassTowerTargetHP (0.3)
 export function AggroDance(enemyCreepsWithin500: number): boolean;   // >= AggroDanceCreeps (3)
 export function Capitalises(skill: number): boolean;                 // exactly one RandomFloat draw: Roll(Curve("HarassCapitalise", skill)); called first on a new attempt
 export function StandPoint(bot: Unit, enemy: Unit, ourCreeps: Unit[]): Vector | undefined;  // skill >= 0.6 only
-export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean;
+export function IdlePoke(bot: Unit, enemies: Unit[], g: HarassGates): boolean;  // 04-equivalent poke
+export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], etiquette: boolean): boolean; // timed punish first, then IdlePoke
+export function RegisterSpellHarass(heroName: string, fn: (this: void, bot: Unit, enemy: Unit) => boolean): void;
 ```
 
 ### Behaviour
-- Candidates: every visible enemy hero (from the perception-filtered `enemies` list) within `bot.GetAttackRange() + HarassExtraRange (100)`. Do not filter illusions by modifier: reading `modifier_illusion` on enemies is the cheat the README's extras call out.
-- **IsLastHitAttempt**: (a) `enemy.GetAttackTarget()` is one of our lane creeps and `Helpers().WillKillTarget(creep, enemy.GetAttackDamage(), DAMAGE_TYPE_PHYSICAL, Helpers().GetAttackProDelayTime(enemy, creep))` → that creep; or (b) the enemy is moving toward a creep (distance from `GetExtrapolatedLocation(Radii.ApproachExtrapolate)` to the creep at least `Thresholds.ApproachEpsilon` (25) smaller than the current distance) whose HP ≤ `enemy.GetAttackDamage()` → that creep.
-- **Response** (per enemy, weak-keyed state `{ attemptCreep, rolled, fireAt }`): on a new attempt (new creep), first call `Capitalises(skill)` (one draw), and only on success draw the delay: `fireAt = now + Profile.SampleDelay(bot, "react")` (+ `RandomFloat(0, Timing.LowSkillHarassExtra)` extra when skill < 0.5, the "random timing" of low-skill bots). At `fireAt`, if the enemy is still in range: check manners, then `Action_AttackUnit(enemy, true)` once. Log `[H:lane] harass pid=.. punished=<bool>`.
-  - Optional spell harass (spec's `X.ConsiderHarass()`): expose `Harass.RegisterSpellHarass(heroName: string, fn: (bot, enemy) => boolean)`; when a function is registered for the bot's hero, call it instead of the right-click. No hero file registers one in this task (unit fields are not used for this).
-- **Manners**: enemy lane creeps within `Thresholds.AggroDanceRadius` (500) of the bot ≥ 3 → aggro dance: attack once, then move `Radii.AggroDanceStep` (250) toward our base for `Timing.AggroDanceBack` (1) s. `TowerForbids` with near = bot or enemy within `EnemyTowerRange` (850) of an enemy tower (from `bot.GetNearbyTowers(1600, true)`).
-- **Low skill random harass**: skill < 0.5: every `RandomFloat(Timing.RandomHarassMin, Timing.RandomHarassMax)` (4–8) s, right-click the nearest visible enemy laner once if manners allow, regardless of last-hit attempts.
-- Harass runs under every plan except `handsOff`.
-- **StandPoint** (skill ≥ `Gates.HarassPosition` 0.6): our lane creep with the lowest HP within `Radii.LowHpCreep` (700) of the enemy (their likely last-hit target); point at distance `bot.GetAttackRange() - Radii.HarassStandBack` (50) from that creep on our side (toward our base along the lane). Not under the enemy tower.
+- **GatesFor**:
+  - etiquette (04 owns the bot): read the values from `AllyLastHit.Settings()`, so 04's Customize overrides still apply. `interval = HarassInterval` (2.5), `window = HarassWindow` (1.2), `idleExtraRange = HarassExtraRange` (300), `minHP = HarassMinHP` (0.5), `towerAvoidRange = TowerAvoidRange` (850), `needProtectedHuman = true`, `needStronger = true`. These are 04's etiquette gates, now inputs to the shared tool.
+  - not etiquette (07-only bot): mirror keys in Lane `DEFAULTS` (add `Harass: { IdleInterval: 2.5, IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 }`), with `needProtectedHuman = false` and `needStronger = true`. A bot with skill < 0.5 uses `interval = RandomFloat(Timing.RandomHarassMin, Timing.RandomHarassMax)` (4–8 s), redrawn after each poke. This is Phase E's low-skill random poke, merged into the idle poke. A bot with skill ≥ 0.5 and no etiquette has no idle poke: it only punishes last-hit attempts.
+  - Etiquette always wins: a bot that is both an ally of a human and low skill uses 04's 2.5 s interval.
+- **IdlePoke** is a port of 04's `HarassThink` with the gates as parameters. It keeps the same statement order and the same engine calls in the same order, so the traces match the reference (see tests). Per-pid state `{ target, startAt, lastAt }`:
+  1. If `target` is valid (`Helpers().IsValidHero`), `now - startAt < window` and `bot.GetLastAttackTime() < startAt` → `Action_AttackUnit(target, true)` and return true.
+  2. Clear `target`. If `now - lastAt < interval` or HP < `minHP` → return false.
+  3. If `needProtectedHuman` and `AllyLastHit.GetProtectedHuman(bot, bot.GetLocation())` is nil → false. If `needStronger` and not `Helpers().WeAreStronger(bot, 1200)` → false.
+  4. `towers = bot.GetNearbyTowers(1600, true)`. Pick the nearest enemy from `enemies` that is valid, not `IsSuspiciousIllusion`, and within `bot.GetAttackRange() + idleExtraRange`, skipping any enemy where an enemy tower is within `towerAvoidRange` of the bot or of the enemy.
+  5. No target → false. Otherwise set `target`, `startAt = lastAt = now`, call `Action_AttackUnit(target, true)` and return true.
+  - 04 uses `J.IsSuspiciousIllusion`, so the shared tool does too, via the helper. This supersedes this plan's earlier note against filtering illusions; see the conflict note in the report.
+- **Think**: if `plan.handsOff` for this bot's lane → false. Then:
+  - **Timed punish.** Phase E as before. Candidates are visible enemies within attack range + `HarassExtraRange` (100). `IsLastHitAttempt` (a) or (b). On a new attempt, `Capitalises` is drawn first, then `Profile.SampleDelay(bot, 'react')`, plus `RandomFloat(0, LowSkillHarassExtra)` when skill < 0.5. At `fireAt`, run the manners checks and then `Action_AttackUnit(enemy, true)` once (or the registered spell harass), and count it as a poke (`lastAt = now`).
+  - **Manners.** Aggro dance when ≥ 3 enemy creeps are within 500. `TowerForbids` applies to every bot. Etiquette bots must also pass their gates: HP ≥ `minHP`, `WeAreStronger`, and no enemy tower within `towerAvoidRange` of either unit, which is stricter than `TowerForbids`.
+  - **Idle poke.** If nothing fired → `IdlePoke(bot, enemies, GatesFor(bot, etiquette))`.
+- **StandPoint**: unchanged (skill ≥ `Gates.HarassPosition` 0.6, lowest-HP creep within `Radii.LowHpCreep`, attack range − `Radii.HarassStandBack`). Only 07-owned bots use it.
+- Log: `[H:lane] harass pid=.. kind=<punish|poke> etiquette=<bool>`.
 
 ### Tests (`test_lane_harass.lua`)
 - `attempt detection (a)`: enemy targeting our creep with HP 30 and damage 40 → that creep; HP 60 → undefined.
 - `attempt detection (b)`: enemy moving toward a 35-HP creep (extrapolated closer) with damage 40 → creep; moving away → undefined.
-- `capitalise rate` (scenario 8, PF10): 20 simulated attempts; before attempt k (0..19) reset the queue to `{0.025 + 0.05k, 0.5, 0.5, 0.5}` so the capitalise roll is the first draw and `SampleDelay`/the low-skill extra consume the rest. Skill 0.9 punishes exactly 16 (rate 0.79), skill 0.2 exactly 7 (rate 0.37); with `Harass = false` 0 (control that the counts come from the code).
-- `reaction delay respected`: attack is not issued at the attempt frame, is issued at `now + react delay`.
-- `aggro dance`: 3 enemy creeps within 500 → one attack, then a move toward our base; 2 creeps → no move.
-- `tower rule`: bot level 5 near enemy tower, target 50% → no attack; target 25% → attack; level 6 → attack.
-- `low skill random harass`: skill 0.3 with no attempts for 9 s → one attack; skill 0.9 → none.
-- `supersedes 04 harass` (PF5): `SupersedesHarass` true for an owned bot with Harass on; false with Harass off; false with Harass on but `OwnLaningThink = 'off'` (the bot keeps 04's HarassThink).
-- `out of range ignored`: enemy at attack range + 150 → no state created.
+- `capitalise rate` (scenario 8, PF10): 20 simulated attempts. Before attempt k (0..19), reset the queue to `{0.025 + 0.05k, 0.5, 0.5, 0.5}`. Skill 0.9 punishes exactly 16; skill 0.2 exactly 7; with `Harass = false`, `SupersedesHarass` is false and `Lane.HarassThink` is not called (control).
+- `reaction delay respected`: no attack at the attempt frame; one attack at `now + react delay`.
+- `aggro dance`, `tower rule` (level 5 near the tower: target 50% → none, 25% → attack, level 6 → attack), `out of range ignored`: as before.
+- `etiquette gates block punish`: etiquette bot with HP 45%, or `WeAreStronger` false, or an enemy tower 800 from the target → no punish even on a detected attempt. The same setup without etiquette → punish (where `TowerForbids` allows).
+- `low-skill random poke is the idle poke`: 07-only bot, skill 0.3, no attempts. With the interval draw at 4 s there is exactly one poke in the first 4.5 s, and its action log matches `IdlePoke`'s (no second mechanism). Skill 0.9 without etiquette → no idle poke at all. Etiquette + skill 0.3 → pokes every 2.5 s.
+- `punish then idle share the timer`: a punish at T sets `lastAt`, so an etiquette bot's idle poke cannot fire again before T + 2.5.
+- `shared tool for 04-owned bot with OwnLaningThink off` (replaces PF5): `Lane = { OwnLaningThink = 'off', Harass = true }`, ally of a human → `Lane.OwnsLaning` false, `AllyLastHit.OwnsLaning` true, `SupersedesHarass` true. Calling `Lane.HarassThink(..., etiquette = true)` with a detected last-hit attempt issues the punish, which 04's `HarassThink` never would.
+- `supersedes gate`: true with `Harass` on; false with `Harass = false`; false with `Lane.Enable = false`; false with every lane flag off (PF4).
+- `04 HarassThink text pinned` (scenario 15): read `bots/mode_laning_generic.lua` with `io.open`, extract the text from `local function HarassThink()` to its closing `end`, and assert it equals the body stored in `ref_harass_04.lua`, compared as strings. This fails if anyone edits 04's function.
+- `idle poke equals 04` (equivalence): run `ref_harass_04.lua` and `Harass.IdlePoke(bot, enemies, GatesFor(bot, true))` on identical stub worlds through scripted 6 s scenarios (0.1 s steps), and assert identical `ACTIONS` logs and return values per frame. Scenarios:
+  - window re-issue (attack not yet landed within 1.2 s)
+  - interval (2.5 s)
+  - HP 49%
+  - no protected human
+  - `WeAreStronger` false
+  - tower within 850 of the bot, then of the enemy
+  - two enemies (nearest chosen)
+  - an illusion skipped
+  - enemy at attack range + 301
 
 ### Verification
 Build twice + clean status; `npm run check`.
@@ -1077,7 +1116,7 @@ Build twice + clean status; `npm run check`.
 
 ### Files
 - Modify `docs/HUMANISER_DEV.md`: new section `## Lane management (07)` in the style of the 04/05/06 sections:
-  - Module map (`lane_config`, `lane_hooks` (probe registry that keeps imports one-directional), `camps_data`, `camps`, `lane_state`, `lane_plan`, `lane_roles`, `lane_planner`, `lane_tech`, `camp_jobs`, `stacking`, `harass`, `lane_mid`, `counterplay`, `lane_debug`, facade `lane`), flags table (`Customize.Humaniser.Lane.*` with defaults and what each disables), `OwnLaningThink` semantics and blast radius (`'all'` gives every bot, enemies included, OHA's laning Think for the whole game; 04's last-hit filter and harass stay limited to allies of humans, and Phase E replaces 04's harass only for bots 07 owns).
+  - Module map (`lane_config`, `lane_hooks` (probe registry that keeps imports one-directional), `camps_data`, `camps`, `lane_state`, `lane_plan`, `lane_roles`, `lane_planner`, `lane_tech`, `camp_jobs`, `stacking`, `harass`, `lane_mid`, `counterplay`, `lane_debug`, facade `lane`), flags table (`Customize.Humaniser.Lane.*` with defaults and what each disables), `OwnLaningThink` semantics and blast radius (`'all'` gives every bot, enemies included, OHA's laning Think for the whole game. 04's last-hit filter stays limited to allies of humans. With `Lane.Harass` on, every bot whose Think 04 or 07 owns uses the single shared harass tool in `harass.ts`: timed punish plus an idle poke equivalent to 04's, with 04's gates as inputs for allies of humans. With it off, 04's `HarassThink` runs unchanged).
   - Design notes: lane snapshot shared per lane, exposure/laneScore per observer; planner re-decides live with one attempt roll and one committed technique per wave cycle; camp-job window gates only the start; `IsActive()` (Lane on and any consumer flag on) gates every engine call.
   - Data method: seeds (sources and access date 21/10/2026), replay mining usage (`tools/replay-mining`: fetch, `go run ./parser`, `detect.js`, `gen_camps.js`), measurement (`-condebug`, `!hpt`, `!hcamp`, `!hstacktest`, `!hpulltest`, `parse_condebug.js`), how to promote an entry to `source: 'measured'` with `verifiedAt` dd/mm/yyyy.
   - Overlay line format and log line formats (`[H:lane] job ...`, `stack ...`, `harass ...`, `mistake ...`).
@@ -1090,7 +1129,7 @@ Build twice + clean status; `npm run check`.
 For each config in `{ Humaniser.Enable=false }`, `{ Lane = { Enable = false } }`, `{ Lane = { Enable = true, <every flag false> } }`:
 - `IsActive()` false (PF4; for the third config this is the case `Enable = true` with only `Telegraph` left on as well).
 - `OwnsLaning` false for an ally of a human and for an enemy bot under `OwnLaningThink = 'all'`.
-- `PreThink`, `Think`, `CampJobThink` return false; `AdjustPosition(bot, v)` returns `v` (same table); `PickDeny` nil; `CampJobDesire` 0; `RuneContestDesire` 0; `PreferStackedCamp` nil; `SupersedesHarass` false.
+- `PreThink`, `Think`, `CampJobThink` return false; `AdjustPosition(bot, v)` returns `v` (same table); `PickDeny` nil; `CampJobDesire` 0; `RuneContestDesire` 0; `PreferStackedCamp` nil; `SupersedesHarass` false (so the Lua runs 04's unchanged `HarassThink`; its text is pinned by task 11's `04 HarassThink text pinned` test).
 - No action recorded, `GETUNITLIST_CALLS` zero after ticking `Lane.Tick` for 10 s of game time (valid for the all-flags-off config because of PF4), no `[H:lane]` output.
 - `!freeze bot`, `!stack` post no orders; a lane-front ping during laning classifies as GATHER exactly as before.
 - Positive control in the same file: with defaults on, the same world produces behaviour for each assertion group (`OwnsLaning` true, `CampJobDesire` 0.7 in a pull window for a pos 5 owner, `GETUNITLIST_CALLS > 0`, `!freeze bot` posts a `LANE_FREEZE`, the ping posts `LANE_HANDSOFF`), proving each check can fail.
