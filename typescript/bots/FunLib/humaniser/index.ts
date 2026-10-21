@@ -99,6 +99,7 @@ function drawOverlay(bot: Unit): void {
 export function Tick(bot: Unit): void {
     if (!Config.IsEnabled()) return;
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    Chat.SetLogger((line) => HDebug.Log("chat", line));
     Chat.EnsureInstalled(bot);
     Difficulty.Init();
     if (testHandlerTeams[bot.GetTeam()] !== true) {

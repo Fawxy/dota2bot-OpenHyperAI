@@ -22,6 +22,18 @@ const LOG_LIMIT = 50;
 
 const subscribers: Record<string, Handler> = {};
 const subscriberOrder: string[] = [];
+
+// Injected by index.ts (this module has no deps). OHA's print override hides plain print().
+let logger: ((this: void, line: string) => void) | undefined;
+export function SetLogger(fn: (this: void, line: string) => void): void {
+    logger = fn;
+}
+
+function describeEvent(event: any): string {
+    const keys: string[] = [];
+    for (const [k, v] of pairs(event)) keys.push(`${tostring(k)}=${tostring(v)}`);
+    return keys.join(" ");
+}
 const recent: ChatMessage[] = [];
 let installed = false;
 
@@ -33,15 +45,22 @@ function isDuplicate(msg: ChatMessage): boolean {
 }
 
 function onChat(this: void, event: ChatEvent): void {
+    if (logger !== undefined) logger(`recv ${event === undefined ? "nil" : describeEvent(event)}`);
     if (event === undefined || event.string === undefined) return;
     const msg: ChatMessage = { pid: event.player_id, text: event.string, teamOnly: event.team_only === true, time: GameTime() };
-    if (isDuplicate(msg)) return;
+    if (isDuplicate(msg)) {
+        if (logger !== undefined) logger(`dup pid=${msg.pid} text=${msg.text}`);
+        return;
+    }
     recent.push(msg);
     if (recent.length > LOG_LIMIT) recent.shift();
     for (const name of subscriberOrder) {
         const handler = subscribers[name];
         const [ok, err] = pcall(handler, msg);
-        if (!ok) print(`[Humaniser] chat subscriber '${name}' failed: ${tostring(err)}`);
+        if (!ok) {
+            print(`[Humaniser] chat subscriber '${name}' failed: ${tostring(err)}`);
+            if (logger !== undefined) logger(`subscriber_failed name=${name} err=${tostring(err)}`);
+        }
     }
 }
 

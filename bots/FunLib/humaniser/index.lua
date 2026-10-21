@@ -153,6 +153,7 @@ function ____exports.Tick(bot)
     if not bot:IsHero() or bot:IsIllusion() then
         return
     end
+    Chat.SetLogger(function(line) return HDebug.Log("chat", line) end)
     Chat.EnsureInstalled(bot)
     Difficulty.Init()
     if testHandlerTeams[bot:GetTeam()] ~= true then

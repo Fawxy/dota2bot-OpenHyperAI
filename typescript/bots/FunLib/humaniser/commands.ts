@@ -399,17 +399,19 @@ let lastSummary = "-";
 
 /** Chat hub subscriber for one team. Exported for tests. */
 export function HandleMessage(team: number, msg: Chat.ChatMessage): void {
-    if (!IsActive() || GetGameState() !== GameState.GameInProgress) return;
+    const skip = (reason: string) => HDebug.Log("commands", `skip team=${team} reason=${reason} pid=${msg.pid} text=${msg.text}`);
+    if (!IsActive()) return skip("inactive");
+    if (GetGameState() !== GameState.GameInProgress) return skip(`state=${GetGameState()}`);
     if (IsPlayerBot(msg.pid)) return;
     const parsed = Parse(msg.text, team);
-    if (parsed === undefined) return;
+    if (parsed === undefined) return skip("unparsed");
     if (GetTeamPlayers(team).indexOf(msg.pid) < 0) {
         HDebug.Log("commands", `[WARN] ignoring '${msg.text}' from player ${msg.pid}, not on team ${team}`);
         return;
     }
-    if (!msg.teamOnly) return;
+    if (!msg.teamOnly) return skip("not_team_chat");
     const issuer = memberByPID(team, msg.pid);
-    if (issuer === undefined) return;
+    if (issuer === undefined) return skip("issuer_not_found");
 
     const countKey = `${msg.pid}:${string.lower(msg.text)}`;
     const n = (repeatCount[countKey] ?? 0) + 1;
