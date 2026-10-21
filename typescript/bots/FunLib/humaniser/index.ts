@@ -14,12 +14,13 @@ import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, LastHitSkill, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
