@@ -8,6 +8,7 @@ local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
+local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -15,6 +16,7 @@ ____exports.Chat = Chat
 ____exports.Difficulty = Difficulty
 ____exports.Profile = Profile
 ____exports.Orders = Orders
+____exports.Pings = Pings
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -104,6 +106,12 @@ local function drawOverlay(bot)
             "order",
             order ~= nil and Orders.Describe(order) or "-"
         )
+        local avoid = Orders.GetAccepted(bot, "AVOID")
+        HDebug.Text(
+            bot,
+            "avoid",
+            avoid ~= nil and Orders.Describe(avoid) or "-"
+        )
     end
     HDebug.Draw(bot)
 end
@@ -124,6 +132,8 @@ function ____exports.Tick(bot)
         )
     end
     logStart(bot)
+    Pings.Tick(bot)
+    Orders.GetFor(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
 end

@@ -143,6 +143,12 @@ local Localization = {
         say_order_decline_channeling = {"busy, one sec"},
         say_order_decline_low_hp = {"too low, need to heal", "low hp, can't"},
         say_order_decline_far = {"too far, no tp", "can't make it, no tp"},
+        say_order_ack_defend_top = {"ok, defending top", "omw top"},
+        say_order_ack_defend_mid = {"ok, defending mid", "omw mid"},
+        say_order_ack_defend_bot = {"ok, defending bot", "omw bot"},
+        say_order_ack_push_top = {"ok, pushing top", "top, let's go"},
+        say_order_ack_push_mid = {"ok, pushing mid", "mid, let's go"},
+        say_order_ack_push_bot = {"ok, pushing bot", "bot, let's go"},
     },
     zh = {
         welcome_msgs = {

@@ -37,6 +37,20 @@ J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 J.Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
 -- Orders cannot require jmz_func (circular), so ModeAnnounce is injected; resolved at call time.
 J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown) J.ModeAnnounce(bot, key, cooldown) end)
+J.Humaniser.Pings.SetHelpers({
+	roshanLocation = function() return J.GetCurrentRoshanLocation() end,
+	reservedSpots = function()
+		if J.tHumaniserRuneSpots == nil then
+			J.tHumaniserRuneSpots = {}
+			for _, nRune in pairs({ RUNE_POWERUP_1, RUNE_POWERUP_2, RUNE_BOUNTY_1, RUNE_BOUNTY_2, RUNE_BOUNTY_3, RUNE_BOUNTY_4 }) do
+				table.insert(J.tHumaniserRuneSpots, GetRuneSpawnLocation(nRune))
+			end
+		end
+		local spots = { RadiantTormentorLoc, DireTormentorLoc }
+		for _, v in ipairs(J.tHumaniserRuneSpots) do table.insert(spots, v) end
+		return spots
+	end,
+})
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )

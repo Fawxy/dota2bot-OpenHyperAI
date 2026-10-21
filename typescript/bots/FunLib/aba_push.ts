@@ -4,6 +4,8 @@ import Customize = require("bots/Customize/general");
 import { Barracks, BotMode, BotModeDesire, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { IsValidUnit, GetLocationToLocationDistance, RadiantFountainTpPoint, DireFountainTpPoint } from "./utils";
 import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache, getCachedData } from "./global_cache";
+import * as Orders from "bots/FunLib/humaniser/orders";
+import * as Pings from "bots/FunLib/humaniser/pings";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -285,6 +287,14 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     // If Ancient under direct pressure → strongly deprioritize pushes
     if (enemiesAtAncient >= 1) return BotModeDesire.ExtraLow;
 
+    // Humaniser PUSH order (ping or !push): a human asked, so it overrides the push gates below.
+    const pushMode = lane === Lane.Top ? BotMode.PushTowerTop : lane === Lane.Bot ? BotMode.PushTowerBot : BotMode.PushTowerMid;
+    const orderFloor = Orders.DesireFloor(bot, pushMode, lane);
+    if (orderFloor > 0) {
+        (bot as any).laneToPush = lane;
+        return orderFloor as BotModeDesire;
+    }
+
     // --- Push safety gates ---
     // Never push alone when 3+ enemies alive
     if (alliesHere.length <= 1 && gameState.aliveEnemyCount >= 3) {
@@ -366,7 +376,7 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
 
     // Respect allied "attack here" human ping on a tower if it matches lane
     const [human, humanPing] = jmz.GetHumanPing();
-    if (human !== null && humanPing !== null && !humanPing.normal_ping && DotaTime() > 0) {
+    if (!Pings.IsActive() && human !== null && humanPing !== null && !humanPing.normal_ping && DotaTime() > 0) {
         const [isPinged, pingedLane] = jmz.IsPingCloseToValidTower(GetOpposingTeam(), humanPing, 700, 5.0);
         if (isPinged && lane === pingedLane && GameTime() < humanPing.time + pingTimeDelta) {
             return 0.9 as BotModeDesire;
