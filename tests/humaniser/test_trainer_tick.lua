@@ -54,6 +54,8 @@ end
 function Unit:IsAlive() return self.alive and self:GetHealth() > 0 end
 
 local DRAWN = {}
+local LINES = {}
+function DebugDrawLine(a, b, r, g, b2) table.insert(LINES, { a = a, b = b, r = r, g = g, b2 = b2 }) end
 function DebugDrawText(x, y, text, r, g, b) table.insert(DRAWN, { x = x, y = y, text = text, r = r, g = g, b = b }) end
 
 -- Creeps stay out of UNITS so they never show up as team players.
@@ -78,6 +80,7 @@ local function setup(trainerCfg, o)
 	T = o.start or 100
 	WORLD = {}
 	DRAWN = {}
+	LINES = {}
 	CURRENT_TEAM = 2
 	laning = true
 	local cfg = { Enable = true, Debug = o.debug, Trainer = { LastHit = trainerCfg or {} } }
@@ -111,6 +114,7 @@ local function tick(H, bots, n, before, after)
 	for _ = 1, n or 1 do
 		T = T + DT
 		DRAWN = {}
+		LINES = {}
 		if before then before() end
 		for _, b in ipairs(bots) do H.Trainer.Tick(b) end
 		if after then after() end
@@ -397,6 +401,123 @@ do
 	for _ = 1, 12 do H.Trainer.OnCommand(2, 0, {}) end
 	tick(H, bots, 200)
 	check("reply queue holds at most 8 lines", #bots[1].said == 8, #bots[1].said)
+end
+
+local function linesOf(r, g, b)
+	local out = {}
+	for _, l in ipairs(LINES) do if l.r == r and l.g == g and l.b2 == b then table.insert(out, l) end end
+	return out
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local creep = Creep(3, { loc = Vector(100, 50, 10) })
+	tick(H, bots, 4)
+	check("bar draws lines for a visible creep", #LINES >= 4, #LINES)
+	local now = linesOf(255, 255, 255)
+	check("time bar has a white now tick at the left end, 16 tall at z+180",
+		#now == 1 and now[1].a.x == 20 and now[1].b.x == 20 and now[1].a.z == 190 and now[1].b.z == 206 and now[1].a.y == 50, #now)
+	local track = linesOf(128, 128, 128)[1]
+	check("time bar track spans 160 units", track ~= nil and track.b.x - track.a.x == 160)
+	check("control: the window of a lethal creep is green", #linesOf(0, 255, 0) > 0)
+	check("no swing tick before the subject swings", #linesOf(80, 160, 255) == 0)
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local creep = Creep(3, {})
+	tick(H, bots, 4)
+	check("control: bar draws for the creep", #LINES > 0)
+	human.target = creep
+	swingFrames(H, bots, human, creep, 3)
+	check("swing tick is blue while the subject swings at this creep", #linesOf(80, 160, 255) == 1)
+	human.target = nil
+	tick(H, bots, 1, function() human.anim, human.cycle = ATTACK, 0.1 end)
+	check("no swing tick when the swing is at another target", #linesOf(80, 160, 255) == 0)
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	Creep(3, {})
+	tick(H, bots, 4)
+	human.alive = false
+	tick(H, bots, 1)
+	check("bar hidden when the subject is dead", #LINES == 0, #LINES)
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local creep = Creep(3, {})
+	tick(H, bots, 4)
+	creep.loc = Vector(1300, 0)
+	tick(H, bots, 1)
+	check("bar hidden once the creep is far away", #LINES == 0, #LINES)
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	Creep(3, {})
+	tick(H, bots, 4)
+	say(H, "!trainer bar off")
+	tick(H, bots, 2)
+	check("bar hidden when bar is off", #LINES == 0, #LINES)
+	say(H, "!trainer bar on")
+	tick(H, bots, 2)
+	check("bar comes back on", #LINES > 0)
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	Creep(2, { hp = 25 })
+	tick(H, bots, 4)
+	check("deny bar uses cyan", #linesOf(0, 255, 255) > 0 and #linesOf(0, 255, 0) == 0, #linesOf(0, 255, 255))
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local A = T
+	local function caster(damage) return setmetatable({ pid = 802, team = 2, alive = true, loc = Vector(0, 0), modifiers = {}, damage = damage, isHero = false }, Unit) end
+	local creep = Creep(3, { hp = 100, incoming = { { at = A + 1.2, damage = 50, caster = caster(50) }, { at = A + 1.5, damage = 30, caster = caster(30) } } })
+	tick(H, bots, 2)
+	check("control: a stable window is green, not amber", #linesOf(0, 255, 0) > 0 and #linesOf(255, 191, 0) == 0)
+	table.insert(creep.incoming, { at = A + 1.0, damage = 30, caster = caster(30) })
+	tick(H, bots, 8)
+	check("uncertain bar uses amber", #linesOf(255, 191, 0) > 0 and #linesOf(0, 255, 0) == 0)
+end
+
+do
+	local H, human, bots = setup({ BarStyle = "hp" })
+	say(H, "!trainer on")
+	Creep(3, { loc = Vector(100, 0) })
+	tick(H, bots, 4)
+	local marker = linesOf(0, 255, 0)
+	local effDmg = linesOf(255, 255, 255)
+	check("hp bar: ghost marker at the HP when a hit started now would land", #marker == 1 and marker[1].a.x == 60, #marker)
+	check("hp bar: white line at effective damage", #effDmg == 1 and effDmg[1].a.x == 68, #effDmg)
+	local fill = linesOf(128, 128, 128)[1]
+	check("hp bar: grey fill covers current HP", fill ~= nil and fill.a.x == 20 and fill.b.x == 60)
+end
+
+do
+	local H, human, bots = setup()
+	local Draw = require("bots/FunLib/humaniser/trainer/draw")
+	local function pred(creep)
+		return { creep = creep, isDeny = false, startOpen = T, startClose = T + 1, ideal = T + 0.5, uncertain = false, delay = 0.4, effDmg = 30, hp = 25, curve = { 25, 25 }, at = T }
+	end
+	local near = Creep(3, { loc = Vector(1100, 0) })
+	local far = Creep(3, { loc = Vector(1300, 0) })
+	LINES = {}
+	Draw.Bars(human, { pred(far) }, "time", T)
+	check("Bars draws nothing for a creep more than 1200 away", #LINES == 0, #LINES)
+	Draw.Bars(human, { pred(near) }, "time", T)
+	check("control: Bars draws for a creep 1100 away", #LINES > 0)
 end
 
 finish()

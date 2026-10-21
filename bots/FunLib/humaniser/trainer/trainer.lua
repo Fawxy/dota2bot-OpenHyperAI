@@ -255,6 +255,16 @@ local function __TS__ArraySome(self, callbackfn, thisArg)
     end
     return false
 end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -287,6 +297,7 @@ local SelectCreeps = ____watch.SelectCreeps
 local ____stats = require(GetScriptDirectory().."/FunLib/humaniser/trainer/stats")
 local Stats = ____stats.Stats
 local ____draw = require(GetScriptDirectory().."/FunLib/humaniser/trainer/draw")
+local Bars = ____draw.Bars
 local SummaryText = ____draw.SummaryText
 local VerdictLines = ____draw.VerdictLines
 local REPLY_INTERVAL = 0.5
@@ -912,17 +923,23 @@ local function creepObservations(s, st, subject, frame, refs)
     end
     return result
 end
+local function swingOf(u, now)
+    if ATTACK_ACTIVITIES[u:GetAnimActivity()] ~= true then
+        return {anim = "none"}
+    end
+    local cycle = u:GetAnimCycle()
+    return {
+        anim = cycle < u:GetAttackPoint() and "swing" or "followthrough",
+        swingStart = now - cycle / u:GetAttackSpeed()
+    }
+end
 local function subjectObservation(st, subject, target, now)
     local u = T(subject)
     local alive = subject:IsAlive()
     local inFight = now - st.lastHeroAttackAt <= HERO_FIGHT_SECONDS
-    local anim = "none"
-    local swingStart
-    if ATTACK_ACTIVITIES[u:GetAnimActivity()] == true then
-        local cycle = u:GetAnimCycle()
-        anim = cycle < u:GetAttackPoint() and "swing" or "followthrough"
-        swingStart = now - cycle / u:GetAttackSpeed()
-    end
+    local ____swingOf_result_12 = swingOf(u, now)
+    local anim = ____swingOf_result_12.anim
+    local swingStart = ____swingOf_result_12.swingStart
     return {
         now = now,
         alive = alive,
@@ -946,8 +963,8 @@ local function onVerdict(s, st, subject, v, now)
         )
         return
     end
-    local ____st_verdictLines_12 = st.verdictLines
-    ____st_verdictLines_12[#____st_verdictLines_12 + 1] = {text = v.reason, kind = v.kind, at = now}
+    local ____st_verdictLines_13 = st.verdictLines
+    ____st_verdictLines_13[#____st_verdictLines_13 + 1] = {text = v.reason, kind = v.kind, at = now}
     while #st.verdictLines > VERDICT_LINES_KEPT do
         table.remove(st.verdictLines, 1)
     end
@@ -965,13 +982,13 @@ local function stepSubject(s, subject, frame)
         subject:GetPlayerID()
     )
     local rawTarget = subject:GetAttackTarget()
-    local ____temp_13
+    local ____temp_14
     if rawTarget == nil or rawTarget == nil then
-        ____temp_13 = nil
+        ____temp_14 = nil
     else
-        ____temp_13 = rawTarget
+        ____temp_14 = rawTarget
     end
-    local target = ____temp_13
+    local target = ____temp_14
     if target ~= nil and target:IsHero() then
         st.lastHeroAttackAt = now
     end
@@ -1012,21 +1029,21 @@ local function stepSubject(s, subject, frame)
         st.barIds,
         function(____, id) return st.cache[id] end
     )
-    local ____array_14 = __TS__SparseArrayNew(unpack(st.bars))
+    local ____array_15 = __TS__SparseArrayNew(unpack(st.bars))
     __TS__SparseArrayPush(
-        ____array_14,
+        ____array_15,
         unpack(__TS__ArrayMap(
             st.watchedIds,
             function(____, id) return st.cache[id] end
         ))
     )
-    st.predictions = {__TS__SparseArraySpread(____array_14)}
-    local ____array_15 = __TS__SparseArrayNew(unpack(selected.bars))
+    st.predictions = {__TS__SparseArraySpread(____array_15)}
+    local ____array_16 = __TS__SparseArrayNew(unpack(selected.bars))
     __TS__SparseArrayPush(
-        ____array_15,
+        ____array_16,
         unpack(selected.watched)
     )
-    for ____, u in ipairs({__TS__SparseArraySpread(____array_15)}) do
+    for ____, u in ipairs({__TS__SparseArraySpread(____array_16)}) do
         local id = creepId(u)
         if st.tracked[id] == nil then
             st.tracked[id] = {
@@ -1099,15 +1116,15 @@ local function checkpoints(s, human, now)
 end
 local function run(bot, team, s, now)
     local subjects = subjectsFor(team, bot)
-    local ____snapshot_17 = snapshot
-    local ____array_16 = __TS__SparseArrayNew(unpack(Heroes()))
+    local ____snapshot_18 = snapshot
+    local ____array_17 = __TS__SparseArrayNew(unpack(Heroes()))
     __TS__SparseArrayPush(
-        ____array_16,
+        ____array_17,
         unpack(subjects)
     )
-    local ____snapshot_17_result_18 = ____snapshot_17({__TS__SparseArraySpread(____array_16)})
-    local counters = ____snapshot_17_result_18.counters
-    local seen = ____snapshot_17_result_18.seen
+    local ____snapshot_18_result_19 = ____snapshot_18({__TS__SparseArraySpread(____array_17)})
+    local counters = ____snapshot_18_result_19.counters
+    local seen = ____snapshot_18_result_19.seen
     local frame = {
         now = now,
         counters = counters,
@@ -1117,11 +1134,12 @@ local function run(bot, team, s, now)
     for ____, subject in ipairs(subjects) do
         stepSubject(s, subject, frame)
     end
-    local ____s_history_19 = s.history
-    ____s_history_19[#____s_history_19 + 1] = {t = now, counters = counters}
+    local ____s_history_20 = s.history
+    ____s_history_20[#____s_history_20 + 1] = {t = now, counters = counters}
     while #s.history > 1 and now - s.history[1].t > HISTORY_SECONDS do
         table.remove(s.history, 1)
     end
+    local cfg = Settings.Get()
     local pid = humanPID(team)
     local human = pid ~= nil and __TS__ArraySome(
         subjects,
@@ -1132,6 +1150,24 @@ local function run(bot, team, s, now)
         VerdictLines(human.verdictLines, now)
         if human.summary ~= nil then
             SummaryText(human.summary.lines, human.summary.at, now)
+        end
+    end
+    if s.bar and pid ~= nil then
+        local unit = __TS__ArrayFind(
+            subjects,
+            function(____, u) return u:GetPlayerID() == pid end
+        )
+        if unit ~= nil then
+            Bars(
+                unit,
+                ____exports.Predictions(team),
+                cfg.BarStyle,
+                now,
+                swingOf(
+                    T(unit),
+                    now
+                ).swingStart
+            )
         end
     end
 end

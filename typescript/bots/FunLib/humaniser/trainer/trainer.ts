@@ -6,14 +6,14 @@ import { GameState, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/trainer/settings";
-import { CreepKind, GetTrainerHelpers, HeroLabel, SetTrainerHelpers, T, TrainerHelpers } from "bots/FunLib/humaniser/trainer/api";
+import { CreepKind, GetTrainerHelpers, HeroLabel, SetTrainerHelpers, T, TrainerHelpers, TUnit } from "bots/FunLib/humaniser/trainer/api";
 import { SpikeTick } from "bots/FunLib/humaniser/trainer/spike";
 import { Heroes, NearbyUnits, Towers } from "bots/FunLib/humaniser/trainer/incoming";
 import { EffectiveDamage, Predict, Prediction, Smoother } from "bots/FunLib/humaniser/trainer/predict";
 import { CreepObs, Judge, JudgeEvent, Killer, SubjectObs, Verdict, VerdictKind } from "bots/FunLib/humaniser/trainer/judge";
 import { Attribute, Counters, HeroRef, IsDeathLikely, SelectCreeps } from "bots/FunLib/humaniser/trainer/watch";
 import { Stats } from "bots/FunLib/humaniser/trainer/stats";
-import { SummaryText, VerdictLine, VerdictLines } from "bots/FunLib/humaniser/trainer/draw";
+import { Bars, SummaryText, VerdictLine, VerdictLines } from "bots/FunLib/humaniser/trainer/draw";
 
 const REPLY_INTERVAL = 0.5;
 const REPLY_CAP = 8;
@@ -495,17 +495,17 @@ function creepObservations(s: TeamState, st: SubjectState, subject: Unit, frame:
     return result;
 }
 
+function swingOf(u: TUnit, now: number): { anim: SubjectObs["anim"]; swingStart?: number } {
+    if (ATTACK_ACTIVITIES[u.GetAnimActivity()] !== true) return { anim: "none" };
+    const cycle = u.GetAnimCycle();
+    return { anim: cycle < u.GetAttackPoint() ? "swing" : "followthrough", swingStart: now - cycle / u.GetAttackSpeed() };
+}
+
 function subjectObservation(st: SubjectState, subject: Unit, target: Unit | undefined, now: number): SubjectObs {
     const u = T(subject);
     const alive = subject.IsAlive();
     const inFight = now - st.lastHeroAttackAt <= HERO_FIGHT_SECONDS;
-    let anim: SubjectObs["anim"] = "none";
-    let swingStart: number | undefined;
-    if (ATTACK_ACTIVITIES[u.GetAnimActivity()] === true) {
-        const cycle = u.GetAnimCycle();
-        anim = cycle < u.GetAttackPoint() ? "swing" : "followthrough";
-        swingStart = now - cycle / u.GetAttackSpeed();
-    }
+    const { anim, swingStart } = swingOf(u, now);
     return {
         now,
         alive,
@@ -611,6 +611,7 @@ function run(bot: Unit, team: number, s: TeamState, now: number): void {
     s.history.push({ t: now, counters });
     while (s.history.length > 1 && now - s.history[0].t > HISTORY_SECONDS) table.remove(s.history, 1);
 
+    const cfg = Settings.Get();
     const pid = humanPID(team);
     const human = pid !== undefined && subjects.some((u) => u.GetPlayerID() === pid) ? s.subjects[pid] : undefined;
     checkpoints(s, human, now);
@@ -618,6 +619,10 @@ function run(bot: Unit, team: number, s: TeamState, now: number): void {
     if (Settings.Get().ScreenText && human !== undefined) {
         VerdictLines(human.verdictLines, now);
         if (human.summary !== undefined) SummaryText(human.summary.lines, human.summary.at, now);
+    }
+    if (s.bar && pid !== undefined) {
+        const unit = subjects.find((u) => u.GetPlayerID() === pid);
+        if (unit !== undefined) Bars(unit, Predictions(team), cfg.BarStyle, now, swingOf(T(unit), now).swingStart);
     }
 }
 
