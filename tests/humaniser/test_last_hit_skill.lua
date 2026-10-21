@@ -216,4 +216,10 @@ do
 	check("mid ranged deny pin", has(mid, "LastHitSkill.WillKill("))
 end
 
+do
+	local roam = source("bots/mode_team_roam_generic.lua")
+	check("team roam last-hit grab pin", has(roam, "LastHitSkill.WillKill(bot, creep, bot:GetAttackDamage()-1, nDelay, false)"))
+	check("team roam bare kill check gone", not has(roam, "J.WillKillTarget(creep, bot:GetAttackDamage()-1"))
+end
+
 finish()
