@@ -416,10 +416,10 @@ do
 	tick(H, bots, 4)
 	check("bar draws lines for a visible creep", #LINES >= 4, #LINES)
 	local now = linesOf(255, 255, 255)
-	check("time bar has a white now tick at the left end, 16 tall at z+180",
-		#now == 1 and now[1].a.x == 20 and now[1].b.x == 20 and now[1].a.z == 190 and now[1].b.z == 206 and now[1].a.y == 50, #now)
+	check("time bar has a white now tick 0.5/2.5 along, 16 tall at z+180",
+		#now == 1 and now[1].a.x == 52 and now[1].b.x == 52 and now[1].a.z == 190 and now[1].b.z == 206 and now[1].a.y == 50, #now)
 	local track = linesOf(128, 128, 128)[1]
-	check("time bar track spans 160 units", track ~= nil and track.b.x - track.a.x == 160)
+	check("time bar track spans 160 units, from 0.5 s in the past to 2 s ahead", track ~= nil and track.b.x - track.a.x == 160)
 	check("control: the window of a lethal creep is green", #linesOf(0, 255, 0) > 0)
 	check("no swing tick before the subject swings", #linesOf(80, 160, 255) == 0)
 end
@@ -432,7 +432,8 @@ do
 	check("control: bar draws for the creep", #LINES > 0)
 	human.target = creep
 	swingFrames(H, bots, human, creep, 3)
-	check("swing tick is blue while the subject swings at this creep", #linesOf(80, 160, 255) == 1)
+	local blue = linesOf(80, 160, 255)
+	check("swing tick sits at swingStart, 0.1 s behind now, 0.1/2.5 left of the now tick", #blue == 1 and math.abs(blue[1].a.x - (20 + 160 * 0.4 / 2.5)) < 1e-6, blue[1] and blue[1].a.x)
 	human.target = nil
 	tick(H, bots, 1, function() human.anim, human.cycle = ATTACK, 0.1 end)
 	check("no swing tick when the swing is at another target", #linesOf(80, 160, 255) == 0)
@@ -490,6 +491,23 @@ do
 	table.insert(creep.incoming, { at = A + 1.0, damage = 30, caster = caster(30) })
 	tick(H, bots, 8)
 	check("uncertain bar uses amber", #linesOf(255, 191, 0) > 0 and #linesOf(0, 255, 0) == 0)
+end
+
+do
+	local H, human, bots = setup({ BarStyle = "hp" })
+	say(H, "!trainer on")
+	local casters = {}
+	for i, dmg in ipairs({ 10, 20, 30, 20 }) do casters[i] = setmetatable({ pid = 810 + i, team = 2, alive = true, loc = Vector(0, 0), modifiers = {}, damage = dmg, isHero = false }, Unit) end
+	local creep = Creep(3, { loc = Vector(100, 0), hp = 100 })
+	-- delay is 0.4 s, so the ghost sample is index 8; hits on samples 7, 8, 9 give 90, 70, 40 there.
+	tick(H, bots, 4, function()
+		creep.incoming = {
+			{ at = T + 0.33, damage = 10, caster = casters[1] }, { at = T + 0.38, damage = 20, caster = casters[2] },
+			{ at = T + 0.43, damage = 30, caster = casters[3] }, { at = T + 0.63, damage = 20, caster = casters[4] },
+		}
+	end)
+	local marker = linesOf(0, 255, 0)
+	check("hp bar: ghost marker uses the exact sample round(delay/STEP)", #marker == 1 and math.abs(marker[1].a.x - (20 + 160 * 0.70)) < 1e-6, marker[1] and marker[1].a.x)
 end
 
 do

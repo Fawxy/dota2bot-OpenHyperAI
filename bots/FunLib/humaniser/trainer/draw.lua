@@ -83,6 +83,7 @@ local BAR_Z = 180
 local BAR_WIDTH = 160
 local TICK_HEIGHT = 16
 local BAR_MAX_DISTANCE = 1200
+local PAST_SECONDS = 0.5
 local GREY = {128, 128, 128}
 local WHITE = {255, 255, 255}
 local BLUE = {80, 160, 255}
@@ -95,7 +96,7 @@ local function windowColour(p)
     end
     return {0, 255, 0}
 end
---- Live timing bars over each predicted creep: the start window on a 2 s axis ("time"), or the creep's HP axis with the landing marker ("hp").
+--- Live timing bars over each predicted creep: the start window on a now-0.5..now+2 s axis ("time"), or the creep's HP axis with the landing marker ("hp").
 function ____exports.Bars(subject, preds, style, now, swingStart)
     if not subject:IsAlive() then
         return
@@ -144,7 +145,7 @@ function ____exports.Bars(subject, preds, style, now, swingStart)
                     local function xAt(t)
                         return left + BAR_WIDTH * math.max(
                             0,
-                            math.min(1, (t - now) / HORIZON)
+                            math.min(1, (t - now + PAST_SECONDS) / (PAST_SECONDS + HORIZON))
                         )
                     end
                     hline(left, left + BAR_WIDTH, GREY, TICK_HEIGHT / 2)
@@ -155,7 +156,10 @@ function ____exports.Bars(subject, preds, style, now, swingStart)
                         tick(open, colour)
                         tick(close, colour)
                     end
-                    tick(left, WHITE)
+                    tick(
+                        xAt(now),
+                        WHITE
+                    )
                     if swingStart ~= nil and targetId == tostring(creep) then
                         tick(
                             xAt(swingStart),

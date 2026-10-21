@@ -46,6 +46,7 @@ const BAR_Z = 180;
 const BAR_WIDTH = 160;
 const TICK_HEIGHT = 16;
 const BAR_MAX_DISTANCE = 1200;
+const PAST_SECONDS = 0.5;
 const GREY: [number, number, number] = [128, 128, 128];
 const WHITE: [number, number, number] = [255, 255, 255];
 const BLUE: [number, number, number] = [80, 160, 255];
@@ -56,7 +57,7 @@ function windowColour(p: Prediction): [number, number, number] {
     return [0, 255, 0];
 }
 
-/** Live timing bars over each predicted creep: the start window on a 2 s axis ("time"), or the creep's HP axis with the landing marker ("hp"). */
+/** Live timing bars over each predicted creep: the start window on a now-0.5..now+2 s axis ("time"), or the creep's HP axis with the landing marker ("hp"). */
 export function Bars(subject: Unit, preds: Prediction[], style: "time" | "hp", now: number, swingStart?: number): void {
     if (!subject.IsAlive()) return;
     const target = subject.GetAttackTarget();
@@ -75,7 +76,7 @@ export function Bars(subject: Unit, preds: Prediction[], style: "time" | "hp", n
         const colour = windowColour(p);
 
         if (style === "time") {
-            const xAt = (t: number) => left + BAR_WIDTH * math.max(0, math.min(1, (t - now) / HORIZON));
+            const xAt = (t: number) => left + BAR_WIDTH * math.max(0, math.min(1, (t - now + PAST_SECONDS) / (PAST_SECONDS + HORIZON)));
             hline(left, left + BAR_WIDTH, GREY, TICK_HEIGHT / 2);
             const open = xAt(p.startOpen);
             const close = xAt(p.startClose);
@@ -84,7 +85,7 @@ export function Bars(subject: Unit, preds: Prediction[], style: "time" | "hp", n
                 tick(open, colour);
                 tick(close, colour);
             }
-            tick(left, WHITE);
+            tick(xAt(now), WHITE);
             if (swingStart !== undefined && targetId === tostring(creep)) tick(xAt(swingStart), BLUE);
         } else {
             const maxHp = creep.GetMaxHealth();

@@ -92,8 +92,11 @@ export class Smoother {
         }
 
         let uncertain = false;
+        // An open edge already in the past tracks now, so only a future edge's movement says anything about the prediction.
         for (const s of this.history) {
-            if (now - s.t >= JUMP_AGE && math.abs(open - s.open) > JUMP_SIZE) uncertain = true;
+            if (now - s.t < JUMP_AGE) continue;
+            const openMoved = open > now && s.open > s.t && math.abs(open - s.open) > JUMP_SIZE;
+            if (openMoved || math.abs(close - s.close) > JUMP_SIZE) uncertain = true;
         }
         return { open: openSum / count, close: closeSum / count, uncertain };
     }

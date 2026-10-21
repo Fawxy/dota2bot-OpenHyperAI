@@ -616,7 +616,7 @@ function run(bot: Unit, team: number, s: TeamState, now: number): void {
     const human = pid !== undefined && subjects.some((u) => u.GetPlayerID() === pid) ? s.subjects[pid] : undefined;
     checkpoints(s, human, now);
 
-    if (Settings.Get().ScreenText && human !== undefined) {
+    if (cfg.ScreenText && human !== undefined) {
         VerdictLines(human.verdictLines, now);
         if (human.summary !== undefined) SummaryText(human.summary.lines, human.summary.at, now);
     }

@@ -236,4 +236,21 @@ do
 	check("a jump only 0.1 s after the older sample is not flagged", r.uncertain == false)
 end
 
+do
+	local s = NewSmoother()
+	local r
+	for i = 0, 15 do
+		local t = 10 + i / 30
+		r = s:Push(t, t - 0.4, 12.0)
+	end
+	check("smoother: an already-open window tracking now stays certain over 0.5 s", r.uncertain == false)
+	r = s:Push(10.8, 10.4, 12.3)
+	check("smoother: a 0.3 jump in the close edge is still flagged", r.uncertain == true)
+
+	local future = NewSmoother()
+	future:Push(10, 11.0, 12.0)
+	r = future:Push(10.33, 11.3, 12.0)
+	check("smoother: a future open edge jumping 0.3 is flagged", r.uncertain == true)
+end
+
 finish()

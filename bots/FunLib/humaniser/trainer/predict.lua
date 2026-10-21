@@ -98,8 +98,22 @@ function Smoother.prototype.Push(self, now, open, close)
     end
     local uncertain = false
     for ____, s in ipairs(self.history) do
-        if now - s.t >= JUMP_AGE and math.abs(open - s.open) > JUMP_SIZE then
-            uncertain = true
+        do
+            local __continue15
+            repeat
+                if now - s.t < JUMP_AGE then
+                    __continue15 = true
+                    break
+                end
+                local openMoved = open > now and s.open > s.t and math.abs(open - s.open) > JUMP_SIZE
+                if openMoved or math.abs(close - s.close) > JUMP_SIZE then
+                    uncertain = true
+                end
+                __continue15 = true
+            until true
+            if not __continue15 then
+                break
+            end
         end
     end
     return {open = openSum / count, close = closeSum / count, uncertain = uncertain}

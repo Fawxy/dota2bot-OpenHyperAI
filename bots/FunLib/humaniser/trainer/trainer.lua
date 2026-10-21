@@ -1146,7 +1146,7 @@ local function run(bot, team, s, now)
         function(____, u) return u:GetPlayerID() == pid end
     ) and s.subjects[pid] or nil
     checkpoints(s, human, now)
-    if Settings.Get().ScreenText and human ~= nil then
+    if cfg.ScreenText and human ~= nil then
         VerdictLines(human.verdictLines, now)
         if human.summary ~= nil then
             SummaryText(human.summary.lines, human.summary.at, now)
