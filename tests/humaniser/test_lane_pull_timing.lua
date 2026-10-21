@@ -107,6 +107,12 @@ do
 	t = PT.For(2, Lane.Bot, Vector(3978, -5027), "small", { Vector(4050, -6139) }, false, { 15, 45 })
 	check("7.41 radiant safe small camp pulls near :20/:50", t.source == "wave" and t.seconds[1] > 19.5 and t.seconds[1] < 21.5
 		and within(t.seconds[2] - t.seconds[1], 30, 1e-6), t.seconds[1])
+	-- 7.41 evil_2 (dire_safe_small): its in-game meet (GetLocationAlongLane, from bots' watch positions in
+	-- console.9055874680) is ~340 off the Dire top creep path; it used to fall back to the :15 seed (every double pull on
+	-- it logged timing=seed). Valve's dire_pull window is 21-23.
+	CURRENT_TEAM = 3
+	t = PT.For(3, Lane.Top, Vector(-3911, 4829), "small", { Vector(-4002, 5490), Vector(-4005, 5520) }, false, { 15, 45 })
+	check("7.41 Dire safe small camp, meet 340 off the path, pulls near :21.7", t.source == "wave" and t.seconds[1] > 21 and t.seconds[1] < 22.5, t.seconds[1])
 end
 
 do

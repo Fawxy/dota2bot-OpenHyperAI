@@ -323,6 +323,22 @@ do
 	check("human too far from the camp allows pulls", P.View(core, s).pullAllowed == true)
 end
 
+do
+	-- The pull window follows the camp's wave-timed seconds (pull_timing): with a creep path along the stub bot lane the
+	-- small camp pulls at :18.4 (half :21.4), so a human at it at :26 is pulling; on the :15/:17 seeds it was not.
+	local function pullAllowedAt26(laneCfg)
+		local H, core, _, S, P = world(laneCfg, { humanSupport = true, supportLoc = Vector(-1600, -6000) })
+		SPAWNERS = { { team = Team.Radiant, type = "small", location = Vector(-1600, -6200, 0), min = Vector(-1750, -6350, 0),
+			max = Vector(-1450, -6050, 0), speed = 0 } }
+		H.Lane.Camps.ResetCache()
+		T = 86
+		return P.View(core, snapshot(S, core)).pullAllowed
+	end
+	check("seed seconds: human at the camp at :26 is not pulling", pullAllowedAt26(nil) == true)
+	check("wave-timed seconds: human at the camp at :26 blocks bot pulls",
+		pullAllowedAt26({ Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }) == false)
+end
+
 -- Rotation is read live
 do
 	local H, core, support, S, P = world()

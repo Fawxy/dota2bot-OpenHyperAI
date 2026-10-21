@@ -14,6 +14,7 @@ import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
+import { DEFAULT_STACK_SEC } from "bots/FunLib/humaniser/camps_data";
 
 interface StackRecord {
     minute: number;
@@ -52,6 +53,68 @@ function currentMinute(): number {
     return math.floor(DotaTime() / 60);
 }
 
+/**
+ * 7.41 stack windows (seconds to land the hit) from scripts/creep_pull_timings.txt in pak01_dir.vpk (read 22/10/2026,
+ * what the `dota_hud_show_creep_spawn_camp_names` overlay shows), by the camp's spawner origin from maps/dota.vpk:
+ * [x, y, stack_start, stack_end]. Camps 1,300+ apart, so WINDOW_MATCH cannot pick the wrong one.
+ */
+const WINDOWS: number[][] = [
+    [-4824, 3915, 54, 56], // evil_1
+    [-3911, 4829, 55, 57], // evil_2
+    [1224, 4176, 55, 56], // evil_4
+    [1064, 2580, 55, 56], // evil_5
+    [-852, 4940, 54, 55], // evil_6
+    [7928, -120, 55, 56], // evil_7
+    [4352, 48, 53, 55], // evil_8
+    [3392, -1408, 53, 55], // evil_9
+    [-2880, 7376, 54, 56], // evil_11
+    [2016, 7896, 55, 57], // evil_12
+    [8430, 1263, 55, 56], // evil_13
+    [336, 7696, 55, 56], // evil_14
+    [-2596, 3850, 55, 56], // evil_15
+    [-4208, 8336, 55, 56], // evil_20
+    [3978, -5027, 55, 57], // good_1
+    [4649, -3699, 52, 54], // good_2
+    [186, -5197, 54, 55], // good_4
+    [-1454, -3356, 55, 56], // good_5
+    [-4013, 992, 53, 55], // good_7
+    [-5015, -96, 52, 54], // good_8
+    [-1983, -4815, 56, 57], // good_9
+    [-720, -7696, 55, 57], // good_11
+    [-2415, -8402, 53, 55], // good_12
+    [-8313, -553, 55, 56], // good_13
+    [2768, -8336, 55, 57], // good_14
+    [1922, -3975, 56, 57], // good_15
+    [-8023, -1838, 55, 56], // good_16
+    [4416, -8432, 55, 56], // good_20
+];
+const WINDOW_MATCH = 300;
+
+/** Valve's stack window for the camp, or undefined (another map, a moved camp, StackFromValve off). */
+export function Window(campIdx: number): LuaMultiReturn<[number | undefined, number | undefined]> {
+    const spawner = Camps.SpawnerByIdx(campIdx);
+    if (spawner === undefined || settings().Timing.StackFromValve !== true) return $multi(undefined, undefined);
+    for (const w of WINDOWS) {
+        const dx = w[0] - spawner.location.x;
+        const dy = w[1] - spawner.location.y;
+        if (dx * dx + dy * dy <= WINDOW_MATCH * WINDOW_MATCH) return $multi(w[2], w[3]);
+    }
+    return $multi(undefined, undefined);
+}
+
+/**
+ * The second the stack hit should land: StackWindowAt through Valve's window for a camp on the type's default second,
+ * else the data's (a replay or measured stack second is kept). The seeds (small 54.5 to ancient 53.0) were 1-2.5 s
+ * early for most 7.41 camps (evil_2/good_1 55-57, evil_1 54-56) and 1.5 s late for good_2/good_8 (52-54).
+ */
+export function AggroSec(data: Camps.CampJobData): number {
+    const sec = data.stack?.aggroSec ?? DEFAULT_STACK_SEC[data.type];
+    if (sec !== DEFAULT_STACK_SEC[data.type]) return sec;
+    const [from, to] = Window(data.campIdx);
+    if (from === undefined || to === undefined) return sec;
+    return from + (to - from) * settings().Timing.StackWindowAt;
+}
+
 const IDLE_MODES: Record<number, boolean> = { [BotMode.Laning]: true, [BotMode.Farm]: true, [BotMode.None]: true };
 
 /**
@@ -60,13 +123,19 @@ const IDLE_MODES: Record<number, boolean> = { [BotMode.Laning]: true, [BotMode.F
  */
 export function Safe(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: LaneState.LaneEnemy[], committed = false): LuaMultiReturn<[boolean, string]> {
     const t = settings().Thresholds;
+    const maxHP = bot.GetMaxHealth();
     if (LaneConfig.InLaningPhase()) {
+        // LaneStable is the start gate only: re-checked every frame it flipped on an enemy coming into view and ended
+        // walk-offs at :58 (console.9055921786, skywrath on evil_1), letting the camp back into the box before :00.
+        if (committed) {
+            if (maxHP <= 0 || bot.GetHealth() / maxHP <= t.StableMinHP) return $multi(false, "low-hp");
+            if (s !== undefined) return LaneRoles.PartnerHolding(bot, s, enemies);
+            return $multi(true, "ok");
+        }
         if (!LaneRoles.LaneStable(bot, enemies)) return $multi(false, "unstable");
-        if (s !== undefined && committed) return LaneRoles.PartnerHolding(bot, s, enemies);
         if (s !== undefined && !LaneRoles.PartnerSafe(bot, s, enemies)) return $multi(false, "partner-unsafe");
         return $multi(true, "ok");
     }
-    const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP <= t.StableMinHP) return $multi(false, "low-hp");
     const loc = bot.GetLocation();
     for (const e of enemies) {
@@ -123,7 +192,7 @@ function reachable(bot: Unit, data: Camps.CampJobData, minute: number): boolean 
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (spawner === undefined || data.stack === undefined) return false;
     const travel = GetUnitToLocationDistance(bot, StandPoint(spawner, data)) / math.max(bot.GetCurrentMovementSpeed(), 1);
-    return travel <= settings().Timing.MaxTravel && DotaTime() + travel <= minute * 60 + data.stack.aggroSec;
+    return travel <= settings().Timing.MaxTravel && DotaTime() + travel <= minute * 60 + AggroSec(data);
 }
 
 function multiStackOk(bot: Unit, data: Camps.CampJobData): boolean {

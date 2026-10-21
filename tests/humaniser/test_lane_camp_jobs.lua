@@ -270,20 +270,40 @@ do
 		and line:find("planned=15.0 divert=1.00 grade=ok", 1, true), line)
 end
 
+-- A creep path along the stub bot lane (y = -5000), so the small camp's pull is wave-timed: the :00 wave reaches its
+-- meet (-1600, -5000) after 7,800 / 325 = 24 s.
+local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }
+
 do
-	local H, _, support = jobWorld(1, { large = true })
+	-- Double pull, hard camp first: the large camp is hit from its side facing the small camp, then the small camp on its
+	-- own wave-timed second (about 24 - (300 + 900) / 290 - 1.5 = 18.36), and both are led to the small camp's meet.
+	local H, _, support = jobWorld(1, { large = true, cfg = WAVE_CFG })
 	local small = MakeNeutral({ x = SMALL.x, y = SMALL.y })
-	local job = runToWatch(H, support, small, 76.5)
-	check("two camps at 1.0 make a double pull", job.kind == "double_pull" and job.secondCampIdx == 2)
-	MakeCreep({ team = 2, x = job.meet.x, y = job.meet.y, target = small })
 	local large = MakeNeutral({ x = LARGE.x, y = LARGE.y })
-	frame(H, support, 77)
-	check("first camp engaged: heads to the second camp", job.stage == 2 and job.activeCamp == 2 and job.phase == "travel")
+	frame(H, support, 72.5)
+	local job = H.Lane.CampJobs.Current(support)
+	check("two camps at 1.0 make a double pull", job ~= nil and job.kind == "double_pull" and job.secondCampIdx == 2, job and job.kind)
+	check("the small camp keeps its wave-timed second", job.timing == "wave" and math.abs(job.plannedSec - 18.36) < 0.05, job.plannedSec)
+	-- About 391 of walk between the stands at 300, plus DoublePullHitGap.
+	check("the hard camp is hit first, its walk to the small camp ahead of the small camp's hit",
+		job.activeCamp == 2 and job.chain ~= nil and math.abs(job.chain.aggroAt - job.aggroAt - 2.30) < 0.05, job.chain and job.chain.aggroAt - job.aggroAt)
 	teleport(support)
 	frame(H, support, job.aggroAt)
 	local a = ActionsOf(5, "AttackUnit")
-	check("aggroes the second camp", #a == 2 and a[2].args[1] == large)
-	check("second lead ends at the first meet point", dist(job.path[#job.path], job.meet) <= 20 + 1e-6)
+	check("aggroes the hard camp", #a == 1 and a[1].args[1] == large)
+	large.target = support
+	frame(H, support, job.aggroAt + 0.1)
+	check("hard camp on the bot: walks to the small camp", job.activeCamp == 1 and job.phase == "travel" and job.chain == nil and job.actualAggro == nil, job.phase)
+	teleport(support)
+	frame(H, support, job.aggroAt)
+	a = ActionsOf(5, "AttackUnit")
+	check("then aggroes the small camp", #a == 2 and a[2].args[1] == small)
+	frame(H, support, job.aggroAt + 0.1)
+	check("the hard camp chasing the bot does not confirm the small camp's aggro", job.phase == "aggro", job.phase)
+	support.lastAttack = T
+	frame(H, support, T + 0.1)
+	check("the small camp's hit is the graded aggro; both are led to its meet", job.phase == "lead" and job.actualAggro ~= nil
+		and dist(job.path[#job.path], job.meet) <= 20 + 1e-6)
 end
 
 do
@@ -623,6 +643,28 @@ end
 local function field(line, key) return line and line:match(" " .. key .. '="([^"]*)"') or line and line:match(" " .. key .. "=(%S+)") end
 
 do
+	-- A double that cannot fit is not planned: a plain full pull, and lane_plan says why.
+	local function unfit(opts, speed)
+		local H, _, support = jobWorld(1, opts)
+		support.speed = speed
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		for t = 70, 76, 0.5 do T = t H.Lane.CampJobDesire(support) end
+		local job = H.Lane.CampJobs.Current(support)
+		local why
+		for _, l in ipairs(hev(lines, "lane_plan")) do if field(l, "gate") == "double-unfit" then why = field(l, "why") end end
+		return job, why
+	end
+	-- No creep path to time the small camp from, so the hard camp cannot be placed against the wave.
+	local job, why = unfit({ large = true, telemetry = { Enable = true } }, 300)
+	check("seed-timed small camp: full pull, not double", job ~= nil and job.kind == "full_pull" and job.secondCampIdx == nil, job and job.kind)
+	check("seed-timed small camp: lane_plan why=no-wave", why == "no-wave", why)
+	-- 391 between the stands at 50 is 7.8 s, past DoublePullMaxGap (the hard camp would give up the chase).
+	job, why = unfit({ large = true, telemetry = { Enable = true }, cfg = WAVE_CFG }, 50)
+	check("stands too far apart: full pull, why=far", job ~= nil and job.kind == "full_pull" and why == "far", why)
+end
+
+do
 	-- lane_plan: one event per wave cycle with the planner's verdict, however often farm asks.
 	local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
 	local lines = {}
@@ -770,6 +812,149 @@ do
 	check("defend is left alone", near(I.Resolve(support, M.DefendTowerBot, 0.8), 0.8))
 	T = 70.5
 	check("no job: ward is not capped", near(I.Resolve(support, M.Ward, 0.81), 0.81), I.Resolve(support, M.Ward, 0.81))
+end
+
+-- console.9055921786: 8 of 25 aborts were mode-end in lead or watch at 49-80% HP. Retreat's laning-phase creep-damage
+-- branch (0.79-0.90) counts the neutrals chasing the bot, which is what a pull is. Retreat is held below the job while
+-- only neutrals threaten, released for good by low HP, a hero's damage or attack, or a tower.
+local function leadingWorld()
+	local H, core, support = jobWorld(1, { telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	frame(H, support, 72.5)
+	local job = H.Lane.CampJobs.Current(support)
+	frame(H, support, job.aggroAt)
+	neutral.target = support
+	frame(H, support, 80)
+	check("precondition: leading the camp", job.phase == "lead")
+	return H, support, job, lines
+end
+-- One farm GetDesire (which posts the claims), then retreat's and farm's resolved desires.
+local function retreatAgainstJob(H, support, retreatRaw)
+	T = T + 0.05
+	local raw = H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support))
+	return H.Intent.Resolve(support, dota.BotMode.Retreat, retreatRaw), H.Intent.Resolve(support, dota.BotMode.Farm, raw)
+end
+
+do
+	local H, support, job, lines = leadingWorld()
+	support.hp = 70
+	local retreat, farm = retreatAgainstJob(H, support, 0.82)
+	check("neutrals hitting at 70% in lead: retreat held below the job", retreat < farm and near(farm, 0.7), retreat .. " " .. farm)
+	support.hp = 55
+	retreat, farm = retreatAgainstJob(H, support, 0.88)
+	check("still only neutrals at 55%: the job keeps going", retreat < farm, retreat .. " " .. farm)
+	local holds = hev(lines, "lane_job_hold")
+	check("one hold-on line", #holds == 1 and field(holds[1], "hold") == "retreat" and field(holds[1], "state") == "on"
+		and field(holds[1], "phase") == "lead", holds[1])
+
+	support.hp = 45
+	retreat = retreatAgainstJob(H, support, 0.89)
+	check("below JobHoldMinHP the hold releases", near(retreat, 0.89), retreat)
+	holds = hev(lines, "lane_job_hold")
+	check("release logged with its reason", #holds == 2 and field(holds[2], "state") == "off" and field(holds[2], "reason") == "hp", holds[2])
+	support.hp = 70
+	retreat = retreatAgainstJob(H, support, 0.82)
+	check("a released hold stays released for the job", near(retreat, 0.82), retreat)
+	check("no further hold lines", #hev(lines, "lane_job_hold") == 2)
+end
+
+do
+	local H, support, job, lines = leadingWorld()
+	support.hp = 70
+	local retreat, farm = retreatAgainstJob(H, support, 0.82)
+	check("precondition: held before the hero's hit", retreat < farm)
+	support.heroHitAt = T
+	retreat = retreatAgainstJob(H, support, 0.82)
+	check("an enemy hero's hit at 70% releases the hold", near(retreat, 0.82), retreat)
+	check("hero hit named", field(hev(lines, "lane_job_hold")[2], "reason") == "hero-hit")
+
+	H, support, job, lines = leadingWorld()
+	support.hp = 90
+	retreat, farm = retreatAgainstJob(H, support, 0.82)
+	check("precondition: held before the hero attacks", retreat < farm)
+	UNITS[3][1].target = support
+	retreat = retreatAgainstJob(H, support, 0.82)
+	check("a visible enemy hero attacking us releases the hold", near(retreat, 0.82), retreat)
+	check("hero attack named", field(hev(lines, "lane_job_hold")[2], "reason") == "hero-attack")
+
+	H, support, job, lines = leadingWorld()
+	support.hp = 90
+	retreat, farm = retreatAgainstJob(H, support, 0.9)
+	check("precondition: held before the tower shot", retreat < farm)
+	support.towerHitAt = T
+	retreat = retreatAgainstJob(H, support, 0.9)
+	check("tower damage releases the hold", near(retreat, 0.9), retreat)
+end
+
+do
+	local H, support, job = leadingWorld()
+	support.hp = 70
+	local held, jobFarm = retreatAgainstJob(H, support, 0.82)
+	check("precondition: held without the order", held < jobFarm)
+	H.Intent.Claim(support, { source = "orders:RETREAT", tier = "HUMAN_ORDER", mode = dota.BotMode.Retreat, floor = 0.95 })
+	local retreat, farm = retreatAgainstJob(H, support, 0.82)
+	check("an order to retreat beats the hold", retreat > farm, retreat .. " " .. farm)
+end
+
+do
+	-- Watch and the aggro phase once the hit is out hold too; walking there, waiting, or before the hit do not.
+	for _, case in ipairs({ { "watch", true }, { "aggro-hit", true }, { "aggro", false }, { "wait", false }, { "travel", false } }) do
+		local H, support, job = leadingWorld()
+		support.hp = 70
+		job.phase = case[1] == "aggro-hit" and "aggro" or case[1]
+		if case[1] == "aggro" then job.aggroOrderedAt = nil end
+		local retreat, farm = retreatAgainstJob(H, support, 0.82)
+		check(case[1] .. ": retreat " .. (case[2] and "held" or "free"), (retreat < farm) == case[2] and (case[2] or near(retreat, 0.82)),
+			retreat .. " " .. farm)
+	end
+	local H, support, job = leadingWorld()
+	support.hp = 70
+	job.kind = "stack"
+	local retreat = retreatAgainstJob(H, support, 0.82)
+	check("a stack's walk-off is not held", near(retreat, 0.82), retreat)
+	check("no job: no hold", not LaneFresh({ Enable = true }).Lane.CampJobHoldsRetreat(unit({ pid = 6, pos = 4 })))
+end
+
+do
+	-- A double pull walks to the small camp with the hard camp chasing it: that walk and the small camp's hit are held too.
+	local H, _, support = jobWorld(1, { large = true, cfg = WAVE_CFG })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local large = MakeNeutral({ x = LARGE.x, y = LARGE.y })
+	support.hp = 70
+	frame(H, support, 72.5)
+	local job = H.Lane.CampJobs.Current(support)
+	-- Farm's Think follows each desire query here, as in game, so the job is not pre-empted.
+	local retreat, farm = retreatAgainstJob(H, support, 0.82)
+	H.Lane.CampJobThink(support)
+	check("double, before the hard camp's hit: retreat free", near(retreat, 0.82) and job.chain ~= nil, retreat)
+	teleport(support)
+	frame(H, support, job.aggroAt)
+	large.target = support
+	frame(H, support, job.aggroAt + 0.1)
+	check("precondition: walking to the small camp with the hard camp on the bot", job.phase == "travel" and job.chain == nil, job.phase)
+	retreat, farm = retreatAgainstJob(H, support, 0.82)
+	H.Lane.CampJobThink(support)
+	check("double, hard camp chasing on the walk: retreat held", retreat < farm, retreat .. " " .. farm)
+	check("double, hard camp chasing on the walk: farm's run gate held", H.Lane.CampJobHoldsRetreat(support))
+	teleport(support)
+	frame(H, support, job.aggroAt - 1)
+	check("precondition: waiting at the small camp", job.phase == "wait", job.phase)
+	retreat, farm = retreatAgainstJob(H, support, 0.82)
+	H.Lane.CampJobThink(support)
+	check("double, waiting for the small camp's hit: retreat held", retreat < farm, retreat .. " " .. farm)
+end
+
+do
+	-- Farm's own ShouldRun ("don't trade into creeps under 70%") ended a pull in watch at 68% (ogre 1:27).
+	local src = io.open(HARNESS_DIR .. "/../../bots/mode_farm_generic.lua", "r"):read("a")
+	local branch = src:find("and bot:WasRecentlyDamagedByCreep(1)", 1, true)
+	local gate = src:find("and not J.Humaniser.Lane.CampJobHoldsRetreat(bot) then", 1, true)
+	check("farm's creep-damage run yields to a held pull", branch ~= nil and gate ~= nil and gate > branch and gate - branch < 200)
+	local H, support = leadingWorld()
+	support.hp = 68
+	check("the run gate is held for neutrals at 68%", H.Lane.CampJobHoldsRetreat(support))
 end
 
 -- The core's side: while its support is out on a camp, it backs off sooner.

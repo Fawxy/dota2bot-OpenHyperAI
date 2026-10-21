@@ -42,12 +42,13 @@ export interface Job extends JobRequest {
     startedAt: number;
     peakDivert: number;
     waveSize: number;
-    /** Camp being worked now: campIdx, then secondCampIdx in a double pull's second stage. */
+    /** Camp being worked now: campIdx, or a double pull's hard camp (secondCampIdx) until it is hit. */
     activeCamp: number;
     stand: Vector;
     waypoint: number;
     stage: number;
-    secondTried: boolean;
+    /** Double pull: the small camp's stand and hit, taken up once the hard camp has been hit. */
+    chain?: { stand: Vector; aggroAt: number };
     telegraphed: boolean;
     baseAggro: number;
     actualAggro?: number;
@@ -76,6 +77,8 @@ export interface Job extends JobRequest {
     pinged?: boolean;
     /** lane_job_hold was logged: the start gate failed while the commitment kept the job going. */
     heldNoted?: boolean;
+    /** Retreat held below the job while the camp chases the bot ("on"); "off" once a real threat released it for good. */
+    retreatHold?: "on" | "off";
 }
 
 /**
@@ -159,13 +162,8 @@ function commitTech(kind: JobKind): LaneConfig.Technique | "contest" {
 // ---------------------------------------------------------------------------------------------- pure helpers
 
 export function AggroSecondsFor(kind: JobKind, data: Camps.CampJobData): number[] {
-    if (kind === "stack" || kind === "contest") return data.stack !== undefined ? [data.stack.aggroSec] : [];
-    const pull = data.pull;
-    if (pull === undefined) return [];
-    if (kind !== "half_pull") return pull.aggroSec;
-    if (pull.halfAggroSec !== undefined) return pull.halfAggroSec;
-    const later = settings().Timing.HalfPullLater;
-    return pull.aggroSec.map((s) => s + later);
+    if (kind === "stack" || kind === "contest") return data.stack !== undefined ? [Stacking.AggroSec(data)] : [];
+    return data.pull !== undefined ? PullTiming.SeedSeconds(data.pull, kind === "half_pull") : [];
 }
 
 export function NextAggroTime(dotaTime: number, seconds: number[], period: number): number {
@@ -224,30 +222,48 @@ function standFor(spawner: Camps.Spawner, firstWaypoint: Vector): Vector {
     return Camps.StandPoint(spawner, firstWaypoint, settings().Radii.StandOffset);
 }
 
-/** The camp's lead waypoints with its own meet point replaced by `meet`. */
-function leadPath(pull: Camps.PullData, meet: Vector): Vector[] {
-    const result: Vector[] = [];
-    const n = pull.path.length;
-    for (let i = 0; i < n; i++) {
-        const p = pull.path[i];
-        if (i === n - 1 && dist2D(p, pull.meetPoint) < 1) continue;
-        result.push(p);
-    }
-    result.push(meet);
-    return result;
+const leadPath = PullTiming.LeadPath;
+
+function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
+    return PullTiming.ForCamp(data, kind === "half_pull", meet);
+}
+
+interface DoubleGeometry {
+    why?: string;
+    /** The hard camp's hit lands this long before the small camp's. */
+    before: number;
+    /** The hard camp reaches the meet point this long after the wave (negative: before it). */
+    late: number;
+    /** The bot's walk between the two stands. */
+    gap: number;
+    hardStand?: Vector;
 }
 
 /**
- * The camp's pull seconds for `kind`: from our wave's arrival at the meet point (`meet`, default the kind's own) for
- * seed camps, else the data table's. Replay and measured seconds are measurements, so they are kept.
+ * The classic double pull: hit the hard camp from its side facing the small camp, walk to the small camp's stand, hit
+ * it on its own second and lead both; the hard camp follows and must reach the meet point by DoublePullJoin after the
+ * wave. The reverse (the hard camp led in once the small one engaged) cannot fit on 7.41: evil_1 / good_2 are 6-9 s of
+ * neutral walk from the small camp's meet plus the bot's walk there, so they would arrive 10-16 s after the wave.
+ * `why`: no-camp, no-wave (the small camp is not wave-timed, so the hard camp cannot be placed), far, join.
  */
-function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
-    const seed = AggroSecondsFor(kind, data);
-    const spawner = Camps.SpawnerByIdx(data.campIdx);
-    if (data.pull === undefined || data.source !== "seed" || spawner === undefined) return { seconds: seed, source: "seed" };
-    const half = kind === "half_pull";
-    const target = meet ?? (half ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint);
-    return PullTiming.For(data.team, data.lane, spawner.location, data.type, leadPath(data.pull, target), half, seed);
+export function DoubleGeometry(small: Camps.CampJobData, hard: Camps.CampJobData, speed: number): DoubleGeometry {
+    const smallSp = Camps.SpawnerByIdx(small.campIdx);
+    const hardSp = Camps.SpawnerByIdx(hard.campIdx);
+    if (small.pull === undefined || smallSp === undefined || hardSp === undefined) return { why: "no-camp", before: 0, late: 0, gap: 0 };
+    const timing = timingFor("full_pull", small);
+    if (timing.waveAfter === undefined) return { why: "no-wave", before: 0, late: 0, gap: 0 };
+    const cfg = settings();
+    const exact = leadPath(small.pull, small.pull.meetPoint);
+    const smallStand = standFor(smallSp, exact[0]);
+    const hardStand = Camps.StandPoint(hardSp, smallStand, cfg.Radii.StandOffset);
+    const gap = TravelTime(dist2D(hardStand, smallStand), speed);
+    const before = gap + cfg.Timing.DoublePullHitGap;
+    const hardSpeed = (cfg.PullTiming.NeutralSpeed as Record<string, number>)[hard.type] ?? 300;
+    const late = PullTiming.WalkLength(hardSp.location, [smallStand, ...exact]) / hardSpeed - before - timing.waveAfter;
+    let why: string | undefined;
+    if (gap > cfg.Timing.DoublePullMaxGap) why = "far";
+    else if (late > cfg.Timing.DoublePullJoin) why = "join";
+    return { why, before, late, gap, hardStand };
 }
 
 function hpOk(bot: Unit): boolean {
@@ -300,7 +316,7 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     const skill = LaneConfig.SkillOf(bot);
     const now = DotaTime();
     const period = cfg.Timing.PullPeriod;
-    const aggroSec = data.stack.aggroSec;
+    const aggroSec = Stacking.AggroSec(data);
 
     // Draw order (PF10): Gauss (2) for the jitter, then one RandomVector for the stand and each exit waypoint.
     const jitter = LaneConfig.Jitter(skill);
@@ -330,7 +346,6 @@ function startStack(bot: Unit, req: JobRequest): boolean {
             stand,
             waypoint: 0,
             stage: 1,
-            secondTried: false,
             telegraphed: false,
             baseAggro: base,
             exitUntil,
@@ -362,7 +377,6 @@ function startContest(bot: Unit, req: JobRequest): boolean {
             stand: center,
             waypoint: 0,
             stage: 1,
-            secondTried: false,
             telegraphed: true,
             baseAggro: now,
         },
@@ -387,13 +401,20 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     const now = DotaTime();
     const period = cfg.Timing.PullPeriod;
 
-    // Draw order (PF10): Gauss (2) for the jitter, then one RandomVector per stand and lead waypoint.
+    // Draw order (PF10): Gauss (2) for the jitter, then one RandomVector per stand and lead waypoint (a double's hard stand last).
     const jitter = LaneConfig.Jitter(skill);
     const meet = req.kind === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
     const noise = LaneConfig.Curve("PathNoise", skill);
     const exact = leadPath(data.pull, meet);
     const stand = noisy(standFor(spawner, exact[0]), noise);
     const path = exact.map((p) => noisy(p, noise));
+    let first: { camp: number; stand: Vector; before: number } | undefined;
+    if (req.kind === "double_pull") {
+        const hard = req.secondCampIdx !== undefined ? Camps.ByIdx(req.secondCampIdx, bot.GetTeam()) : undefined;
+        const g = hard !== undefined ? DoubleGeometry(data, hard, bot.GetCurrentMovementSpeed()) : undefined;
+        if (hard === undefined || g === undefined || g.why !== undefined || g.hardStand === undefined) return false;
+        first = { camp: hard.campIdx, stand: noisy(g.hardStand, noise), before: g.before };
+    }
 
     let base = NextAggroTime(now - cfg.Timing.JobStartLate, seconds, period);
     if (req.forced === true && base < now + travelTo(bot, stand)) base = NextAggroTime(now + travelTo(bot, stand), seconds, period);
@@ -404,7 +425,8 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     const job: Job = {
         ...req,
         phase: "travel",
-        aggroAt: base + jitter,
+        aggroAt: base + jitter - (first?.before ?? 0),
+        chain: first !== undefined ? { stand, aggroAt: base + jitter } : undefined,
         plannedSec: base % period,
         path,
         meet,
@@ -414,11 +436,10 @@ export function Start(bot: Unit, req: JobRequest): boolean {
         startedAt: now,
         peakDivert: 0,
         waveSize: 0,
-        activeCamp: req.campIdx,
-        stand,
+        activeCamp: first?.camp ?? req.campIdx,
+        stand: first?.stand ?? stand,
         waypoint: 0,
         stage: 1,
-        secondTried: false,
         telegraphed: false,
         baseAggro: base,
     };
@@ -554,13 +575,9 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
 
 /**
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
- * against a camp's timing. A double pull aborted in its second stage still grades the first pull.
+ * against a camp's timing.
  */
 function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = []): void {
-    if (job.stage === 2) {
-        close(bot, job, "return", Grade(job.kind, job.peakDivert));
-        return;
-    }
     const phase = job.phase;
     job.phase = "return";
     const pid = bot.GetPlayerID();
@@ -598,6 +615,19 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
             job.peakDivert
         )
     );
+}
+
+/**
+ * A stack's walk-off ended (its outcome follows on `lane_stack`). Logged so the end is never only implied: without it a
+ * stack ending at :01 and a pull starting 10 s later read as two jobs at once (ogre, console.9055921786, 8:01 / 8:11).
+ */
+function endStack(bot: Unit, job: Job): void {
+    job.phase = "done";
+    Telemetry.Event("lane_job_end", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+    ]);
 }
 
 /** A contest is no pull attempt, so it ends on its own line, which the console parser does not read. */
@@ -658,7 +688,68 @@ function noteHeld(bot: Unit, job: Job, s: LaneState.LaneSnapshot | undefined): v
     if (job.heldNoted === true || s === undefined || !Telemetry.IsEnabled()) return;
     if (LaneRoles.PartnerSafe(bot, s, LaneState.Enemies(bot, s.lane))) return;
     job.heldNoted = true;
-    Telemetry.Event("lane_job_hold", [["pid", bot.GetPlayerID()], ["kind", LOG_KIND[job.kind]], ["camp", job.campIdx], ["phase", job.phase], ...partnerFields(bot, s)]);
+    Telemetry.Event("lane_job_hold", [["pid", bot.GetPlayerID()], ["hold", "partner"], ["kind", LOG_KIND[job.kind]], ["camp", job.campIdx], ["phase", job.phase], ...partnerFields(bot, s)]);
+}
+
+/**
+ * The camp has been hit and is chasing the bot: from the hit in the aggro phase through lead and watch, and for a
+ * double pull also the walk to the small camp and its hit once the hard camp is on the bot (its chain is taken up).
+ */
+function drawingCamp(job: Job): boolean {
+    if (job.kind === "stack" || job.kind === "contest") return false;
+    if (job.kind === "double_pull" && job.chain === undefined) return true;
+    return job.phase === "lead" || job.phase === "watch" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined);
+}
+
+/** What should still send a pulling bot home; the neutrals' own hits (the point of a pull) are not on the list. */
+function retreatThreat(bot: Unit): string | undefined {
+    const cfg = settings();
+    const maxHP = bot.GetMaxHealth();
+    if (maxHP <= 0 || bot.GetHealth() / maxHP < cfg.Thresholds.JobHoldMinHP) return "hp";
+    const hit = cfg.Timing.JobHoldHeroHit;
+    if (bot.WasRecentlyDamagedByAnyHero(hit)) return "hero-hit";
+    if (bot.WasRecentlyDamagedByTower(hit)) return "tower";
+    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
+        if (e.visible && e.unit !== undefined && e.unit.GetAttackTarget() === bot) return "hero-attack";
+    }
+    // Tower range (700) plus a margin; only a tower already shooting us counts.
+    for (const tower of bot.GetNearbyTowers(1000, true)) if (tower.GetAttackTarget() === bot) return "tower";
+    return undefined;
+}
+
+function logRetreatHold(bot: Unit, job: Job, state: "on" | "off", reason?: string): void {
+    if (!Telemetry.IsEnabled()) return;
+    const maxHP = bot.GetMaxHealth();
+    Telemetry.Event("lane_job_hold", [
+        ["pid", bot.GetPlayerID()],
+        ["hold", "retreat"],
+        ["state", state],
+        ["reason", reason ?? "neutrals"],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["phase", job.phase],
+        ["hp", maxHP > 0 ? bot.GetHealth() / maxHP : 0],
+    ]);
+}
+
+/**
+ * True while a pull's retreat may be held below the job: the camp is drawn and nothing but neutrals threatens.
+ * The first real threat releases the hold for the rest of the job. lane_job_hold logs the hold and its release once each.
+ */
+export function HoldsRetreat(bot: Unit): boolean {
+    const job = jobs[bot.GetPlayerID()];
+    if (!isLive(job) || job.retreatHold === "off" || !drawingCamp(job)) return false;
+    const why = retreatThreat(bot);
+    if (why === undefined) {
+        if (job.retreatHold !== "on") {
+            job.retreatHold = "on";
+            logRetreatHold(bot, job, "on");
+        }
+        return true;
+    }
+    job.retreatHold = "off";
+    logRetreatHold(bot, job, "off", why);
+    return false;
 }
 
 /** Abort checks for a running job; true when it may continue. */
@@ -775,6 +866,22 @@ function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: [st
     ]);
 }
 
+/**
+ * Whether this bot may double pull its lane's first two camps (skill, a second camp), and if so whether its start
+ * window, the hard camp's hit `before` ahead of the small camp's second, is open now; `why` says what rules it out.
+ */
+function doubleFor(bot: Unit, camps: Camps.CampJobData[], now: number): { open: boolean; why?: string; g: DoubleGeometry } | undefined {
+    if (camps.length < 2 || !LaneConfig.Knows("stack_pull", LaneConfig.SkillOf(bot))) return undefined;
+    const g = DoubleGeometry(camps[0], camps[1], bot.GetCurrentMovementSpeed());
+    if (g.why !== undefined || g.hardStand === undefined) return { open: false, why: g.why, g };
+    const t = settings().Timing;
+    const base = NextAggroTime(now - t.JobStartLate, timingFor("full_pull", camps[0]).seconds, t.PullPeriod);
+    const hardAt = base - g.before;
+    const travel = travelTo(bot, g.hardStand);
+    if (!CampsUp(base) || travel > t.MaxTravel || now + travel > hardAt) return { open: false, why: "reach", g };
+    return { open: WindowOpen(now, hardAt, travel), g };
+}
+
 function schedule(bot: Unit): boolean {
     const now = DotaTime();
     const pid = bot.GetPlayerID();
@@ -786,7 +893,9 @@ function schedule(bot: Unit): boolean {
         notePlan(bot, s, now, [["gate", "no-camp"]]);
         return false;
     }
-    if (!windowFor(bot, camps[0], "full_pull", now) && !windowFor(bot, camps[0], "half_pull", now)) {
+    const double = doubleFor(bot, camps, now);
+    const doubleOpen = double !== undefined && double.open;
+    if (!doubleOpen && !windowFor(bot, camps[0], "full_pull", now) && !windowFor(bot, camps[0], "half_pull", now)) {
         // A stack pull may use a later camp than the first one.
         let any = false;
         for (const c of camps) if (LaneHooks.IsStacked(c.campIdx) && windowFor(bot, c, "stack_pull", now)) any = true;
@@ -819,13 +928,25 @@ function schedule(bot: Unit): boolean {
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
     const camp = pullCampFor(kind, camps);
-    if (!windowFor(bot, camp, kind, now)) return false;
+    const asDouble = kind === "full_pull" && doubleOpen;
+    // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
+    if (kind === "full_pull" && double !== undefined && !double.open && double.why === undefined) return false;
+    if (!asDouble && !windowFor(bot, camp, kind, now)) return false;
     const base = NextAggroTime(now - settings().Timing.JobStartLate, timingFor(kind, camp).seconds, settings().Timing.PullPeriod);
     if (skipped[pid] === base) return false;
     const req: JobRequest = { kind, campIdx: camp.campIdx };
-    if (kind === "full_pull" && camps.length > 1 && LaneConfig.Knows("stack_pull", LaneConfig.SkillOf(bot))) {
+    if (asDouble) {
         req.kind = "double_pull";
         req.secondCampIdx = camps[1].campIdx;
+    } else if (kind === "full_pull" && double !== undefined) {
+        notePlan(bot, s, now, [
+            ["gate", "double-unfit"],
+            ["camp", camp.campIdx],
+            ["second", camps[1].campIdx],
+            ["why", double.why],
+            ["late", double.g.late],
+            ["gap", double.g.gap],
+        ]);
     }
     return Start(bot, req);
 }
@@ -835,7 +956,7 @@ function earliestStackStart(): number {
     const t = settings().Timing;
     let earliest = t.StackMoveFrom;
     for (const data of Camps.Resolve()) {
-        if (data.stack !== undefined) earliest = math.min(earliest, data.stack.aggroSec - t.MaxTravel - t.JobStartLate);
+        if (data.stack !== undefined) earliest = math.min(earliest, Stacking.AggroSec(data) - t.MaxTravel - t.JobStartLate);
     }
     return earliest;
 }
@@ -851,9 +972,10 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const spawner = data !== undefined ? Camps.SpawnerByIdx(data.campIdx) : undefined;
     if (data === undefined || data.stack === undefined || spawner === undefined) return false;
     const travel = travelTo(bot, Stacking.StandPoint(spawner, data));
-    const from = math.min(t.StackMoveFrom, data.stack.aggroSec - travel - t.JobStartLate);
-    if (sec < from || sec > data.stack.aggroSec) return false;
-    if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [data.stack.aggroSec], t.PullPeriod)) return false;
+    const aggroSec = Stacking.AggroSec(data);
+    const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
+    if (sec < from || sec > aggroSec) return false;
+    if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 
@@ -881,7 +1003,7 @@ export function Desire(bot: Unit): number {
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) {
         if (job.kind === "stack" && job.phase === "exit" && now >= (job.exitUntil ?? now)) {
-            job.phase = "done";
+            endStack(bot, job);
             return 0;
         }
         if (preempted(bot, job, now)) {
@@ -962,6 +1084,8 @@ function campNeutral(bot: Unit, job: Job): Unit | undefined {
 
 function aggroConfirmed(bot: Unit, job: Job): boolean {
     if (job.aggroOrderedAt !== undefined && bot.GetLastAttackTime() >= job.aggroOrderedAt) return true;
+    // A double's hard camp is already on the bot, so only the small camp's hit confirms its own aggro.
+    if (job.kind === "double_pull" && job.activeCamp === job.campIdx) return false;
     for (const n of bot.GetNearbyNeutralCreeps(settings().Radii.NeutralSearch, false) ?? []) {
         if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && n.GetAttackTarget() === bot) return true;
     }
@@ -977,9 +1101,14 @@ function neutralsInBox(bot: Unit, campIdx: number): number {
     return n;
 }
 
+/**
+ * The camp idles at its spawner origin, so that is what must be in sight. Distance alone counted fogged boxes: ogre on
+ * good_2 at 8:02, night (hero vision 800) and ~1,100 from the origin, read 2 of 3 neutrals and graded the stack failed.
+ */
 function boxInSight(bot: Unit, campIdx: number): boolean {
     const spawner = Camps.SpawnerByIdx(campIdx);
-    return spawner !== undefined && bot.IsAlive() && GetUnitToLocationDistance(bot, Camps.BoxCenter(spawner)) <= settings().Radii.StackSight;
+    if (spawner === undefined || !bot.IsAlive()) return false;
+    return GetUnitToLocationDistance(bot, spawner.location) <= settings().Radii.StackSight && IsLocationVisible(spawner.location);
 }
 
 export function StackGrade(aggroSec: number): string {
@@ -1016,7 +1145,8 @@ function settleStack(bot: Unit, now: number): void {
     delete pendingStacks[bot.GetPlayerID()];
     const t = settings().Timing;
     const after = p.peak;
-    const assumed = after === undefined && p.aggro >= t.StackAssumedFrom && p.aggro <= t.StackAssumedTo;
+    const [from, to] = Stacking.Window(p.campIdx);
+    const assumed = after === undefined && p.aggro >= (from ?? t.StackAssumedFrom) && p.aggro <= (to ?? t.StackAssumedTo);
     const stacked = Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
     // Timing only, as parse_condebug.js calibrates the stack second from it; `stacked` carries the outcome.
     const grade = after === undefined ? "unknown" : StackGrade(p.aggro);
@@ -1071,35 +1201,6 @@ function sample(bot: Unit, job: Job, now: number): void {
         job.waveSize = math.max(1, laneCreepsNear(bot, meet, cfg.Radii.WaveSize).length);
     }
     job.peakDivert = math.max(job.peakDivert, MeasureDivert(watched, job.waveSize));
-}
-
-/** Double pull: once the first camp has engaged, lead the second camp into the same wave if it pulls soon enough. */
-function trySecondCamp(bot: Unit, job: Job, now: number): boolean {
-    if (job.kind !== "double_pull" || job.stage !== 1 || job.secondTried || job.peakDivert <= 0 || job.secondCampIdx === undefined) return false;
-    job.secondTried = true;
-    const data = Camps.ByIdx(job.secondCampIdx, bot.GetTeam());
-    const spawner = Camps.SpawnerByIdx(job.secondCampIdx);
-    if (data === undefined || data.pull === undefined || spawner === undefined || job.meet === undefined) return false;
-    const cfg = settings();
-    // Timed into the first camp's meet point, where the wave is.
-    const timing = timingFor("full_pull", data, job.meet);
-    const base = NextAggroTime(now, timing.seconds, cfg.Timing.PullPeriod);
-    if (base - now > cfg.Timing.DoublePullReach) return false;
-    const skill = LaneConfig.SkillOf(bot);
-    const jitter = LaneConfig.Jitter(skill);
-    const noise = LaneConfig.Curve("PathNoise", skill);
-    const exact = leadPath(data.pull, job.meet);
-    job.stand = noisy(standFor(spawner, exact[0]), noise);
-    job.path = exact.map((p) => noisy(p, noise));
-    job.aggroAt = base + jitter;
-    job.waveAt = timing.waveAfter !== undefined ? base + timing.waveAfter : undefined;
-    job.activeCamp = job.secondCampIdx;
-    job.stage = 2;
-    job.waypoint = 0;
-    job.watchFrom = undefined;
-    job.phase = "travel";
-    HDebug.Log("lane", `job-second pid=${bot.GetPlayerID()} camp=${job.secondCampIdx} aggroAt=${string.format("%.1f", job.aggroAt)}`);
-    return true;
 }
 
 /** The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map. */
@@ -1239,8 +1340,19 @@ function step(bot: Unit, job: Job): boolean {
             Intent.Hold(bot, "lane:job_aggro");
             return true;
         }
-        if (job.stage === 1) job.actualAggro = aggroLanded(bot, job, now);
+        if (job.stage === 1 && job.chain === undefined) job.actualAggro = aggroLanded(bot, job, now);
         job.aggroTarget = undefined;
+        if (job.chain !== undefined) {
+            // A double's hard camp is on the bot: on to the small camp, whose hit is the graded pull's.
+            job.activeCamp = job.campIdx;
+            job.stand = job.chain.stand;
+            job.aggroAt = job.chain.aggroAt;
+            job.chain = undefined;
+            job.aggroOrderedAt = undefined;
+            job.phase = "travel";
+            HDebug.Log("lane", `job-second pid=${bot.GetPlayerID()} camp=${job.campIdx} aggroAt=${string.format("%.1f", job.aggroAt)}`);
+            return step(bot, job);
+        }
         if (job.kind === "stack") {
             noteStackAggro(bot, job, now);
             job.phase = "exit";
@@ -1250,7 +1362,7 @@ function step(bot: Unit, job: Job): boolean {
     }
     if (job.phase === "exit") {
         if (now >= (job.exitUntil ?? now)) {
-            job.phase = "done";
+            endStack(bot, job);
             return false;
         }
         while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
@@ -1267,7 +1379,6 @@ function step(bot: Unit, job: Job): boolean {
     }
     if (job.phase === "watch") {
         sample(bot, job, now);
-        if (trySecondCamp(bot, job, now)) return step(bot, job);
         if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec && (job.waveAt === undefined || now >= job.waveAt + cfg.PullTiming.WatchAfterWave)) {
             close(bot, job, "done", Grade(job.kind, job.peakDivert));
             return false;

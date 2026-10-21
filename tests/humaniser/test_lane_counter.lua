@@ -143,6 +143,25 @@ do
 end
 
 do
+	-- The enemy's pull seconds come from their wave (pull_timing) when their camp is wave-timed, as ours do: with a Dire
+	-- creep path along the stub top lane their small camp pulls at :18.3 (half :21.4), so a support unseen by it at :25
+	-- reads as pulling; on the :15/:17 seeds it did not (8 s off, CounterPullWindow 6).
+	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
+	local function at25(cfg)
+		local H, support, _, _, esup = world(1, { cfg = cfg })
+		-- Seen in lane first, so its position is known.
+		tick(H, support, 80)
+		hide(esup, 4)
+		LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
+		tick(H, support, 85)
+		LAST_SEEN[15] = nil
+		return #signalsOf(H, support, "pull")
+	end
+	check("seed seconds: unseen support at :25 not suspected", at25(nil) == 0)
+	check("wave-timed seconds: unseen support at :25 suspected", at25(WAVE) == 1)
+end
+
+do
 	-- A noticed pull: the enemy support stands at its camp at :15.
 	local function pulled(opts)
 		local H, support, core, ecore, esup = world(1, opts)

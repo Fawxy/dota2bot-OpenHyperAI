@@ -8,6 +8,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 
@@ -237,7 +238,7 @@ function humanPulling(s: LaneState.LaneSnapshot, human: Unit): boolean {
             if (sp.idx === job.campIdx) spawner = sp;
         }
         if (spawner === undefined || dist2D(Camps.BoxCenter(spawner), loc) > radius) continue;
-        const seconds = [...job.pull.aggroSec, ...(job.pull.halfAggroSec ?? [])];
+        const seconds = [...PullTiming.ForCamp(job, false).seconds, ...PullTiming.ForCamp(job, true).seconds];
         for (const sec of seconds) if (inWindow(s.cycleSec, sec)) return true;
     }
     return false;

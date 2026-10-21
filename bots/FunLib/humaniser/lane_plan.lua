@@ -41,6 +41,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local PLAN_RANK = {"SHOVE", "FREEZE", "HOLD", "NEUTRAL"}
@@ -273,10 +274,10 @@ local function humanPulling(s, human)
                     __continue47 = true
                     break
                 end
-                local ____array_0 = __TS__SparseArrayNew(unpack(job.pull.aggroSec))
+                local ____array_0 = __TS__SparseArrayNew(unpack(PullTiming.ForCamp(job, false).seconds))
                 __TS__SparseArrayPush(
                     ____array_0,
-                    unpack(job.pull.halfAggroSec or ({}))
+                    unpack(PullTiming.ForCamp(job, true).seconds)
                 )
                 local seconds = {__TS__SparseArraySpread(____array_0)}
                 for ____, sec in ipairs(seconds) do

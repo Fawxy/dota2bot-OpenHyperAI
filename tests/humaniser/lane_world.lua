@@ -90,6 +90,8 @@ end
 function GetNeutralSpawners() return SPAWNERS end
 -- IMPASSABLE(v) true marks a blocked location (e.g. beyond a map edge); nil means everything is passable.
 function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
+-- FOGGED(v) true marks a location the team cannot see; nil means everything is visible.
+function IsLocationVisible(v) return FOGGED == nil or not FOGGED(v) end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index
@@ -118,6 +120,9 @@ function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
+-- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
+function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
+function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end
 function UnitMeta:GetNearbyTowers(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}

@@ -226,6 +226,7 @@ local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
@@ -561,8 +562,8 @@ local function suspectedCamp(camps, support, now)
                     now = now,
                     enemySupport = support,
                     campLoc = Camps.BoxCenter(spawner),
-                    campPullSec = camp.pull.aggroSec,
-                    campHalfSec = camp.pull.halfAggroSec
+                    campPullSec = PullTiming.ForCamp(camp, false).seconds,
+                    campHalfSec = PullTiming.ForCamp(camp, true).seconds
                 }
                 if ____exports.EnemyPullSuspected(input) then
                     return camp.campIdx
