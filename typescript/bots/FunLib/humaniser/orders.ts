@@ -13,7 +13,7 @@ import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
 
-export type OrderType = "GATHER" | "ATTACK" | "DEFEND" | "PUSH" | "ROSHAN" | "AVOID" | "SMOKE" | "RELEASE";
+export type OrderType = "GATHER" | "ATTACK" | "DEFEND" | "PUSH" | "ROSHAN" | "AVOID" | "SMOKE" | "BACK" | "RELEASE";
 
 export interface OrderSpec {
     type: OrderType;
@@ -30,10 +30,14 @@ export interface OrderSpec {
     alsoWithin?: number;
     /** Only consider bots within this distance (0 or undefined = any distance). */
     maxDistance?: number;
+    /** Bots farther than this with a teleport ready also respond (DEFEND: "TP in"). */
+    alsoTpBeyond?: number;
     /** Restrict responders to these player IDs (targeted chat commands). */
     onlyPIDs?: number[];
     /** How long a bot takes to read the order; defaults to the 'ping' delay. */
     delayKind?: Profile.DelayKind;
+    /** The spokesperson answers with a map ping at the order location (ping-sourced orders). */
+    ackPing?: boolean;
 }
 
 export interface TeamOrder extends OrderSpec {
@@ -47,6 +51,7 @@ export interface TeamOrder extends OrderSpec {
 
 // Higher wins when a bot has accepted several orders.
 const PRIORITY: Record<OrderType, number> = {
+    BACK: 8,
     AVOID: 7,
     DEFEND: 6,
     ROSHAN: 5,
@@ -60,6 +65,21 @@ const PRIORITY: Record<OrderType, number> = {
 const ordersByTeam: Record<number, TeamOrder[]> = {};
 const seenSourceKeys: Record<string, boolean> = {};
 let nextId = 1;
+// Bumped on every change to the order lists; invalidates the per-frame GetFor cache.
+let version = 0;
+
+// Feature-level chat limit: one humaniser line per bot per this many seconds.
+const MIN_LINE_GAP = 10;
+const ACK_PING_GAP = 10;
+// Commitment: with an accepted order and HP above COMMIT_MIN_HP, retreat desire is capped below the order floor.
+const COMMIT_MIN_HP = 0.5;
+const COMMIT_RETREAT_MARGIN = 0.1;
+const LANE_NAMES: Record<number, string> = { [Lane.Top]: "top", [Lane.Mid]: "mid", [Lane.Bot]: "bot" };
+
+const lastLineAt: Record<number, number> = {};
+const lastAckPingAt: Record<number, number> = {};
+// AVOID zones added by this module instance, by order id.
+const avoidZones: Record<number, number | undefined> = {};
 
 interface BotOrderState {
     readAt: number;
@@ -78,11 +98,25 @@ function teamOrders(team: number): TeamOrder[] {
     return list;
 }
 
+function release(order: TeamOrder): void {
+    version++;
+    const zone = avoidZones[order.id];
+    if (zone !== undefined) {
+        avoidZones[order.id] = undefined;
+        RemoveAvoidanceZone(zone);
+    }
+}
+
+function removeAt(list: TeamOrder[], i: number): void {
+    release(list[i]);
+    list.splice(i, 1);
+}
+
 function prune(team: number): void {
     const list = teamOrders(team);
     const now = GameTime();
     for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].expiresAt <= now) list.splice(i, 1);
+        if (list[i].expiresAt <= now) removeAt(list, i);
     }
 }
 
@@ -101,6 +135,13 @@ export function OrderLocation(order: TeamOrder): Vector | undefined {
     return order.location;
 }
 
+function hasTeleportByPID(team: number, pid: number): boolean {
+    for (const member of teamBots(team)) {
+        if (member.GetPlayerID() === pid) return HasTeleportReady(member);
+    }
+    return false;
+}
+
 function rankResponders(spec: OrderSpec, team: number): number[] {
     const loc = spec.location ?? (spec.target !== undefined ? spec.target.GetLocation() : undefined);
     const candidates: [number, number][] = [];
@@ -116,7 +157,12 @@ function rankResponders(spec: OrderSpec, team: number): number[] {
     const responders: number[] = [];
     for (let i = 0; i < candidates.length; i++) {
         const [pid, dist] = candidates[i];
-        if (i < spec.maxResponders || (spec.alsoWithin !== undefined && dist <= spec.alsoWithin)) responders.push(pid);
+        if (
+            i < spec.maxResponders ||
+            (spec.alsoWithin !== undefined && dist <= spec.alsoWithin) ||
+            (spec.alsoTpBeyond !== undefined && dist > spec.alsoTpBeyond && hasTeleportByPID(team, pid))
+        )
+            responders.push(pid);
     }
     return responders;
 }
@@ -135,7 +181,7 @@ export function Post(team: number, spec: OrderSpec): TeamOrder | undefined {
     prune(team);
     const list = teamOrders(team);
     for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].type === spec.type && list[i].lane === spec.lane) list.splice(i, 1);
+        if (list[i].type === spec.type && list[i].lane === spec.lane) removeAt(list, i);
     }
     const now = GameTime();
     const order: TeamOrder = {
@@ -147,19 +193,20 @@ export function Post(team: number, spec: OrderSpec): TeamOrder | undefined {
         responders: rankResponders(spec, team),
     };
     list.push(order);
+    version++;
     return order;
 }
 
 export function Cancel(team: number, id: number): void {
     const list = teamOrders(team);
     for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].id === id) list.splice(i, 1);
+        if (list[i].id === id) removeAt(list, i);
     }
 }
 
 export function CancelAll(team: number): void {
     const list = teamOrders(team);
-    list.splice(0, list.length);
+    for (let i = list.length - 1; i >= 0; i--) removeAt(list, i);
 }
 
 export function GetActive(team: number): TeamOrder[] {
@@ -224,14 +271,35 @@ export function TryAccept(bot: Unit, order: TeamOrder): boolean {
     const reason = DeclineReason(bot, order);
     if (reason !== undefined) {
         state.declined = reason;
-        announce(bot, `say_order_decline_${reason}`);
+        Say(bot, `say_order_decline_${reason}`);
         return false;
     }
     if (state.announced !== true) {
         state.announced = true;
-        if (IsSpokesperson(bot, order)) announce(bot, `say_order_ack_${string.lower(order.type)}`);
+        onAccepted(bot, order);
     }
     return true;
+}
+
+function ackKey(order: TeamOrder): string {
+    const base = `say_order_ack_${string.lower(order.type)}`;
+    const lane = order.lane !== undefined ? LANE_NAMES[order.lane] : undefined;
+    return lane !== undefined && (order.type === "DEFEND" || order.type === "PUSH") ? `${base}_${lane}` : base;
+}
+
+function onAccepted(bot: Unit, order: TeamOrder): void {
+    if (order.type === "AVOID" && avoidZones[order.id] === undefined && order.location !== undefined) {
+        const left = math.max(0, order.expiresAt - GameTime());
+        avoidZones[order.id] = AddAvoidanceZone(Vector(order.location.x, order.location.y, order.radius ?? 0), left);
+    }
+    if (!IsSpokesperson(bot, order)) return;
+    Say(bot, ackKey(order));
+    const loc = OrderLocation(order);
+    const pid = bot.GetPlayerID();
+    if (order.ackPing === true && loc !== undefined && GameTime() - (lastAckPingAt[pid] ?? -ACK_PING_GAP) >= ACK_PING_GAP) {
+        lastAckPingAt[pid] = GameTime();
+        bot.ActionImmediate_Ping(loc.x, loc.y, true);
+    }
 }
 
 type Announcer = (bot: Unit, key: string, cooldown: number) => void;
@@ -242,18 +310,66 @@ export function SetAnnouncer(fn: Announcer): void {
     announcer = fn;
 }
 
-function announce(bot: Unit, key: string): void {
-    if (announcer !== undefined) announcer(bot, key, Config.Get().Orders.AckCooldown);
+export function CanSay(bot: Unit): boolean {
+    return GameTime() - (lastLineAt[bot.GetPlayerID()] ?? -MIN_LINE_GAP) >= MIN_LINE_GAP;
 }
 
-/** Highest-priority order this bot has accepted, or undefined. */
-export function GetFor(bot: Unit): TeamOrder | undefined {
+/** Team-chat line for humaniser features; at most one per bot per MIN_LINE_GAP. Returns false if suppressed. */
+export function Say(bot: Unit, key: string, cooldown?: number): boolean {
+    if (announcer === undefined || !CanSay(bot)) return false;
+    lastLineAt[bot.GetPlayerID()] = GameTime();
+    announcer(bot, key, cooldown ?? Config.Get().Orders.AckCooldown);
+    return true;
+}
+
+interface ForCache {
+    time: number;
+    version: number;
+    best?: TeamOrder;
+    accepted: TeamOrder[];
+}
+const forCache: Record<number, ForCache> = {};
+
+function acceptedFor(bot: Unit): ForCache {
+    const pid = bot.GetPlayerID();
+    const now = GameTime();
+    let cache = forCache[pid];
+    if (cache !== undefined && cache.time === now && cache.version === version) return cache;
+    const accepted: TeamOrder[] = [];
     let best: TeamOrder | undefined;
     for (const order of GetActive(bot.GetTeam())) {
         if (!TryAccept(bot, order)) continue;
+        accepted.push(order);
+        // AVOID has no mode of its own; it must not hide the order a bot is executing.
+        if (order.type === "AVOID") continue;
         if (best === undefined || PRIORITY[order.type] > PRIORITY[best.type]) best = order;
     }
-    return best;
+    // GetActive may have pruned (bumping version), so record the version after the scan.
+    cache = { time: now, version, best, accepted };
+    forCache[pid] = cache;
+    return cache;
+}
+
+/** Highest-priority order this bot has accepted and should execute (AVOID excluded), or undefined. */
+export function GetFor(bot: Unit): TeamOrder | undefined {
+    return acceptedFor(bot).best;
+}
+
+/** An accepted order of the given type, e.g. AVOID alongside the order being executed. */
+export function GetAccepted(bot: Unit, type: OrderType): TeamOrder | undefined {
+    for (const order of acceptedFor(bot).accepted) {
+        if (order.type === type) return order;
+    }
+    return undefined;
+}
+
+/** Caps retreat desire while the bot is committed to an accepted order and still healthy. */
+export function CapRetreatDesire(bot: Unit, desire: number): number {
+    if (!Config.IsEnabled()) return desire;
+    if (bot.GetHealth() / bot.GetMaxHealth() <= COMMIT_MIN_HP) return desire;
+    const order = GetFor(bot);
+    if (order === undefined || order.type === "BACK") return desire;
+    return math.min(desire, Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN);
 }
 
 function modeMatches(order: TeamOrder, botMode: BotMode, lane: Lane | undefined): boolean {
@@ -261,6 +377,7 @@ function modeMatches(order: TeamOrder, botMode: BotMode, lane: Lane | undefined)
         case "GATHER":
         case "ATTACK":
         case "SMOKE":
+        case "BACK":
             return botMode === BotMode.Assemble;
         case "ROSHAN":
             return botMode === BotMode.Roshan;
