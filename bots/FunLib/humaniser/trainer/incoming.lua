@@ -49,6 +49,16 @@ function ____exports.NearbyUnits(loc, radius)
     end
     return result
 end
+--- Visible heroes of both teams, from the same cached lists.
+function ____exports.Heroes()
+    local result = {}
+    for ____, u in ipairs(unitsForTeam()) do
+        if u:IsHero() and not u:IsIllusion() then
+            result[#result + 1] = u
+        end
+    end
+    return result
+end
 local function kindOf(u)
     if u:IsTower() then
         return "ranged"
@@ -115,16 +125,16 @@ function ____exports.Hits(creep, subject, horizon)
     local loc = creep:GetLocation()
     for ____, p in ipairs(target:GetIncomingTrackingProjectiles()) do
         do
-            local __continue25
+            local __continue29
             repeat
                 if not p.is_attack or p.caster == nil or p.caster == nil or p.caster == subject then
-                    __continue25 = true
+                    __continue29 = true
                     break
                 end
                 local caster = T(p.caster)
                 local travelTime = GetUnitToLocationDistance(creep, p.location) / projectileSpeed(caster)
                 if travelTime > horizon then
-                    __continue25 = true
+                    __continue29 = true
                     break
                 end
                 hits[#hits + 1] = {
@@ -134,19 +144,19 @@ function ____exports.Hits(creep, subject, horizon)
                         DamageType.Physical
                     )
                 }
-                __continue25 = true
+                __continue29 = true
             until true
-            if not __continue25 then
+            if not __continue29 then
                 break
             end
         end
     end
     for ____, u in ipairs(____exports.NearbyUnits(loc, NEARBY_RADIUS)) do
         do
-            local __continue29
+            local __continue33
             repeat
                 if u == subject or u == creep or u:GetAttackTarget() ~= creep then
-                    __continue29 = true
+                    __continue33 = true
                     break
                 end
                 attackerHit(
@@ -155,9 +165,9 @@ function ____exports.Hits(creep, subject, horizon)
                     target,
                     horizon
                 )
-                __continue29 = true
+                __continue33 = true
             until true
-            if not __continue29 then
+            if not __continue33 then
                 break
             end
         end

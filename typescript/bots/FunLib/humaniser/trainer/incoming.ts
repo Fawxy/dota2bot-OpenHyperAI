@@ -52,6 +52,15 @@ export function NearbyUnits(loc: Vector, radius: number): Unit[] {
     return result;
 }
 
+/** Visible heroes of both teams, from the same cached lists. */
+export function Heroes(): Unit[] {
+    const result: Unit[] = [];
+    for (const u of unitsForTeam()) {
+        if (u.IsHero() && !u.IsIllusion()) result.push(u);
+    }
+    return result;
+}
+
 function kindOf(u: TUnit): CreepKind {
     if (u.IsTower()) return "ranged";
     if (u.IsHero()) {

@@ -5,6 +5,12 @@ function UnitMeta:ActionImmediate_Chat(line) self.said = self.said or {} table.i
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:FindItemSlot() return -1 end
 function UnitMeta:GetAttackTarget() return nil end
+function UnitMeta:GetLastHits() return 0 end
+function UnitMeta:GetDenies() return 0 end
+function UnitMeta:GetAnimActivity() return 1500 end
+function UnitMeta:IsStunned() return false end
+function UnitMeta:IsHexed() return false end
+function UnitMeta:WasRecentlyDamagedByAnyHero() return false end
 function GetUnitList() return {} end
 
 local USAGE = "usage: !trainer on|off|stats|reset|bar on|off|chat off|misses|all|denies on|off"
