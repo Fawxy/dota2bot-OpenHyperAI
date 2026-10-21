@@ -13,6 +13,7 @@ local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
+local Bridge = require(GetScriptDirectory().."/FunLib/humaniser/bridge")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -25,6 +26,7 @@ ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Intent = Intent
 ____exports.Trainer = Trainer
+____exports.Bridge = Bridge
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -156,6 +158,7 @@ function ____exports.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
     HDebug.SharedStateProbe(bot)
+    Bridge.Tick(bot)
     drawOverlay(bot)
 end
 return ____exports

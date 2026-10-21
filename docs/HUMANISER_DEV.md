@@ -56,6 +56,9 @@ Set `Customize.Humaniser.Debug = true` in `bots/Customize/general.lua`. The modu
 - `HDebug.Log(tag, ...)` prints `[H:tag] ...`. It bypasses OHA's `print` override (which stays silent unless `Utils.DebugMode`) through `Utils.RawPrint`, set in `aba_global_overrides.lua`.
 - Drawing runs from `ItemUsageThink`, before its throttle, so it happens every frame.
 
+## Sidecar bridge probe
+Set `Customize.Humaniser.Bridge.Enable = true` (default off) to run the vendored dota-bot-sdk lua-bridge, which logs `[H:bridge] ...` lines; run sheet: `dota-bot-sdk/docs/BRIDGE_SPIKE.md` (sibling repo, branch `spike-bridge`).
+
 ## Shared-state finding
 **TODO (in-game).** This blocks the design of tasks 02, 05 and 06.
 

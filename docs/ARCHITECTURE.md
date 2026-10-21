@@ -482,6 +482,7 @@ Some Lua files in `bots/FunLib/` are **generated from TypeScript** via TSTL. Whe
 
 These files have NO TypeScript source -- edit the Lua directly:
 - `FunLib/jmz_func.lua` (core functions, hand-written Lua)
+- `FunLib/sdk/*.lua` (vendored from dota-bot-sdk with a provenance header; do not edit, re-vendor instead)
 - `FunLib/aba_item.lua` (item definitions)
 - `FunLib/aba_skill.lua` (skill system)
 - `FunLib/spell_list.lua` (ability weights)
