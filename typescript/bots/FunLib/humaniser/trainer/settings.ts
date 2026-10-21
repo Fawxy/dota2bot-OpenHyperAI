@@ -3,7 +3,6 @@ import * as Config from "bots/FunLib/humaniser/config";
 export const DEFAULTS = {
     Enable: true,
     Bar: true,
-    BarStyle: "time" as "time" | "hp",
     OutcomeOnly: false,
     ScreenText: true,
     Denies: true,

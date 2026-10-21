@@ -4,7 +4,6 @@ local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 ____exports.DEFAULTS = {
     Enable = true,
     Bar = true,
-    BarStyle = "time",
     OutcomeOnly = false,
     ScreenText = true,
     Denies = true,

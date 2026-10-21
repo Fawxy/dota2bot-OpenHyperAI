@@ -104,9 +104,10 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 
 ## Last-hit trainer (14)
 Setup: Local Host lobby, cheats on, `Debug = true`, then `!trainer on`. Details are in the "Last-hit trainer (task 14)" section of HUMANISER_DEV.md.
-- [ ] **Spike results recorded** in `HUMANISER_DEV.md` (`!trainer spike`), and the `BarStyle`, `OutcomeOnly` and `ScreenText` defaults decided. Also check:
+- [ ] **Spike results recorded** in `HUMANISER_DEV.md` (`!trainer spike`), and the `OutcomeOnly` and `ScreenText` defaults decided. Also check:
   - draws are visible with and without Debug
   - the bars are smooth, and the think rate is noted
+  - the countdown bar reads at a glance: the white line stays put, the marker turns green as it crosses it, and the green zone's length matches how forgiving the creep is
   - which human-hero reads work
   - `GetAttackProDelayTime` gives sane values on the human
   - a Unicode text line renders or doesn't

@@ -621,7 +621,7 @@ Post claims instead of editing desires: camp jobs as `CAMP_JOB` floors on the jo
 | Key | Default | Meaning |
 |---|---|---|
 | `Enable` | `true` | Kill switch |
-| `Bar` / `BarStyle` | `true` / `'time'` | Draw the bar; `'time'` or `'hp'` |
+| `Bar` | `true` | Draw the countdown bar |
 | `OutcomeOnly` | `false` | Spike fallback: grade outcomes only if swing timing can't be read |
 | `ScreenText` | `true` | `false` sends verdicts and summaries to team chat |
 | `Denies` / `Chat` | `true` / `'off'` | Grade denies; `'off'`, `'misses'` or `'all'` |
@@ -640,11 +640,11 @@ The spike has not been run. Every result below is **pending (run `!trainer spike
 | 2 | Bars smooth or flickering? Think rate? | pending |
 | 3 | Which human-hero reads work? | pending |
 | 4 | Is `GetAttackProDelayTime` sane on the human? | pending |
-| 5 | Which bar style does the user prefer? | pending |
+| 5 | Which bar style does the user prefer? | Neither. In game, both moved against a reference that also moved (the window resized; the HP style's damage line sat at a different spot per creep), and the two looked alike. Replaced by the countdown bar (22/10/2026). |
 | 6 | Optional: latency from a bot `ActionImmediate_Chat` line to a FretBots `player_chat` listener (probed by hand, no code) | pending |
 | 7 | Does a Unicode text line render (plan correction 4)? | pending |
 
-Decisions still to record, in `settings.ts` and `general.lua` in one small commit: `BarStyle`, `OutcomeOnly`, `ScreenText`.
+Decisions still to record, in `settings.ts` and `general.lua` in one small commit: `OutcomeOnly`, `ScreenText`.
 
 ### Plan corrections
 The plan overrides the spec in four places:
@@ -654,7 +654,7 @@ The plan overrides the spec in four places:
 4. **Screen text uses ASCII `-`** instead of `–`/`−`, because `DebugDrawText` may not render non-ASCII text (spike item 7).
 
 ### Behaviour decisions
-- **Time bar:** the track spans now-0.5 .. now+2.0 s. The white "now" tick sits at 0.5/2.5 of the width, so your swing start (the blue tick) shows next to the window (R14).
+- **Countdown bar:** 200 units wide at 80 units/s. The white swing line is fixed 60 in from the left, the same place on every creep. The window is drawn from that line leftwards, its length the window's duration (cut at 0.75 s), so its line end never moves. The tall marker is now: yellow while counting down (up to 1.75 s ahead), the window colour inside it, red once it has closed. The blue tick is your swing start on the same scale, so its distance past the line is how late you started.
 - **`uncertain` (amber):** compares the close edge always, and the open edge only when it's in the future. A close capped at the 2 s horizon is ignored (R15, R15b).
 - **Cancelled swings:** a creep whose only swings were cancelled still counts as an easy miss, with no swing. EARLY hits shield the creep (R9).
 - **One verdict per creep death** (R7). When two swings are in flight and the creep dies to the player, the older swing is credited if its landing time was no more than 0.1 s ago (R8).

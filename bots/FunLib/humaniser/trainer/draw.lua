@@ -16,9 +16,6 @@ local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/trainer/settings")
 local ____api = require(GetScriptDirectory().."/FunLib/humaniser/trainer/api")
 local DrawLine = ____api.DrawLine
-local ____predict = require(GetScriptDirectory().."/FunLib/humaniser/trainer/predict")
-local HORIZON = ____predict.HORIZON
-local STEP = ____predict.STEP
 local LINE_HEIGHT = 14
 local MAX_LINES = 3
 local LINE_SECONDS = 6
@@ -80,13 +77,18 @@ function ____exports.SummaryText(lines, shownAt, now)
     end
 end
 local BAR_Z = 180
-local BAR_WIDTH = 160
+local BAR_WIDTH = 200
 local TICK_HEIGHT = 16
+local MARKER_HEIGHT = 32
 local BAR_MAX_DISTANCE = 1200
-local PAST_SECONDS = 0.5
+--- Units per second. The swing line sits LINE_OFFSET from the left, so the bar shows 0.75 s of window behind it and 1.75 s of countdown ahead.
+local SCALE = 80
+local LINE_OFFSET = 60
 local GREY = {128, 128, 128}
 local WHITE = {255, 255, 255}
 local BLUE = {80, 160, 255}
+local YELLOW = {255, 255, 0}
+local RED = {255, 60, 60}
 local function windowColour(p)
     if p.isDeny then
         return {0, 255, 255}
@@ -96,8 +98,10 @@ local function windowColour(p)
     end
     return {0, 255, 0}
 end
---- Live timing bars over each predicted creep: the start window on a now-0.5..now+2 s axis ("time"), or the creep's HP axis with the landing marker ("hp").
-function ____exports.Bars(subject, preds, style, now, swingStart)
+--- Countdown bar over each predicted creep. The white swing line never moves; the window is drawn
+-- from that line leftwards, its length the window's duration. The tall marker is now, sliding left
+-- at real-time speed: it crosses the line as the window opens and leaves the zone as it closes.
+function ____exports.Bars(subject, preds, now, swingStart)
     if not subject:IsAlive() then
         return
     end
@@ -120,8 +124,19 @@ function ____exports.Bars(subject, preds, style, now, swingStart)
                 end
                 local loc = creep:GetLocation()
                 local left = loc.x - BAR_WIDTH / 2
+                local right = left + BAR_WIDTH
+                local line = left + LINE_OFFSET
                 local z = loc.z + BAR_Z
                 local y = loc.y
+                local function clamp(x)
+                    return math.max(
+                        left,
+                        math.min(right, x)
+                    )
+                end
+                local function xAt(t)
+                    return clamp(line + (p.startOpen - t) * SCALE)
+                end
                 local function hline(from, to, c, dz)
                     return DrawLine(
                         Vector(from, y, z + dz),
@@ -131,66 +146,36 @@ function ____exports.Bars(subject, preds, style, now, swingStart)
                         c[3]
                     )
                 end
-                local function tick(x, c)
+                local function tick(x, c, height)
+                    if height == nil then
+                        height = TICK_HEIGHT
+                    end
                     return DrawLine(
                         Vector(x, y, z),
-                        Vector(x, y, z + TICK_HEIGHT),
+                        Vector(x, y, z + height),
                         c[1],
                         c[2],
                         c[3]
                     )
                 end
                 local colour = windowColour(p)
-                if style == "time" then
-                    local function xAt(t)
-                        return left + BAR_WIDTH * math.max(
-                            0,
-                            math.min(1, (t - now + PAST_SECONDS) / (PAST_SECONDS + HORIZON))
-                        )
-                    end
-                    hline(left, left + BAR_WIDTH, GREY, TICK_HEIGHT / 2)
-                    local open = xAt(p.startOpen)
-                    local close = xAt(p.startClose)
-                    if close > open then
-                        hline(open, close, colour, TICK_HEIGHT / 2 + 2)
-                        tick(open, colour)
-                        tick(close, colour)
-                    end
+                hline(left, right, GREY, TICK_HEIGHT / 2)
+                local windowEnd = clamp(line - (p.startClose - p.startOpen) * SCALE)
+                if windowEnd < line then
+                    hline(windowEnd, line, colour, TICK_HEIGHT / 2 + 2)
+                    tick(windowEnd, colour)
+                end
+                tick(line, WHITE)
+                local marker = now < p.startOpen and YELLOW or (now <= p.startClose and colour or RED)
+                tick(
+                    xAt(now),
+                    marker,
+                    MARKER_HEIGHT
+                )
+                if swingStart ~= nil and targetId == tostring(creep) then
                     tick(
-                        xAt(now),
-                        WHITE
-                    )
-                    if swingStart ~= nil and targetId == tostring(creep) then
-                        tick(
-                            xAt(swingStart),
-                            BLUE
-                        )
-                    end
-                else
-                    local maxHp = creep:GetMaxHealth()
-                    local function xHp(hp)
-                        return left + BAR_WIDTH * math.max(
-                            0,
-                            math.min(1, hp / maxHp)
-                        )
-                    end
-                    hline(
-                        left,
-                        xHp(p.hp),
-                        GREY,
-                        TICK_HEIGHT / 2
-                    )
-                    tick(
-                        xHp(p.effDmg),
-                        WHITE
-                    )
-                    local index = math.min(
-                        math.floor(p.delay / STEP + 0.5),
-                        #p.curve - 1
-                    )
-                    tick(
-                        xHp(p.curve[index + 1]),
-                        colour
+                        xAt(swingStart),
+                        BLUE
                     )
                 end
                 __continue17 = true

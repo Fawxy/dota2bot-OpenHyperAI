@@ -415,11 +415,11 @@ do
 	local creep = Creep(3, { loc = Vector(100, 50, 10) })
 	tick(H, bots, 4)
 	check("bar draws lines for a visible creep", #LINES >= 4, #LINES)
-	local now = linesOf(255, 255, 255)
-	check("time bar has a white now tick 0.5/2.5 along, 16 tall at z+180",
-		#now == 1 and now[1].a.x == 52 and now[1].b.x == 52 and now[1].a.z == 190 and now[1].b.z == 206 and now[1].a.y == 50, #now)
+	local line = linesOf(255, 255, 255)
+	check("swing line is a white tick 60 in from the left, 16 tall at z+180",
+		#line == 1 and line[1].a.x == 60 and line[1].b.x == 60 and line[1].a.z == 190 and line[1].b.z == 206 and line[1].a.y == 50, #line)
 	local track = linesOf(128, 128, 128)[1]
-	check("time bar track spans 160 units, from 0.5 s in the past to 2 s ahead", track ~= nil and track.b.x - track.a.x == 160)
+	check("track spans 200 units", track ~= nil and track.a.x == 0 and track.b.x == 200)
 	check("control: the window of a lethal creep is green", #linesOf(0, 255, 0) > 0)
 	check("no swing tick before the subject swings", #linesOf(80, 160, 255) == 0)
 end
@@ -433,7 +433,9 @@ do
 	human.target = creep
 	swingFrames(H, bots, human, creep, 3)
 	local blue = linesOf(80, 160, 255)
-	check("swing tick sits at swingStart, 0.1 s behind now, 0.1/2.5 left of the now tick", #blue == 1 and math.abs(blue[1].a.x - (20 + 160 * 0.4 / 2.5)) < 1e-6, blue[1] and blue[1].a.x)
+	local marker
+	for _, l in ipairs(LINES) do if l.b.z - l.a.z == 32 then marker = l end end
+	check("swing tick sits 0.1 s (8 units) to the right of the now marker", #blue == 1 and marker ~= nil and math.abs(blue[1].a.x - marker.a.x - 8) < 1e-6, blue[1] and marker and blue[1].a.x - marker.a.x)
 	human.target = nil
 	tick(H, bots, 1, function() human.anim, human.cycle = ATTACK, 0.1 end)
 	check("no swing tick when the swing is at another target", #linesOf(80, 160, 255) == 0)
@@ -494,33 +496,47 @@ do
 end
 
 do
-	local H, human, bots = setup({ BarStyle = "hp" })
-	say(H, "!trainer on")
-	local casters = {}
-	for i, dmg in ipairs({ 10, 20, 30, 20 }) do casters[i] = setmetatable({ pid = 810 + i, team = 2, alive = true, loc = Vector(0, 0), modifiers = {}, damage = dmg, isHero = false }, Unit) end
-	local creep = Creep(3, { loc = Vector(100, 0), hp = 100 })
-	-- delay is 0.4 s, so the ghost sample is index 8; hits on samples 7, 8, 9 give 90, 70, 40 there.
-	tick(H, bots, 4, function()
-		creep.incoming = {
-			{ at = T + 0.33, damage = 10, caster = casters[1] }, { at = T + 0.38, damage = 20, caster = casters[2] },
-			{ at = T + 0.43, damage = 30, caster = casters[3] }, { at = T + 0.63, damage = 20, caster = casters[4] },
-		}
-	end)
-	local marker = linesOf(0, 255, 0)
-	check("hp bar: ghost marker uses the exact sample round(delay/STEP)", #marker == 1 and math.abs(marker[1].a.x - (20 + 160 * 0.70)) < 1e-6, marker[1] and marker[1].a.x)
-end
+	local H, human, bots = setup()
+	local Draw = require("bots/FunLib/humaniser/trainer/draw")
+	local creep = Creep(3, { loc = Vector(100, 0) })
+	local function draw(open, close, swingStart)
+		LINES = {}
+		Draw.Bars(human, { { creep = creep, isDeny = false, uncertain = false, startOpen = T + open, startClose = T + close } }, T, swingStart)
+	end
+	local function marker()
+		for _, l in ipairs(LINES) do if l.b.z - l.a.z == 32 then return l end end
+	end
+	local function zone()
+		local z = linesOf(0, 255, 0)
+		for _, l in ipairs(z) do if l.a.x ~= l.b.x then return l end end
+	end
 
-do
-	local H, human, bots = setup({ BarStyle = "hp" })
-	say(H, "!trainer on")
-	Creep(3, { loc = Vector(100, 0) })
-	tick(H, bots, 4)
-	local marker = linesOf(0, 255, 0)
-	local effDmg = linesOf(255, 255, 255)
-	check("hp bar: ghost marker at the HP when a hit started now would land", #marker == 1 and marker[1].a.x == 60, #marker)
-	check("hp bar: white line at effective damage", #effDmg == 1 and effDmg[1].a.x == 68, #effDmg)
-	local fill = linesOf(128, 128, 128)[1]
-	check("hp bar: grey fill covers current HP", fill ~= nil and fill.a.x == 20 and fill.b.x == 60)
+	draw(1.0, 1.3)
+	local m, w = marker(), zone()
+	check("countdown: marker 1 s ahead of the line, yellow before the window", m ~= nil and m.a.x == 140 and m.r == 255 and m.g == 255 and m.b2 == 0, m and m.a.x)
+	check("countdown: a 0.3 s window is drawn 24 long, ending at the line", w ~= nil and math.abs(w.a.x - 36) < 1e-6 and w.b.x == 60, w and w.a.x)
+	draw(0.8, 1.3)
+	local w2 = zone()
+	check("countdown: a longer window grows away from the line; its line end stays put", w2 ~= nil and math.abs(w2.a.x - 20) < 1e-6 and w2.b.x == 60, w2 and w2.a.x)
+	draw(0.5, 1.5)
+	local w3 = zone()
+	check("countdown: a window over 0.75 s is cut at the left end", w3 ~= nil and w3.a.x == 0 and w3.b.x == 60, w3 and w3.a.x)
+	draw(-0.1, 0.2)
+	m = marker()
+	check("countdown: inside the window the marker is past the line and in the window colour", m ~= nil and math.abs(m.a.x - 52) < 1e-6 and m.r == 0 and m.g == 255, m and m.a.x)
+	draw(-0.5, -0.2)
+	m = marker()
+	check("countdown: after the window closes the marker is red", m ~= nil and m.a.x == 20 and m.r == 255 and m.g == 60, m and m.a.x)
+	draw(3, 3.5)
+	m = marker()
+	check("countdown: a window far ahead pins the marker to the right end", m ~= nil and m.a.x == 200, m and m.a.x)
+	draw(-0.2, 0.2, T - 0.1)
+	check("countdown: no swing tick when the subject is not targeting the creep", #linesOf(80, 160, 255) == 0)
+	human.target = creep
+	draw(-0.2, 0.2, T - 0.1)
+	local blue = linesOf(80, 160, 255)
+	check("countdown: swing tick 0.1 s after the window opened sits 8 past the line", #blue == 1 and math.abs(blue[1].a.x - 52) < 1e-6, blue[1] and blue[1].a.x)
+	human.target = nil
 end
 
 do
@@ -532,9 +548,9 @@ do
 	local near = Creep(3, { loc = Vector(1100, 0) })
 	local far = Creep(3, { loc = Vector(1300, 0) })
 	LINES = {}
-	Draw.Bars(human, { pred(far) }, "time", T)
+	Draw.Bars(human, { pred(far) }, T)
 	check("Bars draws nothing for a creep more than 1200 away", #LINES == 0, #LINES)
-	Draw.Bars(human, { pred(near) }, "time", T)
+	Draw.Bars(human, { pred(near) }, T)
 	check("control: Bars draws for a creep 1100 away", #LINES > 0)
 end
 
