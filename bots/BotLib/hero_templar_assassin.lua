@@ -134,7 +134,7 @@ function X.MinionThink(hMinionUnit)
 					end
 				end
 
-				local incProj = hMinionUnit:GetIncomingTrackingProjectiles()
+				local incProj = J.GetIncomingTrackingProjectiles( hMinionUnit )
 				for _, p in pairs( incProj )
 				do
 					if p.is_attack

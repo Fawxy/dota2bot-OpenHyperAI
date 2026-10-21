@@ -1847,6 +1847,15 @@ function J.IsStunProjectileSpell( sAbilityName )
 end
 
 
+-- Humaniser perception (task 03): the reactive predicates below only see events the bot has had time to react to.
+-- Every call passes straight through when perception is off.
+local HPerception = require( GetScriptDirectory()..'/FunLib/humaniser/perception' )
+
+function J.GetIncomingTrackingProjectiles( nUnit )
+	return HPerception.GetIncomingTrackingProjectiles( nUnit )
+end
+
+
 function J.IsWillBeCastUnitTargetSpell( bot, nRadius )
 
 	if nRadius > 1600 then nRadius = 1600 end
@@ -1868,13 +1877,16 @@ function J.IsWillBeCastUnitTargetSpell( bot, nRadius )
 					if J.IsInRange( npcEnemy, bot, 330 )
 						or not J.IsProjectileUnitSpell( sAbilityName )
 					then
+						local bKnown = HPerception.IsCastKnown( npcEnemy, sAbilityName )
 						if not J.IsHumanPlayer( npcEnemy )
 						then
-							return true
+							if bKnown then return true end
 						else
 							local nCycle = npcEnemy:GetAnimCycle()
 							local nPoint = nAbility:GetCastPoint()
-							if nCycle > 0.1 and nPoint * ( 1 - nCycle ) < 0.27 --极限时机0.26
+							local bOptimal = nCycle > 0.1 and nPoint * ( 1 - nCycle ) < 0.27 --极限时机0.26
+							-- Humanised: react as soon as the cast is known; only skilled bots hold for the optimal window.
+							if bKnown and ( bOptimal or ( HPerception.IsActive() and not HPerception.WaitsForOptimalWindow() ) )
 							then
 								return true
 							end
@@ -1907,7 +1919,7 @@ function J.IsWillBeCastPointSpell( bot, nRadius )
 					or nAbility:GetBehavior() == ABILITY_BEHAVIOR_NO_TARGET
 					or nAbility:GetBehavior() == 48
 				then
-					return true
+					if HPerception.IsCastKnown( npcEnemy, nAbility:GetName() ) then return true end
 				end
 			end
 		end
@@ -1921,7 +1933,7 @@ end
 --可躲避敌方非攻击弹道
 function J.IsProjectileIncoming( bot, range )
 
-	local incProj = bot:GetIncomingTrackingProjectiles()
+	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
 	for _, p in pairs( incProj )
 	do
 		if p.is_dodgeable
@@ -1946,7 +1958,7 @@ end
 --可反弹敌方非攻击弹道
 function J.IsUnitTargetProjectileIncoming( bot, range )
 
-	local incProj = bot:GetIncomingTrackingProjectiles()
+	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
@@ -1975,7 +1987,7 @@ end
 --将被眩晕的弹道
 function J.IsStunProjectileIncoming( bot, range )
 
-	local incProj = bot:GetIncomingTrackingProjectiles()
+	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
@@ -1995,7 +2007,7 @@ end
 --攻击弹道
 function J.IsAttackProjectileIncoming( bot, range )
 
-	local incProj = bot:GetIncomingTrackingProjectiles()
+	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
 	for _, p in pairs( incProj )
 	do
 		if p.is_attack
@@ -2013,7 +2025,7 @@ end
 --非攻击敌方弹道
 function J.IsNotAttackProjectileIncoming( bot, range )
 
-	local incProj = bot:GetIncomingTrackingProjectiles()
+	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
