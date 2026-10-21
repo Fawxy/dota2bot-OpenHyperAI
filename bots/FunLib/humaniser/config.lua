@@ -45,7 +45,8 @@ ____exports.DEFAULTS = {
         MaxBackoffSec = 30,
         PayloadBytes = 2048,
         SummaryEverySec = 30
-    }
+    },
+    Tasks = {Enable = true, Demo = false}
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then

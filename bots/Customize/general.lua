@@ -164,6 +164,8 @@ Customize.Humaniser = {
             SelfTest = false,
         },
     },
+    -- tasks: coroutine task runner spike (FunLib/sdk/tasks, vendored). Demo gates the GATHER demo task.
+    Tasks = { Enable = true, Demo = false },
 }
 
 return Customize

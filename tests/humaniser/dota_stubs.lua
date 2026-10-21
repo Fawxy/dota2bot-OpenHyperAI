@@ -57,6 +57,10 @@ function Unit:IsCastingAbility() return false end
 function Unit:IsStunned() return false end
 function Unit:IsHexed() return false end
 function Unit:DistanceFromFountain() return self.fountainDist or 8000 end
+-- tasks: unit API used by the lua-tasks verbs. Moves are recorded per unit.
+function Unit:GetLastHits() return self.lastHits or 0 end
+function Unit:GetAttackRange() return self.range or 150 end
+function Unit:Action_MoveToLocation(loc) self.moves = self.moves or {} table.insert(self.moves, loc) end
 ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
 function GetAncient() return ANCIENT end
 

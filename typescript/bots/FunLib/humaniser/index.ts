@@ -15,9 +15,14 @@ import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Bridge from "bots/FunLib/humaniser/bridge";
+// tasks: task runner spike
+import * as Tasks from "bots/FunLib/humaniser/tasks";
+import * as TasksDemo from "bots/FunLib/humaniser/tasks_demo_gather";
 import * as Utils from "bots/FunLib/utils";
 
 export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Intent, Trainer, Bridge };
+// tasks: task runner spike
+export { Tasks, TasksDemo };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -85,6 +90,8 @@ function drawOverlay(bot: Unit): void {
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
+        // tasks: task runner spike
+        if (Tasks.IsActive()) HDebug.Text(bot, "task", Tasks.Describe(bot) ?? "-");
     }
     HDebug.Draw(bot);
 }
@@ -105,6 +112,8 @@ export function Tick(bot: Unit): void {
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     Orders.GetFor(bot);
     Intent.Tick(bot);
+    // tasks: task runner spike
+    Tasks.Tick(bot);
     HDebug.SharedStateProbe(bot);
     Bridge.Tick(bot);
     drawOverlay(bot);

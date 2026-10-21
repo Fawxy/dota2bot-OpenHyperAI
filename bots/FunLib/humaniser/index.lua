@@ -14,6 +14,8 @@ local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Bridge = require(GetScriptDirectory().."/FunLib/humaniser/bridge")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+local TasksDemo = require(GetScriptDirectory().."/FunLib/humaniser/tasks_demo_gather")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -27,6 +29,8 @@ ____exports.Commands = Commands
 ____exports.Intent = Intent
 ____exports.Trainer = Trainer
 ____exports.Bridge = Bridge
+____exports.Tasks = Tasks
+____exports.TasksDemo = TasksDemo
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -132,6 +136,13 @@ local function drawOverlay(bot)
                 )
             )
         end
+        if Tasks.IsActive() then
+            HDebug.Text(
+                bot,
+                "task",
+                Tasks.Describe(bot) or "-"
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -157,6 +168,7 @@ function ____exports.Tick(bot)
     Trainer.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
+    Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)
     Bridge.Tick(bot)
     drawOverlay(bot)

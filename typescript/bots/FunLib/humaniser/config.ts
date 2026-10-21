@@ -67,6 +67,8 @@ export const DEFAULTS = {
         PayloadBytes: 2048,
         SummaryEverySec: 30,
     },
+    // tasks: coroutine task runner spike (see humaniser/tasks.ts).
+    Tasks: { Enable: true, Demo: false } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;

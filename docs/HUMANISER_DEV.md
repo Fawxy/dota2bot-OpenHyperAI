@@ -434,3 +434,66 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 - Frame cost with 2 bars and 2 watched creeps (spike item 7).
 
 **Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).
+
+## Task runner (spike)
+Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, ...) resumed once per frame from its host mode's `Think()`. OHA side: `FunLib/humaniser/tasks.lua` (TS: `tasks.ts`), exposed as `J.Humaniser.Tasks`.
+
+- **Vendored code:** `bots/FunLib/sdk/tasks/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/sdk/tasks/` (declarations) come from dota-bot-sdk `packages/lua-tasks`. Do not edit them. To update, from that package run
+  ```bash
+  npm run build && npm run vendor -- --lua <oha>/bots/FunLib/sdk/tasks --types <oha>/typescript/bots/FunLib/sdk/tasks
+  ```
+  and commit everything it writes. `VERSION` records the SDK commit (it must not end in `-dirty`); `.vendored` lists the files so the next run removes stale ones.
+- **Loading:** the bundle is required lazily under `pcall`, only when the humaniser and `Tasks.Enable` are on, so a bundle that fails to load cannot break the rest of the humaniser. The first load attempt in each script context always prints one `[H:tasks] support ...` line (not gated on Debug).
+- **Adapter:** task claims are `Intent.Claim` floors (default `LANE_PLAN` 0.6, source `task:<name>`) without `until`, so `ClaimTTL` applies and a task that stops stepping loses its claim. `lastHit` candidates go through `AllyLastHit.MayLastHit`; a veto ends the task with `etiquette`. Logging goes through `HDebug.Log` (Debug only).
+- **API:** `Tasks.Start(bot, { name, host, tier?, floor? }, body)`, `Tasks.Step(bot, mode)` from the host mode's `Think()`, `Tasks.Tick(bot)` (run from `Humaniser.Tick`: cancels the task when the bot dies or leaves the host mode), `Tasks.Describe(bot)`, `Tasks.Verbs()`. All return false/nil when disabled or the bundle failed to load.
+- **Kill switch:** `Customize.Humaniser.Tasks.Enable = false` (or `Humaniser.Enable = false`): the bundle is never required and nothing is printed. `Tasks.Demo` gates the GATHER demo task.
+- **Overlay** (Debug): `task: <name> step=<n>`, or `- last=<name> <ok|reason>` once it ends.
+- **Offline:** `tests/humaniser/test_tasks_integration.lua`, `tests/humaniser/test_tasks_demo.lua` (demo).
+
+### In-game: check first
+1. **`coroutine` is present in Dota's bot VM.** Expected console line: `[H:tasks] support coroutine=table bundle=ok`. `coroutine=nil` means the bundle loaded but every task reports `unsupported`.
+2. **The luaBundle `require` shim works in Dota.** The same line shows `bundle=ok`. If it shows `bundle=fail <err>`, record the error here: no task code can run.
+3. **TODO (in-game):** a task's `task:<name>` claim shows on the overlay's `intent:` line while it runs, and disappears within 0.2 s of the task ending or the bot leaving the host mode.
+
+### Demo: the assemble Orders executor as a task (before/after)
+`FunLib/humaniser/tasks_demo_gather.lua` (TS: `tasks_demo_gather.ts`, exposed as `J.Humaniser.TasksDemo`) runs the GATHER/SMOKE/BACK part of `mode_assemble_generic`'s Orders executor as one task, `gather:<order id>`. It is gated on `Customize.Humaniser.Tasks.Demo` (default `false`) plus the bundle having loaded; `mode_assemble_generic.lua` only gains two gated lines (one in `GetOrderDesire`, one in `Think`). With `Demo = false`, or before the first `Humaniser.Tick` has loaded the bundle, the file runs exactly as before. ATTACK always stays on the legacy path.
+
+The body, written linearly:
+1. `walkTo(order location, tolerance = ARRIVE_RADIUS (500))`, interrupted when the order stops being the bot's accepted order (cancelled, replaced, outranked, or expired); timeout = time left on the order + 1 s.
+2. `wait(until the order expires)`, interrupted only if the order disappears before its expiry, so natural expiry ends the task `ok`.
+
+`Desire` is the executor's own gate: the order floor (`Orders.DesireFloor`, 0.85, HUMAN_ORDER) until the bot has been within `ARRIVE_RADIUS`, then nothing while it is within `2 * ARRIVE_RADIUS`, the floor again beyond that. `Think` steps the running task, or starts one for the bot's current GATHER/SMOKE/BACK order when none runs (so a preempted task restarts when assemble is active again and the order is still live; after `stuck`/`timeout` it restarts next frame, as the legacy executor would keep issuing moves).
+
+**Line counts** (non-blank, non-comment code lines; imports, doc headers and comments excluded; ATTACK-only lines excluded from "before"):
+
+| | Before (legacy executor, GATHER/SMOKE/BACK part) | After (demo) |
+|---|---|---|
+| State / constants | 2 (`activeOrder`, `orderArrived`) | 2 (`ARRIVE_RADIUS` copy, `arrived`) |
+| Desire side | 16 (`GetOrderDesire` minus the 4 ATTACK hand-off lines) | 11 (`Desire`) + 5 (`demoOrder`) + 3 (`IsActive`) |
+| Think side | 6 (`activeOrder` branch minus `Action_AttackMove` / its `if`/`else`/`end`) | 8 (`Think`) |
+| Bookkeeping | 1 (`activeOrder = nil` in `OnEnd`) | 0 |
+| Body | (none: behaviour is implicit in the desire gate) | 11 (`gather` generator) |
+| Mode-file glue | 0 | 2 (gated hook lines) |
+| **Total** | **25** | **42** |
+
+Most "before" lines (the `GetOrderDesire` preamble, `activeOrder` plumbing) are shared with ATTACK and stay in the file either way, so the demo does not remove code; it is additive.
+
+**Clarity.** Before, the executor's state is split three ways: `orderArrived` (module table, written in `GetDesire`), `activeOrder` (set in `GetDesire`, read in `Think`, cleared in `OnEnd`), and the "phase" (walking vs holding) is never stored at all; it is inferred every frame from distance and `orderArrived`, and "holding" is really "desire drops, some other mode takes over". After, the walk-then-hold sequence and its end conditions are locals and two consecutive statements in one generator, and every run ends with a named result (`ok`, `interrupted`, `preempted`, `stuck`, `timeout`, `dead`) visible on the overlay.
+
+**What got worse or didn't change (honest):**
+- More lines, not fewer (42 vs 25). The legacy executor is short because it does less: it never verifies arrival, never reports outcomes, and has no stuck/timeout handling.
+- The desire side did not get simpler. A task only runs while its host mode is active, so whether to *enter* assemble is still a per-frame `GetDesire` decision with its own `arrived` table: state is still split, just less of it.
+- Behaviour difference forced by the task model: after arrival the legacy executor drops its desire (the bot goes back to laning/farming nearby and is pulled back only beyond `2 * ARRIVE_RADIUS`); the demo holds the bot in assemble, idle, under the task's LANE_PLAN 0.6 claim until the order expires. Modes above 0.6 or higher-tier claims (retreat, fights, a new order) still preempt it. If the bot is displaced beyond `2 * ARRIVE_RADIUS` *while* the hold runs (forced movement), the task does not walk back (it is in `wait`); only after a preemption does `Desire` re-floor and a new task walk it back, to `ARRIVE_RADIUS` rather than the legacy `2 * ARRIVE_RADIUS`. Kept minimal on purpose rather than adding a drift loop to the body.
+- `walkTo`'s stuck detector (1.5 s without 25 units of progress, stuns excluded) ends a run with `stuck` where the legacy executor would keep re-issuing the same move; `Think` restarts the task the next frame, so the net movement is the same but the overlay shows churn.
+- `ARRIVE_RADIUS` is duplicated (Lua file and TS module).
+- A one-frame gap with no action when the order changes under a running task (the step that sees the change ends the task; the next frame starts the replacement or hands back to the legacy path).
+
+**Counter-example: `PositionThink` (`mode_laning_generic.lua`).** Lane positioning is a stateless steering function: every frame it recomputes the lane front from `GetLaneFrontAmount`/`GetLaneFrontLocation`, picks a point an attack range behind it, and issues one move. It only runs when the per-frame priority chain `LastHitThink -> DenyThink -> HarassThink -> PositionThink` has nothing better to do, and that choice is re-made every frame. A linear task gains nothing: there is no sequence (no "first X, then Y"), the goal moves every frame (so `walkTo` would never "arrive" and would trip its stuck/timeout logic while the lane front creeps), and every higher-priority action can pre-empt it at any frame, so a task version would need `interruptIf` checking last-hit/deny/harass opportunities everywhere, re-implementing the priority chain inside the body. The task model pays off for multi-step plans with clear end conditions (walk then hold; walk, wait for the creep, hit); it is the wrong tool for re-evaluated-every-frame steering.
+
+### In-game: the demo
+1. Set `Customize.Humaniser.Tasks.Demo = true` and `Customize.Humaniser.Debug = true`; start a lobby with bots on your team.
+2. `!htest gather` in chat (or ping-to-gather). While a responder walks, the overlay shows `task: gather:<id> step=N` (N rising) and `intent: assemble 0.85 by raw...` (the order floor wins while walking).
+3. After it arrives (within 500 of the point) it stands there; the overlay shows `intent: assemble 0.60 by task:gather:<id>` (possibly `+sticky`), and `task: gather:<id> step=N` keeps rising.
+4. When the order expires (8 s for `!htest gather`), the overlay shows `task: - last=gather:<id> ok` and the `task:` claim leaves the `intent:` line within 0.2 s.
+5. Mode switch: post `!htest gather` far from the bot, then pull it into a fight or low HP so it retreats mid-walk. Expect `- last=gather:<id> preempted`, no further gather moves; if it returns to assemble while the order is live, a new `gather:<id> step=1` starts.
+6. Regression: set `Tasks.Demo = false`. `!htest gather` behaves as before the spike: no `task:` overlay line changes (stays `-`), `intent:` never names `task:`, and after arriving the bot drifts back to its lane instead of standing at the point.
