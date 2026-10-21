@@ -42,7 +42,7 @@ ____exports.DEFAULTS = {
     FarmPattern = {Enable = true},
     Trainer = {LastHit = {Enable = true}},
     Telemetry = {Enable = false},
-    Tasks = {Enable = true, Demo = false}
+    Tasks = {Enable = true, Demo = false, Stack = false}
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
