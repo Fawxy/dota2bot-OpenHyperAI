@@ -12,7 +12,7 @@ local MAX_RESPOND_DIST = 3200  -- only respond if within this distance
 local assembleLoc = nil
 local assembleExpireTime = 0
 
--- Humaniser Orders executor (GATHER / ATTACK / SMOKE). Takes precedence over the legacy ping path below.
+-- Humaniser Orders executor (GATHER / ATTACK / SMOKE / BACK). Takes precedence over the legacy ping path below.
 local ATTACK_HANDOFF_RANGE = 900   -- once this close to an ATTACK target, let OHA's fight logic take over
 local activeOrder = nil
 local orderArrived = {}            -- order id -> true once this bot reached a GATHER/SMOKE point
@@ -22,7 +22,7 @@ local function GetOrderDesire()
 	if not J.Humaniser.IsEnabled() then return nil end
 	local order = J.Humaniser.Orders.GetFor(bot)
 	if order == nil then return nil end
-	if order.type ~= 'GATHER' and order.type ~= 'ATTACK' and order.type ~= 'SMOKE' then return nil end
+	if order.type ~= 'GATHER' and order.type ~= 'ATTACK' and order.type ~= 'SMOKE' and order.type ~= 'BACK' then return nil end
 
 	local loc = J.Humaniser.Orders.OrderLocation(order)
 	if loc == nil then return nil end
@@ -33,7 +33,7 @@ local function GetOrderDesire()
 			return nil
 		end
 	elseif orderArrived[order.id] or dist <= ARRIVE_RADIUS then
-		-- GATHER/SMOKE: hold near the point until the order expires, but don't fight the other modes for it.
+		-- GATHER/SMOKE/BACK: hold near the point until the order expires, but don't fight the other modes for it.
 		orderArrived[order.id] = true
 		if dist <= ARRIVE_RADIUS * 2 then return nil end
 	end
@@ -48,8 +48,9 @@ function GetDesire()
 	local orderDesire = GetOrderDesire()
 	if orderDesire ~= nil and orderDesire > 0 then return orderDesire end
 
-	-- Check for recent human normal pings (not danger pings)
-	local human, ping = J.GetHumanPing()
+	-- Check for recent human normal pings (not danger pings); the humaniser ping interpreter replaces this.
+	local human, ping = nil, nil
+	if not J.Humaniser.Pings.IsActive() then human, ping = J.GetHumanPing() end
 	if human ~= nil and ping ~= nil
 	and ping.normal_ping
 	and ping.time ~= 0

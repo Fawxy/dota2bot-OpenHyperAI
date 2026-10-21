@@ -111,6 +111,10 @@ declare global {
 
     function InstallChatCallback(callback: (this: void, chat: ChatEvent) => void): void;
 
+    /** vLocAndRadius: x, y = centre, z = radius. Returns a handle for RemoveAvoidanceZone. */
+    function AddAvoidanceZone(vLocAndRadius: Vector, fDuration: number): number;
+    function RemoveAvoidanceZone(hZone: number): void;
+
     const DIFFICULTY_INVALID: number;
     const DIFFICULTY_PASSIVE: number;
     const DIFFICULTY_EASY: number;

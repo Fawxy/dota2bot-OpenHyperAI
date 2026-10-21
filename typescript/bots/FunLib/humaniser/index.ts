@@ -10,9 +10,11 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
+import * as Pings from "bots/FunLib/humaniser/pings";
+import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -77,6 +79,8 @@ function drawOverlay(bot: Unit): void {
         HDebug.Text(bot, "delay", `notice=${string.format("%.2f", profile.noticeBase)} react=${string.format("%.2f", profile.reactBase)}`);
         const order = Orders.GetFor(bot);
         HDebug.Text(bot, "order", order !== undefined ? Orders.Describe(order) : "-");
+        const avoid = Orders.GetAccepted(bot, "AVOID");
+        HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
     }
     HDebug.Draw(bot);
 }
@@ -91,6 +95,10 @@ export function Tick(bot: Unit): void {
         Chat.Subscribe(`htest:${bot.GetTeam()}`, makeTestCommandHandler(bot.GetTeam()));
     }
     logStart(bot);
+    Pings.Tick(bot);
+    Commands.Tick(bot);
+    // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
+    Orders.GetFor(bot);
     HDebug.SharedStateProbe(bot);
     drawOverlay(bot);
 }

@@ -6944,6 +6944,12 @@ X.ConsiderItemDesire['item_smoke_of_deceit'] = function(item)
 		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 	end
 
+	-- Humaniser !smoke: the designated holder pops smoke once the group has gathered.
+	if J.Humaniser.Commands.ShouldUseOrderedSmoke(bot)
+	then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Smoke Of Deceit (ordered)'
+	end
+
 	if (nInRangeEnemy ~= nil and #nInRangeEnemy == 0)
 	or (nInRangeTower ~= nil and #nInRangeTower == 0)
 	then

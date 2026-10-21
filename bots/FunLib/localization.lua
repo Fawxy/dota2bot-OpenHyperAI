@@ -143,6 +143,16 @@ local Localization = {
         say_order_decline_channeling = {"busy, one sec"},
         say_order_decline_low_hp = {"too low, need to heal", "low hp, can't"},
         say_order_decline_far = {"too far, no tp", "can't make it, no tp"},
+        say_order_ack_defend_top = {"ok, defending top", "omw top"},
+        say_order_ack_defend_mid = {"ok, defending mid", "omw mid"},
+        say_order_ack_defend_bot = {"ok, defending bot", "omw bot"},
+        say_order_ack_push_top = {"ok, pushing top", "top, let's go"},
+        say_order_ack_push_mid = {"ok, pushing mid", "mid, let's go"},
+        say_order_ack_push_bot = {"ok, pushing bot", "bot, let's go"},
+        say_order_ack_back = {"ok, backing off", "falling back"},
+        say_order_ack_release = {"ok, back to farming", "ok, playing normally"},
+        say_cmd_no_smoke = {"no smoke", "nobody has smoke"},
+        say_cmd_help = {"Bot commands (team chat): !def [top/mid/bot], !push [lane], !rosh, !g(roup), !go (after a ping), !smoke, !back, !farm. Prefix a slot or hero to direct one bot: !2 push bot, !lion def top"},
     },
     zh = {
         welcome_msgs = {
