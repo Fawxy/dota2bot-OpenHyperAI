@@ -334,7 +334,8 @@ function ____exports.ObserveSnapshot(s)
         )
     end
 end
-local function enemyLanerCount(bot, s)
+--- Enemy heroes seen near the lane front within the exposure window.
+function ____exports.EnemyLaners(bot, s)
     local cfg = LaneConfig.Settings()
     local n = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
@@ -371,7 +372,7 @@ local function pickFor(picker, s)
                 picker,
                 LaneConfig.Settings().Radii.Stronger
             ),
-            enemyLaners = enemyLanerCount(picker, s)
+            enemyLaners = ____exports.EnemyLaners(picker, s)
         }
         pickCache[key] = inputs
     end

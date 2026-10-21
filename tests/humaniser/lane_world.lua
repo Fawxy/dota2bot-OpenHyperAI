@@ -115,6 +115,8 @@ function SetRandomSequence(list)
 		return a + (b - a) * f
 	end
 end
+-- Queued values not yet drawn, for tests asserting that a call consumed no roll.
+function RandomUnread() return queue and math.max(0, #queue - qi + 1) or 0 end
 local function clearRandom()
 	queue, qi = nil, 1
 	function RandomFloat(a, b) return a + (b - a) * (RANDOM_FRACTION or 0.5) end
@@ -144,5 +146,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.LaneState.ResetCache()
 	H.Lane.LaneRoles.ResetCache()
 	H.Lane.LanePlan.ResetCache()
+	H.Lane.LanePlanner.ResetCache()
 	return H
 end

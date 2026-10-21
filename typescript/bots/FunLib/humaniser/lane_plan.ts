@@ -263,7 +263,8 @@ export function ObserveSnapshot(s: LaneState.LaneSnapshot): void {
     }
 }
 
-function enemyLanerCount(bot: Unit, s: LaneState.LaneSnapshot): number {
+/** Enemy heroes seen near the lane front within the exposure window. */
+export function EnemyLaners(bot: Unit, s: LaneState.LaneSnapshot): number {
     const cfg = LaneConfig.Settings();
     let n = 0;
     for (const e of LaneState.Enemies(bot, s.lane)) {
@@ -284,7 +285,7 @@ function pickFor(picker: Unit, s: LaneState.LaneSnapshot): LanePlan {
             laneScore: LaneState.ScoreFor(picker, s).laneScore,
             eqPos: s.eqPos,
             stronger: stronger !== undefined && stronger(picker, LaneConfig.Settings().Radii.Stronger),
-            enemyLaners: enemyLanerCount(picker, s),
+            enemyLaners: EnemyLaners(picker, s),
         };
         pickCache[key] = inputs;
     }
