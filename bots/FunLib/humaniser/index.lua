@@ -169,6 +169,7 @@ local function tick(bot)
         return
     end
     Chat.EnsureInstalled(bot)
+    Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
     Difficulty.Init()
     if testHandlerTeams[bot:GetTeam()] ~= true then
         testHandlerTeams[bot:GetTeam()] = true
