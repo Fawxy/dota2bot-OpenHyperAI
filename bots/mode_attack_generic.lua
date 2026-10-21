@@ -14,7 +14,9 @@ if Utils.BuggyHeroesDueToValveTooLazy[botName] then
 end
 
 if local_mode_attack_generic ~= nil then
-	function GetDesire() return local_mode_attack_generic.GetDesire() end
+	-- Humaniser intent arbitration (task 09). Other heroes' attack desire is Valve's C++ and cannot be resolved.
+	local Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
+	function GetDesire() return Humaniser.Intent.Resolve(bot, BOT_MODE_ATTACK, local_mode_attack_generic.GetDesire()) end
 	function Think() return local_mode_attack_generic.Think() end
 	function OnStart() return local_mode_attack_generic.OnStart() end
 	function OnEnd() return local_mode_attack_generic.OnEnd() end

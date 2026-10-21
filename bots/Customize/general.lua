@@ -148,6 +148,9 @@ Customize.Humaniser = {
     AllyLastHit = { Enable = true },
     Pings = { Enable = true },
     Commands = { Enable = true },
+    -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
+    -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
+    Intent = { Enable = true },
 }
 
 return Customize

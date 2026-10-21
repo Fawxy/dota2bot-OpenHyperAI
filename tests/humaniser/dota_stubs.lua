@@ -44,10 +44,21 @@ function Unit:GetModifierByName(name) if self.modifiers[name] then return 1 end 
 function Unit:GetModifierStackCount(i) for _, v in pairs(self.modifiers) do return v end return 0 end
 function Unit:IsChanneling() return false end
 function Unit:GetActiveMode() return self.mode end
-function Unit:GetActiveModeDesire() return 0 end
+function Unit:GetActiveModeDesire() return self.desire or 0 end
 function Unit:GetHealth() return self.hp end
 function Unit:GetMaxHealth() return 100 end
 function Unit:GetItemInSlot() return nil end
+-- Intent arbitration (task 09): action queue, busy states and fountain distance.
+BOT_ACTION_TYPE_NONE, BOT_ACTION_TYPE_IDLE, BOT_ACTION_TYPE_MOVE_TO = 0, 1, 2
+function Unit:GetCurrentActionType() return self.action or BOT_ACTION_TYPE_IDLE end
+function Unit:NumQueuedActions() return 0 end
+function Unit:IsUsingAbility() return false end
+function Unit:IsCastingAbility() return false end
+function Unit:IsStunned() return false end
+function Unit:IsHexed() return false end
+function Unit:DistanceFromFountain() return self.fountainDist or 8000 end
+ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
+function GetAncient() return ANCIENT end
 
 function MakeUnit(o)
 	local u = setmetatable({

@@ -217,6 +217,7 @@ local ____utils = require(GetScriptDirectory().."/FunLib/utils")
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function getDefendState(bot)
     if not bot._defend then
         bot._defend = {
@@ -1228,7 +1229,12 @@ function ____exports.GetDefendDesire(bot, lane)
     ) or bot:IsIllusion() then
         return BotModeDesire.None
     end
-    local res = ____exports.GetDefendDesireHelper(bot, lane)
+    local mode = lane == Lane.Top and BotMode.DefendTowerTop or (lane == Lane.Bot and BotMode.DefendTowerBot or BotMode.DefendTowerMid)
+    local res = Intent.Resolve(
+        bot,
+        mode,
+        ____exports.GetDefendDesireHelper(bot, lane)
+    )
     bot.defendDesire = res
     return res
 end

@@ -26,7 +26,7 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- J.Utils.SetCachedVars(cacheKey, res)
-	return res
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_SIDE_SHOP, res)
 end
 function GetDesireHelper()
 	-- 如果在打高地 就别撤退去干别的

@@ -133,6 +133,7 @@ local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function teamOrders(team)
     local list = ordersByTeam[team]
     if list == nil then
@@ -551,6 +552,7 @@ function ____exports.FilterAvoided(bot, units)
     return #result == #units and units or result
 end
 --- Caps retreat desire while the bot is committed to an accepted order and still healthy.
+-- Also posts the cap as a HUMAN_ORDER claim, so Intent.Resolve keeps it above lower tiers.
 function ____exports.CapRetreatDesire(bot, desire)
     if not Config.IsEnabled() then
         return desire
@@ -562,10 +564,18 @@ function ____exports.CapRetreatDesire(bot, desire)
     if order == nil or order.type == "BACK" then
         return desire
     end
-    return math.min(
-        desire,
-        Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN
+    local cap = Config.Get().Orders.DesireFloor - COMMIT_RETREAT_MARGIN
+    Intent.Claim(
+        bot,
+        {
+            source = "orders:" .. order.type,
+            tier = "HUMAN_ORDER",
+            mode = BotMode.Retreat,
+            cap = cap,
+            ["until"] = GameTime()
+        }
     )
+    return math.min(desire, cap)
 end
 local function modeMatches(order, botMode, lane)
     repeat
@@ -591,8 +601,8 @@ local function modeMatches(order, botMode, lane)
         end
     until true
 end
---- A desire floor for this mode if an accepted order maps to it, else 0. Combine with math.max.
-function ____exports.DesireFloor(bot, botMode, lane)
+--- The desire floor an accepted order gives this mode, else 0. Pure: posts no claim.
+function ____exports.OrderFloor(bot, botMode, lane)
     if not Config.IsEnabled() then
         return 0
     end
@@ -601,6 +611,24 @@ function ____exports.DesireFloor(bot, botMode, lane)
         return 0
     end
     return Config.Get().Orders.DesireFloor
+end
+--- OrderFloor, also posted as a same-frame HUMAN_ORDER claim so Intent.Resolve keeps it above lower tiers.
+-- Call it only on the path that returns the floor: the claim must not outlive the call site's own gates.
+function ____exports.DesireFloor(bot, botMode, lane)
+    local floor = ____exports.OrderFloor(bot, botMode, lane)
+    if floor > 0 then
+        Intent.Claim(
+            bot,
+            {
+                source = "orders:" .. ____exports.GetFor(bot).type,
+                tier = "HUMAN_ORDER",
+                mode = botMode,
+                floor = floor,
+                ["until"] = GameTime()
+            }
+        )
+    end
+    return floor
 end
 function ____exports.Describe(order)
     local left = math.max(

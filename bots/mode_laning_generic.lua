@@ -137,6 +137,10 @@ function GetDesire()
 	return 0.01
 end
 
+-- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
+local GetDesireRaw = GetDesire
+function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_LANING, GetDesireRaw()) end
+
 function GetFurthestEnemyAttackRange(enemyList)
 	local attackRange = 0
 	for _, enemy in pairs(enemyList) do

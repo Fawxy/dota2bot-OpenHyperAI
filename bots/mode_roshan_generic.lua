@@ -27,7 +27,7 @@ function GetDesire()
 	local res = GetDesireHelper()
 	-- An order already got its acknowledgement from the order's spokesperson.
 	if res > 0.6 and not bOrderDriven then J.ModeAnnounce(bot, 'say_roshan', 30) end
-	return res
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_ROSHAN, res)
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
@@ -148,14 +148,13 @@ function GetDesireHelper()
 
     -- Humaniser ROSHAN order (ping or !rosh): not gated on shouldKillRoshan/initDPSFlag (issue #164),
     -- but still yields to enemies at the pit and the bot's own HP.
-    local nOrderFloor = J.Humaniser.Orders.DesireFloor(bot, BOT_MODE_ROSHAN)
-    if nOrderFloor > 0
+    if J.Humaniser.Orders.OrderFloor(bot, BOT_MODE_ROSHAN) > 0
     and J.IsRoshanAlive()
     and J.GetHP(bot) > 0.3
     and #J.GetLastSeenEnemiesNearLoc(J.GetCurrentRoshanLocation(), 1600) < 2
     then
         bOrderDriven = true
-        return nOrderFloor
+        return J.Humaniser.Orders.DesireFloor(bot, BOT_MODE_ROSHAN)
     end
 
     if shouldKillRoshan

@@ -17,7 +17,7 @@ end
 LANE_FRONTS = {}
 TOWERS = {}
 function GetLaneFrontLocation(team, lane) return LANE_FRONTS[lane] end
-function GetAncient(team) return { loc = Vector(-6000, -6000), GetLocation = function(self) return self.loc end } end
+function GetAncient(team) return { loc = Vector(-6000, -6000), GetLocation = function(self) return self.loc end, IsAlive = function() return true end, GetHealth = function() return 4500 end } end
 function GetTower(team, id) return TOWERS[id] end
 
 local ROSH = Vector(-3000, 2300)

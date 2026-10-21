@@ -14,6 +14,7 @@ import { add } from "bots/ts_libs/utils/native-operators";
 import { GetLocationToLocationDistance } from "./utils";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
+import * as Intent from "bots/FunLib/humaniser/intent";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -610,7 +611,8 @@ export function GetDefendDesire(bot: Unit, lane: Lane): BotModeDesire {
     // }
 
     // 2) compute and publish
-    const res = GetDefendDesireHelper(bot, lane);
+    const mode = lane === Lane.Top ? BotMode.DefendTowerTop : lane === Lane.Bot ? BotMode.DefendTowerBot : BotMode.DefendTowerMid;
+    const res = Intent.Resolve(bot, mode, GetDefendDesireHelper(bot, lane)) as BotModeDesire;
     // jmz.Utils.SetCachedVars(cacheKey, res);
     (bot as any).defendDesire = res;
     return res;

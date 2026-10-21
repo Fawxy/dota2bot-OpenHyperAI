@@ -78,7 +78,7 @@ function GetDesire()
     res = CapForLanePush(res)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
-    return res
+    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
 end
 function GetDesireHelper()
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
