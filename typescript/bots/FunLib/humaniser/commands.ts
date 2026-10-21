@@ -12,6 +12,7 @@ import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
@@ -460,6 +461,14 @@ export function HandleMessage(team: number, msg: Chat.ChatMessage): void {
     });
     lastSummary = `${parsed.name}${parsed.onlyPIDs !== undefined ? ` ->${parsed.onlyPIDs[0]}` : ""} by ${msg.pid}`;
     HDebug.Log("commands", lastSummary, msg.text);
+    Telemetry.Event("cmd", [
+        ["by", msg.pid],
+        ["team", team],
+        ["name", parsed.name],
+        ["args", parsed.args.join(",")],
+        ["only", parsed.onlyPIDs !== undefined ? parsed.onlyPIDs.join(",") : undefined],
+        ["text", msg.text],
+    ]);
 }
 
 /**

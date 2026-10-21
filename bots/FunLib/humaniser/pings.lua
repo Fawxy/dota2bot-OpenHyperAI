@@ -10,6 +10,31 @@ local function __TS__ObjectAssign(target, ...)
     end
     return target
 end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -19,6 +44,7 @@ local UnitType = ____dota.UnitType
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 ____exports.DEFAULTS = {
     Enable = true,
@@ -384,6 +410,30 @@ function ____exports.Scan(team)
                         "pings",
                         lastSummary,
                         "danger=" .. tostring(____exports.IsDangerPing(ping))
+                    )
+                    local ____Telemetry_Event_5 = Telemetry.Event
+                    local ____array_4 = __TS__SparseArrayNew(
+                        {"by", pid},
+                        {"team", team},
+                        {"context", result.context},
+                        {
+                            "danger",
+                            ____exports.IsDangerPing(ping)
+                        },
+                        {
+                            "x",
+                            math.floor(ping.location.x)
+                        },
+                        {
+                            "y",
+                            math.floor(ping.location.y)
+                        }
+                    )
+                    local ____opt_2 = result.spec
+                    __TS__SparseArrayPush(____array_4, {"order", ____opt_2 and ____opt_2.type})
+                    ____Telemetry_Event_5(
+                        "ping",
+                        {__TS__SparseArraySpread(____array_4)}
                     )
                     if result.spec == nil then
                         __continue52 = true

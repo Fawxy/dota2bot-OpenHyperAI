@@ -12,6 +12,7 @@
 import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Intent from "bots/FunLib/humaniser/intent";
 
 export type OrderType =
@@ -239,6 +240,17 @@ export function Post(team: number, spec: OrderSpec): TeamOrder | undefined {
     };
     list.push(order);
     version++;
+    Telemetry.Event("order_post", [
+        ["id", order.id],
+        ["team", team],
+        ["type", order.type],
+        ["lane", order.lane],
+        ["issuer", order.issuerPID],
+        ["responders", order.responders.join(",")],
+        ["dur", order.duration],
+        ["kind", order.delayKind ?? "ping"],
+        ["src", order.sourceKey],
+    ]);
     return order;
 }
 
@@ -320,11 +332,26 @@ export function TryAccept(bot: Unit, order: TeamOrder): boolean {
     const reason = DeclineReason(bot, order);
     if (reason !== undefined) {
         state.declined = reason;
+        Telemetry.Event("order_decline", [
+            ["pid", bot.GetPlayerID()],
+            ["id", order.id],
+            ["type", order.type],
+            ["reason", reason],
+        ]);
         Say(bot, `say_order_decline_${reason}`);
         return false;
     }
     if (state.announced !== true) {
         state.announced = true;
+        Telemetry.Event("order_accept", [
+            ["pid", bot.GetPlayerID()],
+            ["id", order.id],
+            ["type", order.type],
+            ["lane", order.lane],
+            ["kind", order.delayKind ?? "ping"],
+            ["read", state.readAt - order.createdAt],
+            ["latency", GameTime() - order.createdAt],
+        ]);
         onAccepted(bot, order);
     }
     return true;

@@ -82,6 +82,7 @@ local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
@@ -720,6 +721,23 @@ function ____exports.HandleMessage(team, msg)
     })
     lastSummary = ((parsed.name .. (parsed.onlyPIDs ~= nil and " ->" .. tostring(parsed.onlyPIDs[1]) or "")) .. " by ") .. tostring(msg.pid)
     HDebug.Log("commands", lastSummary, msg.text)
+    Telemetry.Event(
+        "cmd",
+        {
+            {"by", msg.pid},
+            {"team", team},
+            {"name", parsed.name},
+            {
+                "args",
+                table.concat(parsed.args, ",")
+            },
+            {
+                "only",
+                parsed.onlyPIDs ~= nil and table.concat(parsed.onlyPIDs, ",") or nil
+            },
+            {"text", msg.text}
+        }
+    )
 end
 --- Order-driven smoke: true for the one responder chosen to pop smoke (first responder holding one in an
 -- active slot) once enough allied heroes are close. Called from ConsiderItemDesire['item_smoke_of_deceit'].

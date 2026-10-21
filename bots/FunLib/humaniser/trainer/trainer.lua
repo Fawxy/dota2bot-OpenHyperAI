@@ -272,6 +272,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local GameState = ____dota.GameState
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/trainer/settings")
 local ____api = require(GetScriptDirectory().."/FunLib/humaniser/trainer/api")
 local CreepKind = ____api.CreepKind
@@ -994,6 +995,26 @@ local function fmt(x)
     return x == nil and "-" or string.format("%.2f", x)
 end
 local function onVerdict(s, st, subject, v, now)
+    Telemetry.Event(
+        "trainer",
+        {
+            {
+                "pid",
+                subject:GetPlayerID()
+            },
+            {
+                "selftest",
+                IsPlayerBot(subject:GetPlayerID())
+            },
+            {"kind", v.kind},
+            {"creep", v.creepKind},
+            {"deny", v.isDeny},
+            {"offset", v.offset},
+            {"window", v.window},
+            {"pred", v.predictedLand},
+            {"landed", v.landedAt}
+        }
+    )
     if IsPlayerBot(subject:GetPlayerID()) then
         HDebug.Log(
             "trainer",

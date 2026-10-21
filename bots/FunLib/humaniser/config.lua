@@ -36,7 +36,8 @@ ____exports.DEFAULTS = {
     Commands = {Enable = true},
     Lane = {Enable = true},
     Intent = {Enable = true},
-    Trainer = {LastHit = {Enable = true}}
+    Trainer = {LastHit = {Enable = true}},
+    Telemetry = {Enable = false}
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then

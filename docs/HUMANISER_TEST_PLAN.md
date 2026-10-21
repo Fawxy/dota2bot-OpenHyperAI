@@ -4,6 +4,8 @@ Tasks 01–07 were built and checked offline only (`tests/humaniser`: a LuaJIT s
 
 Setup is in [HUMANISER_DEV.md](HUMANISER_DEV.md): symlink, lobby, `sv_cheats 1`. Set `Customize.Humaniser.Debug = true` for every session.
 
+Launch Dota with `-condebug` and keep `Telemetry.Enable = true` (see "Telemetry and log analysis"). When something looks wrong, type `!mark <note>` and keep playing. After the session, run `node tools/hlog/analyse.js`: its checks cover most of the "No Lua errors", perception, order and etiquette items below, and `--mark N` shows what each bot was doing at a mark.
+
 ## Session 1: foundations (about 15 min, FretBots off, then on)
 These answers decide whether code needs to change. Record each result in `HUMANISER_DEV.md`.
 - [ ] **No Lua errors** in the console for 15 minutes, with FretBots off and with it on.

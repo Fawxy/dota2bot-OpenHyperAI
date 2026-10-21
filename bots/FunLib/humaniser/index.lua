@@ -14,6 +14,7 @@ local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -27,6 +28,7 @@ ____exports.Commands = Commands
 ____exports.Lane = Lane
 ____exports.Intent = Intent
 ____exports.Trainer = Trainer
+____exports.Telemetry = Telemetry
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -89,6 +91,17 @@ local function logStart(bot)
     local rawPrint = Utils.RawPrint
     local line = (((((((((((((((("[Humaniser] pid=" .. tostring(pid)) .. " ") .. bot:GetUnitName()) .. " valve=") .. tostring(bot:GetDifficulty())) .. " fret=") .. tostring(fret.active)) .. "/") .. tostring(fret.level)) .. "/") .. tostring(fret.allyScale)) .. "(") .. fret.source) .. ") allyOfHuman=") .. tostring(Difficulty.IsAllyOfHuman(bot))) .. " skill=") .. string.format("%.2f", profile.skill);
     (rawPrint or print)(line)
+end
+local function telemetryContext(bot)
+    local order = Orders.GetFor(bot)
+    return {
+        by = Intent.IsActive() and Intent.Explain(
+            bot,
+            bot:GetActiveMode()
+        ) or nil,
+        order = order ~= nil and Orders.Describe(order) or nil,
+        competing = Intent.IsActive() and Intent.Competing(bot) or nil
+    }
 end
 local function drawOverlay(bot)
     if not HDebug.IsEnabled() then
@@ -158,6 +171,7 @@ function ____exports.Tick(bot)
     Trainer.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
+    Telemetry.Tick(bot, telemetryContext)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
 end
