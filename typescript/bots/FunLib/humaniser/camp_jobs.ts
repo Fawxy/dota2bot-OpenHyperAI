@@ -233,8 +233,8 @@ function dataLabel(data: Camps.CampJobData): string {
     return data.unverified === true ? "unverified" : data.source;
 }
 
-function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
-    jobs[bot.GetPlayerID()] = job;
+/** A new job's planner commit, `lane_job_start` event and `job-start` line; the job itself is stored by the caller. */
+export function NoteJobStart(bot: Unit, job: Pick<Job, "kind" | "campIdx" | "aggroAt" | "forced">, data: Camps.CampJobData): void {
     LanePlanner.Commit(bot, commitTech(job.kind));
     Telemetry.Event("lane_job_start", [
         ["pid", bot.GetPlayerID()],
@@ -260,10 +260,32 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     );
 }
 
-function startStack(bot: Unit, req: JobRequest): boolean {
+function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
+    jobs[bot.GetPlayerID()] = job;
+    NoteJobStart(bot, job, data);
+}
+
+/** Where and when a stack job aggroes and walks off; everything a stack needs before it runs. */
+export interface StackPlan {
+    campIdx: number;
+    forced: boolean;
+    data: Camps.CampJobData;
+    minute: number;
+    plannedSec: number;
+    baseAggro: number;
+    aggroAt: number;
+    /** The next :00 + StackExitUntil, when the walk-off ends. */
+    exitUntil: number;
+    stand: Vector;
+    path: Vector[];
+    startedAt: number;
+}
+
+/** A stack job's plan, with no reservation or registration; undefined when the camp has no stack data. */
+export function PlanStack(bot: Unit, req: JobRequest): StackPlan | undefined {
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
-    if (data === undefined || data.stack === undefined || spawner === undefined) return false;
+    if (data === undefined || data.stack === undefined || spawner === undefined) return undefined;
     const cfg = settings();
     const skill = LaneConfig.SkillOf(bot);
     const now = DotaTime();
@@ -279,31 +301,48 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     let base = NextAggroTime(now, [aggroSec], period);
     if (req.forced === true && base < now + travelTo(bot, stand)) base = NextAggroTime(now + travelTo(bot, stand), [aggroSec], period);
     const minuteStart = base - aggroSec;
-    const exitUntil = minuteStart + period + cfg.Timing.StackExitUntil;
-    Stacking.Reserve(req.campIdx, bot.GetPlayerID(), exitUntil);
+    return {
+        campIdx: req.campIdx,
+        forced: req.forced === true,
+        data,
+        minute: math.floor(base / period),
+        plannedSec: aggroSec,
+        baseAggro: base,
+        aggroAt: base + jitter,
+        exitUntil: minuteStart + period + cfg.Timing.StackExitUntil,
+        stand,
+        path,
+        startedAt: now,
+    };
+}
+
+function startStack(bot: Unit, req: JobRequest): boolean {
+    const plan = PlanStack(bot, req);
+    if (plan === undefined) return false;
+    Stacking.Reserve(plan.campIdx, bot.GetPlayerID(), plan.exitUntil);
 
     register(
         bot,
         {
             ...req,
-            minute: math.floor(base / period),
+            minute: plan.minute,
             phase: "travel",
-            aggroAt: base + jitter,
-            plannedSec: aggroSec,
-            path,
-            startedAt: now,
+            aggroAt: plan.aggroAt,
+            plannedSec: plan.plannedSec,
+            path: plan.path,
+            startedAt: plan.startedAt,
             peakDivert: 0,
             waveSize: 0,
             activeCamp: req.campIdx,
-            stand,
+            stand: plan.stand,
             waypoint: 0,
             stage: 1,
             secondTried: false,
             telegraphed: false,
-            baseAggro: base,
-            exitUntil,
+            baseAggro: plan.baseAggro,
+            exitUntil: plan.exitUntil,
         },
-        data
+        plan.data
     );
     return true;
 }
@@ -447,10 +486,62 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
     logJob(bot, job, grade);
 }
 
+export interface AbortInfo {
+    kind: JobKind;
+    campIdx: number;
+    baseAggro: number;
+    /** The phase the job was in when it was aborted. */
+    phase: string;
+    /** Farm's Think has run the job at least once. */
+    acted: boolean;
+    divert: number;
+    /** A stack pull's aggro landed, so its camp's stack is spent unless keepStack. */
+    aggroLanded: boolean;
+}
+
 /**
- * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
- * against a camp's timing. A double pull aborted in its second stage still grades the first pull.
+ * Everything an abort does besides ending the job itself: the cycle and camp bookkeeping, the `lane_job_abort`
+ * event and the `job-abort` line, which the console parser does not read, so safety aborts never count against a
+ * camp's timing.
  */
+export function NoteJobAbort(bot: Unit, info: AbortInfo, reason: string, keepStack = false): void {
+    const pid = bot.GetPlayerID();
+    if (!info.acted) {
+        // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
+        LanePlanner.Release(bot, commitTech(info.kind));
+        skipped[pid] = info.baseAggro;
+    } else if (info.kind !== "stack") {
+        // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
+        doneCycle[pid] = cycleOf(DotaTime());
+    }
+    if (!keepStack && info.kind === "stack_pull" && info.aggroLanded) Stacking.ClearStack(info.campIdx);
+    if (info.kind === "stack") Stacking.Release(info.campIdx, pid);
+    const [token] = string.gsub(reason, "%s+", "-");
+    Telemetry.Event("lane_job_abort", [
+        ["pid", pid],
+        ["kind", LOG_KIND[info.kind]],
+        ["camp", info.campIdx],
+        ["key", Camps.ByIdx(info.campIdx)?.key],
+        ["reason", token],
+        ["phase", info.phase],
+        ["acted", info.acted],
+        ["divert", info.divert],
+    ]);
+    HDebug.Log(
+        "lane",
+        string.format(
+            "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
+            bot.GetPlayerID(),
+            LOG_KIND[info.kind],
+            info.campIdx,
+            Camps.ByIdx(info.campIdx)?.key ?? "-",
+            token,
+            info.divert
+        )
+    );
+}
+
+/** A double pull aborted in its second stage still grades the first pull. */
 function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
     if (job.stage === 2) {
         close(bot, job, "return", Grade(job.kind, job.peakDivert));
@@ -458,39 +549,19 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
     }
     const phase = job.phase;
     job.phase = "return";
-    const pid = bot.GetPlayerID();
-    if (job.acted !== true) {
-        // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
-        LanePlanner.Release(bot, commitTech(job.kind));
-        skipped[pid] = job.baseAggro;
-    } else if (job.kind !== "stack") {
-        // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
-        doneCycle[pid] = cycleOf(DotaTime());
-    }
-    if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
-    if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
-    const [token] = string.gsub(reason, "%s+", "-");
-    Telemetry.Event("lane_job_abort", [
-        ["pid", pid],
-        ["kind", LOG_KIND[job.kind]],
-        ["camp", job.campIdx],
-        ["key", Camps.ByIdx(job.campIdx)?.key],
-        ["reason", token],
-        ["phase", phase],
-        ["acted", job.acted === true],
-        ["divert", job.peakDivert],
-    ]);
-    HDebug.Log(
-        "lane",
-        string.format(
-            "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
-            bot.GetPlayerID(),
-            LOG_KIND[job.kind],
-            job.campIdx,
-            Camps.ByIdx(job.campIdx)?.key ?? "-",
-            token,
-            job.peakDivert
-        )
+    NoteJobAbort(
+        bot,
+        {
+            kind: job.kind,
+            campIdx: job.campIdx,
+            baseAggro: job.baseAggro,
+            phase,
+            acted: job.acted === true,
+            divert: job.peakDivert,
+            aggroLanded: job.actualAggro !== undefined,
+        },
+        reason,
+        keepStack
     );
 }
 
@@ -518,12 +589,12 @@ function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaM
 }
 
 /** Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety. */
-function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
+export function StackAllowed(bot: Unit, forced: boolean): LuaMultiReturn<[boolean, string]> {
     const s = LaneState.ForBot(bot);
     const laning = LaneConfig.InLaningPhase();
     if (laning && s === undefined) return $multi(false, "no-lane");
     const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
-    const [ok, why] = job.forced === true ? Stacking.Safe(bot, s, enemies) : Stacking.Eligible(bot, s, enemies);
+    const [ok, why] = forced ? Stacking.Safe(bot, s, enemies) : Stacking.Eligible(bot, s, enemies);
     if (!ok) return $multi(false, why);
     if (laning && s !== undefined && LanePlan.View(bot, s).handsOff) return $multi(false, "handsoff");
     return $multi(true, "ok");
@@ -551,7 +622,7 @@ function keepGoing(bot: Unit, job: Job): boolean {
         return false;
     }
     if (job.kind === "stack") {
-        const [ok, why] = stackAllowed(bot, job);
+        const [ok, why] = StackAllowed(bot, job.forced === true);
         if (!ok) abort(bot, job, why);
         return ok;
     }
@@ -572,7 +643,7 @@ function keepGoing(bot: Unit, job: Job): boolean {
     return true;
 }
 
-function desireOf(kind: JobKind): number {
+export function DesireOf(kind: JobKind): number {
     const t = settings().Timing;
     return kind === "contest" ? t.ContestDesire : t.JobDesire;
 }
@@ -760,12 +831,12 @@ export function Desire(bot: Unit): number {
         if (!keepGoing(bot, job)) return 0;
         // A stack's walk-off past :00 does not claim the new cycle: the stack was the previous cycle's technique.
         if (job.kind !== "stack" && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
-        return desireOf(job.kind);
+        return DesireOf(job.kind);
     }
     if (!bot.IsAlive()) return 0;
     let started = anyJobFlag() && schedule(bot);
     if (!started && LaneConfig.IsOn("Stack")) started = scheduleStack(bot, now);
-    return started ? desireOf(jobs[bot.GetPlayerID()].kind) : 0;
+    return started ? DesireOf(jobs[bot.GetPlayerID()].kind) : 0;
 }
 
 // ---------------------------------------------------------------------------------------------- think
@@ -791,12 +862,13 @@ function telegraph(bot: Unit, job: Job, now: number): void {
     Orders.Say(bot, job.kind === "half_pull" ? "say_lane_half_pull" : "say_lane_pulling_in_5", settings().Timing.PullTelegraphCooldown);
 }
 
-function campNeutral(bot: Unit, job: Job): Unit | undefined {
+/** The nearest visible neutral in the camp's box. */
+export function CampNeutral(bot: Unit, campIdx: number): Unit | undefined {
     let best: Unit | undefined;
     let bestDist = math.huge;
     for (const n of bot.GetNearbyNeutralCreeps(settings().Radii.NeutralSearch, false) ?? []) {
         if (n === null || n === undefined || !n.IsAlive() || !n.CanBeSeen()) continue;
-        if (!Camps.InBox(job.activeCamp, n.GetLocation())) continue;
+        if (!Camps.InBox(campIdx, n.GetLocation())) continue;
         const d = GetUnitToLocationDistance(bot, n.GetLocation());
         if (d < bestDist) {
             best = n;
@@ -806,15 +878,20 @@ function campNeutral(bot: Unit, job: Job): Unit | undefined {
     return best;
 }
 
-function aggroConfirmed(bot: Unit, job: Job): boolean {
-    if (job.aggroOrderedAt !== undefined && bot.GetLastAttackTime() >= job.aggroOrderedAt) return true;
+/** A visible neutral near the bot is attacking it. */
+export function NeutralTargets(bot: Unit): boolean {
     for (const n of bot.GetNearbyNeutralCreeps(settings().Radii.NeutralSearch, false) ?? []) {
         if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && n.GetAttackTarget() === bot) return true;
     }
     return false;
 }
 
-function neutralsInBox(bot: Unit, campIdx: number): number {
+function aggroConfirmed(bot: Unit, job: Job): boolean {
+    if (job.aggroOrderedAt !== undefined && bot.GetLastAttackTime() >= job.aggroOrderedAt) return true;
+    return NeutralTargets(bot);
+}
+
+export function NeutralsInBox(bot: Unit, campIdx: number): number {
     const margin = settings().Radii.BoxMargin;
     let n = 0;
     for (const c of bot.GetNearbyNeutralCreeps(settings().Radii.StackCountScan, false) ?? []) {
@@ -836,9 +913,13 @@ export function StackGrade(aggroSec: number): string {
 }
 
 /** The aggro landed: the attempt counts from here, whether or not the walk-off completes. */
-function noteStackAggro(bot: Unit, job: Job, now: number): void {
+export function NoteStackAggro(
+    bot: Unit,
+    job: Pick<StackPlan, "campIdx" | "baseAggro" | "plannedSec"> & { minute?: number; exitUntil?: number },
+    before: number,
+    now: number
+): void {
     const data = Camps.ByIdx(job.campIdx);
-    const before = job.stackBefore ?? 0;
     const minute = job.minute ?? math.floor(job.baseAggro / settings().Timing.PullPeriod);
     Stacking.NoteStackAttempt(job.campIdx, minute, before);
     const minuteEnd = (job.exitUntil ?? now) - settings().Timing.StackExitUntil;
@@ -857,7 +938,7 @@ function noteStackAggro(bot: Unit, job: Job, now: number): void {
 function settleStack(bot: Unit, now: number): void {
     const p = pendingStacks[bot.GetPlayerID()];
     if (p === undefined || now < p.at) return;
-    if (boxInSight(bot, p.campIdx)) p.peak = math.max(p.peak ?? 0, neutralsInBox(bot, p.campIdx));
+    if (boxInSight(bot, p.campIdx)) p.peak = math.max(p.peak ?? 0, NeutralsInBox(bot, p.campIdx));
     if (now < p.until && (p.peak === undefined || p.peak <= p.before)) return;
     delete pendingStacks[bot.GetPlayerID()];
     const t = settings().Timing;
@@ -999,9 +1080,9 @@ function step(bot: Unit, job: Job): boolean {
     }
     if (job.phase === "aggro") {
         if (job.aggroTarget === undefined) {
-            const creep = campNeutral(bot, job);
+            const creep = CampNeutral(bot, job.activeCamp);
             if (creep !== undefined) {
-                if (job.kind === "stack") job.stackBefore = neutralsInBox(bot, job.activeCamp);
+                if (job.kind === "stack") job.stackBefore = NeutralsInBox(bot, job.activeCamp);
                 bot.Action_AttackUnit(creep, true);
                 job.aggroTarget = creep;
                 job.aggroOrderedAt = GameTime();
@@ -1032,7 +1113,7 @@ function step(bot: Unit, job: Job): boolean {
         if (job.stage === 1) job.actualAggro = now;
         job.aggroTarget = undefined;
         if (job.kind === "stack") {
-            noteStackAggro(bot, job, now);
+            NoteStackAggro(bot, job, job.stackBefore ?? 0, now);
             job.phase = "exit";
         } else {
             job.phase = "lead";

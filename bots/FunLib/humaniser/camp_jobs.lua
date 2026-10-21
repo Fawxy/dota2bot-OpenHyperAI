@@ -201,7 +201,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, neutralsInBox, boxInSight, settleStack, pendingStacks
+local settings, boxInSight, settleStack, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -221,7 +221,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function settings()
     return LaneConfig.Settings()
 end
-function neutralsInBox(bot, campIdx)
+function ____exports.NeutralsInBox(bot, campIdx)
     local margin = settings().Radii.BoxMargin
     local n = 0
     for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
@@ -263,7 +263,7 @@ function settleStack(bot, now)
     if boxInSight(bot, p.campIdx) then
         p.peak = math.max(
             p.peak or 0,
-            neutralsInBox(bot, p.campIdx)
+            ____exports.NeutralsInBox(bot, p.campIdx)
         )
     end
     if now < p["until"] and (p.peak == nil or p.peak <= p.before) then
@@ -503,8 +503,8 @@ end
 local function dataLabel(data)
     return data.unverified == true and "unverified" or data.source
 end
-local function register(bot, job, data)
-    jobs[bot:GetPlayerID()] = job
+--- A new job's planner commit, `lane_job_start` event and `job-start` line; the job itself is stored by the caller.
+function ____exports.NoteJobStart(bot, job, data)
     LanePlanner.Commit(
         bot,
         commitTech(job.kind)
@@ -541,11 +541,16 @@ local function register(bot, job, data)
         )
     )
 end
-local function startStack(bot, req)
+local function register(bot, job, data)
+    jobs[bot:GetPlayerID()] = job
+    ____exports.NoteJobStart(bot, job, data)
+end
+--- A stack job's plan, with no reservation or registration; undefined when the camp has no stack data.
+function ____exports.PlanStack(bot, req)
     local data = Camps.ByIdx(req.campIdx)
     local spawner = Camps.SpawnerByIdx(req.campIdx)
     if data == nil or data.stack == nil or spawner == nil then
-        return false
+        return nil
     end
     local cfg = settings()
     local skill = LaneConfig.SkillOf(bot)
@@ -571,37 +576,51 @@ local function startStack(bot, req)
         )
     end
     local minuteStart = base - aggroSec
-    local exitUntil = minuteStart + period + cfg.Timing.StackExitUntil
+    return {
+        campIdx = req.campIdx,
+        forced = req.forced == true,
+        data = data,
+        minute = math.floor(base / period),
+        plannedSec = aggroSec,
+        baseAggro = base,
+        aggroAt = base + jitter,
+        exitUntil = minuteStart + period + cfg.Timing.StackExitUntil,
+        stand = stand,
+        path = path,
+        startedAt = now
+    }
+end
+local function startStack(bot, req)
+    local plan = ____exports.PlanStack(bot, req)
+    if plan == nil then
+        return false
+    end
     Stacking.Reserve(
-        req.campIdx,
+        plan.campIdx,
         bot:GetPlayerID(),
-        exitUntil
+        plan.exitUntil
     )
     register(
         bot,
-        __TS__ObjectAssign(
-            {},
-            req,
-            {
-                minute = math.floor(base / period),
-                phase = "travel",
-                aggroAt = base + jitter,
-                plannedSec = aggroSec,
-                path = path,
-                startedAt = now,
-                peakDivert = 0,
-                waveSize = 0,
-                activeCamp = req.campIdx,
-                stand = stand,
-                waypoint = 0,
-                stage = 1,
-                secondTried = false,
-                telegraphed = false,
-                baseAggro = base,
-                exitUntil = exitUntil
-            }
-        ),
-        data
+        __TS__ObjectAssign({}, req, {
+            minute = plan.minute,
+            phase = "travel",
+            aggroAt = plan.aggroAt,
+            plannedSec = plan.plannedSec,
+            path = plan.path,
+            startedAt = plan.startedAt,
+            peakDivert = 0,
+            waveSize = 0,
+            activeCamp = req.campIdx,
+            stand = plan.stand,
+            waypoint = 0,
+            stage = 1,
+            secondTried = false,
+            telegraphed = false,
+            baseAggro = plan.baseAggro,
+            exitUntil = plan.exitUntil
+        }),
+        plan.data
     )
     return true
 end
@@ -765,8 +784,61 @@ local function close(bot, job, phase, grade)
     end
     logJob(bot, job, grade)
 end
---- Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
--- against a camp's timing. A double pull aborted in its second stage still grades the first pull.
+--- Everything an abort does besides ending the job itself: the cycle and camp bookkeeping, the `lane_job_abort`
+-- event and the `job-abort` line, which the console parser does not read, so safety aborts never count against a
+-- camp's timing.
+function ____exports.NoteJobAbort(bot, info, reason, keepStack)
+    if keepStack == nil then
+        keepStack = false
+    end
+    local pid = bot:GetPlayerID()
+    if not info.acted then
+        LanePlanner.Release(
+            bot,
+            commitTech(info.kind)
+        )
+        skipped[pid] = info.baseAggro
+    elseif info.kind ~= "stack" then
+        doneCycle[pid] = cycleOf(DotaTime())
+    end
+    if not keepStack and info.kind == "stack_pull" and info.aggroLanded then
+        Stacking.ClearStack(info.campIdx)
+    end
+    if info.kind == "stack" then
+        Stacking.Release(info.campIdx, pid)
+    end
+    local token = string.gsub(reason, "%s+", "-")
+    local ____Telemetry_Event_7 = Telemetry.Event
+    local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[info.kind]}, {"camp", info.campIdx})
+    local ____opt_4 = Camps.ByIdx(info.campIdx)
+    __TS__SparseArrayPush(
+        ____array_6,
+        {"key", ____opt_4 and ____opt_4.key},
+        {"reason", token},
+        {"phase", info.phase},
+        {"acted", info.acted},
+        {"divert", info.divert}
+    )
+    ____Telemetry_Event_7(
+        "lane_job_abort",
+        {__TS__SparseArraySpread(____array_6)}
+    )
+    local ____HDebug_Log_12 = HDebug.Log
+    local ____string_format_11 = string.format
+    local ____array_10 = __TS__SparseArrayNew(
+        "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
+        bot:GetPlayerID(),
+        LOG_KIND[info.kind],
+        info.campIdx
+    )
+    local ____opt_8 = Camps.ByIdx(info.campIdx)
+    __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, info.divert)
+    ____HDebug_Log_12(
+        "lane",
+        ____string_format_11(__TS__SparseArraySpread(____array_10))
+    )
+end
+--- A double pull aborted in its second stage still grades the first pull.
 local function abort(bot, job, reason, keepStack)
     if keepStack == nil then
         keepStack = false
@@ -782,52 +854,15 @@ local function abort(bot, job, reason, keepStack)
     end
     local phase = job.phase
     job.phase = "return"
-    local pid = bot:GetPlayerID()
-    if job.acted ~= true then
-        LanePlanner.Release(
-            bot,
-            commitTech(job.kind)
-        )
-        skipped[pid] = job.baseAggro
-    elseif job.kind ~= "stack" then
-        doneCycle[pid] = cycleOf(DotaTime())
-    end
-    if not keepStack and job.kind == "stack_pull" and job.actualAggro ~= nil then
-        Stacking.ClearStack(job.campIdx)
-    end
-    if job.kind == "stack" then
-        Stacking.Release(job.campIdx, pid)
-    end
-    local token = string.gsub(reason, "%s+", "-")
-    local ____Telemetry_Event_7 = Telemetry.Event
-    local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
-    local ____opt_4 = Camps.ByIdx(job.campIdx)
-    __TS__SparseArrayPush(
-        ____array_6,
-        {"key", ____opt_4 and ____opt_4.key},
-        {"reason", token},
-        {"phase", phase},
-        {"acted", job.acted == true},
-        {"divert", job.peakDivert}
-    )
-    ____Telemetry_Event_7(
-        "lane_job_abort",
-        {__TS__SparseArraySpread(____array_6)}
-    )
-    local ____HDebug_Log_12 = HDebug.Log
-    local ____string_format_11 = string.format
-    local ____array_10 = __TS__SparseArrayNew(
-        "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
-        bot:GetPlayerID(),
-        LOG_KIND[job.kind],
-        job.campIdx
-    )
-    local ____opt_8 = Camps.ByIdx(job.campIdx)
-    __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, job.peakDivert)
-    ____HDebug_Log_12(
-        "lane",
-        ____string_format_11(__TS__SparseArraySpread(____array_10))
-    )
+    ____exports.NoteJobAbort(bot, {
+        kind = job.kind,
+        campIdx = job.campIdx,
+        baseAggro = job.baseAggro,
+        phase = phase,
+        acted = job.acted == true,
+        divert = job.peakDivert,
+        aggroLanded = job.actualAggro ~= nil
+    }, reason, keepStack)
 end
 --- A contest is no pull attempt, so it ends on its own line, which the console parser does not read.
 local function endContest(bot, job, reason)
@@ -865,7 +900,7 @@ local function jobAllowed(bot, s, forced)
     return true, "ok"
 end
 --- Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety.
-local function stackAllowed(bot, job)
+function ____exports.StackAllowed(bot, forced)
     local s = LaneState.ForBot(bot)
     local laning = LaneConfig.InLaningPhase()
     if laning and s == nil then
@@ -875,7 +910,7 @@ local function stackAllowed(bot, job)
         bot,
         s and s.lane or bot:GetAssignedLane()
     )
-    local ok, why = unpack(job.forced == true and ({Stacking.Safe(bot, s, enemies)}) or ({Stacking.Eligible(bot, s, enemies)}))
+    local ok, why = unpack(forced and ({Stacking.Safe(bot, s, enemies)}) or ({Stacking.Eligible(bot, s, enemies)}))
     if not ok then
         return false, why
     end
@@ -913,7 +948,7 @@ local function keepGoing(bot, job)
         return false
     end
     if job.kind == "stack" then
-        local ok, why = stackAllowed(bot, job)
+        local ok, why = ____exports.StackAllowed(bot, job.forced == true)
         if not ok then
             abort(bot, job, why)
         end
@@ -935,7 +970,7 @@ local function keepGoing(bot, job)
     end
     return true
 end
-local function desireOf(kind)
+function ____exports.DesireOf(kind)
     local t = settings().Timing
     return kind == "contest" and t.ContestDesire or t.JobDesire
 end
@@ -1230,7 +1265,7 @@ function ____exports.Desire(bot)
                 commitTech(job.kind)
             )
         end
-        return desireOf(job.kind)
+        return ____exports.DesireOf(job.kind)
     end
     if not bot:IsAlive() then
         return 0
@@ -1239,7 +1274,7 @@ function ____exports.Desire(bot)
     if not started and LaneConfig.IsOn("Stack") then
         started = scheduleStack(bot, now)
     end
-    return started and desireOf(jobs[bot:GetPlayerID()].kind) or 0
+    return started and ____exports.DesireOf(jobs[bot:GetPlayerID()].kind) or 0
 end
 local function overlay(bot, job)
     HDebug.Text(
@@ -1278,7 +1313,8 @@ local function telegraph(bot, job, now)
         settings().Timing.PullTelegraphCooldown
     )
 end
-local function campNeutral(bot, job)
+--- The nearest visible neutral in the camp's box.
+function ____exports.CampNeutral(bot, campIdx)
     local best
     local bestDist = math.huge
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
@@ -1286,17 +1322,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue165
+            local __continue169
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue165 = true
+                    __continue169 = true
                     break
                 end
                 if not Camps.InBox(
-                    job.activeCamp,
+                    campIdx,
                     n:GetLocation()
                 ) then
-                    __continue165 = true
+                    __continue169 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1307,19 +1343,17 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue165 = true
+                __continue169 = true
             until true
-            if not __continue165 then
+            if not __continue169 then
                 break
             end
         end
     end
     return best
 end
-local function aggroConfirmed(bot, job)
-    if job.aggroOrderedAt ~= nil and bot:GetLastAttackTime() >= job.aggroOrderedAt then
-        return true
-    end
+--- A visible neutral near the bot is attacking it.
+function ____exports.NeutralTargets(bot)
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
         settings().Radii.NeutralSearch,
         false
@@ -1330,10 +1364,15 @@ local function aggroConfirmed(bot, job)
     end
     return false
 end
+local function aggroConfirmed(bot, job)
+    if job.aggroOrderedAt ~= nil and bot:GetLastAttackTime() >= job.aggroOrderedAt then
+        return true
+    end
+    return ____exports.NeutralTargets(bot)
+end
 --- The aggro landed: the attempt counts from here, whether or not the walk-off completes.
-local function noteStackAggro(bot, job, now)
+function ____exports.NoteStackAggro(bot, job, before, now)
     local data = Camps.ByIdx(job.campIdx)
-    local before = job.stackBefore or 0
     local minute = job.minute or math.floor(job.baseAggro / settings().Timing.PullPeriod)
     Stacking.NoteStackAttempt(job.campIdx, minute, before)
     local minuteEnd = (job.exitUntil or now) - settings().Timing.StackExitUntil
@@ -1355,10 +1394,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue191
+            local __continue196
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue191 = true
+                    __continue196 = true
                     break
                 end
                 if dist2D(
@@ -1367,9 +1406,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue191 = true
+                __continue196 = true
             until true
-            if not __continue191 then
+            if not __continue196 then
                 break
             end
         end
@@ -1452,10 +1491,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue205
+            local __continue210
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue205 = true
+                    __continue210 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1465,9 +1504,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue205 = true
+                __continue210 = true
             until true
-            if not __continue205 then
+            if not __continue210 then
                 break
             end
         end
@@ -1517,10 +1556,10 @@ local function step(bot, job)
     end
     if job.phase == "aggro" then
         if job.aggroTarget == nil then
-            local creep = campNeutral(bot, job)
+            local creep = ____exports.CampNeutral(bot, job.activeCamp)
             if creep ~= nil then
                 if job.kind == "stack" then
-                    job.stackBefore = neutralsInBox(bot, job.activeCamp)
+                    job.stackBefore = ____exports.NeutralsInBox(bot, job.activeCamp)
                 end
                 bot:Action_AttackUnit(creep, true)
                 job.aggroTarget = creep
@@ -1554,7 +1593,7 @@ local function step(bot, job)
         end
         job.aggroTarget = nil
         if job.kind == "stack" then
-            noteStackAggro(bot, job, now)
+            ____exports.NoteStackAggro(bot, job, job.stackBefore or 0, now)
             job.phase = "exit"
         else
             job.phase = "lead"
