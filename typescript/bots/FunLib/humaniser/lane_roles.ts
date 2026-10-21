@@ -25,12 +25,14 @@ let claims: Record<string, Claim> = {};
 let lastDraw: Record<number, number> = {};
 let needSince: Record<number, number> = {};
 let covers: Record<number, Cover> = {};
+let doubleDraws: Record<number, { stamp: number; ok: boolean }> = {};
 
 export function ResetCache(): void {
     claims = {};
     lastDraw = {};
     needSince = {};
     covers = {};
+    doubleDraws = {};
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -118,17 +120,24 @@ export function MayDrawAggro(bot: Unit, s: LaneState.LaneSnapshot): LuaMultiRetu
     const now = DotaTime();
     const window = cfg.Timing.AggroWindow;
 
-    let allyActed = false;
+    // The double-draw mistake is rolled once per ally draw, not per call. Creeps chasing the ally keep refreshing
+    // its stamp, so stamps closer together than the window count as the same draw.
+    let stamp: number | undefined;
     for (const [other, at] of pairs(s.lastAllyAggroAt)) {
-        if (other !== pid && now - (at as number) < window) allyActed = true;
+        if (other !== pid && now - (at as number) < window && (stamp === undefined || (at as number) > stamp)) stamp = at as number;
     }
     const claim = claims[claimKey(s)];
-    if (claim !== undefined && claim.pid !== pid && now - claim.at < window) allyActed = true;
-    if (allyActed) {
-        if (LaneConfig.Roll(LaneConfig.Curve("DoubleDraw", LaneConfig.SkillOf(bot)))) {
-            HDebug.Log("lane", `pid=${pid} mistake: double-draw`);
-            return $multi(true, "mistake: double-draw");
+    if (claim !== undefined && claim.pid !== pid && now - claim.at < window && (stamp === undefined || claim.at > stamp)) stamp = claim.at;
+    if (stamp !== undefined) {
+        let dd = doubleDraws[pid];
+        if (dd === undefined || stamp - dd.stamp >= window) {
+            dd = { stamp, ok: LaneConfig.Roll(LaneConfig.Curve("DoubleDraw", LaneConfig.SkillOf(bot))) };
+            doubleDraws[pid] = dd;
+            if (dd.ok) HDebug.Log("lane", `pid=${pid} mistake: double-draw`);
+        } else if (stamp > dd.stamp) {
+            dd.stamp = stamp;
         }
+        if (dd.ok) return $multi(true, "mistake: double-draw");
         return $multi(false, "wait: ally-aggro");
     }
 

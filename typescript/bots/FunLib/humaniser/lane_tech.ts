@@ -8,6 +8,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
+import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
@@ -56,6 +57,7 @@ let drops: Record<number, TowerDrop> = {};
 let shoves: Record<number, Shove> = {};
 let finished: Record<number, number> = {};
 let started: Record<number, string> = {};
+let drawAt: Record<number, number> = {};
 let plans: Record<number, { time: number; choice: LanePlanner.Choice }> = {};
 let towerCache: Record<number, { time: number; list: Unit[] }> = {};
 
@@ -65,6 +67,7 @@ export function ResetCache(): void {
     shoves = {};
     finished = {};
     started = {};
+    drawAt = {};
     plans = {};
     towerCache = {};
 }
@@ -281,9 +284,10 @@ function towerDrop(bot: Unit, s: LaneState.LaneSnapshot, allyCreeps: Unit[]): bo
     const here = bot.GetLocation();
     if (!drop.dropped) {
         drop.dropped = true;
-        const candidates = alliedLaneCreeps(bot, allyCreeps);
-        for (const h of s.allies) if (h.alive && h.pid !== pid) candidates.push(h.unit);
-        const target = nearest(here, candidates, bot.GetAttackRange());
+        const range = bot.GetAttackRange();
+        const heroes: Unit[] = [];
+        for (const h of s.allies) if (h.alive && h.pid !== pid) heroes.push(h.unit);
+        const target = nearest(here, alliedLaneCreeps(bot, allyCreeps), range) ?? nearest(here, heroes, range);
         if (target !== undefined) {
             overlay(bot, `tech=tower_drop@${cycleSecText(DotaTime())} drop`);
             bot.Action_AttackUnit(target, true);
@@ -382,7 +386,9 @@ function walkBackPoint(bot: Unit, s: LaneState.LaneSnapshot): Vector {
     const here = bot.GetLocation();
     const own = LaneState.EqPos(Camps.ToTeamAmount(s.team, GetAmountAlongLane(s.lane, here).amount), s.ourTowerAmount, s.theirTowerAmount);
     const eq = math.min(s.eqPos - cfg.Planner.AggroStepEq, own);
-    const point = HoldPoint(s.team, s.lane, eq, s.ourTowerAmount, s.theirTowerAmount, cfg.Radii.AggroWalkBack);
+    const lanePoint = HoldPoint(s.team, s.lane, eq, s.ourTowerAmount, s.theirTowerAmount, cfg.Radii.AggroWalkBack);
+    const noise = LaneConfig.Curve("PathNoise", LaneConfig.SkillOf(bot));
+    const point = Vector(lanePoint.x + RandomFloat(-1, 1) * noise, lanePoint.y + RandomFloat(-1, 1) * noise, lanePoint.z);
     return dist2D(here, point) > cfg.Radii.AggroWalkMax ? toward(here, point, cfg.Radii.AggroWalkMax) : point;
 }
 
@@ -416,17 +422,32 @@ function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: 
 }
 
 function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choice: LanePlanner.Choice): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    let at = drawAt[pid];
+    if (at === undefined) {
+        at = now + math.max(0, LaneConfig.Jitter(LaneConfig.SkillOf(bot)));
+        drawAt[pid] = at;
+    }
+    if (now < at) {
+        overlay(bot, string.format("tech=aggro_pull wait: jitter %.1fs", at - now));
+        return false;
+    }
     const [may, why] = LaneRoles.MayDrawAggro(bot, s);
     if (!may) {
         overlay(bot, `tech=aggro_pull ${why}`);
         return false;
     }
-    if (trySwap(bot, s, enemies, choice.reason)) return true;
+    if (trySwap(bot, s, enemies, choice.reason)) {
+        delete drawAt[pid];
+        return true;
+    }
     const hero = drawTarget(bot, enemies);
     if (hero === undefined) {
         overlay(bot, "tech=aggro_pull wait: no target");
         return false;
     }
+    delete drawAt[pid];
     bot.Action_AttackUnit(hero, true);
     beginDrop(bot, s, "walk", choice.reason);
     overlay(bot, `tech=aggro_pull@${cycleSecText(DotaTime())} draw`);
@@ -471,6 +492,8 @@ export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], ene
         if (seq.tech === "block") return runBlock(bot, s, seq, enemyCreeps, choice);
         return runAggro(bot, seq, allyCreeps);
     }
+    // The draw delay is sampled once per need: a choice change ends the need.
+    if (choice.tech !== "aggro_pull") delete drawAt[pid];
     if (finishedThisCycle(pid)) return false;
     if (choice.tech === "block") return startBlock(bot, s, enemyCreeps, choice);
     if (choice.tech === "aggro_pull") return startAggro(bot, s, enemies, choice);
@@ -534,23 +557,33 @@ function zoneTarget(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
     return best;
 }
 
+/** freeze/hold, or the plan's posture when the one-per-cycle lock (after e.g. a drag-back) hides it from the choice. */
+function postureOf(bot: Unit, s: LaneState.LaneSnapshot, choice: LanePlanner.Choice): "freeze" | "hold" | undefined {
+    if (choice.tech === "freeze" || choice.tech === "hold") return choice.tech;
+    if (choice.tech !== "none" || string.sub(choice.reason, 1, 13) !== "one per cycle") return undefined;
+    const pos = LaneConfig.PositionOf(bot);
+    const plan = (pos !== undefined && pos >= 4 ? LanePlan.ForSupport(bot, s) : LanePlan.View(bot, s)).plan;
+    return plan === "FREEZE" ? "freeze" : plan === "HOLD" ? "hold" : undefined;
+}
+
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     const s = activeSnapshot(bot);
     if (s === undefined) return loc;
     const choice = planFor(bot, s);
-    if (choice.tech !== "freeze" && choice.tech !== "hold") return loc;
-    noteStart(bot, choice.tech, choice.reason);
+    const posture = postureOf(bot, s, choice);
+    if (posture === undefined) return loc;
+    noteStart(bot, posture, choice.reason);
     const cfg = settings();
     const pos = LaneConfig.PositionOf(bot);
     const lead = s.ally.lead;
     if (pos !== undefined && pos >= 4 && lead !== undefined) {
         const enemy = zoneTarget(bot, s);
         if (enemy !== undefined) {
-            overlay(bot, `tech=${choice.tech}@${cycleSecText(DotaTime())} zone`);
+            overlay(bot, `tech=${posture}@${cycleSecText(DotaTime())} zone`);
             return toward(lead.GetLocation(), enemy, cfg.Radii.ZoneOffset);
         }
     }
-    overlay(bot, `tech=${choice.tech}@${cycleSecText(DotaTime())} hold`);
+    overlay(bot, `tech=${posture}@${cycleSecText(DotaTime())} hold`);
     const back = math.max(bot.GetAttackRange(), cfg.Radii.HoldMinBack);
     return HoldPoint(s.team, s.lane, s.desiredEq, s.ourTowerAmount, s.theirTowerAmount, back);
 }

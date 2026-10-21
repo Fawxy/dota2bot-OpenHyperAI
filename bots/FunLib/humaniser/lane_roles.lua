@@ -164,11 +164,13 @@ local claims = {}
 local lastDraw = {}
 local needSince = {}
 local covers = {}
+local doubleDraws = {}
 function ____exports.ResetCache()
     claims = {}
     lastDraw = {}
     needSince = {}
     covers = {}
+    doubleDraws = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -304,25 +306,37 @@ function ____exports.MayDrawAggro(bot, s)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local window = cfg.Timing.AggroWindow
-    local allyActed = false
+    local stamp
     for other, at in pairs(s.lastAllyAggroAt) do
-        if other ~= pid and now - at < window then
-            allyActed = true
+        if other ~= pid and now - at < window and (stamp == nil or at > stamp) then
+            stamp = at
         end
     end
     local claim = claims[claimKey(s)]
-    if claim ~= nil and claim.pid ~= pid and now - claim.at < window then
-        allyActed = true
+    if claim ~= nil and claim.pid ~= pid and now - claim.at < window and (stamp == nil or claim.at > stamp) then
+        stamp = claim.at
     end
-    if allyActed then
-        if LaneConfig.Roll(LaneConfig.Curve(
-            "DoubleDraw",
-            LaneConfig.SkillOf(bot)
-        )) then
-            HDebug.Log(
-                "lane",
-                ("pid=" .. tostring(pid)) .. " mistake: double-draw"
-            )
+    if stamp ~= nil then
+        local dd = doubleDraws[pid]
+        if dd == nil or stamp - dd.stamp >= window then
+            dd = {
+                stamp = stamp,
+                ok = LaneConfig.Roll(LaneConfig.Curve(
+                    "DoubleDraw",
+                    LaneConfig.SkillOf(bot)
+                ))
+            }
+            doubleDraws[pid] = dd
+            if dd.ok then
+                HDebug.Log(
+                    "lane",
+                    ("pid=" .. tostring(pid)) .. " mistake: double-draw"
+                )
+            end
+        elseif stamp > dd.stamp then
+            dd.stamp = stamp
+        end
+        if dd.ok then
             return true, "mistake: double-draw"
         end
         return false, "wait: ally-aggro"
@@ -358,29 +372,29 @@ function ____exports.CampJobOwner(s)
     local best
     for ____, h in ipairs(s.allies) do
         do
-            local __continue50
+            local __continue53
             repeat
                 if not h.alive then
-                    __continue50 = true
+                    __continue53 = true
                     break
                 end
                 if not h.isBot then
                     if positionOf(h) >= 4 then
                         return nil
                     end
-                    __continue50 = true
+                    __continue53 = true
                     break
                 end
                 if not h.assigned then
-                    __continue50 = true
+                    __continue53 = true
                     break
                 end
                 if best == nil or positionOf(h) > positionOf(best) or positionOf(h) == positionOf(best) and h.pid < best.pid then
                     best = h
                 end
-                __continue50 = true
+                __continue53 = true
             until true
-            if not __continue50 then
+            if not __continue53 then
                 break
             end
         end
@@ -414,18 +428,18 @@ function ____exports.LaneStable(bot, enemies)
     local loc = bot:GetLocation()
     for ____, e in ipairs(enemies) do
         do
-            local __continue65
+            local __continue68
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.StableSeenWithin then
-                    __continue65 = true
+                    __continue68 = true
                     break
                 end
                 if dist2D(e.location, loc) <= cfg.StableEnemyRadius then
                     return false
                 end
-                __continue65 = true
+                __continue68 = true
             until true
-            if not __continue65 then
+            if not __continue68 then
                 break
             end
         end

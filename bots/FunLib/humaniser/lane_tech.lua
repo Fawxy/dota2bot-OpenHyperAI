@@ -164,6 +164,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
+local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
@@ -194,6 +195,7 @@ local drops = {}
 local shoves = {}
 local finished = {}
 local started = {}
+local drawAt = {}
 local plans = {}
 local towerCache = {}
 function ____exports.ResetCache()
@@ -202,6 +204,7 @@ function ____exports.ResetCache()
     shoves = {}
     finished = {}
     started = {}
+    drawAt = {}
     plans = {}
     towerCache = {}
 end
@@ -491,17 +494,18 @@ local function towerDrop(bot, s, allyCreeps)
     local here = bot:GetLocation()
     if not drop.dropped then
         drop.dropped = true
-        local candidates = alliedLaneCreeps(bot, allyCreeps)
+        local range = bot:GetAttackRange()
+        local heroes = {}
         for ____, h in ipairs(s.allies) do
             if h.alive and h.pid ~= pid then
-                candidates[#candidates + 1] = h.unit
+                heroes[#heroes + 1] = h.unit
             end
         end
         local target = nearest(
             here,
-            candidates,
-            bot:GetAttackRange()
-        )
+            alliedLaneCreeps(bot, allyCreeps),
+            range
+        ) or nearest(here, heroes, range)
         if target ~= nil then
             overlay(
                 bot,
@@ -660,13 +664,22 @@ local function walkBackPoint(bot, s)
         s.theirTowerAmount
     )
     local eq = math.min(s.eqPos - cfg.Planner.AggroStepEq, own)
-    local point = ____exports.HoldPoint(
+    local lanePoint = ____exports.HoldPoint(
         s.team,
         s.lane,
         eq,
         s.ourTowerAmount,
         s.theirTowerAmount,
         cfg.Radii.AggroWalkBack
+    )
+    local noise = LaneConfig.Curve(
+        "PathNoise",
+        LaneConfig.SkillOf(bot)
+    )
+    local point = Vector(
+        lanePoint.x + RandomFloat(-1, 1) * noise,
+        lanePoint.y + RandomFloat(-1, 1) * noise,
+        lanePoint.z
     )
     return dist2D(here, point) > cfg.Radii.AggroWalkMax and toward(here, point, cfg.Radii.AggroWalkMax) or point
 end
@@ -737,12 +750,30 @@ local function trySwap(bot, s, enemies, reason)
     return false
 end
 local function startAggro(bot, s, enemies, choice)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local at = drawAt[pid]
+    if at == nil then
+        at = now + math.max(
+            0,
+            LaneConfig.Jitter(LaneConfig.SkillOf(bot))
+        )
+        drawAt[pid] = at
+    end
+    if now < at then
+        overlay(
+            bot,
+            string.format("tech=aggro_pull wait: jitter %.1fs", at - now)
+        )
+        return false
+    end
     local may, why = LaneRoles.MayDrawAggro(bot, s)
     if not may then
         overlay(bot, "tech=aggro_pull " .. why)
         return false
     end
     if trySwap(bot, s, enemies, choice.reason) then
+        __TS__Delete(drawAt, pid)
         return true
     end
     local hero = drawTarget(bot, enemies)
@@ -750,6 +781,7 @@ local function startAggro(bot, s, enemies, choice)
         overlay(bot, "tech=aggro_pull wait: no target")
         return false
     end
+    __TS__Delete(drawAt, pid)
     bot:Action_AttackUnit(hero, true)
     beginDrop(bot, s, "walk", choice.reason)
     overlay(
@@ -816,6 +848,9 @@ function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
             )
         end
         return runAggro(bot, seq, allyCreeps)
+    end
+    if choice.tech ~= "aggro_pull" then
+        __TS__Delete(drawAt, pid)
     end
     if finishedThisCycle(pid) then
         return false
@@ -887,10 +922,10 @@ local function zoneTarget(bot, s)
     local bestDist = math.huge
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue142
+            local __continue145
             repeat
                 if not e.visible or dist2D(e.location, s.frontLoc) > zone then
-                    __continue142 = true
+                    __continue145 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -898,14 +933,26 @@ local function zoneTarget(bot, s)
                     best = e.location
                     bestDist = d
                 end
-                __continue142 = true
+                __continue145 = true
             until true
-            if not __continue142 then
+            if not __continue145 then
                 break
             end
         end
     end
     return best
+end
+--- freeze/hold, or the plan's posture when the one-per-cycle lock (after e.g. a drag-back) hides it from the choice.
+local function postureOf(bot, s, choice)
+    if choice.tech == "freeze" or choice.tech == "hold" then
+        return choice.tech
+    end
+    if choice.tech ~= "none" or string.sub(choice.reason, 1, 13) ~= "one per cycle" then
+        return nil
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    local plan = (pos ~= nil and pos >= 4 and LanePlan.ForSupport(bot, s) or LanePlan.View(bot, s)).plan
+    return plan == "FREEZE" and "freeze" or (plan == "HOLD" and "hold" or nil)
 end
 function ____exports.AdjustPosition(bot, loc)
     local s = activeSnapshot(bot)
@@ -913,10 +960,11 @@ function ____exports.AdjustPosition(bot, loc)
         return loc
     end
     local choice = planFor(bot, s)
-    if choice.tech ~= "freeze" and choice.tech ~= "hold" then
+    local posture = postureOf(bot, s, choice)
+    if posture == nil then
         return loc
     end
-    noteStart(bot, choice.tech, choice.reason)
+    noteStart(bot, posture, choice.reason)
     local cfg = settings()
     local pos = LaneConfig.PositionOf(bot)
     local lead = s.ally.lead
@@ -925,7 +973,7 @@ function ____exports.AdjustPosition(bot, loc)
         if enemy ~= nil then
             overlay(
                 bot,
-                ((("tech=" .. choice.tech) .. "@") .. cycleSecText(DotaTime())) .. " zone"
+                ((("tech=" .. posture) .. "@") .. cycleSecText(DotaTime())) .. " zone"
             )
             return toward(
                 lead:GetLocation(),
@@ -936,7 +984,7 @@ function ____exports.AdjustPosition(bot, loc)
     end
     overlay(
         bot,
-        ((("tech=" .. choice.tech) .. "@") .. cycleSecText(DotaTime())) .. " hold"
+        ((("tech=" .. posture) .. "@") .. cycleSecText(DotaTime())) .. " hold"
     )
     local back = math.max(
         bot:GetAttackRange(),

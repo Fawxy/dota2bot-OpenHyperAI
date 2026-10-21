@@ -139,6 +139,81 @@ do
 	check("after the aggro window the support draws", #attacks(5) == 1 and attacks(5)[1].args[1] == hero)
 end
 
+-- Draw order for these frames: profiles are created first (one draw each, outside the queue), Plan's per-cycle rolls are primed, then the draw jitter (two Gauss draws,
+-- 0.5/0.5 gives a negative sample, so no delay), then MayDrawAggro's double-draw roll.
+do
+	local H = world(0.5)
+	local core = unit({ pid = 1, pos = 1, x = -100 })
+	local support = unit({ pid = 5, pos = 5, x = -200 })
+	local hero = unit({ pid = 6, team = 3, pos = 3, x = 300 })
+	local enemyCreep = MakeCreep({ team = 3, x = 100, y = BOT_Y, target = core })
+	T = 94
+	H.Lane.LaneState.ForBot(support)
+	enemyCreep.target = nil
+	T = 95
+	H.Profile.Get(core)
+	H.Profile.Get(support)
+	SetRandomSequence({ 0.9, 0.0 })
+	local c = H.Lane.LanePlanner.Plan(support, H.Lane.LaneState.ForBot(support))
+	check("precondition: support chooses aggro pull", c.tech == "aggro_pull" and RandomUnread() == 0, c.reason)
+	SetRandomSequence({ 0.5, 0.5, 0.99, 0.0, 0.0, 0.0, 0.0, 0.0 })
+	for i = 0, 5 do
+		T = 95 + i * 0.1
+		H.Lane.PreThink(support, {}, {}, { hero })
+	end
+	check("double-draw is rolled once per ally draw, not per frame", #attacks(5) == 0)
+end
+
+do
+	local function drawTimes(skill)
+		local H, bot, creep, hero = aggroWorld(skill)
+		H.Profile.Get(bot)
+		SetRandomSequence({ 0.0 })
+		H.Lane.LanePlanner.Plan(bot, H.Lane.LaneState.ForBot(bot))
+		SetRandomSequence({ math.exp(-0.5), 1.0 })
+		local drewAt
+		for i = 0, 15 do
+			T = 95 + i * 0.1
+			H.Lane.PreThink(bot, { creep }, {}, { hero })
+			if drewAt == nil and #attacks(1) > 0 then drewAt = T end
+		end
+		return drewAt
+	end
+	local slow, fast = drawTimes(0.5), drawTimes(1)
+	check("aggro draw waits for its jitter", fast ~= nil and fast > 95)
+	check("lower skill draws later", slow ~= nil and fast ~= nil and slow > fast + 0.4, tostring(slow) .. " vs " .. tostring(fast))
+end
+
+do
+	local H, bot, creep = aggroWorld(0.5, { x = 2200 })
+	local ally = unit({ pid = 2, pos = 2, x = 2210 })
+	TOWERS_W[3][dota.Tower.Bot1].target = bot
+	H.Lane.PreThink(bot, { creep }, {}, {})
+	check("tower drop prefers an allied creep over a nearer hero", attacks(1)[1] ~= nil and attacks(1)[1].args[1] == creep)
+	H, bot = aggroWorld(0.5, { x = 2200 })
+	ally = unit({ pid = 2, pos = 2, x = 2210 })
+	TOWERS_W[3][dota.Tower.Bot1].target = bot
+	H.Lane.PreThink(bot, {}, {}, {})
+	check("tower drop falls back to an allied hero", attacks(1)[1] ~= nil and attacks(1)[1].args[1] == ally)
+end
+
+do
+	local H, bot, creep, hero = aggroWorld(0.8)
+	local function frame()
+		H.Lane.PreThink(bot, { creep }, {}, { hero })
+		H.Lane.Think(bot, { creep }, {}, { hero })
+		H.Lane.AdjustPosition(bot, Vector(0, BOT_Y))
+		local n = 0
+		for _, v in pairs(GETUNITLIST_CALLS) do n = n + v end
+		return n
+	end
+	local first = frame()
+	T = 95.1
+	local second = frame()
+	T = 95.2
+	check("per-frame hooks add no unit scans inside the snapshot window", first > 0 and frame() == first and second == first)
+end
+
 do
 	local H, bot, creep, hero = aggroWorld(0.8, { x = 2000, heroX = 2300, front = 0.6 })
 	check("no aggro on a hero under the enemy tower", H.Lane.PreThink(bot, { creep }, {}, { hero }) == false and #attacks(1) == 0)
@@ -246,6 +321,16 @@ do
 	local out = H.Lane.AdjustPosition(bot, input)
 	local ourT1 = Vector(-2800, BOT_Y)
 	check("freeze holds nearer our tower", dist(out, ourT1) < dist(input, ourT1), out.x)
+end
+
+do
+	local H, bot = frozenWorld(0.8, false)
+	H.Lane.LanePlanner.Commit(bot, "aggro_pull")
+	local c = H.Lane.LanePlanner.Plan(bot, H.Lane.LaneState.ForBot(bot))
+	check("precondition: drag-back lock hides freeze", c.tech == "none", c.reason)
+	local input = Vector(-1960, BOT_Y)
+	local out = H.Lane.AdjustPosition(bot, input)
+	check("freeze posture held under the one-per-cycle lock", dist(out, Vector(-2800, BOT_Y)) < dist(input, Vector(-2800, BOT_Y)), out.x)
 end
 
 do
