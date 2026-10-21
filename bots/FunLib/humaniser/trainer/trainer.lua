@@ -203,6 +203,17 @@ local function __TS__ObjectKeys(obj)
     return result
 end
 
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+
 local function __TS__ArrayMap(self, callbackfn, thisArg)
     local result = {}
     for i = 1, #self do
@@ -262,6 +273,7 @@ local SpikeTick = ____spike.SpikeTick
 local ____incoming = require(GetScriptDirectory().."/FunLib/humaniser/trainer/incoming")
 local Heroes = ____incoming.Heroes
 local NearbyUnits = ____incoming.NearbyUnits
+local Towers = ____incoming.Towers
 local ____predict = require(GetScriptDirectory().."/FunLib/humaniser/trainer/predict")
 local EffectiveDamage = ____predict.EffectiveDamage
 local Predict = ____predict.Predict
@@ -281,9 +293,11 @@ local REPLY_INTERVAL = 0.5
 local REPLY_CAP = 8
 local USAGE = "usage: !trainer on|off|stats|reset|bar on|off|chat off|misses|all|denies on|off"
 local MAX_BARS = 2
+--- Last frame's bars keep their place unless another window closes this much sooner. A throttled prediction's
+-- startClose can trail a fresh one by up to a WatchInterval, which would otherwise swap the bars every frame.
+local BAR_STICKINESS = 0.2
 local CANDIDATE_RADIUS = 800
 local DENY_HP_FRACTION = 0.6
-local TOWER_RADIUS = 1000
 local HERO_FIGHT_SECONDS = 2
 local HARASS_SECONDS = 2
 local ATTACK_ACTIVITIES = {[1503] = true, [1504] = true}
@@ -571,6 +585,9 @@ local function subjectsFor(team, trainerBot)
 end
 --- The human, then the self-test bot when SelfTest is on.
 function ____exports.GetSubjects(team)
+    if not Settings.IsEnabled() then
+        return {}
+    end
     return subjectsFor(
         team,
         trainerBotUnit(team)
@@ -609,15 +626,15 @@ local function candidatesFor(subject, denies)
         CANDIDATE_RADIUS
     )) do
         do
-            local __continue77
+            local __continue78
             repeat
-                if not isLaneCreep(u) then
-                    __continue77 = true
+                if not isLaneCreep(u) or not u:CanBeSeen() then
+                    __continue78 = true
                     break
                 end
                 local ally = u:GetTeam() == subject:GetTeam()
                 if ally and not (denies and u:GetHealth() < DENY_HP_FRACTION * u:GetMaxHealth()) then
-                    __continue77 = true
+                    __continue78 = true
                     break
                 end
                 result[#result + 1] = {
@@ -625,9 +642,9 @@ local function candidatesFor(subject, denies)
                     creep = u,
                     isDeny = ally
                 }
-                __continue77 = true
+                __continue78 = true
             until true
-            if not __continue77 then
+            if not __continue78 then
                 break
             end
         end
@@ -729,27 +746,27 @@ local function prune(st, cands)
         end
     end
 end
-local function towerTargets(creep)
-    for ____, u in ipairs(NearbyUnits(
-        creep:GetLocation(),
-        TOWER_RADIUS
-    )) do
-        if T(u):IsTower() and u:GetAttackTarget() == creep then
-            return true
+--- Ids of the creeps some tower is attacking this frame.
+local function towerTargets()
+    local targets = {}
+    for ____, tower in ipairs(Towers()) do
+        local target = tower:GetAttackTarget()
+        if target ~= nil and target ~= nil then
+            targets[creepId(target)] = true
         end
     end
-    return false
+    return targets
 end
 local function snapshot(heroes)
     local counters = {lastHits = {}, denies = {}}
     local seen = {}
     for ____, h in ipairs(heroes) do
         do
-            local __continue118
+            local __continue119
             repeat
                 local pid = h:GetPlayerID()
                 if counters.lastHits[pid] ~= nil then
-                    __continue118 = true
+                    __continue119 = true
                     break
                 end
                 counters.lastHits[pid] = T(h):GetLastHits()
@@ -759,9 +776,9 @@ local function snapshot(heroes)
                     team = h:GetTeam(),
                     name = HeroLabel(h)
                 }
-                __continue118 = true
+                __continue119 = true
             until true
-            if not __continue118 then
+            if not __continue119 then
                 break
             end
         end
@@ -819,11 +836,14 @@ local function attribute(s, st, subject, t, obs, now, current, refs)
     end
     return killer
 end
-local function creepObservations(s, st, subject, now, current, refs)
+local function creepObservations(s, st, subject, frame, refs)
+    local ____frame_11 = frame
+    local now = ____frame_11.now
+    local current = ____frame_11.counters
     local result = {}
     for ____, id in ipairs(__TS__ObjectKeys(st.tracked)) do
         do
-            local __continue139
+            local __continue140
             repeat
                 local t = st.tracked[id]
                 local c = t.creep
@@ -843,7 +863,7 @@ local function creepObservations(s, st, subject, now, current, refs)
                     t.maxHp = c:GetMaxHealth()
                     t.dist = GetUnitToUnitDistance(subject, c)
                     t.effDmg = p ~= nil and p.effDmg or EffectiveDamage(subject, c, t.isDeny)
-                    t.towerTargeting = towerTargets(c)
+                    t.towerTargeting = frame.towerTargets[id] == true
                     result[#result + 1] = {
                         id = id,
                         kind = t.kind,
@@ -853,12 +873,12 @@ local function creepObservations(s, st, subject, now, current, refs)
                         dist = t.dist,
                         prediction = p
                     }
-                    __continue139 = true
+                    __continue140 = true
                     break
                 end
                 __TS__Delete(st.tracked, id)
                 if state == "lost" and not IsDeathLikely(t.hp, t.maxHp, t.effDmg, t.dist) then
-                    __continue139 = true
+                    __continue140 = true
                     break
                 end
                 local obs = {
@@ -880,9 +900,9 @@ local function creepObservations(s, st, subject, now, current, refs)
                     refs
                 )
                 result[#result + 1] = obs
-                __continue139 = true
+                __continue140 = true
             until true
-            if not __continue139 then
+            if not __continue140 then
                 break
             end
         end
@@ -926,8 +946,8 @@ local function onVerdict(s, st, subject, v, now)
         )
         return
     end
-    local ____st_verdictLines_11 = st.verdictLines
-    ____st_verdictLines_11[#____st_verdictLines_11 + 1] = {text = v.reason, kind = v.kind, at = now}
+    local ____st_verdictLines_12 = st.verdictLines
+    ____st_verdictLines_12[#____st_verdictLines_12 + 1] = {text = v.reason, kind = v.kind, at = now}
     while #st.verdictLines > VERDICT_LINES_KEPT do
         table.remove(st.verdictLines, 1)
     end
@@ -937,20 +957,21 @@ local function onVerdict(s, st, subject, v, now)
         queueReply(s, v.reason)
     end
 end
-local function stepSubject(s, subject, now, current, heroes)
+local function stepSubject(s, subject, frame)
+    local now = frame.now
     local cfg = Settings.Get()
     local st = subjectState(
         s,
         subject:GetPlayerID()
     )
     local rawTarget = subject:GetAttackTarget()
-    local ____temp_12
+    local ____temp_13
     if rawTarget == nil or rawTarget == nil then
-        ____temp_12 = nil
+        ____temp_13 = nil
     else
-        ____temp_12 = rawTarget
+        ____temp_13 = rawTarget
     end
-    local target = ____temp_12
+    local target = ____temp_13
     if target ~= nil and target:IsHero() then
         st.lastHeroAttackAt = now
     end
@@ -962,15 +983,19 @@ local function stepSubject(s, subject, now, current, heroes)
         target,
         now
     )
-    local selected = SelectCreeps(
-        subject,
-        __TS__ArrayMap(
-            cands,
-            function(____, c) return {creep = c.creep, isDeny = c.isDeny, prediction = st.cache[c.id]} end
-        ),
-        MAX_BARS,
-        cfg.MaxWatched
+    local wasBar = {}
+    for ____, id in ipairs(st.barIds) do
+        wasBar[id] = true
+    end
+    local ranked = __TS__ArrayMap(
+        cands,
+        function(____, c)
+            local p = st.cache[c.id]
+            local prediction = p ~= nil and wasBar[c.id] == true and __TS__ObjectAssign({}, p, {startClose = p.startClose - BAR_STICKINESS}) or p
+            return {creep = c.creep, isDeny = c.isDeny, prediction = prediction}
+        end
     )
+    local selected = SelectCreeps(subject, ranked, MAX_BARS, cfg.MaxWatched)
     local isDeny = {}
     for ____, c in ipairs(cands) do
         isDeny[c.id] = c.isDeny
@@ -987,21 +1012,21 @@ local function stepSubject(s, subject, now, current, heroes)
         st.barIds,
         function(____, id) return st.cache[id] end
     )
-    local ____array_13 = __TS__SparseArrayNew(unpack(st.bars))
+    local ____array_14 = __TS__SparseArrayNew(unpack(st.bars))
     __TS__SparseArrayPush(
-        ____array_13,
+        ____array_14,
         unpack(__TS__ArrayMap(
             st.watchedIds,
             function(____, id) return st.cache[id] end
         ))
     )
-    st.predictions = {__TS__SparseArraySpread(____array_13)}
-    local ____array_14 = __TS__SparseArrayNew(unpack(selected.bars))
+    st.predictions = {__TS__SparseArraySpread(____array_14)}
+    local ____array_15 = __TS__SparseArrayNew(unpack(selected.bars))
     __TS__SparseArrayPush(
-        ____array_14,
+        ____array_15,
         unpack(selected.watched)
     )
-    for ____, u in ipairs({__TS__SparseArraySpread(____array_14)}) do
+    for ____, u in ipairs({__TS__SparseArraySpread(____array_15)}) do
         local id = creepId(u)
         if st.tracked[id] == nil then
             st.tracked[id] = {
@@ -1018,15 +1043,14 @@ local function stepSubject(s, subject, now, current, heroes)
     end
     local team = subject:GetTeam()
     local refs = __TS__ArrayMap(
-        heroes,
+        frame.heroes,
         function(____, h) return {pid = h.pid, name = h.name, ally = h.team == team} end
     )
     local creeps = creepObservations(
         s,
         st,
         subject,
-        now,
-        current,
+        frame,
         refs
     )
     prune(st, cands)
@@ -1075,26 +1099,26 @@ local function checkpoints(s, human, now)
 end
 local function run(bot, team, s, now)
     local subjects = subjectsFor(team, bot)
-    local ____snapshot_16 = snapshot
-    local ____array_15 = __TS__SparseArrayNew(unpack(Heroes()))
+    local ____snapshot_17 = snapshot
+    local ____array_16 = __TS__SparseArrayNew(unpack(Heroes()))
     __TS__SparseArrayPush(
-        ____array_15,
+        ____array_16,
         unpack(subjects)
     )
-    local ____snapshot_16_result_17 = ____snapshot_16({__TS__SparseArraySpread(____array_15)})
-    local counters = ____snapshot_16_result_17.counters
-    local seen = ____snapshot_16_result_17.seen
+    local ____snapshot_17_result_18 = ____snapshot_17({__TS__SparseArraySpread(____array_16)})
+    local counters = ____snapshot_17_result_18.counters
+    local seen = ____snapshot_17_result_18.seen
+    local frame = {
+        now = now,
+        counters = counters,
+        heroes = seen,
+        towerTargets = towerTargets()
+    }
     for ____, subject in ipairs(subjects) do
-        stepSubject(
-            s,
-            subject,
-            now,
-            counters,
-            seen
-        )
+        stepSubject(s, subject, frame)
     end
-    local ____s_history_18 = s.history
-    ____s_history_18[#____s_history_18 + 1] = {t = now, counters = counters}
+    local ____s_history_19 = s.history
+    ____s_history_19[#____s_history_19 + 1] = {t = now, counters = counters}
     while #s.history > 1 and now - s.history[1].t > HISTORY_SECONDS do
         table.remove(s.history, 1)
     end

@@ -8,7 +8,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/trainer/settings";
 import { CreepKind, GetTrainerHelpers, HeroLabel, SetTrainerHelpers, T, TrainerHelpers } from "bots/FunLib/humaniser/trainer/api";
 import { SpikeTick } from "bots/FunLib/humaniser/trainer/spike";
-import { Heroes, NearbyUnits } from "bots/FunLib/humaniser/trainer/incoming";
+import { Heroes, NearbyUnits, Towers } from "bots/FunLib/humaniser/trainer/incoming";
 import { EffectiveDamage, Predict, Prediction, Smoother } from "bots/FunLib/humaniser/trainer/predict";
 import { CreepObs, Judge, JudgeEvent, Killer, SubjectObs, Verdict, VerdictKind } from "bots/FunLib/humaniser/trainer/judge";
 import { Attribute, Counters, HeroRef, IsDeathLikely, SelectCreeps } from "bots/FunLib/humaniser/trainer/watch";
@@ -20,9 +20,13 @@ const REPLY_CAP = 8;
 const USAGE = "usage: !trainer on|off|stats|reset|bar on|off|chat off|misses|all|denies on|off";
 
 const MAX_BARS = 2;
+/**
+ * Last frame's bars keep their place unless another window closes this much sooner. A throttled prediction's
+ * startClose can trail a fresh one by up to a WatchInterval, which would otherwise swap the bars every frame.
+ */
+const BAR_STICKINESS = 0.2;
 const CANDIDATE_RADIUS = 800;
 const DENY_HP_FRACTION = 0.6;
-const TOWER_RADIUS = 1000;
 const HERO_FIGHT_SECONDS = 2;
 const HARASS_SECONDS = 2;
 const ATTACK_ACTIVITIES: Record<number, boolean> = { [1503]: true, [1504]: true };
@@ -298,6 +302,7 @@ function subjectsFor(team: number, trainerBot: Unit | undefined): Unit[] {
 
 /** The human, then the self-test bot when SelfTest is on. */
 export function GetSubjects(team: number): Unit[] {
+    if (!Settings.IsEnabled()) return [];
     return subjectsFor(team, trainerBotUnit(team));
 }
 
@@ -333,7 +338,7 @@ function isLaneCreep(u: Unit): boolean {
 function candidatesFor(subject: Unit, denies: boolean): Candidate[] {
     const result: Candidate[] = [];
     for (const u of NearbyUnits(subject.GetLocation(), CANDIDATE_RADIUS)) {
-        if (!isLaneCreep(u)) continue;
+        if (!isLaneCreep(u) || !u.CanBeSeen()) continue;
         const ally = u.GetTeam() === subject.GetTeam();
         if (ally && !(denies && u.GetHealth() < DENY_HP_FRACTION * u.GetMaxHealth())) continue;
         result.push({ id: creepId(u), creep: u, isDeny: ally });
@@ -392,11 +397,22 @@ function prune(st: SubjectState, cands: Candidate[]): void {
     for (const id of Object.keys(st.predictedAt)) if (!keep[id]) delete st.predictedAt[id];
 }
 
-function towerTargets(creep: Unit): boolean {
-    for (const u of NearbyUnits(creep.GetLocation(), TOWER_RADIUS)) {
-        if (T(u).IsTower() && u.GetAttackTarget() === creep) return true;
+/** Ids of the creeps some tower is attacking this frame. */
+function towerTargets(): Record<string, boolean> {
+    const targets: Record<string, boolean> = {};
+    for (const tower of Towers()) {
+        const target = tower.GetAttackTarget();
+        if (target !== null && target !== undefined) targets[creepId(target)] = true;
     }
-    return false;
+    return targets;
+}
+
+/** What every subject reads this frame. */
+interface Frame {
+    now: number;
+    counters: Counters;
+    heroes: HeroSeen[];
+    towerTargets: Record<string, boolean>;
 }
 
 interface HeroSeen {
@@ -446,7 +462,8 @@ function attribute(s: TeamState, st: SubjectState, subject: Unit, t: Tracked, ob
     return killer;
 }
 
-function creepObservations(s: TeamState, st: SubjectState, subject: Unit, now: number, current: Counters, refs: HeroRef[]): CreepObs[] {
+function creepObservations(s: TeamState, st: SubjectState, subject: Unit, frame: Frame, refs: HeroRef[]): CreepObs[] {
+    const { now, counters: current } = frame;
     const result: CreepObs[] = [];
     for (const id of Object.keys(st.tracked)) {
         const t = st.tracked[id];
@@ -463,7 +480,7 @@ function creepObservations(s: TeamState, st: SubjectState, subject: Unit, now: n
             t.maxHp = c.GetMaxHealth();
             t.dist = GetUnitToUnitDistance(subject, c);
             t.effDmg = p !== undefined ? p.effDmg : EffectiveDamage(subject, c, t.isDeny);
-            t.towerTargeting = towerTargets(c);
+            t.towerTargeting = frame.towerTargets[id] === true;
             result.push({ id, kind: t.kind, isDeny: t.isDeny, alive: true, hp: t.hp, dist: t.dist, prediction: p });
             continue;
         }
@@ -521,7 +538,8 @@ function onVerdict(s: TeamState, st: SubjectState, subject: Unit, v: Verdict, no
     }
 }
 
-function stepSubject(s: TeamState, subject: Unit, now: number, current: Counters, heroes: HeroSeen[]): void {
+function stepSubject(s: TeamState, subject: Unit, frame: Frame): void {
+    const now = frame.now;
     const cfg = Settings.Get();
     const st = subjectState(s, subject.GetPlayerID());
     const rawTarget = subject.GetAttackTarget();
@@ -530,12 +548,14 @@ function stepSubject(s: TeamState, subject: Unit, now: number, current: Counters
 
     const cands = candidatesFor(subject, s.denies);
     refreshPredictions(st, subject, cands, target, now);
-    const selected = SelectCreeps(
-        subject,
-        cands.map((c) => ({ creep: c.creep, isDeny: c.isDeny, prediction: st.cache[c.id] })),
-        MAX_BARS,
-        cfg.MaxWatched,
-    );
+    const wasBar: Record<string, boolean> = {};
+    for (const id of st.barIds) wasBar[id] = true;
+    const ranked = cands.map((c) => {
+        const p = st.cache[c.id];
+        const prediction = p !== undefined && wasBar[c.id] === true ? { ...p, startClose: p.startClose - BAR_STICKINESS } : p;
+        return { creep: c.creep, isDeny: c.isDeny, prediction };
+    });
+    const selected = SelectCreeps(subject, ranked, MAX_BARS, cfg.MaxWatched);
     const isDeny: Record<string, boolean> = {};
     for (const c of cands) isDeny[c.id] = c.isDeny;
     st.barIds = selected.bars.map((u) => creepId(u));
@@ -550,8 +570,8 @@ function stepSubject(s: TeamState, subject: Unit, now: number, current: Counters
     }
 
     const team = subject.GetTeam();
-    const refs: HeroRef[] = heroes.map((h) => ({ pid: h.pid, name: h.name, ally: h.team === team }));
-    const creeps = creepObservations(s, st, subject, now, current, refs);
+    const refs: HeroRef[] = frame.heroes.map((h) => ({ pid: h.pid, name: h.name, ally: h.team === team }));
+    const creeps = creepObservations(s, st, subject, frame, refs);
     prune(st, cands);
 
     const events: JudgeEvent[] = st.judge.Step(subjectObservation(st, subject, target, now), creeps);
@@ -585,7 +605,8 @@ function checkpoints(s: TeamState, human: SubjectState | undefined, now: number)
 function run(bot: Unit, team: number, s: TeamState, now: number): void {
     const subjects = subjectsFor(team, bot);
     const { counters, seen } = snapshot([...Heroes(), ...subjects]);
-    for (const subject of subjects) stepSubject(s, subject, now, counters, seen);
+    const frame: Frame = { now, counters, heroes: seen, towerTargets: towerTargets() };
+    for (const subject of subjects) stepSubject(s, subject, frame);
 
     s.history.push({ t: now, counters });
     while (s.history.length > 1 && now - s.history[0].t > HISTORY_SECONDS) table.remove(s.history, 1);

@@ -61,6 +61,14 @@ export function Heroes(): Unit[] {
     return result;
 }
 
+export function Towers(): Unit[] {
+    const result: Unit[] = [];
+    for (const u of unitsForTeam()) {
+        if (T(u).IsTower() && u.IsAlive()) result.push(u);
+    }
+    return result;
+}
+
 function kindOf(u: TUnit): CreepKind {
     if (u.IsTower()) return "ranged";
     if (u.IsHero()) {

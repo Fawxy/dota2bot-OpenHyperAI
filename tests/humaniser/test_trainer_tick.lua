@@ -82,10 +82,11 @@ local function setup(trainerCfg, o)
 	laning = true
 	local cfg = { Enable = true, Debug = o.debug, Trainer = { LastHit = trainerCfg or {} } }
 	local H = FreshHumaniser(cfg)
-	calls = { delay = 0, bySubject = {} }
+	calls = { delay = 0, bySubject = {}, log = {} }
 	H.Trainer.SetHelpers({
-		GetAttackProDelayTime = function(subject)
+		GetAttackProDelayTime = function(subject, creep)
 			calls.delay = calls.delay + 1
+			table.insert(calls.log, { pid = subject.pid, creep = creep, t = T })
 			calls.bySubject[subject.pid] = (calls.bySubject[subject.pid] or 0) + 1
 			return 0.4
 		end,
@@ -190,11 +191,14 @@ do
 	tick(H, bots, 30)
 	check("reset clears the stats", count(bots[1].said, "LH 0/0 (0%)") == 1, bots[1].said[#bots[1].said])
 
-	tick(H, bots, 1)
+	Creep(3, { loc = Vector(120, 0) })
+	tick(H, bots, 3)
 	check("verdict line is still drawn before off", drawnStarting("perfect") ~= nil)
+	check("control: bar predictions exist before off", #H.Trainer.Predictions(2) > 0)
 	say(H, "!trainer off")
 	tick(H, bots, 3)
 	check("off clears screen text", #DRAWN == 0, #DRAWN)
+	check("off clears the bar predictions", #H.Trainer.Predictions(2) == 0)
 	say(H, "!trainer on")
 	tick(H, bots, 3)
 	check("switching back on does not bring the old line back", drawnStarting("perfect") == nil)
@@ -293,6 +297,99 @@ do
 	tick(H, { dire }, 30)
 	check("other team's trainer does not coach this human", calls.bySubject[0] == nil)
 	check("control: the Dire self-test bot is coached", (calls.bySubject[5] or 0) > 0)
+end
+
+-- Lost creeps: the creep leaves the unit lists and CanBeSeen turns false, as when it walks into fog.
+local function loseCreep(creep)
+	creep.seen = false
+	for _, list in pairs(WORLD) do
+		for i = #list, 1, -1 do if list[i] == creep then table.remove(list, i) end end
+	end
+end
+
+do
+	-- 100 HP; the allied ranged creep's shots leave it at 20 HP from A+1.1 until A+1.7, a 0.6 s start window.
+	-- Graded as a death, that would be an easy miss.
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local A = T
+	local caster = setmetatable({ pid = 801, team = 2, alive = true, loc = Vector(0, 0), modifiers = {}, damage = 40, isHero = false }, Unit)
+	local creep = Creep(3, { hp = 100, incoming = { { at = A + 1.0, damage = 40, caster = caster }, { at = A + 1.1, damage = 40, caster = caster }, { at = A + 1.7, damage = 40, caster = caster } } })
+	tick(H, bots, 4)
+	check("control: the full-HP creep is selected", #H.Trainer.SubjectPredictions(2, 0) == 1)
+	loseCreep(creep)
+	tick(H, bots, 60)
+	say(H, "!trainer stats")
+	tick(H, bots, 40)
+	check("creep lost at full HP is dropped, not graded", count(bots[1].said, "LH 0/0 (0%) - denies 0/0 - easy misses 0") == 1, bots[1].said[#bots[1].said])
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local creep = Creep(3, {})
+	tick(H, bots, 4)
+	loseCreep(creep)
+	tick(H, bots, 3)
+	say(H, "!trainer stats")
+	tick(H, bots, 40)
+	check("creep lost at lethal HP near the subject is graded as a death", count(bots[1].said, "LH 0/1 (0%) - denies 0/0 - easy misses 1") == 1, bots[1].said[#bots[1].said])
+end
+
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	local creep = Creep(3, {})
+	tick(H, bots, 4)
+	creep.IsNull = function() return true end
+	tick(H, bots, 3)
+	say(H, "!trainer stats")
+	tick(H, bots, 40)
+	check("invalid handle at lethal HP is graded as a death", count(bots[1].said, "LH 0/1 (0%) - denies 0/0 - easy misses 1") == 1, bots[1].said[#bots[1].said])
+end
+
+-- Calls per frame for the human, keyed by frame time.
+local function callsPerFrame(from)
+	local perFrame, creeps = {}, {}
+	for _, c in ipairs(calls.log) do
+		if c.pid == 0 and c.t > from then
+			perFrame[c.t] = (perFrame[c.t] or 0) + 1
+			creeps[c.creep] = true
+		end
+	end
+	local lo, hi, distinct = math.huge, 0, 0
+	for _, n in pairs(perFrame) do lo, hi = math.min(lo, n), math.max(hi, n) end
+	for _ in pairs(creeps) do distinct = distinct + 1 end
+	return lo, hi, distinct
+end
+
+do
+	local H, human, bots = setup()
+	for i = 1, 6 do Creep(3, { loc = Vector(60 + 40 * i, 0) }) end
+	say(H, "!trainer on")
+	local from = T
+	tick(H, bots, 40)
+	local _, hi, distinct = callsPerFrame(from)
+	check("six candidates: at most 4 predictions per frame", hi == 4, hi)
+	check("six candidates: every creep still gets predicted", distinct == 6, distinct)
+end
+
+do
+	local H, human, bots = setup()
+	for i = 1, 4 do Creep(3, { loc = Vector(60 + 40 * i, 0) }) end
+	say(H, "!trainer on")
+	tick(H, bots, 5)
+	local from = T
+	tick(H, bots, 20)
+	local lo, hi = callsPerFrame(from)
+	check("watched creeps are re-predicted only every WatchInterval", lo == 2 and hi == 4, lo .. "/" .. hi)
+end
+
+do
+	local H = setup({ Enable = false })
+	check("GetSubjects is gated by the kill switch", #H.Trainer.GetSubjects(2) == 0)
+	local H2 = setup()
+	check("control: GetSubjects finds the human when enabled", #H2.Trainer.GetSubjects(2) == 1)
 end
 
 do
