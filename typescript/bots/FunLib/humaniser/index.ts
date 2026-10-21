@@ -12,9 +12,10 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
+import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Trainer };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -97,6 +98,7 @@ export function Tick(bot: Unit): void {
     logStart(bot);
     Pings.Tick(bot);
     Commands.Tick(bot);
+    Trainer.Tick(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     Orders.GetFor(bot);
     HDebug.SharedStateProbe(bot);
