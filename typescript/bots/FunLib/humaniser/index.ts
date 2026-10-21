@@ -16,11 +16,12 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
+import * as TasksDemo from "bots/FunLib/humaniser/tasks_demo_gather";
 import * as Utils from "bots/FunLib/utils";
 
 export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Intent, Trainer };
 // tasks: task runner spike
-export { Tasks };
+export { Tasks, TasksDemo };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};

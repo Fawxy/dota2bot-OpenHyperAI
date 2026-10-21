@@ -23,6 +23,8 @@ local function GetOrderDesire()
 	local order = J.Humaniser.Orders.GetFor(bot)
 	if order == nil then return nil end
 	if order.type ~= 'GATHER' and order.type ~= 'ATTACK' and order.type ~= 'SMOKE' and order.type ~= 'BACK' then return nil end
+	-- tasks: spike demo (Tasks.Demo) runs GATHER/SMOKE/BACK as a task; ATTACK stays below.
+	if order.type ~= 'ATTACK' and J.Humaniser.TasksDemo.IsActive() then return J.Humaniser.TasksDemo.Desire(bot) end
 
 	local loc = J.Humaniser.Orders.OrderLocation(order)
 	if loc == nil then return nil end
@@ -92,6 +94,8 @@ end
 
 function Think()
 	if J.CanNotUseAction(bot) then return end
+	-- tasks: spike demo
+	if J.Humaniser.TasksDemo.IsActive() and J.Humaniser.TasksDemo.Think(bot) then return end
 
 	if activeOrder ~= nil then
 		local loc = J.Humaniser.Orders.OrderLocation(activeOrder)
