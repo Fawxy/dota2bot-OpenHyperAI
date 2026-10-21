@@ -166,6 +166,33 @@ do
 	check("Mid flag off leaves Think alone", H.Lane.Think(bot, {}, creeps, {}) == true)
 end
 
+-- Same wave, same human mid: the bot assigned mid keeps acting while the passing support stands down.
+do
+	local H = LaneFresh({ Enable = true }, { skill = 0.8 })
+	T, CURRENT_TEAM = 5, 2
+	unit({ pid = 3, pos = 2, bot = false })
+	local midBot = unit({ pid = 4, pos = 4, loc = Vector(-300, 0) })
+	local support = unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = Vector(-300, 0) })
+	local blockers = { MakeCreep({ team = 2, x = -100, y = 0 }), MakeCreep({ team = 2, x = -200, y = 0 }) }
+	local far = MakeCreep({ team = 3, x = 3000, y = 0 })
+	local mid1 = MakeCreep({ team = 3, x = 900, y = 0 })
+	check("precondition: the human mid protects this wave from the support", H.Lane.LaneMid.MayTouchWave(support, mid1) == false)
+	check("mid bot still blocks at 0:05 beside the human", H.Lane.PreThink(midBot, blockers, { mid1, far }, {}) == true and #ActionsOf(4) > 0)
+	check("support issues nothing for the same wave", H.Lane.PreThink(support, blockers, { mid1 }, {}) == false and #ActionsOf(5) == 0)
+end
+
+do
+	local H = LaneFresh({ Enable = true }, { skill = 0.8 })
+	T, CURRENT_TEAM, STRONGER = 95, 2, true
+	H.Lane.Hooks.SetRotationProbe(function() return true end)
+	unit({ pid = 3, pos = 2, bot = false })
+	local midBot = unit({ pid = 2, pos = 2, loc = Vector(-200, 0) })
+	local support = unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = Vector(-200, 0) })
+	local creeps = { MakeCreep({ team = 3, x = 100, y = 0, hp = 300 }), MakeCreep({ team = 3, x = 200, y = 0, hp = 400 }) }
+	check("mid bot still shoves beside the human", H.Lane.Think(midBot, {}, creeps, {}) == true and #ActionsOf(2, "AttackUnit") > 0)
+	check("support does not shove the human's wave", H.Lane.Think(support, {}, creeps, {}) == false and #ActionsOf(5) == 0)
+end
+
 do
 	local H, mid = midWorld(0.8, { t = 5 })
 	unit({ pid = 3, pos = 2, bot = false })
