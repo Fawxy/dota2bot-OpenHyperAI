@@ -312,6 +312,8 @@ Other **TODO (in-game)** checks:
 - **Chatter:** the reply-chatter subscriber already ignores `!` lines; FretBots' LLM reply ignores team chat and `!` lines; FretBots' host `PCallText` only sees a harmless syntax error.
 - **Not done:** `!wards` (optional stretch).
 
+**Chat only works after the horn.** `hero_selection.lua`'s `UpdateLaneAssignments` re-installs its own chat callback every frame until the horn, so a hub installed only in pre-game never received a message (found on the `spike` branch, 22/10/2026). The hub now installs again once the game is in progress (`[H:chat] reinstalled`); a command typed before the horn does nothing. Work inside the callback is queued (`Chat.Defer`, `Chat.DeferCall`) and run on the next `Tick`, because printing inside the engine's callback coincided with game crashes. That includes the `cmd` telemetry event.
+
 **TODO (in-game):**
 - Does the chat callback fire for team-only lines from the human, with `team_only = true`, and only once per bot context?
 - Does `GetTeamMember(i)` inside the chat callback resolve to the issuer's team (needed for the issuer's location)? If Radiant and Dire share a VM, the callback's `GetTeam()` may belong to either team.

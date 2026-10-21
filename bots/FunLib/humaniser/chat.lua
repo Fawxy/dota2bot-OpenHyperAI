@@ -260,23 +260,37 @@ local function __TS__ArraySplice(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local GameState = ____dota.GameState
 local DEDUPE_WINDOW = 0.25
 local LOG_LIMIT = 50
 local subscribers = {}
 local subscriberOrder = {}
-local logger
-function ____exports.SetLogger(fn)
-    logger = fn
-end
-local function describeEvent(event)
-    local keys = {}
-    for k, v in pairs(event) do
-        keys[#keys + 1] = (tostring(k) .. "=") .. tostring(v)
+local DEFERRED_LIMIT = 100
+local deferred = {}
+function ____exports.Defer(tag, line)
+    if #deferred < DEFERRED_LIMIT then
+        deferred[#deferred + 1] = {tag, line}
     end
-    return table.concat(keys, " ")
+end
+local deferredCalls = {}
+function ____exports.DeferCall(fn)
+    if #deferredCalls < DEFERRED_LIMIT then
+        deferredCalls[#deferredCalls + 1] = fn
+    end
+end
+function ____exports.FlushDeferred(log)
+    while #deferred > 0 do
+        local entry = table.remove(deferred, 1)
+        log(entry[1], entry[2])
+    end
+    while #deferredCalls > 0 do
+        table.remove(deferredCalls, 1)()
+    end
 end
 local recent = {}
 local installed = false
+local installedInProgress = false
 local function isDuplicate(msg)
     for ____, prev in ipairs(recent) do
         if prev.pid == msg.pid and prev.text == msg.text and msg.time - prev.time < DEDUPE_WINDOW then
@@ -286,12 +300,14 @@ local function isDuplicate(msg)
     return false
 end
 local function onChat(event)
-    if logger ~= nil then
-        logger("recv " .. (event == nil and "nil" or describeEvent(event)))
-    end
     if event == nil or event.string == nil then
+        ____exports.Defer("chat", "recv nil_or_no_string")
         return
     end
+    ____exports.Defer(
+        "chat",
+        (((("recv pid=" .. tostring(event.player_id)) .. " team_only=") .. tostring(event.team_only)) .. " text=") .. tostring(event.string)
+    )
     local msg = {
         pid = event.player_id,
         text = event.string,
@@ -299,9 +315,10 @@ local function onChat(event)
         time = GameTime()
     }
     if isDuplicate(msg) then
-        if logger ~= nil then
-            logger((("dup pid=" .. tostring(msg.pid)) .. " text=") .. msg.text)
-        end
+        ____exports.Defer(
+            "chat",
+            (("dup pid=" .. tostring(msg.pid)) .. " text=") .. msg.text
+        )
         return
     end
     recent[#recent + 1] = msg
@@ -313,19 +330,35 @@ local function onChat(event)
         local ok, err = pcall(handler, msg)
         if not ok then
             print((("[Humaniser] chat subscriber '" .. name) .. "' failed: ") .. tostring(err))
-            if logger ~= nil then
-                logger((("subscriber_failed name=" .. name) .. " err=") .. tostring(err))
-            end
+            ____exports.Defer(
+                "chat",
+                (("subscriber_failed name=" .. name) .. " err=") .. tostring(err)
+            )
         end
     end
 end
---- Installs the shared callback once for this script context. Safe to call every frame.
+--- Installs the shared callback for this script context: on first call, and once more when the game reaches in-progress.
+-- Safe to call every frame. hero_selection.lua's UpdateLaneAssignments re-installs its own chat callback every frame
+-- until the horn; in-game, a hub installed only during pre-game never received a message, consistent with only the
+-- latest install being kept. If the engine instead keeps every callback, the duplicate delivery is dropped by isDuplicate.
 function ____exports.EnsureInstalled(_bot)
-    if installed then
-        return
+    if not installed then
+        installed = true
+        installedInProgress = GetGameState() == GameState.GameInProgress
+        InstallChatCallback(onChat)
+        ____exports.Defer(
+            "chat",
+            (("installed gt=" .. tostring(GameTime())) .. " state=") .. tostring(GetGameState())
+        )
     end
-    installed = true
-    InstallChatCallback(onChat)
+    if not installedInProgress and GetGameState() == GameState.GameInProgress then
+        installedInProgress = true
+        InstallChatCallback(onChat)
+        ____exports.Defer(
+            "chat",
+            (("reinstalled gt=" .. tostring(GameTime())) .. " state=") .. tostring(GetGameState())
+        )
+    end
 end
 --- Registers (or replaces) a named handler. Names keep re-subscription idempotent.
 function ____exports.Subscribe(name, handler)

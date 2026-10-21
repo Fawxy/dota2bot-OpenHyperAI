@@ -115,6 +115,7 @@ do
 	say(0, "!def mid", false)
 	say(5, "!def mid", true)
 	say(1, "!def mid", true)
+	H.Tick(bots[1]) -- callback diagnostics are printed on the next Tick
 	print = oldPrint
 	check("all-chat / enemy / bot issuers post nothing", #orders(H) == 0, #orders(H))
 	local warned = false
@@ -287,6 +288,29 @@ do
 	H2.Tick(bots[1])
 	say(0, "!def mid")
 	check("not in progress: nothing posted", #orders(H2) == 0)
+end
+
+-- In-game, the hub installed during pre-game never received chat: hero_selection.lua re-installs its own callback
+-- every pre-game frame. With an engine that keeps only the latest callback, the hub must install after the horn.
+do
+	reset()
+	local saved = InstallChatCallback
+	InstallChatCallback = function(fn) CHAT_CALLBACKS = { fn } end
+	local H = fresh()
+	local human, bots = team()
+	GAME_STATE = GAME_STATE_PRE_GAME
+	for _ = 1, 3 do
+		H.Tick(bots[1])
+		InstallChatCallback(function() end) -- hero_selection's per-frame re-install
+	end
+	GAME_STATE = GAME_STATE_GAME_IN_PROGRESS
+	H.Tick(bots[1])
+	human.loc = Vector(-2000, -2000)
+	say(0, "!g")
+	local g
+	for _, x in ipairs(orders(H)) do if x.type == "GATHER" then g = x end end
+	check("hub installed after the horn survives pre-game re-installs", g ~= nil and g.location.x == -2000)
+	InstallChatCallback = saved
 end
 
 finish()

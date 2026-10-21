@@ -681,19 +681,19 @@ local lastSummary = "-"
 --- Chat hub subscriber for one team. Exported for tests.
 function ____exports.HandleMessage(team, msg)
     local function skip(reason)
-        return HDebug.Log(
+        return Chat.Defer(
             "commands",
             (((((("skip team=" .. tostring(team)) .. " reason=") .. reason) .. " pid=") .. tostring(msg.pid)) .. " text=") .. msg.text
         )
+    end
+    if IsPlayerBot(msg.pid) then
+        return
     end
     if not ____exports.IsActive() then
         return skip("inactive")
     end
     if GetGameState() ~= GameState.GameInProgress then
         return skip("state=" .. tostring(GetGameState()))
-    end
-    if IsPlayerBot(msg.pid) then
-        return
     end
     local parsed = ____exports.Parse(msg.text, team)
     if parsed == nil then
@@ -703,7 +703,7 @@ function ____exports.HandleMessage(team, msg)
         GetTeamPlayers(team),
         msg.pid
     ) < 0 then
-        HDebug.Log(
+        Chat.Defer(
             "commands",
             (((("[WARN] ignoring '" .. msg.text) .. "' from player ") .. tostring(msg.pid)) .. ", not on team ") .. tostring(team)
         )
@@ -729,24 +729,22 @@ function ____exports.HandleMessage(team, msg)
         sourceKey = (("cmd:" .. countKey) .. ":") .. tostring(n)
     })
     lastSummary = ((parsed.name .. (parsed.onlyPIDs ~= nil and " ->" .. tostring(parsed.onlyPIDs[1]) or "")) .. " by ") .. tostring(msg.pid)
-    HDebug.Log("commands", lastSummary, msg.text)
-    Telemetry.Event(
-        "cmd",
+    Chat.Defer("commands", (lastSummary .. " ") .. msg.text)
+    local fields = {
+        {"by", msg.pid},
+        {"team", team},
+        {"name", parsed.name},
         {
-            {"by", msg.pid},
-            {"team", team},
-            {"name", parsed.name},
-            {
-                "args",
-                table.concat(parsed.args, ",")
-            },
-            {
-                "only",
-                parsed.onlyPIDs ~= nil and table.concat(parsed.onlyPIDs, ",") or nil
-            },
-            {"text", msg.text}
-        }
-    )
+            "args",
+            table.concat(parsed.args, ",")
+        },
+        {
+            "only",
+            parsed.onlyPIDs ~= nil and table.concat(parsed.onlyPIDs, ",") or nil
+        },
+        {"text", msg.text}
+    }
+    Chat.DeferCall(function() return Telemetry.Event("cmd", fields) end)
 end
 --- Order-driven smoke: true for the one responder chosen to pop smoke (first responder holding one in an
 -- active slot) once enough allied heroes are close. Called from ConsiderItemDesire['item_smoke_of_deceit'].
@@ -761,14 +759,14 @@ function ____exports.ShouldUseOrderedSmoke(bot)
     local holder
     for ____, pid in ipairs(order.responders) do
         do
-            local __continue122
+            local __continue123
             repeat
                 local member = ____exports.memberByPID(
                     bot:GetTeam(),
                     pid
                 )
                 if member == nil then
-                    __continue122 = true
+                    __continue123 = true
                     break
                 end
                 local slot = member:FindItemSlot("item_smoke_of_deceit")
@@ -776,9 +774,9 @@ function ____exports.ShouldUseOrderedSmoke(bot)
                     holder = pid
                     break
                 end
-                __continue122 = true
+                __continue123 = true
             until true
-            if not __continue122 then
+            if not __continue123 then
                 break
             end
         end
