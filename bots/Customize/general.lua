@@ -148,6 +148,16 @@ Customize.Humaniser = {
     AllyLastHit = { Enable = true },
     Pings = { Enable = true },
     Commands = { Enable = true },
+    -- Lane management (task 07). Each flag switches one behaviour; Enable = false restores upstream laning.
+    Lane = {
+        Enable = true,
+        -- Who gets OHA's laning Think() for in-lane techniques: 'allies' (allies of humans), 'all' (every bot), 'off'.
+        OwnLaningThink = 'allies',
+        Plan = true, Block = true, FullPull = true, HalfPull = true, StackPull = true,
+        AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
+        Mid = true, CounterPlay = true, Telegraph = true,
+        CampBlock = false, -- stretch: verify in-game that wards still block spawns first
+    },
 }
 
 return Customize

@@ -160,6 +160,8 @@ export interface Unit {
     GetActiveModeDesire(): number;
     GetGold(): number;
     GetCurrentMovementSpeed(): number;
+    GetExtrapolatedLocation(seconds: number): Vector;
+    Action_MovePath(path: Vector[]): void;
     GetAssignedLane(): Lane;
     ActionImmediate_Chat(message: string, globalChat: boolean): void;
 

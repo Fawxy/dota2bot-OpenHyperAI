@@ -52,6 +52,13 @@ J.Humaniser.Pings.SetHelpers({
 		return spots
 	end,
 })
+J.Humaniser.Lane.SetHelpers({
+	GetPosition = function(unit) return J.GetPosition(unit) end,
+	IsInLaningPhase = function() return J.IsInLaningPhase() end,
+	WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end,
+	GetAttackProDelayTime = function(attacker, target) return J.GetAttackProDelayTime(attacker, target) end,
+	WeAreStronger = function(bot, radius) return J.WeAreStronger(bot, radius) end,
+})
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )

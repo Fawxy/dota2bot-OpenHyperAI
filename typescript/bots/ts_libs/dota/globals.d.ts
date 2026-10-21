@@ -65,6 +65,9 @@ declare global {
     function GetHeroDeaths(playerId: number): number;
     function GetNeutralSpawners(): any;
     function GetLaneFrontLocation(team: Team, lane: Lane, deltaFromFront: number): Vector;
+    function GetLaneFrontAmount(team: Team, lane: Lane, ignoreTowers: boolean): number;
+    function GetAmountAlongLane(lane: Lane, loc: Vector): { amount: number; distance: number };
+    function GetLocationAlongLane(lane: Lane, amount: number): Vector;
     function RandomVector(length: number): Vector;
     function Clamp(value: number, min: number, max: number): number;
     function RemapValClamped(value: number, fromMin: number, fromMax: number, toMin: number, toMax: number): number;

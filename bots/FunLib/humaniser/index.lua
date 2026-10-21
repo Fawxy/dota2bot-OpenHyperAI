@@ -11,6 +11,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
+local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -21,6 +22,7 @@ ____exports.Orders = Orders
 ____exports.AllyLastHit = AllyLastHit
 ____exports.Pings = Pings
 ____exports.Commands = Commands
+____exports.Lane = Lane
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -138,6 +140,7 @@ function ____exports.Tick(bot)
     logStart(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
+    Lane.Tick(bot)
     Orders.GetFor(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
