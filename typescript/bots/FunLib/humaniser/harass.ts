@@ -154,6 +154,7 @@ export function GatesFor(bot: Unit, etiquette: boolean): HarassGates {
             idle[pid] = state;
         }
         let r = randomInterval[pid];
+        // PF10: this is the frame's last draw, after the punish draws (capitalise, react delay, low-skill extra).
         if (r === undefined || r.forLastAt !== state.lastAt) {
             const t = settings().Timing;
             r = { interval: RandomFloat(t.RandomHarassMin, t.RandomHarassMax), forLastAt: state.lastAt };
@@ -225,6 +226,9 @@ function stepBack(bot: Unit): Vector {
 export function StandPoint(bot: Unit, enemy: Unit, ourCreeps: Unit[]): Vector | undefined {
     const cfg = settings();
     if (LaneConfig.SkillOf(bot) < cfg.Gates.HarassPosition) return undefined;
+    // Skill >= HarassPosition never takes GatesFor's random-interval draw.
+    const g = GatesFor(bot, AllyLastHit.OwnsLaning(bot));
+    if (hpOf(bot) < g.minHP || (g.needStronger && !weAreStronger(bot))) return undefined;
     const enemyLoc = enemy.GetLocation();
     let creep: Unit | undefined;
     for (const c of ourCreeps ?? []) {
@@ -245,7 +249,7 @@ export function StandPoint(bot: Unit, enemy: Unit, ourCreeps: Unit[]): Vector | 
 }
 
 /** 04's HarassThink with its gates as parameters; keeps 04's statement order and engine call order. */
-export function IdlePoke(bot: Unit, enemies: Unit[], g: HarassGates): boolean {
+export function IdlePoke(bot: Unit, enemies: Unit[], g: HarassGates, enemyCreeps?: Unit[]): boolean {
     const pid = bot.GetPlayerID();
     let st = idle[pid];
     if (st === undefined) {
@@ -282,6 +286,8 @@ export function IdlePoke(bot: Unit, enemies: Unit[], g: HarassGates): boolean {
     st.startAt = now;
     st.lastAt = now;
     bot.Action_AttackUnit(target, true);
+    // 04's poke (etiquette) keeps 04's behaviour exactly; only 07-only bots step back after a poke into a wave.
+    if (!g.etiquette) maybeDance(bot, enemyCreeps ?? [], now);
     log(bot, "poke", g.etiquette);
     return true;
 }
@@ -314,14 +320,18 @@ function enemyCreepsNear(bot: Unit, enemyCreeps: Unit[]): number {
     return n;
 }
 
+function maybeDance(bot: Unit, enemyCreeps: Unit[], now: number): void {
+    if (AggroDance(enemyCreepsNear(bot, enemyCreeps))) {
+        dances[bot.GetPlayerID()] = { until: now + settings().Timing.AggroDanceBack, to: stepBack(bot) };
+    }
+}
+
 function fire(bot: Unit, enemy: Unit, enemyCreeps: Unit[], etiquette: boolean): void {
     const fn = spellHarass[bot.GetUnitName()];
     if (fn === undefined || !fn(bot, enemy)) bot.Action_AttackUnit(enemy, true);
     const now = GameTime();
     noteIdleHit(bot.GetPlayerID(), now);
-    if (AggroDance(enemyCreepsNear(bot, enemyCreeps))) {
-        dances[bot.GetPlayerID()] = { until: now + settings().Timing.AggroDanceBack, to: stepBack(bot) };
-    }
+    maybeDance(bot, enemyCreeps, now);
     log(bot, "punish", etiquette);
 }
 
@@ -375,7 +385,7 @@ export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemie
     const s = LaneState.ForBot(bot);
     if (s !== undefined && LanePlan.View(bot, s).handsOff) return false;
     if (punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)) return true;
-    return IdlePoke(bot, enemies, GatesFor(bot, etiquette));
+    return IdlePoke(bot, enemies, GatesFor(bot, etiquette), enemyCreeps);
 }
 
 export function RegisterSpellHarass(heroName: string, fn: (this: void, bot: Unit, enemy: Unit) => boolean): void {

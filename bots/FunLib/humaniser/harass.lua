@@ -157,6 +157,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local settings, dist2D, clamp01, toward, stepBack, enemyCreepsNear, maybeDance, dances
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -166,36 +167,79 @@ local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+function settings()
+    return LaneConfig.Settings()
+end
+function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+function clamp01(v)
+    return v < 0 and 0 or (v > 1 and 1 or v)
+end
+function toward(from, to, len)
+    local d = dist2D(from, to)
+    if d < 0.000001 then
+        return from
+    end
+    return Vector(from.x + (to.x - from.x) / d * len, from.y + (to.y - from.y) / d * len, from.z)
+end
+function ____exports.AggroDance(enemyCreepsWithin500)
+    return enemyCreepsWithin500 >= settings().Thresholds.AggroDanceCreeps
+end
+function stepBack(bot)
+    local team = bot:GetTeam()
+    local lane = bot:GetAssignedLane()
+    local here = bot:GetLocation()
+    local a = Camps.ToTeamAmount(
+        team,
+        GetAmountAlongLane(lane, here).amount
+    )
+    local behind = GetLocationAlongLane(
+        lane,
+        clamp01(Camps.ToAbsAmount(
+            team,
+            a - settings().Camps.LaneSampleStep
+        ))
+    )
+    return toward(
+        here,
+        behind,
+        settings().Radii.AggroDanceStep
+    )
+end
+function enemyCreepsNear(bot, enemyCreeps)
+    local r = settings().Thresholds.AggroDanceRadius
+    local team = bot:GetTeam()
+    local n = 0
+    for ____, c in ipairs(enemyCreeps or ({})) do
+        if c:IsAlive() and c:GetTeam() ~= team and GetUnitToUnitDistance(bot, c) <= r then
+            n = n + 1
+        end
+    end
+    return n
+end
+function maybeDance(bot, enemyCreeps, now)
+    if ____exports.AggroDance(enemyCreepsNear(bot, enemyCreeps)) then
+        dances[bot:GetPlayerID()] = {
+            ["until"] = now + settings().Timing.AggroDanceBack,
+            to = stepBack(bot)
+        }
+    end
+end
 local IDLE_START = -90
 local TOWER_SCAN = 1600
 local idle = {}
 local randomInterval = {}
 local attempts = {}
-local dances = {}
+dances = {}
 local spellHarass = {}
 function ____exports.ResetCache()
     idle = {}
     randomInterval = {}
     attempts = {}
     dances = {}
-end
-local function settings()
-    return LaneConfig.Settings()
-end
-local function dist2D(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
-end
-local function clamp01(v)
-    return v < 0 and 0 or (v > 1 and 1 or v)
-end
-local function toward(from, to, len)
-    local d = dist2D(from, to)
-    if d < 0.000001 then
-        return from
-    end
-    return Vector(from.x + (to.x - from.x) / d * len, from.y + (to.y - from.y) / d * len, from.z)
 end
 local function hpOf(unit)
     local h = LaneConfig.Helpers().GetHP
@@ -360,58 +404,40 @@ function ____exports.TowerForbids(botLevel, nearEnemyTower, targetHP)
     local t = settings().Thresholds
     return botLevel < t.HarassTowerLevel and nearEnemyTower and targetHP >= t.HarassTowerTargetHP
 end
-function ____exports.AggroDance(enemyCreepsWithin500)
-    return enemyCreepsWithin500 >= settings().Thresholds.AggroDanceCreeps
-end
 function ____exports.Capitalises(skill)
     return LaneConfig.Roll(LaneConfig.Curve("HarassCapitalise", skill))
-end
---- A step of AggroDanceStep back along the bot's lane toward its own base.
-local function stepBack(bot)
-    local team = bot:GetTeam()
-    local lane = bot:GetAssignedLane()
-    local here = bot:GetLocation()
-    local a = Camps.ToTeamAmount(
-        team,
-        GetAmountAlongLane(lane, here).amount
-    )
-    local behind = GetLocationAlongLane(
-        lane,
-        clamp01(Camps.ToAbsAmount(
-            team,
-            a - settings().Camps.LaneSampleStep
-        ))
-    )
-    return toward(
-        here,
-        behind,
-        settings().Radii.AggroDanceStep
-    )
 end
 function ____exports.StandPoint(bot, enemy, ourCreeps)
     local cfg = settings()
     if LaneConfig.SkillOf(bot) < cfg.Gates.HarassPosition then
         return nil
     end
+    local g = ____exports.GatesFor(
+        bot,
+        AllyLastHit.OwnsLaning(bot)
+    )
+    if hpOf(bot) < g.minHP or g.needStronger and not weAreStronger(bot) then
+        return nil
+    end
     local enemyLoc = enemy:GetLocation()
     local creep
     for ____, c in ipairs(ourCreeps or ({})) do
         do
-            local __continue43
+            local __continue44
             repeat
                 if not c:IsAlive() or dist2D(
                     c:GetLocation(),
                     enemyLoc
                 ) > cfg.Radii.LowHpCreep then
-                    __continue43 = true
+                    __continue44 = true
                     break
                 end
                 if creep == nil or c:GetHealth() < creep:GetHealth() then
                     creep = c
                 end
-                __continue43 = true
+                __continue44 = true
             until true
-            if not __continue43 then
+            if not __continue44 then
                 break
             end
         end
@@ -449,7 +475,7 @@ function ____exports.StandPoint(bot, enemy, ourCreeps)
     return point
 end
 --- 04's HarassThink with its gates as parameters; keeps 04's statement order and engine call order.
-function ____exports.IdlePoke(bot, enemies, g)
+function ____exports.IdlePoke(bot, enemies, g, enemyCreeps)
     local pid = bot:GetPlayerID()
     local st = idle[pid]
     if st == nil then
@@ -495,6 +521,9 @@ function ____exports.IdlePoke(bot, enemies, g)
     st.startAt = now
     st.lastAt = now
     bot:Action_AttackUnit(target, true)
+    if not g.etiquette then
+        maybeDance(bot, enemyCreeps or ({}), now)
+    end
     log(bot, "poke", g.etiquette)
     return true
 end
@@ -525,17 +554,6 @@ local function mannersAllow(bot, enemy, towers, etiquette)
     end
     return true
 end
-local function enemyCreepsNear(bot, enemyCreeps)
-    local r = settings().Thresholds.AggroDanceRadius
-    local team = bot:GetTeam()
-    local n = 0
-    for ____, c in ipairs(enemyCreeps or ({})) do
-        if c:IsAlive() and c:GetTeam() ~= team and GetUnitToUnitDistance(bot, c) <= r then
-            n = n + 1
-        end
-    end
-    return n
-end
 local function fire(bot, enemy, enemyCreeps, etiquette)
     local fn = spellHarass[bot:GetUnitName()]
     if fn == nil or not fn(bot, enemy) then
@@ -546,12 +564,7 @@ local function fire(bot, enemy, enemyCreeps, etiquette)
         bot:GetPlayerID(),
         now
     )
-    if ____exports.AggroDance(enemyCreepsNear(bot, enemyCreeps)) then
-        dances[bot:GetPlayerID()] = {
-            ["until"] = now + settings().Timing.AggroDanceBack,
-            to = stepBack(bot)
-        }
-    end
+    maybeDance(bot, enemyCreeps, now)
     log(bot, "punish", etiquette)
 end
 local function punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)
@@ -572,10 +585,10 @@ local function punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)
     local towers
     for ____, enemy in ipairs(enemies or ({})) do
         do
-            local __continue80
+            local __continue83
             repeat
                 if not isValidHero(enemy) or enemy:GetTeam() == team then
-                    __continue80 = true
+                    __continue83 = true
                     break
                 end
                 local a = mine[enemy]
@@ -583,7 +596,7 @@ local function punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)
                     if a ~= nil and a.fireAt ~= nil and now >= a.fireAt then
                         a.fireAt = nil
                     end
-                    __continue80 = true
+                    __continue83 = true
                     break
                 end
                 local creep = ____exports.IsLastHitAttempt(enemy, allyCreeps)
@@ -600,7 +613,7 @@ local function punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)
                     end
                 end
                 if a == nil or a.fireAt == nil or now < a.fireAt then
-                    __continue80 = true
+                    __continue83 = true
                     break
                 end
                 a.fireAt = nil
@@ -608,13 +621,13 @@ local function punish(bot, allyCreeps, enemyCreeps, enemies, etiquette)
                     towers = bot:GetNearbyTowers(TOWER_SCAN, true)
                 end
                 if not mannersAllow(bot, enemy, towers, etiquette) then
-                    __continue80 = true
+                    __continue83 = true
                     break
                 end
                 fire(bot, enemy, enemyCreeps, etiquette)
                 return true
             until true
-            if not __continue80 then
+            if not __continue83 then
                 break
             end
         end
@@ -641,7 +654,8 @@ function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies, etiquette)
     return ____exports.IdlePoke(
         bot,
         enemies,
-        ____exports.GatesFor(bot, etiquette)
+        ____exports.GatesFor(bot, etiquette),
+        enemyCreeps
     )
 end
 function ____exports.RegisterSpellHarass(heroName, fn)

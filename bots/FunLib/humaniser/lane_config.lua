@@ -209,13 +209,7 @@ ____exports.DEFAULTS = {
     },
     Camps = {HalfMeetOffset = 500, PullCampMaxTowerDist = 2500, ReplayMatchRadius = 600, LaneSampleStep = 0.005},
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
-    HarassIdle = {
-        IdleInterval = 2.5,
-        IdleWindow = 1.2,
-        IdleExtraRange = 300,
-        IdleMinHP = 0.5,
-        TowerAvoidRange = 850
-    }
+    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5, TowerAvoidRange = 850}
 }
 local FLAG_OF = {
     block = "Block",

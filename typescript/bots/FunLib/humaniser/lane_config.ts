@@ -224,7 +224,7 @@ export const DEFAULTS = {
     Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
     Orders: { FreezeShove: 90, PullNoPull: 120, Stack: 60 },
     // Idle-poke gates for bots 04 does not own; 04-owned bots read AllyLastHit.Settings() instead.
-    HarassIdle: { IdleInterval: 2.5, IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },
+    HarassIdle: { IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },
 };
 
 export type LaneSettings = typeof DEFAULTS;

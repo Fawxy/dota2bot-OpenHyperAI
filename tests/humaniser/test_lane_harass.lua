@@ -317,6 +317,35 @@ do
 	H, bot, enemy = lane(0.5)
 	bot.lane = Lane.Bot
 	check("below skill 0.6: no stand point", H.Lane.Harass.StandPoint(bot, enemy, { low }) == nil)
+	H, bot, enemy = lane(0.9, { hp = 40 })
+	bot.lane = Lane.Bot
+	check("low HP: no stand point", H.Lane.Harass.StandPoint(bot, enemy, { low }) == nil)
+	H, bot, enemy = lane(0.9)
+	bot.lane = Lane.Bot
+	STRONGER = false
+	check("not stronger: no stand point", H.Lane.Harass.StandPoint(bot, enemy, { low }) == nil)
+end
+
+-- aggro dance after an idle poke: 07-only bots step back; the etiquette (04) poke keeps 04's behaviour.
+do
+	local function pokeIntoWave(skill, etiquette)
+		local H, bot, enemy = lane(skill)
+		bot.lane = Lane.Bot
+		landing(bot)
+		local foes = {}
+		for i = 1, 3 do table.insert(foes, MakeCreep({ team = 3, x = -2700 + i * 10, y = BOT_Y })) end
+		SetRandomSequence({ 0 })
+		for i = 0, 50 do
+			T = 100 + i * 0.1
+			think(H, bot, {}, { enemy }, etiquette, foes)
+		end
+		return attacksOn(1, enemy), ActionsOf(1, "MoveToLocation")
+	end
+	local hits, moves = pokeIntoWave(0.3, false)
+	check("07-only random poke into 3 creeps: one hit", hits == 1, hits)
+	check("07-only random poke into 3 creeps: then a step back", #moves >= 1 and moves[1].args[1].x < -3000, #moves)
+	hits, moves = pokeIntoWave(0.3, true)
+	check("etiquette poke into 3 creeps: no step back", hits >= 1 and #moves == 0, #moves)
 end
 
 -- 04's HarassThink text pinned (scenario 15)
