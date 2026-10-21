@@ -29,6 +29,22 @@ local isChangePosMessageDone     = false
 
 if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = dofile( GetScriptDirectory().."/FunLib/override_generic/mode_laning_generic" ) end
 
+-- Humaniser ally last-hit etiquette. Valve's C++ laning cannot be filtered, so allies of humans get OHA's
+-- Think() below for the whole game. Decided once at load: Think() cannot hand control back to Valve later.
+local AllyLastHit = J.Humaniser.AllyLastHit
+local bHumaniserLaning = AllyLastHit.OwnsLaning(bot)
+local harassTarget = nil
+local harassStartTime = -90
+local lastHarassTime = -90
+
+local function CanTakeLastHit(creep)
+	local bMay, sReason = AllyLastHit.MayLastHit(bot, creep)
+	if not bMay then return false end
+	if string.sub(sReason, 1, 5) == 'take:' then return true end
+	return J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
+end
+local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
+
 function GetDesire()
 	PickOneAnnouncer()
 	AnnounceMessages()
@@ -97,9 +113,9 @@ function GetDesire()
 	if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
 		-- last hit
 		if J.IsInLaningPhase() then
-			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps)
+			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 			if J.IsValid(hitCreep) then
-				if J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
+				if fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				then
 					return 0.9
 				end
@@ -135,12 +151,12 @@ function GetFurthestEnemyAttackRange(enemyList)
 	return attackRange
 end
 
-function GetBestLastHitCreep(hCreepList)
+function GetBestLastHitCreep(hCreepList, fFilter)
 	local dmgDelta = attackDamage * 0.7
 
 	local moveToCreep = nil
 	for _, creep in pairs(hCreepList) do
-		if J.IsValid(creep) and J.CanBeAttacked(creep) then
+		if J.IsValid(creep) and J.CanBeAttacked(creep) and (fFilter == nil or fFilter(creep)) then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
 			if J.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
 				return creep, false
@@ -172,11 +188,45 @@ function GetBestDenyCreep(hCreepList)
 	return nil
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
+-- Supports holding back for a human: one right-click on the nearest enemy laner every HarassInterval.
+local function HarassThink()
+	local s = AllyLastHit.Settings()
+	local now = GameTime()
+	if J.IsValidHero(harassTarget) and now - harassStartTime < s.HarassWindow and bot:GetLastAttackTime() < harassStartTime then
+		bot:Action_AttackUnit(harassTarget, true)
+		return true
+	end
+	harassTarget = nil
+	if now - lastHarassTime < s.HarassInterval or J.GetHP(bot) < s.HarassMinHP then return false end
+	if AllyLastHit.GetProtectedHuman(bot, bot:GetLocation()) == nil or not J.WeAreStronger(bot, 1200) then return false end
+
+	local nTowers = bot:GetNearbyTowers(1600, true)
+	local target, nTargetDist = nil, botAttackRange + s.HarassExtraRange
+	for _, enemy in pairs(nInRangeEnemy or {}) do
+		if J.IsValidHero(enemy) and not J.IsSuspiciousIllusion(enemy) and GetUnitToUnitDistance(bot, enemy) <= nTargetDist then
+			local bUnderTower = false
+			for _, tower in pairs(nTowers) do
+				if J.IsValidBuilding(tower) and (GetUnitToUnitDistance(tower, bot) < s.TowerAvoidRange or GetUnitToUnitDistance(tower, enemy) < s.TowerAvoidRange) then
+					bUnderTower = true
+				end
+			end
+			if not bUnderTower then
+				target, nTargetDist = enemy, GetUnitToUnitDistance(bot, enemy)
+			end
+		end
+	end
+	if target == nil then return false end
+
+	harassTarget, harassStartTime, lastHarassTime = target, now, now
+	bot:Action_AttackUnit(target, true)
+	return true
+end
+
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning then
 	function Think()
-		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
+		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 		if J.IsValid(hitCreep) then
-			if J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
+			if fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
 			then
 				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
 				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
@@ -196,6 +246,8 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) t
 			bot:Action_AttackUnit(denyCreep, true)
 			return
 		end
+
+		if bHumaniserLaning and HarassThink() then return end
 
 		if local_mode_laning_generic then
 			local_mode_laning_generic.Think()

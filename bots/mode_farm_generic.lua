@@ -383,6 +383,7 @@ function GetDesireHelper()
 			then
 				hLaneCreepList = bot:GetNearbyLaneCreeps(1600, false);
 			end
+			hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, hLaneCreepList)
 		end;
 
 		if #hLaneCreepList > 0
@@ -452,7 +453,7 @@ function GetDesireHelper()
 	end
 
 	if not J.IsInLaningPhase() and (bCore or J.IsLateGame() or bot:GetLevel() >= 18) then
-		hLaneCreepList = bot:GetNearbyLaneCreeps(1600, true)
+		hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(1600, true))
 		if preferedCamp == nil then preferedCamp = J.Site.GetClosestNeutralSpwan(bot, availableCamp) end
 		return Min(BOT_MODE_DESIRE_LOW, nFarmCap)
 	end
@@ -549,7 +550,7 @@ function Think()
 		nEffectiveRange = InnerFire:GetSpecialValueInt('radius')
 	end
 
-	hLaneCreepList = bot:GetNearbyLaneCreeps(900, true) -- always refresh to avoid stale data
+	hLaneCreepList = J.Humaniser.AllyLastHit.FilterCreeps(bot, bot:GetNearbyLaneCreeps(900, true)) -- always refresh to avoid stale data
 	if hLaneCreepList ~= nil and #hLaneCreepList > 0 and J.IsValid(hLaneCreepList[1]) then
 		local farmTarget = J.Site.GetFarmLaneTarget(hLaneCreepList);
 		local nSearchRange = bot:GetAttackRange() + 180

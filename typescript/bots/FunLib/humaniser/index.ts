@@ -9,9 +9,10 @@ import * as Chat from "bots/FunLib/humaniser/chat";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Orders from "bots/FunLib/humaniser/orders";
+import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};

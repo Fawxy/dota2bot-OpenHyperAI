@@ -37,6 +37,7 @@ J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 J.Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
 -- Orders cannot require jmz_func (circular), so ModeAnnounce is injected; resolved at call time.
 J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown) J.ModeAnnounce(bot, key, cooldown) end)
+J.Humaniser.AllyLastHit.SetHelpers({ GetPosition = function(unit) return J.GetPosition(unit) end, IsInLaningPhase = function() return J.IsInLaningPhase() end })
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
