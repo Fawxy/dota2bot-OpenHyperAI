@@ -58,7 +58,12 @@ export function MayDeny(bot: Unit, allyCreeps: Unit[]): boolean {
 
 /** Runs before last hits; true means this frame's action is issued. */
 export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
-    if (!mayTouchAny(bot, enemyCreeps)) return false;
+    if (!mayTouchAny(bot, enemyCreeps)) {
+        // Shedding tower aggro is safety, not a touch of the human's wave, but it may only hit creeps the bot may touch.
+        const touchable: Unit[] = [];
+        for (const c of allyCreeps) if (LaneMid.MayTouchWave(bot, c)) touchable.push(c);
+        return LaneTech.TowerDropThink(bot, touchable);
+    }
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies);
 }
 
@@ -126,6 +131,11 @@ export function CampJobActive(bot: Unit): boolean {
 
 export function CampJobOnEnd(bot: Unit): void {
     CampJobs.OnEnd(bot);
+}
+
+/** mode_farm_generic: a run started, so the camp job it would no longer execute ends now. */
+export function CampJobAbort(bot: Unit, reason: string): void {
+    CampJobs.Abort(bot, reason);
 }
 
 /** mode_rune_generic GetDesire floor: a mid bot contesting the rune after spotting the enemy mid's pre-rune shove. */

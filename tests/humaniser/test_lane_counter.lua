@@ -490,4 +490,21 @@ do
 	end
 end
 
+do
+	-- Both laners notice the same pull instance; the team posts one line.
+	local H, support, core, _, esup = world(1)
+	unit({ pid = 1, pos = 2, bot = false, lane = Lane.Mid, loc = Vector(0, 0) })
+	local said = {}
+	H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
+	esup.loc = THEIR_SMALL
+	RANDOM_FRACTION = 0
+	tick(H, support, 75)
+	tick(H, core, 75)
+	RANDOM_FRACTION = nil
+	check("precondition: both laners noticed the pull", #signalsOf(H, support, "pull") == 1 and #signalsOf(H, core, "pull") == 1)
+	check("one telegraph for one instance", #said == 1 and said[1] == "say_lane_they_pull_top", #said)
+	tick(H, core, 105)
+	check("the next instance is telegraphed again", #said == 2, #said)
+end
+
 finish()

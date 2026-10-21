@@ -225,6 +225,16 @@ function ____exports.Commit(bot, tech)
         DotaTime()
     ).committed = tech
 end
+--- Frees the cycle's technique when the job that committed it ended without acting.
+function ____exports.Release(bot, tech)
+    local c = stateFor(
+        bot:GetPlayerID(),
+        DotaTime()
+    )
+    if c.committed == tech then
+        c.committed = nil
+    end
+end
 function ____exports.Committed(bot)
     return stateFor(
         bot:GetPlayerID(),

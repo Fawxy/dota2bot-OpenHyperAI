@@ -826,6 +826,11 @@ local function runAggro(bot, seq, allyCreeps)
     bot:Action_AttackUnit(target, true)
     return true
 end
+--- Only the tower-aggro drop: for a bot that must otherwise leave this wave alone.
+function ____exports.TowerDropThink(bot, allyCreeps)
+    local s = activeSnapshot(bot)
+    return s ~= nil and towerDrop(bot, s, allyCreeps)
+end
 function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
     local s = activeSnapshot(bot)
     if s == nil then
@@ -922,10 +927,10 @@ local function zoneTarget(bot, s)
     local bestDist = math.huge
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue145
+            local __continue146
             repeat
                 if not e.visible or dist2D(e.location, s.frontLoc) > zone then
-                    __continue145 = true
+                    __continue146 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -933,9 +938,9 @@ local function zoneTarget(bot, s)
                     best = e.location
                     bestDist = d
                 end
-                __continue145 = true
+                __continue146 = true
             until true
-            if not __continue145 then
+            if not __continue146 then
                 break
             end
         end

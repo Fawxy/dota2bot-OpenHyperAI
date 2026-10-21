@@ -23,10 +23,10 @@ function nearestVisibleEnemy(bot, s)
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue24
+            local __continue27
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue24 = true
+                    __continue27 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, e.location)
@@ -34,9 +34,9 @@ function nearestVisibleEnemy(bot, s)
                     best = e.unit
                     bestDist = d
                 end
-                __continue24 = true
+                __continue27 = true
             until true
-            if not __continue24 then
+            if not __continue27 then
                 break
             end
         end
@@ -100,7 +100,13 @@ end
 --- Runs before last hits; true means this frame's action is issued.
 function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
     if not mayTouchAny(bot, enemyCreeps) then
-        return false
+        local touchable = {}
+        for ____, c in ipairs(allyCreeps) do
+            if LaneMid.MayTouchWave(bot, c) then
+                touchable[#touchable + 1] = c
+            end
+        end
+        return LaneTech.TowerDropThink(bot, touchable)
     end
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies)
 end
@@ -165,6 +171,10 @@ end
 function ____exports.CampJobOnEnd(bot)
     CampJobs.OnEnd(bot)
 end
+--- mode_farm_generic: a run started, so the camp job it would no longer execute ends now.
+function ____exports.CampJobAbort(bot, reason)
+    CampJobs.Abort(bot, reason)
+end
 --- mode_rune_generic GetDesire floor: a mid bot contesting the rune after spotting the enemy mid's pre-rune shove.
 function ____exports.RuneContestDesire(bot)
     return Counter.RuneContestDesire(bot)
@@ -178,10 +188,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue38
+            local __continue42
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue38 = true
+                    __continue42 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -192,9 +202,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue38 = true
+                __continue42 = true
             until true
-            if not __continue38 then
+            if not __continue42 then
                 break
             end
         end

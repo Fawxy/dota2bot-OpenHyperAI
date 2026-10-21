@@ -5,7 +5,7 @@
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
  * the minute, and both are logged for tools/replay-mining.
  */
-import { Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -57,6 +57,11 @@ export interface Job extends JobRequest {
     exitUntil?: number;
     stackBefore?: number;
     lastAttackAt?: number;
+    /** Farm's Think has run this job at least once; until then an abort leaves the cycle free. */
+    acted?: boolean;
+    lastThinkAt?: number;
+    /** A desire query has come since the last Think: the start of a possible pre-emption. */
+    unthought?: boolean;
 }
 
 /**
@@ -99,11 +104,14 @@ const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
 let jobs: Record<number, Job> = {};
 let doneCycle: Record<number, number> = {};
 let pendingStacks: Record<number, PendingStack> = {};
+/** The aggro time of a job aborted before it acted, so the same attempt is not registered again. */
+let skipped: Record<number, number> = {};
 
 export function ResetCache(): void {
     jobs = {};
     doneCycle = {};
     pendingStacks = {};
+    skipped = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -199,6 +207,11 @@ function leadPath(pull: Camps.PullData, meet: Vector): Vector[] {
     }
     result.push(meet);
     return result;
+}
+
+function hpOk(bot: Unit): boolean {
+    const maxHP = bot.GetMaxHealth();
+    return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
 }
 
 function travelTo(bot: Unit, loc: Vector): number {
@@ -306,6 +319,7 @@ function startContest(bot: Unit, req: JobRequest): boolean {
 
 export function Start(bot: Unit, req: JobRequest): boolean {
     if (req.kind === "stack") return startStack(bot, req);
+    if (!hpOk(bot)) return false;
     if (req.kind === "contest") return startContest(bot, req);
     if (PULL_KINDS[req.kind] !== true) return false;
     const data = Camps.ByIdx(req.campIdx);
@@ -405,15 +419,22 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing. A double pull aborted in its second stage still grades the first pull.
  */
-function abort(bot: Unit, job: Job, reason: string): void {
+function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
     if (job.stage === 2) {
         close(bot, job, "return", Grade(job.kind, job.peakDivert));
         return;
     }
     job.phase = "return";
-    // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
-    if (job.kind !== "stack") doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
-    if (job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
+    const pid = bot.GetPlayerID();
+    if (job.acted !== true) {
+        // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
+        LanePlanner.Release(bot, commitTech(job.kind));
+        skipped[pid] = job.baseAggro;
+    } else if (job.kind !== "stack") {
+        // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
+        doneCycle[pid] = cycleOf(DotaTime());
+    }
+    if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     const [token] = string.gsub(reason, "%s+", "-");
     HDebug.Log(
         "lane",
@@ -439,6 +460,7 @@ function endContest(bot: Unit, job: Job, reason: string): void {
 // ---------------------------------------------------------------------------------------------- desire
 
 function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaMultiReturn<[boolean, string]> {
+    if (!hpOk(bot)) return $multi(false, "low-hp");
     const enemies = LaneState.Enemies(bot, s.lane);
     const [ok, why] = LaneRoles.MayRunCampJob(bot, s, enemies);
     if (ok || !forced || why !== "not-owner") return $multi(ok, why);
@@ -549,6 +571,8 @@ function schedule(bot: Unit): boolean {
     if (kind === undefined) return false;
     const camp = pullCampFor(kind, camps);
     if (!windowFor(bot, camp, kind, now)) return false;
+    const base = NextAggroTime(now - settings().Timing.JobStartLate, AggroSecondsFor(kind, camp), settings().Timing.PullPeriod);
+    if (skipped[pid] === base) return false;
     const req: JobRequest = { kind, campIdx: camp.campIdx };
     if (kind === "full_pull" && camps.length > 1 && LaneConfig.Knows("stack_pull", LaneConfig.SkillOf(bot))) {
         req.kind = "double_pull";
@@ -580,7 +604,25 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const travel = travelTo(bot, Stacking.StandPoint(spawner, data));
     const from = math.min(t.StackMoveFrom, data.stack.aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > data.stack.aggroSec) return false;
+    if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [data.stack.aggroSec], t.PullPeriod)) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
+}
+
+/**
+ * Farm's GetDesire registers a job whether or not farm wins the frame. A job farm's Think has not run for
+ * JobPreemptAfter while another mode is active was out-bid; a stun inside farm mode is not a pre-emption.
+ */
+function preempted(bot: Unit, job: Job, now: number): boolean {
+    if (job.unthought !== true) return false;
+    if (now - (job.lastThinkAt ?? job.startedAt) <= settings().Timing.JobPreemptAfter) return false;
+    return bot.GetActiveMode() !== BotMode.Farm;
+}
+
+/** Ends a live job from outside the executor (farm mode starting a run). */
+export function Abort(bot: Unit, reason: string): void {
+    if (!LaneConfig.IsActive()) return;
+    const job = jobs[bot.GetPlayerID()];
+    if (isLive(job)) abort(bot, job, reason);
 }
 
 export function Desire(bot: Unit): number {
@@ -593,6 +635,13 @@ export function Desire(bot: Unit): number {
             job.phase = "done";
             return 0;
         }
+        if (preempted(bot, job, now)) {
+            // The camp was never reached on time, so its stack state says nothing about the box.
+            if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
+            else abort(bot, job, "preempted", true);
+            return 0;
+        }
+        job.unthought = true;
         if (!keepGoing(bot, job)) return 0;
         // A stack's walk-off past :00 does not claim the new cycle: the stack was the previous cycle's technique.
         if (job.kind !== "stack" && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
@@ -801,11 +850,20 @@ function step(bot: Unit, job: Job): boolean {
     if (job.kind === "contest") return stepContest(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
+        const there = arrived(bot, job.stand);
         if (now < job.aggroAt) {
-            if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
+            if (!there) return moveTo(bot, job.stand);
             // Holding still at the stand point: the job owns the frame without a new order.
             job.phase = "wait";
             return true;
+        }
+        if (!there) {
+            // Same tolerance as a late start; past it the aggro second is lost.
+            if (now >= job.aggroAt + cfg.Timing.JobStartLate) {
+                abort(bot, job, "late", true);
+                return false;
+            }
+            return moveTo(bot, job.stand);
         }
         job.phase = "aggro";
     }
@@ -820,9 +878,13 @@ function step(bot: Unit, job: Job): boolean {
                 return true;
             }
             if (now >= job.aggroAt + cfg.Timing.NoCampAfter) {
-                // Standing at the box and seeing no neutral: whatever was stacked there has been farmed.
-                Stacking.ClearStack(job.activeCamp);
-                abort(bot, job, "mistake:no-camp");
+                if (arrived(bot, job.stand)) {
+                    // Standing at the box and seeing no neutral: whatever was stacked there has been farmed.
+                    Stacking.ClearStack(job.activeCamp);
+                    abort(bot, job, "mistake:no-camp");
+                } else {
+                    abort(bot, job, "late", true);
+                }
                 return false;
             }
             return moveTo(bot, job.stand);
@@ -879,6 +941,9 @@ export function Think(bot: Unit): boolean {
     if (!LaneConfig.IsActive()) return false;
     const job = jobs[bot.GetPlayerID()];
     if (!isLive(job)) return false;
+    job.acted = true;
+    job.lastThinkAt = DotaTime();
+    job.unthought = false;
     const acted = step(bot, job);
     overlay(bot, job);
     return acted;

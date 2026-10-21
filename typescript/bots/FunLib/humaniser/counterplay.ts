@@ -69,12 +69,15 @@ let observers: Record<number, ObserverState> = {};
 let positions: Record<number, number> = {};
 let marked: Record<number, Record<number, number>> = {};
 let dropDenyUntil: Record<number, number> = {};
+// "<team>:<lane>:<instance key>" of instances already telegraphed: two laners noticing one instance say it once.
+let teamSaid: Record<string, boolean> = {};
 
 export function ResetCache(): void {
     observers = {};
     positions = {};
     marked = {};
     dropDenyUntil = {};
+    teamSaid = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -180,12 +183,16 @@ export function StackSuspected(secOfMinute: number, enemyNearCampVisible: boolea
 
 // ---------------------------------------------------------------------------------------------- noticing
 
-function say(bot: Unit, st: ObserverState, key: string): void {
+function say(bot: Unit, st: ObserverState, key: string, instance: string): void {
     if (!LaneConfig.IsOn("Telegraph") || !Difficulty.IsAllyOfHuman(bot)) return;
+    if (teamSaid[instance] === true) return;
     const cooldown = settings().Timing.CounterTelegraphCooldown;
     const last = st.said[key];
     if (last !== undefined && GameTime() - last < cooldown) return;
-    if (Orders.Say(bot, key, cooldown)) st.said[key] = GameTime();
+    if (Orders.Say(bot, key, cooldown)) {
+        st.said[key] = GameTime();
+        teamSaid[instance] = true;
+    }
 }
 
 function visibleEnemy(enemies: LaneState.LaneEnemy[], pid: number | undefined): LaneState.LaneEnemy | undefined {
@@ -204,14 +211,15 @@ function mark(team: number, campIdx: number, now: number): void {
 }
 
 /** Answers that need no unit action happen at notice time, so they also work for bots outside laning Think. */
-function onNotice(bot: Unit, st: ObserverState, sig: Signal, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], inferred: boolean): void {
+function onNotice(bot: Unit, st: ObserverState, key: string, sig: Signal, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], inferred: boolean): void {
     const cfg = settings();
     const now = DotaTime();
+    const instance = `${s.team}:${s.lane}:${key}`;
     HDebug.Log("lane", `counter pid=${bot.GetPlayerID()} noticed=${sig.kind} lane=${sig.lane} camp=${sig.campIdx ?? "-"} enemy=${sig.enemyPid ?? "-"}`);
     if (sig.kind === "pull" || sig.kind === "half_pull") {
-        say(bot, st, inferred ? "say_lane_their_sup_missing" : `say_lane_they_pull_${LANE_NAME[sig.lane]}`);
+        say(bot, st, inferred ? "say_lane_their_sup_missing" : `say_lane_they_pull_${LANE_NAME[sig.lane]}`, instance);
     } else if (sig.kind === "freeze") {
-        say(bot, st, "say_lane_they_freeze");
+        say(bot, st, "say_lane_they_freeze", instance);
         if (!isSupport(bot)) return;
         st.counterUntil = (cycleOf(now) + 2) * cfg.Timing.WaveCycle;
     } else if (sig.kind === "stack") {
@@ -224,7 +232,7 @@ function onNotice(bot: Unit, st: ObserverState, sig: Signal, s: LaneState.LaneSn
             mark(s.team, sig.campIdx, now);
         }
     } else if (sig.kind === "mid_missing") {
-        say(bot, st, "say_lane_ss_mid");
+        say(bot, st, "say_lane_ss_mid", instance);
         dropDenyUntil[s.team] = now + cfg.Timing.DropRangedDenyFor;
     } else if (sig.kind === "rune_shove") {
         const next = LaneConfig.Helpers().NextPowerRuneTime;
@@ -239,7 +247,7 @@ function observe(bot: Unit, st: ObserverState, key: string, sig: Omit<Signal, "n
     if (st.instances[key] !== undefined) return;
     const signal: Signal = { ...sig, noticed: LaneConfig.Roll(LaneConfig.Curve("CounterNotice", LaneConfig.SkillOf(bot))) };
     st.instances[key] = signal;
-    if (signal.noticed) onNotice(bot, st, signal, s, enemies, inferred);
+    if (signal.noticed) onNotice(bot, st, key, signal, s, enemies, inferred);
 }
 
 function prune(st: ObserverState, now: number): void {

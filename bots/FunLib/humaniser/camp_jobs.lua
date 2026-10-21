@@ -203,6 +203,7 @@ end
 local ____exports = {}
 local settings, neutralsInBox, boxInSight, settleStack, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
@@ -326,10 +327,13 @@ local JOB_FLAGS = {"FullPull", "HalfPull", "StackPull"}
 local jobs = {}
 local doneCycle = {}
 pendingStacks = {}
+--- The aggro time of a job aborted before it acted, so the same attempt is not registered again.
+local skipped = {}
 function ____exports.ResetCache()
     jobs = {}
     doneCycle = {}
     pendingStacks = {}
+    skipped = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -457,6 +461,10 @@ local function leadPath(pull, meet)
     result[#result + 1] = meet
     return result
 end
+local function hpOk(bot)
+    local maxHP = bot:GetMaxHealth()
+    return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
+end
 local function travelTo(bot, loc)
     return ____exports.TravelTime(
         GetUnitToLocationDistance(bot, loc),
@@ -579,6 +587,9 @@ function ____exports.Start(bot, req)
     if req.kind == "stack" then
         return startStack(bot, req)
     end
+    if not hpOk(bot) then
+        return false
+    end
     if req.kind == "contest" then
         return startContest(bot, req)
     end
@@ -687,7 +698,10 @@ local function close(bot, job, phase, grade)
 end
 --- Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
 -- against a camp's timing. A double pull aborted in its second stage still grades the first pull.
-local function abort(bot, job, reason)
+local function abort(bot, job, reason, keepStack)
+    if keepStack == nil then
+        keepStack = false
+    end
     if job.stage == 2 then
         close(
             bot,
@@ -698,10 +712,17 @@ local function abort(bot, job, reason)
         return
     end
     job.phase = "return"
-    if job.kind ~= "stack" then
-        doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
+    local pid = bot:GetPlayerID()
+    if job.acted ~= true then
+        LanePlanner.Release(
+            bot,
+            commitTech(job.kind)
+        )
+        skipped[pid] = job.baseAggro
+    elseif job.kind ~= "stack" then
+        doneCycle[pid] = cycleOf(DotaTime())
     end
-    if job.kind == "stack_pull" and job.actualAggro ~= nil then
+    if not keepStack and job.kind == "stack_pull" and job.actualAggro ~= nil then
         Stacking.ClearStack(job.campIdx)
     end
     local token = string.gsub(reason, "%s+", "-")
@@ -735,6 +756,9 @@ local function endContest(bot, job, reason)
     )
 end
 local function jobAllowed(bot, s, forced)
+    if not hpOk(bot) then
+        return false, "low-hp"
+    end
     local enemies = LaneState.Enemies(bot, s.lane)
     local ok, why = LaneRoles.MayRunCampJob(bot, s, enemies)
     if ok or not forced or why ~= "not-owner" then
@@ -901,6 +925,14 @@ local function schedule(bot)
     if not windowFor(bot, camp, kind, now) then
         return false
     end
+    local base = ____exports.NextAggroTime(
+        now - settings().Timing.JobStartLate,
+        ____exports.AggroSecondsFor(kind, camp),
+        settings().Timing.PullPeriod
+    )
+    if skipped[pid] == base then
+        return false
+    end
     local req = {kind = kind, campIdx = camp.campIdx}
     if kind == "full_pull" and #camps > 1 and LaneConfig.Knows(
         "stack_pull",
@@ -951,7 +983,31 @@ local function scheduleStack(bot, now)
     if sec < from or sec > data.stack.aggroSec then
         return false
     end
+    if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {data.stack.aggroSec}, t.PullPeriod) then
+        return false
+    end
     return ____exports.Start(bot, {kind = "stack", campIdx = data.campIdx, minute = minute})
+end
+--- Farm's GetDesire registers a job whether or not farm wins the frame. A job farm's Think has not run for
+-- JobPreemptAfter while another mode is active was out-bid; a stun inside farm mode is not a pre-emption.
+local function preempted(bot, job, now)
+    if job.unthought ~= true then
+        return false
+    end
+    if now - (job.lastThinkAt or job.startedAt) <= settings().Timing.JobPreemptAfter then
+        return false
+    end
+    return bot:GetActiveMode() ~= BotMode.Farm
+end
+--- Ends a live job from outside the executor (farm mode starting a run).
+function ____exports.Abort(bot, reason)
+    if not LaneConfig.IsActive() then
+        return
+    end
+    local job = jobs[bot:GetPlayerID()]
+    if isLive(job) then
+        abort(bot, job, reason)
+    end
 end
 function ____exports.Desire(bot)
     if not LaneConfig.IsActive() then
@@ -965,6 +1021,20 @@ function ____exports.Desire(bot)
             job.phase = "done"
             return 0
         end
+        if preempted(bot, job, now) then
+            if job.phase == "watch" then
+                close(
+                    bot,
+                    job,
+                    "return",
+                    ____exports.Grade(job.kind, job.peakDivert)
+                )
+            else
+                abort(bot, job, "preempted", true)
+            end
+            return 0
+        end
+        job.unthought = true
         if not keepGoing(bot, job) then
             return 0
         end
@@ -1030,17 +1100,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue141
+            local __continue156
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue141 = true
+                    __continue156 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue141 = true
+                    __continue156 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1051,9 +1121,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue141 = true
+                __continue156 = true
             until true
-            if not __continue141 then
+            if not __continue156 then
                 break
             end
         end
@@ -1099,10 +1169,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue167
+            local __continue182
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue167 = true
+                    __continue182 = true
                     break
                 end
                 if dist2D(
@@ -1111,9 +1181,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue167 = true
+                __continue182 = true
             until true
-            if not __continue167 then
+            if not __continue182 then
                 break
             end
         end
@@ -1196,10 +1266,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue181
+            local __continue196
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue181 = true
+                    __continue196 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1209,9 +1279,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue181 = true
+                __continue196 = true
             until true
-            if not __continue181 then
+            if not __continue196 then
                 break
             end
         end
@@ -1241,12 +1311,20 @@ local function step(bot, job)
     end
     if job.phase == "travel" or job.phase == "wait" then
         telegraph(bot, job, now)
+        local there = arrived(bot, job.stand)
         if now < job.aggroAt then
-            if not arrived(bot, job.stand) then
+            if not there then
                 return moveTo(bot, job.stand)
             end
             job.phase = "wait"
             return true
+        end
+        if not there then
+            if now >= job.aggroAt + cfg.Timing.JobStartLate then
+                abort(bot, job, "late", true)
+                return false
+            end
+            return moveTo(bot, job.stand)
         end
         job.phase = "aggro"
     end
@@ -1263,8 +1341,12 @@ local function step(bot, job)
                 return true
             end
             if now >= job.aggroAt + cfg.Timing.NoCampAfter then
-                Stacking.ClearStack(job.activeCamp)
-                abort(bot, job, "mistake:no-camp")
+                if arrived(bot, job.stand) then
+                    Stacking.ClearStack(job.activeCamp)
+                    abort(bot, job, "mistake:no-camp")
+                else
+                    abort(bot, job, "late", true)
+                end
                 return false
             end
             return moveTo(bot, job.stand)
@@ -1343,6 +1425,9 @@ function ____exports.Think(bot)
     if not isLive(job) then
         return false
     end
+    job.acted = true
+    job.lastThinkAt = DotaTime()
+    job.unthought = false
     local acted = step(bot, job)
     overlay(bot, job)
     return acted

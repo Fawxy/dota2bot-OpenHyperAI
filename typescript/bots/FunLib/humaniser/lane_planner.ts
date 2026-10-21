@@ -211,6 +211,12 @@ export function Commit(bot: Unit, tech: Committable): void {
     stateFor(bot.GetPlayerID(), DotaTime()).committed = tech;
 }
 
+/** Frees the cycle's technique when the job that committed it ended without acting. */
+export function Release(bot: Unit, tech: Committable): void {
+    const c = stateFor(bot.GetPlayerID(), DotaTime());
+    if (c.committed === tech) c.committed = undefined;
+}
+
 export function Committed(bot: Unit): Committable | undefined {
     return stateFor(bot.GetPlayerID(), DotaTime()).committed;
 }

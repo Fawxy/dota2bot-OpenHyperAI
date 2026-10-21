@@ -88,6 +88,9 @@ local function probeJobs(entry)
 		r.deny = H.Lane.PickDeny(support, {})
 		r.jobScans = scans()
 		r.jobActions = #ACTIONS
+		H.Lane.CampJobAbort(support, "run")
+		r.runAborted = H.Lane.CampJobs.Current(support) ~= nil and H.Lane.CampJobs.Current(support).phase == "return"
+		r.abortScans, r.abortActions = scans() - r.jobScans, #ACTIONS - r.jobActions
 
 		H = jobWorld(entry)
 		ACTIONS, GETUNITLIST_CALLS = {}, {}
@@ -225,6 +228,7 @@ for i, entry in ipairs(OFF) do
 	check(n .. "04's harass keeps running", j.supersedes == false)
 	check(n .. "no deny pick", j.deny == nil and l.denied == nil)
 	check(n .. "hooks scan nothing and act on nothing", j.jobScans == 0 and j.jobActions == 0, j.jobScans .. "/" .. j.jobActions)
+	check(n .. "run abort scans nothing and acts on nothing", j.abortScans == 0 and j.abortActions == 0 and not j.runAborted)
 	check(n .. "10 s of ticks scan nothing and act on nothing", j.tickScans == 0 and j.tickActions == 0, j.tickScans .. "/" .. j.tickActions)
 	check(n .. "PreThink and Think return false without acting", l.pre == false and l.preActions == 0 and l.think == false and l.thinkActions == 0)
 	check(n .. "AdjustPosition returns the same vector", rawequal(l.adjusted, l.input))
@@ -242,6 +246,7 @@ check("control: OwnsLaning for an ally of a human and an enemy bot", jobsOn.owns
 check("control: camp-job desire 0.7 in the pull window", near(jobsOn.desire, 0.7), jobsOn.desire)
 check("control: the job owns the frame", jobsOn.think == true and jobsOn.thinkCore == false)
 check("control: hooks scan units", jobsOn.jobScans > 0, jobsOn.jobScans)
+check("control: a run aborts the job", jobsOn.runAborted == true)
 check("control: ticking scans units", jobsOn.tickScans > 0, jobsOn.tickScans)
 check("control: 04's harass is superseded", jobsOn.supersedes == true)
 check("control: [H:lane] output", laneLines(jobsOn.lines) > 0)
@@ -274,7 +279,7 @@ for _, line in ipairs({
 end
 check("laning mode: Think() is defined only when 04 or 07 owns the bot or upstream already did", laningSrc:find("if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning then", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
-	"if J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do
+	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do
 	check("farm mode hook: " .. call, farmSrc:find(call, 1, true) ~= nil)
 end
 

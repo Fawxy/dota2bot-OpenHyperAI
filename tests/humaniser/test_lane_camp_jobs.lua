@@ -399,4 +399,126 @@ do
 	check("defaults inside the window: one move", H.Lane.CampJobThink(support) == true and #moves(5) == 1 and #ACTIONS == 1)
 end
 
+local function lineWith(lines, text)
+	local found
+	for _, l in ipairs(lines) do if l:find(text, 1, true) then found = l end end
+	return found
+end
+
+local function markStacked(H)
+	H.Lane.Stacking.NoteStackAttempt(1, 1, 3)
+	H.Lane.Stacking.NoteStackOutcome(1, 1, 6)
+	check("precondition: camp marked stacked", H.Lane.Stacking.IsStacked(1))
+end
+
+do
+	-- Farm's GetDesire registers the job whether or not farm wins; here another mode wins every frame.
+	local H, _, support = jobWorld(1, { debug = true, away = 900 })
+	markStacked(H)
+	local job
+	local lines = capture(function()
+		T = 72.5
+		check("precondition: the desire registers a job", near(H.Lane.CampJobDesire(support), 0.7))
+		job = H.Lane.CampJobs.Current(support)
+		check("precondition: registering commits the cycle", H.Lane.LanePlanner.Committed(support) ~= nil)
+		T = 73.0
+		check("out-bid for 0.5 s: job kept", near(H.Lane.CampJobDesire(support), 0.7))
+		T = 73.6
+		check("out-bid for over 1 s: desire dropped", H.Lane.CampJobDesire(support) == 0)
+		check("pre-empted job no longer holds back last hits", H.Lane.CampJobActive(support) == false)
+		check("pre-empted before acting: the cycle's technique is free", H.Lane.LanePlanner.Committed(support) == nil)
+		-- Farm wins later inside the same start window: the lost attempt is not run late.
+		for t = job.aggroAt, job.aggroAt + 1.5, 0.5 do frame(H, support, t) end
+	end)
+	local abortLine = lineWith(lines, "[H:lane] job-abort")
+	check("pre-emption logged on the abort line", abortLine ~= nil and abortLine:find("reason=preempted", 1, true), abortLine)
+	check("the same aggro is not registered again", #ActionsOf(5) == 0 and select(2, string.gsub(table.concat(lines, "\n"), "job%-start", "")) == 1)
+	check("no no-camp verdict for a camp never reached", lineWith(lines, "no-camp") == nil)
+	check("pre-emption leaves the stack mark", H.Lane.Stacking.IsStacked(1))
+end
+
+do
+	-- Control: a job farm has run keeps the cycle when it is later out-bid; a stun inside farm mode is no pre-emption.
+	local H, _, support = jobWorld(1, { away = 900 })
+	frame(H, support, 72.5)
+	T = 73.0
+	H.Lane.CampJobDesire(support)
+	T = 73.6
+	check("out-bid after acting: desire dropped", H.Lane.CampJobDesire(support) == 0)
+	check("out-bid after acting: the cycle stays used", H.Lane.LanePlanner.Committed(support) ~= nil)
+
+	H, _, support = jobWorld(1, { away = 900 })
+	frame(H, support, 72.5)
+	support.mode = dota.BotMode.Farm
+	local d
+	for t = 73, 74.5, 0.5 do T = t d = H.Lane.CampJobDesire(support) end
+	check("farm active but not thinking (stunned): job kept", near(d, 0.7) and H.Lane.CampJobs.Current(support).phase == "travel")
+end
+
+do
+	-- Still walking well past the aggro second, with no neutral anywhere: the box was never seen.
+	local H, _, support = jobWorld(1, { debug = true, away = 3000 })
+	markStacked(H)
+	local job
+	local lines = capture(function()
+		frame(H, support, 72.5)
+		job = H.Lane.CampJobs.Current(support)
+		for t = job.aggroAt, job.aggroAt + 1.5, 0.5 do frame(H, support, t) end
+		check("precondition: still walking after the aggro second", job.phase == "travel")
+		frame(H, support, job.aggroAt + 2.0)
+	end)
+	local abortLine = lineWith(lines, "[H:lane] job-abort")
+	check("late arrival aborts as late", job.phase == "return" and abortLine ~= nil and abortLine:find("reason=late", 1, true), abortLine)
+	check("late arrival is not a no-camp verdict", lineWith(lines, "no-camp") == nil)
+	check("late arrival leaves the stack mark", H.Lane.Stacking.IsStacked(1))
+
+	-- Control: at the stand with the box empty, the stack really is gone.
+	H, _, support = jobWorld(1, { debug = true })
+	markStacked(H)
+	lines = capture(function()
+		frame(H, support, 72.5)
+		job = H.Lane.CampJobs.Current(support)
+		frame(H, support, job.aggroAt)
+		frame(H, support, job.aggroAt + 1.0)
+	end)
+	abortLine = lineWith(lines, "[H:lane] job-abort")
+	check("at the stand, empty box: no-camp", abortLine ~= nil and abortLine:find("reason=mistake:no-camp", 1, true), abortLine)
+	check("at the stand, empty box: stack cleared", H.Lane.Stacking.IsStacked(1) == false)
+end
+
+do
+	local H, _, support = jobWorld(0.9, { t = 103 })
+	support.hp = 30
+	check("low-HP owner starts no job", H.Lane.CampJobDesire(support) == 0 and H.Lane.CampJobs.Current(support) == nil)
+
+	H, _, support = jobWorld(1, { debug = true })
+	capture(function() frame(H, support, 72.5) end)
+	local job = H.Lane.CampJobs.Current(support)
+	support.hp = 30
+	local d
+	local lines = capture(function()
+		T = 72.8
+		d = H.Lane.CampJobDesire(support)
+	end)
+	local abortLine = lineWith(lines, "[H:lane] job-abort")
+	check("low HP mid-job: desire dropped and job aborted", d == 0 and job.phase == "return")
+	check("low HP abort reason", abortLine ~= nil and abortLine:find("reason=low-hp", 1, true), abortLine)
+end
+
+do
+	-- mode_farm_generic starting a run: Think no longer runs the job, so it ends at once.
+	local H, _, support = jobWorld(1, { debug = true })
+	capture(function() frame(H, support, 72.5) end)
+	local job = H.Lane.CampJobs.Current(support)
+	local lines = capture(function() H.Lane.CampJobAbort(support, "run") end)
+	local abortLine = lineWith(lines, "[H:lane] job-abort")
+	check("run start aborts the job", job.phase == "return" and abortLine ~= nil and abortLine:find("reason=run", 1, true), abortLine)
+	check("aborted job no longer owns farm's frame", H.Lane.CampJobThink(support) == false)
+	local src = io.open(HARNESS_DIR .. "/../../bots/mode_farm_generic.lua", "r"):read("a")
+	local runStart = src:find("runMode = true;", 1, true)
+	local abortAt = src:find('J.Humaniser.Lane.CampJobAbort(bot, "run")', 1, true)
+	check("farm aborts the job where the run starts", runStart ~= nil and abortAt ~= nil and abortAt > runStart and abortAt - runStart < 200)
+	check("farm skips the job's Think during a run", src:find("if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", 1, true) ~= nil)
+end
+
 finish()

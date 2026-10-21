@@ -166,6 +166,22 @@ do
 	check("Mid flag off leaves Think alone", H.Lane.Think(bot, {}, creeps, {}) == true)
 end
 
+do
+	-- Shot by the Dire bot T1 with a human mid's creep among the enemy creeps it was handed: the drop still runs.
+	local H, bot, midCreep = botLaneWorld(true, { t = 100 })
+	LANE_FRONT[2][Lane.Bot] = 0.6
+	bot.loc = Vector(2200, BOT_Y)
+	local ownCreep = MakeCreep({ team = 2, x = 2150, y = BOT_Y })
+	TOWERS_W[3][dota.Tower.Bot1].target = bot
+	check("precondition: the human mid's wave is off limits", H.Lane.LaneMid.MayTouchWave(bot, midCreep) == false)
+	check("tower-aggro drop runs beside a human mid's wave", H.Lane.PreThink(bot, { ownCreep }, { midCreep }, {}) == true
+		and #ActionsOf(1, "AttackUnit") == 1 and ActionsOf(1, "AttackUnit")[1].args[1] == ownCreep)
+	TOWERS_W[3][dota.Tower.Bot1].target = nil
+	T = 100.1
+	bot.loc = Vector(1500, BOT_Y)
+	check("nothing else runs beside the human mid's wave", H.Lane.PreThink(bot, { ownCreep }, { midCreep }, {}) == false and #ActionsOf(1) == 1)
+end
+
 -- Same wave, same human mid: the bot assigned mid keeps acting while the passing support stands down.
 do
 	local H = LaneFresh({ Enable = true }, { skill = 0.8 })

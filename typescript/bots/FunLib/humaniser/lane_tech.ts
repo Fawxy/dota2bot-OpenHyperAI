@@ -481,6 +481,12 @@ function runAggro(bot: Unit, seq: Sequence, allyCreeps: Unit[]): boolean {
 
 // ---------------------------------------------------------------------------------------------- entry points
 
+/** Only the tower-aggro drop: for a bot that must otherwise leave this wave alone. */
+export function TowerDropThink(bot: Unit, allyCreeps: Unit[]): boolean {
+    const s = activeSnapshot(bot);
+    return s !== undefined && towerDrop(bot, s, allyCreeps);
+}
+
 export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
     const s = activeSnapshot(bot);
     if (s === undefined) return false;

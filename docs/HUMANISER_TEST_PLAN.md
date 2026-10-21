@@ -71,13 +71,15 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 - [ ] `!freeze !shove !pull !nopull !stack [lane]` resolve the lane from the issuer and lane word, acknowledged once. Pass: one ack, correct lane.
 - [ ] Lane-front ping hands the lane off for 30 s. Pass: no pulls, stacks, shoves or draws from that lane's bots, and it expires.
 - [ ] `GetTeamMember(1..#GetTeamPlayers(team))` is only used for own-team units. Pass: no enemy-team reads in the logs.
+- [ ] `eqPos` fairness: pull an enemy wave into fog and watch the observing bot's `lane` overlay `eq` (it reads `GetLaneFrontAmount(enemyTeam)`, not vision-filtered). Pass: the shift is small and no `rune_shove`/freeze `counter` line comes from it alone.
+- [ ] Camp-job pre-emption: let another mode (rune, ward, retreat) win while a pull is due. Pass: `job-abort ... reason=preempted` within about 1 s, the support goes back to last-hitting, and no `mistake:no-camp` from a camp it never reached.
 
 **Scenarios 2-14** (spec numbering; run each at `SkillOverride = 0.9`, then at `0.2` or `0.4` where the spec gives a gate, and compare). The checklist with the exact expectations is in HUMANISER_DEV.md.
 - [ ] 2 Full pull, 3 half pull (never at 0.4), 4 stack pull
 - [ ] 5 Creep block at 0:00, 6 aggro pull and tower-aggro drop
 - [ ] 7 No pull while the partner is in danger
 - [ ] 8 Harass timing (human goes for 20 last hits: 0.9 punishes most, 0.2 some, at random times)
-- [ ] 9 Enemy pull detection (human support pulls: 0.9 reacts most times, 0.2 rarely)
+- [ ] 9 Enemy pull detection, with `OwnLaningThink = 'all'` (human support pulls: 0.9 reacts most times, 0.2 rarely; under `'allies'` enemy bots only notice)
 - [ ] 10 Fairness: all enemies fogged, no last-seen hints, no `counter pid=...` lines
 - [ ] 11 Bot duo: never two aggro draws in one 3 s window; absent core covered
 - [ ] 12 Human core (`!freeze`, `!shove`, inferred plan, lane-front ping hands-off for 30 s)

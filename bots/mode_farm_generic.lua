@@ -94,6 +94,7 @@ function GetDesireHelper()
 			if runTime == 0 then 
 				runTime = DotaTime(); 
 				runMode = true;
+				J.Humaniser.Lane.CampJobAbort(bot, "run")
 				preferedCamp = nil;
 				bot:Action_ClearActions(true);
 			end
@@ -481,7 +482,7 @@ end
 
 function Think()
 	if J.CanNotUseAction(bot) then return end
-	if J.Humaniser.Lane.CampJobThink(bot) then return end
+	if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end
 	sec = math.floor(DotaTime()) % 60
 	if runMode
