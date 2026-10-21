@@ -264,6 +264,17 @@ local DEDUPE_WINDOW = 0.25
 local LOG_LIMIT = 50
 local subscribers = {}
 local subscriberOrder = {}
+local logger
+function ____exports.SetLogger(fn)
+    logger = fn
+end
+local function describeEvent(event)
+    local keys = {}
+    for k, v in pairs(event) do
+        keys[#keys + 1] = (tostring(k) .. "=") .. tostring(v)
+    end
+    return table.concat(keys, " ")
+end
 local recent = {}
 local installed = false
 local function isDuplicate(msg)
@@ -275,6 +286,9 @@ local function isDuplicate(msg)
     return false
 end
 local function onChat(event)
+    if logger ~= nil then
+        logger("recv " .. (event == nil and "nil" or describeEvent(event)))
+    end
     if event == nil or event.string == nil then
         return
     end
@@ -285,6 +299,9 @@ local function onChat(event)
         time = GameTime()
     }
     if isDuplicate(msg) then
+        if logger ~= nil then
+            logger((("dup pid=" .. tostring(msg.pid)) .. " text=") .. msg.text)
+        end
         return
     end
     recent[#recent + 1] = msg
@@ -296,6 +313,9 @@ local function onChat(event)
         local ok, err = pcall(handler, msg)
         if not ok then
             print((("[Humaniser] chat subscriber '" .. name) .. "' failed: ") .. tostring(err))
+            if logger ~= nil then
+                logger((("subscriber_failed name=" .. name) .. " err=") .. tostring(err))
+            end
         end
     end
 end

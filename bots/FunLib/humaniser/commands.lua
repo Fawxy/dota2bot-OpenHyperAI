@@ -680,15 +680,24 @@ local repeatCount = {}
 local lastSummary = "-"
 --- Chat hub subscriber for one team. Exported for tests.
 function ____exports.HandleMessage(team, msg)
-    if not ____exports.IsActive() or GetGameState() ~= GameState.GameInProgress then
-        return
+    local function skip(reason)
+        return HDebug.Log(
+            "commands",
+            (((((("skip team=" .. tostring(team)) .. " reason=") .. reason) .. " pid=") .. tostring(msg.pid)) .. " text=") .. msg.text
+        )
+    end
+    if not ____exports.IsActive() then
+        return skip("inactive")
+    end
+    if GetGameState() ~= GameState.GameInProgress then
+        return skip("state=" .. tostring(GetGameState()))
     end
     if IsPlayerBot(msg.pid) then
         return
     end
     local parsed = ____exports.Parse(msg.text, team)
     if parsed == nil then
-        return
+        return skip("unparsed")
     end
     if __TS__ArrayIndexOf(
         GetTeamPlayers(team),
@@ -701,11 +710,11 @@ function ____exports.HandleMessage(team, msg)
         return
     end
     if not msg.teamOnly then
-        return
+        return skip("not_team_chat")
     end
     local issuer = ____exports.memberByPID(team, msg.pid)
     if issuer == nil then
-        return
+        return skip("issuer_not_found")
     end
     local countKey = (tostring(msg.pid) .. ":") .. string.lower(msg.text)
     local n = (repeatCount[countKey] or 0) + 1
@@ -752,14 +761,14 @@ function ____exports.ShouldUseOrderedSmoke(bot)
     local holder
     for ____, pid in ipairs(order.responders) do
         do
-            local __continue120
+            local __continue122
             repeat
                 local member = ____exports.memberByPID(
                     bot:GetTeam(),
                     pid
                 )
                 if member == nil then
-                    __continue120 = true
+                    __continue122 = true
                     break
                 end
                 local slot = member:FindItemSlot("item_smoke_of_deceit")
@@ -767,9 +776,9 @@ function ____exports.ShouldUseOrderedSmoke(bot)
                     holder = pid
                     break
                 end
-                __continue120 = true
+                __continue122 = true
             until true
-            if not __continue120 then
+            if not __continue122 then
                 break
             end
         end

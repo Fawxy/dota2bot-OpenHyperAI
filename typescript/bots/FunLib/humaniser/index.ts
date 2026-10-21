@@ -107,6 +107,7 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    Chat.SetLogger((line) => HDebug.Log("chat", line));
     Chat.EnsureInstalled(bot);
     Difficulty.Init();
     if (testHandlerTeams[bot.GetTeam()] !== true) {
