@@ -1,0 +1,14 @@
+{
+    "name": "humaniser-offline-tests",
+    "private": true,
+    "description": "Offline checks for the humaniser Lua: syntax over bots/, and behaviour tests against stubbed Dota globals.",
+    "scripts": {
+        "syntax": "node syntax_check.js ../../bots",
+        "test": "node run.js",
+        "check": "npm run syntax && npm test"
+    },
+    "devDependencies": {
+        "fengari": "0.1.4",
+        "luaparse": "0.3.1"
+    }
+}

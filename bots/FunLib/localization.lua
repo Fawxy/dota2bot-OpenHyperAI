@@ -131,6 +131,18 @@ local Localization = {
         say_defend_top = {"Defend top!", "They're pushing top!", "Help top lane!"},
         say_defend_mid = {"Defend mid!", "They're pushing mid!", "Help mid lane!"},
         say_defend_bot = {"Defend bot!", "They're pushing bot!", "Help bot lane!"},
+        -- Humaniser team orders. Other locales fall back to these per key (X.Get); TODO: translate.
+        say_order_ack_gather = {"On my way!", "Coming!", "omw"},
+        say_order_ack_attack = {"Going in!", "On it!", "omw, let's get them"},
+        say_order_ack_smoke = {"Coming for smoke!", "omw, smoke up"},
+        say_order_ack_defend = {"Defending!", "Coming to defend!", "omw to def"},
+        say_order_ack_push = {"Pushing!", "Let's push!", "ok, pushing"},
+        say_order_ack_roshan = {"Rosh, let's go!", "Going Roshan!", "ok rosh"},
+        say_order_ack_avoid = {"ok, staying away", "noted, avoiding"},
+        say_order_decline_dead = {"dead", "I'm dead, sorry"},
+        say_order_decline_channeling = {"busy, one sec"},
+        say_order_decline_low_hp = {"too low, need to heal", "low hp, can't"},
+        say_order_decline_far = {"too far, no tp", "can't make it, no tp"},
     },
     zh = {
         welcome_msgs = {

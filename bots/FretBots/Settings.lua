@@ -267,6 +267,29 @@ function Settings:DifficultySelectTimer()
 	return 1
 end
 
+-- Humaniser bridge (option A): bot scripts run in a separate context and cannot read Settings.
+-- When Customize.Humaniser.FretBridge.BridgeModifier names a modifier, encode the applied settings in its
+-- stack count on every bot: difficulty*10 + allyScale*100*1000. Decoded by FunLib/humaniser/difficulty.lua.
+-- Off by default: changing stacks on a built-in modifier may affect gameplay and is unverified.
+function Settings:WriteHumaniserBridge()
+	local h = Customize.Humaniser
+	local name = h and h.Enable ~= false and h.FretBridge and h.FretBridge.BridgeModifier
+	if not name or not AllBots then return end
+	local difficulty = Settings.difficulty or DefaultDifficulty
+	local allyScale = Settings.allyScale or DefaultAllyScale
+	local stacks = math.floor(difficulty * 10 + 0.5) + math.floor(allyScale * 100 + 0.5) * 1000
+	for team = 2, 3 do
+		for _, unit in pairs(AllBots[team] or {}) do
+			if unit ~= nil and not unit:IsNull() then
+				local modifier = unit:FindModifierByName(name)
+				if modifier == nil then modifier = unit:AddNewModifier(unit, nil, name, {}) end
+				if modifier ~= nil then modifier:SetStackCount(stacks) end
+			end
+		end
+	end
+	Debug:Print('Humaniser bridge: '..name..' stacks='..stacks)
+end
+
 -- Determine winner of voting and applies settings (or applies default difficulty)
 function Settings:ApplyVoteSettings()
 	if isVoteForAllyScale then
@@ -288,6 +311,7 @@ function Settings:ApplyVoteSettings()
 		Debug:Print(msg)
 		Utilities:Print(msg, MSG_GOOD)
 		Settings.allyScale = allyScale
+		Settings:WriteHumaniserBridge()
 
 		Chat:SendHttpRequest('start', Utilities:GetPInfo(), StartCallback)
 		return
@@ -332,6 +356,7 @@ function Settings:ApplyVoteSettings()
 		Timers:CreateTimer(settingsTimerName, {endTime = 1, callback =  Settings['DifficultySelectTimer']} )
 	else
 		Settings.allyScale = DefaultAllyScale
+		Settings:WriteHumaniserBridge()
 		Chat:SendHttpRequest('start', Utilities:GetPInfo(), StartCallback)
 	end
 end
@@ -344,6 +369,7 @@ function StartCallback(resJsonObj)
 			Utilities:Print(string.format(Localization.Get('fret_default_diff_limit'), diffNum, diffNum, resJsonObj.needed_wins, Settings.difficulty, diffNum), MSG_WARNING)
 			Settings.difficulty = diffNum
 			Settings.difficultyScale = Settings:CalculateDifficultyScale(diffNum)
+			Settings:WriteHumaniserBridge()
 		end
     end
 

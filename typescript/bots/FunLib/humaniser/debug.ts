@@ -6,8 +6,7 @@
  * Draws last a single frame, so Draw() must be called every frame.
  */
 import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-import Customize = require("bots/Customize/general");
+import * as Config from "bots/FunLib/humaniser/config";
 import * as Utils from "bots/FunLib/utils";
 
 const LINE_HEIGHT = 14;
@@ -58,7 +57,8 @@ const linesByPlayer: Record<number, KeyedLines> = {};
 const desiresByPlayer: Record<number, Record<number, DesireSample>> = {};
 
 export function IsEnabled(): boolean {
-    return Customize.Enable && Customize.Humaniser !== undefined && Customize.Humaniser.Debug === true;
+    const cfg = Config.Get();
+    return cfg.Enable === true && cfg.Debug === true;
 }
 
 export function ModeName(mode: number): string {

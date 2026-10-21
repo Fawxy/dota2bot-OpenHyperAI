@@ -34,6 +34,9 @@ J.Skill = require( GetScriptDirectory()..'/FunLib/aba_skill' )
 J.Chat = require( GetScriptDirectory()..'/FunLib/aba_chat' )
 J.Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
+J.Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
+-- Orders cannot require jmz_func (circular), so ModeAnnounce is injected; resolved at call time.
+J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown) J.ModeAnnounce(bot, key, cooldown) end)
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )

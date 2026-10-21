@@ -1,6 +1,7 @@
 import { Ability, BotMode, Lane, Ping, Talent, Team, Unit, Vector } from "bots/ts_libs/dota";
 import { BotRole, TalentTreeBuild } from "bots/ts_libs/bots";
 import * as Util from "bots/FunLib/utils";
+import * as HumaniserModule from "bots/FunLib/humaniser/index";
 
 /** @noSelf **/
 interface ISkill {
@@ -121,3 +122,4 @@ declare function RandomForwardVector(distance: number): Vector;
 declare const Skill: ISkill;
 declare const Item: IItem;
 declare const Utils: typeof Util;
+declare const Humaniser: typeof HumaniserModule;

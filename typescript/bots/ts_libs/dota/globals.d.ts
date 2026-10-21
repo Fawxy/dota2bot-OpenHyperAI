@@ -108,6 +108,21 @@ declare global {
     function IsPlayerInHeroSelectionControl(playerId: number): boolean;
     function GetGameState(): number;
     function GetGameMode(): number;
+
+    function InstallChatCallback(callback: (this: void, chat: ChatEvent) => void): void;
+
+    const DIFFICULTY_INVALID: number;
+    const DIFFICULTY_PASSIVE: number;
+    const DIFFICULTY_EASY: number;
+    const DIFFICULTY_MEDIUM: number;
+    const DIFFICULTY_HARD: number;
+    const DIFFICULTY_UNFAIR: number;
+
+    interface ChatEvent {
+        player_id: number;
+        string: string;
+        team_only: boolean;
+    }
 }
 
 export {};

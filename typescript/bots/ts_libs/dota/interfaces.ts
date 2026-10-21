@@ -18,13 +18,14 @@ export interface Vector {
 export interface Ping {
     time: number;
     location: Vector;
-    normal_ping: undefined;
+    normal_ping: boolean;
     player_id: number;
 }
 
 export interface Item {
     GetName(): string;
     GetCooldownTimeRemaining(): number;
+    IsFullyCastable(): boolean;
 }
 
 export interface AvoidanceZone {
@@ -93,6 +94,15 @@ export interface Unit {
     GetModifierName(nModifier: number): string;
 
     GetModifierStackCount(nModifier: number): number;
+
+    /** Returns a modifier index usable with GetModifierStackCount, or -1 when absent. */
+    GetModifierByName(sName: string): number;
+
+    GetDifficulty(): number;
+
+    IsChanneling(): boolean;
+
+    GetRespawnTime(): number;
 
     GetNearbyCreeps(range: number, enemy: boolean): Unit[];
 

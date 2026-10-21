@@ -128,10 +128,26 @@ Customize.ThinkLess = 1;
 
 -- Humaniser: makes bots perceive and react at human speed and behave like teammates.
 -- Every sub-feature has its own Enable flag; with Enable = false behaviour matches upstream OHA.
+-- Full defaults and tuning curves live in FunLib/humaniser/config.lua; anything set here overrides them.
 Customize.Humaniser = {
     Enable = true,
     -- Draws per-bot debug text on screen and enables HDebug.Log output. Requires sv_cheats 1 to see draws.
     Debug = false,
+    -- Bot skill in [0, 1] combines Valve lobby difficulty and FretBots difficulty with these weights.
+    ValveWeight = 0.5,
+    FretWeight = 0.5,
+    -- A number in [0, 1] forces every bot's skill (for testing). nil = use difficulty.
+    SkillOverride = nil,
+    FretBridge = {
+        -- Force the FretBots level (0-10) bots assume, if the chat-vote mirror gets it wrong. nil = detect.
+        FretBotsLevelOverride = nil,
+        -- Experimental: a modifier FretBots stamps with the applied difficulty. nil = off.
+        BridgeModifier = nil,
+    },
+    Perception = { Enable = true },
+    AllyLastHit = { Enable = true },
+    Pings = { Enable = true },
+    Commands = { Enable = true },
 }
 
 return Customize

@@ -36,8 +36,8 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
+local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
-local Customize = require(GetScriptDirectory().."/Customize/general")
 local LINE_HEIGHT = 14
 local BLOCK_HEIGHT = 100
 local TOP_OFFSET = 120
@@ -72,7 +72,8 @@ local modeNames = {
 local linesByPlayer = {}
 local desiresByPlayer = {}
 function ____exports.IsEnabled()
-    return Customize.Enable and Customize.Humaniser ~= nil and Customize.Humaniser.Debug == true
+    local cfg = Config.Get()
+    return cfg.Enable == true and cfg.Debug == true
 end
 function ____exports.ModeName(mode)
     return modeNames[mode] or "mode_" .. tostring(mode)
