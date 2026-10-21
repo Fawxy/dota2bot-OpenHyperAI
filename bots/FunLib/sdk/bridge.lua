@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-bridge @ 9043ff1. Do not edit; rebuild and re-vendor.
+-- Vendored from dota-bot-sdk packages/lua-bridge @ 638cc7e. Do not edit; rebuild and re-vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 ____exports.DEFAULTS = {
@@ -11,9 +11,10 @@ ____exports.DEFAULTS = {
     PayloadBytes = 2048,
     SummaryEverySec = 30
 }
-local FORMS = {{name = "CreateHTTPRequest1", global = "CreateHTTPRequest", twoArg = false}, {name = "CreateHTTPRequest2", global = "CreateHTTPRequest", twoArg = true}, {name = "CreateRemoteHTTPRequest", global = "CreateRemoteHTTPRequest", twoArg = false}}
+local FORMS = {{name = "CreateHTTPRequest2", global = "CreateHTTPRequest", twoArg = true}, {name = "CreateHTTPRequest1", global = "CreateHTTPRequest", twoArg = false}, {name = "CreateRemoteHTTPRequest", global = "CreateRemoteHTTPRequest", twoArg = false}}
 local METHODS = {"SetHTTPRequestRawPostBody", "SetHTTPRequestHeaderValue", "SetHTTPRequestGetOrPostParameter", "Send"}
 local RING_SIZE = 200
+local STATUS0_BEFORE_ROTATE = 2
 local S
 local function int(n)
     return string.format(
@@ -84,6 +85,9 @@ local function joinInts(list)
     end
     return table.concat(parts, ",")
 end
+local function hdr(s, ev)
+    return (((("ev=" .. ev) .. " inst=") .. s.inst) .. " team=") .. int(s.team)
+end
 local function emit(s, line)
     s.deps.log(line)
 end
@@ -91,8 +95,31 @@ local function logErr(s, seq, where, e)
     s.errors = s.errors + 1
     emit(
         s,
-        (((((("ev=err inst=" .. s.inst) .. " seq=") .. int(seq)) .. " where=") .. where) .. " msg=") .. clean(e)
+        (((((hdr(s, "err") .. " seq=") .. int(seq)) .. " where=") .. where) .. " msg=") .. clean(e)
     )
+end
+local function comboLabel(c)
+    return (c.form.name .. ",") .. c.url
+end
+local function buildCombos(url)
+    local urls = {url}
+    local lh = string.gsub(url, "^(%a+://)[^/:]+", "%1localhost")
+    if lh ~= url then
+        urls[#urls + 1] = lh
+    end
+    local out = {}
+    for ____, form in ipairs(FORMS) do
+        for ____, u in ipairs(urls) do
+            out[#out + 1] = {form = form, url = u}
+        end
+    end
+    return out
+end
+local function makeInst(s, team)
+    local r = math.floor(s.random() * 65536)
+    local rt = s.deps.realTime()
+    local frac = math.floor((rt - math.floor(rt)) * 1000003)
+    return string.format("%04x", (r + team * 40503 + frac) % 65536)
 end
 local function succeed(s)
     s.fails = 0
@@ -106,11 +133,11 @@ local function fail(s, now)
         s.backoffUntil = now + wait
         emit(
             s,
-            (((("ev=backoff inst=" .. s.inst) .. " fails=") .. int(s.fails)) .. " wait_s=") .. num(wait)
+            (((hdr(s, "backoff") .. " fails=") .. int(s.fails)) .. " wait_s=") .. num(wait)
         )
     end
 end
-local function createWith(s, form)
+local function createWith(s, form, url)
     local fn = s.lookup(form.global)
     if type(fn) ~= "function" then
         return nil
@@ -118,9 +145,9 @@ local function createWith(s, form)
     local ctor = fn
     local ____form_twoArg_0
     if form.twoArg then
-        ____form_twoArg_0 = ctor("POST", s.cfg.Url)
+        ____form_twoArg_0 = ctor("POST", url)
     else
-        ____form_twoArg_0 = ctor(s.cfg.Url)
+        ____form_twoArg_0 = ctor(url)
     end
     local h = ____form_twoArg_0
     if h == nil then
@@ -131,37 +158,54 @@ local function createWith(s, form)
     end
     return h
 end
-local function probe(s)
-    local tried = {}
+local function tryCombo(s, i, tried)
+    local c = s.combos[i + 1]
+    local name = c.form.name
+    local prior = s.formState[name]
+    if prior == "bad" then
+        return nil
+    end
+    local outcome
     local handle
-    for ____, form in ipairs(FORMS) do
-        do
-            local __continue31
-            repeat
-                local okL, fn = pcall(s.lookup, form.global)
-                if okL and type(fn) ~= "function" then
-                    tried[#tried + 1] = form.name .. ":missing"
-                    __continue31 = true
-                    break
-                end
-                local ok, res = pcall(createWith, s, form)
-                if not ok then
-                    tried[#tried + 1] = form.name .. ":err"
-                elseif res == nil then
-                    tried[#tried + 1] = form.name .. ":nil"
-                else
-                    tried[#tried + 1] = form.name .. ":ok"
-                    handle = res
-                    s.form = form
-                    break
-                end
-                __continue31 = true
-            until true
-            if not __continue31 then
-                break
-            end
+    local okL, fn = pcall(s.lookup, c.form.global)
+    if okL and type(fn) ~= "function" then
+        outcome = "missing"
+    else
+        local ok, res = pcall(createWith, s, c.form, c.url)
+        if not ok then
+            outcome = "err"
+        elseif res == nil then
+            outcome = "nil"
+        else
+            outcome = "ok"
+            handle = res
         end
     end
+    if prior == nil then
+        tried[#tried + 1] = (name .. ":") .. outcome
+    end
+    s.formState[name] = handle ~= nil and "ok" or "bad"
+    return handle
+end
+local function findFrom(s, start, tried)
+    do
+        local i = start
+        while i < #s.combos do
+            local h = tryCombo(s, i, tried)
+            if h ~= nil then
+                s.idx = i
+                s.ctorName = s.combos[i + 1].form.name
+                return h
+            end
+            i = i + 1
+        end
+    end
+    return nil
+end
+local function probe(s)
+    s.probed = true
+    local tried = {}
+    local handle = findFrom(s, 0, tried)
     local methods = {}
     if handle ~= nil then
         local h = handle
@@ -172,16 +216,68 @@ local function probe(s)
             end
         end
     end
-    s.ctorName = s.form ~= nil and s.form.name or "none"
+    if handle == nil then
+        s.ctorName = "none"
+    end
     emit(
         s,
-        (((((("ev=api inst=" .. s.inst) .. " ctor=") .. s.ctorName) .. " tried=") .. table.concat(tried, ",")) .. " methods=") .. table.concat(methods, ",")
+        (((((hdr(s, "api") .. " ctor=") .. s.ctorName) .. " tried=") .. table.concat(tried, ",")) .. " methods=") .. table.concat(methods, ",")
     )
     if handle == nil then
         s.disabled = "no_api"
-        emit(s, ("ev=disabled inst=" .. s.inst) .. " reason=no_api")
+        emit(
+            s,
+            hdr(s, "disabled") .. " reason=no_api"
+        )
+        return
     end
-    return handle
+    s.pendingHandle = handle
+end
+local function rotate(s)
+    local from = comboLabel(s.combos[s.idx + 1])
+    s.status0 = 0
+    s.shapeLogged = false
+    s.pendingHandle = nil
+    local h = findFrom(s, s.idx + 1, {})
+    if h == nil then
+        s.disabled = "all_forms_status0"
+        emit(
+            s,
+            hdr(s, "disabled") .. " reason=all_forms_status0"
+        )
+        return
+    end
+    s.pendingHandle = h
+    emit(
+        s,
+        (((hdr(s, "rotate") .. " from=") .. from) .. " to=") .. comboLabel(s.combos[s.idx + 1])
+    )
+end
+local function attemptFailed(s, now, transport)
+    if s.locked then
+        fail(s, now)
+        return
+    end
+    if not transport then
+        s.status0 = 0
+        return
+    end
+    s.status0 = s.status0 + 1
+    if s.status0 >= STATUS0_BEFORE_ROTATE then
+        rotate(s)
+    end
+end
+local function attemptSucceeded(s)
+    if not s.locked then
+        s.locked = true
+        local c = s.combos[s.idx + 1]
+        emit(
+            s,
+            (((hdr(s, "locked") .. " form=") .. c.form.name) .. " url=") .. c.url
+        )
+    end
+    s.status0 = 0
+    succeed(s)
 end
 local function setBody(s, seq, h, body)
     if type(h.SetHTTPRequestRawPostBody) == "function" then
@@ -221,6 +317,27 @@ local function encodeRequest(s, seq, team, gt, rt)
     req.pad = string.rep("x", padLen)
     return s.deps.encode(req)
 end
+local function logShape(s, t, r)
+    s.shapeLogged = true
+    local c = s.combos[s.idx + 1]
+    local line = (((((hdr(s, "shape") .. " form=") .. c.form.name) .. " url=") .. c.url) .. " type=") .. t
+    if t == "table" or t == "userdata" then
+        local sc = tonumber(r.StatusCode)
+        local body = r.Body
+        line = (((((line .. " status=") .. (sc ~= nil and int(sc) or "na")) .. " body_len=") .. int(type(body) == "string" and #body or 0)) .. " request=") .. clean(r.Request)
+    else
+        line = (line .. " status=na body_len=") .. int(t == "string" and #r or 0)
+    end
+    if t == "table" then
+        local keys = {}
+        for k in pairs(r) do
+            keys[#keys + 1] = tostring(k)
+        end
+        table.sort(keys)
+        line = (line .. " keys=") .. table.concat(keys, ",")
+    end
+    emit(s, line)
+end
 local function onResponse(s, seq, sendRt, sendGt, r)
     if S ~= s then
         return
@@ -230,21 +347,12 @@ local function onResponse(s, seq, sendRt, sendGt, r)
     local gtNow = d.gameTime()
     local late = s.inFlight == nil or s.inFlight.seq ~= seq
     local t = type(r)
-    if not s.shapeLogged then
-        s.shapeLogged = true
-        local line = (("ev=shape inst=" .. s.inst) .. " type=") .. t
-        if t == "table" then
-            local keys = {}
-            for k in pairs(r) do
-                keys[#keys + 1] = tostring(k)
-            end
-            table.sort(keys)
-            line = (line .. " keys=") .. table.concat(keys, ",")
-        end
-        emit(s, line)
+    if not late and not s.shapeLogged then
+        logShape(s, t, r)
     end
     local status = "na"
     local statusOk = true
+    local status0 = false
     local body = nil
     if t == "string" then
         body = r
@@ -254,6 +362,10 @@ local function onResponse(s, seq, sendRt, sendGt, r)
         if sc ~= nil then
             status = int(sc)
             statusOk = sc >= 200 and sc < 300
+        end
+        status0 = sc == nil or sc == 0
+        if sc == nil then
+            statusOk = false
         end
     end
     local bodyStr = type(body) == "string" and body or nil
@@ -275,21 +387,27 @@ local function onResponse(s, seq, sendRt, sendGt, r)
     local rttMs = (now - sendRt) * 1000
     if not late then
         s.inFlight = nil
-        s.received = s.received + 1
-        ringPush(s.rtt, rttMs)
+        if ok then
+            s.received = s.received + 1
+            ringPush(s.rtt, rttMs)
+        else
+            s.lost = s.lost + 1
+        end
         if decMs ~= nil then
             ringPush(s.dec, decMs)
-        end
-        if ok then
-            succeed(s)
-        else
-            fail(s, now)
         end
     end
     emit(
         s,
-        ((((((((((((((("ev=recv inst=" .. s.inst) .. " seq=") .. int(seq)) .. " status=") .. status) .. " bytes=") .. int(bodyStr ~= nil and #bodyStr or 0)) .. " rtt_ms=") .. f1(rttMs)) .. " gt_dt=") .. f3(gtNow - sendGt)) .. " dec_ms=") .. (decMs ~= nil and f3(decMs) or "na")) .. " ok=") .. (ok and "1" or "0")) .. (late and " late=1" or "")
+        ((((((((((((((hdr(s, "recv") .. " seq=") .. int(seq)) .. " status=") .. status) .. " bytes=") .. int(bodyStr ~= nil and #bodyStr or 0)) .. " rtt_ms=") .. f1(rttMs)) .. " gt_dt=") .. f3(gtNow - sendGt)) .. " dec_ms=") .. (decMs ~= nil and f3(decMs) or "na")) .. " ok=") .. (ok and "1" or "0")) .. (late and " late=1" or "")
     )
+    if not late then
+        if ok then
+            attemptSucceeded(s)
+        else
+            attemptFailed(s, now, status0)
+        end
+    end
 end
 local function onCallbackError(s, seq, e)
     if S ~= s then
@@ -298,29 +416,32 @@ local function onCallbackError(s, seq, e)
     logErr(s, seq, "callback", e)
     if s.inFlight ~= nil and s.inFlight.seq == seq then
         s.inFlight = nil
-        fail(
+        attemptFailed(
             s,
-            s.deps.realTime()
+            s.deps.realTime(),
+            false
         )
     end
 end
 local function sendRequest(s, team, now)
-    local h
-    if s.form == nil then
-        h = probe(s)
-        if h == nil then
+    if not s.probed then
+        probe(s)
+        if s.disabled ~= nil then
             return
         end
     end
+    local h = s.pendingHandle
+    s.pendingHandle = nil
     s.lastSendAt = now
     s.seq = s.seq + 1
     local seq = s.seq
     local d = s.deps
     if h == nil then
-        local okC, res = pcall(createWith, s, s.form)
+        local c = s.combos[s.idx + 1]
+        local okC, res = pcall(createWith, s, c.form, c.url)
         if not okC or res == nil then
             logErr(s, seq, "create", okC and "nil_handle" or res)
-            fail(s, now)
+            attemptFailed(s, now, true)
             return
         end
         h = res
@@ -338,7 +459,7 @@ local function sendRequest(s, team, now)
     local encMs = (d.realTime() - t0) * 1000
     if not okE then
         logErr(s, seq, "encode", encoded)
-        fail(s, now)
+        attemptFailed(s, now, false)
         return
     end
     local body = encoded
@@ -349,7 +470,7 @@ local function sendRequest(s, team, now)
     s.sent = s.sent + 1
     emit(
         s,
-        (((((((((((("ev=send inst=" .. s.inst) .. " seq=") .. int(seq)) .. " team=") .. int(team)) .. " bytes=") .. int(#body)) .. " enc_ms=") .. f3(encMs)) .. " gt=") .. f3(gt)) .. " rt=") .. f3(now)
+        (((((((((hdr(s, "send") .. " seq=") .. int(seq)) .. " bytes=") .. int(#body)) .. " enc_ms=") .. f3(encMs)) .. " gt=") .. f3(gt)) .. " rt=") .. f3(now)
     )
     local handle = h
     local function cb(r)
@@ -370,7 +491,7 @@ local function sendRequest(s, team, now)
         logErr(s, seq, "send", eS)
         if s.inFlight ~= nil and s.inFlight.seq == seq then
             s.inFlight = nil
-            fail(s, now)
+            attemptFailed(s, now, true)
         end
     end
 end
@@ -382,10 +503,14 @@ local function summarise(s, now)
     local ratio = rtElapsed > 0 and f2((s.deps.gameTime() - s.initGt) / rtElapsed) or "na"
     emit(
         s,
-        (((((((((((((((((((((("ev=summary inst=" .. s.inst) .. " pids=") .. joinInts(sortedPids(s))) .. " sent=") .. int(s.sent)) .. " recv=") .. int(s.received)) .. " lost=") .. int(s.lost)) .. " errs=") .. int(s.errors)) .. " p50=") .. (n > 0 and f1(percentile(rtt, 50)) or "na")) .. " p95=") .. (n > 0 and f1(percentile(rtt, 95)) or "na")) .. " max=") .. (n > 0 and f1(rtt[n]) or "na")) .. " enc_p95=") .. p95(s.enc, f3)) .. " dec_p95=") .. p95(s.dec, f3)) .. " gt_rt_ratio=") .. ratio
+        (((((((((((((((((((((hdr(s, "summary") .. " pids=") .. joinInts(sortedPids(s))) .. " sent=") .. int(s.sent)) .. " recv=") .. int(s.received)) .. " lost=") .. int(s.lost)) .. " errs=") .. int(s.errors)) .. " p50=") .. (n > 0 and f1(percentile(rtt, 50)) or "na")) .. " p95=") .. (n > 0 and f1(percentile(rtt, 95)) or "na")) .. " max=") .. (n > 0 and f1(rtt[n]) or "na")) .. " enc_p95=") .. p95(s.enc, f3)) .. " dec_p95=") .. p95(s.dec, f3)) .. " gt_rt_ratio=") .. ratio
     )
 end
 local function tickInner(s, team, pid)
+    if s.inst == "" then
+        s.team = team
+        s.inst = makeInst(s, team)
+    end
     s.pids[pid] = true
     local now = s.deps.realTime()
     if s.inFlight ~= nil and now - s.inFlightRt > s.cfg.TimeoutSec then
@@ -394,9 +519,9 @@ local function tickInner(s, team, pid)
         s.lost = s.lost + 1
         emit(
             s,
-            (("ev=timeout inst=" .. s.inst) .. " seq=") .. int(seq)
+            (hdr(s, "timeout") .. " seq=") .. int(seq)
         )
-        fail(s, now)
+        attemptFailed(s, now, true)
     end
     if now - s.lastSummaryAt >= s.cfg.SummaryEverySec then
         summarise(s, now)
@@ -432,10 +557,9 @@ function ____exports.Init(deps, config)
         deps = deps,
         cfg = cfg,
         lookup = lookup,
-        inst = string.format(
-            "%04x",
-            math.floor(random() * 65536) % 65536
-        ),
+        random = random,
+        inst = "",
+        team = 0,
         pids = {},
         seq = 0,
         sent = 0,
@@ -445,6 +569,12 @@ function ____exports.Init(deps, config)
         inFlightRt = 0,
         backoffUntil = 0,
         fails = 0,
+        combos = buildCombos(cfg.Url),
+        idx = 0,
+        formState = {},
+        probed = false,
+        locked = false,
+        status0 = 0,
         ctorName = "",
         shapeLogged = false,
         rtt = {items = {}, next = 0},

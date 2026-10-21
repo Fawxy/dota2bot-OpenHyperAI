@@ -1,4 +1,4 @@
-// Vendored from dota-bot-sdk packages/lua-bridge @ 9043ff1. Do not edit; rebuild and re-vendor.
+// Vendored from dota-bot-sdk packages/lua-bridge @ 638cc7e. Do not edit; rebuild and re-vendor.
 /** @noSelfInFile */
 export interface BridgeDeps {
     log: (this: void, line: string) => void;

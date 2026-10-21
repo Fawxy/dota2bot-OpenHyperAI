@@ -7,17 +7,18 @@ function RealTime() return REAL_T end
 local ctorCalls, requests, printed
 
 -- A stub request that captures its body and answers synchronously, like a sidecar echoing {}.
-local function okRequest(url)
+-- Accepts both CreateHTTPRequest(url) and CreateHTTPRequest("POST", url).
+local function okRequest(a, b)
 	ctorCalls = ctorCalls + 1
-	local req = { url = url }
+	local req = { url = b or a }
 	function req:SetHTTPRequestHeaderValue() end
 	function req:SetHTTPRequestRawPostBody(_, body) self.body = body end
 	function req:Send(cb) table.insert(requests, self) cb({ StatusCode = 200, Body = "{}" }) end
 	return req
 end
 
-local function throwingRequest(url)
-	local req = okRequest(url)
+local function throwingRequest(a, b)
+	local req = okRequest(a, b)
 	function req:Send() error("send exploded") end
 	return req
 end
@@ -79,7 +80,8 @@ do
 	runTicks(H, bots, 20)
 	print = ORIG_PRINT
 	local api = bridgeLines("[H:bridge] ev=api ")
-	check("enabled: api line names CreateHTTPRequest1", #api == 1 and api[1]:find("ctor=CreateHTTPRequest1 ", 1, true) ~= nil, api[1])
+	check("enabled: api line names the first form tried", #api == 1 and api[1]:find("ctor=CreateHTTPRequest2 ", 1, true) ~= nil, api[1])
+	check("enabled: locks on the first form that answers 200", #bridgeLines("[H:bridge] ev=locked inst=") == 1 and bridgeLines("[H:bridge] ev=locked ")[1]:find("form=CreateHTTPRequest2 ", 1, true) ~= nil)
 	check("enabled: send logged", #bridgeLines("[H:bridge] ev=send ") > 0)
 	check("enabled: requests posted", #requests > 1, #requests)
 	local last = requests[#requests]
