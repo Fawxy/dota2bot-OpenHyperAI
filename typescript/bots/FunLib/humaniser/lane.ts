@@ -130,8 +130,8 @@ export function CampJobRawDesire(bot: Unit, desire: number): number {
     const job = CampJobs.Current(bot);
     const kind = job?.kind ?? "job";
     if (!Intent.Claim(bot, { source: `lane:${kind}`, tier: "CAMP_JOB", mode: BotMode.Farm, floor: desire, until: GameTime() })) return desire;
-    // Only the approach is timed against the pull; once aggro is taken, other modes' stickiness is no concern.
-    if (job !== undefined && (job.phase === "travel" || job.phase === "wait")) {
+    // Travel, wait and the wait for the hit to be confirmed are timed against the pull; after that other modes' stickiness is no concern.
+    if (job !== undefined && (job.phase === "travel" || job.phase === "wait" || job.phase === "aggro")) {
         Intent.Claim(bot, { source: "lane:camp_job", tier: "CAMP_JOB", mode: BotMode.Farm, unsticks: true });
     } else {
         Intent.Release(bot, "lane:camp_job", BotMode.Farm);

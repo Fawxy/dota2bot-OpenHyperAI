@@ -49,7 +49,7 @@ export interface Claim {
     onlyLifted?: boolean;
     /**
      * While live, every other mode gets no stickiness bonus. For a short, timed window (a camp job's start)
-     * that the active mode's dwell bonus must not push late (a camp job's travel and wait before the pull).
+     * that the active mode's dwell bonus must not push late (a camp job's travel, wait and aggro before the pull).
      */
     unsticks?: boolean;
 }

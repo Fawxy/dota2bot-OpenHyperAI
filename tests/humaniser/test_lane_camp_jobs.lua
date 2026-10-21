@@ -564,7 +564,7 @@ do
 	I.Tick(support)
 	T = 70.5
 	check("precondition: laning has a dwell bonus", I.Resolve(support, LANING, 0.66) > 0.66, I.Resolve(support, LANING, 0.66))
-	for _, phase in ipairs({ "travel", "wait", "lead", "watch" }) do
+	for _, phase in ipairs({ "travel", "wait", "aggro", "lead", "watch" }) do
 		T = T + 0.3
 		local d = H.Lane.CampJobDesire(support)
 		H.Lane.CampJobs.Current(support).phase = phase

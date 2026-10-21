@@ -182,7 +182,7 @@ function ____exports.CampJobRawDesire(bot, desire)
     ) then
         return desire
     end
-    if job ~= nil and (job.phase == "travel" or job.phase == "wait") then
+    if job ~= nil and (job.phase == "travel" or job.phase == "wait" or job.phase == "aggro") then
         Intent.Claim(bot, {source = "lane:camp_job", tier = "CAMP_JOB", mode = BotMode.Farm, unsticks = true})
     else
         Intent.Release(bot, "lane:camp_job", BotMode.Farm)
