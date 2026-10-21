@@ -30,7 +30,8 @@ ____exports.DEFAULTS = {
         SoloCampJob = 0.6,
         MultiStackAncients = 0.7,
         CampBlock = 0.6,
-        HarassPosition = 0.6
+        HarassPosition = 0.6,
+        RandomHarass = 0.5
     },
     Curves = {
         JitterSigma = {1.5, 0.2},
@@ -207,7 +208,14 @@ ____exports.DEFAULTS = {
         ShoveHitDamageMult = 1.3
     },
     Camps = {HalfMeetOffset = 500, PullCampMaxTowerDist = 2500, ReplayMatchRadius = 600, LaneSampleStep = 0.005},
-    Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60}
+    Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
+    HarassIdle = {
+        IdleInterval = 2.5,
+        IdleWindow = 1.2,
+        IdleExtraRange = 300,
+        IdleMinHP = 0.5,
+        TowerAvoidRange = 850
+    }
 }
 local FLAG_OF = {
     block = "Block",

@@ -13,11 +13,12 @@ import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
+import * as Harass from "bots/FunLib/humaniser/harass";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs, Stacking };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs, Stacking, Harass };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -54,15 +55,41 @@ export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemie
 
 /** Lane position override for the final move; returns `loc` itself when nothing applies. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    return LaneTech.AdjustPosition(bot, loc);
+    const adjusted = LaneTech.AdjustPosition(bot, loc);
+    if (adjusted !== loc || !LaneConfig.IsOn("Harass")) return adjusted;
+    const s = LaneState.ForBot(bot);
+    if (s === undefined || LanePlan.View(bot, s).handsOff) return loc;
+    const enemy = nearestVisibleEnemy(bot, s);
+    if (enemy === undefined) return loc;
+    return Harass.StandPoint(bot, enemy, s.ally.units) ?? loc;
+}
+
+function nearestVisibleEnemy(bot: Unit, s: LaneState.LaneSnapshot): Unit | undefined {
+    let best: Unit | undefined;
+    let bestDist = LaneConfig.Settings().Radii.LaneCreep;
+    for (const e of LaneState.Enemies(bot, s.lane)) {
+        if (!e.visible || e.unit === undefined) continue;
+        const d = GetUnitToLocationDistance(bot, e.location);
+        if (d < bestDist) {
+            best = e.unit;
+            bestDist = d;
+        }
+    }
+    return best;
 }
 
 export function PickDeny(_bot: Unit, _allyCreeps: Unit[]): Unit | undefined {
     return undefined;
 }
 
+/** With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's. */
 export function SupersedesHarass(_bot: Unit): boolean {
-    return false;
+    return LaneConfig.IsActive() && LaneConfig.IsOn("Harass");
+}
+
+/** 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human). */
+export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], etiquette: boolean): boolean {
+    return Harass.Think(bot, allyCreeps, enemyCreeps, enemies, etiquette);
 }
 
 /** mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off). */

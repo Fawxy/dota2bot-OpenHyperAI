@@ -63,6 +63,7 @@ export const DEFAULTS = {
         MultiStackAncients: 0.7,
         CampBlock: 0.6,
         HarassPosition: 0.6,
+        RandomHarass: 0.5,
     },
     Curves: {
         JitterSigma: [1.5, 0.2],
@@ -222,6 +223,8 @@ export const DEFAULTS = {
     Infer: { ShoveHits: 4, FreezeDenies: 2, FreezeEqMax: -0.5, HoldSignals: 2, ShoveHitDamageMult: 1.3 },
     Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
     Orders: { FreezeShove: 90, PullNoPull: 120, Stack: 60 },
+    // Idle-poke gates for bots 04 does not own; 04-owned bots read AllyLastHit.Settings() instead.
+    HarassIdle: { IdleInterval: 2.5, IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },
 };
 
 export type LaneSettings = typeof DEFAULTS;
@@ -353,6 +356,10 @@ export interface LaneHelpers {
     GetAttackProDelayTime?: (this: void, attacker: Unit, target: Unit) => number;
     WeAreStronger?: (this: void, bot: Unit, radius: number) => boolean;
     NextPowerRuneTime?: (this: void) => number;
+    IsValidHero?: (this: void, u: Unit) => boolean;
+    IsSuspiciousIllusion?: (this: void, u: Unit) => boolean;
+    IsValidBuilding?: (this: void, u: Unit) => boolean;
+    GetHP?: (this: void, u: Unit) => number;
 }
 
 let helpers: LaneHelpers = {};

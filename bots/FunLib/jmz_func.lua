@@ -58,6 +58,10 @@ J.Humaniser.Lane.SetHelpers({
 	WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end,
 	GetAttackProDelayTime = function(attacker, target) return J.GetAttackProDelayTime(attacker, target) end,
 	WeAreStronger = function(bot, radius) return J.WeAreStronger(bot, radius) end,
+	IsValidHero = function(u) return J.IsValidHero(u) end,
+	IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end,
+	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
+	GetHP = function(u) return J.GetHP(u) end,
 })
 
 

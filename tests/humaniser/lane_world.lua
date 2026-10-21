@@ -112,6 +112,19 @@ function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0)
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
+function UnitMeta:GetNearbyTowers(r, enemy)
+	local team = enemy and (self.team == 2 and 3 or 2) or self.team
+	local out = {}
+	for _, t in pairs(TOWERS_W[team]) do
+		local dx, dy = t.loc.x - self.loc.x, t.loc.y - self.loc.y
+		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, t) end
+	end
+	return out
+end
+function GetUnitToUnitDistance(a, b)
+	local dx, dy = a:GetLocation().x - b:GetLocation().x, a:GetLocation().y - b:GetLocation().y
+	return math.sqrt(dx * dx + dy * dy)
+end
 function UnitMeta:GetNearbyLaneCreeps(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}
@@ -165,6 +178,10 @@ function LaneFresh(laneCfg, extra)
 		GetAttackProDelayTime = function() return 0.3 end,
 		WeAreStronger = function() return STRONGER == true end,
 		NextPowerRuneTime = function() return NEXT_RUNE or 120 end,
+		IsValidHero = function(u) return u ~= nil and u.alive end,
+		IsSuspiciousIllusion = function(u) return u.illusion == true end,
+		IsValidBuilding = function(u) return u ~= nil and u.alive end,
+		GetHP = function(u) return u:GetHealth() / u:GetMaxHealth() end,
 	})
 	H.Lane.Config.ResetSettings()
 	H.Lane.Hooks.ResetHooks()
@@ -176,6 +193,7 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.LaneTech.ResetCache()
 	H.Lane.CampJobs.ResetCache()
 	H.Lane.Stacking.ResetCache()
+	H.Lane.Harass.ResetCache()
 	-- ResetHooks dropped the probes registered at module load.
 	H.Lane.CampJobs.RegisterProbes()
 	H.Lane.Stacking.RegisterProbes()

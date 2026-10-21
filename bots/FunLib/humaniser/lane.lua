@@ -1,5 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local nearestVisibleEnemy
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -10,10 +11,36 @@ local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planne
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
+local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
+function nearestVisibleEnemy(bot, s)
+    local best
+    local bestDist = LaneConfig.Settings().Radii.LaneCreep
+    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
+        do
+            local __continue15
+            repeat
+                if not e.visible or e.unit == nil then
+                    __continue15 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(bot, e.location)
+                if d < bestDist then
+                    best = e.unit
+                    bestDist = d
+                end
+                __continue15 = true
+            until true
+            if not __continue15 then
+                break
+            end
+        end
+    end
+    return best
+end
 ____exports.Config = LaneConfig
 ____exports.Hooks = LaneHooks
 ____exports.Camps = Camps
@@ -24,6 +51,7 @@ ____exports.LanePlanner = LanePlanner
 ____exports.LaneTech = LaneTech
 ____exports.CampJobs = CampJobs
 ____exports.Stacking = Stacking
+____exports.Harass = Harass
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()
 end
@@ -62,13 +90,36 @@ function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
 end
 --- Lane position override for the final move; returns `loc` itself when nothing applies.
 function ____exports.AdjustPosition(bot, loc)
-    return LaneTech.AdjustPosition(bot, loc)
+    local adjusted = LaneTech.AdjustPosition(bot, loc)
+    if adjusted ~= loc or not LaneConfig.IsOn("Harass") then
+        return adjusted
+    end
+    local s = LaneState.ForBot(bot)
+    if s == nil or LanePlan.View(bot, s).handsOff then
+        return loc
+    end
+    local enemy = nearestVisibleEnemy(bot, s)
+    if enemy == nil then
+        return loc
+    end
+    return Harass.StandPoint(bot, enemy, s.ally.units) or loc
 end
 function ____exports.PickDeny(_bot, _allyCreeps)
     return nil
 end
+--- With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's.
 function ____exports.SupersedesHarass(_bot)
-    return false
+    return LaneConfig.IsActive() and LaneConfig.IsOn("Harass")
+end
+--- 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human).
+function ____exports.HarassThink(bot, allyCreeps, enemyCreeps, enemies, etiquette)
+    return Harass.Think(
+        bot,
+        allyCreeps,
+        enemyCreeps,
+        enemies,
+        etiquette
+    )
 end
 --- mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off).
 function ____exports.CampJobDesire(bot)
@@ -90,10 +141,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue18
+            local __continue27
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue18 = true
+                    __continue27 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -104,9 +155,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue18 = true
+                __continue27 = true
             until true
-            if not __continue18 then
+            if not __continue27 then
                 break
             end
         end

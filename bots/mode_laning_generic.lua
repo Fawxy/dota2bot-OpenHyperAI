@@ -255,7 +255,9 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 
 		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
 
-		if bHumaniserLaning and HarassThink() then return end
+		if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
+			if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return end
+		elseif bHumaniserLaning and HarassThink() then return end
 
 		if local_mode_laning_generic then
 			local_mode_laning_generic.Think()
