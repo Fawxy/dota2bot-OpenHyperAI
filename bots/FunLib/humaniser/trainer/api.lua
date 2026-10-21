@@ -1,5 +1,8 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+function ____exports.MainSlotType()
+    return ITEM_SLOT_TYPE_MAIN
+end
 function ____exports.T(u)
     return u
 end

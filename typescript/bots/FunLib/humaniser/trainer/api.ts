@@ -16,6 +16,13 @@ export interface TUnit extends Unit {
     IsStunned(): boolean;
     IsHexed(): boolean;
     IsTower(): boolean;
+    GetItemSlotType(slot: number): number;
+}
+
+declare const ITEM_SLOT_TYPE_MAIN: number;
+
+export function MainSlotType(): number {
+    return ITEM_SLOT_TYPE_MAIN;
 }
 
 export function T(u: Unit): TUnit {
