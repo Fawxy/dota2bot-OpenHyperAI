@@ -74,6 +74,11 @@ export function CampJobThink(bot: Unit): boolean {
     return CampJobs.Think(bot);
 }
 
+/** mode_laning_generic's last-hit desire yields to a running camp job. */
+export function CampJobActive(bot: Unit): boolean {
+    return CampJobs.Active(bot);
+}
+
 export function CampJobOnEnd(bot: Unit): void {
     CampJobs.OnEnd(bot);
 }

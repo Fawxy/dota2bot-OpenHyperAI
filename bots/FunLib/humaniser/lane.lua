@@ -76,6 +76,10 @@ end
 function ____exports.CampJobThink(bot)
     return CampJobs.Think(bot)
 end
+--- mode_laning_generic's last-hit desire yields to a running camp job.
+function ____exports.CampJobActive(bot)
+    return CampJobs.Active(bot)
+end
 function ____exports.CampJobOnEnd(bot)
     CampJobs.OnEnd(bot)
 end
@@ -91,10 +95,10 @@ LaneDebug.Register(
         local bestDist = math.huge
         for ____, member in ipairs(teamMembers(team)) do
             do
-                local __continue18
+                local __continue19
                 repeat
                     if not member:IsBot() or not member:IsAlive() then
-                        __continue18 = true
+                        __continue19 = true
                         break
                     end
                     local d = GetUnitToLocationDistance(
@@ -105,9 +109,9 @@ LaneDebug.Register(
                         best = member
                         bestDist = d
                     end
-                    __continue18 = true
+                    __continue19 = true
                 until true
-                if not __continue18 then
+                if not __continue19 then
                     break
                 end
             end

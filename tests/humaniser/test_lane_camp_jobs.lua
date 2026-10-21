@@ -152,6 +152,7 @@ do
 	frame(H, support, 72.5)
 	local job = H.Lane.CampJobs.Current(support)
 	frame(H, support, job.aggroAt)
+	neutral.target = support
 	local d = frame(H, support, 80)
 	check("precondition: leading at 1:20", job.phase == "lead")
 	check("desire held while leading outside the window", near(d, 0.7) and not H.Lane.CampJobs.WindowOpen(80, job.aggroAt, 0))
@@ -227,7 +228,12 @@ do
 	local a = ACTIONS[#ACTIONS]
 	check("one attack at the aggro time", #ACTIONS == before + 1 and a.kind == "AttackUnit" and a.args[1] == neutral and a.args[2] == true)
 	support.loc = Vector(SMALL.x, SMALL.y)
+	before = #ACTIONS
+	frame(H, support, job.aggroAt + 0.05)
+	check("holds the attack order until the hit is confirmed", #ACTIONS == before and job.phase == "aggro")
+	support.lastAttack = T
 	frame(H, support, job.aggroAt + 0.1)
+	check("records the aggro when the attack lands", near(job.actualAggro, job.aggroAt + 0.1), job.actualAggro)
 	check("leads out along the first path waypoint", dist(lastMove(5), data.pull.path[1]) <= 20 + 1e-6)
 	teleport(support)
 	frame(H, support, job.aggroAt + 0.2)
@@ -306,6 +312,56 @@ do
 	T = job.aggroAt - 4
 	H.Lane.CampJobThink(support)
 	check("half pull telegraphed once 5 s before", #said == 1 and said[1] == "say_lane_half_pull", said[1])
+end
+
+do
+	-- No hit lands and no neutral turns on the bot: the job gives up as a logged mistake.
+	local H, _, support = jobWorld(1, { debug = true })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local job
+	local lines = capture(function()
+		frame(H, support, 72.5)
+		job = H.Lane.CampJobs.Current(support)
+		frame(H, support, job.aggroAt)
+		frame(H, support, job.aggroAt + 1.9)
+		check("precondition: still waiting on the hit", job.phase == "aggro")
+		frame(H, support, job.aggroAt + 2.0)
+	end)
+	check("unconfirmed aggro times out", job.phase == "return" and job.actualAggro == nil)
+	local abortLine, jobLine
+	for _, l in ipairs(lines) do
+		if l:find("[H:lane] job-abort", 1, true) then abortLine = l end
+		if l:find("[H:lane] job pid", 1, true) then jobLine = l end
+	end
+	check("timeout logged as an abort", abortLine ~= nil and abortLine:find("reason=mistake:no-aggro", 1, true), abortLine)
+	check("timeout is not a graded job line", jobLine == nil, jobLine)
+end
+
+do
+	-- A safety abort after the aggro is not graded: it would count against the camp's timing.
+	local H, core, support = jobWorld(1, { debug = true })
+	local neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local lines = capture(function()
+		runToWatch(H, support, neutral, 76.5)
+		core.hp = 30
+		frame(H, support, 77.5)
+	end)
+	local abortLine, jobLine
+	for _, l in ipairs(lines) do
+		if l:find("[H:lane] job-abort", 1, true) then abortLine = l end
+		if l:find("[H:lane] job pid", 1, true) then jobLine = l end
+	end
+	check("partner abort logged on the abort line", abortLine ~= nil and abortLine:find("reason=partner-unsafe", 1, true), abortLine)
+	check("partner abort is not a graded job line", jobLine == nil, jobLine)
+end
+
+do
+	local H, _, support = jobWorld(1)
+	check("no camp job: laning last hits are not held back", H.Lane.CampJobActive(support) == false)
+	frame(H, support, 72.5)
+	check("running camp job holds back laning last hits", H.Lane.CampJobActive(support) == true)
+	H, _, support = jobWorld(1, { cfg = { Enable = false } })
+	check("lane off: never holds back last hits", H.Lane.CampJobActive(support) == false and next(GETUNITLIST_CALLS) == nil)
 end
 
 local function pullChat(debug, text)

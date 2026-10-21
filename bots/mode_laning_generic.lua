@@ -118,7 +118,8 @@ function GetDesire()
 		if J.IsInLaningPhase() then
 			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 			if J.IsValid(hitCreep) then
-				if fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
+				if (fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
+				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
 				then
 					return 0.9
 				end

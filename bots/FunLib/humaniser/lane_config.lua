@@ -82,6 +82,7 @@ ____exports.DEFAULTS = {
         PullPeriod = 60,
         HalfPullLater = 2,
         NoCampAfter = 1,
+        AggroConfirm = 2,
         DoublePullReach = 8,
         ShoveMaxSec = 8,
         PingHandsOff = 30,

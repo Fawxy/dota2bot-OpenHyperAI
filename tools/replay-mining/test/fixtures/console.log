@@ -6,6 +6,9 @@
 [H:lane] job pid=4 kind=half camp=12 key=radiant_safe_large aggro=48.2 planned=47.0 divert=0.40 grade=ok
 [H:lane] job pid=0 kind=half camp=12 key=radiant_safe_large aggro=48.4 planned=47.0 divert=0.40 grade=ok
 [H:lane] job pid=2 kind=half camp=12 key=radiant_safe_large aggro=52.0 planned=47.0 divert=1.00 grade=mistake:half->full
+[H:lane] job-abort pid=3 kind=half camp=12 key=radiant_safe_large reason=partner-unsafe divert=0.00
+[H:lane] job-abort pid=4 kind=half camp=12 key=radiant_safe_large reason=handsoff divert=0.00
+[H:lane] job-start pid=4 kind=half camp=12 key=radiant_safe_large data=seed aggroAt=106.8 forced=false
 [H:lane] job pid=1 kind=full camp=7 key=- aggro=18.0 planned=18.0 divert=1.00 grade=ok
 [H:lane] job pid=1 kind=full camp=7 key=- aggro=19.0 planned=18.0 divert=1.00 grade=ok
 [H:lane] job pid=1 kind=full camp=7 key=- aggro=20.0 planned=18.0 divert=1.00 grade=ok

@@ -43,6 +43,9 @@ export interface Job extends JobRequest {
     telegraphed: boolean;
     baseAggro: number;
     actualAggro?: number;
+    aggroTarget?: Unit;
+    /** GameTime() of the attack order, the clock GetLastAttackTime() uses. */
+    aggroOrderedAt?: number;
     watchFrom?: number;
     sampledAt?: number;
 }
@@ -246,7 +249,9 @@ function isLive(job: Job | undefined): job is Job {
     return job !== undefined && job.phase !== "done" && job.phase !== "return";
 }
 
+/** Cheap: a config read, then a table lookup; false before any engine call when the lane system is off. */
 export function Active(bot: Unit): boolean {
+    if (!LaneConfig.IsActive()) return false;
     return isLive(jobs[bot.GetPlayerID()]);
 }
 
@@ -278,17 +283,37 @@ function logJob(bot: Unit, job: Job, grade: string): void {
     );
 }
 
-function close(bot: Unit, job: Job, phase: "done" | "return", grade: string | undefined, reason: string): void {
+/** Completed pull: the graded `job` line that parse_condebug.js counts as an attempt. */
+function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): void {
     job.phase = phase;
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
-    if (grade !== undefined) logJob(bot, job, grade);
-    else HDebug.Log("lane", `job-abort pid=${bot.GetPlayerID()} kind=${LOG_KIND[job.kind]} camp=${job.campIdx} reason=${reason}`);
+    logJob(bot, job, grade);
 }
 
-/** Before the aggro nothing happened in the lane, so only a note is logged; after it the pull is graded. */
+/**
+ * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
+ * against a camp's timing. A double pull aborted in its second stage still grades the first pull.
+ */
 function abort(bot: Unit, job: Job, reason: string): void {
-    const graded = job.actualAggro !== undefined;
-    close(bot, job, "return", graded ? `aborted:${reason}` : undefined, reason);
+    if (job.stage === 2) {
+        close(bot, job, "return", Grade(job.kind, job.peakDivert));
+        return;
+    }
+    job.phase = "return";
+    doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
+    const [token] = string.gsub(reason, "%s+", "-");
+    HDebug.Log(
+        "lane",
+        string.format(
+            "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
+            bot.GetPlayerID(),
+            LOG_KIND[job.kind],
+            job.campIdx,
+            Camps.ByIdx(job.campIdx)?.key ?? "-",
+            token,
+            job.peakDivert
+        )
+    );
 }
 
 // ---------------------------------------------------------------------------------------------- desire
@@ -319,7 +344,7 @@ function keepGoing(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
-        if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert), "timeout");
+        if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
         else abort(bot, job, "timeout");
         return false;
     }
@@ -441,6 +466,14 @@ function campNeutral(bot: Unit, job: Job): Unit | undefined {
     return best;
 }
 
+function aggroConfirmed(bot: Unit, job: Job): boolean {
+    if (job.aggroOrderedAt !== undefined && bot.GetLastAttackTime() >= job.aggroOrderedAt) return true;
+    for (const n of bot.GetNearbyNeutralCreeps(settings().Radii.NeutralSearch, false) ?? []) {
+        if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && n.GetAttackTarget() === bot) return true;
+    }
+    return false;
+}
+
 function laneCreepsNear(bot: Unit, center: Vector, radius: number): Unit[] {
     const result: Unit[] = [];
     for (const c of bot.GetNearbyLaneCreeps(settings().Radii.LaneCreepScan, false) ?? []) {
@@ -503,23 +536,32 @@ function step(bot: Unit, job: Job): boolean {
         job.phase = "aggro";
     }
     if (job.phase === "aggro") {
-        const creep = campNeutral(bot, job);
-        if (creep !== undefined) {
-            bot.Action_AttackUnit(creep, true);
-            if (job.stage === 1) job.actualAggro = now;
-            job.phase = "lead";
+        if (job.aggroTarget === undefined) {
+            const creep = campNeutral(bot, job);
+            if (creep !== undefined) {
+                bot.Action_AttackUnit(creep, true);
+                job.aggroTarget = creep;
+                job.aggroOrderedAt = GameTime();
+                return true;
+            }
+            if (now >= job.aggroAt + cfg.Timing.NoCampAfter) {
+                abort(bot, job, "mistake:no-camp");
+                return false;
+            }
+            return moveTo(bot, job.stand);
+        }
+        // Leading off before the hit lands would cancel the attack order, so wait for the world to confirm it.
+        if (!aggroConfirmed(bot, job)) {
+            if (GameTime() - (job.aggroOrderedAt ?? GameTime()) >= cfg.Timing.AggroConfirm) {
+                abort(bot, job, "mistake:no-aggro");
+                return false;
+            }
+            if (!job.aggroTarget.IsAlive() || !job.aggroTarget.CanBeSeen()) job.aggroTarget = undefined;
             return true;
         }
-        if (now >= job.aggroAt + cfg.Timing.NoCampAfter) {
-            if (job.stage === 1) {
-                job.actualAggro = job.aggroAt;
-                close(bot, job, "return", "mistake:no-camp", "no-camp");
-            } else {
-                close(bot, job, "done", Grade(job.kind, job.peakDivert), "second camp empty");
-            }
-            return false;
-        }
-        return moveTo(bot, job.stand);
+        if (job.stage === 1) job.actualAggro = now;
+        job.aggroTarget = undefined;
+        job.phase = "lead";
     }
     if (job.phase === "lead") {
         while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
@@ -531,7 +573,7 @@ function step(bot: Unit, job: Job): boolean {
         sample(bot, job, now);
         if (trySecondCamp(bot, job, now)) return step(bot, job);
         if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec) {
-            close(bot, job, "done", Grade(job.kind, job.peakDivert), "done");
+            close(bot, job, "done", Grade(job.kind, job.peakDivert));
             return false;
         }
         const last = job.path[job.path.length - 1];

@@ -127,6 +127,7 @@ test('condebug summary', () => {
     const find = (camp, kind) => rows.find((r) => r.camp === camp && r.kind === kind);
 
     const half = find(12, 'half');
+    // The two job-abort lines (and job-start) are not attempts; counted, 6/9 ok would drop the suggestion.
     assert.strictEqual(half.attempts, 7);
     assert.strictEqual(half.ok, 6);
     assert.ok(half.suggestion.includes('halfAggroSec: [17.9, 47.9]') && half.suggestion.includes('radiant_safe_large'));

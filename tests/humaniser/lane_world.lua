@@ -110,6 +110,7 @@ function UnitMeta:GetAttackRange() return self.range or 550 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
+function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
 function UnitMeta:GetNearbyLaneCreeps(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team

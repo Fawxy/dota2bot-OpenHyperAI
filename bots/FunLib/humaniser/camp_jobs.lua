@@ -18,6 +18,31 @@ local function __TS__ObjectAssign(target, ...)
     end
     return target
 end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -275,7 +300,11 @@ end
 local function isLive(job)
     return job ~= nil and job.phase ~= "done" and job.phase ~= "return"
 end
+--- Cheap: a config read, then a table lookup; false before any engine call when the lane system is off.
 function ____exports.Active(bot)
+    if not LaneConfig.IsActive() then
+        return false
+    end
     return isLive(jobs[bot:GetPlayerID()])
 end
 function ____exports.UpcomingWithin(bot, seconds)
@@ -303,27 +332,40 @@ local function logJob(bot, job, grade)
         )
     )
 end
-local function close(bot, job, phase, grade, reason)
+--- Completed pull: the graded `job` line that parse_condebug.js counts as an attempt.
+local function close(bot, job, phase, grade)
     job.phase = phase
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
-    if grade ~= nil then
-        logJob(bot, job, grade)
-    else
-        HDebug.Log(
-            "lane",
-            (((((("job-abort pid=" .. tostring(bot:GetPlayerID())) .. " kind=") .. LOG_KIND[job.kind]) .. " camp=") .. tostring(job.campIdx)) .. " reason=") .. reason
-        )
-    end
+    logJob(bot, job, grade)
 end
---- Before the aggro nothing happened in the lane, so only a note is logged; after it the pull is graded.
+--- Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
+-- against a camp's timing. A double pull aborted in its second stage still grades the first pull.
 local function abort(bot, job, reason)
-    local graded = job.actualAggro ~= nil
-    close(
-        bot,
-        job,
-        "return",
-        graded and "aborted:" .. reason or nil,
-        reason
+    if job.stage == 2 then
+        close(
+            bot,
+            job,
+            "return",
+            ____exports.Grade(job.kind, job.peakDivert)
+        )
+        return
+    end
+    job.phase = "return"
+    doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
+    local token = string.gsub(reason, "%s+", "-")
+    local ____HDebug_Log_6 = HDebug.Log
+    local ____string_format_5 = string.format
+    local ____array_4 = __TS__SparseArrayNew(
+        "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
+        bot:GetPlayerID(),
+        LOG_KIND[job.kind],
+        job.campIdx
+    )
+    local ____opt_2 = Camps.ByIdx(job.campIdx)
+    __TS__SparseArrayPush(____array_4, ____opt_2 and ____opt_2.key or "-", token, job.peakDivert)
+    ____HDebug_Log_6(
+        "lane",
+        ____string_format_5(__TS__SparseArraySpread(____array_4))
     )
 end
 local function jobAllowed(bot, s, forced)
@@ -361,8 +403,7 @@ local function keepGoing(bot, job)
                 bot,
                 job,
                 "return",
-                ____exports.Grade(job.kind, job.peakDivert),
-                "timeout"
+                ____exports.Grade(job.kind, job.peakDivert)
             )
         else
             abort(bot, job, "timeout")
@@ -568,6 +609,20 @@ local function campNeutral(bot, job)
     end
     return best
 end
+local function aggroConfirmed(bot, job)
+    if job.aggroOrderedAt ~= nil and bot:GetLastAttackTime() >= job.aggroOrderedAt then
+        return true
+    end
+    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
+        settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        if n ~= nil and n ~= nil and n:IsAlive() and n:CanBeSeen() and n:GetAttackTarget() == bot then
+            return true
+        end
+    end
+    return false
+end
 local function laneCreepsNear(bot, center, radius)
     local result = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(
@@ -575,10 +630,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue115
+            local __continue120
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue115 = true
+                    __continue120 = true
                     break
                 end
                 if dist2D(
@@ -587,9 +642,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue115 = true
+                __continue120 = true
             until true
-            if not __continue115 then
+            if not __continue120 then
                 break
             end
         end
@@ -677,37 +732,35 @@ local function step(bot, job)
         job.phase = "aggro"
     end
     if job.phase == "aggro" then
-        local creep = campNeutral(bot, job)
-        if creep ~= nil then
-            bot:Action_AttackUnit(creep, true)
-            if job.stage == 1 then
-                job.actualAggro = now
+        if job.aggroTarget == nil then
+            local creep = campNeutral(bot, job)
+            if creep ~= nil then
+                bot:Action_AttackUnit(creep, true)
+                job.aggroTarget = creep
+                job.aggroOrderedAt = GameTime()
+                return true
             end
-            job.phase = "lead"
+            if now >= job.aggroAt + cfg.Timing.NoCampAfter then
+                abort(bot, job, "mistake:no-camp")
+                return false
+            end
+            return moveTo(bot, job.stand)
+        end
+        if not aggroConfirmed(bot, job) then
+            if GameTime() - (job.aggroOrderedAt or GameTime()) >= cfg.Timing.AggroConfirm then
+                abort(bot, job, "mistake:no-aggro")
+                return false
+            end
+            if not job.aggroTarget:IsAlive() or not job.aggroTarget:CanBeSeen() then
+                job.aggroTarget = nil
+            end
             return true
         end
-        if now >= job.aggroAt + cfg.Timing.NoCampAfter then
-            if job.stage == 1 then
-                job.actualAggro = job.aggroAt
-                close(
-                    bot,
-                    job,
-                    "return",
-                    "mistake:no-camp",
-                    "no-camp"
-                )
-            else
-                close(
-                    bot,
-                    job,
-                    "done",
-                    ____exports.Grade(job.kind, job.peakDivert),
-                    "second camp empty"
-                )
-            end
-            return false
+        if job.stage == 1 then
+            job.actualAggro = now
         end
-        return moveTo(bot, job.stand)
+        job.aggroTarget = nil
+        job.phase = "lead"
     end
     if job.phase == "lead" then
         while job.waypoint < #job.path and arrived(bot, job.path[job.waypoint + 1]) do
@@ -729,8 +782,7 @@ local function step(bot, job)
                 bot,
                 job,
                 "done",
-                ____exports.Grade(job.kind, job.peakDivert),
-                "done"
+                ____exports.Grade(job.kind, job.peakDivert)
             )
             return false
         end
