@@ -62,6 +62,9 @@ Customize.Dire_Heros = {
 --]]
 Customize.Allow_Repeated_Heroes = false
 
+-- Dev/testing: every bot picks as soon as the human players have picked, instead of on a staggered schedule.
+Customize.Fast_Bot_Picks = false
+
 -- The max number of weak heroes allowed in a team the bots can pick.
 Customize.Weak_Hero_Cap = 1
 
