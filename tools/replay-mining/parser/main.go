@@ -38,7 +38,8 @@ type state struct {
 	lastSecond float64
 	campsDone  bool
 	heroSlot   map[int32]int
-	byName     map[string]*manta.Entity
+	heroByName map[string]*manta.Entity
+	byUnitName map[string]map[int32]*manta.Entity
 }
 
 func emit(v map[string]any) { _ = out.Encode(v) }
@@ -64,11 +65,12 @@ func gameTime(p *manta.Parser, s *state) float64 {
 	return float64(now - s.gameStart)
 }
 
-func entitiesNamed(p *manta.Parser, name string) []*manta.Entity {
-	return p.FilterEntity(func(e *manta.Entity) bool {
-		n, ok := e.GetString("m_iszUnitName")
-		return ok && n == name
-	})
+func (s *state) entitiesNamed(name string) []*manta.Entity {
+	var list []*manta.Entity
+	for _, e := range s.byUnitName[name] {
+		list = append(list, e)
+	}
+	return list
 }
 
 func laneCreepTeam(name string) (int, bool) {
@@ -115,7 +117,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	s := &state{heroSlot: map[int32]int{}, byName: map[string]*manta.Entity{}, lastHero: -1, lastSecond: -1}
+	s := &state{heroSlot: map[int32]int{}, heroByName: map[string]*manta.Entity{}, byUnitName: map[string]map[int32]*manta.Entity{}, lastHero: -1, lastSecond: -1}
 
 	p.OnEntity(func(e *manta.Entity, op manta.EntityOp) error {
 		name := e.GetClassName()
@@ -125,10 +127,17 @@ func main() {
 			}
 		}
 		if n, ok := e.GetString("m_iszUnitName"); ok {
-			s.byName[n] = e
+			if op&manta.EntityOpDeleted != 0 {
+				delete(s.byUnitName[n], e.GetIndex())
+			} else {
+				if s.byUnitName[n] == nil {
+					s.byUnitName[n] = map[int32]*manta.Entity{}
+				}
+				s.byUnitName[n][e.GetIndex()] = e
+			}
 		}
 		if strings.HasPrefix(name, "CDOTA_Unit_Hero_") {
-			s.byName[name] = e
+			s.heroByName[name] = e
 		}
 		return nil
 	})
@@ -182,7 +191,7 @@ func main() {
 		if !strings.Contains(target, "neutral") {
 			return nil
 		}
-		neutrals := entitiesNamed(p, target)
+		neutrals := s.entitiesNamed(target)
 		if len(neutrals) == 0 {
 			return nil
 		}
@@ -192,12 +201,7 @@ func main() {
 		// same-name neutral closest to any creep of that team.
 		var dst *manta.Entity
 		src := "neutral"
-		if ae := s.byName[attacker]; ae != nil {
-			if slot, ok := s.heroSlot[ae.GetIndex()]; ok {
-				src = fmt.Sprintf("hero:%d", slot)
-				dst = nearest(neutrals, []*manta.Entity{ae})
-			}
-		} else if team, ok := laneCreepTeam(attacker); ok {
+		if team, ok := laneCreepTeam(attacker); ok {
 			src = fmt.Sprintf("lanecreep:%d", team)
 			var creeps []*manta.Entity
 			for _, e := range p.FilterEntity(func(e *manta.Entity) bool { return e.GetClassName() == "CDOTA_BaseNPC_Creep_Lane" }) {
@@ -206,6 +210,11 @@ func main() {
 				}
 			}
 			dst = nearest(neutrals, creeps)
+		} else if ae := s.heroByName[attacker]; ae != nil {
+			if slot, ok := s.heroSlot[ae.GetIndex()]; ok {
+				src = fmt.Sprintf("hero:%d", slot)
+				dst = nearest(neutrals, []*manta.Entity{ae})
+			}
 		}
 		if dst == nil {
 			return nil
