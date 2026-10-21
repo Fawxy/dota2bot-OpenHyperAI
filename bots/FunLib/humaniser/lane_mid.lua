@@ -7,6 +7,7 @@ local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
+local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local DENY_HP = 0.49
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -56,7 +57,13 @@ function ____exports.PickDeny(bot, allyCreeps)
                     break
                 end
                 local hp = creep:GetHealth()
-                if hp < DENY_HP * creep:GetMaxHealth() and hp <= damage then
+                if hp < DENY_HP * creep:GetMaxHealth() and LastHitSkill.WillKill(
+                    bot,
+                    creep,
+                    damage,
+                    0,
+                    true
+                ) then
                     return creep
                 end
                 __continue9 = true

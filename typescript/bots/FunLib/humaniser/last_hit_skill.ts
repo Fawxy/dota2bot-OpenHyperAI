@@ -16,6 +16,7 @@
 import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 
 export const DEFAULTS = {
     RequireOwnedLaning: true,
@@ -87,6 +88,8 @@ export function NoteLaningOwner(bot: Unit, owned: boolean): void {
 export function IsActiveFor(bot: Unit): boolean {
     if (!Config.IsFeatureEnabled("LastHitSkill")) return false;
     if (Profile.Get(bot).skill >= 1) return false;
+    // The trainer's self-test bot is its timing reference, so it must stay exact.
+    if (Trainer.IsSelfTestBot(bot)) return false;
     return !Settings().RequireOwnedLaning || ownedLaning[bot.GetPlayerID()] === true;
 }
 
@@ -147,4 +150,18 @@ export function WillKill(bot: Unit, creep: Unit, attackDamage: number, delay: nu
         entry.countAtAttempt = counterOf(bot, isDeny);
     }
     return kills;
+}
+
+function isRangedOrSiege(creep: Unit): boolean {
+    const name = creep.GetUnitName();
+    return string.find(name, "ranged", 1, true)[0] !== undefined || string.find(name, "siege", 1, true)[0] !== undefined;
+}
+
+/** Which of several creeps killable together to take: the first, unless skill is high enough to prefer ranged. */
+export function Choose(bot: Unit, killable: Unit[]): Unit | undefined {
+    const skill = Profile.Get(bot).skill;
+    if (IsActiveFor(bot) && skill > Settings().RangedPrioritySkill) {
+        for (const creep of killable) if (isRangedOrSiege(creep)) return creep;
+    }
+    return killable[0];
 }

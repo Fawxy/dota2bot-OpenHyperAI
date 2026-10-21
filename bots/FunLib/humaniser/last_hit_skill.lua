@@ -4,6 +4,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 ____exports.DEFAULTS = {
     RequireOwnedLaning = true,
     ErrorLow = 0.15,
@@ -60,6 +61,9 @@ function ____exports.IsActiveFor(bot)
         return false
     end
     if Profile.Get(bot).skill >= 1 then
+        return false
+    end
+    if Trainer.IsSelfTestBot(bot) then
         return false
     end
     return not ____exports.Settings().RequireOwnedLaning or ownedLaning[bot:GetPlayerID()] == true
@@ -143,5 +147,21 @@ function ____exports.WillKill(bot, creep, attackDamage, delay, isDeny)
         entry.countAtAttempt = counterOf(bot, isDeny)
     end
     return kills
+end
+local function isRangedOrSiege(creep)
+    local name = creep:GetUnitName()
+    return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
+end
+--- Which of several creeps killable together to take: the first, unless skill is high enough to prefer ranged.
+function ____exports.Choose(bot, killable)
+    local skill = Profile.Get(bot).skill
+    if ____exports.IsActiveFor(bot) and skill > ____exports.Settings().RangedPrioritySkill then
+        for ____, creep in ipairs(killable) do
+            if isRangedOrSiege(creep) then
+                return creep
+            end
+        end
+    end
+    return killable[1]
 end
 return ____exports

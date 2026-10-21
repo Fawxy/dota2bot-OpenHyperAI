@@ -175,4 +175,45 @@ do
 	check("Valve-laning warning printed once", #printed == 1 and string.find(printed[1], "pid=3", 1, true) ~= nil, printed[1])
 end
 
+-- Task 2: ranged preference among creeps killable together, owned-laning wiring.
+do
+	local melee, ranged = MakeCreep(5), MakeCreep(5, "npc_dota_creep_badguys_ranged")
+	local siege = MakeCreep(5, "npc_dota_badguys_siege")
+	local H, bot = Setup(0.5)
+	check("Choose keeps upstream order at skill 0.5", H.LastHitSkill.Choose(bot, { melee, ranged }) == melee)
+	H, bot = Setup(1)
+	check("Choose keeps upstream order at skill 1.0", H.LastHitSkill.Choose(bot, { melee, ranged }) == melee)
+	H, bot = Setup(0.7)
+	check("Choose prefers ranged above 0.6", H.LastHitSkill.Choose(bot, { melee, ranged }) == ranged)
+	check("Choose prefers siege above 0.6", H.LastHitSkill.Choose(bot, { melee, siege }) == siege)
+	check("Choose falls back to the first creep", H.LastHitSkill.Choose(bot, { melee }) == melee)
+	H, bot = Setup(0.7, { Enable = false })
+	check("Choose keeps upstream order when disabled", H.LastHitSkill.Choose(bot, { melee, ranged }) == melee)
+end
+
+do
+	local H, bot = Setup(0)
+	H.Trainer.IsSelfTestBot = function() return true end
+	check("trainer self-test bot stays exact", H.LastHitSkill.IsActiveFor(bot) == false)
+end
+
+local function source(path)
+	local f = io.open(HARNESS_DIR .. "/../../" .. path, "r")
+	local text = f:read("*a")
+	f:close()
+	return text
+end
+local function has(text, s) return string.find(text, s, 1, true) ~= nil end
+
+do
+	local laning = source("bots/mode_laning_generic.lua")
+	check("laning last hit pin", has(laning, "LastHitSkill.WillKill(bot, creep, attackDamage, nDelay, false)"))
+	check("laning move-to lookahead pin", has(laning, "LastHitSkill.WillKill(bot, creep, attackDamage + dmgDelta, nDelay, false)"))
+	check("laning deny pin", has(laning, "LastHitSkill.WillKill(bot, creep, attackDamage, 0, true)"))
+	check("laning owner noted at load", has(laning, "LastHitSkill.NoteLaningOwner(bot, bOwnsThink)"))
+	check("laning bare kill checks gone", not has(laning, "J.WillKillTarget(creep, attackDamage"))
+	local mid = source("bots/FunLib/humaniser/lane_mid.lua")
+	check("mid ranged deny pin", has(mid, "LastHitSkill.WillKill("))
+end
+
 finish()

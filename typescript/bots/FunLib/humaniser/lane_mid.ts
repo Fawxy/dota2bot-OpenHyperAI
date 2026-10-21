@@ -8,6 +8,7 @@ import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Counter from "bots/FunLib/humaniser/counterplay";
+import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 
 const DENY_HP = 0.49;
 
@@ -41,7 +42,7 @@ export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
         if (!creep.IsAlive() || !LaneState.IsLaneCreepName(creep.GetUnitName())) continue;
         if (string.find(creep.GetUnitName(), "ranged", 1, true)[0] === undefined) continue;
         const hp = creep.GetHealth();
-        if (hp < DENY_HP * creep.GetMaxHealth() && hp <= damage) return creep;
+        if (hp < DENY_HP * creep.GetMaxHealth() && LastHitSkill.WillKill(bot, creep, damage, 0, true)) return creep;
     }
     return undefined;
 }
