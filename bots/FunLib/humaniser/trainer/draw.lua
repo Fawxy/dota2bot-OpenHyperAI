@@ -15,6 +15,7 @@ end
 local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/trainer/settings")
 local ____api = require(GetScriptDirectory().."/FunLib/humaniser/trainer/api")
+local CreepKind = ____api.CreepKind
 local DrawLine = ____api.DrawLine
 local LINE_HEIGHT = 14
 local MAX_LINES = 3
@@ -89,6 +90,22 @@ local WHITE = {255, 255, 255}
 local BLUE = {80, 160, 255}
 local YELLOW = {255, 255, 0}
 local RED = {255, 60, 60}
+local STATE_OFFSET = 150
+--- Inside this many seconds before the window opens, the word switches from WAIT to READY.
+local READY_LEAD = 0.3
+--- One word for what the bar is showing now, so the bar can be checked against plain text.
+function ____exports.BarState(p, now)
+    if now < p.startOpen - READY_LEAD then
+        return "WAIT"
+    end
+    if now < p.startOpen then
+        return "READY"
+    end
+    if now <= p.startClose then
+        return p.isDeny and "DENY" or "ATTACK"
+    end
+    return "LATE"
+end
 local function windowColour(p)
     if p.isDeny then
         return {0, 255, 255}
@@ -113,13 +130,15 @@ function ____exports.Bars(subject, preds, now, swingStart)
         ____temp_0 = tostring(target)
     end
     local targetId = ____temp_0
+    local cfg = Settings.Get()
+    local row = 0
     for ____, p in ipairs(preds) do
         do
-            local __continue17
+            local __continue21
             repeat
                 local creep = p.creep
                 if not creep:IsAlive() or GetUnitToUnitDistance(subject, creep) > BAR_MAX_DISTANCE then
-                    __continue17 = true
+                    __continue21 = true
                     break
                 end
                 local loc = creep:GetLocation()
@@ -172,15 +191,26 @@ function ____exports.Bars(subject, preds, now, swingStart)
                     marker,
                     MARKER_HEIGHT
                 )
+                local state = ____exports.BarState(p, now)
+                local r, g, b = unpack(state == "READY" and WHITE or marker)
+                DebugDrawText(
+                    cfg.TextX,
+                    cfg.TextY + STATE_OFFSET + LINE_HEIGHT * row,
+                    (CreepKind(creep) .. ": ") .. state,
+                    r,
+                    g,
+                    b
+                )
+                row = row + 1
                 if swingStart ~= nil and targetId == tostring(creep) then
                     tick(
                         xAt(swingStart),
                         BLUE
                     )
                 end
-                __continue17 = true
+                __continue21 = true
             until true
-            if not __continue17 then
+            if not __continue21 then
                 break
             end
         end

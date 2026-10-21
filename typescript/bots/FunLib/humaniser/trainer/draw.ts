@@ -1,7 +1,7 @@
 /** Trainer screen text. Drawn directly, not through HDebug, so it shows with Debug off. Draws last one frame. */
 import * as Settings from "bots/FunLib/humaniser/trainer/settings";
 import { VerdictKind } from "bots/FunLib/humaniser/trainer/judge";
-import { DrawLine } from "bots/FunLib/humaniser/trainer/api";
+import { CreepKind, DrawLine } from "bots/FunLib/humaniser/trainer/api";
 import { Prediction } from "bots/FunLib/humaniser/trainer/predict";
 import { Unit } from "bots/ts_libs/dota";
 
@@ -56,6 +56,18 @@ const BLUE: [number, number, number] = [80, 160, 255];
 const YELLOW: [number, number, number] = [255, 255, 0];
 const RED: [number, number, number] = [255, 60, 60];
 
+const STATE_OFFSET = 150;
+/** Inside this many seconds before the window opens, the word switches from WAIT to READY. */
+const READY_LEAD = 0.3;
+
+/** One word for what the bar is showing now, so the bar can be checked against plain text. */
+export function BarState(p: Prediction, now: number): string {
+    if (now < p.startOpen - READY_LEAD) return "WAIT";
+    if (now < p.startOpen) return "READY";
+    if (now <= p.startClose) return p.isDeny ? "DENY" : "ATTACK";
+    return "LATE";
+}
+
 function windowColour(p: Prediction): [number, number, number] {
     if (p.isDeny) return [0, 255, 255];
     if (p.uncertain) return [255, 191, 0];
@@ -71,6 +83,8 @@ export function Bars(subject: Unit, preds: Prediction[], now: number, swingStart
     if (!subject.IsAlive()) return;
     const target = subject.GetAttackTarget();
     const targetId = target === undefined || target === null ? undefined : tostring(target);
+    const cfg = Settings.Get();
+    let row = 0;
     for (const p of preds) {
         const creep = p.creep;
         if (!creep.IsAlive() || GetUnitToUnitDistance(subject, creep) > BAR_MAX_DISTANCE) continue;
@@ -97,6 +111,10 @@ export function Bars(subject: Unit, preds: Prediction[], now: number, swingStart
         tick(line, WHITE);
         const marker = now < p.startOpen ? YELLOW : now <= p.startClose ? colour : RED;
         tick(xAt(now), marker, MARKER_HEIGHT);
+        const state = BarState(p, now);
+        const [r, g, b] = state === "READY" ? WHITE : marker;
+        DebugDrawText(cfg.TextX, cfg.TextY + STATE_OFFSET + LINE_HEIGHT * row, `${CreepKind(creep)}: ${state}`, r, g, b);
+        row++;
         if (swingStart !== undefined && targetId === tostring(creep)) tick(xAt(swingStart), BLUE);
     }
 }

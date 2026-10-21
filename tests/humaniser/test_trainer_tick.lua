@@ -499,9 +499,12 @@ do
 	local H, human, bots = setup()
 	local Draw = require("bots/FunLib/humaniser/trainer/draw")
 	local creep = Creep(3, { loc = Vector(100, 0) })
-	local function draw(open, close, swingStart)
-		LINES = {}
-		Draw.Bars(human, { { creep = creep, isDeny = false, uncertain = false, startOpen = T + open, startClose = T + close } }, T, swingStart)
+	local function draw(open, close, swingStart, isDeny)
+		LINES, DRAWN = {}, {}
+		Draw.Bars(human, { { creep = creep, isDeny = isDeny == true, uncertain = false, startOpen = T + open, startClose = T + close } }, T, swingStart)
+	end
+	local function word()
+		return #DRAWN == 1 and DRAWN[1].text or nil
 	end
 	local function marker()
 		for _, l in ipairs(LINES) do if l.b.z - l.a.z == 32 then return l end end
@@ -511,6 +514,16 @@ do
 		for _, l in ipairs(z) do if l.a.x ~= l.b.x then return l end end
 	end
 
+	draw(1.0, 1.3)
+	check("state word: WAIT more than 0.3 s before the window", word() == "melee: WAIT", word())
+	draw(0.2, 0.5)
+	check("state word: READY in the last 0.3 s before the window", word() == "melee: READY", word())
+	draw(-0.1, 0.2)
+	check("state word: ATTACK inside the window", word() == "melee: ATTACK", word())
+	draw(-0.1, 0.2, nil, true)
+	check("state word: DENY inside a deny window", word() == "melee: DENY", word())
+	draw(-0.5, -0.2)
+	check("state word: LATE once the window has closed", word() == "melee: LATE", word())
 	draw(1.0, 1.3)
 	local m, w = marker(), zone()
 	check("countdown: marker 1 s ahead of the line, yellow before the window", m ~= nil and m.a.x == 140 and m.r == 255 and m.g == 255 and m.b2 == 0, m and m.a.x)
