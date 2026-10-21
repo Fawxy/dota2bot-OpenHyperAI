@@ -259,3 +259,13 @@ Other **TODO (in-game)** checks:
 **TODO (in-game):**
 - `GetAmountAlongLane` / `GetLocationAlongLane` are treated as absolute (0 = Radiant ancient) and `GetLaneFrontAmount` as team-relative, converted only in `camps.ts` `ToTeamAmount`. OHA's `J.GetClosestTeamLane` feeds a team-relative amount straight into `GetLocationAlongLane`, so one assumption may be wrong for Dire. If so, flip `LANE_AMOUNT_TEAM_RELATIVE` in `camps.ts`.
 - Is a neutral spawner's `type` a string (OHA) or an int (API doc)? Both are accepted; confirm which, and that the table key is the spawner index.
+
+## Lane management: lane state (task 07)
+
+`lane_state.ts` keeps one snapshot per (team, lane), refreshed at most every `Timing.SnapshotRefresh` seconds and only while the lane system is active (Lane enabled and at least one consumer flag on). With Debug on, each bot's `lane` overlay line shows `eq`, `want`, `score`, ally/enemy creep counts and the seconds to the next wave.
+
+**TODO (in-game):**
+- Waves spawn at :00 and :30 of `DotaTime()` on the current patch (`cycleSec = DotaTime() % 30`).
+- `GetLaneFrontAmount(team, lane, true)`: confirm `true` (ignore towers) gives the creep front rather than the tower line.
+- Lane creeps are recognised by unit names containing `creep_goodguys`, `creep_badguys`, `goodguys_siege`, `badguys_siege`; ranged by `ranged`. Confirm against `GetUnitName()` for current lane creeps and siege.
+- Enemy deny counting compares `GetAttackTarget()` of a visible enemy hero to the enemy lane creep handle by identity; confirm handles compare equal across calls.

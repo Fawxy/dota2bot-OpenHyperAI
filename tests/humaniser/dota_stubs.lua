@@ -28,6 +28,7 @@ function GetUnitToLocationDistance(u, loc) local dx, dy = u.loc.x - loc.x, u.loc
 
 local Unit = {}
 Unit.__index = Unit
+function Unit:GetAssignedLane() return self.lane or 0 end
 function Unit:GetPlayerID() return self.pid end
 function Unit:GetTeam() return self.team end
 function Unit:IsBot() return self.bot end

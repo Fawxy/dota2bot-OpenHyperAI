@@ -107,7 +107,8 @@ ____exports.DEFAULTS = {
         PullTelegraphCooldown = 60,
         StackTelegraphCooldown = 120,
         CounterTelegraphCooldown = 60,
-        ShoveTelegraphCooldown = 60
+        ShoveTelegraphCooldown = 60,
+        ExposureSeen = 3
     },
     Thresholds = {
         CoreAbsentDist = 1200,
@@ -138,7 +139,8 @@ ____exports.DEFAULTS = {
         FreezeCoreEqMax = -0.3,
         MidMissingEq = -0.6,
         StackMaxCampCount = 1,
-        ApproachEpsilon = 25
+        ApproachEpsilon = 25,
+        ExposureEnemies = 2
     },
     Radii = {
         LaneCreep = 1200,

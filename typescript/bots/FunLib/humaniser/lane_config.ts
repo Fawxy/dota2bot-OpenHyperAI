@@ -128,6 +128,7 @@ export const DEFAULTS = {
         StackTelegraphCooldown: 120,
         CounterTelegraphCooldown: 60,
         ShoveTelegraphCooldown: 60,
+        ExposureSeen: 3,
     },
     Thresholds: {
         CoreAbsentDist: 1200,
@@ -159,6 +160,7 @@ export const DEFAULTS = {
         MidMissingEq: -0.6,
         StackMaxCampCount: 1,
         ApproachEpsilon: 25,
+        ExposureEnemies: 2,
     },
     Radii: {
         LaneCreep: 1200,

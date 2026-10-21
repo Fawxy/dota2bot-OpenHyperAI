@@ -31,6 +31,8 @@ SPAWNERS = {}
 LAST_SEEN = {}
 ACTIONS = {}
 GETUNITLIST_CALLS = {}
+OBSERVER = nil
+function IsHeroAlive(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.alive end end end return false end
 
 local CreepMeta = {}
 CreepMeta.__index = CreepMeta
@@ -42,11 +44,12 @@ function CreepMeta:IsAlive() return self.hp > 0 end
 function CreepMeta:CanBeSeen() return true end
 function CreepMeta:GetLocation() return self.loc end
 function CreepMeta:GetTeam() return self.team end
+function CreepMeta:IsHero() return false end
 
 function MakeCreep(o)
 	local c = setmetatable({
 		team = o.team, loc = Vector(o.x, o.y), hp = o.hp or 550, maxhp = o.maxhp or 550,
-		name = o.name or "npc_dota_creep_lane", target = o.target,
+		name = o.name or (o.team == 2 and "npc_dota_creep_goodguys_melee" or "npc_dota_creep_badguys_melee"), target = o.target,
 	}, CreepMeta)
 	table.insert(CREEPS[o.team], c)
 	return c
@@ -57,7 +60,13 @@ function GetUnitList(t)
 	local other = CURRENT_TEAM == 2 and 3 or 2
 	if t == UnitType.AlliedCreeps then return CREEPS[CURRENT_TEAM] end
 	if t == UnitType.EnemyCreeps then return CREEPS[other] end
-	if t == UnitType.EnemyHeroes then return UNITS[other] end
+	if t == UnitType.EnemyHeroes then
+		local r = {}
+		for _, u in ipairs(UNITS[other]) do
+			if not (u.hiddenFrom and u.hiddenFrom[OBSERVER]) then table.insert(r, u) end
+		end
+		return r
+	end
 	if t == UnitType.AlliedHeroes then return UNITS[CURRENT_TEAM] end
 	return {}
 end
@@ -81,6 +90,7 @@ function MakeLaneTowers()
 	return w
 end
 TOWERS_W = MakeLaneTowers()
+function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation" }) do
@@ -115,7 +125,7 @@ function LaneFresh(laneCfg, extra)
 	ResetWorld()
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
-	LANING, STRONGER, NEXT_RUNE = nil, nil, nil
+	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg })
 	H.Lane.SetHelpers({
@@ -129,5 +139,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Config.ResetSettings()
 	H.Lane.Hooks.ResetHooks()
 	H.Lane.Camps.ResetCache()
+	H.Lane.LaneState.ResetCache()
 	return H
 end
