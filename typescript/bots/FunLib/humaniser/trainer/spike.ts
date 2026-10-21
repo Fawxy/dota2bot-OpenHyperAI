@@ -1,19 +1,18 @@
 /**
  * Throwaway probe for the Phase 0 spike: what the bot API reports for a human hero, and whether
- * DebugDrawLine/DebugDrawText are visible and smooth. Reached only through "!trainer spike" with Debug on.
+ * the countdown bar and DebugDrawText are visible and smooth. Reached only through "!trainer spike" with Debug on.
  */
 import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/trainer/settings";
-import { DrawLine, GetTrainerHelpers, T } from "bots/FunLib/humaniser/trainer/api";
+import { GetTrainerHelpers, T } from "bots/FunLib/humaniser/trainer/api";
+import { Bars } from "bots/FunLib/humaniser/trainer/draw";
+import { Prediction } from "bots/FunLib/humaniser/trainer/predict";
 
 const LOG_INTERVAL = 0.5;
-const BAR_WIDTH = 160;
-const BAR_HEIGHT_ABOVE = 180;
-const TICK_HEIGHT = 16;
-const HP_BAR_OFFSET = 40;
-const WINDOW_WIDTH = 40;
-const LOOP_SECONDS = 2;
+const LOOP_SECONDS = 2.5;
+const MOCK_LEAD = 1.5;
+const MOCK_WINDOW = 0.4;
 const NEAR_CREEP = 900;
 
 let lastLogAt = -math.huge;
@@ -38,36 +37,12 @@ function nearestCreep(subject: Unit): Unit | undefined {
     return best;
 }
 
-function hLine(x0: number, x1: number, y: number, z: number, r: number, g: number, b: number): void {
-    DrawLine(Vector(x0, y, z), Vector(x1, y, z), r, g, b);
-}
-
-function vTick(x: number, y: number, z: number, height: number, r: number, g: number, b: number): void {
-    DrawLine(Vector(x, y, z - height / 2), Vector(x, y, z + height / 2), r, g, b);
-}
-
-function drawBars(creep: Unit, now: number): void {
-    const loc = creep.GetLocation();
-    const left = loc.x - BAR_WIDTH / 2;
-    const right = loc.x + BAR_WIDTH / 2;
-    const z = loc.z + BAR_HEIGHT_ABOVE;
-    const phase = (now % LOOP_SECONDS) / LOOP_SECONDS;
-
-    hLine(left, right, loc.y, z, 128, 128, 128);
-    vTick(left, loc.y, z, TICK_HEIGHT, 255, 255, 255);
-    vTick(right, loc.y, z, TICK_HEIGHT, 128, 128, 128);
-    const centre = right - phase * BAR_WIDTH;
-    const winLeft = math.max(left, centre - WINDOW_WIDTH / 2);
-    const winRight = math.min(right, centre + WINDOW_WIDTH / 2);
-    if (winRight > winLeft) {
-        hLine(winLeft, winRight, loc.y, z, 0, 255, 0);
-        vTick(winLeft, loc.y, z, TICK_HEIGHT, 0, 255, 0);
-        vTick(winRight, loc.y, z, TICK_HEIGHT, 0, 255, 0);
-    }
-
-    const hpZ = z + HP_BAR_OFFSET;
-    hLine(left, right, loc.y, hpZ, 128, 128, 128);
-    hLine(left, left + (1 - phase) * BAR_WIDTH, loc.y, hpZ, 0, 255, 0);
+/** A mock countdown on a loop: 1.5 s of lead, then a 0.4 s window, then 0.6 s after it closes. */
+function drawBars(subject: Unit, creep: Unit, now: number): void {
+    const loopStart = now - (now % LOOP_SECONDS);
+    const open = loopStart + MOCK_LEAD;
+    const mock = { creep, isDeny: false, uncertain: false, startOpen: open, startClose: open + MOCK_WINDOW } as Prediction;
+    Bars(subject, [mock], now);
 }
 
 function logReadings(subject: Unit, target: Unit | null | undefined, gap: number): void {
@@ -103,7 +78,7 @@ export function SpikeTick(_bot: Unit, subject: Unit): void {
     }
 
     const creep = nearestCreep(subject);
-    if (creep !== undefined) drawBars(creep, now);
+    if (creep !== undefined) drawBars(subject, creep, now);
 
     const cfg = Settings.Get();
     DebugDrawText(cfg.TextX, cfg.TextY, "ASCII - test", 255, 255, 255);

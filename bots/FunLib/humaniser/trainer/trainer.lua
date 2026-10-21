@@ -1220,7 +1220,6 @@ local function run(bot, team, s, now)
             Bars(
                 unit,
                 ____exports.Predictions(team),
-                cfg.BarStyle,
                 now,
                 swingOf(
                     T(unit),

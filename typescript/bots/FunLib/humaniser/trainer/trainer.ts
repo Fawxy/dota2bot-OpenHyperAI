@@ -659,7 +659,7 @@ function run(bot: Unit, team: number, s: TeamState, now: number): void {
     }
     if (s.bar && pid !== undefined) {
         const unit = subjects.find((u) => u.GetPlayerID() === pid);
-        if (unit !== undefined) Bars(unit, Predictions(team), cfg.BarStyle, now, swingOf(T(unit), now).swingStart);
+        if (unit !== undefined) Bars(unit, Predictions(team), now, swingOf(T(unit), now).swingStart);
     }
 }
 

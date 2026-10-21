@@ -165,7 +165,7 @@ Customize.Humaniser = {
     Trainer = {
         LastHit = {
             Enable = true,
-            Bar = true, BarStyle = 'time', -- 'time' | 'hp'; picked in the Phase 0 spike
+            Bar = true,
             OutcomeOnly = false, -- true if the human's swing timing can't be read (spike fallback)
             ScreenText = true, -- false sends verdicts and summaries to team chat instead (spike fallback)
             Denies = true, Chat = 'off', -- 'off' | 'misses' | 'all'

@@ -5,16 +5,14 @@ local UnitType = ____dota.UnitType
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/trainer/settings")
 local ____api = require(GetScriptDirectory().."/FunLib/humaniser/trainer/api")
-local DrawLine = ____api.DrawLine
 local GetTrainerHelpers = ____api.GetTrainerHelpers
 local T = ____api.T
+local ____draw = require(GetScriptDirectory().."/FunLib/humaniser/trainer/draw")
+local Bars = ____draw.Bars
 local LOG_INTERVAL = 0.5
-local BAR_WIDTH = 160
-local BAR_HEIGHT_ABOVE = 180
-local TICK_HEIGHT = 16
-local HP_BAR_OFFSET = 40
-local WINDOW_WIDTH = 40
-local LOOP_SECONDS = 2
+local LOOP_SECONDS = 2.5
+local MOCK_LEAD = 1.5
+local MOCK_WINDOW = 0.4
 local NEAR_CREEP = 900
 local lastLogAt = -math.huge
 local lastCallAt
@@ -47,108 +45,18 @@ local function nearestCreep(subject)
     end
     return best
 end
-local function hLine(x0, x1, y, z, r, g, b)
-    DrawLine(
-        Vector(x0, y, z),
-        Vector(x1, y, z),
-        r,
-        g,
-        b
-    )
-end
-local function vTick(x, y, z, height, r, g, b)
-    DrawLine(
-        Vector(x, y, z - height / 2),
-        Vector(x, y, z + height / 2),
-        r,
-        g,
-        b
-    )
-end
-local function drawBars(creep, now)
-    local loc = creep:GetLocation()
-    local left = loc.x - BAR_WIDTH / 2
-    local right = loc.x + BAR_WIDTH / 2
-    local z = loc.z + BAR_HEIGHT_ABOVE
-    local phase = now % LOOP_SECONDS / LOOP_SECONDS
-    hLine(
-        left,
-        right,
-        loc.y,
-        z,
-        128,
-        128,
-        128
-    )
-    vTick(
-        left,
-        loc.y,
-        z,
-        TICK_HEIGHT,
-        255,
-        255,
-        255
-    )
-    vTick(
-        right,
-        loc.y,
-        z,
-        TICK_HEIGHT,
-        128,
-        128,
-        128
-    )
-    local centre = right - phase * BAR_WIDTH
-    local winLeft = math.max(left, centre - WINDOW_WIDTH / 2)
-    local winRight = math.min(right, centre + WINDOW_WIDTH / 2)
-    if winRight > winLeft then
-        hLine(
-            winLeft,
-            winRight,
-            loc.y,
-            z,
-            0,
-            255,
-            0
-        )
-        vTick(
-            winLeft,
-            loc.y,
-            z,
-            TICK_HEIGHT,
-            0,
-            255,
-            0
-        )
-        vTick(
-            winRight,
-            loc.y,
-            z,
-            TICK_HEIGHT,
-            0,
-            255,
-            0
-        )
-    end
-    local hpZ = z + HP_BAR_OFFSET
-    hLine(
-        left,
-        right,
-        loc.y,
-        hpZ,
-        128,
-        128,
-        128
-    )
-    hLine(
-        left,
-        left + (1 - phase) * BAR_WIDTH,
-        loc.y,
-        hpZ,
-        0,
-        255,
-        0
-    )
+--- A mock countdown on a loop: 1.5 s of lead, then a 0.4 s window, then 0.6 s after it closes.
+local function drawBars(subject, creep, now)
+    local loopStart = now - now % LOOP_SECONDS
+    local open = loopStart + MOCK_LEAD
+    local mock = {
+        creep = creep,
+        isDeny = false,
+        uncertain = false,
+        startOpen = open,
+        startClose = open + MOCK_WINDOW
+    }
+    Bars(subject, {mock}, now)
 end
 local function logReadings(subject, target, gap)
     local s = T(subject)
@@ -189,7 +97,7 @@ function ____exports.SpikeTick(_bot, subject)
     end
     local creep = nearestCreep(subject)
     if creep ~= nil then
-        drawBars(creep, now)
+        drawBars(subject, creep, now)
     end
     local cfg = Settings.Get()
     DebugDrawText(
