@@ -40,6 +40,7 @@ type state struct {
 	heroSlot   map[int32]int
 	heroByName map[string]*manta.Entity
 	byUnitName map[string]map[int32]*manta.Entity
+	nameOf     map[int32]string
 }
 
 func emit(v map[string]any) { _ = out.Encode(v) }
@@ -117,7 +118,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	s := &state{heroSlot: map[int32]int{}, heroByName: map[string]*manta.Entity{}, byUnitName: map[string]map[int32]*manta.Entity{}, lastHero: -1, lastSecond: -1}
+	s := &state{heroSlot: map[int32]int{}, heroByName: map[string]*manta.Entity{}, byUnitName: map[string]map[int32]*manta.Entity{}, nameOf: map[int32]string{}, lastHero: -1, lastSecond: -1}
 
 	p.OnEntity(func(e *manta.Entity, op manta.EntityOp) error {
 		name := e.GetClassName()
@@ -126,18 +127,26 @@ func main() {
 				s.heroSlot[e.GetIndex()] = len(s.heroSlot)
 			}
 		}
-		if n, ok := e.GetString("m_iszUnitName"); ok {
-			if op&manta.EntityOpDeleted != 0 {
+		if op&manta.EntityOpDeleted != 0 {
+			if n, ok := s.nameOf[e.GetIndex()]; ok {
 				delete(s.byUnitName[n], e.GetIndex())
-			} else {
-				if s.byUnitName[n] == nil {
-					s.byUnitName[n] = map[int32]*manta.Entity{}
+				delete(s.nameOf, e.GetIndex())
+				if s.heroByName[n] == e {
+					delete(s.heroByName, n)
 				}
-				s.byUnitName[n][e.GetIndex()] = e
 			}
-		}
-		if strings.HasPrefix(name, "CDOTA_Unit_Hero_") {
-			s.heroByName[name] = e
+		} else if n, ok := e.GetString("m_iszUnitName"); ok {
+			if old, seen := s.nameOf[e.GetIndex()]; seen && old != n {
+				delete(s.byUnitName[old], e.GetIndex())
+			}
+			s.nameOf[e.GetIndex()] = n
+			if s.byUnitName[n] == nil {
+				s.byUnitName[n] = map[int32]*manta.Entity{}
+			}
+			s.byUnitName[n][e.GetIndex()] = e
+			if strings.HasPrefix(name, "CDOTA_Unit_Hero_") {
+				s.heroByName[n] = e
+			}
 		}
 		return nil
 	})
