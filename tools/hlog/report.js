@@ -1,7 +1,7 @@
 // Human-readable views over a parsed game: summary, marks and timelines.
 'use strict';
 
-const { fmtT } = require('./checks');
+const { fmtT, modeChurn, BLIP_DWELL, LANING_ROAM_CAP } = require('./checks');
 
 const MARK_STATE_KEYS = ['mode', 'd', 'by', 'order', 'hp', 'mp', 'tgt', 'x', 'y', 'competing'];
 const NOISY = new Set(['snap', 'bot', 'player']);
@@ -50,6 +50,38 @@ function gameLine(game) {
     }`;
 }
 
+function f1(x) {
+    return x.toFixed(1);
+}
+
+/** Switch rates per bot with upstream last-hit blips split out, and the busiest remaining mode pairs. */
+function churnSection(game) {
+    const churn = modeChurn(game);
+    const rows = [['player', 'switches', 'blips', 'blips/min', 'other/min', 'top other pairs']];
+    let blips = 0;
+    let other = 0;
+    let minutes = 0;
+    for (const b of Object.values(game.bots).sort((x, y) => x.pid - y.pid)) {
+        const c = churn[b.pid];
+        if (b.human || !c) continue;
+        const span = b.snaps.length > 1 ? b.snaps[b.snaps.length - 1].t - b.snaps[0].t : game.maxT - game.minT;
+        const mins = Math.max(span, 1) / 60;
+        const rest = c.switches.length - 2 * c.blips;
+        blips += c.blips;
+        other += rest;
+        minutes += mins;
+        const pairs = [...c.pairs.entries()].sort((x, y) => y[1].n - x[1].n).slice(0, 3);
+        rows.push([who(game, b.pid), c.switches.length, c.blips, f1(c.blips / mins), f1(rest / mins), pairs.map(([k, g]) => `${k} ${g.n}`).join(', ') || '-']);
+    }
+    if (rows.length === 1) return [];
+    return [
+        '',
+        `mode churn (a blip is a team_roam visit out of laning at its ${LANING_ROAM_CAP} laning cap, left within ${BLIP_DWELL}s: upstream last-hit grabs, not humaniser):`,
+        table(rows),
+        `all bots: ${blips} blips (${f1(blips / minutes)}/min per bot), ${other} other switches (${f1(other / minutes)}/min per bot)`,
+    ];
+}
+
 function summary(game) {
     const out = [gameLine(game), ''];
     const rows = [['player', 'team', 'skill', 'ally', 'lh/dn', 'switches', 'notice n/avg', 'react n/avg', 'orders acc/dec', 'stuck', 'thrash', 'time in mode']];
@@ -76,6 +108,7 @@ function summary(game) {
         ]);
     }
     out.push(table(rows));
+    out.push(...churnSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');
     const cmds = game.events.filter(e => e.ev === 'cmd');
     const pings = game.events.filter(e => e.ev === 'ping');

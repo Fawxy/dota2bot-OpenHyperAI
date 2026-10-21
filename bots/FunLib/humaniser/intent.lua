@@ -55,7 +55,8 @@ ____exports.DEFAULTS = {
         MinDesire = 0.1,
         Drop = 0.15,
         Duration = 2,
-        BaseRadius = 2600
+        BaseRadius = 2600,
+        LaneFrontRadius = 1200
     },
     Survival = {Enable = true, HP = 0.25, MinRetreat = 0.5, Margin = 0.05},
     Summary = true
@@ -452,6 +453,19 @@ end
 local function isBusyOrSafe(bot, cfg)
     return bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility() or bot:IsStunned() or bot:IsHexed() or bot:DistanceFromFountain() < cfg.BaseRadius
 end
+local function nearLaneFront(bot, radius)
+    local lane = bot:GetAssignedLane()
+    local loc = bot:GetLocation()
+    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+        if Utils.GetLocationToLocationDistance(
+            loc,
+            GetLaneFrontLocation(team, lane, 0)
+        ) <= radius then
+            return true
+        end
+    end
+    return false
+end
 local function checkStuck(bot, s, mode, now)
     local cfg = ____exports.Get().Stuck
     if not cfg.Enable then
@@ -498,6 +512,10 @@ local function checkStuck(bot, s, mode, now)
     local sample = s.samples[mode]
     local raw = sample ~= nil and now - sample.time <= SAMPLE_FRESH and sample.raw or desire
     if not frozen or now - s.modeSince < cfg.After or raw < cfg.MinDesire then
+        s.stuckEpisode = false
+        return
+    end
+    if mode == BotMode.Laning and nearLaneFront(bot, cfg.LaneFrontRadius) then
         s.stuckEpisode = false
         return
     end

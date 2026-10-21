@@ -14,9 +14,11 @@ function ____exports.Describe(c)
 end
 local cycles = {}
 local current = {}
+local inputs = {}
 function ____exports.ResetCache()
     cycles = {}
     current = {}
+    inputs = {}
 end
 local function pick(tech, reason)
     return {tech = tech, reason = reason}
@@ -209,6 +211,7 @@ function ____exports.Plan(bot, s)
         end
     end
     current[pid] = result
+    inputs[pid] = input
     HDebug.Text(
         bot,
         "lane_tech",
@@ -218,6 +221,10 @@ function ____exports.Plan(bot, s)
 end
 function ____exports.Current(bot)
     return current[bot:GetPlayerID()]
+end
+--- The inputs of the bot's latest Plan call, for telemetry.
+function ____exports.LastInput(bot)
+    return inputs[bot:GetPlayerID()]
 end
 function ____exports.Commit(bot, tech)
     stateFor(

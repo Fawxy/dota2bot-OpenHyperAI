@@ -149,4 +149,102 @@ do
 	check("empty mark numbered 2", #events("mark") == 2 and field(events("mark")[2], "n") == "2")
 end
 
+-- Guard: a thrown error is reported once as lua_error with where/msg/tb and swallowed; the caller gets the fallback.
+do
+	local H = fresh()
+	local g = H.Telemetry.Guard("Test.Boom", function(a) error("boom " .. a) end, function(a) return "fallback " .. a end)
+	local ok, r = pcall(g, 7)
+	local e = events("lua_error")
+	check("guard does not rethrow", ok, r)
+	check("guard returns fallback", r == "fallback 7", r)
+	check("one lua_error", #e == 1, #e)
+	check("lua_error where", e[1] and field(e[1], "where") == "Test.Boom", e[1])
+	check("lua_error msg", e[1] and (field(e[1], "msg") or ""):find("boom 7", 1, true) ~= nil, e[1])
+	check("lua_error traceback names the file", e[1] and (field(e[1], "tb") or ""):find("test_telemetry.lua:", 1, true) ~= nil, e[1])
+
+	-- No error: every return value passes through.
+	local g2 = H.Telemetry.Guard("Test.Multi", function(a, b) return a + b, "second" end)
+	local x, y = g2(2, 3)
+	check("guard passes multiple returns", x == 5 and y == "second", tostring(x) .. " " .. tostring(y))
+
+	-- An error object whose __tostring itself errors (one way to get "error in error handling") is still reported.
+	local bad = setmetatable({}, { __tostring = function() error("tostring exploded") end })
+	local g3 = H.Telemetry.Guard("Test.Weird", function() error(bad) end)
+	check("weird error object swallowed", pcall(g3))
+	local w = events("lua_error")
+	check("weird error object reported by type", w[2] and field(w[2], "msg") == "<table>", w[2])
+end
+
+-- A stack overflow inside a guarded call is caught and reported where it entered, not left to Valve's handler.
+do
+	local H = fresh()
+	local function deep(n) return 1 + deep(n + 1) end
+	local g = H.Telemetry.Guard("Test.Deep", function() return deep(0) end, function() return -1 end)
+	local ok, r = pcall(g)
+	local e = events("lua_error")
+	check("overflow swallowed with fallback", ok and r == -1, tostring(ok) .. " " .. tostring(r))
+	check("overflow reported once", #e == 1 and field(e[1], "where") == "Test.Deep", e[1])
+end
+
+-- Rate limit per (where, msg): repeats are counted and reported again after LuaErrorRepeat with the running count.
+do
+	local H = fresh({ Enable = true, LuaErrorRepeat = 10 })
+	local g = H.Telemetry.Guard("Test.Repeat", function(m) error(m, 0) end)
+	for _ = 1, 5 do g("same") end
+	check("repeats within the window are quiet", #events("lua_error") == 1, #events("lua_error"))
+	g("other")
+	H.Telemetry.Guard("Test.Elsewhere", function(m) error(m, 0) end)("same")
+	check("new msg or where reported", #events("lua_error") == 3, #events("lua_error"))
+	T = T + 10
+	g("same")
+	local e = events("lua_error")
+	check("repeat after the window", #e == 4, #e)
+	check("repeat carries running count", e[4] and field(e[4], "n") == "6" and field(e[4], "msg") == "same", e[4])
+end
+
+-- The guard is installed on the humaniser hooks: a hook that throws falls back to the feature-off value.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })
+	b.GetPlayerID = function() error("handle went stale") end
+	local ok, d = pcall(H.Intent.Resolve, b, BotMode.Laning, 0.42)
+	check("Intent.Resolve error falls back to raw desire", ok and d == 0.42, tostring(ok) .. " " .. tostring(d))
+	local e = events("lua_error")
+	check("Intent.Resolve error reported", e[1] and field(e[1], "where") == "Intent.Resolve", e[1])
+	local ok2 = pcall(H.Tick, b)
+	check("Tick error swallowed", ok2)
+	check("Tick error reported", events("lua_error")[2] and field(events("lua_error")[2], "where") == "Tick", events("lua_error")[2])
+
+	local off = fresh({ Enable = true, LuaErrors = false })
+	check("LuaErrors = false leaves hooks unwrapped", not pcall(off.Intent.Resolve, b, BotMode.Laning, 0.42))
+end
+
+-- Humaniser off (A/B game): telemetry still snapshots and logs mode switches; the humaniser itself stays inert.
+do
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = false, Telemetry = { Enable = true } })
+	lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	local draws = 0
+	local realRandomFloat = RandomFloat
+	RandomFloat = function(...) draws = draws + 1 return realRandomFloat(...) end
+	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })
+	for i = 0, 20 do
+		T = i * 0.1
+		H.Tick(b)
+	end
+	b.mode = BotMode.Farm
+	T = 2.5
+	H.Tick(b)
+	RandomFloat = realRandomFloat
+	check("snapshots with humaniser off", #events("snap") == 3, #events("snap"))
+	check("mode switch with humaniser off", #events("mode") == 1 and field(events("mode")[1], "to") == "farm", events("mode")[1])
+	local bot = events("bot")[1]
+	check("bot line says humaniser off, no profile", bot and field(bot, "humaniser") == "0" and field(bot, "skill") ~= nil and field(bot, "notice") == nil, bot)
+	check("no profile RNG drawn", draws == 0, draws)
+	check("no chat callback installed", #CHAT_CALLBACKS == 0, #CHAT_CALLBACKS)
+	check("Intent.Resolve passes raw through", H.Intent.Resolve(b, BotMode.Farm, 0.31) == 0.31)
+	check("no humaniser start line", #events("notice") == 0)
+end
+
 finish()

@@ -217,6 +217,7 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function settings()
     return LaneConfig.Settings()
 end
@@ -277,6 +278,23 @@ function settleStack(bot, now)
     local assumed = after == nil and p.aggro >= t.StackAssumedFrom and p.aggro <= t.StackAssumedTo
     Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed)
     local grade = after == nil and "unknown" or ____exports.StackGrade(p.aggro)
+    Telemetry.Event(
+        "lane_stack",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"camp", p.campIdx},
+            {"type", p.type},
+            {"aggro", p.aggro},
+            {"planned", p.planned},
+            {"before", p.before},
+            {"after", after or "?"},
+            {"grade", grade},
+            {"assumed", assumed}
+        }
+    )
     HDebug.Log(
         "lane",
         string.format(
@@ -330,11 +348,14 @@ local doneCycle = {}
 pendingStacks = {}
 --- The aggro time of a job aborted before it acted, so the same attempt is not registered again.
 local skipped = {}
+--- Wave cycle of the bot's last lane_plan event.
+local planNoted = {}
 function ____exports.ResetCache()
     jobs = {}
     doneCycle = {}
     pendingStacks = {}
     skipped = {}
+    planNoted = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -392,6 +413,11 @@ function ____exports.WindowOpen(now, aggroAt, travel)
     local t = settings().Timing
     return now >= aggroAt - travel - t.JobStartSlack and now <= aggroAt + t.JobStartLate
 end
+--- Camps hold neutrals for the whole minute containing `time` only from their first spawn on.
+function ____exports.CampsUp(time)
+    local t = settings().Timing
+    return math.floor(time / t.PullPeriod) * t.PullPeriod >= t.NeutralFirstSpawn
+end
 local function isNeutral(unit)
     return unit ~= nil and unit ~= nil and unit:GetTeam() == Team.Neutral
 end
@@ -442,17 +468,17 @@ local function leadPath(pull, meet)
         local i = 0
         while i < n do
             do
-                local __continue36
+                local __continue37
                 repeat
                     local p = pull.path[i + 1]
                     if i == n - 1 and dist2D(p, pull.meetPoint) < 1 then
-                        __continue36 = true
+                        __continue37 = true
                         break
                     end
                     result[#result + 1] = p
-                    __continue36 = true
+                    __continue37 = true
                 until true
-                if not __continue36 then
+                if not __continue37 then
                     break
                 end
             end
@@ -480,6 +506,24 @@ local function register(bot, job, data)
     LanePlanner.Commit(
         bot,
         commitTech(job.kind)
+    )
+    Telemetry.Event(
+        "lane_job_start",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", LOG_KIND[job.kind]},
+            {"camp", job.campIdx},
+            {"key", data.key},
+            {
+                "data",
+                dataLabel(data)
+            },
+            {"aggroAt", job.aggroAt},
+            {"forced", job.forced == true}
+        }
     )
     HDebug.Log(
         "lane",
@@ -673,6 +717,22 @@ end
 local function logJob(bot, job, grade)
     local data = Camps.ByIdx(job.campIdx)
     local aggro = job.plannedSec + ((job.actualAggro or job.aggroAt) - job.baseAggro)
+    Telemetry.Event(
+        "lane_job",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", LOG_KIND[job.kind]},
+            {"camp", job.campIdx},
+            {"key", data and data.key},
+            {"aggro", aggro},
+            {"planned", job.plannedSec},
+            {"divert", job.peakDivert},
+            {"grade", grade}
+        }
+    )
     HDebug.Log(
         "lane",
         string.format(
@@ -712,6 +772,7 @@ local function abort(bot, job, reason, keepStack)
         )
         return
     end
+    local phase = job.phase
     job.phase = "return"
     local pid = bot:GetPlayerID()
     if job.acted ~= true then
@@ -727,19 +788,34 @@ local function abort(bot, job, reason, keepStack)
         Stacking.ClearStack(job.campIdx)
     end
     local token = string.gsub(reason, "%s+", "-")
-    local ____HDebug_Log_6 = HDebug.Log
-    local ____string_format_5 = string.format
-    local ____array_4 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_7 = Telemetry.Event
+    local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
+    local ____opt_4 = Camps.ByIdx(job.campIdx)
+    __TS__SparseArrayPush(
+        ____array_6,
+        {"key", ____opt_4 and ____opt_4.key},
+        {"reason", token},
+        {"phase", phase},
+        {"acted", job.acted == true},
+        {"divert", job.peakDivert}
+    )
+    ____Telemetry_Event_7(
+        "lane_job_abort",
+        {__TS__SparseArraySpread(____array_6)}
+    )
+    local ____HDebug_Log_12 = HDebug.Log
+    local ____string_format_11 = string.format
+    local ____array_10 = __TS__SparseArrayNew(
         "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
         bot:GetPlayerID(),
         LOG_KIND[job.kind],
         job.campIdx
     )
-    local ____opt_2 = Camps.ByIdx(job.campIdx)
-    __TS__SparseArrayPush(____array_4, ____opt_2 and ____opt_2.key or "-", token, job.peakDivert)
-    ____HDebug_Log_6(
+    local ____opt_8 = Camps.ByIdx(job.campIdx)
+    __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, job.peakDivert)
+    ____HDebug_Log_12(
         "lane",
-        ____string_format_5(__TS__SparseArraySpread(____array_4))
+        ____string_format_11(__TS__SparseArraySpread(____array_10))
     )
 end
 --- A contest is no pull attempt, so it ends on its own line, which the console parser does not read.
@@ -870,11 +946,21 @@ local function pullCampFor(tech, camps)
     end
     return camps[1]
 end
---- Earliest pull aggro in the start window for the camp's full or half seconds, before asking the planner.
-local function windowFor(bot, data, kind, now)
+--- Travel to the camp's stand point when the start window of its next full or half pull would be open now for a bot
+-- within MaxTravel, else undefined. A result above MaxTravel means only the distance keeps the window shut.
+local function windowTravel(bot, data, kind, now)
     local spawner = Camps.SpawnerByIdx(data.campIdx)
     if spawner == nil or data.pull == nil then
-        return false
+        return nil
+    end
+    local t = settings().Timing
+    local base = ____exports.NextAggroTime(
+        now - t.JobStartLate,
+        ____exports.AggroSecondsFor(kind, data),
+        t.PullPeriod
+    )
+    if not ____exports.CampsUp(base) then
+        return nil
     end
     local travel = travelTo(
         bot,
@@ -883,15 +969,51 @@ local function windowFor(bot, data, kind, now)
             leadPath(data.pull, data.pull.meetPoint)[1]
         )
     )
-    if travel > settings().Timing.MaxTravel then
-        return false
+    return ____exports.WindowOpen(
+        now,
+        base,
+        math.min(travel, t.MaxTravel)
+    ) and travel or nil
+end
+local function windowFor(bot, data, kind, now)
+    local travel = windowTravel(bot, data, kind, now)
+    return travel ~= nil and travel <= settings().Timing.MaxTravel
+end
+--- One lane_plan event per wave cycle: why this bot did or did not start a pull in it.
+local function notePlan(bot, s, now, fields)
+    if not Telemetry.IsEnabled() then
+        return
     end
-    local base = ____exports.NextAggroTime(
-        now - settings().Timing.JobStartLate,
-        ____exports.AggroSecondsFor(kind, data),
-        settings().Timing.PullPeriod
+    local pid = bot:GetPlayerID()
+    local cycle = cycleOf(now)
+    if planNoted[pid] == cycle then
+        return
+    end
+    planNoted[pid] = cycle
+    local mayRun, why = LaneRoles.MayRunCampJob(
+        bot,
+        s,
+        LaneState.Enemies(bot, s.lane)
     )
-    return ____exports.WindowOpen(now, base, travel)
+    local ____Telemetry_Event_16 = Telemetry.Event
+    local ____array_15 = __TS__SparseArrayNew(
+        {"pid", pid},
+        unpack(fields)
+    )
+    __TS__SparseArrayPush(
+        ____array_15,
+        {"owner", mayRun and "ok" or why},
+        {"eq", s.eqPos},
+        {"want", s.desiredEq},
+        {"front", s.ourFront},
+        {"efront", s.enemyFront},
+        {"tower", s.ourTowerAmount},
+        {"etower", s.theirTowerAmount}
+    )
+    ____Telemetry_Event_16(
+        "lane_plan",
+        {__TS__SparseArraySpread(____array_15)}
+    )
 end
 local function schedule(bot)
     local now = DotaTime()
@@ -905,6 +1027,7 @@ local function schedule(bot)
     end
     local camps = Camps.PullCampsFor(s.team, s.lane)
     if #camps == 0 then
+        notePlan(bot, s, now, {{"gate", "no-camp"}})
         return false
     end
     if not windowFor(bot, camps[1], "full_pull", now) and not windowFor(bot, camps[1], "half_pull", now) then
@@ -915,10 +1038,27 @@ local function schedule(bot)
             end
         end
         if not any then
+            local travel = windowTravel(bot, camps[1], "full_pull", now)
+            if travel ~= nil then
+                notePlan(bot, s, now, {{"gate", "far"}, {"camp", camps[1].campIdx}, {"travel", travel}})
+            end
             return false
         end
     end
-    local kind = PULL_TECHS[LanePlanner.Plan(bot, s).tech]
+    local choice = LanePlanner.Plan(bot, s)
+    local input = LanePlanner.LastInput(bot)
+    notePlan(bot, s, now, {
+        {"gate", "planner"},
+        {"camp", camps[1].campIdx},
+        {"tech", choice.tech},
+        {"reason", choice.reason},
+        {"score", input and input.laneScore},
+        {"plan", input and input.plan.plan},
+        {"pullOk", input and input.plan.pullAllowed},
+        {"partner", input and input.partnerSafe},
+        {"laners", input and input.enemyLaners}
+    })
+    local kind = PULL_TECHS[choice.tech]
     if kind == nil then
         return false
     end
@@ -959,20 +1099,20 @@ local function scheduleStack(bot, now)
     local t = settings().Timing
     local minute = math.floor(now / t.PullPeriod)
     local sec = now - minute * t.PullPeriod
-    if sec < earliestStackStart() then
+    if sec < earliestStackStart() or not ____exports.CampsUp(now) then
         return false
     end
     if LanePlanner.Committed(bot) ~= nil then
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_9
+    local ____temp_27
     if data ~= nil then
-        ____temp_9 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_27 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_9 = nil
+        ____temp_27 = nil
     end
-    local spawner = ____temp_9
+    local spawner = ____temp_27
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1101,17 +1241,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue156
+            local __continue162
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue156 = true
+                    __continue162 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue156 = true
+                    __continue162 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1122,9 +1262,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue156 = true
+                __continue162 = true
             until true
-            if not __continue156 then
+            if not __continue162 then
                 break
             end
         end
@@ -1170,10 +1310,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue182
+            local __continue188
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue182 = true
+                    __continue188 = true
                     break
                 end
                 if dist2D(
@@ -1182,9 +1322,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue182 = true
+                __continue188 = true
             until true
-            if not __continue182 then
+            if not __continue188 then
                 break
             end
         end
@@ -1267,10 +1407,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue196
+            local __continue202
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue196 = true
+                    __continue202 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1280,9 +1420,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue196 = true
+                __continue202 = true
             until true
-            if not __continue196 then
+            if not __continue202 then
                 break
             end
         end

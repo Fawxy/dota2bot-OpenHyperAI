@@ -87,6 +87,7 @@ ____exports.DEFAULTS = {
         WatchSec = 8,
         WatchEvery = 0.25,
         PullPeriod = 60,
+        NeutralFirstSpawn = 60,
         HalfPullLater = 2,
         NoCampAfter = 1,
         AggroConfirm = 2,

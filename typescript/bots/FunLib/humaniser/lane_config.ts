@@ -107,6 +107,8 @@ export const DEFAULTS = {
         WatchSec: 8,
         WatchEvery: 0.25,
         PullPeriod: 60,
+        // Liquipedia: camps first spawn at 1:00 game time, then every minute.
+        NeutralFirstSpawn: 60,
         HalfPullLater: 2,
         NoCampAfter: 1,
         AggroConfirm: 2,

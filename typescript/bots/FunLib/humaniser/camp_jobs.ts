@@ -18,6 +18,7 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -107,12 +108,15 @@ let doneCycle: Record<number, number> = {};
 let pendingStacks: Record<number, PendingStack> = {};
 /** The aggro time of a job aborted before it acted, so the same attempt is not registered again. */
 let skipped: Record<number, number> = {};
+/** Wave cycle of the bot's last lane_plan event. */
+let planNoted: Record<number, number> = {};
 
 export function ResetCache(): void {
     jobs = {};
     doneCycle = {};
     pendingStacks = {};
     skipped = {};
+    planNoted = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -163,6 +167,12 @@ export function TravelTime(dist: number, speed: number): number {
 export function WindowOpen(now: number, aggroAt: number, travel: number): boolean {
     const t = settings().Timing;
     return now >= aggroAt - travel - t.JobStartSlack && now <= aggroAt + t.JobStartLate;
+}
+
+/** Camps hold neutrals for the whole minute containing `time` only from their first spawn on. */
+export function CampsUp(time: number): boolean {
+    const t = settings().Timing;
+    return math.floor(time / t.PullPeriod) * t.PullPeriod >= t.NeutralFirstSpawn;
 }
 
 function isNeutral(unit: Unit | null | undefined): boolean {
@@ -226,6 +236,15 @@ function dataLabel(data: Camps.CampJobData): string {
 function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     jobs[bot.GetPlayerID()] = job;
     LanePlanner.Commit(bot, commitTech(job.kind));
+    Telemetry.Event("lane_job_start", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["key", data.key],
+        ["data", dataLabel(data)],
+        ["aggroAt", job.aggroAt],
+        ["forced", job.forced === true],
+    ]);
     HDebug.Log(
         "lane",
         string.format(
@@ -392,6 +411,16 @@ function logJob(bot: Unit, job: Job, grade: string): void {
     const data = Camps.ByIdx(job.campIdx);
     // Relative to the planned second, so a jittered pull past the minute does not wrap to 0.
     const aggro = job.plannedSec + ((job.actualAggro ?? job.aggroAt) - job.baseAggro);
+    Telemetry.Event("lane_job", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["key", data?.key],
+        ["aggro", aggro],
+        ["planned", job.plannedSec],
+        ["divert", job.peakDivert],
+        ["grade", grade],
+    ]);
     HDebug.Log(
         "lane",
         string.format(
@@ -425,6 +454,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
         close(bot, job, "return", Grade(job.kind, job.peakDivert));
         return;
     }
+    const phase = job.phase;
     job.phase = "return";
     const pid = bot.GetPlayerID();
     if (job.acted !== true) {
@@ -437,6 +467,16 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
     }
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     const [token] = string.gsub(reason, "%s+", "-");
+    Telemetry.Event("lane_job_abort", [
+        ["pid", pid],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["key", Camps.ByIdx(job.campIdx)?.key],
+        ["reason", token],
+        ["phase", phase],
+        ["acted", job.acted === true],
+        ["divert", job.peakDivert],
+    ]);
     HDebug.Log(
         "lane",
         string.format(
@@ -544,14 +584,44 @@ function pullCampFor(tech: JobKind, camps: Camps.CampJobData[]): Camps.CampJobDa
     return camps[0];
 }
 
-/** Earliest pull aggro in the start window for the camp's full or half seconds, before asking the planner. */
-function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): boolean {
+/**
+ * Travel to the camp's stand point when the start window of its next full or half pull would be open now for a bot
+ * within MaxTravel, else undefined. A result above MaxTravel means only the distance keeps the window shut.
+ */
+function windowTravel(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): number | undefined {
     const spawner = Camps.SpawnerByIdx(data.campIdx);
-    if (spawner === undefined || data.pull === undefined) return false;
+    if (spawner === undefined || data.pull === undefined) return undefined;
+    const t = settings().Timing;
+    const base = NextAggroTime(now - t.JobStartLate, AggroSecondsFor(kind, data), t.PullPeriod);
+    if (!CampsUp(base)) return undefined;
     const travel = travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]));
-    if (travel > settings().Timing.MaxTravel) return false;
-    const base = NextAggroTime(now - settings().Timing.JobStartLate, AggroSecondsFor(kind, data), settings().Timing.PullPeriod);
-    return WindowOpen(now, base, travel);
+    return WindowOpen(now, base, math.min(travel, t.MaxTravel)) ? travel : undefined;
+}
+
+function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): boolean {
+    const travel = windowTravel(bot, data, kind, now);
+    return travel !== undefined && travel <= settings().Timing.MaxTravel;
+}
+
+/** One lane_plan event per wave cycle: why this bot did or did not start a pull in it. */
+function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: [string, any][]): void {
+    if (!Telemetry.IsEnabled()) return;
+    const pid = bot.GetPlayerID();
+    const cycle = cycleOf(now);
+    if (planNoted[pid] === cycle) return;
+    planNoted[pid] = cycle;
+    const [mayRun, why] = LaneRoles.MayRunCampJob(bot, s, LaneState.Enemies(bot, s.lane));
+    Telemetry.Event("lane_plan", [
+        ["pid", pid],
+        ...fields,
+        ["owner", mayRun ? "ok" : why],
+        ["eq", s.eqPos],
+        ["want", s.desiredEq],
+        ["front", s.ourFront],
+        ["efront", s.enemyFront],
+        ["tower", s.ourTowerAmount],
+        ["etower", s.theirTowerAmount],
+    ]);
 }
 
 function schedule(bot: Unit): boolean {
@@ -561,14 +631,39 @@ function schedule(bot: Unit): boolean {
     const s = LaneState.ForBot(bot);
     if (s === undefined) return false;
     const camps = Camps.PullCampsFor(s.team, s.lane);
-    if (camps.length === 0) return false;
+    if (camps.length === 0) {
+        notePlan(bot, s, now, [["gate", "no-camp"]]);
+        return false;
+    }
     if (!windowFor(bot, camps[0], "full_pull", now) && !windowFor(bot, camps[0], "half_pull", now)) {
         // A stack pull may use a later camp than the first one.
         let any = false;
         for (const c of camps) if (LaneHooks.IsStacked(c.campIdx) && windowFor(bot, c, "stack_pull", now)) any = true;
-        if (!any) return false;
+        if (!any) {
+            const travel = windowTravel(bot, camps[0], "full_pull", now);
+            if (travel !== undefined)
+                notePlan(bot, s, now, [
+                    ["gate", "far"],
+                    ["camp", camps[0].campIdx],
+                    ["travel", travel],
+                ]);
+            return false;
+        }
     }
-    const kind = PULL_TECHS[LanePlanner.Plan(bot, s).tech];
+    const choice = LanePlanner.Plan(bot, s);
+    const input = LanePlanner.LastInput(bot);
+    notePlan(bot, s, now, [
+        ["gate", "planner"],
+        ["camp", camps[0].campIdx],
+        ["tech", choice.tech],
+        ["reason", choice.reason],
+        ["score", input?.laneScore],
+        ["plan", input?.plan.plan],
+        ["pullOk", input?.plan.pullAllowed],
+        ["partner", input?.partnerSafe],
+        ["laners", input?.enemyLaners],
+    ]);
+    const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
     const camp = pullCampFor(kind, camps);
     if (!windowFor(bot, camp, kind, now)) return false;
@@ -596,7 +691,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const t = settings().Timing;
     const minute = math.floor(now / t.PullPeriod);
     const sec = now - minute * t.PullPeriod;
-    if (sec < earliestStackStart()) return false;
+    if (sec < earliestStackStart() || !CampsUp(now)) return false;
     // A stack is the cycle's technique (PF14): nothing else may have started in it.
     if (LanePlanner.Committed(bot) !== undefined) return false;
     const data = Stacking.WantsStack(bot, minute);
@@ -751,6 +846,17 @@ function settleStack(bot: Unit, now: number): void {
     const assumed = after === undefined && p.aggro >= t.StackAssumedFrom && p.aggro <= t.StackAssumedTo;
     Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
     const grade = after === undefined ? "unknown" : StackGrade(p.aggro);
+    Telemetry.Event("lane_stack", [
+        ["pid", bot.GetPlayerID()],
+        ["camp", p.campIdx],
+        ["type", p.type],
+        ["aggro", p.aggro],
+        ["planned", p.planned],
+        ["before", p.before],
+        ["after", after ?? "?"],
+        ["grade", grade],
+        ["assumed", assumed],
+    ]);
     HDebug.Log(
         "lane",
         string.format(

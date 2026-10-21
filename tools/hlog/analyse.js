@@ -10,9 +10,21 @@ const { parseLog } = require('./parse');
 const { runChecks } = require('./checks');
 const report = require('./report');
 
-const DEFAULT_LOG = path.join(os.homedir(), 'Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/console.log');
+const LOG_DIR = path.join(os.homedir(), 'Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota');
+const DEFAULT_LOG = path.join(LOG_DIR, 'console.log');
 
-const USAGE = `usage: node tools/hlog/analyse.js [console.log] [options]
+/** Once a lobby gets a match ID, Dota moves the rest of the log to console.<matchid>.log. Prefer the newest of those. */
+function latestLog(dir = LOG_DIR) {
+    let names = [];
+    try {
+        names = fs.readdirSync(dir).filter(n => /^console\.\d+\.log$/.test(n));
+    } catch (_) {}
+    if (names.length === 0) return path.join(dir, 'console.log');
+    const newest = names.map(n => path.join(dir, n)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+    return newest;
+}
+
+const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
 
   (no option)          summary and checks for the latest game
   --list               one line per game in the log
@@ -26,7 +38,7 @@ const USAGE = `usage: node tools/hlog/analyse.js [console.log] [options]
   --snaps              include 1 s snapshots in timelines
   --json               dump the parsed game as JSON
 
-default log: ${DEFAULT_LOG}`;
+default log: the newest console.<matchid>.log in ${LOG_DIR}, else ${DEFAULT_LOG}`;
 
 function parseTime(s) {
     if (s === undefined) return undefined;
@@ -56,7 +68,7 @@ function main(argv) {
         console.log(USAGE);
         return 0;
     }
-    const file = opts.file || DEFAULT_LOG;
+    const file = opts.file || latestLog();
     if (!fs.existsSync(file)) {
         console.error(`${file} not found. Add -condebug to Dota's Steam launch options, play a game, then run this again.`);
         return 2;
@@ -98,4 +110,4 @@ function main(argv) {
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { main, parseTime };
+module.exports = { main, parseTime, latestLog };

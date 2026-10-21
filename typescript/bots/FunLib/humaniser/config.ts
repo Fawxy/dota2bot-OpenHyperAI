@@ -57,7 +57,10 @@ export const DEFAULTS = {
     Lane: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
     Trainer: { LastHit: { Enable: true } } as Record<string, any>,
-    /** [HEV] event lines for tools/hlog. Off unless Customize turns it on; never changes behaviour. */
+    /**
+     * [HEV] event lines for tools/hlog. Off unless Customize turns it on; never changes behaviour.
+     * Runs even with Enable = false (A/B games); only Customize.Enable = false turns it off with the rest.
+     */
     Telemetry: { Enable: false } as Record<string, any>,
 };
 
@@ -79,8 +82,11 @@ let cached: HumaniserConfig | undefined;
 export function Get(): HumaniserConfig {
     if (cached === undefined) {
         const merged = merge(DEFAULTS, Customize.Humaniser) as HumaniserConfig;
-        // Customize.Enable = false turns off every custom setting, humaniser included.
-        if (Customize.Enable === false) merged.Enable = false;
+        // Customize.Enable = false turns off every custom setting, humaniser and telemetry included.
+        if (Customize.Enable === false) {
+            merged.Enable = false;
+            merged.Telemetry = DEFAULTS.Telemetry;
+        }
         cached = merged;
     }
     return cached;

@@ -15,6 +15,7 @@ local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -148,8 +149,11 @@ local function drawOverlay(bot)
     end
     HDebug.Draw(bot)
 end
-function ____exports.Tick(bot)
+local function tick(bot)
     if not Config.IsEnabled() then
+        if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
+            Telemetry.Tick(bot)
+        end
         return
     end
     if not bot:IsHero() or bot:IsIllusion() then
@@ -174,5 +178,71 @@ function ____exports.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
+end
+local function none()
+    return nil
+end
+local function no()
+    return false
+end
+local function zero()
+    return 0
+end
+local function arg1(a)
+    return a
+end
+local function arg2(_a, b)
+    return b
+end
+if Telemetry.GuardsEnabled() then
+    Telemetry.GuardModule(
+        "Intent",
+        Intent,
+        {Resolve = function(_bot, _mode, raw) return raw end}
+    )
+    Telemetry.GuardModule("Lane", Lane, {
+        CampJobDesire = zero,
+        CampJobRawDesire = arg2,
+        CampJobThink = no,
+        CampJobOnEnd = none,
+        CampJobAbort = none,
+        RuneContestDesire = zero,
+        PreferStackedCamp = none,
+        PreThink = no,
+        Think = no,
+        HarassThink = no,
+        AdjustPosition = arg2
+    })
+    Telemetry.GuardModule(
+        "AllyLastHit",
+        AllyLastHit,
+        {
+            FilterCreeps = arg2,
+            MayLastHit = function() return true, "free: error" end
+        }
+    )
+    Telemetry.GuardModule("Orders", Orders, {
+        FilterAvoided = arg2,
+        AvoidsLocation = no,
+        CapRetreatDesire = arg2,
+        OrderFloor = zero,
+        DesireFloor = zero
+    })
+    Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
+    Telemetry.GuardModule(
+        "Perception",
+        Perception,
+        {
+            FilterNearbyEnemies = arg2,
+            FilterUnitList = arg1,
+            FilterChanneling = arg2,
+            IsCastKnown = function() return true end,
+            GetIncomingTrackingProjectiles = function(target) return target:GetIncomingTrackingProjectiles() end
+        }
+    )
+end
+local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
+function ____exports.Tick(bot)
+    guardedTick(bot)
 end
 return ____exports

@@ -66,6 +66,7 @@ function ____exports.Get()
         local merged = merge(____exports.DEFAULTS, Customize.Humaniser)
         if Customize.Enable == false then
             merged.Enable = false
+            merged.Telemetry = ____exports.DEFAULTS.Telemetry
         end
         cached = merged
     end

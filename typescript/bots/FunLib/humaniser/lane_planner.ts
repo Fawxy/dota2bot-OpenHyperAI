@@ -46,10 +46,12 @@ interface CycleState {
 
 let cycles: Record<number, CycleState> = {};
 let current: Record<number, Choice> = {};
+let inputs: Record<number, PlannerInput> = {};
 
 export function ResetCache(): void {
     cycles = {};
     current = {};
+    inputs = {};
 }
 
 function pick(tech: Choice["tech"], reason: string): Choice {
@@ -199,12 +201,18 @@ export function Plan(bot: Unit, s: LaneState.LaneSnapshot): Choice {
         if (result.tech === "aggro_pull") LaneRoles.NoteNeed(bot, now);
     }
     current[pid] = result;
+    inputs[pid] = input;
     HDebug.Text(bot, "lane_tech", Describe(result));
     return result;
 }
 
 export function Current(bot: Unit): Choice | undefined {
     return current[bot.GetPlayerID()];
+}
+
+/** The inputs of the bot's latest Plan call, for telemetry. */
+export function LastInput(bot: Unit): PlannerInput | undefined {
+    return inputs[bot.GetPlayerID()];
 }
 
 export function Commit(bot: Unit, tech: Committable): void {

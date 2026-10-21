@@ -5,6 +5,9 @@ const FIELD_RE = /(\w+)=("([^"]*)"|\S+)/g;
 const NUMBER_RE = /^-?\d+(\.\d+)?$/;
 // Lua runtime errors as the Dota console prints them; exact wording varies by build, so match loosely.
 const ERROR_RE = /script runtime error|stack traceback|attempt to (index|call|perform arithmetic|compare|concatenate)|\.lua:\d+: /i;
+// Dota stops printing a repeated message after 10 copies.
+const SQUELCH_RE = /\[VScript\] Message count limit of \d+ hit/;
+const CONSOLE_PREFIX = /^\d\d\/\d\d \d\d:\d\d:\d\d (\[VScript\] )?/;
 // A new lobby restarts the game clock; interleaved VMs only ever disagree by a frame or two.
 const GAME_SPLIT_REGRESSION = 30;
 // Events every module instance emits once per team; they repeat when modules are not shared between bots.
@@ -37,7 +40,8 @@ function parseLine(line) {
     }
     const summary = line.indexOf('[H:intent] summary ');
     if (summary >= 0) return { line: 'summary', ...parseFields(line.slice(summary + 19)) };
-    if (ERROR_RE.test(line) && !line.includes('[H:')) return { line: 'error', text: line.trim() };
+    if (ERROR_RE.test(line) && !line.includes('[H:')) return { line: 'error', text: line.replace(CONSOLE_PREFIX, '').trim() };
+    if (SQUELCH_RE.test(line)) return { line: 'squelch' };
     return undefined;
 }
 
@@ -49,7 +53,7 @@ function sameExceptTime(a, b) {
 }
 
 function newGame(index) {
-    return { index, events: [], errors: [], starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
+    return { index, events: [], errors: [], squelched: false, starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
 }
 
 function dedupe(game) {
@@ -140,7 +144,8 @@ function parseLog(text) {
             }
             game.starts[p.pid] = p;
         } else if (p.line === 'summary') game.summaries.push(p);
-        else game.errors.push(p.text);
+        else if (p.line === 'squelch') game.squelched = true;
+        else game.errors.push({ text: p.text, t: game.maxT });
     }
     return games.filter(g => g.events.length > 0 || g.errors.length > 0).map((g, i) => buildModel({ ...g, index: i + 1 }));
 }

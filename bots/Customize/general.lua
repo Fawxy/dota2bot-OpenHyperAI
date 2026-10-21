@@ -177,10 +177,16 @@ Customize.Humaniser = {
     -- Machine-readable "[HEV]" event lines (decisions, mode switches, last hits, 1 s snapshots) for
     -- tools/hlog. Launch Dota with -condebug to write them to game/dota/console.log. "!mark <note>" in
     -- chat records a mark and every bot's state at that moment. Never changes bot behaviour.
+    -- Also runs with Humaniser.Enable = false (A/B games): snapshots, mode switches and lua_error still
+    -- print; humaniser-only events and !mark (no humaniser chat hub) do not.
     Telemetry = {
         Enable = true,
         SnapshotInterval = 1.0,
         MarkAck = true, -- the team's lowest-PID bot replies "mark N saved" in team chat
+        -- Run humaniser entry points under xpcall; an error prints "ev=lua_error where=... msg=... tb=..."
+        -- (repeats every LuaErrorRepeat s with a count) and the hook falls back to its feature-off value.
+        LuaErrors = true,
+        LuaErrorRepeat = 10,
     },
 }
 

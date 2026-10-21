@@ -16,6 +16,7 @@ import * as Lane from "bots/FunLib/humaniser/lane";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
 export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, Trainer, Telemetry };
@@ -99,8 +100,12 @@ function drawOverlay(bot: Unit): void {
     HDebug.Draw(bot);
 }
 
-export function Tick(bot: Unit): void {
-    if (!Config.IsEnabled()) return;
+function tick(this: void, bot: Unit): void {
+    if (!Config.IsEnabled()) {
+        // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
+        if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) Telemetry.Tick(bot);
+        return;
+    }
     if (!bot.IsHero() || bot.IsIllusion()) return;
     Chat.EnsureInstalled(bot);
     Difficulty.Init();
@@ -119,4 +124,49 @@ export function Tick(bot: Unit): void {
     Telemetry.Tick(bot, telemetryContext);
     HDebug.SharedStateProbe(bot);
     drawOverlay(bot);
+}
+
+const none = (): undefined => undefined;
+const no = (): boolean => false;
+const zero = (): number => 0;
+const arg1 = (a: any): any => a;
+const arg2 = (_a: any, b: any): any => b;
+
+// Each fallback is what the hook returns with its feature off, so a humaniser error degrades to upstream behaviour.
+if (Telemetry.GuardsEnabled()) {
+    Telemetry.GuardModule("Intent", Intent, { Resolve: (_bot: Unit, _mode: number, raw: any) => raw });
+    Telemetry.GuardModule("Lane", Lane, {
+        CampJobDesire: zero,
+        CampJobRawDesire: arg2,
+        CampJobThink: no,
+        CampJobOnEnd: none,
+        CampJobAbort: none,
+        RuneContestDesire: zero,
+        PreferStackedCamp: none,
+        PreThink: no,
+        Think: no,
+        HarassThink: no,
+        AdjustPosition: arg2,
+    });
+    Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
+    Telemetry.GuardModule("Orders", Orders, {
+        FilterAvoided: arg2,
+        AvoidsLocation: no,
+        CapRetreatDesire: arg2,
+        OrderFloor: zero,
+        DesireFloor: zero,
+    });
+    Telemetry.GuardModule("Commands", Commands, { ShouldUseOrderedSmoke: no });
+    Telemetry.GuardModule("Perception", Perception, {
+        FilterNearbyEnemies: arg2,
+        FilterUnitList: arg1,
+        FilterChanneling: arg2,
+        IsCastKnown: () => true,
+        GetIncomingTrackingProjectiles: (target: { GetIncomingTrackingProjectiles(this: unknown): unknown }) => target.GetIncomingTrackingProjectiles(),
+    });
+}
+const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
+
+export function Tick(bot: Unit): void {
+    guardedTick(bot);
 }

@@ -27,7 +27,7 @@ local function teleport(bot) local m = lastMove(bot.pid) if m then bot.loc = Vec
 -- `away` puts the support that far east of its stand point (300 speed, so 300 units = 1 s of travel).
 local function jobWorld(skill, opts)
 	opts = opts or {}
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug })
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry })
 	T = opts.t or 70
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -599,6 +599,69 @@ do
 	check("precondition: still waiting", job.phase == "wait")
 	check("job wait held", H.Intent.HeldBy(support) == "lane:job_wait", H.Intent.HeldBy(support))
 	check("job wait is not a stuck mode", H.Intent.SummaryLine(support):find("stuck=-", 1, true) ~= nil, H.Intent.SummaryLine(support))
+end
+
+-- DotaTime is negative before the horn, and camps first fill at 1:00: no pull may be planned for an empty box.
+do
+	for _, t in ipairs({ -17, 43 }) do
+		local H, _, support = jobWorld(0.9, { t = t })
+		check("no pull desire at " .. t .. " s, before the first spawn", H.Lane.CampJobDesire(support) == 0 and H.Lane.CampJobs.Current(support) == nil)
+	end
+	local H, _, support = jobWorld(0.9, { t = 73 })
+	check("first pull at 1:15 is planned", near(H.Lane.CampJobDesire(support), 0.7) and H.Lane.CampJobs.Current(support).plannedSec == 15)
+end
+
+local function hev(lines, name)
+	local r = {}
+	for _, l in ipairs(lines) do if l:find(" ev=" .. name .. " ", 1, true) then table.insert(r, l) end end
+	return r
+end
+local function field(line, key) return line and line:match(" " .. key .. '="([^"]*)"') or line and line:match(" " .. key .. "=(%S+)") end
+
+do
+	-- lane_plan: one event per wave cycle with the planner's verdict, however often farm asks.
+	local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	H.Lane.LanePlanner.Commit(support, "aggro_pull")
+	for t = 70, 76, 0.5 do T = t H.Lane.CampJobDesire(support) end
+	local plans = hev(lines, "lane_plan")
+	check("one lane_plan in the cycle", #plans == 1, #plans)
+	check("lane_plan names the planner's choice and reason",
+		field(plans[1], "gate") == "planner" and field(plans[1], "tech") == "none" and field(plans[1], "reason") == "one per cycle (aggro_pull)", plans[1])
+	check("lane_plan carries the score inputs", tonumber(field(plans[1], "score")) ~= nil and tonumber(field(plans[1], "front")) ~= nil
+		and field(plans[1], "owner") == "ok" and field(plans[1], "partner") == "1", plans[1])
+	for t = 100, 103, 0.5 do T = t H.Lane.CampJobDesire(support) end
+	plans = hev(lines, "lane_plan")
+	check("next cycle: a second lane_plan, now a pull", #plans == 2 and field(plans[2], "tech") == "full_pull", plans[2])
+	local starts = hev(lines, "lane_job_start")
+	check("job start event", #starts == 1 and field(starts[1], "kind") == "full" and field(starts[1], "aggroAt") ~= nil, starts[1])
+end
+
+do
+	-- Too far from the camp: the window is shut by distance alone, and the event says so.
+	local H, _, support = jobWorld(1, { away = 4500, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	for t = 63, 70, 0.5 do T = t H.Lane.CampJobDesire(support) end
+	local plans = hev(lines, "lane_plan")
+	check("far camp: no job", H.Lane.CampJobs.Current(support) == nil)
+	check("far camp: gate=far with the travel time", #plans == 1 and field(plans[1], "gate") == "far" and near(tonumber(field(plans[1], "travel")), 15), plans[1])
+end
+
+do
+	-- Every abort reaches telemetry with its reason and the phase it ended in.
+	local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	frame(H, support, 70)
+	H.Orders.Post(2, { type = "LANE_HANDSOFF", sourceKey = "ping", issuerPID = 0, lane = Lane.Bot, duration = 30,
+		maxResponders = 1, onlyPIDs = { 5 }, delayKind = "ping" })
+	T = 72
+	H.Lane.CampJobDesire(support)
+	local aborts = hev(lines, "lane_job_abort")
+	check("abort event with reason and phase", #aborts == 1 and field(aborts[1], "reason") == "handsoff" and field(aborts[1], "phase") == "travel"
+		and field(aborts[1], "acted") == "1", aborts[1])
 end
 
 finish()

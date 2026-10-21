@@ -1,4 +1,4 @@
-dofile(HARNESS_DIR .. "/dota_stubs.lua")
+dofile(HARNESS_DIR .. "/lane_world.lua")
 local dota = require("bots/ts_libs/dota/index")
 local BotMode, Lane = dota.BotMode, dota.Lane
 
@@ -202,13 +202,13 @@ do
 end
 do
 	local H, I, b = runStuck(nil, function(b) b.action = BOT_ACTION_TYPE_MOVE_TO end)
-	check("standing still while acting is not stuck by default", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
+	check("standing still while acting is not stuck by default", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
 	local H2, I2, b2 = runStuck({ Enable = true, Stuck = { Match = "idle_or_still" } }, function(b) b.action = BOT_ACTION_TYPE_MOVE_TO end)
 	check("idle_or_still flags it", I2.SummaryLine(b2):find("stuck=farm:1") ~= nil, I2.SummaryLine(b2))
 end
 do
 	local H, I, b = runStuck(nil, function(b) b.fountainDist = 1000 end)
-	check("idle in base is not stuck", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
+	check("idle in base is not stuck", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
 end
 do
 	local H, I, b = fresh()
@@ -218,7 +218,34 @@ do
 		b.loc = Vector(i * 30, 0)
 		H.Tick(b)
 	end
-	check("moving idle bot is not stuck", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
+	check("moving idle bot is not stuck", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
+end
+
+-- Laning parks an idle, still bot at its creep front: that is a laner waiting for the wave or a last hit.
+-- Absolute lane amounts in lane_world run from x = -7000 (Radiant) to 7000 (Dire); top lane is y = 5000.
+local function runLaningStuck(loc, ownFront, enemyFront)
+	local H, I, b = fresh()
+	b.lane, b.loc, b.desire = Lane.Top, loc, 0.45
+	LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = ownFront, enemyFront
+	for i = 0, 20 do
+		T = 1 + i * 0.1
+		I.Resolve(b, LANING, 0.45)
+		H.Tick(b)
+	end
+	return H, I, b
+end
+do
+	-- Both fronts at x = -2800; the bot waits 500 behind them.
+	local H, I, b = runLaningStuck(Vector(-3300, 5000), 0.3, 0.7)
+	check("laner waiting at its wave is not stuck", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
+	check("laner waiting at its wave keeps its laning desire", near(I.Resolve(b, LANING, 0.45), 0.45), I.Resolve(b, LANING, 0.45))
+	-- Own wave still walking up (x = -5600); the bot already stands at the enemy wave's front.
+	local H2, I2, b2 = runLaningStuck(Vector(-3300, 5000), 0.1, 0.7)
+	check("laner waiting at the enemy wave is not stuck", I2.SummaryLine(b2):find("stuck=-", 1, true) ~= nil, I2.SummaryLine(b2))
+	-- Frozen in laning mode in the jungle, 3,000 from either front.
+	local H3, I3, b3 = runLaningStuck(Vector(-2800, 2000), 0.3, 0.7)
+	check("laner frozen away from its wave is stuck", I3.SummaryLine(b3):find("stuck=laning:1") ~= nil, I3.SummaryLine(b3))
+	check("laner frozen away from its wave yields 0.15", near(I3.Resolve(b3, LANING, 0.45), 0.3), I3.Resolve(b3, LANING, 0.45))
 end
 
 -- A Hold that begins during a stuck episode lifts the cap at once instead of leaving it for its Duration.
@@ -240,14 +267,14 @@ do
 		I.Resolve(b, FARM, 0.5)
 		H.Tick(b)
 	end
-	check("held bot is not stuck", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
+	check("held bot is not stuck", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
 	check("hold source reported", I.HeldBy(b) == "lane:job_wait", I.HeldBy(b))
 	for i = 1, 10 do
 		T = 4 + i * 0.1
 		I.Resolve(b, FARM, 0.5)
 		H.Tick(b)
 	end
-	check("a freeze right after the hold needs its own full After", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
+	check("a freeze right after the hold needs its own full After", I.SummaryLine(b):find("stuck=-", 1, true) ~= nil, I.SummaryLine(b))
 	for i = 11, 20 do
 		T = 4 + i * 0.1
 		I.Resolve(b, FARM, 0.5)

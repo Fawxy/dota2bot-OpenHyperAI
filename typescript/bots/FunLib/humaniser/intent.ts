@@ -122,6 +122,9 @@ export const DEFAULTS = {
         Drop: 0.15,
         Duration: 2,
         BaseRadius: 2600,
+        // Laning's own Think parks the bot at the creep front (also before the first wave arrives) and lets
+        // the move complete, so idle and still there is a laner waiting for creeps or a last hit, not a freeze.
+        LaneFrontRadius: 1200,
     },
     // Low HP and retreat wants out: every other mode is capped just below retreat (SURVIVAL tier).
     Survival: { Enable: true, HP: 0.25, MinRetreat: 0.5, Margin: 0.05 },
@@ -413,6 +416,15 @@ function isBusyOrSafe(bot: Unit & ActorBot, cfg: IntentConfig["Stuck"]): boolean
     return bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility() || bot.IsStunned() || bot.IsHexed() || bot.DistanceFromFountain() < cfg.BaseRadius;
 }
 
+function nearLaneFront(bot: Unit, radius: number): boolean {
+    const lane = bot.GetAssignedLane();
+    const loc = bot.GetLocation();
+    for (const team of [Team.Radiant, Team.Dire]) {
+        if (Utils.GetLocationToLocationDistance(loc, GetLaneFrontLocation(team, lane, 0)) <= radius) return true;
+    }
+    return false;
+}
+
 function checkStuck(bot: Unit, s: BotState, mode: number, now: number): void {
     const cfg = Get().Stuck;
     if (!cfg.Enable) return;
@@ -453,6 +465,10 @@ function checkStuck(bot: Unit, s: BotState, mode: number, now: number): void {
     const sample = s.samples[mode];
     const raw = sample !== undefined && now - sample.time <= SAMPLE_FRESH ? sample.raw : desire;
     if (!frozen || now - s.modeSince < cfg.After || raw < cfg.MinDesire) {
+        s.stuckEpisode = false;
+        return;
+    }
+    if (mode === BotMode.Laning && nearLaneFront(bot, cfg.LaneFrontRadius)) {
         s.stuckEpisode = false;
         return;
     }

@@ -15,6 +15,14 @@ const FOUNTAINS = [
 ];
 const LANE_NAMES = { 1: 'top', 2: 'mid', 3: 'bot' };
 const DETAIL_LIMIT = 12;
+// mode_team_roam_generic.lua wants 1.5 whenever X.GetLastHitCreep() finds a creep, and CapForLanePush holds
+// that to 0.72 in the laning phase, so every last-hit attempt is a short team_roam visit out of laning. The bot
+// often leaves it for attack or retreat rather than laning, so the exit mode does not matter.
+const LANING_ROAM_CAP = 0.72;
+const BLIP_DWELL = 2;
+// Intent's Thrash.MaxSwitches: an episode fires once a bot makes more than this many switches in its window.
+const THRASH_MAX_SWITCHES = 4;
+const WORST_LATE_NOTICES = 5;
 
 function fmtT(t) {
     if (typeof t !== 'number') return String(t);
@@ -52,11 +60,32 @@ function name(game, pid) {
 }
 
 function scriptErrors(game) {
-    if (game.errors.length === 0) return { id: 'script_errors', level: 'pass', summary: 'no Lua errors in the console', details: [], more: 0 };
-    const counts = new Map();
-    for (const e of game.errors) counts.set(e, (counts.get(e) || 0) + 1);
-    const details = [...counts.entries()].map(([text, n]) => `${n}x ${text}`);
-    return { id: 'script_errors', level: 'fail', summary: `${game.errors.length} error lines (${counts.size} distinct)`, details: details.slice(0, DETAIL_LIMIT), more: Math.max(0, details.length - DETAIL_LIMIT) };
+    // Errors caught by the humaniser guards: each line repeats with a running count, so keep the highest.
+    const guarded = new Map();
+    for (const e of game.events) {
+        if (e.ev !== 'lua_error') continue;
+        const key = `${e.where}: ${e.msg}`;
+        const g = guarded.get(key) || { n: 0, t: e.t, tb: e.tb };
+        g.n = Math.max(g.n, e.n || 1);
+        guarded.set(key, g);
+    }
+    if (game.errors.length === 0 && guarded.size === 0) return { id: 'script_errors', level: 'pass', summary: 'no Lua errors in the console', details: [], more: 0 };
+    const byText = new Map();
+    for (const e of game.errors) {
+        const g = byText.get(e.text) || { n: 0, t: e.t };
+        g.n++;
+        byText.set(e.text, g);
+    }
+    const when = t => (Number.isFinite(t) ? fmtT(t) : 'before the first event');
+    const details = [
+        ...[...guarded.entries()].map(([key, g]) => `guarded ${g.n}x from ${when(g.t)}: ${key}${g.tb ? ` (${g.tb})` : ''}`),
+        ...[...byText.entries()].map(([text, g]) => `${g.n}x from ${when(g.t)}: ${text}`),
+    ];
+    const squelched = game.squelched ? '; Dota squelched repeats, so the real count is higher' : '';
+    const parts = [];
+    if (guarded.size > 0) parts.push(`${guarded.size} distinct errors caught in humaniser hooks`);
+    if (game.errors.length > 0) parts.push(`${game.errors.length} console error lines (${byText.size} distinct)${squelched}`);
+    return { id: 'script_errors', level: 'fail', summary: parts.join('; '), details: details.slice(0, DETAIL_LIMIT), more: Math.max(0, details.length - DETAIL_LIMIT) };
 }
 
 function snapshotGaps(game) {
@@ -68,7 +97,8 @@ function snapshotGaps(game) {
         botCount++;
         for (let i = 1; i < b.snaps.length; i++) {
             const gap = b.snaps[i].t - b.snaps[i - 1].t;
-            if (gap > SNAP_GAP_FAIL) fails.push(`${name(game, b.pid)} no snapshot for ${gap.toFixed(1)}s from ${fmtT(b.snaps[i - 1].t)} (bot script stalled or errored)`);
+            // Dota does not run a dead bot's script, so a death shows as a gap that ends in the fountain.
+            if (gap > SNAP_GAP_FAIL && !nearFountain(b.snaps[i])) fails.push(`${name(game, b.pid)} no snapshot for ${gap.toFixed(1)}s from ${fmtT(b.snaps[i - 1].t)} (bot script stalled or errored)`);
         }
         const last = b.snaps[b.snaps.length - 1].t;
         if (!game.ended && end - last > SNAP_GAP_FAIL) fails.push(`${name(game, b.pid)} stopped reporting at ${fmtT(last)}, game ran to ${fmtT(end)}`);
@@ -79,7 +109,7 @@ function snapshotGaps(game) {
 
 function noticeDelay(game) {
     const fails = [];
-    const warns = [];
+    const late = [];
     let n = 0;
     for (const e of game.events) {
         if (e.ev !== 'notice' || e.reason !== 'delay') continue;
@@ -95,10 +125,30 @@ function noticeDelay(game) {
         const where = `${fmtT(e.t)} ${name(game, e.pid)} saw ${e.target}`;
         if (e.due < lo - EPS || e.due > hi + EPS) fails.push(`${where}: sampled ${e.due}s outside profile [${lo.toFixed(3)}, ${hi.toFixed(3)}]`);
         if (e.delay < e.due - FRAME_SLACK) fails.push(`${where}: noticed after ${e.delay}s, before its sampled ${e.due}s`);
-        else if (e.delay - e.due > 1) warns.push(`${where}: noticed ${(e.delay - e.due).toFixed(2)}s after it was due (the bot did not look for enemies meanwhile)`);
+        else if (e.delay - e.due > 1) late.push({ e, by: e.delay - e.due, where });
     }
     if (n === 0) return skip('notice_delay', 'no delayed notices');
-    return result('notice_delay', fails, warns, `${n} delayed notices within profile bounds`);
+    if (late.length === 0) return result('notice_delay', fails, [], `${n} delayed notices within profile bounds`);
+    const perBot = countBy(late, l => l.e.pid);
+    const worst = [...late].sort((x, y) => y.by - x.by);
+    const details = [
+        ...fails,
+        `late by bot: ${perBot.map(([pid, k]) => `${name(game, pid)} ${k}`).join(', ')}`,
+        ...worst.slice(0, WORST_LATE_NOTICES).map(l => `${l.where}: noticed ${l.by.toFixed(2)}s after it was due (the bot did not look for enemies meanwhile)`),
+    ];
+    const summary = `${fails.length} fail, ${late.length} late notices across ${perBot.length} bots; worst ${worst[0].by.toFixed(2)}s`;
+    return grouped('notice_delay', fails.length > 0 ? 'fail' : 'warn', summary, details);
+}
+
+/** [[key, count], ...], most frequent first; keys keep their first-seen order on ties. */
+function countBy(items, key) {
+    const m = new Map();
+    for (const x of items) m.set(key(x), (m.get(key(x)) || 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function grouped(id, level, summary, details) {
+    return { id, level, summary, details: details.slice(0, DETAIL_LIMIT), more: Math.max(0, details.length - DETAIL_LIMIT) };
 }
 
 function reactDelay(game) {
@@ -220,13 +270,92 @@ function lastHitEtiquette(game) {
     return result('lasthit_etiquette', fails, [], `${checked}/${botHits} allied bot last hits had a decision; none on creeps left for a human`);
 }
 
-function intentHealth(game) {
-    const warns = [];
+function pairKey(a, b) {
+    return a < b ? `${a}<->${b}` : `${b}<->${a}`;
+}
+
+function tally(map, key, t) {
+    const g = map.get(key) || { n: 0, t };
+    g.n++;
+    map.set(key, g);
+}
+
+function byCount(map) {
+    return [...map.entries()].sort((a, b) => b[1].n - a[1].n);
+}
+
+/**
+ * Per bot: its mode switches with upstream last-hit blips marked, counts of the other switches per mode pair,
+ * and its thrash episodes split into blip-driven ones and genuine ones keyed by their dominant mode pair.
+ */
+function modeChurn(game) {
+    const bots = {};
+    const get = pid => (bots[pid] = bots[pid] || { pid, switches: [], blips: 0, pairs: new Map(), thrash: { blip: 0, genuine: new Map() } });
+    const prev = {};
     for (const e of game.events) {
-        if (e.ev === 'stuck') warns.push(`${fmtT(e.t)} ${name(game, e.pid)} stuck in ${e.mode} (desire ${e.d}, ${Number(e.inMode).toFixed(1)}s in mode)`);
-        if (e.ev === 'thrash') warns.push(`${fmtT(e.t)} ${name(game, e.pid)} thrashing: ${e.switches} switches in ${e.window}s, now ${e.mode} (${e.competing})`);
+        if (e.ev !== 'mode') continue;
+        const b = get(e.pid);
+        const sw = { e, blip: false };
+        b.switches.push(sw);
+        const p = prev[e.pid];
+        if (p && !p.blip && p.e.from === 'laning' && p.e.to === 'team_roam' && Math.abs(p.e.d - LANING_ROAM_CAP) < EPS && e.from === 'team_roam' && e.dwell <= BLIP_DWELL) {
+            p.blip = sw.blip = true;
+            b.blips++;
+        }
+        prev[e.pid] = sw;
     }
-    return result('intent_health', [], warns, 'no stuck or thrash episodes');
+    for (const b of Object.values(bots)) for (const sw of b.switches) if (!sw.blip) tally(b.pairs, pairKey(sw.e.from, sw.e.to), sw.e.t);
+    for (const e of game.events) {
+        if (e.ev !== 'thrash') continue;
+        const b = get(e.pid);
+        const real = b.switches.filter(sw => !sw.blip && sw.e.t > e.t - e.window - FRAME_SLACK && sw.e.t <= e.t + FRAME_SLACK);
+        // Without the blips this window would not have reached Intent's threshold, so the blips caused the episode.
+        if (real.length <= THRASH_MAX_SWITCHES) {
+            b.thrash.blip++;
+            continue;
+        }
+        tally(b.thrash.genuine, countBy(real, sw => pairKey(sw.e.from, sw.e.to))[0][0], e.t);
+    }
+    return bots;
+}
+
+const TOP_GROUPS = 3;
+
+function topGroups(groups) {
+    const shown = groups.slice(0, TOP_GROUPS).map(([k, x]) => `${k} ${x.n}x from ${fmtT(x.t)}`);
+    const rest = groups.slice(TOP_GROUPS).reduce((a, [, x]) => a + x.n, 0);
+    return rest > 0 ? `${shown.join(', ')}, ${rest}x other` : shown.join(', ');
+}
+
+function intentHealth(game) {
+    const churn = modeChurn(game);
+    const stuck = {};
+    for (const e of game.events) if (e.ev === 'stuck') tally((stuck[e.pid] = stuck[e.pid] || new Map()), e.mode, e.t);
+    const pids = new Set([...Object.keys(churn), ...Object.keys(stuck)].map(Number));
+    const rows = [];
+    let genuine = 0;
+    let blip = 0;
+    let stuckN = 0;
+    for (const pid of pids) {
+        const c = churn[pid];
+        const g = c ? byCount(c.thrash.genuine) : [];
+        const s = stuck[pid] ? byCount(stuck[pid]) : [];
+        const gN = g.reduce((a, [, x]) => a + x.n, 0);
+        const sN = s.reduce((a, [, x]) => a + x.n, 0);
+        const bN = c ? c.thrash.blip : 0;
+        genuine += gN;
+        blip += bN;
+        stuckN += sN;
+        if (gN + sN === 0) continue;
+        const parts = [`${name(game, pid)}: ${gN + bN} thrash episodes (${bN} last-hit blips)`];
+        if (g.length > 0) parts.push(topGroups(g));
+        if (s.length > 0) parts.push(`stuck ${sN}x: ${topGroups(s)}`);
+        rows.push({ n: gN + sN, line: parts.join('; ') });
+    }
+    const blipNote = `${blip} last-hit blip episode${blip === 1 ? '' : 's'} not counted (upstream team_roam, see mode churn)`;
+    if (genuine + stuckN === 0) return grouped('intent_health', 'pass', blip > 0 ? `no stuck or genuine thrash episodes; ${blipNote}` : 'no stuck or thrash episodes', []);
+    rows.sort((a, b) => b.n - a.n);
+    return grouped('intent_health', 'warn', `${genuine} genuine thrash and ${stuckN} stuck episodes; ${blipNote}`, rows.map(r => r.line));
 }
 
 function nearFountain(s) {
@@ -278,4 +407,4 @@ function runChecks(game) {
     return ALL.map(check => check(game));
 }
 
-module.exports = { runChecks, fmtT, profileAt, delayBounds, modesDuring, expectedModes };
+module.exports = { runChecks, fmtT, profileAt, delayBounds, modesDuring, expectedModes, modeChurn, BLIP_DWELL, LANING_ROAM_CAP };

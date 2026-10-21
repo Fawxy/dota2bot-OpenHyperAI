@@ -10,7 +10,14 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.SCHEMA = 1
-____exports.DEFAULTS = {Enable = false, SnapshotInterval = 1, DecisionMaxAge = 1, MarkAck = true}
+____exports.DEFAULTS = {
+    Enable = false,
+    SnapshotInterval = 1,
+    DecisionMaxAge = 1,
+    MarkAck = true,
+    LuaErrors = true,
+    LuaErrorRepeat = 10
+}
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
         return defaults
@@ -34,8 +41,9 @@ function ____exports.Get()
     end
     return cached
 end
+--- Independent of the humaniser master switch, so an A/B game with the humaniser off still reports.
 function ____exports.IsEnabled()
-    return Config.IsEnabled() and ____exports.Get().Enable == true
+    return ____exports.Get().Enable == true
 end
 local function formatValue(v)
     if type(v) == "number" then
@@ -85,6 +93,170 @@ function ____exports.Event(ev, fields)
     end
     local rawPrint = Utils.RawPrint;
     (rawPrint or print)(line)
+end
+--- Whether index.ts should install Guard() around the humaniser entry points.
+function ____exports.GuardsEnabled()
+    return ____exports.IsEnabled() and ____exports.Get().LuaErrors == true
+end
+local MAX_ERROR_KEYS = 64
+local errorStats = {}
+local errorKeys = 0
+local function shortTrace()
+    if type(debug) ~= "table" or type(debug.traceback) ~= "function" then
+        return nil
+    end
+    local frames = {}
+    for line in string.gmatch(
+        debug.traceback("", 1),
+        "[^\n]+"
+    ) do
+        local loc = string.match(line, "([%w_]+%.lua:%d+)")
+        if loc ~= nil and (string.find(loc, "^telemetry%.lua")) == nil then
+            local fname = string.match(line, "function '([^']+)'")
+            frames[#frames + 1] = fname ~= nil and ((loc .. "(") .. fname) .. ")" or loc
+            if #frames >= 6 then
+                break
+            end
+        end
+    end
+    return #frames > 0 and table.concat(frames, " < ") or nil
+end
+local function describeError(err)
+    if type(err) == "string" then
+        return err
+    end
+    local ok, s = pcall(tostring, err)
+    return ok and type(s) == "string" and s or ("<" .. type(err)) .. ">"
+end
+local function currentPID()
+    return GetBot():GetPlayerID()
+end
+local function reportError(where, err, tb)
+    local msg = describeError(err)
+    if #msg > 200 then
+        msg = string.sub(msg, 1, 200)
+    end
+    local key = (where .. "|") .. msg
+    if errorStats[key] == nil and errorKeys >= MAX_ERROR_KEYS then
+        key = where .. "|*"
+    end
+    local now = GameTime()
+    local stat = errorStats[key]
+    if stat == nil then
+        errorKeys = errorKeys + 1
+        stat = {n = 0, at = -math.huge}
+        errorStats[key] = stat
+    end
+    stat.n = stat.n + 1
+    if now - stat.at < ____exports.Get().LuaErrorRepeat then
+        return
+    end
+    stat.at = now
+    local okPid, pid = pcall(currentPID)
+    local ____exports_Event_1 = ____exports.Event
+    local ____okPid_0
+    if okPid then
+        ____okPid_0 = pid
+    else
+        ____okPid_0 = nil
+    end
+    ____exports_Event_1("lua_error", {
+        {"pid", ____okPid_0},
+        {"where", where},
+        {"n", stat.n},
+        {"msg", msg},
+        {"tb", tb}
+    })
+end
+--- fn under xpcall. An error is reported (rate-limited per where+msg) and swallowed: the caller gets
+-- fallback(...args), which should be what the hook returns with its feature off. Reporting happens after
+-- xpcall returns, so a stack overflow (handler cannot run: "error in error handling") is still reported.
+-- Up to six arguments, no allocation per call; multiple return values pass through.
+function ____exports.Guard(where, fn, fallback)
+    local a1
+    local a2
+    local a3
+    local a4
+    local a5
+    local a6
+    local tb
+    local function thunk()
+        return fn(
+            a1,
+            a2,
+            a3,
+            a4,
+            a5,
+            a6
+        )
+    end
+    local function handler(err)
+        local ok, t = pcall(shortTrace)
+        local ____ok_2
+        if ok then
+            ____ok_2 = t
+        else
+            ____ok_2 = nil
+        end
+        tb = ____ok_2
+        return err
+    end
+    local function fail(b1, b2, b3, b4, b5, b6, err)
+        local trace = tb
+        tb = nil
+        pcall(reportError, where, err, trace)
+        if fallback ~= nil then
+            return fallback(
+                b1,
+                b2,
+                b3,
+                b4,
+                b5,
+                b6
+            )
+        end
+        return nil
+    end
+    local function finish(b1, b2, b3, b4, b5, b6, ok, ...)
+        if ok then
+            return ...
+        end
+        return fail(
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            ...
+        )
+    end
+    return function(b1, b2, b3, b4, b5, b6)
+        a1 = b1
+        a2 = b2
+        a3 = b3
+        a4 = b4
+        a5 = b5
+        a6 = b6
+        tb = nil
+        return finish(
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            xpcall(thunk, handler)
+        )
+    end
+end
+--- Replaces each named export of a module table with a Guard()ed one. Lua callers resolve exports at call time.
+function ____exports.GuardModule(name, mod, fallbacks)
+    for k, fallback in pairs(fallbacks) do
+        if type(mod[k]) == "function" then
+            mod[k] = ____exports.Guard((name .. ".") .. k, mod[k], fallback)
+        end
+    end
 end
 local function weakKeys()
     return setmetatable({}, {__mode = "k"})
@@ -153,8 +325,8 @@ function ____exports.HandleChat(team, msg)
     if marksByTeam[team] == nil then
         marksByTeam[team] = {}
     end
-    local ____marksByTeam_team_0 = marksByTeam[team]
-    ____marksByTeam_team_0[#____marksByTeam_team_0 + 1] = {
+    local ____marksByTeam_team_3 = marksByTeam[team]
+    ____marksByTeam_team_3[#____marksByTeam_team_3 + 1] = {
         by = msg.pid,
         text = note,
         t = DotaTime(),
@@ -247,6 +419,40 @@ local function botFields(bot, ctx)
     return fields
 end
 local function maybeProfile(bot, s)
+    if not Config.IsEnabled() then
+        if s.profileKey ~= nil then
+            return
+        end
+        s.profileKey = "off"
+        ____exports.Event(
+            "bot",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {
+                    "hero",
+                    heroName(bot)
+                },
+                {
+                    "team",
+                    bot:GetTeam()
+                },
+                {"schema", ____exports.SCHEMA},
+                {"humaniser", false},
+                {
+                    "skill",
+                    Difficulty.GetSkill(bot)
+                },
+                {
+                    "ally",
+                    Difficulty.IsAllyOfHuman(bot)
+                }
+            }
+        )
+        return
+    end
     local p = Profile.Get(bot)
     local cfg = Config.Get().Profile
     local key = string.format("%.3f|%.3f|%.3f", p.skill, p.noticeBase, p.reactBase)
@@ -428,15 +634,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue60
+                local __continue87
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue60 = true
+                        __continue87 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue60 = true
+                        __continue87 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -473,9 +679,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue60 = true
+                    __continue87 = true
                 until true
-                if not __continue60 then
+                if not __continue87 then
                     break
                 end
             end
@@ -483,7 +689,7 @@ local function snapHumans(bot, now)
         end
     end
 end
---- Runs every frame per bot from Humaniser.Tick.
+--- Runs every frame per bot from Humaniser.Tick, whether or not the humaniser is enabled.
 function ____exports.Tick(bot, provider)
     if not ____exports.IsEnabled() then
         return

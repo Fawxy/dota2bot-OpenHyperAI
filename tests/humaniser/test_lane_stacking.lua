@@ -234,6 +234,15 @@ do
 end
 
 do
+	-- Before the horn DotaTime is negative (-1:15 is :45 of minute -2), and camps first fill at 1:00: nothing to stack.
+	for _, t in ipairs({ -75, -15, 45 }) do
+		local H, support = world(1, { camps = { { "medium", MEDIUM } }, t = t })
+		support.loc = standOf(H, 1)
+		check("no stack job at " .. t .. " s, before the first spawn", frame(H, support, t) == 0 and H.Lane.CampJobs.Current(support) == nil)
+	end
+end
+
+do
 	local H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
 	local job, d58, d01, early
 	local lines = capture(function() job, d58, d01, early = runStack(H, support, 1, LARGE, 1, 3) end)

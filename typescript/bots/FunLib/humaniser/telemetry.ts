@@ -23,6 +23,10 @@ export const DEFAULTS = {
     // Etiquette decisions older than this are not attributed to a last hit.
     DecisionMaxAge: 1.0,
     MarkAck: true,
+    // Runs the humaniser entry points under xpcall and reports errors as ev=lua_error (read once, at load).
+    LuaErrors: true,
+    // A repeating (where, msg) error is reported again at most this often, with its running count.
+    LuaErrorRepeat: 10,
 };
 
 export type TelemetryConfig = typeof DEFAULTS;
@@ -82,8 +86,9 @@ export function Get(): TelemetryConfig {
     return cached;
 }
 
+/** Independent of the humaniser master switch, so an A/B game with the humaniser off still reports. */
 export function IsEnabled(): boolean {
-    return Config.IsEnabled() && Get().Enable === true;
+    return Get().Enable === true;
 }
 
 function formatValue(v: any): string {
@@ -121,6 +126,116 @@ export function Event(ev: string, fields: [string, any][]): void {
     }
     const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;
     (rawPrint ?? print)(line);
+}
+
+type AnyFn = (this: void, ...args: any[]) => any;
+
+/** Whether index.ts should install Guard() around the humaniser entry points. */
+export function GuardsEnabled(): boolean {
+    return IsEnabled() && Get().LuaErrors === true;
+}
+
+interface ErrorStat {
+    n: number;
+    at: number;
+}
+const MAX_ERROR_KEYS = 64;
+const errorStats: Record<string, ErrorStat> = {};
+let errorKeys = 0;
+
+function shortTrace(this: void): string | undefined {
+    if (type(debug) !== "table" || type(debug.traceback) !== "function") return undefined;
+    const frames: string[] = [];
+    for (const [line] of string.gmatch(debug.traceback("", 1), "[^\n]+")) {
+        const [loc] = string.match(line, "([%w_]+%.lua:%d+)");
+        if (loc !== undefined && string.find(loc, "^telemetry%.lua")[0] === undefined) {
+            const [fname] = string.match(line, "function '([^']+)'");
+            frames.push(fname !== undefined ? `${loc}(${fname})` : loc);
+            if (frames.length >= 6) break;
+        }
+    }
+    return frames.length > 0 ? frames.join(" < ") : undefined;
+}
+
+function describeError(this: void, err: any): string {
+    if (type(err) === "string") return err;
+    const [ok, s] = pcall(tostring, err);
+    return ok && type(s) === "string" ? (s as string) : `<${type(err)}>`;
+}
+
+function currentPID(this: void): number {
+    return GetBot().GetPlayerID();
+}
+
+function reportError(this: void, where: string, err: any, tb: string | undefined): void {
+    let msg = describeError(err);
+    if (msg.length > 200) msg = string.sub(msg, 1, 200);
+    let key = `${where}|${msg}`;
+    if (errorStats[key] === undefined && errorKeys >= MAX_ERROR_KEYS) key = `${where}|*`;
+    const now = GameTime();
+    let stat = errorStats[key];
+    if (stat === undefined) {
+        errorKeys++;
+        stat = { n: 0, at: -math.huge };
+        errorStats[key] = stat;
+    }
+    stat.n++;
+    if (now - stat.at < Get().LuaErrorRepeat) return;
+    stat.at = now;
+    const [okPid, pid] = pcall(currentPID);
+    Event("lua_error", [
+        ["pid", okPid ? pid : undefined],
+        ["where", where],
+        ["n", stat.n],
+        ["msg", msg],
+        ["tb", tb],
+    ]);
+}
+
+/**
+ * fn under xpcall. An error is reported (rate-limited per where+msg) and swallowed: the caller gets
+ * fallback(...args), which should be what the hook returns with its feature off. Reporting happens after
+ * xpcall returns, so a stack overflow (handler cannot run: "error in error handling") is still reported.
+ * Up to six arguments, no allocation per call; multiple return values pass through.
+ */
+export function Guard<F extends AnyFn>(where: string, fn: F, fallback?: AnyFn): F {
+    let a1: any, a2: any, a3: any, a4: any, a5: any, a6: any;
+    let tb: string | undefined;
+    const thunk = (): any => fn(a1, a2, a3, a4, a5, a6);
+    const handler = (err: any): any => {
+        const [ok, t] = pcall(shortTrace);
+        tb = ok ? t : undefined;
+        return err;
+    };
+    const fail = (b1: any, b2: any, b3: any, b4: any, b5: any, b6: any, err: any): any => {
+        const trace = tb;
+        tb = undefined;
+        pcall(reportError, where, err, trace);
+        if (fallback !== undefined) return fallback(b1, b2, b3, b4, b5, b6);
+        return undefined;
+    };
+    // res is only spread, so TSTL passes it as Lua varargs without building a table.
+    const finish = (b1: any, b2: any, b3: any, b4: any, b5: any, b6: any, ok: boolean, ...res: any[]): any => {
+        if (ok) return $multi(...res);
+        return fail(b1, b2, b3, b4, b5, b6, ...(res as [any]));
+    };
+    return ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => {
+        a1 = b1;
+        a2 = b2;
+        a3 = b3;
+        a4 = b4;
+        a5 = b5;
+        a6 = b6;
+        tb = undefined;
+        return finish(b1, b2, b3, b4, b5, b6, ...(xpcall(thunk, handler) as unknown as [boolean, any]));
+    }) as unknown as F;
+}
+
+/** Replaces each named export of a module table with a Guard()ed one. Lua callers resolve exports at call time. */
+export function GuardModule(name: string, mod: any, fallbacks: Record<string, AnyFn>): void {
+    for (const [k, fallback] of pairs(fallbacks)) {
+        if (type(mod[k]) === "function") mod[k] = Guard(`${name}.${k}`, mod[k], fallback);
+    }
 }
 
 function weakKeys<K extends AnyNotNil, V>(): LuaTable<K, V> {
@@ -214,6 +329,21 @@ function botFields(bot: Unit, ctx: BotContext | undefined): [string, any][] {
 }
 
 function maybeProfile(bot: Unit, s: BotState): void {
+    // Profile.Get draws RandomFloat, which a humaniser-off game must not do; skill is read-only.
+    if (!Config.IsEnabled()) {
+        if (s.profileKey !== undefined) return;
+        s.profileKey = "off";
+        Event("bot", [
+            ["pid", bot.GetPlayerID()],
+            ["hero", heroName(bot)],
+            ["team", bot.GetTeam()],
+            ["schema", SCHEMA],
+            ["humaniser", false],
+            ["skill", Difficulty.GetSkill(bot)],
+            ["ally", Difficulty.IsAllyOfHuman(bot)],
+        ]);
+        return;
+    }
     const p = Profile.Get(bot);
     const cfg = Config.Get().Profile;
     const key = string.format("%.3f|%.3f|%.3f", p.skill, p.noticeBase, p.reactBase);
@@ -353,7 +483,7 @@ function snapHumans(bot: Unit, now: number): void {
     }
 }
 
-/** Runs every frame per bot from Humaniser.Tick. */
+/** Runs every frame per bot from Humaniser.Tick, whether or not the humaniser is enabled. */
 export function Tick(bot: Unit, provider?: ContextProvider): void {
     if (!IsEnabled()) return;
     const state = GetGameState();
