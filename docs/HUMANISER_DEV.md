@@ -252,6 +252,134 @@ Other **TODO (in-game)** checks:
 - [ ] `-都来守家` still makes bots TP to defend.
 - [ ] With `Commands.Enable = false`, behaviour matches upstream.
 
+## Lane management (07)
+
+Overview of the whole feature; the per-phase sections below it (camp data, lane state, techniques, camp jobs, stacking) keep their own detail and in-game TODOs. Spec: `handoffs/07-lane-management.md`. Kill switches: `Humaniser.Enable = false`, `Lane.Enable = false`, or every `Lane.*` flag false each restore the pre-07 behaviour (scenario 15, pinned by `test_lane_regression.lua`).
+
+### Module map
+All in `typescript/bots/FunLib/humaniser/` (generated Lua beside the TS). Imports only point down this list; a lower module that needs something from a higher one reads it through a probe registered in `lane_hooks`.
+
+| Module | Role |
+|---|---|
+| `lane_config` | `DEFAULTS` for every number, `Settings()` deep merge of `Customize.Humaniser.Lane`, `IsActive()`, `Knows(tech, skill)` gates, curves, `Roll`/`Jitter`/`Gauss`, injected `J.*` helpers |
+| `lane_hooks` | Probe registry (`IsRotationPlanned`, `IsStacked`, `TechniqueOverride`) so lower modules can ask higher ones without a `require` cycle |
+| `camps_data` | Seed and generated camp entries (`source`: `seed`, `replay`, `measured`; `unverified`, `verifiedAt`) |
+| `camps` | Resolves `GetNeutralSpawners()` against the data; derives meet points, pull paths and stack exits from lane geometry; team-relative/absolute lane amount conversion |
+| `lane_state` | One snapshot per (team, lane), refreshed every `Timing.SnapshotRefresh` s: eqPos, creeps, wave timing, history; per-observer `ScoreFor` (exposure, laneScore) and `Enemies` |
+| `lane_plan` | Shared lane plan (core plan inferred from a human core, `LANE_*` orders), human-pull detection, lane-front hands-off |
+| `lane_roles` | Duo-lane partnership rules: who draws aggro, camp-job owner, partner safety, absent-core cover |
+| `lane_planner` | Picks one technique per wave cycle with one attempt roll (`Plan`, `Commit`) |
+| `lane_tech` | In-lane techniques run from the laning `Think()` hooks: block, aggro pull and drop, tower-aggro drop, freeze/hold positioning, shove |
+| `camp_jobs` | Camp-job executor from `mode_farm_generic.lua`: full, half, double and stack pulls, stack jobs, contest jobs |
+| `stacking` | Who stacks which camp, outcome bookkeeping, "stacked" state |
+| `harass` | The one shared harass tool (timed punish plus idle poke) |
+| `lane_mid` | Mid playbook: pre-rune shove window, ranged deny, hands-off beside a human mid |
+| `counterplay` | Fair detection of enemy pulls, freezes, stacks, missing mid, rune shoves, and the responses (punish, contest, break freeze, camp block) |
+| `lane_debug` | `!hpt`, `!hcamp` and the registry for `!hpulltest`, `!hstacktest` |
+| `lane` | Facade: `Tick`, `OwnsLaning`, `PreThink`, `Think`, `AdjustPosition`, `PickDeny`, `MayDeny`, `SupersedesHarass`, `HarassThink`, `CampJobDesire/Think/OnEnd/Active`, `RuneContestDesire`, `PreferStackedCamp`. Hand-written Lua calls only this |
+
+Hand-written Lua touched: `mode_laning_generic.lua` (hooks), `mode_farm_generic.lua` (camp-job desire, think, on-end, stacked-camp preference), `mode_rune_generic.lua` (`J.GetNextPowerRuneSpawnTime`, contest desire as a floor on the power-rune desire), `jmz_func.lua` (`Lane.SetHelpers`, `J.GetNextPowerRuneSpawnTime`), `localization.lua`, `Customize/general.lua`.
+
+### Flags
+`Customize.Humaniser.Lane.<Flag>` in `bots/Customize/general.lua`. `IsActive()` is true when `Lane.Enable` and any consumer flag (everything below except `Telegraph`) is on; every engine call in the lane code sits behind it, so an inactive system adds no `GetUnitList` scan and issues no action.
+
+| Flag | Default | Turning it off disables |
+|---|---|---|
+| `Enable` | true | Everything |
+| `OwnLaningThink` | `'allies'` | See below |
+| `Plan` | true | Shared lane plan and inference, `LANE_*` orders, `!freeze !shove !pull !nopull !stack [lane]`, the lane-front ping hands-off, and the planner's use of the plan |
+| `Block` | true | Creep block at 0:00 |
+| `FullPull` / `HalfPull` / `StackPull` | true | That pull kind (`StackPull` also gates double pulls and the stack pull itself) |
+| `AggroPull` | true | Aggro draw and drop, tower-aggro drop, tower swap |
+| `Freeze` | true | Freeze/hold positioning and zoning |
+| `Shove` | true | Shoves, including shove-before-rotating |
+| `Stack` | true | Stack jobs |
+| `Harass` | true | The shared harass tool; 04's original `HarassThink` runs again |
+| `Mid` | true | Mid playbook (pre-rune shove window, ranged deny, human-mid hands-off) |
+| `CounterPlay` | true | All counter-play detection and responses |
+| `Telegraph` | true | Chat lines only (`pulling in 5`, `half pull`, `shoving then rotating`, `stacked big camp`, `they're pulling <lane>`, `their sup is missing`, `they're freezing`, `ss mid`). Never keeps the lane system active on its own |
+| `CampBlock` | false | Stretch: ward in the enemy pull camp's spawn box. Verify in-game first |
+
+All other tuning (`Gates`, `Curves`, `Eq`, `Planner`, `Timing`, `Thresholds`, `Radii`, `Infer`, `Camps`, `Orders`, `HarassIdle`) lives in `lane_config.ts` `DEFAULTS`, overridable by table under `Customize.Humaniser.Lane`.
+
+### `OwnLaningThink`
+`Lane.OwnsLaning(bot)` is read once at `mode_laning_generic.lua` load, like 04's `OwnsLaning`, and is false when no in-lane flag (`Block`, `AggroPull`, `Freeze`, `Shove`, `Harass`, `Mid`) is on. A bot that owns its laning runs OHA's laning `Think()` for the whole game (Valve's C++ laning cannot be filtered, and a defined `Think()` cannot hand back).
+- `'allies'`: allies of a human. These are the bots 04 already gives OHA's Think.
+- `'all'`: every bot, **enemy team included**, runs OHA's laning `Think()` for the whole game instead of Valve's. Blast radius: the enemy's laning gets only the upstream OHA behaviour plus 07's techniques, so game balance changes for every lane. Use it for experiments.
+- `'off'`: nobody is given the Think by 07 (a bot 04 owns keeps it).
+- 04's last-hit filter stays limited to allies of humans, whatever this is set to.
+- **Harass:** with `Lane.Harass` on, every bot whose laning Think 04 or 07 owns uses the single shared tool in `harass.ts`: a timed punish of enemy last-hit attempts plus an idle poke equivalent to 04's, with 04's gates (protected human near, `WeAreStronger`, HP, tower range) as inputs for allies of humans. With it off, 04's `HarassThink` runs unchanged (its text is pinned by the `04 HarassThink text pinned` test).
+
+### Design notes
+- **Shared lane snapshot, per-observer perception:** `lane_state` keeps one snapshot per (team, lane). Exposure and `laneScore` depend on what the observer may see, so they are computed per observer in `ScoreFor`, never stored in the snapshot. At most one allied and one enemy creep scan per team per refresh and one enemy-hero scan per observer per refresh.
+- **Planner:** `LanePlanner.Plan` re-decides live every call from current inputs. It keeps only one attempt roll per (cycle, technique) and one committed technique per wave cycle (`Commit`); `hold`, `none`, hands-off and safety aborts apply immediately. Freeze and hold are postures and never commit. A technique chosen under an order (`!pull`, `!stack`) skips the roll only for the ordered technique.
+- **Camp-job window:** the start window (`aggro - travel - JobStartSlack` to `aggro + JobStartLate`) only gates the start. A running job holds `Timing.JobDesire` (0.7) until it finishes or aborts.
+- **Aggro confirmation:** a pull confirms the aggro hit (`GetLastAttackTime` or a neutral targeting the bot) before leading; no confirmation within `Timing.AggroConfirm` aborts the job.
+- **Stack outcome:** the peak neutral count in the box, sampled from :02 to :05 while the box is in sight.
+- **Human mid:** a passing bot never touches a human mid's wave (deny included); the mid-assigned bot still acts.
+- **Counter-play path safety** ignores the lane's own enemy laners (they stand near our lane; counting them would block every contest).
+- **One shared harass tool** for 04 and 07, see above.
+- **Orders:** `LANE_*` orders sit on the 05/06 orders bus at priority -1, are never declined and never hide an executed order. Durations: freeze/shove 90 s, pull/nopull 120 s, stack 60 s, lane-front hands-off 30 s.
+
+### Data method
+- **Seeds:** `camps_data.ts` seed entries come from public guides (Liquipedia "Pulling", Dotafire, bo3.gg; accessed 21/10/2026). Small camp pull :15/:45, hard camp :18/:48, half pulls +2 s, stacks small 54.5, medium 54.0, large 53.5, ancient 53.0. The off-lane hard camp is `unverified`. The old `aba_site.ts` stack data is never used (pre-7.33).
+- **Replay mining** (`tools/replay-mining`, see its README): `node fetch_replays.js --count 50 --out ./replays` (OpenDota, needs `bunzip2`), `go run ./parser <dem> > out/<id>.ndjson`, `node mine.js` (writes `out/aggregate.json`), `node gen_camps.js` (rewrites only the generated block between the `BEGIN/END GENERATED REPLAY ENTRIES` markers in `camps_data.ts`), `detect.js` holds the detection rules. The Go parser has not been compiled or run against a real replay (written from memory of manta's API); fix its entity and property names on first use. It cannot attribute lane-creep damage to one entity, so replay data is stack-only for timing; **half-pull divert data comes only from in-game measurement.**
+- **Measurement:** run with `-condebug` and `Debug = true`; `!hpt` logs your position as a `Vector(...)` literal, `!hcamp` the nearest spawner box and its resolved job (`data=<seed|replay|measured|unverified>`), `!hpulltest <idx> [half]` and `!hstacktest <idx>` make your nearest bot run that camp. Then `node tools/replay-mining/parse_condebug.js <console.log>`: per camp and kind it prints attempts, ok rate and median aggro error, and a `suggest:` line once there are 5 or more attempts with at least 80% ok.
+- **Promoting an entry:** paste the suggested seconds into the camp's `camps_data.ts` entry, set `source: "measured"` and `verifiedAt: "dd/mm/yyyy"` (the date of the run), and remove `unverified` if it was set. Replay entries are overwritten by `gen_camps.js`; measured ones belong above the generated block.
+
+### Overlay and log formats
+Overlay keys (Debug): `lane` (`eq`, `want`, `score`, creep counts, seconds to next wave, plan), `lane_tech` (planner choice and reason), `lane_exec` (`tech=<tech>@<sec> <phase>`), `lane_job` (`job=<kind>@<plannedSec> <phase> out=<divert>`).
+
+Console lines (all `[H:lane] ...`, captured by `-condebug`):
+- `pid=.. tech=<tech> @<cycleSec> reason=<reason>`: a technique started
+- `mistake pid=.. <kind>` (for example `block-lost`) and `pid=.. mistake: double-draw`: deliberate or measured mistakes
+- `job-start pid=.. kind=.. camp=.. key=.. data=<seed|replay|measured|unverified> aggroAt=.. forced=..`
+- `job pid=.. kind=<full|half|stackpull|double> camp=.. key=.. aggro=.. planned=.. divert=.. grade=..`: graded completed pull, read by `parse_condebug.js`
+- `job-abort pid=.. kind=.. camp=.. key=.. reason=.. divert=..`: any abort; not parsed, so aborts never count against a camp's timing
+- `stack pid=.. camp=.. type=.. aggro=.. planned=.. before=.. after=<n|?> grade=<ok|mistake:early|mistake:late|unknown>`: read by `parse_condebug.js`; `stack-assumed ...` is not parsed
+- `harass pid=.. kind=<punish|poke> etiquette=<bool>`
+- `counter pid=.. noticed=<kind> lane=.. camp=.. enemy=..`, `counter pid=.. camp-block camp=..`, `contest-end ...`
+- `hpt`, `hcamp`, `hpulltest`, `hstacktest` debug-command output
+
+### TODO (in-game), consolidated
+Items spelled out in the phase sections below (camp data, lane state, techniques, camp jobs, stacking) are not repeated: absolute vs team-relative lane amounts, spawner `type`/`idx`, waves at :00/:30, `GetLaneFrontAmount` ignoring towers, lane-creep unit names, deny detection through `GetAttackTarget()`, aggro drop above 50% HP, tower aggro drop and swap, block geometry, aggro triggered by the order, spawn boxes at 0:00, farm desire 0.7 against laning, one attack aggroing a whole camp, allied creeps targeting neutrals (divert measurement), seed timings per camp (stack :53-:55 by type, pulls :15/:45, :18/:48, half pulls +2 s), the `unverified` off-lane hard camp, `RandomVector(len)`, aggro confirmation, last-hit yield during a job, stack outcome by :05, `StackSight`.
+
+Also to confirm:
+- `GetAmountAlongLane(lane, location)` returns a table (`amount`, `distance`) and not a number; the code reads `.amount`.
+- The neutral respawn-on-the-minute rule when the box is empty, and that wards in a spawn box still block the spawn on the current patch (gate for `CampBlock`, and for any ward-based stack denial).
+- Laning desire against rune desire at 0:00: bots going to the bounty rune skip the 0:05 block; check the block still happens for the lane bots that stay.
+- Job desire 0.7 beats the laning mode's 0.446 but not retreat: a bot in danger must still retreat out of a job.
+- `GetHeroLastSeenInfo(pid)` returns a usable location and time for enemy supports in fog (counter-play "support unseen" and "last seen toward its camp").
+- `J.GetPosition` on enemy heroes gives the estimated role (counter-play picks the enemy support and mid; the lane plan counts enemy laners).
+- An enemy hero's `GetAttackTarget()` is readable for last-hit detection (harass punish `IsLastHitAttempt`), not only for the deny race.
+- Cross-bot perception: `ScoreFor`, `Enemies` and `WeAreStronger` are evaluated for the lane's core from another bot's module (`lane_plan` `pickFor` and `EnemyLaners`). The enemy list comes from the observing bot's perception, so check the core's plan and enemy-laner count agree with what the core itself would see, and that the extra perception delay is acceptable.
+- Harass: `GetExtrapolatedLocation` gives a usable approach direction for an enemy walking up to a last hit (`Thresholds.ApproachEpsilon`, `Radii.ApproachExtrapolate`), and the step-back (`AggroDanceStep`, `AggroDanceBack`) after a hit into 3 or more creeps looks natural and does not walk into the wave.
+- Counter-play, expected pull arrival: `enemyArrivalSec` is the median first-reach of 3 creeps at our measured front; check it against the front position, because a wave our shove pushed far forward can read as a late or missing wave and be taken for a pull (false "pull" signal).
+- Counter-play, rune contest: `RuneContestDesire` only acts from :52 of the minute before the spawn, because `GetBestRune` skips a power rune marked missing before then. Check the mid bot actually walks to the right rune (rune mode's own choice).
+- Counter-play, contest and shove responses: path safety counts every enemy other than the puller and this lane's laners, so contests may rarely start; the shove override still needs `WeAreStronger` and HP, so a "not stronger" break-freeze or rune shove falls back to zoning. Judge whether either is too timid.
+- `Orders.Say` chat lines: the telegraph lines listed under the `Telegraph` flag read naturally and respect the 10 s limit.
+- 07-only bots (enemy team under `OwnLaningThink = 'all'`) laning with OHA's `Think()` instead of Valve's: compare lane results with `'allies'`.
+- `!freeze`, `!shove`, `!pull`, `!nopull`, `!stack` resolve the lane from the issuer's position and the lane word, and bots acknowledge once.
+- A ping on the lane front during laning hands the lane off for 30 s (no pulls, stacks, shoves or aggro draws from that lane's bots), and it expires.
+- `GetTeamMember(1..#GetTeamPlayers(team))` is only valid for the caller's own team; every lane use is own-team, so confirm nothing reads it for the enemy.
+
+### Manual test checklist (spec scenarios; compare `SkillOverride = 0.9` with `0.2` / `0.4` where noted)
+- [ ] 1 Data: the data calibration run produces `camps_data.ts` entries for every standard pull and stack camp; `!hstacktest` and `!hpulltest` succeed for each entry marked `measured`.
+- [ ] 2 Full pull: push our wave to the enemy T1. The safelane bot (0.9) pulls on the next cycle, divert fraction above 0.8, equilibrium moves back toward our tower.
+- [ ] 3 Half pull: with a small drift toward the enemy, a 0.9 bot picks a half pull with divert 0.3-0.6. At 0.4 it never attempts one (gate 0.6).
+- [ ] 4 Stack pull: the bot stacks the small camp, pulls it on a later cycle, and the wave is fully killed.
+- [ ] 5 Creep block: at 0:00 the first meeting point is measurably closer to our tower than with `Block = false`.
+- [ ] 6 Aggro pull: one aggro pull shifts the meeting point toward our tower and the bot drops tower aggro correctly.
+- [ ] 7 No pull when the partner is in danger: with 2 enemies visible on our carry the support stays.
+- [ ] 8 Harass timing: a human goes for 20 last hits next to a 0.9 bot: most attempts are punished. At 0.2 only some, at random timings.
+- [ ] 9 Enemy pull detection: a human support pulls or half-pulls; 0.9 enemy bots punish or follow most times, 0.2 rarely.
+- [ ] 10 Fairness: with all enemies fogged and no last-seen hints, counter-play never fires (no `counter pid=...` lines).
+- [ ] 11 Bot duo: a bot pos 1 and bot pos 5 never draw aggro in the same 3 s window; the pos 5 does most draws while pos 1 last-hits; when pos 1 leaves for over a wave cycle, pos 5 holds the wave near our tower.
+- [ ] 12 Human core: with a human pos 1 and a bot pos 5 the bot blocks with you, pulls, stacks, zones and draws aggro (not within about 3 s of you doing it); it infers your freeze (stops hitting the wave, no full pull) and your shove (helps); `!freeze` and `!shove` override; a lane-front ping stops lane jobs for 30 s.
+- [ ] 13 Human support: with a bot pos 1 and a human pos 5 the bot core runs its own plan, reads your pulls and aggro draws as inputs, and does not contest your camp jobs.
+- [ ] 14 Mid: the mid bot blocks at 0:00 and shoves about 15-20 s before rune spawns; with a human mid, passing bots leave the wave alone (no deny either).
+- [ ] 15 Regression: `Lane.Enable = false`, then every `Lane.*` flag false: laning, farm, rune and ping behaviour match the pre-07 build; no `[H:lane]` lines.
+
 ## Lane management: camp data (task 07)
 
 `camps.ts` resolves `GetNeutralSpawners()` against `camps_data.ts`; seed camps get meet points, pull paths and stack exits derived from lane geometry. Debug commands (need `Humaniser.Debug` and the Lane feature, human issuers): `!hpt` logs the issuer's position as a `Vector(...)` literal, `!hcamp` logs the nearest spawner box and its resolved job.
