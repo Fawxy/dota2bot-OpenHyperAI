@@ -13,6 +13,7 @@ local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
@@ -28,6 +29,7 @@ ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Lane = Lane
 ____exports.Intent = Intent
+____exports.LastHitSkill = LastHitSkill
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 local OVERLAY_REFRESH = 0.25
@@ -146,6 +148,19 @@ local function drawOverlay(bot)
                 )
             )
         end
+        if LastHitSkill.IsActiveFor(bot) then
+            local cs = LastHitSkill.Counts(bot)
+            HDebug.Text(
+                bot,
+                "cs",
+                string.format(
+                    "e=%.3f attempts=%d misses=%d",
+                    LastHitSkill.ErrorWidth(bot),
+                    cs.attempts,
+                    cs.misses
+                )
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -174,6 +189,7 @@ local function tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
     Trainer.Tick(bot)
+    LastHitSkill.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)

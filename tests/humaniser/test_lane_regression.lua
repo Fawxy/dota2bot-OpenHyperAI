@@ -277,7 +277,7 @@ for _, line in ipairs({
 }) do
 	check("laning mode guard: " .. line, laningSrc:find(line, 1, true) ~= nil)
 end
-check("laning mode: Think() is defined only when 04, 07 or the 14 self-test owns the bot or upstream already did", laningSrc:find("if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest then", 1, true) ~= nil)
+check("laning mode: Think() is defined only when 04, 07 or the 14 self-test owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tfunction Think()", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
 	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do
 	check("farm mode hook: " .. call, farmSrc:find(call, 1, true) ~= nil)

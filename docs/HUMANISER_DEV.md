@@ -624,6 +624,24 @@ Post claims instead of editing desires: camp jobs as `CAMP_JOB` floors on the jo
 - [ ] `Intent.Enable = false`: behaviour matches the `humaniser` branch (the overlay's top-3 desire line goes back to empty).
 - [ ] No visible FPS drop at `host_timescale 2`.
 
+## Last-hit accuracy (task 10)
+Low-skill bots misjudge last hits and deny less. `Customize.Humaniser.LastHitSkill.Enable = false` (or `Humaniser.Enable = false`) restores upstream exactly, and skill 1.0 is always upstream.
+
+- **Module:** `FunLib/humaniser/last_hit_skill.lua`, `J.Humaniser.LastHitSkill.WillKill(bot, creep, damage, delay, isDeny)`. It replaces the bare kill check in laning's `GetBestLastHitCreep` (last hit and move-to lookahead), `GetBestDenyCreep`, mid's ranged deny (`LaneMid.PickDeny`) and team roam's `X.GetLastHitCreep`. Farm mode never times a last hit, so it is not wrapped.
+- **Per creep, per bot,** kept until the creep is gone: an error `eps` in [-1, 1] and whether the bot tries at all. Damage is judged as `damage * (1 + eps * e)`, where `e = lerp(0.15, 0.02, skill)`, ×1.5 when the bot was hit by a hero, or attacked one, in the last 2 s (time-latched, so turning to a creep does not end it at once). The try rate is `lerp(0.75, 0.98, skill)`, or `lerp(0.35, 0.9, skill)` for denies. Because the rolls are kept, `GetDesire` (laning 0.9, team roam 1.5) and `Think` agree on the same creep, so nothing flickers under intent arbitration and no claim is needed.
+- **Ranged priority:** for `0.6 < skill < 1`, the bot takes a ranged or siege creep first when several are killable together.
+- **Valve laning:** with `RequireOwnedLaning = true` (default) only bots whose laning `Think()` OHA owns are affected, everywhere. Each other bot logs `[Humaniser] LastHitSkill: pid=<pid> <hero> is on Valve laning; no effect (set Lane.OwnLaningThink='all')` once. Enemy bots are only owned with `Lane.OwnLaningThink = 'all'`. The trainer's self-test bot always stays exact.
+- **Overlay** (`Debug = true`): `cs: e=<e> attempts=<n> misses=<n>`. An attempt is a last-hit or deny swing the bot issued (`NoteAttempt` beside the attack in laning and team roam), not a kill check. Each 0.25 s, attempts whose creep has gone count as hits up to how far `GetLastHits()` (`GetDenies()` for denies) moved since the previous tick; the rest are misses. A spell last hit in the same tick can hide one miss.
+
+### Manual test checklist
+Setup: 1v0 lane, bot alone, `Lane.OwnLaningThink = 'all'`, `Debug = true`, 10 minutes per run. Record last hits, denies and the final `cs:` line.
+- [ ] `SkillOverride = 0.2`: about 35–45 last hits, low denies.
+- [ ] `SkillOverride = 0.5`: about 50–60, moderate denies.
+- [ ] `SkillOverride = 0.9`: about 70+, high denies.
+- [ ] Same bot under harass loses noticeably more last hits than in the free run.
+- [ ] Regression: `LastHitSkill.Enable = false` matches the current branch within normal variance.
+- [ ] The `intent:` overlay shows no thrash episodes from laning ↔ team roam flips.
+
 ## Last-hit trainer (task 14)
 `FunLib/humaniser/trainer/` (TS: `api.ts`, `settings.ts`, `incoming.ts`, `predict.ts`, `judge.ts`, `stats.ts`, `format.ts`, `watch.ts`, `draw.ts`, `trainer.ts`, `spike.ts`). Tuning in `settings.ts` `DEFAULTS`, overridable via `Customize.Humaniser.Trainer.LastHit`. Kill switch: `Trainer.LastHit.Enable = false`. The trainer then does nothing: no helper calls, no chat, no `[H:trainer]` lines. Only the lowest-PID bot on each team runs it, and nothing happens in game until `!trainer on` (or `SelfTest = true`).
 

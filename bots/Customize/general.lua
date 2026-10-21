@@ -161,6 +161,10 @@ Customize.Humaniser = {
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
     Intent = { Enable = true },
+    -- Last-hit accuracy (task 10): low-skill bots misjudge last hits and try fewer denies. Skill 1.0 is upstream.
+    -- Only acts where OHA owns laning Think(); enemy bots need Lane.OwnLaningThink = 'all' for an effect.
+    -- RequireOwnedLaning = false also applies it to team roam's last-hit grab for bots on Valve laning.
+    LastHitSkill = { Enable = true, RequireOwnedLaning = true },
     -- Last-hit trainer (task 14): practice feedback for the human. Nothing runs in game until "!trainer on".
     Trainer = {
         LastHit = {

@@ -50,6 +50,10 @@ local bLaneLaning = Lane.OwnsLaning(bot)
 -- Task 14 self-test: this bot times its last hits from the trainer's own start window.
 local Trainer = J.Humaniser.Trainer
 local bTrainerSelfTest = Trainer.IsSelfTestBot(bot)
+-- Humaniser last-hit accuracy (task 10) only acts where OHA owns this Think(); Valve's C++ laning cannot be changed.
+local LastHitSkill = J.Humaniser.LastHitSkill
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest
+LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
 	PickOneAnnouncer()
@@ -166,16 +170,21 @@ function GetBestLastHitCreep(hCreepList, fFilter)
 	local dmgDelta = attackDamage * 0.7
 
 	local moveToCreep = nil
+	local bChoose = LastHitSkill.IsActiveFor(bot)
+	local killable = {}
 	for _, creep in pairs(hCreepList) do
 		if J.IsValid(creep) and J.CanBeAttacked(creep) and (fFilter == nil or fFilter(creep)) then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
-			if J.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
-				return creep, false
-			end
-			if J.WillKillTarget(creep, attackDamage + dmgDelta, DAMAGE_TYPE_PHYSICAL, nDelay) then
+			if LastHitSkill.WillKill(bot, creep, attackDamage, nDelay, false) then
+				if not bChoose then return creep, false end
+				table.insert(killable, creep)
+			elseif LastHitSkill.WillKill(bot, creep, attackDamage + dmgDelta, nDelay, false) then
 				moveToCreep = creep
 			end
 		end
+	end
+	if #killable > 0 then
+		return LastHitSkill.Choose(bot, killable), false
 	end
 	if moveToCreep then
 		return moveToCreep, true
@@ -190,7 +199,7 @@ function GetBestDenyCreep(hCreepList)
 		if J.IsValid(creep)
 		and J.GetHP(creep) < 0.49
 		and J.CanBeAttacked(creep)
-		and creep:GetHealth() <= attackDamage
+		and LastHitSkill.WillKill(bot, creep, attackDamage, 0, true)
 		then
 			return creep
 		end
@@ -253,6 +262,7 @@ local function LastHitThink()
 	else
 		bot:SetTarget(hitCreep)
 		bot:Action_AttackUnit(hitCreep, true)
+		LastHitSkill.NoteAttempt(bot, hitCreep)
 	end
 	return true
 end
@@ -264,6 +274,7 @@ local function DenyThink()
 	if not J.IsValid(denyCreep) then return false end
 	bot:SetTarget(denyCreep)
 	bot:Action_AttackUnit(denyCreep, true)
+	LastHitSkill.NoteAttempt(bot, denyCreep)
 	return true
 end
 
@@ -282,7 +293,7 @@ local function PositionThink()
 	bot:Action_MoveToLocation(target_loc + RandomVector(50))
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest then
+if bOwnsThink then
 	function Think()
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		if bLaneLaning and not bTrainerSelfTest and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end

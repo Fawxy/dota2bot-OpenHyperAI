@@ -14,12 +14,13 @@ import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, LastHitSkill, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -96,6 +97,10 @@ function drawOverlay(bot: Unit): void {
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
+        if (LastHitSkill.IsActiveFor(bot)) {
+            const cs = LastHitSkill.Counts(bot);
+            HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));
+        }
     }
     HDebug.Draw(bot);
 }
@@ -119,6 +124,7 @@ function tick(this: void, bot: Unit): void {
     Commands.Tick(bot);
     Lane.Tick(bot);
     Trainer.Tick(bot);
+    LastHitSkill.Tick(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     Orders.GetFor(bot);
     Intent.Tick(bot);

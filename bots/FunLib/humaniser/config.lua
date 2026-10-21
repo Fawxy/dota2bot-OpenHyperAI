@@ -36,6 +36,7 @@ ____exports.DEFAULTS = {
     Commands = {Enable = true},
     Lane = {Enable = true},
     Intent = {Enable = true},
+    LastHitSkill = {Enable = true},
     Trainer = {LastHit = {Enable = true}},
     Telemetry = {Enable = false}
 }

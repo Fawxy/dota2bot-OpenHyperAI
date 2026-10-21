@@ -225,7 +225,7 @@ function X.GetLastHitCreep()
 		and J.Humaniser.AllyLastHit.MayLastHit(bot, creep)
 		then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
-			if J.WillKillTarget(creep, bot:GetAttackDamage()-1, DAMAGE_TYPE_PHYSICAL, nDelay)
+			if J.Humaniser.LastHitSkill.WillKill(bot, creep, bot:GetAttackDamage()-1, nDelay, false)
 			and (#nEnemyTowers == 0 or (J.IsValidBuilding(nEnemyTowers[1]) and not J.IsInRange(creep, nEnemyTowers[1], 750)))
 			then
 				local nInRangeAlly = J.GetAlliesNearLoc(creep:GetLocation(), 1000)
@@ -308,6 +308,7 @@ function Think()
 
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)
+		J.Humaniser.LastHitSkill.NoteAttempt(bot, hTargetCreep)
 		return
 	end
 
