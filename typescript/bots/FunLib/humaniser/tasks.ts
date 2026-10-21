@@ -23,13 +23,22 @@ export function Enabled(): boolean {
 }
 
 const adapter: Lib.Adapter = {
-    claim: (bot, c) => Intent.Claim(bot as unknown as Unit, { source: c.source, tier: c.tier as Intent.Tier, mode: c.mode as BotMode, floor: c.floor }),
+    claim: (bot, c) =>
+        Intent.Claim(bot as unknown as Unit, {
+            source: c.source,
+            tier: c.tier as Intent.Tier,
+            mode: c.mode as BotMode,
+            floor: c.floor,
+            unsticks: c.urgent === true ? true : undefined,
+        }),
     release: (bot, source, mode) => Intent.Release(bot as unknown as Unit, source, mode as BotMode),
+    hold: (bot, tag) => Intent.Hold(bot as unknown as Unit, tag),
     lastHitFilter: (bot, creep) => {
         const [allowed] = AllyLastHit.MayLastHit(bot as unknown as Unit, creep);
         return allowed;
     },
-    now: () => GameTime(),
+    // DotaTime, the clock camp-job plans are timed in; the runner and verbs only ever use differences of it.
+    now: () => DotaTime(),
     log: (tag, msg) => HDebug.Log(tag, msg),
     enabled: () => Enabled(),
 };
@@ -70,6 +79,23 @@ export function Step(bot: Unit, mode: number): boolean {
 
 export function Tick(bot: Unit): void {
     loadBundle()?.Tasks.Tick(bot as unknown as Lib.TaskUnit);
+}
+
+/** Never loads the bundle: no task can be running before one was started. */
+export function Current(bot: Unit): ReturnType<Bundle["Tasks"]["Current"]> {
+    return IsActive() ? lib!.Tasks.Current(bot as unknown as Lib.TaskUnit) : undefined;
+}
+
+export function Cancel(bot: Unit, reason: Lib.Reason, message?: string): void {
+    if (IsActive()) lib!.Tasks.Cancel(bot as unknown as Lib.TaskUnit, reason, message);
+}
+
+export function Urgent(bot: Unit, on: boolean): void {
+    lib?.Tasks.Urgent(bot as unknown as Lib.TaskUnit, on);
+}
+
+export function Label(bot: Unit, label: string): void {
+    lib?.Tasks.Label(bot as unknown as Lib.TaskUnit, label);
 }
 
 export function Describe(bot: Unit): string | undefined {

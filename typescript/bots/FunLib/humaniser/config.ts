@@ -62,8 +62,8 @@ export const DEFAULTS = {
      * Runs even with Enable = false (A/B games); only Customize.Enable = false turns it off with the rest.
      */
     Telemetry: { Enable: false } as Record<string, any>,
-    // tasks: coroutine task runner spike (see humaniser/tasks.ts).
-    Tasks: { Enable: true, Demo: false } as Record<string, any>,
+    // tasks: coroutine task runner spike (see humaniser/tasks.ts). Stack: run camp stacks as a task (stack_task.ts).
+    Tasks: { Enable: true, Demo: false, Stack: false } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
