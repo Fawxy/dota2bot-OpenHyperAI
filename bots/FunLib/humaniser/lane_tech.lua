@@ -942,6 +942,19 @@ local function zoneTarget(bot, s)
     end
     return best
 end
+--- Between our lead creep and the nearest visible enemy laner: where a support zones from.
+function ____exports.ZonePoint(bot, s)
+    local lead = s.ally.lead
+    if lead == nil then
+        return nil
+    end
+    local enemy = zoneTarget(bot, s)
+    return enemy ~= nil and toward(
+        lead:GetLocation(),
+        enemy,
+        settings().Radii.ZoneOffset
+    ) or nil
+end
 --- freeze/hold, or the plan's posture when the one-per-cycle lock (after e.g. a drag-back) hides it from the choice.
 local function postureOf(bot, s, choice)
     if choice.tech == "freeze" or choice.tech == "hold" then
@@ -967,19 +980,14 @@ function ____exports.AdjustPosition(bot, loc)
     noteStart(bot, posture, choice.reason)
     local cfg = settings()
     local pos = LaneConfig.PositionOf(bot)
-    local lead = s.ally.lead
-    if pos ~= nil and pos >= 4 and lead ~= nil then
-        local enemy = zoneTarget(bot, s)
-        if enemy ~= nil then
+    if pos ~= nil and pos >= 4 then
+        local zone = ____exports.ZonePoint(bot, s)
+        if zone ~= nil then
             overlay(
                 bot,
                 ((("tech=" .. posture) .. "@") .. cycleSecText(DotaTime())) .. " zone"
             )
-            return toward(
-                lead:GetLocation(),
-                enemy,
-                cfg.Radii.ZoneOffset
-            )
+            return zone
         end
     end
     overlay(

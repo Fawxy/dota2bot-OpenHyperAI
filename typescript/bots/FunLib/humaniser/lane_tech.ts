@@ -557,6 +557,14 @@ function zoneTarget(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
     return best;
 }
 
+/** Between our lead creep and the nearest visible enemy laner: where a support zones from. */
+export function ZonePoint(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
+    const lead = s.ally.lead;
+    if (lead === undefined) return undefined;
+    const enemy = zoneTarget(bot, s);
+    return enemy !== undefined ? toward(lead.GetLocation(), enemy, settings().Radii.ZoneOffset) : undefined;
+}
+
 /** freeze/hold, or the plan's posture when the one-per-cycle lock (after e.g. a drag-back) hides it from the choice. */
 function postureOf(bot: Unit, s: LaneState.LaneSnapshot, choice: LanePlanner.Choice): "freeze" | "hold" | undefined {
     if (choice.tech === "freeze" || choice.tech === "hold") return choice.tech;
@@ -575,12 +583,11 @@ export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     noteStart(bot, posture, choice.reason);
     const cfg = settings();
     const pos = LaneConfig.PositionOf(bot);
-    const lead = s.ally.lead;
-    if (pos !== undefined && pos >= 4 && lead !== undefined) {
-        const enemy = zoneTarget(bot, s);
-        if (enemy !== undefined) {
+    if (pos !== undefined && pos >= 4) {
+        const zone = ZonePoint(bot, s);
+        if (zone !== undefined) {
             overlay(bot, `tech=${posture}@${cycleSecText(DotaTime())} zone`);
-            return toward(lead.GetLocation(), enemy, cfg.Radii.ZoneOffset);
+            return zone;
         }
     }
     overlay(bot, `tech=${posture}@${cycleSecText(DotaTime())} hold`);

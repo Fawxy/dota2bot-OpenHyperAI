@@ -164,6 +164,12 @@ local Localization = {
         say_lane_pulling_in_5 = {"pulling in 5"},
         say_lane_half_pull = {"half pull"},
         say_lane_stacked_big = {"stacked big camp"},
+        say_lane_they_pull_top = {"they're pulling top"},
+        say_lane_they_pull_mid = {"they're pulling mid"},
+        say_lane_they_pull_bot = {"they're pulling bot"},
+        say_lane_their_sup_missing = {"their sup is missing"},
+        say_lane_they_freeze = {"they're freezing"},
+        say_lane_ss_mid = {"ss mid"},
     },
     zh = {
         welcome_msgs = {
@@ -301,6 +307,12 @@ local Localization = {
         say_lane_pulling_in_5 = {"5秒后拉野"},
         say_lane_half_pull = {"半拉"},
         say_lane_stacked_big = {"大野已经堆好了"},
+        say_lane_they_pull_top = {"对面在上路拉野"},
+        say_lane_they_pull_mid = {"对面在中路拉野"},
+        say_lane_they_pull_bot = {"对面在下路拉野"},
+        say_lane_their_sup_missing = {"对面辅助不见了"},
+        say_lane_they_freeze = {"对面在控线"},
+        say_lane_ss_mid = {"中路miss"},
     },
     ru = {
         welcome_msgs = {
@@ -431,6 +443,12 @@ local Localization = {
         say_lane_pulling_in_5 = {"отвожу крипов через 5"},
         say_lane_half_pull = {"полуотвод"},
         say_lane_stacked_big = {"застакал большой лагерь"},
+        say_lane_they_pull_top = {"они отводят на топе"},
+        say_lane_they_pull_mid = {"они отводят на миде"},
+        say_lane_they_pull_bot = {"они отводят на боте"},
+        say_lane_their_sup_missing = {"их саппорта не видно"},
+        say_lane_they_freeze = {"они фризят линию"},
+        say_lane_ss_mid = {"мид пропал"},
     },
     ja = {
         welcome_msgs = {
@@ -561,6 +579,12 @@ local Localization = {
         say_lane_pulling_in_5 = {"5秒後にプル"},
         say_lane_half_pull = {"ハーフプル"},
         say_lane_stacked_big = {"大きいキャンプをスタックした"},
+        say_lane_they_pull_top = {"相手がトップでプルしてる"},
+        say_lane_they_pull_mid = {"相手がミッドでプルしてる"},
+        say_lane_they_pull_bot = {"相手がボットでプルしてる"},
+        say_lane_their_sup_missing = {"相手のサポが見えない"},
+        say_lane_they_freeze = {"相手がフリーズしてる"},
+        say_lane_ss_mid = {"ミッドmiss"},
     },
 }
 

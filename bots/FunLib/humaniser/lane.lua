@@ -13,6 +13,7 @@ local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
+local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
@@ -22,10 +23,10 @@ function nearestVisibleEnemy(bot, s)
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue22
+            local __continue24
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue22 = true
+                    __continue24 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, e.location)
@@ -33,9 +34,9 @@ function nearestVisibleEnemy(bot, s)
                     best = e.unit
                     bestDist = d
                 end
-                __continue22 = true
+                __continue24 = true
             until true
-            if not __continue22 then
+            if not __continue24 then
                 break
             end
         end
@@ -54,6 +55,7 @@ ____exports.LaneTech = LaneTech
 ____exports.CampJobs = CampJobs
 ____exports.Stacking = Stacking
 ____exports.Harass = Harass
+____exports.Counter = Counter
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()
 end
@@ -66,6 +68,7 @@ function ____exports.Tick(bot)
     if snapshot == nil then
         return
     end
+    Counter.Tick(bot)
     if HDebug.IsEnabled() then
         local state = LaneState.Describe(
             snapshot,
@@ -106,11 +109,17 @@ function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
     if not mayTouchAny(bot, enemyCreeps) then
         return false
     end
-    return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies)
+    if LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies) then
+        return true
+    end
+    return Counter.Think(bot, enemies)
 end
 --- Lane position override for the final move; returns `loc` itself when nothing applies.
 function ____exports.AdjustPosition(bot, loc)
     local adjusted = LaneTech.AdjustPosition(bot, loc)
+    if adjusted == loc then
+        adjusted = Counter.AdjustPosition(bot, loc)
+    end
     if adjusted ~= loc or not LaneConfig.IsOn("Harass") then
         return adjusted
     end
@@ -156,15 +165,23 @@ end
 function ____exports.CampJobOnEnd(bot)
     CampJobs.OnEnd(bot)
 end
+--- mode_rune_generic GetDesire floor: a mid bot contesting the rune after spotting the enemy mid's pre-rune shove.
+function ____exports.RuneContestDesire(bot)
+    return Counter.RuneContestDesire(bot)
+end
+--- mode_farm_generic: a camp an enemy was seen stacking, or undefined to keep the farm pick.
+function ____exports.PreferStackedCamp(bot, camps)
+    return Counter.PreferStackedCamp(bot, camps)
+end
 local function nearestBot(team, issuer)
     local best
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue34
+            local __continue38
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue34 = true
+                    __continue38 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -175,9 +192,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue34 = true
+                __continue38 = true
             until true
-            if not __continue34 then
+            if not __continue38 then
                 break
             end
         end

@@ -207,7 +207,7 @@ do
 end
 
 do
-	local src = io.open("bots/mode_laning_generic.lua", "r"):read("a")
+	local src = io.open(HARNESS_DIR .. "/../../bots/mode_laning_generic.lua", "r"):read("a")
 	check("laning mode asks Lane.MayDeny before denying", src:find("Lane.MayDeny(bot, nAllyCreeps)", 1, true) ~= nil)
 end
 
@@ -247,13 +247,13 @@ end
 
 -- mode_rune_generic keeps its old rule: odd minute and second > 53 is the same as under 7 s to the next even minute.
 do
-	local src = io.open("bots/FunLib/jmz_func.lua", "r"):read("a")
+	local src = io.open(HARNESS_DIR .. "/../../bots/FunLib/jmz_func.lua", "r"):read("a")
 	local body = src:match("function J%.GetNextPowerRuneSpawnTime%(%)(.-)\nend\n")
 	check("helper present in jmz_func", body ~= nil)
 	local J = {}
 	local fn = load("local J = ... ; return function()" .. body .. " end")
 	local nextRune = fn(J)
-	local runeSrc = io.open("bots/mode_rune_generic.lua", "r"):read("a")
+	local runeSrc = io.open(HARNESS_DIR .. "/../../bots/mode_rune_generic.lua", "r"):read("a")
 	check("rune mode uses the shared helper", runeSrc:find("J.GetNextPowerRuneSpawnTime() - DotaTime() < 7", 1, true) ~= nil)
 	local mismatch
 	for tenth = 601, 12000 do

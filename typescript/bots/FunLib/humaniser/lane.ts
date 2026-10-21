@@ -15,11 +15,12 @@ import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as Harass from "bots/FunLib/humaniser/harass";
+import * as Counter from "bots/FunLib/humaniser/counterplay";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, Stacking, Harass };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, Stacking, Harass, Counter };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -33,6 +34,7 @@ export function Tick(bot: Unit): void {
     LaneDebug.Tick(bot);
     const snapshot = LaneState.ForBot(bot);
     if (snapshot === undefined) return;
+    Counter.Tick(bot);
     if (HDebug.IsEnabled()) {
         const state = LaneState.Describe(snapshot, LaneState.ScoreFor(bot, snapshot));
         HDebug.Text(bot, "lane", `${state} ${LanePlan.Describe(LanePlan.View(bot, snapshot))}`);
@@ -63,12 +65,14 @@ export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], ene
 /** Runs after last hit and deny; true means this frame's action is issued. */
 export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
     if (!mayTouchAny(bot, enemyCreeps)) return false;
-    return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies);
+    if (LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies)) return true;
+    return Counter.Think(bot, enemies);
 }
 
 /** Lane position override for the final move; returns `loc` itself when nothing applies. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    const adjusted = LaneTech.AdjustPosition(bot, loc);
+    let adjusted = LaneTech.AdjustPosition(bot, loc);
+    if (adjusted === loc) adjusted = Counter.AdjustPosition(bot, loc);
     if (adjusted !== loc || !LaneConfig.IsOn("Harass")) return adjusted;
     const s = LaneState.ForBot(bot);
     if (s === undefined || LanePlan.View(bot, s).handsOff) return loc;
@@ -122,6 +126,16 @@ export function CampJobActive(bot: Unit): boolean {
 
 export function CampJobOnEnd(bot: Unit): void {
     CampJobs.OnEnd(bot);
+}
+
+/** mode_rune_generic GetDesire floor: a mid bot contesting the rune after spotting the enemy mid's pre-rune shove. */
+export function RuneContestDesire(bot: Unit): number {
+    return Counter.RuneContestDesire(bot);
+}
+
+/** mode_farm_generic: a camp an enemy was seen stacking, or undefined to keep the farm pick. */
+export function PreferStackedCamp(bot: Unit, camps: any[]): any | undefined {
+    return Counter.PreferStackedCamp(bot, camps);
 }
 
 function nearestBot(team: number, issuer: Unit): Unit | undefined {

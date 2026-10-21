@@ -6,6 +6,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
 local DENY_HP = 0.49
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -28,17 +29,21 @@ function ____exports.IsPreRune(_team, lane)
     )
 end
 --- Mid bot only: the first allied ranged lane creep it can deny right now; otherwise the Lua fallback decides.
+-- The priority drops while counterplay has the enemy mid missing after a shove.
 function ____exports.PickDeny(bot, allyCreeps)
     if not LaneConfig.IsOn("Mid") or bot:GetAssignedLane() ~= Lane.Mid then
+        return nil
+    end
+    if Counter.DropRangedDeny(bot:GetTeam()) then
         return nil
     end
     local damage = bot:GetAttackDamage()
     for ____, creep in ipairs(allyCreeps) do
         do
-            local __continue8
+            local __continue9
             repeat
                 if not creep:IsAlive() or not LaneState.IsLaneCreepName(creep:GetUnitName()) then
-                    __continue8 = true
+                    __continue9 = true
                     break
                 end
                 if (string.find(
@@ -47,16 +52,16 @@ function ____exports.PickDeny(bot, allyCreeps)
                     1,
                     true
                 )) == nil then
-                    __continue8 = true
+                    __continue9 = true
                     break
                 end
                 local hp = creep:GetHealth()
                 if hp < DENY_HP * creep:GetMaxHealth() and hp <= damage then
                     return creep
                 end
-                __continue8 = true
+                __continue9 = true
             until true
-            if not __continue8 then
+            if not __continue9 then
                 break
             end
         end

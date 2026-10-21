@@ -544,9 +544,43 @@ local function startStack(bot, req)
     )
     return true
 end
+--- Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible.
+local function startContest(bot, req)
+    local data = Camps.ByIdx(req.campIdx)
+    local spawner = Camps.SpawnerByIdx(req.campIdx)
+    if data == nil or spawner == nil then
+        return false
+    end
+    local now = DotaTime()
+    local center = Camps.BoxCenter(spawner)
+    register(
+        bot,
+        __TS__ObjectAssign({}, req, {
+            phase = "travel",
+            aggroAt = now,
+            plannedSec = 0,
+            path = {center},
+            startedAt = now,
+            peakDivert = 0,
+            waveSize = 0,
+            activeCamp = req.campIdx,
+            stand = center,
+            waypoint = 0,
+            stage = 1,
+            secondTried = false,
+            telegraphed = true,
+            baseAggro = now
+        }),
+        data
+    )
+    return true
+end
 function ____exports.Start(bot, req)
     if req.kind == "stack" then
         return startStack(bot, req)
+    end
+    if req.kind == "contest" then
+        return startContest(bot, req)
     end
     if PULL_KINDS[req.kind] ~= true then
         return false
@@ -686,6 +720,20 @@ local function abort(bot, job, reason)
         ____string_format_5(__TS__SparseArraySpread(____array_4))
     )
 end
+--- A contest is no pull attempt, so it ends on its own line, which the console parser does not read.
+local function endContest(bot, job, reason)
+    job.phase = "return"
+    doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
+    HDebug.Log(
+        "lane",
+        string.format(
+            "contest-end pid=%d camp=%d reason=%s",
+            bot:GetPlayerID(),
+            job.campIdx,
+            reason
+        )
+    )
+end
 local function jobAllowed(bot, s, forced)
     local enemies = LaneState.Enemies(bot, s.lane)
     local ok, why = LaneRoles.MayRunCampJob(bot, s, enemies)
@@ -735,6 +783,10 @@ local function keepGoing(bot, job)
         return false
     end
     local now = DotaTime()
+    if job.kind == "contest" and now - job.startedAt >= settings().Timing.ContestMax then
+        endContest(bot, job, "timeout")
+        return false
+    end
     if now > job.aggroAt + settings().Timing.JobMaxAfterAggro then
         if job.phase == "watch" then
             close(
@@ -978,17 +1030,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue136
+            local __continue141
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue136 = true
+                    __continue141 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue136 = true
+                    __continue141 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -999,9 +1051,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue136 = true
+                __continue141 = true
             until true
-            if not __continue136 then
+            if not __continue141 then
                 break
             end
         end
@@ -1047,10 +1099,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue162
+            local __continue167
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue162 = true
+                    __continue167 = true
                     break
                 end
                 if dist2D(
@@ -1059,9 +1111,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue162 = true
+                __continue167 = true
             until true
-            if not __continue162 then
+            if not __continue167 then
                 break
             end
         end
@@ -1134,9 +1186,57 @@ local function trySecondCamp(bot, job, now)
     )
     return true
 end
+local function contestTarget(bot, job)
+    local center = job.stand
+    local reach = settings().Radii.EnemyNearCamp
+    local best
+    for ____, e in ipairs(LaneState.Enemies(
+        bot,
+        bot:GetAssignedLane()
+    )) do
+        do
+            local __continue181
+            repeat
+                if not e.visible or e.unit == nil then
+                    __continue181 = true
+                    break
+                end
+                if e.pid == job.targetPid then
+                    return e.unit
+                end
+                if best == nil and dist2D(e.location, center) <= reach then
+                    best = e.unit
+                end
+                __continue181 = true
+            until true
+            if not __continue181 then
+                break
+            end
+        end
+    end
+    return best
+end
+local function stepContest(bot, job, now)
+    local target = contestTarget(bot, job)
+    if target ~= nil then
+        if job.lastAttackAt == nil or now - job.lastAttackAt >= settings().Timing.ContestAttackGap then
+            bot:Action_AttackUnit(target, true)
+            job.lastAttackAt = now
+        end
+        return true
+    end
+    if not arrived(bot, job.stand) then
+        return moveTo(bot, job.stand)
+    end
+    endContest(bot, job, "no-target")
+    return false
+end
 local function step(bot, job)
     local now = DotaTime()
     local cfg = settings()
+    if job.kind == "contest" then
+        return stepContest(bot, job, now)
+    end
     if job.phase == "travel" or job.phase == "wait" then
         telegraph(bot, job, now)
         if now < job.aggroAt then

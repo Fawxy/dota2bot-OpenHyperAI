@@ -88,6 +88,9 @@ function GetDesire()
 		end
 	end
 
+	local nLaneContest = J.Humaniser.Lane.RuneContestDesire(bot)
+	if nLaneContest > 0 then return nLaneContest end
+
 	-- Wisdom Rune
 	if bot:GetLevel() < 30 then
 		nShrineOfWisdomTime = X.GetCurrentWisdomTime()

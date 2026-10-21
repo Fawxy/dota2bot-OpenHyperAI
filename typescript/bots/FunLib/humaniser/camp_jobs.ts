@@ -1,5 +1,6 @@
 /**
- * Camp-job executor (task 07): full, half and double pulls and stacks run from mode_farm_generic as timed jobs.
+ * Camp-job executor (task 07): full, half and double pulls, stacks and counter-play camp contests run from
+ * mode_farm_generic as timed jobs.
  * The job window only gates a job's start (PF2); once started the job keeps its desire until it is done or
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
  * the minute, and both are logged for tools/replay-mining.
@@ -25,6 +26,8 @@ export interface JobRequest {
     secondCampIdx?: number;
     forced?: boolean;
     minute?: number;
+    /** Contest: the enemy seen pulling, attacked while visible. */
+    targetPid?: number;
 }
 
 export interface Job extends JobRequest {
@@ -53,6 +56,7 @@ export interface Job extends JobRequest {
     /** Stack: the next :00 + StackExitUntil, when the walk-off ends. */
     exitUntil?: number;
     stackBefore?: number;
+    lastAttackAt?: number;
 }
 
 /**
@@ -269,9 +273,41 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     return true;
 }
 
+/** Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. */
+function startContest(bot: Unit, req: JobRequest): boolean {
+    const data = Camps.ByIdx(req.campIdx);
+    const spawner = Camps.SpawnerByIdx(req.campIdx);
+    if (data === undefined || spawner === undefined) return false;
+    const now = DotaTime();
+    const center = Camps.BoxCenter(spawner);
+    register(
+        bot,
+        {
+            ...req,
+            phase: "travel",
+            aggroAt: now,
+            plannedSec: 0,
+            path: [center],
+            startedAt: now,
+            peakDivert: 0,
+            waveSize: 0,
+            activeCamp: req.campIdx,
+            stand: center,
+            waypoint: 0,
+            stage: 1,
+            secondTried: false,
+            telegraphed: true,
+            baseAggro: now,
+        },
+        data
+    );
+    return true;
+}
+
 export function Start(bot: Unit, req: JobRequest): boolean {
     if (req.kind === "stack") return startStack(bot, req);
-    if (PULL_KINDS[req.kind] !== true) return false; // the contest executor arrives with its own task
+    if (req.kind === "contest") return startContest(bot, req);
+    if (PULL_KINDS[req.kind] !== true) return false;
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;
@@ -393,6 +429,13 @@ function abort(bot: Unit, job: Job, reason: string): void {
     );
 }
 
+/** A contest is no pull attempt, so it ends on its own line, which the console parser does not read. */
+function endContest(bot: Unit, job: Job, reason: string): void {
+    job.phase = "return";
+    doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
+    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s", bot.GetPlayerID(), job.campIdx, reason));
+}
+
 // ---------------------------------------------------------------------------------------------- desire
 
 function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaMultiReturn<[boolean, string]> {
@@ -431,6 +474,10 @@ function keepGoing(bot: Unit, job: Job): boolean {
         return false;
     }
     const now = DotaTime();
+    if (job.kind === "contest" && now - job.startedAt >= settings().Timing.ContestMax) {
+        endContest(bot, job, "timeout");
+        return false;
+    }
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
         if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
@@ -720,9 +767,36 @@ function trySecondCamp(bot: Unit, job: Job, now: number): boolean {
     return true;
 }
 
+function contestTarget(bot: Unit, job: Job): Unit | undefined {
+    const center = job.stand;
+    const reach = settings().Radii.EnemyNearCamp;
+    let best: Unit | undefined;
+    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
+        if (!e.visible || e.unit === undefined) continue;
+        if (e.pid === job.targetPid) return e.unit;
+        if (best === undefined && dist2D(e.location, center) <= reach) best = e.unit;
+    }
+    return best;
+}
+
+function stepContest(bot: Unit, job: Job, now: number): boolean {
+    const target = contestTarget(bot, job);
+    if (target !== undefined) {
+        if (job.lastAttackAt === undefined || now - job.lastAttackAt >= settings().Timing.ContestAttackGap) {
+            bot.Action_AttackUnit(target, true);
+            job.lastAttackAt = now;
+        }
+        return true;
+    }
+    if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
+    endContest(bot, job, "no-target");
+    return false;
+}
+
 function step(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     const cfg = settings();
+    if (job.kind === "contest") return stepContest(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
         if (now < job.aggroAt) {

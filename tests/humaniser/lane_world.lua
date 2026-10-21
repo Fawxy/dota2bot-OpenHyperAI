@@ -194,9 +194,11 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.CampJobs.ResetCache()
 	H.Lane.Stacking.ResetCache()
 	H.Lane.Harass.ResetCache()
+	H.Lane.Counter.ResetCache()
 	-- ResetHooks dropped the probes registered at module load.
 	H.Lane.CampJobs.RegisterProbes()
 	H.Lane.Stacking.RegisterProbes()
 	H.Lane.LaneMid.RegisterProbes()
+	H.Lane.Counter.RegisterProbes()
 	return H
 end

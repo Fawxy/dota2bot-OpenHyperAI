@@ -7,6 +7,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as Counter from "bots/FunLib/humaniser/counterplay";
 
 const DENY_HP = 0.49;
 
@@ -28,9 +29,13 @@ export function IsPreRune(_team: number, lane: Lane): boolean {
     return next !== undefined && IsPreRuneWindow(DotaTime(), next());
 }
 
-/** Mid bot only: the first allied ranged lane creep it can deny right now; otherwise the Lua fallback decides. */
+/**
+ * Mid bot only: the first allied ranged lane creep it can deny right now; otherwise the Lua fallback decides.
+ * The priority drops while counterplay has the enemy mid missing after a shove.
+ */
 export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
     if (!LaneConfig.IsOn("Mid") || bot.GetAssignedLane() !== Lane.Mid) return undefined;
+    if (Counter.DropRangedDeny(bot.GetTeam())) return undefined;
     const damage = bot.GetAttackDamage();
     for (const creep of allyCreeps) {
         if (!creep.IsAlive() || !LaneState.IsLaneCreepName(creep.GetUnitName())) continue;
