@@ -27,7 +27,11 @@ On this machine that path is a symlink to the Workshop OHA item (`workshop/conte
 ```bash
 ln -sfn "$HOME/Documents/Projects/dota-bots-humaniser/oha/bots" "$HOME/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots"
 ```
-Edits then take effect on the next lobby start, or after `script_reload` (**TODO (in-game):** confirm which reload works mid-game for bot scripts).
+Edits then take effect on the next lobby start, or after `script_reload` (**TODO (in-game):** confirm which reload works mid-game for bot scripts). On 22/10/2026 the symlink pointed at `oha/bots`; another worktree (for example `oha-spike/bots`) works the same way, and edits took effect on the next lobby.
+
+**Faster test games:** `Customize.Fast_Bot_Picks = true` (default `false`) makes every bot pick as soon as the humans have. The default stagger leaves the last Dire bot about 40 s behind. Commands still need the horn; `dota_dev forcegamestart` should skip pre-game with cheats on (**TODO (in-game):** confirm).
+
+**Console logs:** `-condebug` writes `game/dota/console.log` and tears off one `console.<match id>.log` per game, so test results can be read afterwards without copying anything.
 
 ### Lobby setup
 **TODO (in-game):** record the exact clicks. Expected flow:
@@ -57,10 +61,15 @@ Set `Customize.Humaniser.Debug = true` in `bots/Customize/general.lua`. The modu
 - Drawing runs from `ItemUsageThink`, before its throttle, so it happens every frame.
 
 ## Sidecar bridge probe
-Set `Customize.Humaniser.Bridge.Enable = true` (default off) to run the vendored dota-bot-sdk lua-bridge, which logs `[H:bridge] ...` lines; run sheet: `dota-bot-sdk/docs/BRIDGE_SPIKE.md` (sibling repo, branch `spike-bridge`).
+Set `Customize.Humaniser.Bridge.Enable = true` (default off) to run the vendored dota-bot-sdk lua-bridge, which logs `[H:bridge] ...` lines; run sheet and results: `dota-bot-sdk/docs/BRIDGE_SPIKE.md` (sibling repo, branch `spike`).
+
+**In-game result (22/10/2026): no-go, keep `Bridge.Enable = false`.**
+- The bot VM could not reach a local process. 1-arg `CreateHTTPRequest(url)` returns a handle, but every request came back `StatusCode` 0 within tens of milliseconds, and nothing reached the sidecar. That held for `http://127.0.0.1:<port>/tick`, `http://localhost:<port>/tick` and a bare `127.0.0.1:<port>`.
+- `CreateHTTPRequest("POST", url)` raises in the bot VM, and `CreateRemoteHTTPRequest` returns nil for a local URL.
+- **The vendored bridge (`b95900d`) crashes the game** within seconds of the first reply. Never enable it on this build.
 
 ## Shared-state finding
-**TODO (in-game).** This blocks the design of tasks 02, 05 and 06.
+**Answered in-game (22/10/2026):** `require`d modules are **shared per team**, and the two teams run in **separate VMs**.
 
 How to run the check: enable Debug and start a game with bots on both teams. Every 5 s, each bot logs:
 ```
@@ -70,7 +79,7 @@ How to run the check: enable Debug and start a game with bots on both teams. Eve
 - If it stays at 1, each bot has its own module instance.
 - If `bothTeamsInThisModule=true`, Radiant and Dire share a VM.
 
-Result: _not yet recorded._ Afterwards, delete `SharedStateProbe` from `debug.ts` and its call in `ability_item_usage_generic.lua`.
+Result: on Dire, `playersInThisModule=5` (and `total` ≈ 5 × `mine`); on Radiant with one human, `playersInThisModule=4`; `bothTeamsInThisModule=false` on every line (match 9055761889). Both VMs also start from the same random seed: a random id drawn once per module came out identical on both teams in every game, so per-VM randomness needs a team-specific seed. The probe has served its purpose; delete `SharedStateProbe` from `debug.ts` and its call in `ability_item_usage_generic.lua`.
 
 ## Offline checks (no game needed)
 ```bash
@@ -172,7 +181,7 @@ Module: `typescript/bots/FunLib/humaniser/perception.ts`. Tuning lives in its `D
 - `hUnit:IsNull()` is safe on stale illusion handles in the refresh pass.
 - `WasRecentlyDamagedByHero(hero, 0.3)` works with an enemy hero handle.
 - `GetIncomingTrackingProjectiles()` entries give `caster` for enemy projectiles when the caster is visible (nil-caster projectiles share one identity per ability).
-- Whether modules are shared per team (teammate callout only works if they are; see "Shared-state finding").
+- ~~Whether modules are shared per team~~: they are (see "Shared-state finding"), so the teammate callout can fire.
 - Cost at `host_timescale 2`: the hooks add a few table lookups per call; check for FPS drop.
 - The reaction predicates are polled often enough (ability/item thinks every ~0.06–0.12 s) that the 0.5 s cast `EventGap` does not split one cast into two events.
 
@@ -252,8 +261,14 @@ Other **TODO (in-game)** checks:
 - **Chatter:** the reply-chatter subscriber already ignores `!` lines; FretBots' LLM reply ignores team chat and `!` lines; FretBots' host `PCallText` only sees a harmless syntax error.
 - **Not done:** `!wards` (optional stretch).
 
+**In-game result (22/10/2026): commands never ran before `52fad5d`.** The chat hub received no messages at all, because `hero_selection.lua`'s `UpdateLaneAssignments` re-installs its own chat callback every frame until the horn, while the hub installed once during pre-game. The evidence fits the engine keeping only the latest callback per context, but it is inferred, not proven. The hub now also installs once the game is in progress (`[H:chat] reinstalled`), and `!g` then worked: `recv pid=0 team_only=true text=!g`, then `group by 0 !g`, with every bot coming over, as `!g` is defined to do.
+- If the overwrite explanation is right, the FretBots vote mirror (`FretBridge`, option B) has never received pre-game chat in a real game either. **TODO (in-game):** type a vote before the horn and check whether `[H:chat] recv` logs it.
+- Commands only run once the game is in progress: a `!g` typed during pre-game logs nothing.
+- Diagnostics from inside the callback (`[H:chat] recv|dup|subscriber_failed`, `[H:commands] skip reason=...`) are queued and printed on the next `Tick`, never from the callback itself.
+- Pre-existing OHA bug: any line containing `!sp` (for example `!spike`) reaches reply-chatter's `!sp <language>` branch, which fails at `ability_item_usage_generic.lua:522` when there is no argument (`attempt to concatenate local 'target' (a nil value)`).
+
 **TODO (in-game):**
-- Does the chat callback fire for team-only lines from the human, with `team_only = true`, and only once per bot context?
+- Does the chat callback fire only once per bot context, now that the hub installs twice? Duplicates within 0.25 s are dropped either way.
 - Does `GetTeamMember(i)` inside the chat callback resolve to the issuer's team (needed for the issuer's location)? If Radiant and Dire share a VM, the callback's `GetTeam()` may belong to either team.
 - Does `FindItemSlot('item_smoke_of_deceit')` on another bot return its slot (used to choose the smoke holder)?
 - Does `GetAttackTarget()` on a human's hero return their target (`!go` without a ping)?
@@ -451,8 +466,8 @@ Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, 
 - **Offline:** `tests/humaniser/test_tasks_integration.lua`, `tests/humaniser/test_tasks_demo.lua` (demo).
 
 ### In-game: check first
-1. **`coroutine` is present in Dota's bot VM.** Expected console line: `[H:tasks] support coroutine=table bundle=ok`. `coroutine=nil` means the bundle loaded but every task reports `unsupported`.
-2. **The luaBundle `require` shim works in Dota.** The same line shows `bundle=ok`. If it shows `bundle=fail <err>`, record the error here: no task code can run.
+1. **`coroutine` is present in Dota's bot VM.** Confirmed 22/10/2026: every game logged `[H:tasks] support coroutine=table bundle=ok`.
+2. **The luaBundle `require` shim works in Dota.** Confirmed by the same line (`bundle=ok`).
 3. **TODO (in-game):** a task's `task:<name>` claim shows on the overlay's `intent:` line while it runs, and disappears within 0.2 s of the task ending or the bot leaving the host mode.
 
 ### Demo: the assemble Orders executor as a task (before/after)
