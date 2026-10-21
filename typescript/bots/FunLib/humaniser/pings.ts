@@ -263,6 +263,34 @@ const scannedAt: Record<number, number> = {};
 const clearSince: Record<number, number | undefined> = {};
 let lastSummary = "-";
 
+interface LoggedPing {
+    pid: number;
+    time: number;
+    location: Vector;
+}
+// Human pings by team, for the transitions' "a human is directing this lane" check. Kept at least this long
+// whatever MaxPingAge is, because callers ask about windows of tens of seconds.
+const PING_LOG_KEEP = 30;
+const pingLog: Record<number, LoggedPing[]> = {};
+
+function logPing(team: number, pid: number, ping: Ping): void {
+    const now = GameTime();
+    const keep = math.max(Get().MaxPingAge, PING_LOG_KEEP);
+    const kept: LoggedPing[] = [];
+    for (const p of pingLog[team] ?? []) if (now - p.time <= keep) kept.push(p);
+    kept.push({ pid, time: ping.time, location: ping.location });
+    pingLog[team] = kept;
+}
+
+/** True when a human on `team` pinged within `radius` of `loc` in the last `within` seconds. */
+export function HumanPingNear(team: number, loc: Vector, radius: number, within: number): boolean {
+    const now = GameTime();
+    for (const p of pingLog[team] ?? []) {
+        if (now - p.time <= within && dist2D(p.location, loc) <= radius) return true;
+    }
+    return false;
+}
+
 function cancelSmokeFrom(team: number, issuerPID: number): void {
     for (const order of Orders.GetActive(team)) {
         if (order.type === "SMOKE" && order.issuerPID === issuerPID) {
@@ -286,6 +314,7 @@ export function Scan(team: number): void {
         if (ping === null || ping === undefined || ping.time === 0 || ping.location === undefined) continue;
         if (lastPingTime[pid] === ping.time) continue;
         lastPingTime[pid] = ping.time;
+        logPing(team, pid, ping);
         if (now - ping.time > cfg.MaxPingAge) continue;
 
         const smoked = member.HasModifier("modifier_smoke_of_deceit");

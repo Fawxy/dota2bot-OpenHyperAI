@@ -360,6 +360,33 @@ local lastPingTime = {}
 local scannedAt = {}
 local clearSince = {}
 local lastSummary = "-"
+local PING_LOG_KEEP = 30
+local pingLog = {}
+local function logPing(team, pid, ping)
+    local now = GameTime()
+    local keep = math.max(
+        ____exports.Get().MaxPingAge,
+        PING_LOG_KEEP
+    )
+    local kept = {}
+    for ____, p in ipairs(pingLog[team] or ({})) do
+        if now - p.time <= keep then
+            kept[#kept + 1] = p
+        end
+    end
+    kept[#kept + 1] = {pid = pid, time = ping.time, location = ping.location}
+    pingLog[team] = kept
+end
+--- True when a human on `team` pinged within `radius` of `loc` in the last `within` seconds.
+function ____exports.HumanPingNear(team, loc, radius, within)
+    local now = GameTime()
+    for ____, p in ipairs(pingLog[team] or ({})) do
+        if now - p.time <= within and dist2D(p.location, loc) <= radius then
+            return true
+        end
+    end
+    return false
+end
 local function cancelSmokeFrom(team, issuerPID)
     for ____, order in ipairs(Orders.GetActive(team)) do
         if order.type == "SMOKE" and order.issuerPID == issuerPID then
@@ -377,30 +404,31 @@ function ____exports.Scan(team)
         local i = 1
         while i <= #players do
             do
-                local __continue52
+                local __continue60
                 repeat
                     local pid = players[i]
                     if IsPlayerBot(pid) then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     local ping = member:GetMostRecentPing()
                     if ping == nil or ping == nil or ping.time == 0 or ping.location == nil then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     if lastPingTime[pid] == ping.time then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     lastPingTime[pid] = ping.time
+                    logPing(team, pid, ping)
                     if now - ping.time > cfg.MaxPingAge then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     local smoked = member:HasModifier("modifier_smoke_of_deceit")
@@ -436,16 +464,16 @@ function ____exports.Scan(team)
                         {__TS__SparseArraySpread(____array_4)}
                     )
                     if result.spec == nil then
-                        __continue52 = true
+                        __continue60 = true
                         break
                     end
                     if smoked and (result.spec.type == "GATHER" or result.spec.type == "ATTACK") then
                         cancelSmokeFrom(team, pid)
                     end
                     Orders.Post(team, result.spec)
-                    __continue52 = true
+                    __continue60 = true
                 until true
-                if not __continue52 then
+                if not __continue60 then
                     break
                 end
             end
@@ -459,20 +487,20 @@ function ____exports.ForgetClearedDangers(team)
     local now = GameTime()
     for ____, order in ipairs(Orders.GetActive(team)) do
         do
-            local __continue61
+            local __continue69
             repeat
                 if order.type ~= "AVOID" or order.location == nil then
-                    __continue61 = true
+                    __continue69 = true
                     break
                 end
                 if now - order.createdAt < cfg.MinSeconds then
-                    __continue61 = true
+                    __continue69 = true
                     break
                 end
                 local radius = order.radius or cfg.Radius
                 if not IsLocationVisible(order.location) or ____exports.NearestVisibleEnemyHero(order.location, radius) ~= nil then
                     clearSince[order.id] = nil
-                    __continue61 = true
+                    __continue69 = true
                     break
                 end
                 local since = clearSince[order.id] or now
@@ -485,9 +513,9 @@ function ____exports.ForgetClearedDangers(team)
                     )
                     Orders.Cancel(team, order.id)
                 end
-                __continue61 = true
+                __continue69 = true
             until true
-            if not __continue61 then
+            if not __continue69 then
                 break
             end
         end

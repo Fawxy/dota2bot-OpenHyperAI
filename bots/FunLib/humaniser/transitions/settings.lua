@@ -21,6 +21,7 @@ ____exports.DEFAULTS = {
     SpareSeenWithin = 5,
     Pos5PartnerHP = 0.75,
     Pos5EnemyRadius = 1200,
+    SpareLaneRadius = 3500,
     DecideFrom = 25,
     DecideTo = 20,
     ArriveLead = 4,

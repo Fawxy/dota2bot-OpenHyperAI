@@ -2,12 +2,25 @@
 local ____exports = {}
 local rotationProbes = {}
 local stackedProbes = {}
+local busyProbes = {}
 local override
 function ____exports.SetRotationProbe(fn)
     rotationProbes[#rotationProbes + 1] = fn
 end
 function ____exports.IsRotationPlanned(bot)
     for ____, probe in ipairs(rotationProbes) do
+        if probe(bot) then
+            return true
+        end
+    end
+    return false
+end
+--- Registered by modules that commit the bot to a kill setup or similar (task 11); read by the transitions IsBusy.
+function ____exports.SetBusyProbe(fn)
+    busyProbes[#busyProbes + 1] = fn
+end
+function ____exports.IsBusyByProbe(bot)
+    for ____, probe in ipairs(busyProbes) do
         if probe(bot) then
             return true
         end
@@ -40,6 +53,7 @@ end
 function ____exports.ResetHooks()
     rotationProbes = {}
     stackedProbes = {}
+    busyProbes = {}
     override = nil
 end
 return ____exports

@@ -112,6 +112,9 @@ TOWERS_W = MakeLaneTowers()
 function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end
+function UnitMeta:GetMana() return self.mana or 100 end
+function UnitMeta:GetMaxMana() return self.maxmana or 100 end
+function UnitMeta:GetRespawnTime() return self.respawn or 0 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end

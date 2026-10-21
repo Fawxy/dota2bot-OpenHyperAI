@@ -31,6 +31,8 @@ export const DEFAULTS = {
     SpareSeenWithin: 5,
     Pos5PartnerHP: 0.75,
     Pos5EnemyRadius: 1200,
+    // Enemies last seen farther than this from the lane front are not counted as missing laners.
+    SpareLaneRadius: 3500,
     DecideFrom: 25,
     DecideTo: 20,
     ArriveLead: 4,

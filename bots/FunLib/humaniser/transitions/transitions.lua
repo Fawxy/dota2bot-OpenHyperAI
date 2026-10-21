@@ -14,15 +14,20 @@ end
 local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 ____exports.Settings = Settings
 ____exports.Runes = Runes
+____exports.Busy = Busy
 local function NEVER()
     return false
 end
 local helpers = {}
 local providers = {
-    Busy = NEVER,
-    Spare = NEVER,
+    Busy = function(bot) return (Busy.IsBusy(
+        bot,
+        DotaTime()
+    )) end,
+    Spare = function(bot) return (Busy.LaneCanSpare(bot, false)) end,
     Alone = NEVER,
     Rotation = function() return nil end
 }

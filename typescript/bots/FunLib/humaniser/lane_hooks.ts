@@ -7,10 +7,12 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 
 type RotationProbe = (this: void, bot: Unit) => boolean;
 type StackedProbe = (this: void, campIdx: number) => boolean;
+type BusyProbe = (this: void, bot: Unit) => boolean;
 type OverrideProbe = (this: void, bot: Unit) => LaneConfig.Technique | undefined;
 
 let rotationProbes: RotationProbe[] = [];
 let stackedProbes: StackedProbe[] = [];
+let busyProbes: BusyProbe[] = [];
 let override: OverrideProbe | undefined;
 
 export function SetRotationProbe(fn: RotationProbe): void {
@@ -19,6 +21,16 @@ export function SetRotationProbe(fn: RotationProbe): void {
 
 export function IsRotationPlanned(bot: Unit): boolean {
     for (const probe of rotationProbes) if (probe(bot)) return true;
+    return false;
+}
+
+/** Registered by modules that commit the bot to a kill setup or similar (task 11); read by the transitions IsBusy. */
+export function SetBusyProbe(fn: BusyProbe): void {
+    busyProbes.push(fn);
+}
+
+export function IsBusyByProbe(bot: Unit): boolean {
+    for (const probe of busyProbes) if (probe(bot)) return true;
     return false;
 }
 
@@ -42,5 +54,6 @@ export function TechniqueOverride(bot: Unit): LaneConfig.Technique | undefined {
 export function ResetHooks(): void {
     rotationProbes = [];
     stackedProbes = [];
+    busyProbes = [];
     override = undefined;
 }

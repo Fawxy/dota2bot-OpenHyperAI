@@ -6,8 +6,9 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 
-export { Settings, Runes };
+export { Settings, Runes, Busy };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -25,7 +26,12 @@ export interface OverlayProviders {
 
 const NEVER = (): boolean => false;
 let helpers: TransitionHelpers = {};
-let providers: OverlayProviders = { Busy: NEVER, Spare: NEVER, Alone: NEVER, Rotation: () => undefined };
+let providers: OverlayProviders = {
+    Busy: (bot) => Busy.IsBusy(bot, DotaTime())[0],
+    Spare: (bot) => Busy.LaneCanSpare(bot, false)[0],
+    Alone: NEVER,
+    Rotation: () => undefined,
+};
 
 export function SetHelpers(h: TransitionHelpers): void {
     helpers = h;
