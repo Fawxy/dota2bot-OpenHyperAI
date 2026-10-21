@@ -479,6 +479,7 @@ local function checkStuck(bot, s, mode, now)
         return
     end
     if now <= s.holdUntil then
+        ____exports.Release(bot, "intent:stuck", mode)
         s.stuckEpisode = false
         s.stillAnchor = nil
         s.idleSince = nil

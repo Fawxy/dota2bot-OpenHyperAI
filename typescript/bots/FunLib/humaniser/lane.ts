@@ -127,9 +127,15 @@ export function CampJobDesire(bot: Unit): number {
  * Without intent, or for a unit intent leaves out, it is the desire itself.
  */
 export function CampJobRawDesire(bot: Unit, desire: number): number {
-    const kind = CampJobs.Current(bot)?.kind ?? "job";
+    const job = CampJobs.Current(bot);
+    const kind = job?.kind ?? "job";
     if (!Intent.Claim(bot, { source: `lane:${kind}`, tier: "CAMP_JOB", mode: BotMode.Farm, floor: desire, until: GameTime() })) return desire;
-    Intent.Claim(bot, { source: "lane:camp_job", tier: "CAMP_JOB", mode: BotMode.Farm, unsticks: true });
+    // Only the approach is timed against the pull; once aggro is taken, other modes' stickiness is no concern.
+    if (job !== undefined && (job.phase === "travel" || job.phase === "wait")) {
+        Intent.Claim(bot, { source: "lane:camp_job", tier: "CAMP_JOB", mode: BotMode.Farm, unsticks: true });
+    } else {
+        Intent.Release(bot, "lane:camp_job", BotMode.Farm);
+    }
     return 0;
 }
 

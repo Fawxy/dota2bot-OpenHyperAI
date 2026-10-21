@@ -49,7 +49,7 @@ export interface Claim {
     onlyLifted?: boolean;
     /**
      * While live, every other mode gets no stickiness bonus. For a short, timed window (a camp job's start)
-     * that the active mode's dwell bonus must not push late.
+     * that the active mode's dwell bonus must not push late (a camp job's travel and wait before the pull).
      */
     unsticks?: boolean;
 }
@@ -437,6 +437,7 @@ function checkStuck(bot: Unit, s: BotState, mode: number, now: number): void {
         return;
     }
     if (now <= s.holdUntil) {
+        Release(bot, "intent:stuck", mode as BotMode);
         // The still and idle timers restart when the hold ends, so a deliberate wait never counts towards a freeze.
         s.stuckEpisode = false;
         s.stillAnchor = undefined;

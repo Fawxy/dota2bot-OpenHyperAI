@@ -284,7 +284,8 @@ end
 
 if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest then
 	function Think()
-		if bLaneLaning and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
+		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
+		if bLaneLaning and not bTrainerSelfTest and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
 		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
 		-- so taking it before a deny is intended.
 		if LastHitThink() then return end

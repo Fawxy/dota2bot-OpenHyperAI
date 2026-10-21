@@ -554,6 +554,27 @@ do
 	check("no laning dwell bonus against a job", near(I.Resolve(support, LANING, 0.66), 0.66), I.Resolve(support, LANING, 0.66))
 	check("job's farm beats laning", I.Resolve(support, FARM, raw) > I.Resolve(support, LANING, 0.66))
 end
+-- The dwell-bonus suspension covers only the approach to the pull; the floor lasts the whole job.
+do
+	local H, _, support = jobWorld(1, { away = 900 })
+	local I = H.Intent
+	local FARM, LANING = dota.BotMode.Farm, dota.BotMode.Laning
+	T = 70
+	support.mode = LANING
+	I.Tick(support)
+	T = 70.5
+	check("precondition: laning has a dwell bonus", I.Resolve(support, LANING, 0.66) > 0.66, I.Resolve(support, LANING, 0.66))
+	for _, phase in ipairs({ "travel", "wait", "lead", "watch" }) do
+		T = T + 0.3
+		local d = H.Lane.CampJobDesire(support)
+		H.Lane.CampJobs.Current(support).phase = phase
+		local raw = H.Lane.CampJobRawDesire(support, d)
+		local bonus = I.Resolve(support, LANING, 0.66) > 0.66
+		local expectBonus = phase == "lead" or phase == "watch"
+		check(phase .. ": dwell bonus is " .. (expectBonus and "kept" or "suspended"), bonus == expectBonus, I.Resolve(support, LANING, 0.66))
+		check(phase .. ": the job's floor applies", near(I.Resolve(support, FARM, raw), d), I.Resolve(support, FARM, raw))
+	end
+end
 do
 	local H, _, support = jobWorld(1, { away = 900 })
 	H.Config.Get().Intent.Enable = false

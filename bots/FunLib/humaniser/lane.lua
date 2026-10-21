@@ -168,8 +168,8 @@ end
 -- survival cap treats it as lifted; a second claim keeps the active mode's stickiness from making the pull late.
 -- Without intent, or for a unit intent leaves out, it is the desire itself.
 function ____exports.CampJobRawDesire(bot, desire)
-    local ____opt_0 = CampJobs.Current(bot)
-    local kind = ____opt_0 and ____opt_0.kind or "job"
+    local job = CampJobs.Current(bot)
+    local kind = job and job.kind or "job"
     if not Intent.Claim(
         bot,
         {
@@ -182,7 +182,11 @@ function ____exports.CampJobRawDesire(bot, desire)
     ) then
         return desire
     end
-    Intent.Claim(bot, {source = "lane:camp_job", tier = "CAMP_JOB", mode = BotMode.Farm, unsticks = true})
+    if job ~= nil and (job.phase == "travel" or job.phase == "wait") then
+        Intent.Claim(bot, {source = "lane:camp_job", tier = "CAMP_JOB", mode = BotMode.Farm, unsticks = true})
+    else
+        Intent.Release(bot, "lane:camp_job", BotMode.Farm)
+    end
     return 0
 end
 --- mode_farm_generic Think: true when the camp job owns this frame.
@@ -213,10 +217,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue44
+            local __continue46
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue44 = true
+                    __continue46 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -227,9 +231,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue44 = true
+                __continue46 = true
             until true
-            if not __continue44 then
+            if not __continue46 then
                 break
             end
         end

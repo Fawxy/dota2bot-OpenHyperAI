@@ -1,6 +1,6 @@
 # Humaniser in-game test plan
 
-Tasks 01–07 were built and checked offline only (`tests/humaniser`: a LuaJIT syntax check, 1,086 behaviour tests in 19 files and 9 replay-mining tests). This plan covers what only the real game can verify. Run it in order: session 1 checks the assumptions the rest of the design rests on, so a wrong answer there may change later code.
+Tasks 01–07, 09 (intent arbitration), 14 (last-hit trainer) and the telemetry work were built and checked offline only (`tests/humaniser`: a LuaJIT syntax check, 1,534 behaviour tests in 28 files, 9 replay-mining tests and 7 hlog analyser tests). This plan covers what only the real game can verify. Run it in order: session 1 checks the assumptions the rest of the design rests on, so a wrong answer there may change later code.
 
 Setup is in [HUMANISER_DEV.md](HUMANISER_DEV.md): symlink, lobby, `sv_cheats 1`. Set `Customize.Humaniser.Debug = true` for every session.
 

@@ -221,6 +221,15 @@ do
 	check("moving idle bot is not stuck", I.SummaryLine(b):find("stuck=-") ~= nil, I.SummaryLine(b))
 end
 
+-- A Hold that begins during a stuck episode lifts the cap at once instead of leaving it for its Duration.
+do
+	local H, I, b = runStuck()
+	check("precondition: frozen mode is capped", near(I.Resolve(b, FARM, 0.5), 0.35), I.Resolve(b, FARM, 0.5))
+	I.Hold(b, "lane:job_wait")
+	H.Tick(b)
+	check("a new hold releases the stuck cap", near(I.Resolve(b, FARM, 0.5), 0.5), I.Resolve(b, FARM, 0.5))
+end
+
 -- A deliberate stand-still (Hold, re-posted each frame) is not a freeze; the timers restart once it ends.
 do
 	local H, I, b = fresh()
