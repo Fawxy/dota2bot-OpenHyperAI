@@ -97,6 +97,10 @@ function drawOverlay(bot: Unit): void {
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
+        if (LastHitSkill.IsActiveFor(bot)) {
+            const cs = LastHitSkill.Counts(bot);
+            HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));
+        }
     }
     HDebug.Draw(bot);
 }
@@ -120,6 +124,7 @@ function tick(this: void, bot: Unit): void {
     Commands.Tick(bot);
     Lane.Tick(bot);
     Trainer.Tick(bot);
+    LastHitSkill.Tick(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     Orders.GetFor(bot);
     Intent.Tick(bot);

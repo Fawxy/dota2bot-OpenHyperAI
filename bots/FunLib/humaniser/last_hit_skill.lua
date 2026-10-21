@@ -23,6 +23,9 @@ local entriesByPlayer = {}
 local ownedLaning = {}
 local warned = {}
 local widthCache = {}
+local countsByPlayer = {}
+local tickedAt = {}
+local TICK_SECONDS = 0.25
 function ____exports.SetHelpers(h)
     helpers = h
 end
@@ -163,5 +166,51 @@ function ____exports.Choose(bot, killable)
         end
     end
     return killable[1]
+end
+function ____exports.Counts(bot)
+    local pid = bot:GetPlayerID()
+    local counts = countsByPlayer[pid]
+    if counts == nil then
+        counts = {attempts = 0, misses = 0}
+        countsByPlayer[pid] = counts
+    end
+    return counts
+end
+--- Resolves creeps that are gone: an attempt the bot's own last-hit (or deny) count did not move for is a miss.
+-- Dead creeps the bot never went for are dropped uncounted.
+function ____exports.Tick(bot)
+    if not ____exports.IsActiveFor(bot) then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local now = GameTime()
+    if now - (tickedAt[pid] or -1) < TICK_SECONDS then
+        return
+    end
+    tickedAt[pid] = now
+    local entries = entriesFor(bot)
+    local counts = ____exports.Counts(bot)
+    for creep, entry in pairs(entries) do
+        do
+            local __continue41
+            repeat
+                if not creep:IsNull() and creep:IsAlive() then
+                    __continue41 = true
+                    break
+                end
+                if entry.attempted then
+                    counts.attempts = counts.attempts + 1
+                    if counterOf(bot, entry.isDeny) == entry.countAtAttempt then
+                        counts.misses = counts.misses + 1
+                    end
+                end
+                entries[creep] = nil
+                __continue41 = true
+            until true
+            if not __continue41 then
+                break
+            end
+        end
+    end
 end
 return ____exports

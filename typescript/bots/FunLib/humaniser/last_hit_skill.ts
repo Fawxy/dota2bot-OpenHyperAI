@@ -55,6 +55,10 @@ const entriesByPlayer: Record<number, LuaTable<Unit, CreepEntry>> = {};
 const ownedLaning: Record<number, boolean> = {};
 const warned: Record<number, boolean> = {};
 const widthCache: Record<number, { time: number; value: number }> = {};
+const countsByPlayer: Record<number, { attempts: number; misses: number }> = {};
+const tickedAt: Record<number, number> = {};
+
+const TICK_SECONDS = 0.25;
 
 export function SetHelpers(h: Helpers): void {
     helpers = h;
@@ -164,4 +168,36 @@ export function Choose(bot: Unit, killable: Unit[]): Unit | undefined {
         for (const creep of killable) if (isRangedOrSiege(creep)) return creep;
     }
     return killable[0];
+}
+
+export function Counts(bot: Unit): { attempts: number; misses: number } {
+    const pid = bot.GetPlayerID();
+    let counts = countsByPlayer[pid];
+    if (counts === undefined) {
+        counts = { attempts: 0, misses: 0 };
+        countsByPlayer[pid] = counts;
+    }
+    return counts;
+}
+
+/**
+ * Resolves creeps that are gone: an attempt the bot's own last-hit (or deny) count did not move for is a miss.
+ * Dead creeps the bot never went for are dropped uncounted.
+ */
+export function Tick(bot: Unit): void {
+    if (!IsActiveFor(bot)) return;
+    const pid = bot.GetPlayerID();
+    const now = GameTime();
+    if (now - (tickedAt[pid] ?? -1) < TICK_SECONDS) return;
+    tickedAt[pid] = now;
+    const entries = entriesFor(bot);
+    const counts = Counts(bot);
+    for (const [creep, entry] of entries) {
+        if (!creep.IsNull() && creep.IsAlive()) continue;
+        if (entry.attempted) {
+            counts.attempts += 1;
+            if (counterOf(bot, entry.isDeny) === entry.countAtAttempt) counts.misses += 1;
+        }
+        entries.delete(creep);
+    }
 }

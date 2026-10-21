@@ -148,6 +148,19 @@ local function drawOverlay(bot)
                 )
             )
         end
+        if LastHitSkill.IsActiveFor(bot) then
+            local cs = LastHitSkill.Counts(bot)
+            HDebug.Text(
+                bot,
+                "cs",
+                string.format(
+                    "e=%.3f attempts=%d misses=%d",
+                    LastHitSkill.ErrorWidth(bot),
+                    cs.attempts,
+                    cs.misses
+                )
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -176,6 +189,7 @@ local function tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
     Trainer.Tick(bot)
+    LastHitSkill.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)

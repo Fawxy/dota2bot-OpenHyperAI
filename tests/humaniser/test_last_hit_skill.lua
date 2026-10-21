@@ -222,4 +222,55 @@ do
 	check("team roam bare kill check gone", not has(roam, "J.WillKillTarget(creep, bot:GetAttackDamage()-1"))
 end
 
+-- Task 4: attempts and misses, resolved once the creep is gone.
+do
+	local H, bot = Setup(0)
+	local c = MakeCreep(5)
+	rolls(0.5, 0)
+	for _ = 1, 10 do will(H, bot, c) end
+	c.hp, bot.lastHits = 0, 1
+	T = 101
+	H.LastHitSkill.Tick(bot)
+	local n = H.LastHitSkill.Counts(bot)
+	check("attempt counted once per creep", n.attempts == 1 and n.misses == 0, n.attempts .. "/" .. n.misses)
+
+	local c2 = MakeCreep(5)
+	rolls(0.5, 0)
+	will(H, bot, c2)
+	c2.removed = true
+	T = 102
+	H.LastHitSkill.Tick(bot)
+	n = H.LastHitSkill.Counts(bot)
+	check("miss when another unit took it", n.attempts == 2 and n.misses == 1, n.attempts .. "/" .. n.misses)
+
+	local d = MakeCreep(5)
+	rolls(0.5, 0)
+	will(H, bot, d, 10, true)
+	d.hp, bot.lastHits = 0, 5
+	T = 103
+	H.LastHitSkill.Tick(bot)
+	n = H.LastHitSkill.Counts(bot)
+	check("deny miss uses GetDenies", n.attempts == 3 and n.misses == 2, n.attempts .. "/" .. n.misses)
+
+	local skipped = MakeCreep(5)
+	rolls(0.5, 0.99)
+	will(H, bot, skipped)
+	local far = MakeCreep(50)
+	rolls(0.5, 0)
+	will(H, bot, far)
+	skipped.hp, far.hp = 0, 0
+	T = 104
+	H.LastHitSkill.Tick(bot)
+	n = H.LastHitSkill.Counts(bot)
+	check("unattempted dead creeps are not counted", n.attempts == 3 and n.misses == 2, n.attempts .. "/" .. n.misses)
+
+	local live = MakeCreep(5)
+	rolls(0.5, 0)
+	will(H, bot, live)
+	T = 105
+	H.LastHitSkill.Tick(bot)
+	n = H.LastHitSkill.Counts(bot)
+	check("a live attempted creep is not resolved yet", n.attempts == 3, n.attempts)
+end
+
 finish()
