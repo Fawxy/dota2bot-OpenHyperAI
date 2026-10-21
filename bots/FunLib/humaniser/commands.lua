@@ -159,7 +159,7 @@ function ____exports.ParseLane(word, team)
     end
     return nil
 end
-local function teamMembers(team)
+function ____exports.teamMembers(team)
     local result = {}
     local players = GetTeamPlayers(team)
     do
@@ -175,7 +175,7 @@ local function teamMembers(team)
     return result
 end
 function ____exports.memberByPID(team, pid)
-    for ____, member in ipairs(teamMembers(team)) do
+    for ____, member in ipairs(____exports.teamMembers(team)) do
         if member:GetPlayerID() == pid then
             return member
         end
@@ -214,7 +214,7 @@ function ____exports.ResolveSelector(team, word)
     end
     local exact = {}
     local partial = {}
-    for ____, member in ipairs(teamMembers(team)) do
+    for ____, member in ipairs(____exports.teamMembers(team)) do
         do
             local __continue30
             repeat
@@ -505,7 +505,7 @@ local COMMANDS = {
         handler = function(ctx)
             local cfg = ____exports.Get().Smoke
             local anySmoke = false
-            for ____, member in ipairs(teamMembers(ctx.team)) do
+            for ____, member in ipairs(____exports.teamMembers(ctx.team)) do
                 if ____exports.HasSmoke(member) then
                     anySmoke = true
                 end
@@ -535,7 +535,7 @@ local COMMANDS = {
             local pids = ctx.onlyPIDs
             if pids == nil then
                 pids = {}
-                for ____, member in ipairs(teamMembers(ctx.team)) do
+                for ____, member in ipairs(____exports.teamMembers(ctx.team)) do
                     if member:IsBot() and GetUnitToUnitDistance(member, ctx.issuer) <= cfg.Radius then
                         pids[#pids + 1] = member:GetPlayerID()
                     end

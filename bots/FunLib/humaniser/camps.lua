@@ -79,7 +79,9 @@ function ____exports.Spawners()
         list,
         function(____, a, b) return a.idx - b.idx end
     )
-    spawnerCache = list
+    if #list > 0 then
+        spawnerCache = list
+    end
     return list
 end
 function ____exports.BoxCenter(s)
@@ -106,15 +108,15 @@ function ____exports.InBox(idx, loc, margin)
     end
     for ____, s in ipairs(____exports.Spawners()) do
         do
-            local __continue19
+            local __continue20
             repeat
                 if s.idx ~= idx then
-                    __continue19 = true
+                    __continue20 = true
                     break
                 end
                 return loc.x >= s.min.x - margin and loc.x <= s.max.x + margin and loc.y >= s.min.y - margin and loc.y <= s.max.y + margin
             until true
-            if not __continue19 then
+            if not __continue20 then
                 break
             end
         end
@@ -194,13 +196,14 @@ function ____exports.DeriveHalfMeetPoint(team, lane, meet)
     end
     return prev
 end
-function ____exports.DerivePullPath(s, meet)
+--- Point `offset` outside the spawn box, on the ray from its centre toward `target`; undefined when they coincide.
+function ____exports.BoxEdgePoint(s, target, offset)
     local c = ____exports.BoxCenter(s)
-    local dx = meet.x - c.x
-    local dy = meet.y - c.y
+    local dx = target.x - c.x
+    local dy = target.y - c.y
     local len = math.sqrt(dx * dx + dy * dy)
     if len < 1 then
-        return {meet}
+        return nil
     end
     local ux = dx / len
     local uy = dy / len
@@ -208,11 +211,24 @@ function ____exports.DerivePullPath(s, meet)
     local halfH = (s.max.y - s.min.y) / 2
     local tx = math.abs(ux) > 0.000001 and halfW / math.abs(ux) or math.huge
     local ty = math.abs(uy) > 0.000001 and halfH / math.abs(uy) or math.huge
-    local t = math.min(tx, ty) + LaneConfig.Settings().Radii.PullPathEdge
-    return {
-        Vector(c.x + ux * t, c.y + uy * t, c.z),
-        meet
-    }
+    local t = math.min(tx, ty) + offset
+    return Vector(c.x + ux * t, c.y + uy * t, c.z)
+end
+function ____exports.DerivePullPath(s, meet)
+    local edge = ____exports.BoxEdgePoint(
+        s,
+        meet,
+        LaneConfig.Settings().Radii.PullPathEdge
+    )
+    return edge == nil and ({meet}) or ({edge, meet})
+end
+function ____exports.SpawnerByIdx(idx)
+    for ____, s in ipairs(____exports.Spawners()) do
+        if s.idx == idx then
+            return s
+        end
+    end
+    return nil
 end
 function ____exports.DeriveStackExit(s, _team)
     local c = ____exports.BoxCenter(s)
@@ -252,18 +268,18 @@ local function matchReplay(s)
     local radius = camps().ReplayMatchRadius
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue46
+            local __continue52
             repeat
                 if entry.near == nil or entry.team ~= s.team or entry.type ~= s.type then
-                    __continue46 = true
+                    __continue52 = true
                     break
                 end
                 if dist2D(entry.near, s.location) <= radius then
                     return entry
                 end
-                __continue46 = true
+                __continue52 = true
             until true
-            if not __continue46 then
+            if not __continue52 then
                 break
             end
         end
@@ -285,11 +301,11 @@ function ____exports.Resolve()
     local claimed = {}
     for ____, s in ipairs(spawners) do
         do
-            local __continue53
+            local __continue59
             repeat
                 local entry = matchReplay(s)
                 if entry == nil then
-                    __continue53 = true
+                    __continue59 = true
                     break
                 end
                 claimed[s.idx] = true
@@ -302,7 +318,8 @@ function ____exports.Resolve()
                     source = entry.source,
                     type = s.type,
                     key = entry.key,
-                    derived = false
+                    derived = false,
+                    unverified = entry.unverified
                 }
                 if lane ~= nil and entry.pullAggroSec ~= nil and entry.pullPath ~= nil and entry.meetPoint ~= nil then
                     job.pull = {
@@ -314,35 +331,35 @@ function ____exports.Resolve()
                     }
                 end
                 jobs[s.idx] = job
-                __continue53 = true
+                __continue59 = true
             until true
-            if not __continue53 then
+            if not __continue59 then
                 break
             end
         end
     end
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue57
+            local __continue63
             repeat
                 if entry.near ~= nil or entry.laneKind == nil or entry.pullAggroSec == nil then
-                    __continue57 = true
+                    __continue63 = true
                     break
                 end
                 local lane = ____exports.LaneOfKind(entry.team, entry.laneKind)
                 local tower = laneTower(entry.team, lane)
                 if tower == nil then
-                    __continue57 = true
+                    __continue63 = true
                     break
                 end
                 local best
                 local bestDist = math.huge
                 for ____, s in ipairs(spawners) do
                     do
-                        local __continue60
+                        local __continue66
                         repeat
                             if claimed[s.idx] == true or s.team ~= entry.team or s.type ~= entry.type then
-                                __continue60 = true
+                                __continue66 = true
                                 break
                             end
                             local d = dist2D(s.location, tower)
@@ -350,15 +367,15 @@ function ____exports.Resolve()
                                 bestDist = d
                                 best = s
                             end
-                            __continue60 = true
+                            __continue66 = true
                         until true
-                        if not __continue60 then
+                        if not __continue66 then
                             break
                         end
                     end
                 end
                 if best == nil or bestDist > camps().PullCampMaxTowerDist then
-                    __continue57 = true
+                    __continue63 = true
                     break
                 end
                 claimed[best.idx] = true
@@ -378,11 +395,12 @@ function ____exports.Resolve()
                     source = entry.source,
                     type = best.type,
                     key = entry.key,
-                    derived = true
+                    derived = true,
+                    unverified = entry.unverified
                 }
-                __continue57 = true
+                __continue63 = true
             until true
-            if not __continue57 then
+            if not __continue63 then
                 break
             end
         end
@@ -400,7 +418,9 @@ function ____exports.Resolve()
         result[#result + 1] = job
         byIdx[s.idx] = job
     end
-    resolveCache = result
+    if #spawners > 0 then
+        resolveCache = result
+    end
     return result
 end
 function ____exports.ByIdx(idx)

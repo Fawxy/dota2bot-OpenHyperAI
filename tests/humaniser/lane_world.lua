@@ -55,6 +55,20 @@ function MakeCreep(o)
 	return c
 end
 
+-- Neutrals live outside CREEPS; GetNearbyNeutralCreeps returns NEUTRALS whatever the radius.
+function MakeNeutral(o)
+	local c = setmetatable({ team = 4, loc = Vector(o.x, o.y), hp = o.hp or 300, maxhp = o.maxhp or 300,
+		name = o.name or "npc_dota_neutral_kobold" }, CreepMeta)
+	table.insert(NEUTRALS, c)
+	return c
+end
+
+-- Valve's RandomVector returns a vector of exactly this length; the direction comes from one RandomFloat draw.
+function RandomVector(len)
+	local a = RandomFloat(0, 2 * math.pi)
+	return Vector(len * math.cos(a), len * math.sin(a), 0)
+end
+
 function GetUnitList(t)
 	GETUNITLIST_CALLS[t] = (GETUNITLIST_CALLS[t] or 0) + 1
 	local other = CURRENT_TEAM == 2 and 3 or 2
@@ -96,6 +110,16 @@ function UnitMeta:GetAttackRange() return self.range or 550 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
+function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
+function UnitMeta:GetNearbyLaneCreeps(r, enemy)
+	local team = enemy and (self.team == 2 and 3 or 2) or self.team
+	local out = {}
+	for _, c in ipairs(CREEPS[team]) do
+		local dx, dy = c.loc.x - self.loc.x, c.loc.y - self.loc.y
+		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, c) end
+	end
+	return out
+end
 for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
 		table.insert(ACTIONS, { pid = self.pid, kind = kind, args = { ... } })
@@ -149,5 +173,8 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.LanePlan.ResetCache()
 	H.Lane.LanePlanner.ResetCache()
 	H.Lane.LaneTech.ResetCache()
+	H.Lane.CampJobs.ResetCache()
+	-- ResetHooks dropped the probes registered at module load.
+	H.Lane.CampJobs.RegisterProbes()
 	return H
 end

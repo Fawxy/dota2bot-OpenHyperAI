@@ -28,6 +28,7 @@ export interface CampJobData {
     type: CampType;
     key?: string;
     derived: boolean;
+    unverified?: boolean;
 }
 
 export interface Spawner {
@@ -91,7 +92,8 @@ export function Spawners(): Spawner[] {
         }
     }
     list.sort((a, b) => a.idx - b.idx);
-    spawnerCache = list;
+    // Spawners may not exist yet early in the game; only a non-empty result is final.
+    if (list.length > 0) spawnerCache = list;
     return list;
 }
 
@@ -180,20 +182,31 @@ export function DeriveHalfMeetPoint(team: number, lane: Lane, meet: Vector): Vec
     return prev;
 }
 
-export function DerivePullPath(s: Spawner, meet: Vector): Vector[] {
+/** Point `offset` outside the spawn box, on the ray from its centre toward `target`; undefined when they coincide. */
+export function BoxEdgePoint(s: Spawner, target: Vector, offset: number): Vector | undefined {
     const c = BoxCenter(s);
-    const dx = meet.x - c.x;
-    const dy = meet.y - c.y;
+    const dx = target.x - c.x;
+    const dy = target.y - c.y;
     const len = math.sqrt(dx * dx + dy * dy);
-    if (len < 1) return [meet];
+    if (len < 1) return undefined;
     const ux = dx / len;
     const uy = dy / len;
     const halfW = (s.max.x - s.min.x) / 2;
     const halfH = (s.max.y - s.min.y) / 2;
     const tx = math.abs(ux) > 1e-6 ? halfW / math.abs(ux) : math.huge;
     const ty = math.abs(uy) > 1e-6 ? halfH / math.abs(uy) : math.huge;
-    const t = math.min(tx, ty) + LaneConfig.Settings().Radii.PullPathEdge;
-    return [Vector(c.x + ux * t, c.y + uy * t, c.z), meet];
+    const t = math.min(tx, ty) + offset;
+    return Vector(c.x + ux * t, c.y + uy * t, c.z);
+}
+
+export function DerivePullPath(s: Spawner, meet: Vector): Vector[] {
+    const edge = BoxEdgePoint(s, meet, LaneConfig.Settings().Radii.PullPathEdge);
+    return edge === undefined ? [meet] : [edge, meet];
+}
+
+export function SpawnerByIdx(idx: number): Spawner | undefined {
+    for (const s of Spawners()) if (s.idx === idx) return s;
+    return undefined;
 }
 
 export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
@@ -262,6 +275,7 @@ export function Resolve(): CampJobData[] {
             type: s.type,
             key: entry.key,
             derived: false,
+            unverified: entry.unverified,
         };
         if (lane !== undefined && entry.pullAggroSec !== undefined && entry.pullPath !== undefined && entry.meetPoint !== undefined) {
             job.pull = { aggroSec: entry.pullAggroSec, halfAggroSec: entry.halfAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint, halfMeetPoint: entry.halfMeetPoint };
@@ -303,6 +317,7 @@ export function Resolve(): CampJobData[] {
             type: best.type,
             key: entry.key,
             derived: true,
+            unverified: entry.unverified,
         };
     }
 
@@ -319,7 +334,7 @@ export function Resolve(): CampJobData[] {
         result.push(job);
         byIdx[s.idx] = job;
     }
-    resolveCache = result;
+    if (spawners.length > 0) resolveCache = result;
     return result;
 }
 

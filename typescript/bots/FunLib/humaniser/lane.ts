@@ -11,10 +11,12 @@ import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
 import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import { teamMembers } from "bots/FunLib/humaniser/commands";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -61,3 +63,43 @@ export function PickDeny(_bot: Unit, _allyCreeps: Unit[]): Unit | undefined {
 export function SupersedesHarass(_bot: Unit): boolean {
     return false;
 }
+
+/** mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off). */
+export function CampJobDesire(bot: Unit): number {
+    return CampJobs.Desire(bot);
+}
+
+/** mode_farm_generic Think: true when the camp job owns this frame. */
+export function CampJobThink(bot: Unit): boolean {
+    return CampJobs.Think(bot);
+}
+
+export function CampJobOnEnd(bot: Unit): void {
+    CampJobs.OnEnd(bot);
+}
+
+// !hpulltest <idx> [half]: the issuer's nearest bot runs that pull, bypassing the planner and the owner check.
+LaneDebug.Register("hpulltest", (team, issuer, args) => {
+    const campIdx = tonumber(args[0]);
+    if (campIdx === undefined) {
+        HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]");
+        return;
+    }
+    let best: Unit | undefined;
+    let bestDist = math.huge;
+    for (const member of teamMembers(team)) {
+        if (!member.IsBot() || !member.IsAlive()) continue;
+        const d = GetUnitToLocationDistance(member, issuer.GetLocation());
+        if (d < bestDist) {
+            best = member;
+            bestDist = d;
+        }
+    }
+    if (best === undefined) {
+        HDebug.Log("lane", "hpulltest no bot");
+        return;
+    }
+    const kind: CampJobs.JobKind = args[1] === "half" ? "half_pull" : "full_pull";
+    const ok = CampJobs.Start(best, { kind, campIdx, forced: true });
+    HDebug.Log("lane", `hpulltest pid=${best.GetPlayerID()} camp=${campIdx} kind=${kind} started=${tostring(ok)}`);
+});

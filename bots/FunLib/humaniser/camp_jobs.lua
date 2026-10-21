@@ -1,0 +1,773 @@
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Team = ____dota.Team
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
+local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
+local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
+local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
+local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
+local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
+local LOG_KIND = {
+    full_pull = "full",
+    half_pull = "half",
+    stack_pull = "stackpull",
+    double_pull = "double",
+    stack = "stack",
+    contest = "contest"
+}
+local FLAG_OF = {
+    full_pull = "FullPull",
+    half_pull = "HalfPull",
+    stack_pull = "StackPull",
+    double_pull = "FullPull",
+    stack = "Stack",
+    contest = "CounterPlay"
+}
+local JOB_FLAGS = {"FullPull", "HalfPull", "StackPull"}
+local jobs = {}
+local doneCycle = {}
+function ____exports.ResetCache()
+    jobs = {}
+    doneCycle = {}
+end
+local function settings()
+    return LaneConfig.Settings()
+end
+local function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+local function cycleOf(time)
+    return math.floor(time / settings().Timing.WaveCycle)
+end
+local function commitTech(kind)
+    if kind == "double_pull" then
+        return "full_pull"
+    end
+    if kind == "contest" then
+        return "contest"
+    end
+    return kind
+end
+function ____exports.AggroSecondsFor(kind, data)
+    if kind == "stack" or kind == "contest" then
+        return data.stack ~= nil and ({data.stack.aggroSec}) or ({})
+    end
+    local pull = data.pull
+    if pull == nil then
+        return {}
+    end
+    if kind ~= "half_pull" then
+        return pull.aggroSec
+    end
+    if pull.halfAggroSec ~= nil then
+        return pull.halfAggroSec
+    end
+    local later = settings().Timing.HalfPullLater
+    return __TS__ArrayMap(
+        pull.aggroSec,
+        function(____, s) return s + later end
+    )
+end
+function ____exports.NextAggroTime(dotaTime, seconds, period)
+    local base = math.floor(dotaTime / period) * period
+    local best = math.huge
+    for ____, s in ipairs(seconds) do
+        for ____, t in ipairs({base + s, base + period + s}) do
+            if t >= dotaTime and t < best then
+                best = t
+            end
+        end
+    end
+    return best
+end
+function ____exports.TravelTime(dist, speed)
+    return dist / math.max(speed, 1)
+end
+function ____exports.WindowOpen(now, aggroAt, travel)
+    local t = settings().Timing
+    return now >= aggroAt - travel - t.JobStartSlack and now <= aggroAt + t.JobStartLate
+end
+local function isNeutral(unit)
+    return unit ~= nil and unit ~= nil and unit:GetTeam() == Team.Neutral
+end
+function ____exports.MeasureDivert(allyCreeps, waveSize)
+    local n = 0
+    for ____, c in ipairs(allyCreeps) do
+        if isNeutral(c:GetAttackTarget()) then
+            n = n + 1
+        end
+    end
+    return math.min(
+        1,
+        n / math.max(waveSize, 1)
+    )
+end
+function ____exports.Grade(kind, divert)
+    local t = settings().Thresholds
+    if kind == "half_pull" then
+        if divert > t.HalfPullMax then
+            return "mistake:half->full"
+        end
+        if divert < t.HalfPullMin then
+            return "mistake:weak-pull"
+        end
+        return "ok"
+    end
+    if divert > t.FullPullMin then
+        return "ok"
+    end
+    return divert > 0 and "mistake:weak-pull" or "mistake:no-divert"
+end
+local function noisy(v, noise)
+    local r = RandomVector(noise)
+    return Vector(v.x + r.x, v.y + r.y, v.z)
+end
+local function standFor(spawner, firstWaypoint)
+    return Camps.BoxEdgePoint(
+        spawner,
+        firstWaypoint,
+        settings().Radii.StandOffset
+    ) or Camps.BoxCenter(spawner)
+end
+--- The camp's lead waypoints with its own meet point replaced by `meet`.
+local function leadPath(pull, meet)
+    local result = {}
+    local n = #pull.path
+    do
+        local i = 0
+        while i < n do
+            do
+                local __continue36
+                repeat
+                    local p = pull.path[i + 1]
+                    if i == n - 1 and dist2D(p, pull.meetPoint) < 1 then
+                        __continue36 = true
+                        break
+                    end
+                    result[#result + 1] = p
+                    __continue36 = true
+                until true
+                if not __continue36 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    result[#result + 1] = meet
+    return result
+end
+local function travelTo(bot, loc)
+    return ____exports.TravelTime(
+        GetUnitToLocationDistance(bot, loc),
+        bot:GetCurrentMovementSpeed()
+    )
+end
+local function dataLabel(data)
+    return data.unverified == true and "unverified" or data.source
+end
+function ____exports.Start(bot, req)
+    if PULL_KINDS[req.kind] ~= true then
+        return false
+    end
+    local data = Camps.ByIdx(req.campIdx)
+    local spawner = Camps.SpawnerByIdx(req.campIdx)
+    if data == nil or data.pull == nil or spawner == nil then
+        return false
+    end
+    local seconds = ____exports.AggroSecondsFor(req.kind, data)
+    if #seconds == 0 then
+        return false
+    end
+    local cfg = settings()
+    local skill = LaneConfig.SkillOf(bot)
+    local now = DotaTime()
+    local period = cfg.Timing.PullPeriod
+    local jitter = LaneConfig.Jitter(skill)
+    local meet = req.kind == "half_pull" and (data.pull.halfMeetPoint or data.pull.meetPoint) or data.pull.meetPoint
+    local noise = LaneConfig.Curve("PathNoise", skill)
+    local exact = leadPath(data.pull, meet)
+    local stand = noisy(
+        standFor(spawner, exact[1]),
+        noise
+    )
+    local path = __TS__ArrayMap(
+        exact,
+        function(____, p) return noisy(p, noise) end
+    )
+    local base = ____exports.NextAggroTime(now - cfg.Timing.JobStartLate, seconds, period)
+    if req.forced == true and base < now + travelTo(bot, stand) then
+        base = ____exports.NextAggroTime(
+            now + travelTo(bot, stand),
+            seconds,
+            period
+        )
+    end
+    local job = __TS__ObjectAssign({}, req, {
+        phase = "travel",
+        aggroAt = base + jitter,
+        plannedSec = base % period,
+        path = path,
+        meet = meet,
+        startedAt = now,
+        peakDivert = 0,
+        waveSize = 0,
+        activeCamp = req.campIdx,
+        stand = stand,
+        waypoint = 0,
+        stage = 1,
+        secondTried = false,
+        telegraphed = false,
+        baseAggro = base
+    })
+    jobs[bot:GetPlayerID()] = job
+    LanePlanner.Commit(
+        bot,
+        commitTech(req.kind)
+    )
+    HDebug.Log(
+        "lane",
+        string.format(
+            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s",
+            bot:GetPlayerID(),
+            LOG_KIND[req.kind],
+            req.campIdx,
+            data.key or "-",
+            dataLabel(data),
+            job.aggroAt,
+            tostring(req.forced == true)
+        )
+    )
+    return true
+end
+function ____exports.Current(bot)
+    return jobs[bot:GetPlayerID()]
+end
+local function isLive(job)
+    return job ~= nil and job.phase ~= "done" and job.phase ~= "return"
+end
+function ____exports.Active(bot)
+    return isLive(jobs[bot:GetPlayerID()])
+end
+function ____exports.UpcomingWithin(bot, seconds)
+    local job = jobs[bot:GetPlayerID()]
+    if job == nil or job.phase ~= "travel" and job.phase ~= "wait" then
+        return false
+    end
+    return job.aggroAt - DotaTime() <= seconds
+end
+local function logJob(bot, job, grade)
+    local data = Camps.ByIdx(job.campIdx)
+    local aggro = job.plannedSec + ((job.actualAggro or job.aggroAt) - job.baseAggro)
+    HDebug.Log(
+        "lane",
+        string.format(
+            "job pid=%d kind=%s camp=%d key=%s aggro=%.1f planned=%.1f divert=%.2f grade=%s",
+            bot:GetPlayerID(),
+            LOG_KIND[job.kind],
+            job.campIdx,
+            data and data.key or "-",
+            aggro,
+            job.plannedSec,
+            job.peakDivert,
+            grade
+        )
+    )
+end
+local function close(bot, job, phase, grade, reason)
+    job.phase = phase
+    doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
+    if grade ~= nil then
+        logJob(bot, job, grade)
+    else
+        HDebug.Log(
+            "lane",
+            (((((("job-abort pid=" .. tostring(bot:GetPlayerID())) .. " kind=") .. LOG_KIND[job.kind]) .. " camp=") .. tostring(job.campIdx)) .. " reason=") .. reason
+        )
+    end
+end
+--- Before the aggro nothing happened in the lane, so only a note is logged; after it the pull is graded.
+local function abort(bot, job, reason)
+    local graded = job.actualAggro ~= nil
+    close(
+        bot,
+        job,
+        "return",
+        graded and "aborted:" .. reason or nil,
+        reason
+    )
+end
+local function jobAllowed(bot, s, forced)
+    local enemies = LaneState.Enemies(bot, s.lane)
+    local ok, why = LaneRoles.MayRunCampJob(bot, s, enemies)
+    if ok or not forced or why ~= "not-owner" then
+        return ok, why
+    end
+    if not LaneConfig.InLaningPhase() then
+        return false, "not-laning"
+    end
+    if LaneRoles.RoleIn(bot, s) == "solo" then
+        if not LaneRoles.LaneStable(bot, enemies) then
+            return false, "solo: unstable"
+        end
+    elseif not LaneRoles.PartnerSafe(bot, s, enemies) then
+        return false, "partner unsafe"
+    end
+    return true, "ok"
+end
+--- Abort checks for a running job; true when it may continue.
+local function keepGoing(bot, job)
+    if not LaneConfig.IsOn(FLAG_OF[job.kind]) then
+        abort(bot, job, "flag-off")
+        return false
+    end
+    if not bot:IsAlive() then
+        abort(bot, job, "dead")
+        return false
+    end
+    local now = DotaTime()
+    if now > job.aggroAt + settings().Timing.JobMaxAfterAggro then
+        if job.phase == "watch" then
+            close(
+                bot,
+                job,
+                "return",
+                ____exports.Grade(job.kind, job.peakDivert),
+                "timeout"
+            )
+        else
+            abort(bot, job, "timeout")
+        end
+        return false
+    end
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        abort(bot, job, "no-lane")
+        return false
+    end
+    local ok, why = jobAllowed(bot, s, job.forced == true)
+    if not ok then
+        abort(bot, job, why)
+        return false
+    end
+    if LanePlan.View(bot, s).handsOff then
+        abort(bot, job, "handsoff")
+        return false
+    end
+    return true
+end
+local function desireOf(kind)
+    local t = settings().Timing
+    return kind == "contest" and t.ContestDesire or t.JobDesire
+end
+local function anyJobFlag()
+    for ____, flag in ipairs(JOB_FLAGS) do
+        if LaneConfig.IsOn(flag) then
+            return true
+        end
+    end
+    return false
+end
+local function pullCampFor(tech, camps)
+    if tech == "stack_pull" then
+        for ____, c in ipairs(camps) do
+            if LaneHooks.IsStacked(c.campIdx) then
+                return c
+            end
+        end
+    end
+    return camps[1]
+end
+--- Earliest pull aggro in the start window for the camp's full or half seconds, before asking the planner.
+local function windowFor(bot, data, kind, now)
+    local spawner = Camps.SpawnerByIdx(data.campIdx)
+    if spawner == nil or data.pull == nil then
+        return false
+    end
+    local travel = travelTo(
+        bot,
+        standFor(
+            spawner,
+            leadPath(data.pull, data.pull.meetPoint)[1]
+        )
+    )
+    if travel > settings().Timing.MaxTravel then
+        return false
+    end
+    local base = ____exports.NextAggroTime(
+        now - settings().Timing.JobStartLate,
+        ____exports.AggroSecondsFor(kind, data),
+        settings().Timing.PullPeriod
+    )
+    return ____exports.WindowOpen(now, base, travel)
+end
+local function schedule(bot)
+    local now = DotaTime()
+    local pid = bot:GetPlayerID()
+    if doneCycle[pid] == cycleOf(now) or not LaneConfig.InLaningPhase() then
+        return false
+    end
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    local camps = Camps.PullCampsFor(s.team, s.lane)
+    if #camps == 0 then
+        return false
+    end
+    if not windowFor(bot, camps[1], "full_pull", now) and not windowFor(bot, camps[1], "half_pull", now) then
+        local any = false
+        for ____, c in ipairs(camps) do
+            if LaneHooks.IsStacked(c.campIdx) and windowFor(bot, c, "stack_pull", now) then
+                any = true
+            end
+        end
+        if not any then
+            return false
+        end
+    end
+    local kind = PULL_TECHS[LanePlanner.Plan(bot, s).tech]
+    if kind == nil then
+        return false
+    end
+    local camp = pullCampFor(kind, camps)
+    if not windowFor(bot, camp, kind, now) then
+        return false
+    end
+    local req = {kind = kind, campIdx = camp.campIdx}
+    if kind == "full_pull" and #camps > 1 and LaneConfig.Knows(
+        "stack_pull",
+        LaneConfig.SkillOf(bot)
+    ) then
+        req.kind = "double_pull"
+        req.secondCampIdx = camps[2].campIdx
+    end
+    return ____exports.Start(bot, req)
+end
+function ____exports.Desire(bot)
+    if not LaneConfig.IsActive() then
+        return 0
+    end
+    local job = jobs[bot:GetPlayerID()]
+    if isLive(job) then
+        if not keepGoing(bot, job) then
+            return 0
+        end
+        if LanePlanner.Committed(bot) == nil then
+            LanePlanner.Commit(
+                bot,
+                commitTech(job.kind)
+            )
+        end
+        return desireOf(job.kind)
+    end
+    if not anyJobFlag() or not bot:IsAlive() then
+        return 0
+    end
+    local started = schedule(bot)
+    return started and desireOf(jobs[bot:GetPlayerID()].kind) or 0
+end
+local function overlay(bot, job)
+    HDebug.Text(
+        bot,
+        "lane_job",
+        string.format(
+            "job=%s@%.1f %s out=%.2f",
+            job.kind,
+            job.plannedSec,
+            job.phase,
+            job.peakDivert
+        )
+    )
+end
+local function moveTo(bot, loc)
+    bot:Action_MoveToLocation(loc)
+    return true
+end
+local function arrived(bot, loc)
+    return GetUnitToLocationDistance(bot, loc) <= settings().Radii.JobArrive
+end
+local function telegraph(bot, job, now)
+    if job.telegraphed or job.stage ~= 1 or now < job.aggroAt - settings().Timing.PullTelegraphLead then
+        return
+    end
+    job.telegraphed = true
+    if not LaneConfig.IsOn("Telegraph") or not Difficulty.IsAllyOfHuman(bot) then
+        return
+    end
+    Orders.Say(
+        bot,
+        job.kind == "half_pull" and "say_lane_half_pull" or "say_lane_pulling_in_5",
+        settings().Timing.PullTelegraphCooldown
+    )
+end
+local function campNeutral(bot, job)
+    local best
+    local bestDist = math.huge
+    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
+        settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        do
+            local __continue109
+            repeat
+                if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
+                    __continue109 = true
+                    break
+                end
+                if not Camps.InBox(
+                    job.activeCamp,
+                    n:GetLocation()
+                ) then
+                    __continue109 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(
+                    bot,
+                    n:GetLocation()
+                )
+                if d < bestDist then
+                    best = n
+                    bestDist = d
+                end
+                __continue109 = true
+            until true
+            if not __continue109 then
+                break
+            end
+        end
+    end
+    return best
+end
+local function laneCreepsNear(bot, center, radius)
+    local result = {}
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(
+        settings().Radii.LaneCreepScan,
+        false
+    ) or ({})) do
+        do
+            local __continue115
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue115 = true
+                    break
+                end
+                if dist2D(
+                    c:GetLocation(),
+                    center
+                ) <= radius then
+                    result[#result + 1] = c
+                end
+                __continue115 = true
+            until true
+            if not __continue115 then
+                break
+            end
+        end
+    end
+    return result
+end
+local function sample(bot, job, now)
+    local cfg = settings()
+    if job.sampledAt ~= nil and now - job.sampledAt < cfg.Timing.WatchEvery then
+        return
+    end
+    job.sampledAt = now
+    local meet = job.meet or bot:GetLocation()
+    local watched = laneCreepsNear(bot, meet, cfg.Radii.MeetWatch)
+    if job.waveSize == 0 then
+        if ____exports.MeasureDivert(watched, 1) == 0 then
+            return
+        end
+        job.waveSize = math.max(
+            1,
+            #laneCreepsNear(bot, meet, cfg.Radii.WaveSize)
+        )
+    end
+    job.peakDivert = math.max(
+        job.peakDivert,
+        ____exports.MeasureDivert(watched, job.waveSize)
+    )
+end
+--- Double pull: once the first camp has engaged, lead the second camp into the same wave if it pulls soon enough.
+local function trySecondCamp(bot, job, now)
+    if job.kind ~= "double_pull" or job.stage ~= 1 or job.secondTried or job.peakDivert <= 0 or job.secondCampIdx == nil then
+        return false
+    end
+    job.secondTried = true
+    local data = Camps.ByIdx(job.secondCampIdx)
+    local spawner = Camps.SpawnerByIdx(job.secondCampIdx)
+    if data == nil or data.pull == nil or spawner == nil or job.meet == nil then
+        return false
+    end
+    local cfg = settings()
+    local base = ____exports.NextAggroTime(
+        now,
+        ____exports.AggroSecondsFor("full_pull", data),
+        cfg.Timing.PullPeriod
+    )
+    if base - now > cfg.Timing.DoublePullReach then
+        return false
+    end
+    local skill = LaneConfig.SkillOf(bot)
+    local jitter = LaneConfig.Jitter(skill)
+    local noise = LaneConfig.Curve("PathNoise", skill)
+    local exact = leadPath(data.pull, job.meet)
+    job.stand = noisy(
+        standFor(spawner, exact[1]),
+        noise
+    )
+    job.path = __TS__ArrayMap(
+        exact,
+        function(____, p) return noisy(p, noise) end
+    )
+    job.aggroAt = base + jitter
+    job.activeCamp = job.secondCampIdx
+    job.stage = 2
+    job.waypoint = 0
+    job.watchFrom = nil
+    job.phase = "travel"
+    HDebug.Log(
+        "lane",
+        (((("job-second pid=" .. tostring(bot:GetPlayerID())) .. " camp=") .. tostring(job.secondCampIdx)) .. " aggroAt=") .. string.format("%.1f", job.aggroAt)
+    )
+    return true
+end
+local function step(bot, job)
+    local now = DotaTime()
+    local cfg = settings()
+    if job.phase == "travel" or job.phase == "wait" then
+        telegraph(bot, job, now)
+        if now < job.aggroAt then
+            if not arrived(bot, job.stand) then
+                return moveTo(bot, job.stand)
+            end
+            job.phase = "wait"
+            return true
+        end
+        job.phase = "aggro"
+    end
+    if job.phase == "aggro" then
+        local creep = campNeutral(bot, job)
+        if creep ~= nil then
+            bot:Action_AttackUnit(creep, true)
+            if job.stage == 1 then
+                job.actualAggro = now
+            end
+            job.phase = "lead"
+            return true
+        end
+        if now >= job.aggroAt + cfg.Timing.NoCampAfter then
+            if job.stage == 1 then
+                job.actualAggro = job.aggroAt
+                close(
+                    bot,
+                    job,
+                    "return",
+                    "mistake:no-camp",
+                    "no-camp"
+                )
+            else
+                close(
+                    bot,
+                    job,
+                    "done",
+                    ____exports.Grade(job.kind, job.peakDivert),
+                    "second camp empty"
+                )
+            end
+            return false
+        end
+        return moveTo(bot, job.stand)
+    end
+    if job.phase == "lead" then
+        while job.waypoint < #job.path and arrived(bot, job.path[job.waypoint + 1]) do
+            job.waypoint = job.waypoint + 1
+        end
+        if job.waypoint < #job.path then
+            return moveTo(bot, job.path[job.waypoint + 1])
+        end
+        job.phase = "watch"
+        job.watchFrom = now
+    end
+    if job.phase == "watch" then
+        sample(bot, job, now)
+        if trySecondCamp(bot, job, now) then
+            return step(bot, job)
+        end
+        if now - (job.watchFrom or now) >= cfg.Timing.WatchSec then
+            close(
+                bot,
+                job,
+                "done",
+                ____exports.Grade(job.kind, job.peakDivert),
+                "done"
+            )
+            return false
+        end
+        local last = job.path[#job.path]
+        if last ~= nil and not arrived(bot, last) then
+            return moveTo(bot, last)
+        end
+        return true
+    end
+    return false
+end
+function ____exports.Think(bot)
+    if not LaneConfig.IsActive() then
+        return false
+    end
+    local job = jobs[bot:GetPlayerID()]
+    if not isLive(job) then
+        return false
+    end
+    local acted = step(bot, job)
+    overlay(bot, job)
+    return acted
+end
+function ____exports.OnEnd(bot)
+    if not LaneConfig.IsActive() then
+        return
+    end
+    local job = jobs[bot:GetPlayerID()]
+    if isLive(job) then
+        abort(bot, job, "mode-end")
+    end
+end
+function ____exports.RegisterProbes()
+    LaneHooks.SetRotationProbe(function(bot) return ____exports.UpcomingWithin(
+        bot,
+        settings().Timing.JobUpcoming
+    ) end)
+end
+____exports.RegisterProbes()
+return ____exports

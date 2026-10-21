@@ -8,8 +8,11 @@ local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
 local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
+local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
+local teamMembers = ____commands.teamMembers
 ____exports.Config = LaneConfig
 ____exports.Hooks = LaneHooks
 ____exports.Camps = Camps
@@ -18,6 +21,7 @@ ____exports.LaneRoles = LaneRoles
 ____exports.LanePlan = LanePlan
 ____exports.LanePlanner = LanePlanner
 ____exports.LaneTech = LaneTech
+____exports.CampJobs = CampJobs
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()
 end
@@ -64,4 +68,60 @@ end
 function ____exports.SupersedesHarass(_bot)
     return false
 end
+--- mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off).
+function ____exports.CampJobDesire(bot)
+    return CampJobs.Desire(bot)
+end
+--- mode_farm_generic Think: true when the camp job owns this frame.
+function ____exports.CampJobThink(bot)
+    return CampJobs.Think(bot)
+end
+function ____exports.CampJobOnEnd(bot)
+    CampJobs.OnEnd(bot)
+end
+LaneDebug.Register(
+    "hpulltest",
+    function(team, issuer, args)
+        local campIdx = tonumber(args[1])
+        if campIdx == nil then
+            HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]")
+            return
+        end
+        local best
+        local bestDist = math.huge
+        for ____, member in ipairs(teamMembers(team)) do
+            do
+                local __continue18
+                repeat
+                    if not member:IsBot() or not member:IsAlive() then
+                        __continue18 = true
+                        break
+                    end
+                    local d = GetUnitToLocationDistance(
+                        member,
+                        issuer:GetLocation()
+                    )
+                    if d < bestDist then
+                        best = member
+                        bestDist = d
+                    end
+                    __continue18 = true
+                until true
+                if not __continue18 then
+                    break
+                end
+            end
+        end
+        if best == nil then
+            HDebug.Log("lane", "hpulltest no bot")
+            return
+        end
+        local kind = args[2] == "half" and "half_pull" or "full_pull"
+        local ok = CampJobs.Start(best, {kind = kind, campIdx = campIdx, forced = true})
+        HDebug.Log(
+            "lane",
+            (((((("hpulltest pid=" .. tostring(best:GetPlayerID())) .. " camp=") .. tostring(campIdx)) .. " kind=") .. kind) .. " started=") .. tostring(ok)
+        )
+    end
+)
 return ____exports

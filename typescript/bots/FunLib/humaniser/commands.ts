@@ -88,7 +88,7 @@ export function ParseLane(word: string | undefined, team: number): Lane | undefi
     return undefined;
 }
 
-function teamMembers(team: number): Unit[] {
+export function teamMembers(team: number): Unit[] {
     const result: Unit[] = [];
     const players = GetTeamPlayers(team);
     for (let i = 1; i <= players.length; i++) {

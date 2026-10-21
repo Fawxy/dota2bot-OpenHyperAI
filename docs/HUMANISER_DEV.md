@@ -280,3 +280,15 @@ Other **TODO (in-game)** checks:
 - Tower swap: attacking an enemy hero inside the tower's range pulls the tower off a low-HP allied core.
 - Creep block: the block point (120 ahead, ±50 to the side of the lead creep) actually slows the wave; tune `Radii.BlockAhead`/`BlockSide`.
 - Aggro draw: creep aggro is triggered by the attack order itself, so the walk-back moves issued on the next frames do not cancel it.
+
+## Lane management: camp jobs and pulls (task 07)
+
+`camp_jobs.ts` runs full, half and double pulls from `mode_farm_generic.lua` (desire hook before the farm mode's laning-phase early exit, Think hook before the ThinkLess throttle, OnEnd aborts a running job). In the laning phase a job is scheduled when the planner picks `full_pull`/`half_pull`/`stack_pull` and the start window is open (`aggro − travel − JobStartSlack` to `aggro + JobStartLate`, travel ≤ `MaxTravel`). The window only gates the start: a job then keeps `Timing.JobDesire` (0.7) through travel, wait, aggro, lead and watch until it is done, `JobMaxAfterAggro` (15 s) after the aggro, or aborted (flag off, dead, not allowed to run a camp job, partner unsafe, `LANE_HANDSOFF`, mode ended). A double pull is a full pull at skill ≥ `Gates.StackPull` with a second pull camp; once the first camp engages it leads the second camp into the same wave if that camp pulls within `DoublePullReach`. Logs: `[H:lane] job-start pid=.. kind=.. camp=.. key=.. data=<seed|replay|measured|unverified> aggroAt=.. forced=..`, `[H:lane] job-abort ...` for aborts before the aggro, and the graded `[H:lane] job pid=.. kind=<full|half|stackpull|double> camp=.. key=.. aggro=.. planned=.. divert=.. grade=..` line read by `tools/replay-mining/parse_condebug.js`. `!hpulltest <idx> [half]` (Debug) makes the issuer's nearest bot run that pull, bypassing the planner and the owner check. Overlay key `lane_job`: `job=<kind>@<plannedSec> <phase> out=<divert>`.
+
+**TODO (in-game):**
+- `GetNeutralSpawners()` returns the spawn boxes at 0:00 (empty results are no longer cached, so a late answer is picked up).
+- Farm desire 0.7 beats the laning mode's desire during the laning phase, so the farm mode (and its Think hook) actually runs the job.
+- One `Action_AttackUnit(neutral, true)` aggroes the whole camp and the neutrals follow the bot along the lead path; neutrals reach the meet point before losing interest.
+- `GetAttackTarget()` on allied lane creeps reports the neutral while they fight it (divert measurement); compare logged `divert` with what is seen.
+- Seed pull seconds (small :15/:45, hard :18/:48, half +2 s) and the unverified off-lane hard camp (`data=unverified` in `job-start`): collect `job` lines and run `parse_condebug.js`.
+- `RandomVector(len)` returns a vector of length `len` (path noise).

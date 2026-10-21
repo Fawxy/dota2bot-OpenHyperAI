@@ -101,6 +101,9 @@ function GetDesireHelper()
 		end
 	end
 
+	local nLaneJobDesire = J.Humaniser.Lane.CampJobDesire(bot)
+	if nLaneJobDesire > 0 then return nLaneJobDesire end
+
 	if not bInitDone
 	then
 		bInitDone = true
@@ -467,6 +470,7 @@ function OnStart()
 end
 
 function OnEnd()
+	J.Humaniser.Lane.CampJobOnEnd(bot)
 	preferedCamp = nil;
 	farmState = FARM_STATE_NONE;
 	hLaneCreepList  = {};
@@ -477,6 +481,7 @@ end
 
 function Think()
 	if J.CanNotUseAction(bot) then return end
+	if J.Humaniser.Lane.CampJobThink(bot) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end
 	sec = math.floor(DotaTime()) % 60
 	if runMode
