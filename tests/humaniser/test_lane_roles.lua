@@ -254,4 +254,43 @@ do
 	check("the cover decision holds for the absence", ask() == true)
 end
 
+do
+	-- Hysteresis: a support needs the core at 40% to leave, but once committed only turns back below 35%.
+	local _, R, S = begin(0.5)
+	local core = unit({ pid = 1, bot = true, pos = 1, hp = 38 })
+	local support = unit({ pid = 5, bot = true, pos = 5 })
+	local s = snap(S, support)
+	check("38%: no new job", R.PartnerSafe(support, s, {}) == false)
+	check("38%: a running job holds", R.PartnerHolding(support, s, {}) == true)
+	core.hp = 34
+	local ok, why = R.PartnerHolding(support, s, {})
+	check("34%: a running job turns back", ok == false and why == "partner low-hp", why)
+	core.hp = 100
+	check("two laners standing near a healthy core: no new job", R.PartnerSafe(support, s, { seen(10, 1100), seen(11, 0) }) == false)
+	check("two laners standing near a healthy core: a running job holds", R.PartnerHolding(support, s, { seen(10, 1100), seen(11, 0) }) == true)
+end
+
+do
+	-- A dive is an enemy on top of the core while the core loses HP, held for the support's reaction time.
+	local _, R, S = begin(0.5)
+	local core = unit({ pid = 1, bot = true, pos = 1, hp = 100 })
+	local support = unit({ pid = 5, bot = true, pos = 5 })
+	local s = snap(S, support)
+	local on = { seen(10, 300) }
+	check("enemy close, no damage yet", R.PartnerHolding(support, s, on) == true)
+	advance(0.5) core.hp = 85
+	check("damage starts: reaction delay", R.PartnerHolding(support, s, on) == true)
+	advance(0.3)
+	check("still within the delay", R.PartnerHolding(support, s, on) == true)
+	advance(0.2)
+	local ok, why = R.PartnerHolding(support, s, on)
+	check("dive held 0.5 s: turn back", ok == false and why == "partner dived", why)
+	advance(0.1)
+	check("enemy leaves: holds again", R.PartnerHolding(support, s, { seen(10, 1100) }) == true)
+	advance(3)
+	check("old damage outside the window does not count", R.PartnerHolding(support, s, on) == true)
+	local r = R.ReadPartner(support, s, on)
+	check("reading: hp, near, close, loss", near(r.hp, 0.85) and r.near == 1 and r.close == 1 and near(r.loss, 0), r.loss)
+end
+
 finish()

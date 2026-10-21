@@ -339,9 +339,10 @@ export function GetIncomingTrackingProjectiles(target: Unit): TrackingProjectile
     let out: TrackingProjectile[] | undefined;
     for (let i = 0; i < list.length; i++) {
         const p = list[i];
-        const caster = p.caster;
-        let keep = true;
-        if (caster === undefined || caster.GetTeam() !== obs.team) {
+        // The engine's list can have holes (console.9055828679, 14:49 teamfight); holes are dropped.
+        let keep = p !== undefined;
+        const caster = p?.caster;
+        if (keep && (caster === undefined || caster.GetTeam() !== obs.team)) {
             const key = caster ?? NO_CASTER;
             const name = p.is_attack ? "attack" : p.ability !== undefined ? p.ability.GetName() : "unknown";
             let byName = ids.get(key);

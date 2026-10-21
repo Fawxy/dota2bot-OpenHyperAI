@@ -27,7 +27,6 @@ end
 
 TOWERS_W = { [2] = {}, [3] = {} }
 function GetTower(team, id) return TOWERS_W[team][id] end
-function GetBarracks(team, id) return nil end
 
 CREEPS = { [2] = {}, [3] = {} }
 NEUTRALS = {}
@@ -89,6 +88,8 @@ function GetUnitList(t)
 	return {}
 end
 function GetNeutralSpawners() return SPAWNERS end
+-- IMPASSABLE(v) true marks a blocked location (e.g. beyond a map edge); nil means everything is passable.
+function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index
@@ -115,6 +116,7 @@ function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
+function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
 function UnitMeta:GetNearbyTowers(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
@@ -173,6 +175,7 @@ function LaneFresh(laneCfg, extra)
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
+	IMPASSABLE = nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
 		Telemetry = extra.telemetry })

@@ -165,12 +165,18 @@ local lastDraw = {}
 local needSince = {}
 local covers = {}
 local doubleDraws = {}
+--- Partner HP over the last Timing.PartnerHPWindow, by partner pid, sampled whenever a support reads its partner.
+local hpSamples = {}
+--- When the dive condition began, by the reading support's pid.
+local diveSince = {}
 function ____exports.ResetCache()
     claims = {}
     lastDraw = {}
     needSince = {}
     covers = {}
     doubleDraws = {}
+    hpSamples = {}
+    diveSince = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -401,6 +407,16 @@ function ____exports.CampJobOwner(s)
     end
     return best and best.pid
 end
+local function visibleWithin(enemies, loc, radius)
+    local n = 0
+    for ____, e in ipairs(enemies) do
+        if e.visible and dist2D(e.location, loc) <= radius then
+            n = n + 1
+        end
+    end
+    return n
+end
+--- Start gate: the support does not leave while the partner is low or the enemy laners stand within PartnerDangerRadius.
 function ____exports.PartnerSafe(bot, s, enemies)
     local partner = ____exports.Partner(bot, s)
     if partner == nil then
@@ -410,14 +426,80 @@ function ____exports.PartnerSafe(bot, s, enemies)
     if partner.hp < cfg.PartnerMinHP then
         return false
     end
-    local loc = partner.unit:GetLocation()
-    local near = 0
-    for ____, e in ipairs(enemies) do
-        if e.visible and dist2D(e.location, loc) <= cfg.PartnerDangerRadius then
-            near = near + 1
+    return visibleWithin(
+        enemies,
+        partner.unit:GetLocation(),
+        cfg.PartnerDangerRadius
+    ) < cfg.PartnerDangerEnemies
+end
+--- The partner's live state; also records its HP for `loss`, so call it every frame the reading matters.
+function ____exports.ReadPartner(bot, s, enemies)
+    local partner = ____exports.Partner(bot, s)
+    if partner == nil then
+        return nil
+    end
+    local cfg = LaneConfig.Settings()
+    local now = DotaTime()
+    local maxHP = partner.unit:GetMaxHealth()
+    local hp = maxHP > 0 and partner.unit:GetHealth() / maxHP or 0
+    local kept = {}
+    local peak = hp
+    for ____, sample in ipairs(hpSamples[partner.pid] or ({})) do
+        do
+            local __continue69
+            repeat
+                if now - sample.at > cfg.Timing.PartnerHPWindow or sample.at > now then
+                    __continue69 = true
+                    break
+                end
+                kept[#kept + 1] = sample
+                if sample.hp > peak then
+                    peak = sample.hp
+                end
+                __continue69 = true
+            until true
+            if not __continue69 then
+                break
+            end
         end
     end
-    return near < cfg.PartnerDangerEnemies
+    kept[#kept + 1] = {at = now, hp = hp}
+    hpSamples[partner.pid] = kept
+    local loc = partner.unit:GetLocation()
+    return {
+        pid = partner.pid,
+        hp = hp,
+        near = visibleWithin(enemies, loc, cfg.Thresholds.PartnerDangerRadius),
+        close = visibleWithin(enemies, loc, cfg.Radii.PartnerDive),
+        loss = peak - hp
+    }
+end
+--- Continue gate for a job already under way. In a two-lane the enemy laners stand around PartnerDangerRadius of the
+-- core most of the time, so the start gate's count flips every few frames; once committed the support only turns back
+-- when the partner is low (below PartnerBailHP, under the start gate's PartnerMinHP for hysteresis) or is being dived:
+-- an enemy within PartnerDive while the partner keeps losing HP, for PartnerBailConfirm (the support's reaction).
+function ____exports.PartnerHolding(bot, s, enemies)
+    local pid = bot:GetPlayerID()
+    local r = ____exports.ReadPartner(bot, s, enemies)
+    local cfg = LaneConfig.Settings()
+    if r == nil then
+        __TS__Delete(diveSince, pid)
+        return true, "ok"
+    end
+    if r.hp < cfg.Thresholds.PartnerBailHP then
+        return false, "partner low-hp"
+    end
+    if r.close < 1 or r.loss < cfg.Thresholds.PartnerDiveLoss then
+        __TS__Delete(diveSince, pid)
+        return true, "ok"
+    end
+    local now = DotaTime()
+    local since = diveSince[pid] or now
+    diveSince[pid] = since
+    if now - since < cfg.Timing.PartnerBailConfirm then
+        return true, "ok"
+    end
+    return false, "partner dived"
 end
 function ____exports.LaneStable(bot, enemies)
     local cfg = LaneConfig.Settings().Thresholds
@@ -428,25 +510,29 @@ function ____exports.LaneStable(bot, enemies)
     local loc = bot:GetLocation()
     for ____, e in ipairs(enemies) do
         do
-            local __continue68
+            local __continue80
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.StableSeenWithin then
-                    __continue68 = true
+                    __continue80 = true
                     break
                 end
                 if dist2D(e.location, loc) <= cfg.StableEnemyRadius then
                     return false
                 end
-                __continue68 = true
+                __continue80 = true
             until true
-            if not __continue68 then
+            if not __continue80 then
                 break
             end
         end
     end
     return true
 end
-function ____exports.MayRunCampJob(bot, s, enemies)
+--- `committed`: the job is already running, so the partner check is PartnerHolding instead of the start gate.
+function ____exports.MayRunCampJob(bot, s, enemies, committed)
+    if committed == nil then
+        committed = false
+    end
     if ____exports.CampJobOwner(s) ~= bot:GetPlayerID() then
         return false, "not-owner"
     end
@@ -460,6 +546,8 @@ function ____exports.MayRunCampJob(bot, s, enemies)
         if not ____exports.LaneStable(bot, enemies) then
             return false, "solo: unstable"
         end
+    elseif committed then
+        return ____exports.PartnerHolding(bot, s, enemies)
     elseif not ____exports.PartnerSafe(bot, s, enemies) then
         return false, "partner unsafe"
     end

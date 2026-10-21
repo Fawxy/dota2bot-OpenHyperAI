@@ -89,7 +89,7 @@ end
 
 -- Drives a stack job on `idx` started at minute + :40 with a zero jitter (Gauss u1 = 1): 3 neutrals before the aggro,
 -- `added` more spawned at the next :00, then settled by :05. Returns the job, the desires at :58 and the next :01,
--- the attacks issued 0.1 s before the aggro, and the camp's original neutrals. `partial` stops after :01.
+-- the attacks issued before the order's lead, and the camp's original neutrals. `partial` stops after :01.
 local function runStack(H, bot, idx, at, minute, added, partial)
 	local m0 = minute * 60
 	T = m0 + 40
@@ -99,9 +99,10 @@ local function runStack(H, bot, idx, at, minute, added, partial)
 	local job = H.Lane.CampJobs.Current(bot)
 	NEUTRALS = {}
 	local camp = neutrals(at, 3)
-	frame(H, bot, job.aggroAt - 0.1)
+	-- The injected J.GetAttackProDelayTime reads 0.3 s, so the order goes out at aggroAt - 0.3.
+	frame(H, bot, job.aggroAt - 0.4)
 	local early = #ActionsOf(bot.pid, "AttackUnit")
-	frame(H, bot, job.aggroAt)
+	frame(H, bot, job.aggroAt - 0.3)
 	camp[1].target = bot
 	frame(H, bot, job.aggroAt)
 	frame(H, bot, m0 + 56)
@@ -461,6 +462,75 @@ do
 	check("hstacktest targets the next stack second", job ~= nil and job.baseAggro == 113.5, job and job.baseAggro)
 	check("hstacktest leaves other bots", H.Lane.CampJobs.Current(far) == nil)
 	check("hstacktest logged", find(lines, "hstacktest pid=5 camp=1 started=true") ~= nil)
+end
+
+do
+	-- A stack under way is committed like a pull: the enemy laners standing by the core do not end it.
+	local H, support, core = world(1, { camps = { { "medium", MEDIUM } } })
+	support.loc = standOf(H, 1)
+	T = 100
+	check("precondition: stack job starts", H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 }))
+	frame(H, support, 100)
+	unit({ pid = 11, team = 3, pos = 5, loc = Vector(FRONT.x - 600, FRONT.y + 300) })
+	unit({ pid = 12, team = 3, pos = 1, loc = Vector(FRONT.x + 700, FRONT.y) })
+	T = 100.6
+	local s = H.Lane.LaneState.ForBot(support)
+	local enemies = H.Lane.LaneState.Enemies(support, Lane.Bot)
+	check("precondition: a new stack would not start", H.Lane.Stacking.Eligible(support, s, enemies) == false)
+	check("laners by the core: the stack goes on", near(frame(H, support, 100.6), 0.7) and H.Lane.CampJobs.Active(support))
+	core.hp = 30
+	T = 101.2
+	check("core low: the stack is dropped", frame(H, support, 101.2) == 0 and not H.Lane.CampJobs.Active(support))
+end
+
+local function stackJob(H, bot, idx)
+	T = 100
+	SetRandomSequence({ 1.0, 0.25 })
+	check("precondition: stack job starts", H.Lane.CampJobs.Start(bot, { kind = "stack", campIdx = idx }))
+	return H.Lane.CampJobs.Current(bot)
+end
+
+do
+	-- console.9055828679: skywrath reached camp 17's stand 1-2 s after its aggro second and only then attacked
+	-- (aggro 54.7 / 55.1 for 53.5), though the camp was in range on the way. Now the camp is attacked from where it is
+	-- first seen, the order going out the attack's lead (the injected J.GetAttackProDelayTime: 0.3 s) early.
+	local H, support = world(1, { camps = { { "large", LARGE } } })
+	local job = stackJob(H, support, 1)
+	local stand = standOf(H, 1)
+	support.loc = Vector(stand.x + 500, stand.y)
+	local troll = MakeNeutral({ x = LARGE.x, y = LARGE.y })
+	frame(H, support, job.aggroAt - 0.4)
+	check("en route: no attack before the lead", #ActionsOf(5, "AttackUnit") == 0 and job.phase == "travel")
+	frame(H, support, job.aggroAt - 0.3)
+	local a = ActionsOf(5, "AttackUnit")
+	check("en route: attacks the lead before the planned second", #a == 1 and a[1].args[1] == troll and job.phase == "aggro")
+	-- Ranged: released at aggroAt - 0.2 from 500 away at 1,000/s, so the hit lands at aggroAt + 0.3.
+	support.range, support.projSpeed = 600, 1000
+	support.loc = Vector(LARGE.x + 500, LARGE.y)
+	support.lastAttack = job.aggroAt - 0.2
+	frame(H, support, job.aggroAt - 0.1)
+	check("ranged aggro logged when the projectile lands", job.actualAggro ~= nil and math.abs(job.actualAggro - (job.aggroAt + 0.3)) < 1e-6, job.actualAggro)
+end
+
+do
+	-- console.9055828679: warlock stood at evil_2's stand points, behind the trees along the box edge, saw no neutral and
+	-- aborted `mistake:no-camp` four times. An unseen camp is walked in on before the aggro.
+	local H, support = world(1, { camps = { { "large", LARGE } } })
+	local job = stackJob(H, support, 1)
+	support.loc = standOf(H, 1)
+	local troll = MakeNeutral({ x = LARGE.x, y = LARGE.y })
+	troll.CanBeSeen = function() return false end
+	local radii = H.Lane.Config.Settings().Radii
+	frame(H, support, job.aggroAt - 3.5)
+	check("unseen camp: waits at the stand until StandApproachLead", job.phase == "wait")
+	frame(H, support, job.aggroAt - 3)
+	local m = ActionsOf(5, "MoveToLocation")
+	local to = m[#m] and m[#m].args[1]
+	check("unseen camp: walks in toward the spawner origin", to ~= nil and dist(to, LARGE) <= radii.StandApproach + 1e-6, to and dist(to, LARGE))
+	teleport(support)
+	troll.CanBeSeen = function() return true end
+	frame(H, support, job.aggroAt - 0.3)
+	check("unseen camp: attacks once it is in sight", #ActionsOf(5, "AttackUnit") == 1)
 end
 
 finish()

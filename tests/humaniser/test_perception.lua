@@ -368,6 +368,16 @@ do
 	BOT.projectiles = { attack }
 	check("identity dropped when it vanished", J.IsAttackProjectileIncoming(BOT, 300) == false)
 	check("same-frame call is cached", rawequal(P.GetIncomingTrackingProjectiles(BOT), P.GetIncomingTrackingProjectiles(BOT)))
+
+	-- console.9055828679 14:49: the engine's list had a nil entry inside its length (__len stands in for the
+	-- game's Lua, whose # counted past the hole; fengari's # stops at it).
+	T = 0.9
+	local a1 = { is_attack = true, caster = ally, location = Vector(50, 0) }
+	local a2 = { is_attack = true, caster = ally, location = Vector(60, 0) }
+	BOT.projectiles = setmetatable({ a1, nil, a2 }, { __len = function() return 3 end })
+	local ok, r = pcall(P.GetIncomingTrackingProjectiles, BOT)
+	check("nil projectile entry: no error", ok, r)
+	check("nil projectile entry: dropped, the rest kept", ok and #r == 2 and r[1] == a1 and r[2] == a2, ok and #r)
 end
 
 -- Channels (IsChanneling override): enemy channels delayed, a tracked cast is not delayed twice, allies pass

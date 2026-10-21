@@ -4,7 +4,7 @@
  * Observer-dependent values (exposure, laneScore) are computed per bot in ScoreFor, not stored in the
  * shared snapshot.
  */
-import { Barracks, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 
@@ -36,8 +36,6 @@ export interface LaneSnapshot {
     ourFront: number;
     enemyFront: number;
     meetAmount: number;
-    /** Meet point of two untouched waves (equal speed, same spawn time): midway between the melee barracks. Set for the first three wave cycles only; a logged cross-check for meetAmount. */
-    expectedMeetAmount?: number;
     ourTowerAmount: number;
     theirTowerAmount: number;
     eqPos: number;
@@ -104,8 +102,6 @@ const TOWER_IDS: Record<number, number[]> = {
 const WAVE_HISTORY = 3;
 const EQ_HISTORY = 4;
 const ARRIVAL_CREEPS = 3;
-const EXPECTED_MEET_WAVES = 3;
-const MELEE_BARRACKS: Record<number, number> = { [Lane.Top]: Barracks.TopMelee, [Lane.Mid]: Barracks.MidMelee, [Lane.Bot]: Barracks.BotMelee };
 
 let scans: Record<number, Scan> = {};
 let snapshots: Record<string, LaneSnapshot> = {};
@@ -298,14 +294,6 @@ function teamAmountAt(team: number, lane: Lane, loc: Vector): number {
     return Camps.ToTeamAmount(team, GetAmountAlongLane(lane, loc).amount);
 }
 
-function expectedMeet(team: number, lane: Lane, now: number): number | undefined {
-    if (now < 0 || now >= EXPECTED_MEET_WAVES * timing().WaveCycle) return undefined;
-    const ours = GetBarracks(team, MELEE_BARRACKS[lane]);
-    const theirs = GetBarracks(enemyTeamOf(team), MELEE_BARRACKS[lane]);
-    if (ours === null || ours === undefined || theirs === null || theirs === undefined) return undefined;
-    return (teamAmountAt(team, lane, ours.GetLocation()) + teamAmountAt(team, lane, theirs.GetLocation())) / 2;
-}
-
 function heroesFor(team: number, lane: Lane, front: Vector): LaneHero[] {
     const result: LaneHero[] = [];
     const near = radii().AllyNearFront;
@@ -424,7 +412,6 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
         ourFront,
         enemyFront,
         meetAmount,
-        expectedMeetAmount: expectedMeet(team, lane, now),
         ourTowerAmount,
         theirTowerAmount,
         eqPos,
@@ -462,12 +449,19 @@ export function ForBot(bot: Unit): LaneSnapshot | undefined {
     return Get(bot.GetTeam(), lane, bot);
 }
 
+// A handle cached up to SnapshotRefresh ago can be a removed entity by now (a killed or expired illusion), and any
+// method call on it raises "Invalid object" (console.9055828679: GetAttackTarget in countDenies at 10:44).
+function holdsRemovedUnit(list: LaneEnemy[]): boolean {
+    for (const e of list) if (e.unit !== undefined && e.unit.IsNull()) return true;
+    return false;
+}
+
 export function Enemies(bot: Unit, _lane: Lane): LaneEnemy[] {
     if (!LaneConfig.IsActive()) return [];
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const cached = enemyCache[pid];
-    if (cached !== undefined && now - cached.time < timing().SnapshotRefresh) return cached.list;
+    if (cached !== undefined && now - cached.time < timing().SnapshotRefresh && !holdsRemovedUnit(cached.list)) return cached.list;
 
     const list: LaneEnemy[] = [];
     const seen: Record<number, boolean> = {};

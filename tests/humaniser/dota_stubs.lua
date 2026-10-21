@@ -36,6 +36,7 @@ function Unit:IsIllusion() return false end
 function Unit:IsHero() return true end
 function Unit:IsAlive() return self.alive end
 function Unit:CanBeSeen() return true end
+function Unit:IsNull() return self.removed == true end
 function Unit:GetLocation() return self.loc end
 function Unit:GetUnitName() return "npc_dota_hero_" .. self.pid end
 function Unit:GetDifficulty() return self.difficulty end

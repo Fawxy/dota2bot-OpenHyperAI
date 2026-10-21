@@ -210,11 +210,19 @@ function onAccepted(bot, order)
         ackKey(order)
     )
     local loc = ____exports.OrderLocation(order)
-    local pid = bot:GetPlayerID()
-    if order.ackPing == true and loc ~= nil and GameTime() - (lastAckPingAt[pid] or -ACK_PING_GAP) >= ACK_PING_GAP then
-        lastAckPingAt[pid] = GameTime()
-        bot:ActionImmediate_Ping(loc.x, loc.y, true)
+    if order.ackPing == true and loc ~= nil then
+        ____exports.Ping(bot, loc)
     end
+end
+--- Map ping for humaniser features; shares the ack pings' limit of one per bot per ACK_PING_GAP. False if suppressed.
+function ____exports.Ping(bot, loc)
+    local pid = bot:GetPlayerID()
+    if GameTime() - (lastAckPingAt[pid] or -ACK_PING_GAP) < ACK_PING_GAP then
+        return false
+    end
+    lastAckPingAt[pid] = GameTime()
+    bot:ActionImmediate_Ping(loc.x, loc.y, true)
+    return true
 end
 function ____exports.CanSay(bot)
     return GameTime() - (lastLineAt[bot:GetPlayerID()] or -MIN_LINE_GAP) >= MIN_LINE_GAP
@@ -545,23 +553,23 @@ local function acceptedFor(bot)
     local best
     for ____, order in ipairs(____exports.GetActive(bot:GetTeam())) do
         do
-            local __continue77
+            local __continue79
             repeat
                 if not ____exports.TryAccept(bot, order) then
-                    __continue77 = true
+                    __continue79 = true
                     break
                 end
                 accepted[#accepted + 1] = order
                 if order.type == "AVOID" or isLaneOrder(order.type) then
-                    __continue77 = true
+                    __continue79 = true
                     break
                 end
                 if best == nil or PRIORITY[order.type] > PRIORITY[best.type] then
                     best = order
                 end
-                __continue77 = true
+                __continue79 = true
             until true
-            if not __continue77 then
+            if not __continue79 then
                 break
             end
         end
@@ -660,21 +668,21 @@ function ____exports.CapRetreatDesire(bot, desire)
 end
 local function modeMatches(order, botMode, lane)
     repeat
-        local ____switch110 = order.type
-        local ____cond110 = ____switch110 == "GATHER" or ____switch110 == "ATTACK" or ____switch110 == "SMOKE" or ____switch110 == "BACK"
-        if ____cond110 then
+        local ____switch112 = order.type
+        local ____cond112 = ____switch112 == "GATHER" or ____switch112 == "ATTACK" or ____switch112 == "SMOKE" or ____switch112 == "BACK"
+        if ____cond112 then
             return botMode == BotMode.Assemble
         end
-        ____cond110 = ____cond110 or ____switch110 == "ROSHAN"
-        if ____cond110 then
+        ____cond112 = ____cond112 or ____switch112 == "ROSHAN"
+        if ____cond112 then
             return botMode == BotMode.Roshan
         end
-        ____cond110 = ____cond110 or ____switch110 == "DEFEND"
-        if ____cond110 then
+        ____cond112 = ____cond112 or ____switch112 == "DEFEND"
+        if ____cond112 then
             return (botMode == BotMode.DefendTowerTop or botMode == BotMode.DefendTowerMid or botMode == BotMode.DefendTowerBot) and (order.lane == nil or order.lane == lane)
         end
-        ____cond110 = ____cond110 or ____switch110 == "PUSH"
-        if ____cond110 then
+        ____cond112 = ____cond112 or ____switch112 == "PUSH"
+        if ____cond112 then
             return (botMode == BotMode.PushTowerTop or botMode == BotMode.PushTowerMid or botMode == BotMode.PushTowerBot) and (order.lane == nil or order.lane == lane)
         end
         do

@@ -215,6 +215,21 @@ do
 	check("no last-seen info, no entry", again[5] == nil and again[6] ~= nil)
 end
 
+-- console.9055828679 10:44: an enemy handle in the cached list was removed (a killed illusion) before the
+-- cache expired, and countDenies' GetAttackTarget on it raised "Invalid object".
+do
+	local _, bot, S = world()
+	local hero = MakeUnit({ pid = 6, team = 3, loc = Vector(0, -5000) })
+	local illusion = MakeUnit({ pid = 6, team = 3, loc = Vector(50, -5000) })
+	check("both listed while alive", #S.Enemies(bot, Lane.Bot) == 2)
+	illusion.removed = true
+	table.remove(UNITS[3], 2)
+	T = 100.1
+	local units = {}
+	for _, e in ipairs(S.Enemies(bot, Lane.Bot)) do if e.unit ~= nil then table.insert(units, e.unit) end end
+	check("removed handle not served from the cache", #units == 1 and units[1] == hero, #units)
+end
+
 do
 	local _, bot, S = world()
 	allFronts({ 0.5, 0.5 })

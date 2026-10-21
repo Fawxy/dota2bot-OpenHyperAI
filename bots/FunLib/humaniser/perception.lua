@@ -336,9 +336,9 @@ function ____exports.GetIncomingTrackingProjectiles(target)
         local i = 0
         while i < #list do
             local p = list[i + 1]
-            local caster = p.caster
-            local keep = true
-            if caster == nil or caster:GetTeam() ~= obs.team then
+            local keep = p ~= nil
+            local caster = p and p.caster
+            if keep and (caster == nil or caster:GetTeam() ~= obs.team) then
                 local key = caster or NO_CASTER
                 local name = p.is_attack and "attack" or (p.ability ~= nil and p.ability:GetName() or "unknown")
                 local byName = ids[key]
@@ -346,12 +346,12 @@ function ____exports.GetIncomingTrackingProjectiles(target)
                     byName = {}
                     ids[key] = byName
                 end
-                local ____byName_name_4 = byName[name]
-                if ____byName_name_4 == nil then
-                    local ____opt_0 = prev and prev[key]
-                    ____byName_name_4 = ____opt_0 and ____opt_0[name]
+                local ____byName_name_6 = byName[name]
+                if ____byName_name_6 == nil then
+                    local ____opt_2 = prev and prev[key]
+                    ____byName_name_6 = ____opt_2 and ____opt_2[name]
                 end
-                local e = ____byName_name_4
+                local e = ____byName_name_6
                 if e == nil then
                     e = newEvent(obs, name, now)
                 end

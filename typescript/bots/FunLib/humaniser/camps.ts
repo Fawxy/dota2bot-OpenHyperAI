@@ -202,6 +202,26 @@ export function BoxEdgePoint(s: Spawner, target: Vector, offset: number): Vector
     return Vector(c.x + ux * t, c.y + uy * t, c.z);
 }
 
+/**
+ * Where a bot stands to aggro the camp: on the ray from the spawner origin (where the neutrals idle, not the box
+ * centre) toward `toward`, `offset` past the box edge but at most Radii.StandReach from the origin. 7.41 boxes are
+ * 600-1150 wide with the origin off-centre (good_8/evil_8: ~1000 from the west edge), so an edge stand could leave the
+ * camp outside NeutralSearch or behind the trees along the box edge (console.9055828679 `mistake:no-camp`).
+ */
+export function StandPoint(s: Spawner, toward: Vector, offset: number): Vector {
+    const o = s.location;
+    const dx = toward.x - o.x;
+    const dy = toward.y - o.y;
+    const len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1) return o;
+    const ux = dx / len;
+    const uy = dy / len;
+    const tx = ux > 1e-6 ? (s.max.x - o.x) / ux : ux < -1e-6 ? (s.min.x - o.x) / ux : math.huge;
+    const ty = uy > 1e-6 ? (s.max.y - o.y) / uy : uy < -1e-6 ? (s.min.y - o.y) / uy : math.huge;
+    const d = math.min(math.max(0, math.min(tx, ty)) + offset, LaneConfig.Settings().Radii.StandReach);
+    return Vector(o.x + ux * d, o.y + uy * d, o.z);
+}
+
 export function DerivePullPath(s: Spawner, meet: Vector): Vector[] {
     const edge = BoxEdgePoint(s, meet, LaneConfig.Settings().Radii.PullPathEdge);
     return edge === undefined ? [meet] : [edge, meet];
@@ -231,10 +251,36 @@ export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
         ux = (c.x - nearest.x) / nearestDist;
         uy = (c.y - nearest.y) / nearestDist;
     }
-    const target = Vector(c.x + ux * away, c.y + uy * away, c.z);
+    // Directly away from the lane can run into the map edge: evil_7 (Dire off-lane hard camp) sits ~200 from it, so the
+    // walk-off ended 350 past the box and its ranged trolls kept shooting from inside (console.9055828679, after=3).
+    // Turn by 45 degree steps, at each step the side farther from the lane first, until the whole walk is passable.
     // StackExit is measured past the box edge, not from the centre: 7.41 boxes are 600-1100 wide, so from the
     // centre the walk-off from the stand point (edge + StandOffset) shrank to ~300-450 and the camp was not dragged clear.
-    return [BoxEdgePoint(s, target, away) ?? target];
+    let fallback: Vector | undefined;
+    for (const turn of [0, 45, 90, 135]) {
+        const candidates: Vector[] = [];
+        for (const sign of turn === 0 ? [1] : [1, -1]) {
+            const a = (sign * turn * math.pi) / 180;
+            const dx = ux * math.cos(a) - uy * math.sin(a);
+            const dy = ux * math.sin(a) + uy * math.cos(a);
+            const target = Vector(c.x + dx * away, c.y + dy * away, c.z);
+            candidates.push(BoxEdgePoint(s, target, away) ?? target);
+        }
+        if (nearest !== undefined && candidates.length === 2 && dist2D(candidates[1], nearest) > dist2D(candidates[0], nearest)) candidates.reverse();
+        fallback = fallback ?? candidates[0];
+        for (const exit of candidates) if (walkable(BoxEdgePoint(s, exit, 0) ?? c, exit)) return [exit];
+    }
+    return [fallback ?? c];
+}
+
+function walkable(from: Vector, to: Vector): boolean {
+    const step = LaneConfig.Settings().Radii.ExitCheckStep;
+    const n = math.max(1, math.ceil(dist2D(from, to) / step));
+    for (let i = 1; i <= n; i++) {
+        const t = i / n;
+        if (!IsLocationPassable(Vector(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.z))) return false;
+    }
+    return true;
 }
 
 const T1: Record<number, number> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };

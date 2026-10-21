@@ -371,11 +371,16 @@ function onAccepted(bot: Unit, order: TeamOrder): void {
     if (!IsSpokesperson(bot, order)) return;
     Say(bot, ackKey(order));
     const loc = OrderLocation(order);
+    if (order.ackPing === true && loc !== undefined) Ping(bot, loc);
+}
+
+/** Map ping for humaniser features; shares the ack pings' limit of one per bot per ACK_PING_GAP. False if suppressed. */
+export function Ping(bot: Unit, loc: Vector): boolean {
     const pid = bot.GetPlayerID();
-    if (order.ackPing === true && loc !== undefined && GameTime() - (lastAckPingAt[pid] ?? -ACK_PING_GAP) >= ACK_PING_GAP) {
-        lastAckPingAt[pid] = GameTime();
-        bot.ActionImmediate_Ping(loc.x, loc.y, true);
-    }
+    if (GameTime() - (lastAckPingAt[pid] ?? -ACK_PING_GAP) < ACK_PING_GAP) return false;
+    lastAckPingAt[pid] = GameTime();
+    bot.ActionImmediate_Ping(loc.x, loc.y, true);
+    return true;
 }
 
 type Announcer = (bot: Unit, key: string, cooldown: number) => void;

@@ -231,9 +231,10 @@ do
 	before = #ACTIONS
 	frame(H, support, job.aggroAt + 0.05)
 	check("holds the attack order until the hit is confirmed", #ACTIONS == before and job.phase == "aggro")
-	support.lastAttack = T
+	-- Read between frames: the attack's own time is the aggro, not the frame that sees it (a melee hit: no flight).
+	support.lastAttack = job.aggroAt + 0.07
 	frame(H, support, job.aggroAt + 0.1)
-	check("records the aggro when the attack lands", near(job.actualAggro, job.aggroAt + 0.1), job.actualAggro)
+	check("records the aggro at the attack time", near(job.actualAggro, job.aggroAt + 0.07), job.actualAggro)
 	check("leads out along the first path waypoint", dist(lastMove(5), data.pull.path[1]) <= 20 + 1e-6)
 	teleport(support)
 	frame(H, support, job.aggroAt + 0.2)
@@ -351,7 +352,7 @@ do
 		if l:find("[H:lane] job-abort", 1, true) then abortLine = l end
 		if l:find("[H:lane] job pid", 1, true) then jobLine = l end
 	end
-	check("partner abort logged on the abort line", abortLine ~= nil and abortLine:find("reason=partner-unsafe", 1, true), abortLine)
+	check("partner abort logged on the abort line", abortLine ~= nil and abortLine:find("reason=partner-low-hp", 1, true), abortLine)
 	check("partner abort is not a graded job line", jobLine == nil, jobLine)
 end
 
@@ -473,12 +474,13 @@ do
 	check("late arrival is not a no-camp verdict", lineWith(lines, "no-camp") == nil)
 	check("late arrival leaves the stack mark", H.Lane.Stacking.IsStacked(1))
 
-	-- Control: at the stand with the box empty, the stack really is gone.
+	-- Control: at the stand with the box empty (after walking in to the spawner origin), the stack really is gone.
 	H, _, support = jobWorld(1, { debug = true })
 	markStacked(H)
 	lines = capture(function()
 		frame(H, support, 72.5)
 		job = H.Lane.CampJobs.Current(support)
+		teleport(support)
 		frame(H, support, job.aggroAt)
 		frame(H, support, job.aggroAt + 1.0)
 	end)
@@ -621,9 +623,6 @@ local function field(line, key) return line and line:match(" " .. key .. '="([^"
 
 do
 	-- lane_plan: one event per wave cycle with the planner's verdict, however often farm asks.
-	-- Melee barracks at absolute amounts 0.1 and 0.9 put the expected meet at 0.5.
-	local noBarracks = GetBarracks
-	function GetBarracks(team) return { GetLocation = function() return GetLocationAlongLane(Lane.Bot, team == 2 and 0.1 or 0.9) end } end
 	local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
 	local lines = {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
@@ -639,10 +638,6 @@ do
 	plans = hev(lines, "lane_plan")
 	check("next cycle: a second lane_plan, now a pull", #plans == 2 and field(plans[2], "tech") == "full_pull", plans[2])
 	check("lane_plan carries the meet amount", tonumber(field(plans[1], "meet")) ~= nil and tonumber(field(plans[2], "meet")) ~= nil, plans[1])
-	check("before 1:30: expected meet and its eqPos logged",
-		near(tonumber(field(plans[1], "xmeet")), 0.5) and near(tonumber(field(plans[1], "xeq")), 0), plans[1])
-	check("from 1:30: no expected meet", field(plans[2], "xmeet") == nil and field(plans[2], "xeq") == nil, plans[2])
-	GetBarracks = noBarracks
 	local starts = hev(lines, "lane_job_start")
 	check("job start event", #starts == 1 and field(starts[1], "kind") == "full" and field(starts[1], "aggroAt") ~= nil, starts[1])
 end
@@ -701,6 +696,137 @@ do
 	local aborts = hev(lines, "lane_job_abort")
 	check("abort event with reason and phase", #aborts == 1 and field(aborts[1], "reason") == "handsoff" and field(aborts[1], "phase") == "travel"
 		and field(aborts[1], "acted") == "1", aborts[1])
+end
+
+-- Commitment (console.9055828679: 12 of 38 jobs ended partner-unsafe 0.3-8 s in): once a job runs, the enemy laners
+-- standing in their usual lane spots near the core no longer end it; a dive on the core does, after a reaction delay.
+local function enemyAt(pid, x, y) return unit({ pid = pid, team = 3, pos = pid == 11 and 5 or 1, loc = Vector(x, y) }) end
+-- jobWorld's enemy stands on the front; these tests place their own.
+local function clearEnemies() for _, u in ipairs(UNITS[3]) do u.loc = Vector(6000, 6000) end end
+
+do
+	local H, core, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	frame(H, support, 70)
+	check("precondition: travelling", H.Lane.CampJobs.Current(support).phase == "travel")
+	clearEnemies()
+	enemyAt(11, FRONT.x + 900, FRONT.y)
+	enemyAt(12, FRONT.x + 1000, FRONT.y + 300)
+	T = 70.6
+	check("precondition: the start gate now says unsafe",
+		H.Lane.LaneRoles.PartnerSafe(support, H.Lane.LaneState.ForBot(support), H.Lane.LaneState.Enemies(support, Lane.Bot)) == false)
+	local d = frame(H, support, 70.6)
+	for t = 71, 73, 0.5 do d = frame(H, support, t) end
+	check("laners standing near the core: the pull goes on", near(d, 0.7) and H.Lane.CampJobs.Active(support), d)
+	local holds = hev(lines, "lane_job_hold")
+	check("one hold event, with the partner reading", #holds == 1 and field(holds[1], "pnear") == "2" and field(holds[1], "pclose") == "0"
+		and field(holds[1], "phase") == "travel", holds[1])
+	check("no abort", #hev(lines, "lane_job_abort") == 0)
+end
+
+do
+	local H, core, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	frame(H, support, 70)
+	clearEnemies()
+	enemyAt(11, FRONT.x + 400, FRONT.y)
+	frame(H, support, 70.5)
+	core.hp = 92
+	frame(H, support, 71)
+	core.hp = 80
+	frame(H, support, 71.5)
+	check("dive noticed: not yet turned back", H.Lane.CampJobs.Active(support))
+	core.hp = 74
+	frame(H, support, 72)
+	check("dive held past the reaction delay: the support turns back", not H.Lane.CampJobs.Active(support))
+	local aborts = hev(lines, "lane_job_abort")
+	check("dive abort carries the reading", #aborts == 1 and field(aborts[1], "reason") == "partner-dived" and field(aborts[1], "pclose") == "1"
+		and near(tonumber(field(aborts[1], "php")), 0.74) and near(tonumber(field(aborts[1], "ploss")), 0.26), aborts[1])
+end
+
+do
+	-- One enemy trading near the core without landing damage is no dive.
+	local H, core, support = jobWorld(1, { away = 900 })
+	frame(H, support, 70)
+	clearEnemies()
+	enemyAt(11, FRONT.x + 400, FRONT.y)
+	for t = 70.5, 73, 0.5 do frame(H, support, t) end
+	check("enemy beside an unhurt core: the pull goes on", H.Lane.CampJobs.Active(support))
+end
+
+-- The job's floor sits on farm only, and claims order within one mode: other errands are capped while it runs.
+do
+	local H, _, support = jobWorld(1, { away = 900 })
+	local I, M = H.Intent, dota.BotMode
+	T = 70
+	local raw = H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support))
+	local farm = I.Resolve(support, M.Farm, raw)
+	check("ward waits for the job", I.Resolve(support, M.Ward, 0.81) < farm, I.Resolve(support, M.Ward, 0.81))
+	check("a last-hit team_roam visit waits for the job", I.Resolve(support, M.TeamRoam, 0.72) < farm, I.Resolve(support, M.TeamRoam, 0.72))
+	check("retreat is left alone", near(I.Resolve(support, M.Retreat, 0.8), 0.8), I.Resolve(support, M.Retreat, 0.8))
+	check("defend is left alone", near(I.Resolve(support, M.DefendTowerBot, 0.8), 0.8))
+	T = 70.5
+	check("no job: ward is not capped", near(I.Resolve(support, M.Ward, 0.81), 0.81), I.Resolve(support, M.Ward, 0.81))
+end
+
+-- The core's side: while its support is out on a camp, it backs off sooner.
+do
+	-- The support starts at the front, so only its job (not its position) says it is away.
+	local H, core, support = jobWorld(1, { telemetry = { Enable = true } })
+	support.loc = FRONT
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local I, RETREAT = H.Intent, dota.BotMode.Retreat
+	T = 69
+	H.Lane.Tick(core)
+	check("no job: the core's retreat is unchanged", near(I.Resolve(core, RETREAT, 0.4), 0.4), I.Resolve(core, RETREAT, 0.4))
+	frame(H, support, 70)
+	check("precondition: the support's pull runs", H.Lane.CampJobs.Active(support))
+	H.Lane.Tick(core)
+	check("support on a pull: the core's retreat is raised", near(I.Resolve(core, RETREAT, 0.4), 0.5), I.Resolve(core, RETREAT, 0.4))
+	check("the support's own retreat is not", near(I.Resolve(support, RETREAT, 0.4), 0.4))
+	H.Lane.CampJobs.Abort(support, "test")
+	T = 70.5
+	H.Lane.Tick(core)
+	check("job over: the core's caution ends", near(I.Resolve(core, RETREAT, 0.4), 0.4) and not H.Lane.CampJobs.Covering(core))
+	local covers = hev(lines, "lane_cover")
+	check("cover start and end logged", #covers == 2 and field(covers[1], "state") == "start" and field(covers[1], "via") == "job"
+		and field(covers[1], "partner") == "5" and field(covers[2], "state") == "end", table.concat(covers, " | "))
+end
+
+do
+	-- Modules not shared: the core's instance holds no job, so it reads its support's position at the camp instead.
+	local H, core, support = jobWorld(1)
+	support.loc = Vector(SMALL.x + 200, SMALL.y)
+	T = 70
+	H.Lane.Tick(core)
+	check("support seen at the pull camp: the core covers", H.Lane.CampJobs.Covering(core))
+	support.loc = Vector(FRONT.x - 300, FRONT.y)
+	T = 70.6
+	H.Lane.Tick(core)
+	check("support back at the front: cover ends", not H.Lane.CampJobs.Covering(core))
+end
+
+do
+	-- A human core is told by a ping on the camp; a bot core needs none.
+	local sent = {}
+	local H, core, support = jobWorld(1, { away = 900 })
+	-- The stub Unit class is local to dota_stubs.lua; every unit shares it as its metatable index.
+	local Unit = getmetatable(support).__index
+	local old = Unit.ActionImmediate_Ping
+	Unit.ActionImmediate_Ping = function(self, x, y) table.insert(sent, { pid = self.pid, x = x, y = y }) end
+	core.bot = false
+	frame(H, support, 70)
+	frame(H, support, 70.2)
+	local job = H.Lane.CampJobs.Current(support)
+	check("human core: one ping on the stand point", #sent == 1 and sent[1].pid == 5 and dist(sent[1], job.stand) < 1e-6, #sent)
+	sent = {}
+	H, core, support = jobWorld(1, { away = 900 })
+	frame(H, support, 70)
+	check("bot core: no ping", #sent == 0, #sent)
+	Unit.ActionImmediate_Ping = old
 end
 
 finish()

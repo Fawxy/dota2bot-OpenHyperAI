@@ -72,6 +72,7 @@ function ____exports.Tick(bot)
         return
     end
     Counter.Tick(bot)
+    CampJobs.CoverTick(bot)
     if HDebug.IsEnabled() then
         local state = LaneState.Describe(
             snapshot,
@@ -129,7 +130,7 @@ function ____exports.AdjustPosition(bot, loc)
     if adjusted == loc then
         adjusted = Counter.AdjustPosition(bot, loc)
     end
-    if adjusted ~= loc or not LaneConfig.IsOn("Harass") then
+    if adjusted ~= loc or not LaneConfig.IsOn("Harass") or CampJobs.Covering(bot) then
         return adjusted
     end
     local s = LaneState.ForBot(bot)
@@ -151,6 +152,9 @@ function ____exports.SupersedesHarass(_bot)
 end
 --- 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human).
 function ____exports.HarassThink(bot, allyCreeps, enemyCreeps, enemies, etiquette)
+    if CampJobs.Covering(bot) then
+        return false
+    end
     return Harass.Think(
         bot,
         allyCreeps,
@@ -163,6 +167,14 @@ end
 function ____exports.CampJobDesire(bot)
     return CampJobs.Desire(bot)
 end
+local JOB_FOCUS_MODES = {
+    BotMode.Ward,
+    BotMode.TeamRoam,
+    BotMode.Roam,
+    BotMode.Rune,
+    BotMode.SideShop,
+    BotMode.SecretShop
+}
 --- mode_farm_generic GetDesire's return for a running job (`desire` from CampJobDesire). With intent arbitration
 -- the job's desire is a same-frame CAMP_JOB floor over a raw 0, so survival and order claims outrank it and the
 -- survival cap treats it as lifted; a second claim keeps the active mode's stickiness from making the pull late.
@@ -186,6 +198,10 @@ function ____exports.CampJobRawDesire(bot, desire)
         Intent.Claim(bot, {source = "lane:camp_job", tier = "CAMP_JOB", mode = BotMode.Farm, unsticks = true})
     else
         Intent.Release(bot, "lane:camp_job", BotMode.Farm)
+    end
+    local cap = desire - LaneConfig.Settings().Thresholds.JobFocusMargin
+    for ____, mode in ipairs(JOB_FOCUS_MODES) do
+        Intent.Claim(bot, {source = "lane:job_focus", tier = "CAMP_JOB", mode = mode, cap = cap})
     end
     return 0
 end
@@ -217,10 +233,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue46
+            local __continue49
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue46 = true
+                    __continue49 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -231,9 +247,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue46 = true
+                __continue49 = true
             until true
-            if not __continue46 then
+            if not __continue49 then
                 break
             end
         end

@@ -36,6 +36,7 @@ export function Tick(bot: Unit): void {
     const snapshot = LaneState.ForBot(bot);
     if (snapshot === undefined) return;
     Counter.Tick(bot);
+    CampJobs.CoverTick(bot);
     if (HDebug.IsEnabled()) {
         const state = LaneState.Describe(snapshot, LaneState.ScoreFor(bot, snapshot));
         HDebug.Text(bot, "lane", `${state} ${LanePlan.Describe(LanePlan.View(bot, snapshot))}`);
@@ -79,7 +80,7 @@ export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemie
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     let adjusted = LaneTech.AdjustPosition(bot, loc);
     if (adjusted === loc) adjusted = Counter.AdjustPosition(bot, loc);
-    if (adjusted !== loc || !LaneConfig.IsOn("Harass")) return adjusted;
+    if (adjusted !== loc || !LaneConfig.IsOn("Harass") || CampJobs.Covering(bot)) return adjusted;
     const s = LaneState.ForBot(bot);
     if (s === undefined || LanePlan.View(bot, s).handsOff) return loc;
     const enemy = nearestVisibleEnemy(bot, s);
@@ -112,6 +113,8 @@ export function SupersedesHarass(_bot: Unit): boolean {
 
 /** 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human). */
 export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], etiquette: boolean): boolean {
+    // No trades while the support is away on a camp (CampJobs.CoverTick).
+    if (CampJobs.Covering(bot)) return false;
     return Harass.Think(bot, allyCreeps, enemyCreeps, enemies, etiquette);
 }
 
@@ -119,6 +122,8 @@ export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], 
 export function CampJobDesire(bot: Unit): number {
     return CampJobs.Desire(bot);
 }
+
+const JOB_FOCUS_MODES: BotMode[] = [BotMode.Ward, BotMode.TeamRoam, BotMode.Roam, BotMode.Rune, BotMode.SideShop, BotMode.SecretShop];
 
 /**
  * mode_farm_generic GetDesire's return for a running job (`desire` from CampJobDesire). With intent arbitration
@@ -136,6 +141,10 @@ export function CampJobRawDesire(bot: Unit, desire: number): number {
     } else {
         Intent.Release(bot, "lane:camp_job", BotMode.Farm);
     }
+    // Claims only order within one mode, so the floor on farm alone lost to ward, team_roam or a shop walk. Those
+    // errands wait until the job is done; attack, retreat, defend and orders are left alone.
+    const cap = desire - LaneConfig.Settings().Thresholds.JobFocusMargin;
+    for (const mode of JOB_FOCUS_MODES) Intent.Claim(bot, { source: "lane:job_focus", tier: "CAMP_JOB", mode, cap });
     return 0;
 }
 

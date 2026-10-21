@@ -51,11 +51,15 @@ function currentMinute(): number {
 
 const IDLE_MODES: Record<number, boolean> = { [BotMode.Laning]: true, [BotMode.Farm]: true, [BotMode.None]: true };
 
-/** The safety half of Eligible; forced (debug) stack jobs check only this. */
-export function Safe(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: LaneState.LaneEnemy[]): LuaMultiReturn<[boolean, string]> {
+/**
+ * The safety half of Eligible; forced (debug) stack jobs check only this. `committed`: the stack is already under way,
+ * so the partner check is LaneRoles.PartnerHolding instead of the start gate.
+ */
+export function Safe(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: LaneState.LaneEnemy[], committed = false): LuaMultiReturn<[boolean, string]> {
     const t = settings().Thresholds;
     if (LaneConfig.InLaningPhase()) {
         if (!LaneRoles.LaneStable(bot, enemies)) return $multi(false, "unstable");
+        if (s !== undefined && committed) return LaneRoles.PartnerHolding(bot, s, enemies);
         if (s !== undefined && !LaneRoles.PartnerSafe(bot, s, enemies)) return $multi(false, "partner-unsafe");
         return $multi(true, "ok");
     }
@@ -68,7 +72,7 @@ export function Safe(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: 
     return $multi(true, "ok");
 }
 
-export function Eligible(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: LaneState.LaneEnemy[]): LuaMultiReturn<[boolean, string]> {
+export function Eligible(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: LaneState.LaneEnemy[], committed = false): LuaMultiReturn<[boolean, string]> {
     if (!LaneConfig.IsOn("Stack")) return $multi(false, "flag-off");
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos < 4 || pos > 5) return $multi(false, "not-support");
@@ -79,14 +83,13 @@ export function Eligible(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemi
     } else if (Orders.GetFor(bot) !== undefined) {
         return $multi(false, "has-order");
     }
-    return Safe(bot, s, enemies);
+    return Safe(bot, s, enemies, committed);
 }
 
 /** Where a stack job waits: just outside the box on the exit side, so the walk-off starts away from the camp. */
 export function StandPoint(spawner: Camps.Spawner, data: Camps.CampJobData): Vector {
     const exit = data.stack?.exitPath[0];
-    const edge = exit !== undefined ? Camps.BoxEdgePoint(spawner, exit, settings().Radii.StandOffset) : undefined;
-    return edge ?? Camps.BoxCenter(spawner);
+    return exit !== undefined ? Camps.StandPoint(spawner, exit, settings().Radii.StandOffset) : spawner.location;
 }
 
 /** Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box. */

@@ -263,6 +263,65 @@ withMapLanes(function()
 	end
 end)
 
+-- console.9055828679 (bots-only, 7.41): every camp job on evil_2 (dire_safe_small; warlock's stacks from the south,
+-- double pulls from the north) and skywrath's stack of evil_8 (Dire ancient) aborted `mistake:no-camp` at the stand
+-- point. The neutrals idle at the spawner origin, not the box centre: evil_2's north stand was 680 from it past the
+-- box's tree line, evil_8's west stand 1,017 (outside NeutralSearch). Real trigger boxes and origins below.
+local function realDireCamps()
+	local H = LaneFresh({ Enable = true }, { skill = 1 })
+	SPAWNERS = {
+		{ team = DIRE, type = "small", location = Vector(-3911, 4829, 0), min = Vector(-4260, 4550, 0), max = Vector(-3620, 5341, 0) },
+		{ team = DIRE, type = "ancient", location = Vector(4352, 48, 0), min = Vector(3528, -402, 0), max = Vector(4670, 528, 0) },
+		{ team = DIRE, type = "large", location = Vector(7928, -120, 0), min = Vector(7617, -409, 0), max = Vector(8257, 295, 0) },
+	}
+	local w = { [RAD] = {}, [DIRE] = {} }
+	for team, ts in pairs(MAP_TOWERS) do for id, p in pairs(ts) do w[team][id] = mapTower(p[1], p[2]) end end
+	TOWERS_W = w
+	H.Lane.Camps.ResetCache()
+	return H
+end
+
+withMapLanes(function()
+	local H = realDireCamps()
+	local C = H.Lane.Camps
+	local radii = H.Lane.Config.Settings().Radii
+	local function fromOrigin(idx, p)
+		local o = C.SpawnerByIdx(idx).location
+		return math.sqrt((p.x - o.x) ^ 2 + (p.y - o.y) ^ 2)
+	end
+	-- The camp spreads ~250 around its origin; the stand must keep all of it inside NeutralSearch.
+	local reach = radii.NeutralSearch - 250
+	check("evil_2 resolves as the Dire safe small pull camp", C.ByIdx(1).key == "dire_safe_small" and C.ByIdx(1).pull ~= nil)
+	for idx, name in ipairs({ "evil_2 small", "evil_8 ancient", "evil_7 large" }) do
+		local d = fromOrigin(idx, H.Lane.Stacking.StandPoint(C.SpawnerByIdx(idx), C.ByIdx(idx)))
+		check(name .. ": stack stand within reach of the spawner origin", d <= reach + 1e-6, d)
+	end
+	local bot = MakeUnit({ pid = 8, team = DIRE, loc = Vector(-6263, 4529, 0) })
+	check("precondition: evil_2 pull job starts", H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 }))
+	local stand = H.Lane.CampJobs.Current(bot).stand
+	-- PathNoise at skill 1 moves the stand up to 20.
+	check("evil_2 pull stand within reach of the spawner origin", fromOrigin(1, stand) <= reach + 20, fromOrigin(1, stand))
+end)
+
+withMapLanes(function()
+	-- evil_7 (dire_off_large) is ~200 from the map's east edge (world_bounds max x 8448). Directly away from the bot
+	-- lane is east: the walk-off ended at x 8608, 350 past the box, and its ranged trolls stayed in it (after=3 twice).
+	local H = realDireCamps()
+	IMPASSABLE = function(v) return v.x > 8448 end
+	H.Lane.Camps.ResetCache()
+	local C = H.Lane.Camps
+	local radii = H.Lane.Config.Settings().Radii
+	local s = C.SpawnerByIdx(3)
+	local exit = C.ByIdx(3).stack.exitPath[1]
+	local stand = H.Lane.Stacking.StandPoint(s, C.ByIdx(3))
+	check("evil_7 stack exit stays on the map", exit.x <= 8448, exit.x)
+	check("evil_7 stack exit well clear of the box", not C.InBox(3, exit, 600), exit.x .. "," .. exit.y)
+	local walk = math.sqrt((exit.x - stand.x) ^ 2 + (exit.y - stand.y) ^ 2)
+	check("evil_7 walk-off at least StackExit - StandOffset", walk >= radii.StackExit - radii.StandOffset - 1, walk)
+	local e2 = C.ByIdx(1).stack.exitPath[1]
+	check("open ground: evil_2's exit still points away from the lane (south)", e2.y < 4550 - 800, e2.y)
+end)
+
 -- lane_world's lane amounts follow the caller like the engine's: as a Dire script, 0 is the Dire base.
 local function asDireCaller(fn)
 	local H = LaneFresh({ Enable = true })

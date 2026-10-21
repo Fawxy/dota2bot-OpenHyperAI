@@ -53,6 +53,8 @@ export interface Job extends JobRequest {
     aggroTarget?: Unit;
     /** GameTime() of the attack order, the clock GetLastAttackTime() uses. */
     aggroOrderedAt?: number;
+    /** The camp whose stand point was moved in toward its spawner origin because no neutral was seen from it. */
+    approachedCamp?: number;
     watchFrom?: number;
     sampledAt?: number;
     /** Stack: the next :00 + StackExitUntil, when the walk-off ends. */
@@ -64,6 +66,10 @@ export interface Job extends JobRequest {
     lastThinkAt?: number;
     /** A desire query has come since the last Think: the start of a possible pre-emption. */
     unthought?: boolean;
+    /** The camp ping for a human partner was considered (once per job). */
+    pinged?: boolean;
+    /** lane_job_hold was logged: the start gate failed while the commitment kept the job going. */
+    heldNoted?: boolean;
 }
 
 /**
@@ -102,6 +108,8 @@ const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
     contest: "CounterPlay",
 };
 const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
+// jmz_func's melee/ranged split for attack timing.
+const RANGED_ATTACK_RANGE = 326;
 
 let jobs: Record<number, Job> = {};
 let doneCycle: Record<number, number> = {};
@@ -110,6 +118,8 @@ let pendingStacks: Record<number, PendingStack> = {};
 let skipped: Record<number, number> = {};
 /** Gates of the bot's lane_plan events in its latest wave cycle. */
 let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
+/** The core's view of its support leaving for a camp: when it started, and how it was known. */
+let covering: Record<number, { since: number; via: string; partner: number; kind: string }> = {};
 
 export function ResetCache(): void {
     jobs = {};
@@ -117,6 +127,7 @@ export function ResetCache(): void {
     pendingStacks = {};
     skipped = {};
     planNoted = {};
+    covering = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -204,7 +215,7 @@ function noisy(v: Vector, noise: number): Vector {
 }
 
 function standFor(spawner: Camps.Spawner, firstWaypoint: Vector): Vector {
-    return Camps.BoxEdgePoint(spawner, firstWaypoint, settings().Radii.StandOffset) ?? Camps.BoxCenter(spawner);
+    return Camps.StandPoint(spawner, firstWaypoint, settings().Radii.StandOffset);
 }
 
 /** The camp's lead waypoints with its own meet point replaced by `meet`. */
@@ -407,6 +418,72 @@ export function UpcomingWithin(bot: Unit, seconds: number): boolean {
     return job.aggroAt - DotaTime() <= seconds;
 }
 
+// ---------------------------------------------------------------------------------------------- partner cover
+
+/**
+ * How a core knows its lane support is away on a camp job, or undefined: `job` when this module instance holds the
+ * support's job (modules shared between bots), else `camp` when the support is seen away from the front within
+ * Radii.CoverCamp of one of the lane's pull camps (also a human support's pull). Laning phase only.
+ */
+export function CoverFor(bot: Unit): LuaMultiReturn<[string | undefined, number | undefined, string | undefined]> {
+    if (!LaneConfig.IsActive() || !LaneConfig.InLaningPhase()) return $multi(undefined, undefined, undefined);
+    const s = LaneState.ForBot(bot);
+    if (s === undefined || LaneRoles.RoleIn(bot, s) !== "core") return $multi(undefined, undefined, undefined);
+    const partner = LaneRoles.Partner(bot, s);
+    if (partner === undefined || !partner.alive) return $multi(undefined, undefined, undefined);
+    const job = jobs[partner.pid];
+    if (isLive(job) && job.kind !== "contest") return $multi("job", partner.pid, LOG_KIND[job.kind]);
+    if (partner.distToFront <= settings().Thresholds.SupportNearFront) return $multi(undefined, undefined, undefined);
+    const loc = partner.unit.GetLocation();
+    for (const c of Camps.PullCampsFor(s.team, s.lane)) {
+        const spawner = Camps.SpawnerByIdx(c.campIdx);
+        if (spawner !== undefined && dist2D(loc, Camps.BoxCenter(spawner)) <= settings().Radii.CoverCamp) {
+            return $multi("camp", partner.pid, "camp");
+        }
+    }
+    return $multi(undefined, undefined, undefined);
+}
+
+/**
+ * Lane.Tick: while its support is on a camp, the core plays safer: retreat is scaled up by Thresholds.CoverRetreatScale
+ * (it backs off sooner from a threat it would have stood against with the support beside it) and 07's harass and
+ * forward stand point are off (Covering). `lane_cover` marks when that starts and ends.
+ */
+export function CoverTick(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const [via, partner, kind] = CoverFor(bot);
+    const now = DotaTime();
+    const cur = covering[pid];
+    if (via === undefined) {
+        if (cur !== undefined) {
+            delete covering[pid];
+            Telemetry.Event("lane_cover", [
+                ["pid", pid],
+                ["state", "end"],
+                ["partner", cur.partner],
+                ["via", cur.via],
+                ["dur", now - cur.since],
+            ]);
+        }
+        return;
+    }
+    if (cur === undefined) {
+        covering[pid] = { since: now, via, partner: partner!, kind: kind! };
+        Telemetry.Event("lane_cover", [
+            ["pid", pid],
+            ["state", "start"],
+            ["partner", partner],
+            ["via", via],
+            ["kind", kind],
+        ]);
+    }
+    Intent.Claim(bot, { source: "lane:cover", tier: "LANE_PLAN", mode: BotMode.Retreat, scale: settings().Thresholds.CoverRetreatScale });
+}
+
+export function Covering(bot: Unit): boolean {
+    return covering[bot.GetPlayerID()] !== undefined;
+}
+
 // ---------------------------------------------------------------------------------------------- ending
 
 function logJob(bot: Unit, job: Job, grade: string): void {
@@ -451,7 +528,7 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing. A double pull aborted in its second stage still grades the first pull.
  */
-function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
+function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = []): void {
     if (job.stage === 2) {
         close(bot, job, "return", Grade(job.kind, job.peakDivert));
         return;
@@ -479,6 +556,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
         ["phase", phase],
         ["acted", job.acted === true],
         ["divert", job.peakDivert],
+        ...extra,
     ]);
     HDebug.Log(
         "lane",
@@ -503,18 +581,18 @@ function endContest(bot: Unit, job: Job, reason: string): void {
 
 // ---------------------------------------------------------------------------------------------- desire
 
+/** Continue checks for a running pull: the partner check is the committed one (LaneRoles.PartnerHolding). */
 function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaMultiReturn<[boolean, string]> {
     if (!hpOk(bot)) return $multi(false, "low-hp");
     const enemies = LaneState.Enemies(bot, s.lane);
-    const [ok, why] = LaneRoles.MayRunCampJob(bot, s, enemies);
+    const [ok, why] = LaneRoles.MayRunCampJob(bot, s, enemies, true);
     if (ok || !forced || why !== "not-owner") return $multi(ok, why);
     if (!LaneConfig.InLaningPhase()) return $multi(false, "not-laning");
     if (LaneRoles.RoleIn(bot, s) === "solo") {
         if (!LaneRoles.LaneStable(bot, enemies)) return $multi(false, "solo: unstable");
-    } else if (!LaneRoles.PartnerSafe(bot, s, enemies)) {
-        return $multi(false, "partner unsafe");
+        return $multi(true, "ok");
     }
-    return $multi(true, "ok");
+    return LaneRoles.PartnerHolding(bot, s, enemies);
 }
 
 /** Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety. */
@@ -523,10 +601,36 @@ function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
     const laning = LaneConfig.InLaningPhase();
     if (laning && s === undefined) return $multi(false, "no-lane");
     const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
-    const [ok, why] = job.forced === true ? Stacking.Safe(bot, s, enemies) : Stacking.Eligible(bot, s, enemies);
+    const [ok, why] = job.forced === true ? Stacking.Safe(bot, s, enemies, true) : Stacking.Eligible(bot, s, enemies, true);
     if (!ok) return $multi(false, why);
     if (laning && s !== undefined && LanePlan.View(bot, s).handsOff) return $multi(false, "handsoff");
     return $multi(true, "ok");
+}
+
+function partnerFields(bot: Unit, s: LaneState.LaneSnapshot | undefined): [string, any][] {
+    const r = s !== undefined ? LaneRoles.ReadPartner(bot, s, LaneState.Enemies(bot, s.lane)) : undefined;
+    if (r === undefined) return [];
+    return [
+        ["partner", r.pid],
+        ["php", r.hp],
+        ["pnear", r.near],
+        ["pclose", r.close],
+        ["ploss", r.loss],
+    ];
+}
+
+/** Safety aborts carry the partner reading, so the log shows what the support reacted to. */
+function abortUnsafe(bot: Unit, job: Job, why: string, s: LaneState.LaneSnapshot | undefined): void {
+    const [partnerAbort] = string.find(why, "^partner");
+    abort(bot, job, why, false, partnerAbort !== undefined ? partnerFields(bot, s) : []);
+}
+
+/** Once per job: the start gate would have stopped it here, and only the commitment keeps it going. */
+function noteHeld(bot: Unit, job: Job, s: LaneState.LaneSnapshot | undefined): void {
+    if (job.heldNoted === true || s === undefined || !Telemetry.IsEnabled()) return;
+    if (LaneRoles.PartnerSafe(bot, s, LaneState.Enemies(bot, s.lane))) return;
+    job.heldNoted = true;
+    Telemetry.Event("lane_job_hold", [["pid", bot.GetPlayerID()], ["kind", LOG_KIND[job.kind]], ["camp", job.campIdx], ["phase", job.phase], ...partnerFields(bot, s)]);
 }
 
 /** Abort checks for a running job; true when it may continue. */
@@ -552,7 +656,9 @@ function keepGoing(bot: Unit, job: Job): boolean {
     }
     if (job.kind === "stack") {
         const [ok, why] = stackAllowed(bot, job);
-        if (!ok) abort(bot, job, why);
+        const ls = LaneConfig.InLaningPhase() ? LaneState.ForBot(bot) : undefined;
+        if (!ok) abortUnsafe(bot, job, why, ls);
+        else noteHeld(bot, job, ls);
         return ok;
     }
     const s = LaneState.ForBot(bot);
@@ -562,13 +668,14 @@ function keepGoing(bot: Unit, job: Job): boolean {
     }
     const [ok, why] = jobAllowed(bot, s, job.forced === true);
     if (!ok) {
-        abort(bot, job, why);
+        abortUnsafe(bot, job, why, s);
         return false;
     }
     if (LanePlan.View(bot, s).handsOff) {
         abort(bot, job, "handsoff");
         return false;
     }
+    noteHeld(bot, job, s);
     return true;
 }
 
@@ -632,9 +739,6 @@ function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: [st
         ["owner", mayRun ? "ok" : why],
         ["eq", s.eqPos],
         ["meet", s.meetAmount],
-        // Timing-based cross-check of the in-game reads: absent once the first wave cycles are over.
-        ["xmeet", s.expectedMeetAmount],
-        ["xeq", s.expectedMeetAmount !== undefined ? LaneState.EqPos(s.expectedMeetAmount, s.ourTowerAmount, s.theirTowerAmount) : undefined],
         ["want", s.desiredEq],
         ["front", s.ourFront],
         ["efront", s.enemyFront],
@@ -783,7 +887,27 @@ function arrived(bot: Unit, loc: Vector): boolean {
     return GetUnitToLocationDistance(bot, loc) <= settings().Radii.JobArrive;
 }
 
+/**
+ * A human core cannot read this module, so the support pings the camp it leaves for, the usual "pulling, play safe"
+ * heads-up. A bot core reads the same thing from CoverFor.
+ */
+function pingPartner(bot: Unit, job: Job): void {
+    if (job.pinged === true || job.kind === "contest") return;
+    job.pinged = true;
+    if (!LaneConfig.IsOn("Telegraph") || !LaneConfig.InLaningPhase()) return;
+    const s = LaneState.ForBot(bot);
+    const partner = s !== undefined ? LaneRoles.Partner(bot, s) : undefined;
+    if (partner === undefined || partner.isBot || !Orders.Ping(bot, job.stand)) return;
+    Telemetry.Event("lane_job_ping", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["partner", partner.pid],
+    ]);
+}
+
 function telegraph(bot: Unit, job: Job, now: number): void {
+    pingPartner(bot, job);
     if (job.kind === "stack") return;
     if (job.telegraphed || job.stage !== 1 || now < job.aggroAt - settings().Timing.PullTelegraphLead) return;
     job.telegraphed = true;
@@ -848,7 +972,7 @@ function noteStackAggro(bot: Unit, job: Job, now: number): void {
         at: minuteEnd + settings().Timing.StackOutcomeAt,
         until: minuteEnd + settings().Timing.StackOutcomeUntil,
         before,
-        aggro: job.plannedSec + (now - job.baseAggro),
+        aggro: job.plannedSec + ((job.actualAggro ?? now) - job.baseAggro),
         planned: job.plannedSec,
         type: data?.type ?? "medium",
     };
@@ -973,12 +1097,67 @@ function stepContest(bot: Unit, job: Job, now: number): boolean {
     return false;
 }
 
+/** Seconds from an attack order on `creep` to its hit landing (walk into range, wind-up, projectile flight). */
+function aggroLead(bot: Unit, creep: Unit): number {
+    const t = settings().Timing;
+    const estimate = LaneConfig.Helpers().GetAttackProDelayTime;
+    const lead = estimate !== undefined ? estimate(bot, creep) : t.AggroLeadDefault;
+    return math.max(0, math.min(t.AggroLeadMax, lead));
+}
+
+function orderAggro(bot: Unit, job: Job, creep: Unit): boolean {
+    if (job.kind === "stack") job.stackBefore = neutralsInBox(bot, job.activeCamp);
+    bot.Action_AttackUnit(creep, true);
+    job.aggroTarget = creep;
+    job.aggroOrderedAt = GameTime();
+    job.phase = "aggro";
+    return true;
+}
+
+/**
+ * Seen nothing from the stand point (trees, night vision): move the stand in to StandApproach from the spawner origin,
+ * once per camp. False when already done or the stand is that close anyway.
+ */
+function approachCamp(job: Job): boolean {
+    const spawner = Camps.SpawnerByIdx(job.activeCamp);
+    if (spawner === undefined || job.approachedCamp === job.activeCamp) return false;
+    job.approachedCamp = job.activeCamp;
+    const o = spawner.location;
+    const d = dist2D(job.stand, o);
+    const near = settings().Radii.StandApproach;
+    if (d <= near + settings().Radii.JobArrive) return false;
+    job.stand = Vector(o.x + ((job.stand.x - o.x) * near) / d, o.y + ((job.stand.y - o.y) * near) / d, o.z);
+    return true;
+}
+
+/**
+ * When the aggro hit landed, in DotaTime. GetLastAttackTime() (GameTime clock) is taken as the projectile's release,
+ * so a ranged hit adds its flight; a confirmation from a neutral targeting the bot comes after the hit, so `now`.
+ * **TODO (in-game):** if GetLastAttackTime() is the swing start, this reads early by the wind-up.
+ */
+function aggroLanded(bot: Unit, job: Job, now: number): number {
+    const last = bot.GetLastAttackTime();
+    if (job.aggroOrderedAt === undefined || last < job.aggroOrderedAt) return now;
+    let flight = 0;
+    const speed = (bot as Unit & { GetAttackProjectileSpeed(): number }).GetAttackProjectileSpeed();
+    if (job.aggroTarget !== undefined && bot.GetAttackRange() > RANGED_ATTACK_RANGE && speed > 0) {
+        flight = math.min(GetUnitToUnitDistance(bot, job.aggroTarget), bot.GetAttackRange()) / speed;
+    }
+    return math.min(now, now - (GameTime() - last)) + flight;
+}
+
 function step(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     const cfg = settings();
     if (job.kind === "contest") return stepContest(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
+        // aggroAt is when the hit should land, so the order goes out its walk, wind-up and flight early; a camp
+        // already in sight on the way is attacked from there rather than after reaching the stand point.
+        const creep = campNeutral(bot, job);
+        if (creep !== undefined && now >= job.aggroAt - aggroLead(bot, creep)) return orderAggro(bot, job, creep);
+        if (creep === undefined && now >= job.aggroAt - cfg.Timing.StandApproachLead && arrived(bot, job.stand) && approachCamp(job))
+            return moveTo(bot, job.stand);
         const there = arrived(bot, job.stand);
         if (now < job.aggroAt) {
             if (!there) return moveTo(bot, job.stand);
@@ -1000,22 +1179,20 @@ function step(bot: Unit, job: Job): boolean {
     if (job.phase === "aggro") {
         if (job.aggroTarget === undefined) {
             const creep = campNeutral(bot, job);
-            if (creep !== undefined) {
-                if (job.kind === "stack") job.stackBefore = neutralsInBox(bot, job.activeCamp);
-                bot.Action_AttackUnit(creep, true);
-                job.aggroTarget = creep;
-                job.aggroOrderedAt = GameTime();
-                return true;
-            }
+            if (creep !== undefined) return orderAggro(bot, job, creep);
+            if (arrived(bot, job.stand) && approachCamp(job)) return moveTo(bot, job.stand);
             if (now >= job.aggroAt + cfg.Timing.NoCampAfter) {
                 if (arrived(bot, job.stand)) {
                     // Standing at the box and seeing no neutral: whatever was stacked there has been farmed.
                     Stacking.ClearStack(job.activeCamp);
                     abort(bot, job, "mistake:no-camp");
-                } else {
-                    abort(bot, job, "late", true);
+                    return false;
                 }
-                return false;
+                // Still walking in (an approach): the travel phase's late tolerance.
+                if (now >= job.aggroAt + cfg.Timing.JobStartLate) {
+                    abort(bot, job, "late", true);
+                    return false;
+                }
             }
             return moveTo(bot, job.stand);
         }
@@ -1029,7 +1206,7 @@ function step(bot: Unit, job: Job): boolean {
             Intent.Hold(bot, "lane:job_aggro");
             return true;
         }
-        if (job.stage === 1) job.actualAggro = now;
+        if (job.stage === 1) job.actualAggro = aggroLanded(bot, job, now);
         job.aggroTarget = undefined;
         if (job.kind === "stack") {
             noteStackAggro(bot, job, now);

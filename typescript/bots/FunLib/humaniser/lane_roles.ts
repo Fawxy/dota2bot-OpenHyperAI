@@ -26,6 +26,10 @@ let lastDraw: Record<number, number> = {};
 let needSince: Record<number, number> = {};
 let covers: Record<number, Cover> = {};
 let doubleDraws: Record<number, { stamp: number; ok: boolean }> = {};
+/** Partner HP over the last Timing.PartnerHPWindow, by partner pid, sampled whenever a support reads its partner. */
+let hpSamples: Record<number, { at: number; hp: number }[]> = {};
+/** When the dive condition began, by the reading support's pid. */
+let diveSince: Record<number, number> = {};
 
 export function ResetCache(): void {
     claims = {};
@@ -33,6 +37,8 @@ export function ResetCache(): void {
     needSince = {};
     covers = {};
     doubleDraws = {};
+    hpSamples = {};
+    diveSince = {};
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -177,17 +183,83 @@ export function CampJobOwner(s: LaneState.LaneSnapshot): number | undefined {
     return best?.pid;
 }
 
+function visibleWithin(enemies: LaneState.LaneEnemy[], loc: Vector, radius: number): number {
+    let n = 0;
+    for (const e of enemies) if (e.visible && dist2D(e.location, loc) <= radius) n++;
+    return n;
+}
+
+/** Start gate: the support does not leave while the partner is low or the enemy laners stand within PartnerDangerRadius. */
 export function PartnerSafe(bot: Unit, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): boolean {
     const partner = Partner(bot, s);
     if (partner === undefined) return true;
     const cfg = LaneConfig.Settings().Thresholds;
     if (partner.hp < cfg.PartnerMinHP) return false;
-    const loc = partner.unit.GetLocation();
-    let near = 0;
-    for (const e of enemies) {
-        if (e.visible && dist2D(e.location, loc) <= cfg.PartnerDangerRadius) near++;
+    return visibleWithin(enemies, partner.unit.GetLocation(), cfg.PartnerDangerRadius) < cfg.PartnerDangerEnemies;
+}
+
+export interface PartnerReading {
+    pid: number;
+    hp: number;
+    /** Visible enemies within Thresholds.PartnerDangerRadius (the start gate's count). */
+    near: number;
+    /** Visible enemies within Radii.PartnerDive. */
+    close: number;
+    /** HP fraction the partner lost over the last Timing.PartnerHPWindow. */
+    loss: number;
+}
+
+/** The partner's live state; also records its HP for `loss`, so call it every frame the reading matters. */
+export function ReadPartner(bot: Unit, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): PartnerReading | undefined {
+    const partner = Partner(bot, s);
+    if (partner === undefined) return undefined;
+    const cfg = LaneConfig.Settings();
+    const now = DotaTime();
+    const maxHP = partner.unit.GetMaxHealth();
+    const hp = maxHP > 0 ? partner.unit.GetHealth() / maxHP : 0;
+    const kept: { at: number; hp: number }[] = [];
+    let peak = hp;
+    for (const sample of hpSamples[partner.pid] ?? []) {
+        if (now - sample.at > cfg.Timing.PartnerHPWindow || sample.at > now) continue;
+        kept.push(sample);
+        if (sample.hp > peak) peak = sample.hp;
     }
-    return near < cfg.PartnerDangerEnemies;
+    kept.push({ at: now, hp });
+    hpSamples[partner.pid] = kept;
+    const loc = partner.unit.GetLocation();
+    return {
+        pid: partner.pid,
+        hp,
+        near: visibleWithin(enemies, loc, cfg.Thresholds.PartnerDangerRadius),
+        close: visibleWithin(enemies, loc, cfg.Radii.PartnerDive),
+        loss: peak - hp,
+    };
+}
+
+/**
+ * Continue gate for a job already under way. In a two-lane the enemy laners stand around PartnerDangerRadius of the
+ * core most of the time, so the start gate's count flips every few frames; once committed the support only turns back
+ * when the partner is low (below PartnerBailHP, under the start gate's PartnerMinHP for hysteresis) or is being dived:
+ * an enemy within PartnerDive while the partner keeps losing HP, for PartnerBailConfirm (the support's reaction).
+ */
+export function PartnerHolding(bot: Unit, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): LuaMultiReturn<[boolean, string]> {
+    const pid = bot.GetPlayerID();
+    const r = ReadPartner(bot, s, enemies);
+    const cfg = LaneConfig.Settings();
+    if (r === undefined) {
+        delete diveSince[pid];
+        return $multi(true, "ok");
+    }
+    if (r.hp < cfg.Thresholds.PartnerBailHP) return $multi(false, "partner low-hp");
+    if (r.close < 1 || r.loss < cfg.Thresholds.PartnerDiveLoss) {
+        delete diveSince[pid];
+        return $multi(true, "ok");
+    }
+    const now = DotaTime();
+    const since = diveSince[pid] ?? now;
+    diveSince[pid] = since;
+    if (now - since < cfg.Timing.PartnerBailConfirm) return $multi(true, "ok");
+    return $multi(false, "partner dived");
 }
 
 export function LaneStable(bot: Unit, enemies: LaneState.LaneEnemy[]): boolean {
@@ -202,12 +274,15 @@ export function LaneStable(bot: Unit, enemies: LaneState.LaneEnemy[]): boolean {
     return true;
 }
 
-export function MayRunCampJob(bot: Unit, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): LuaMultiReturn<[boolean, string]> {
+/** `committed`: the job is already running, so the partner check is PartnerHolding instead of the start gate. */
+export function MayRunCampJob(bot: Unit, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], committed = false): LuaMultiReturn<[boolean, string]> {
     if (CampJobOwner(s) !== bot.GetPlayerID()) return $multi(false, "not-owner");
     if (!LaneConfig.InLaningPhase()) return $multi(false, "not-laning");
     if (RoleIn(bot, s) === "solo") {
         if (LaneConfig.SkillOf(bot) <= LaneConfig.Settings().Gates.SoloCampJob) return $multi(false, "solo: skill");
         if (!LaneStable(bot, enemies)) return $multi(false, "solo: unstable");
+    } else if (committed) {
+        return PartnerHolding(bot, s, enemies);
     } else if (!PartnerSafe(bot, s, enemies)) {
         return $multi(false, "partner unsafe");
     }

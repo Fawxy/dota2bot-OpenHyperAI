@@ -217,12 +217,19 @@ local function dist2D(a, b)
     return math.sqrt(dx * dx + dy * dy)
 end
 local IDLE_MODES = {[BotMode.Laning] = true, [BotMode.Farm] = true, [BotMode.None] = true}
---- The safety half of Eligible; forced (debug) stack jobs check only this.
-function ____exports.Safe(bot, s, enemies)
+--- The safety half of Eligible; forced (debug) stack jobs check only this. `committed`: the stack is already under way,
+-- so the partner check is LaneRoles.PartnerHolding instead of the start gate.
+function ____exports.Safe(bot, s, enemies, committed)
+    if committed == nil then
+        committed = false
+    end
     local t = settings().Thresholds
     if LaneConfig.InLaningPhase() then
         if not LaneRoles.LaneStable(bot, enemies) then
             return false, "unstable"
+        end
+        if s ~= nil and committed then
+            return LaneRoles.PartnerHolding(bot, s, enemies)
         end
         if s ~= nil and not LaneRoles.PartnerSafe(bot, s, enemies) then
             return false, "partner-unsafe"
@@ -241,7 +248,10 @@ function ____exports.Safe(bot, s, enemies)
     end
     return true, "ok"
 end
-function ____exports.Eligible(bot, s, enemies)
+function ____exports.Eligible(bot, s, enemies, committed)
+    if committed == nil then
+        committed = false
+    end
     if not LaneConfig.IsOn("Stack") then
         return false, "flag-off"
     end
@@ -259,32 +269,25 @@ function ____exports.Eligible(bot, s, enemies)
     elseif Orders.GetFor(bot) ~= nil then
         return false, "has-order"
     end
-    return ____exports.Safe(bot, s, enemies)
+    return ____exports.Safe(bot, s, enemies, committed)
 end
 --- Where a stack job waits: just outside the box on the exit side, so the walk-off starts away from the camp.
 function ____exports.StandPoint(spawner, data)
     local ____opt_0 = data.stack
     local exit = ____opt_0 and ____opt_0.exitPath[1]
-    local ____temp_2
-    if exit ~= nil then
-        ____temp_2 = Camps.BoxEdgePoint(
-            spawner,
-            exit,
-            settings().Radii.StandOffset
-        )
-    else
-        ____temp_2 = nil
-    end
-    local edge = ____temp_2
-    return edge or Camps.BoxCenter(spawner)
+    return exit ~= nil and Camps.StandPoint(
+        spawner,
+        exit,
+        settings().Radii.StandOffset
+    ) or spawner.location
 end
 --- Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box.
 function ____exports.Reserve(campIdx, pid, ____until)
     reservations[campIdx] = {pid = pid, ["until"] = ____until}
 end
 function ____exports.Release(campIdx, pid)
-    local ____opt_3 = reservations[campIdx]
-    if (____opt_3 and ____opt_3.pid) == pid then
+    local ____opt_2 = reservations[campIdx]
+    if (____opt_2 and ____opt_2.pid) == pid then
         __TS__Delete(reservations, campIdx)
     end
 end
@@ -368,15 +371,15 @@ function ____exports.ChooseCamp(bot, s, minute)
         local bestDist = math.huge
         for ____, data in ipairs(camps) do
             do
-                local __continue48
+                local __continue49
                 repeat
                     if data.team ~= team or data.type == "ancient" then
-                        __continue48 = true
+                        __continue49 = true
                         break
                     end
                     local spawner = Camps.SpawnerByIdx(data.campIdx)
                     if spawner == nil then
-                        __continue48 = true
+                        __continue49 = true
                         break
                     end
                     local d = dist2D(
@@ -387,9 +390,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                         best = data
                         bestDist = d
                     end
-                    __continue48 = true
+                    __continue49 = true
                 until true
-                if not __continue48 then
+                if not __continue49 then
                     break
                 end
             end
@@ -402,15 +405,15 @@ function ____exports.ChooseCamp(bot, s, minute)
     local bestDist = math.huge
     for ____, data in ipairs(camps) do
         do
-            local __continue55
+            local __continue56
             repeat
                 if data.team ~= team or data.type ~= "ancient" then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(data.campIdx)
                 if spawner == nil then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -421,9 +424,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                     best = data
                     bestDist = d
                 end
-                __continue55 = true
+                __continue56 = true
             until true
-            if not __continue55 then
+            if not __continue56 then
                 break
             end
         end
@@ -481,13 +484,13 @@ function ____exports.NoteStackOutcome(campIdx, minute, countAfter, assumed)
     end
     local prior = before[campIdx]
     __TS__Delete(before, campIdx)
-    local ____temp_9
+    local ____temp_8
     if countAfter ~= nil then
-        ____temp_9 = prior ~= nil and countAfter > prior
+        ____temp_8 = prior ~= nil and countAfter > prior
     else
-        ____temp_9 = assumed
+        ____temp_8 = assumed
     end
-    local stacked = ____temp_9
+    local stacked = ____temp_8
     if not stacked then
         return false
     end
