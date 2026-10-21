@@ -88,9 +88,9 @@ local function neutrals(at, n)
 end
 
 -- Drives a stack job on `idx` started at minute + :40 with a zero jitter (Gauss u1 = 1): 3 neutrals before the aggro,
--- `added` more spawned at the next :00. Returns the job, the desires at :58 and the next :01, and the attacks
--- issued 0.1 s before the aggro.
-local function runStack(H, bot, idx, at, minute, added)
+-- `added` more spawned at the next :00, then settled by :05. Returns the job, the desires at :58 and the next :01,
+-- the attacks issued 0.1 s before the aggro, and the camp's original neutrals. `partial` stops after :01.
+local function runStack(H, bot, idx, at, minute, added, partial)
 	local m0 = minute * 60
 	T = m0 + 40
 	bot.loc = standOf(H, idx)
@@ -108,9 +108,12 @@ local function runStack(H, bot, idx, at, minute, added)
 	teleport(bot)
 	local d58 = frame(H, bot, m0 + 58)
 	local d01 = frame(H, bot, m0 + 61)
-	neutrals(at, added)
-	frame(H, bot, m0 + 62)
-	return job, d58, d01, early
+	if not partial then
+		neutrals(at, added)
+		frame(H, bot, m0 + 62)
+		frame(H, bot, m0 + 65)
+	end
+	return job, d58, d01, early, camp
 end
 
 do
@@ -259,6 +262,55 @@ do
 end
 
 do
+	-- At :02 only the fresh spawn is in the box; the stacked neutrals walk back in by :04.
+	local H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
+	local camp, earlyLine
+	local lines = capture(function()
+		local _
+		_, _, _, _, camp = runStack(H, support, 1, LARGE, 1, 0, true)
+		for _, n in ipairs(camp) do n.loc = Vector(LARGE.x, LARGE.y - 800) end
+		neutrals(LARGE, 3)
+		frame(H, support, 122)
+		frame(H, support, 123)
+	end)
+	earlyLine = find(lines, "[H:lane] stack pid")
+	check("returning neutrals: not settled on the :02 count", earlyLine == nil, earlyLine)
+	lines = capture(function()
+		for _, n in ipairs(camp) do n.loc = Vector(LARGE.x, LARGE.y) end
+		frame(H, support, 124)
+	end)
+	local line = find(lines, "[H:lane] stack pid")
+	check("returned by :04: graded stacked", line ~= nil and line:find("before=3 after=6 grade=ok", 1, true), line)
+	check("returned by :04: IsStacked", H.Lane.Stacking.IsStacked(1))
+
+	H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
+	lines = capture(function()
+		runStack(H, support, 1, LARGE, 1, 0, true)
+		frame(H, support, 122)
+		frame(H, support, 124.9)
+	end)
+	check("count never rises: still sampling before :05", find(lines, "[H:lane] stack pid") == nil)
+	lines = capture(function() frame(H, support, 125) end)
+	line = find(lines, "[H:lane] stack pid")
+	check("count never rises: settled at :05 unstacked", line ~= nil and line:find("after=3", 1, true) and not H.Lane.Stacking.IsStacked(1), line)
+end
+
+do
+	-- A hands-off lane: no job, no commit, and the minute's roll is kept.
+	local H, support = world(1, { camps = { { "medium", MEDIUM } }, debug = true })
+	support.loc = standOf(H, 1)
+	H.Orders.Post(2, { type = "LANE_HANDSOFF", sourceKey = "ping", issuerPID = 0, lane = Lane.Bot, duration = 30,
+		maxResponders = 1, onlyPIDs = { 5 }, delayKind = "ping" })
+	T = 103
+	check("precondition: handsoff accepted", H.Orders.GetAcceptedForLane(support, "LANE_HANDSOFF", Lane.Bot) ~= nil)
+	SetRandomSequence({ 0.0 })
+	local lines = capture(function() check("handsoff: no stack desire", frame(H, support, 105) == 0) end)
+	check("handsoff: no job, no commit", H.Lane.CampJobs.Current(support) == nil and H.Lane.LanePlanner.Committed(support) == nil)
+	check("handsoff: no job-start", find(lines, "job-start") == nil)
+	check("handsoff: roll not drawn", RandomUnread() == 1)
+end
+
+do
 	-- Out of sight at :02: unknown, assumed stacked because the aggro was in the :53-:56 band.
 	local H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
 	local lines = capture(function()
@@ -275,6 +327,7 @@ do
 		frame(H, support, m0 + 61)
 		support.loc = Vector(LARGE.x, LARGE.y + 3000)
 		frame(H, support, m0 + 62)
+		frame(H, support, m0 + 65)
 	end)
 	local line = find(lines, "[H:lane] stack pid")
 	check("unseen outcome logged unknown", line ~= nil and line:find("after=? grade=unknown", 1, true), line)

@@ -257,12 +257,21 @@ function settleStack(bot, now)
     if p == nil or now < p.at then
         return
     end
+    if boxInSight(bot, p.campIdx) then
+        p.peak = math.max(
+            p.peak or 0,
+            neutralsInBox(bot, p.campIdx)
+        )
+    end
+    if now < p["until"] and (p.peak == nil or p.peak <= p.before) then
+        return
+    end
     __TS__Delete(
         pendingStacks,
         bot:GetPlayerID()
     )
     local t = settings().Timing
-    local after = boxInSight(bot, p.campIdx) and neutralsInBox(bot, p.campIdx) or nil
+    local after = p.peak
     local assumed = after == nil and p.aggro >= t.StackAssumedFrom and p.aggro <= t.StackAssumedTo
     Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed)
     local grade = after == nil and "unknown" or ____exports.StackGrade(p.aggro)
@@ -1019,10 +1028,12 @@ local function noteStackAggro(bot, job, now)
     local before = job.stackBefore or 0
     local minute = job.minute or math.floor(job.baseAggro / settings().Timing.PullPeriod)
     Stacking.NoteStackAttempt(job.campIdx, minute, before)
+    local minuteEnd = (job.exitUntil or now) - settings().Timing.StackExitUntil
     pendingStacks[bot:GetPlayerID()] = {
         campIdx = job.campIdx,
         minute = minute,
-        at = (job.exitUntil or now) - settings().Timing.StackExitUntil + settings().Timing.StackOutcomeAt,
+        at = minuteEnd + settings().Timing.StackOutcomeAt,
+        ["until"] = minuteEnd + settings().Timing.StackOutcomeUntil,
         before = before,
         aggro = job.plannedSec + (now - job.baseAggro),
         planned = job.plannedSec,
@@ -1036,10 +1047,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue160
+            local __continue162
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue160 = true
+                    __continue162 = true
                     break
                 end
                 if dist2D(
@@ -1048,9 +1059,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue160 = true
+                __continue162 = true
             until true
-            if not __continue160 then
+            if not __continue162 then
                 break
             end
         end

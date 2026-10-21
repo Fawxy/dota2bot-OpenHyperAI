@@ -174,7 +174,10 @@ export function WantsStack(bot: Unit, minute: number): Camps.CampJobData | undef
     const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
     const [eligible] = Eligible(bot, s, enemies);
     if (!eligible) return undefined;
-    const requested = s !== undefined && LanePlan.View(bot, s).stackRequested;
+    const view = s !== undefined ? LanePlan.View(bot, s) : undefined;
+    // Checked before the roll so a hands-off lane neither burns the minute's roll nor starts a job that aborts at once.
+    if (view !== undefined && view.handsOff) return undefined;
+    const requested = view !== undefined && view.stackRequested;
     if (!requested && !attemptRoll(bot, minute)) return undefined;
     return ChooseCamp(bot, s, minute);
 }

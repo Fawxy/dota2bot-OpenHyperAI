@@ -442,7 +442,11 @@ function ____exports.WantsStack(bot, minute)
     if not eligible then
         return nil
     end
-    local requested = s ~= nil and LanePlan.View(bot, s).stackRequested
+    local view = s ~= nil and LanePlan.View(bot, s) or nil
+    if view ~= nil and view.handsOff then
+        return nil
+    end
+    local requested = view ~= nil and view.stackRequested
     if not requested and not attemptRoll(bot, minute) then
         return nil
     end

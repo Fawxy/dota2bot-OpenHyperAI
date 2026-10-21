@@ -88,6 +88,7 @@ export const DEFAULTS = {
         StackMoveFrom: 45,
         StackExitUntil: 1.0,
         StackOutcomeAt: 2,
+        StackOutcomeUntil: 5,
         StackEarlyBefore: 52,
         StackLateAfter: 57,
         StackAssumedFrom: 53,

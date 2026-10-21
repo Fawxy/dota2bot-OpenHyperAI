@@ -55,11 +55,16 @@ export interface Job extends JobRequest {
     stackBefore?: number;
 }
 
-/** A stack whose aggro landed; its outcome is read at the next :00 + StackOutcomeAt, after the job itself ended. */
+/**
+ * A stack whose aggro landed; its outcome is read from the next :00 + StackOutcomeAt to :00 + StackOutcomeUntil,
+ * after the job itself ended. The stacked neutrals walk back into the box over those seconds, so the peak count is kept.
+ */
 interface PendingStack {
     campIdx: number;
     minute: number;
     at: number;
+    until: number;
+    peak?: number;
     before: number;
     aggro: number;
     planned: number;
@@ -625,10 +630,12 @@ function noteStackAggro(bot: Unit, job: Job, now: number): void {
     const before = job.stackBefore ?? 0;
     const minute = job.minute ?? math.floor(job.baseAggro / settings().Timing.PullPeriod);
     Stacking.NoteStackAttempt(job.campIdx, minute, before);
+    const minuteEnd = (job.exitUntil ?? now) - settings().Timing.StackExitUntil;
     pendingStacks[bot.GetPlayerID()] = {
         campIdx: job.campIdx,
         minute,
-        at: (job.exitUntil ?? now) - settings().Timing.StackExitUntil + settings().Timing.StackOutcomeAt,
+        at: minuteEnd + settings().Timing.StackOutcomeAt,
+        until: minuteEnd + settings().Timing.StackOutcomeUntil,
         before,
         aggro: job.plannedSec + (now - job.baseAggro),
         planned: job.plannedSec,
@@ -639,9 +646,11 @@ function noteStackAggro(bot: Unit, job: Job, now: number): void {
 function settleStack(bot: Unit, now: number): void {
     const p = pendingStacks[bot.GetPlayerID()];
     if (p === undefined || now < p.at) return;
+    if (boxInSight(bot, p.campIdx)) p.peak = math.max(p.peak ?? 0, neutralsInBox(bot, p.campIdx));
+    if (now < p.until && (p.peak === undefined || p.peak <= p.before)) return;
     delete pendingStacks[bot.GetPlayerID()];
     const t = settings().Timing;
-    const after = boxInSight(bot, p.campIdx) ? neutralsInBox(bot, p.campIdx) : undefined;
+    const after = p.peak;
     const assumed = after === undefined && p.aggro >= t.StackAssumedFrom && p.aggro <= t.StackAssumedTo;
     Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
     const grade = after === undefined ? "unknown" : StackGrade(p.aggro);
