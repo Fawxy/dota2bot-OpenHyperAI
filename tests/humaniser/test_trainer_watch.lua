@@ -97,6 +97,46 @@ do
 	check("a miss after the landing time is not an easy miss", #v == 1 and v[1].kind == "MISS", v[1] and v[1].kind)
 end
 
+-- Swing at A, then give up (retarget to B or just stop), then A dies to a lane creep.
+local function abandoned(resolveAs)
+	local judge, verdicts = NewJudge(), {}
+	local now = t0
+	while now <= t0 + 2.0 do
+		local dead = now >= t0 + 0.7 - 1e-9
+		local a = { id = "A", kind = "melee", isDeny = false, alive = not dead, hp = dead and 0 or 71, dist = 100 }
+		if dead then a.killer = { kind = "creep" } else a.prediction = wide(now) end
+		local s = { now = now, alive = true, eligible = true, harassed = false, anim = "none", lastHits = 0, denies = 0, target = "A" }
+		local creeps = { a }
+		if resolveAs == "CANCELLED" then
+			if now < t0 + 0.4 then s.anim, s.swingStart = "swing", t0 + 0.1 end
+			if now < t0 + 0.1 then s.anim = "none" end
+		else
+			-- EARLY: the first hit lands without killing, 13 HP left.
+			s.anim, s.swingStart = swingAnim(t0 + 0.1, now), t0 + 0.1
+			if not dead and now >= t0 + 0.5 then a.hp = 13 end
+		end
+		for _, e in ipairs(judge:Step(s, creeps)) do
+			if e.type == "verdict" then table.insert(verdicts, e.v) end
+		end
+		now = now + DT
+	end
+	return verdicts
+end
+
+do
+	local v = abandoned("CANCELLED")
+	check("cancelled swing, then non-subject death: CANCELLED then no-swing MISSED_EASY", #v == 2 and v[1].kind == "CANCELLED" and v[2].kind == "MISSED_EASY", #v)
+	local e = v[2] or {}
+	check("cancelled attempt does not count as a swing", e.swung == false and e.reason == "missed easy one - 0.42s window, melee creep, no swing", e.reason)
+end
+
+do
+	local v = abandoned("EARLY")
+	local kinds = {}
+	for _, x in ipairs(v) do table.insert(kinds, x.kind) end
+	check("an EARLY attempt shields the creep from MISSED_EASY", #v == 1 and v[1].kind == "EARLY", table.concat(kinds, ","))
+end
+
 -- A creep that leaves vision is never graded: the lifecycle drops it, so the judge only stops seeing it.
 do
 	check("invalid handle at 80% HP is not a death", Watch.IsDeathLikely(80, 100, 58, 300) == false)
@@ -104,17 +144,22 @@ do
 	check("one-hit-low creep is a death even when above 30%", Watch.IsDeathLikely(50, 100, 58, 300) == true)
 	check("out of range, even if low, is not a death", Watch.IsDeathLikely(10, 100, 58, 1300) == false)
 
-	local judge, count = NewJudge(), 0
+	-- The subject swings at A, A vanishes at t0 + 0.5, and the attempt is later resolved only by the 2.5 s timeout.
+	local judge, kinds = NewJudge(), {}
 	local now = t0
 	while now <= t0 + 6 do
 		local creeps = {}
+		local s = { now = now, alive = true, eligible = true, harassed = false, anim = "none", lastHits = 0, denies = 0, target = "A" }
 		if now < t0 + 0.5 then
 			creeps[1] = { id = "A", kind = "melee", isDeny = false, alive = true, hp = 71, dist = 100, prediction = pred(t0 + 0.1, t0 + 0.52) }
+			s.anim, s.swingStart = swingAnim(t0, now), t0
 		end
-		count = count + #judge:Step({ now = now, alive = true, eligible = true, harassed = false, anim = "none", lastHits = 0, denies = 0 }, creeps)
+		for _, e in ipairs(judge:Step(s, creeps)) do
+			if e.type == "verdict" then table.insert(kinds, e.v.kind .. "@" .. string.format("%.2f", now - t0)) end
+		end
 		now = now + DT
 	end
-	check("a creep that vanishes produces no events, ever", count == 0, count)
+	check("a vanished creep is only closed by the timeout, never as MISSED_EASY or LATE", #kinds == 1 and kinds[1]:find("^MISS@2.5") ~= nil, table.concat(kinds, ","))
 end
 
 -- Attribution.

@@ -244,6 +244,7 @@ function Judge.prototype.____constructor(self, easyWindow)
     self.prevTarget = nil
     self.widest = {}
     self.handled = {}
+    self.engaged = {}
 end
 function Judge.prototype.Step(self, s, creeps)
     local events = {}
@@ -279,6 +280,9 @@ function Judge.prototype.resolveOpen(self, s, byId, events)
             ____temp_1 = self:resolve(s, a, c, group[a.creepId])
         end
         local closed = ____temp_1
+        if closed ~= nil then
+            self.engaged[a.creepId] = true
+        end
         if closed == nil then
             open[#open + 1] = a
         elseif closed ~= "silent" then
@@ -400,11 +404,11 @@ end
 function Judge.prototype.recordWindows(self, now, creeps)
     for ____, c in ipairs(creeps) do
         do
-            local __continue33
+            local __continue34
             repeat
                 local p = c.prediction
                 if not c.alive or p == nil or p.startClose <= now then
-                    __continue33 = true
+                    __continue34 = true
                     break
                 end
                 local w = math.min(p.startClose, now + WIDEST_LOOKAHEAD) - math.max(p.startOpen, now)
@@ -413,9 +417,9 @@ function Judge.prototype.recordWindows(self, now, creeps)
                 end
                 local ____self_widest_c_id_3 = self.widest[c.id]
                 ____self_widest_c_id_3[#____self_widest_c_id_3 + 1] = {t = now, w = w}
-                __continue33 = true
+                __continue34 = true
             until true
-            if not __continue33 then
+            if not __continue34 then
                 break
             end
         end
@@ -440,23 +444,23 @@ end
 function Judge.prototype.detectEasyMisses(self, s, creeps, events)
     for ____, c in ipairs(creeps) do
         do
-            local __continue45
+            local __continue46
             repeat
                 if c.alive or c.killer == nil or self.handled[c.id] then
-                    __continue45 = true
+                    __continue46 = true
                     break
                 end
                 self.handled[c.id] = true
-                if c.killer.kind ~= "subject" and not self.attempted[c.id] then
+                if c.killer.kind ~= "subject" and not self.engaged[c.id] then
                     local v = self:easyMiss(s, c, c.killer, nil)
                     if v ~= nil then
                         events[#events + 1] = {type = "verdict", v = v}
                     end
                 end
                 __TS__Delete(self.widest, c.id)
-                __continue45 = true
+                __continue46 = true
             until true
-            if not __continue45 then
+            if not __continue46 then
                 break
             end
         end
@@ -563,17 +567,17 @@ end
 function Judge.prototype.emitOutcomes(self, creeps, events)
     for ____, c in ipairs(creeps) do
         do
-            local __continue66
+            local __continue67
             repeat
                 if c.alive or c.killer == nil or not self.attempted[c.id] or self.reported[c.id] then
-                    __continue66 = true
+                    __continue67 = true
                     break
                 end
                 self.reported[c.id] = true
                 events[#events + 1] = {type = "outcome", creepId = c.id, subjectGotIt = c.killer.kind == "subject"}
-                __continue66 = true
+                __continue67 = true
             until true
-            if not __continue66 then
+            if not __continue67 then
                 break
             end
         end

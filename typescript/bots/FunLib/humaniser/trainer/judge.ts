@@ -84,6 +84,8 @@ export class Judge {
     private prevTarget: string | undefined = undefined;
     private widest: Record<string, { t: number; w: number }[]> = {};
     private handled: Record<string, boolean> = {};
+    /** Creeps the subject committed to: an attempt on them resolved as something other than CANCELLED. */
+    private engaged: Record<string, boolean> = {};
 
     constructor(readonly easyWindow: number) {}
 
@@ -114,6 +116,7 @@ export class Judge {
         for (const a of this.attempts) {
             const c = byId[a.creepId];
             const closed = c === undefined ? this.forced(s, a) : this.resolve(s, a, c, group[a.creepId]);
+            if (closed !== undefined) this.engaged[a.creepId] = true;
             if (closed === undefined) {
                 open.push(a);
             } else if (closed !== "silent") {
@@ -218,7 +221,7 @@ export class Judge {
         for (const c of creeps) {
             if (c.alive || c.killer === undefined || this.handled[c.id]) continue;
             this.handled[c.id] = true;
-            if (c.killer.kind !== "subject" && !this.attempted[c.id]) {
+            if (c.killer.kind !== "subject" && !this.engaged[c.id]) {
                 const v = this.easyMiss(s, c, c.killer, undefined);
                 if (v !== undefined) events.push({ type: "verdict", v });
             }
