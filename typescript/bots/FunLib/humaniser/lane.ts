@@ -12,11 +12,12 @@ import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs, Stacking };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -83,13 +84,7 @@ export function CampJobOnEnd(bot: Unit): void {
     CampJobs.OnEnd(bot);
 }
 
-// !hpulltest <idx> [half]: the issuer's nearest bot runs that pull, bypassing the planner and the owner check.
-LaneDebug.Register("hpulltest", (team, issuer, args) => {
-    const campIdx = tonumber(args[0]);
-    if (campIdx === undefined) {
-        HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]");
-        return;
-    }
+function nearestBot(team: number, issuer: Unit): Unit | undefined {
     let best: Unit | undefined;
     let bestDist = math.huge;
     for (const member of teamMembers(team)) {
@@ -100,6 +95,17 @@ LaneDebug.Register("hpulltest", (team, issuer, args) => {
             bestDist = d;
         }
     }
+    return best;
+}
+
+// !hpulltest <idx> [half]: the issuer's nearest bot runs that pull, bypassing the planner and the owner check.
+LaneDebug.Register("hpulltest", (team, issuer, args) => {
+    const campIdx = tonumber(args[0]);
+    if (campIdx === undefined) {
+        HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]");
+        return;
+    }
+    const best = nearestBot(team, issuer);
     if (best === undefined) {
         HDebug.Log("lane", "hpulltest no bot");
         return;
@@ -107,4 +113,20 @@ LaneDebug.Register("hpulltest", (team, issuer, args) => {
     const kind: CampJobs.JobKind = args[1] === "half" ? "half_pull" : "full_pull";
     const ok = CampJobs.Start(best, { kind, campIdx, forced: true });
     HDebug.Log("lane", `hpulltest pid=${best.GetPlayerID()} camp=${campIdx} kind=${kind} started=${tostring(ok)}`);
+});
+
+// !hstacktest <idx>: the issuer's nearest bot stacks that camp at its next reachable stack second, skipping eligibility.
+LaneDebug.Register("hstacktest", (team, issuer, args) => {
+    const campIdx = tonumber(args[0]);
+    if (campIdx === undefined) {
+        HDebug.Log("lane", "hstacktest usage: !hstacktest <idx>");
+        return;
+    }
+    const best = nearestBot(team, issuer);
+    if (best === undefined) {
+        HDebug.Log("lane", "hstacktest no bot");
+        return;
+    }
+    const ok = CampJobs.Start(best, { kind: "stack", campIdx, forced: true });
+    HDebug.Log("lane", `hstacktest pid=${best.GetPlayerID()} camp=${campIdx} started=${tostring(ok)}`);
 });

@@ -9,6 +9,7 @@ local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
@@ -22,6 +23,7 @@ ____exports.LanePlan = LanePlan
 ____exports.LanePlanner = LanePlanner
 ____exports.LaneTech = LaneTech
 ____exports.CampJobs = CampJobs
+____exports.Stacking = Stacking
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()
 end
@@ -83,6 +85,34 @@ end
 function ____exports.CampJobOnEnd(bot)
     CampJobs.OnEnd(bot)
 end
+local function nearestBot(team, issuer)
+    local best
+    local bestDist = math.huge
+    for ____, member in ipairs(teamMembers(team)) do
+        do
+            local __continue18
+            repeat
+                if not member:IsBot() or not member:IsAlive() then
+                    __continue18 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(
+                    member,
+                    issuer:GetLocation()
+                )
+                if d < bestDist then
+                    best = member
+                    bestDist = d
+                end
+                __continue18 = true
+            until true
+            if not __continue18 then
+                break
+            end
+        end
+    end
+    return best
+end
 LaneDebug.Register(
     "hpulltest",
     function(team, issuer, args)
@@ -91,31 +121,7 @@ LaneDebug.Register(
             HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]")
             return
         end
-        local best
-        local bestDist = math.huge
-        for ____, member in ipairs(teamMembers(team)) do
-            do
-                local __continue19
-                repeat
-                    if not member:IsBot() or not member:IsAlive() then
-                        __continue19 = true
-                        break
-                    end
-                    local d = GetUnitToLocationDistance(
-                        member,
-                        issuer:GetLocation()
-                    )
-                    if d < bestDist then
-                        best = member
-                        bestDist = d
-                    end
-                    __continue19 = true
-                until true
-                if not __continue19 then
-                    break
-                end
-            end
-        end
+        local best = nearestBot(team, issuer)
         if best == nil then
             HDebug.Log("lane", "hpulltest no bot")
             return
@@ -125,6 +131,26 @@ LaneDebug.Register(
         HDebug.Log(
             "lane",
             (((((("hpulltest pid=" .. tostring(best:GetPlayerID())) .. " camp=") .. tostring(campIdx)) .. " kind=") .. kind) .. " started=") .. tostring(ok)
+        )
+    end
+)
+LaneDebug.Register(
+    "hstacktest",
+    function(team, issuer, args)
+        local campIdx = tonumber(args[1])
+        if campIdx == nil then
+            HDebug.Log("lane", "hstacktest usage: !hstacktest <idx>")
+            return
+        end
+        local best = nearestBot(team, issuer)
+        if best == nil then
+            HDebug.Log("lane", "hstacktest no bot")
+            return
+        end
+        local ok = CampJobs.Start(best, {kind = "stack", campIdx = campIdx, forced = true})
+        HDebug.Log(
+            "lane",
+            (((("hstacktest pid=" .. tostring(best:GetPlayerID())) .. " camp=") .. tostring(campIdx)) .. " started=") .. tostring(ok)
         )
     end
 )

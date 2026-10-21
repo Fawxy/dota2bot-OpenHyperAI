@@ -163,6 +163,7 @@ local Localization = {
         say_lane_shove_rotate = {"shoving then rotating"},
         say_lane_pulling_in_5 = {"pulling in 5"},
         say_lane_half_pull = {"half pull"},
+        say_lane_stacked_big = {"stacked big camp"},
     },
     zh = {
         welcome_msgs = {
@@ -299,6 +300,7 @@ local Localization = {
         say_lane_shove_rotate = {"推完线就去游走"},
         say_lane_pulling_in_5 = {"5秒后拉野"},
         say_lane_half_pull = {"半拉"},
+        say_lane_stacked_big = {"大野已经堆好了"},
     },
     ru = {
         welcome_msgs = {
@@ -428,6 +430,7 @@ local Localization = {
         say_lane_shove_rotate = {"пушу линию и ухожу"},
         say_lane_pulling_in_5 = {"отвожу крипов через 5"},
         say_lane_half_pull = {"полуотвод"},
+        say_lane_stacked_big = {"застакал большой лагерь"},
     },
     ja = {
         welcome_msgs = {
@@ -557,6 +560,7 @@ local Localization = {
         say_lane_shove_rotate = {"ウェーブ押してから移動する"},
         say_lane_pulling_in_5 = {"5秒後にプル"},
         say_lane_half_pull = {"ハーフプル"},
+        say_lane_stacked_big = {"大きいキャンプをスタックした"},
     },
 }
 

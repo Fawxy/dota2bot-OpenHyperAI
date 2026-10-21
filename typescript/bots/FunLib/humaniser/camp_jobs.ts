@@ -1,7 +1,8 @@
 /**
- * Camp-job executor (task 07): full, half and double pulls run from mode_farm_generic as timed jobs.
+ * Camp-job executor (task 07): full, half and double pulls and stacks run from mode_farm_generic as timed jobs.
  * The job window only gates a job's start (PF2); once started the job keeps its desire until it is done or
- * aborted. Each pull's outcome is measured as the divert fraction and logged for tools/replay-mining.
+ * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
+ * the minute, and both are logged for tools/replay-mining.
  */
 import { Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -11,6 +12,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
 import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
+import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -48,6 +50,20 @@ export interface Job extends JobRequest {
     aggroOrderedAt?: number;
     watchFrom?: number;
     sampledAt?: number;
+    /** Stack: the next :00 + StackExitUntil, when the walk-off ends. */
+    exitUntil?: number;
+    stackBefore?: number;
+}
+
+/** A stack whose aggro landed; its outcome is read at the next :00 + StackOutcomeAt, after the job itself ended. */
+interface PendingStack {
+    campIdx: number;
+    minute: number;
+    at: number;
+    before: number;
+    aggro: number;
+    planned: number;
+    type: Camps.CampType;
 }
 
 const PULL_KINDS: Record<string, boolean> = { full_pull: true, half_pull: true, stack_pull: true, double_pull: true };
@@ -73,10 +89,12 @@ const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
 
 let jobs: Record<number, Job> = {};
 let doneCycle: Record<number, number> = {};
+let pendingStacks: Record<number, PendingStack> = {};
 
 export function ResetCache(): void {
     jobs = {};
     doneCycle = {};
+    pendingStacks = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -182,8 +200,73 @@ function dataLabel(data: Camps.CampJobData): string {
     return data.unverified === true ? "unverified" : data.source;
 }
 
+function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
+    jobs[bot.GetPlayerID()] = job;
+    LanePlanner.Commit(bot, commitTech(job.kind));
+    HDebug.Log(
+        "lane",
+        string.format(
+            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s",
+            bot.GetPlayerID(),
+            LOG_KIND[job.kind],
+            job.campIdx,
+            data.key ?? "-",
+            dataLabel(data),
+            job.aggroAt,
+            tostring(job.forced === true)
+        )
+    );
+}
+
+function startStack(bot: Unit, req: JobRequest): boolean {
+    const data = Camps.ByIdx(req.campIdx);
+    const spawner = Camps.SpawnerByIdx(req.campIdx);
+    if (data === undefined || data.stack === undefined || spawner === undefined) return false;
+    const cfg = settings();
+    const skill = LaneConfig.SkillOf(bot);
+    const now = DotaTime();
+    const period = cfg.Timing.PullPeriod;
+    const aggroSec = data.stack.aggroSec;
+
+    // Draw order (PF10): Gauss (2) for the jitter, then one RandomVector for the stand and each exit waypoint.
+    const jitter = LaneConfig.Jitter(skill);
+    const noise = LaneConfig.Curve("PathNoise", skill);
+    const stand = noisy(Stacking.StandPoint(spawner, data), noise);
+    const path = data.stack.exitPath.map((p) => noisy(p, noise));
+
+    let base = NextAggroTime(now, [aggroSec], period);
+    if (req.forced === true && base < now + travelTo(bot, stand)) base = NextAggroTime(now + travelTo(bot, stand), [aggroSec], period);
+    const minuteStart = base - aggroSec;
+
+    register(
+        bot,
+        {
+            ...req,
+            minute: math.floor(base / period),
+            phase: "travel",
+            aggroAt: base + jitter,
+            plannedSec: aggroSec,
+            path,
+            startedAt: now,
+            peakDivert: 0,
+            waveSize: 0,
+            activeCamp: req.campIdx,
+            stand,
+            waypoint: 0,
+            stage: 1,
+            secondTried: false,
+            telegraphed: false,
+            baseAggro: base,
+            exitUntil: minuteStart + period + cfg.Timing.StackExitUntil,
+        },
+        data
+    );
+    return true;
+}
+
 export function Start(bot: Unit, req: JobRequest): boolean {
-    if (PULL_KINDS[req.kind] !== true) return false; // stack and contest executors arrive with their own tasks
+    if (req.kind === "stack") return startStack(bot, req);
+    if (PULL_KINDS[req.kind] !== true) return false; // the contest executor arrives with its own task
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;
@@ -223,21 +306,7 @@ export function Start(bot: Unit, req: JobRequest): boolean {
         telegraphed: false,
         baseAggro: base,
     };
-    jobs[bot.GetPlayerID()] = job;
-    LanePlanner.Commit(bot, commitTech(req.kind));
-    HDebug.Log(
-        "lane",
-        string.format(
-            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s",
-            bot.GetPlayerID(),
-            LOG_KIND[req.kind],
-            req.campIdx,
-            data.key ?? "-",
-            dataLabel(data),
-            job.aggroAt,
-            tostring(req.forced === true)
-        )
-    );
+    register(bot, job, data);
     return true;
 }
 
@@ -287,6 +356,7 @@ function logJob(bot: Unit, job: Job, grade: string): void {
 function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): void {
     job.phase = phase;
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
+    if (job.kind === "stack_pull") Stacking.ClearStack(job.campIdx);
     logJob(bot, job, grade);
 }
 
@@ -300,7 +370,9 @@ function abort(bot: Unit, job: Job, reason: string): void {
         return;
     }
     job.phase = "return";
-    doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
+    // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
+    if (job.kind !== "stack") doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
+    if (job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     const [token] = string.gsub(reason, "%s+", "-");
     HDebug.Log(
         "lane",
@@ -331,6 +403,18 @@ function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaM
     return $multi(true, "ok");
 }
 
+/** Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety. */
+function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
+    const s = LaneState.ForBot(bot);
+    const laning = LaneConfig.InLaningPhase();
+    if (laning && s === undefined) return $multi(false, "no-lane");
+    const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
+    const [ok, why] = job.forced === true ? Stacking.Safe(bot, s, enemies) : Stacking.Eligible(bot, s, enemies);
+    if (!ok) return $multi(false, why);
+    if (laning && s !== undefined && LanePlan.View(bot, s).handsOff) return $multi(false, "handsoff");
+    return $multi(true, "ok");
+}
+
 /** Abort checks for a running job; true when it may continue. */
 function keepGoing(bot: Unit, job: Job): boolean {
     if (!LaneConfig.IsOn(FLAG_OF[job.kind])) {
@@ -347,6 +431,11 @@ function keepGoing(bot: Unit, job: Job): boolean {
         if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
         else abort(bot, job, "timeout");
         return false;
+    }
+    if (job.kind === "stack") {
+        const [ok, why] = stackAllowed(bot, job);
+        if (!ok) abort(bot, job, why);
+        return ok;
     }
     const s = LaneState.ForBot(bot);
     if (s === undefined) {
@@ -416,16 +505,50 @@ function schedule(bot: Unit): boolean {
     return Start(bot, req);
 }
 
+/** Earliest second of the minute at which any camp's stack window can open, so most frames skip the stack roll. */
+function earliestStackStart(): number {
+    const t = settings().Timing;
+    let earliest = t.StackMoveFrom;
+    for (const data of Camps.Resolve()) {
+        if (data.stack !== undefined) earliest = math.min(earliest, data.stack.aggroSec - t.MaxTravel - t.JobStartLate);
+    }
+    return earliest;
+}
+
+function scheduleStack(bot: Unit, now: number): boolean {
+    const t = settings().Timing;
+    const minute = math.floor(now / t.PullPeriod);
+    const sec = now - minute * t.PullPeriod;
+    if (sec < earliestStackStart()) return false;
+    // A stack is the cycle's technique (PF14): nothing else may have started in it.
+    if (LanePlanner.Committed(bot) !== undefined) return false;
+    const data = Stacking.WantsStack(bot, minute);
+    const spawner = data !== undefined ? Camps.SpawnerByIdx(data.campIdx) : undefined;
+    if (data === undefined || data.stack === undefined || spawner === undefined) return false;
+    const travel = travelTo(bot, Stacking.StandPoint(spawner, data));
+    const from = math.min(t.StackMoveFrom, data.stack.aggroSec - travel - t.JobStartLate);
+    if (sec < from || sec > data.stack.aggroSec) return false;
+    return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
+}
+
 export function Desire(bot: Unit): number {
     if (!LaneConfig.IsActive()) return 0;
+    const now = DotaTime();
+    settleStack(bot, now);
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) {
+        if (job.kind === "stack" && job.phase === "exit" && now >= (job.exitUntil ?? now)) {
+            job.phase = "done";
+            return 0;
+        }
         if (!keepGoing(bot, job)) return 0;
-        if (LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
+        // A stack's walk-off past :00 does not claim the new cycle: the stack was the previous cycle's technique.
+        if (job.kind !== "stack" && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
         return desireOf(job.kind);
     }
-    if (!anyJobFlag() || !bot.IsAlive()) return 0;
-    const started = schedule(bot);
+    if (!bot.IsAlive()) return 0;
+    let started = anyJobFlag() && schedule(bot);
+    if (!started && LaneConfig.IsOn("Stack")) started = scheduleStack(bot, now);
     return started ? desireOf(jobs[bot.GetPlayerID()].kind) : 0;
 }
 
@@ -445,6 +568,7 @@ function arrived(bot: Unit, loc: Vector): boolean {
 }
 
 function telegraph(bot: Unit, job: Job, now: number): void {
+    if (job.kind === "stack") return;
     if (job.telegraphed || job.stage !== 1 || now < job.aggroAt - settings().Timing.PullTelegraphLead) return;
     job.telegraphed = true;
     if (!LaneConfig.IsOn("Telegraph") || !Difficulty.IsAllyOfHuman(bot)) return;
@@ -472,6 +596,71 @@ function aggroConfirmed(bot: Unit, job: Job): boolean {
         if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && n.GetAttackTarget() === bot) return true;
     }
     return false;
+}
+
+function neutralsInBox(bot: Unit, campIdx: number): number {
+    const margin = settings().Radii.BoxMargin;
+    let n = 0;
+    for (const c of bot.GetNearbyNeutralCreeps(settings().Radii.StackCountScan, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(campIdx, c.GetLocation(), margin)) n++;
+    }
+    return n;
+}
+
+function boxInSight(bot: Unit, campIdx: number): boolean {
+    const spawner = Camps.SpawnerByIdx(campIdx);
+    return spawner !== undefined && bot.IsAlive() && GetUnitToLocationDistance(bot, Camps.BoxCenter(spawner)) <= settings().Radii.StackSight;
+}
+
+export function StackGrade(aggroSec: number): string {
+    const t = settings().Timing;
+    if (aggroSec < t.StackEarlyBefore) return "mistake:early";
+    if (aggroSec > t.StackLateAfter) return "mistake:late";
+    return "ok";
+}
+
+/** The aggro landed: the attempt counts from here, whether or not the walk-off completes. */
+function noteStackAggro(bot: Unit, job: Job, now: number): void {
+    const data = Camps.ByIdx(job.campIdx);
+    const before = job.stackBefore ?? 0;
+    const minute = job.minute ?? math.floor(job.baseAggro / settings().Timing.PullPeriod);
+    Stacking.NoteStackAttempt(job.campIdx, minute, before);
+    pendingStacks[bot.GetPlayerID()] = {
+        campIdx: job.campIdx,
+        minute,
+        at: (job.exitUntil ?? now) - settings().Timing.StackExitUntil + settings().Timing.StackOutcomeAt,
+        before,
+        aggro: job.plannedSec + (now - job.baseAggro),
+        planned: job.plannedSec,
+        type: data?.type ?? "medium",
+    };
+}
+
+function settleStack(bot: Unit, now: number): void {
+    const p = pendingStacks[bot.GetPlayerID()];
+    if (p === undefined || now < p.at) return;
+    delete pendingStacks[bot.GetPlayerID()];
+    const t = settings().Timing;
+    const after = boxInSight(bot, p.campIdx) ? neutralsInBox(bot, p.campIdx) : undefined;
+    const assumed = after === undefined && p.aggro >= t.StackAssumedFrom && p.aggro <= t.StackAssumedTo;
+    Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
+    const grade = after === undefined ? "unknown" : StackGrade(p.aggro);
+    HDebug.Log(
+        "lane",
+        string.format(
+            "stack pid=%d camp=%d type=%s aggro=%.1f planned=%.1f before=%d after=%s grade=%s",
+            bot.GetPlayerID(),
+            p.campIdx,
+            p.type,
+            p.aggro,
+            p.planned,
+            p.before,
+            after === undefined ? "?" : tostring(after),
+            grade
+        )
+    );
+    if (assumed) HDebug.Log("lane", string.format("stack-assumed pid=%d camp=%d aggro=%.1f", bot.GetPlayerID(), p.campIdx, p.aggro));
+    if (grade === "ok" && after !== undefined && after > p.before) Stacking.Telegraph(bot, p.type);
 }
 
 function laneCreepsNear(bot: Unit, center: Vector, radius: number): Unit[] {
@@ -539,12 +728,15 @@ function step(bot: Unit, job: Job): boolean {
         if (job.aggroTarget === undefined) {
             const creep = campNeutral(bot, job);
             if (creep !== undefined) {
+                if (job.kind === "stack") job.stackBefore = neutralsInBox(bot, job.activeCamp);
                 bot.Action_AttackUnit(creep, true);
                 job.aggroTarget = creep;
                 job.aggroOrderedAt = GameTime();
                 return true;
             }
             if (now >= job.aggroAt + cfg.Timing.NoCampAfter) {
+                // Standing at the box and seeing no neutral: whatever was stacked there has been farmed.
+                Stacking.ClearStack(job.activeCamp);
                 abort(bot, job, "mistake:no-camp");
                 return false;
             }
@@ -561,7 +753,22 @@ function step(bot: Unit, job: Job): boolean {
         }
         if (job.stage === 1) job.actualAggro = now;
         job.aggroTarget = undefined;
-        job.phase = "lead";
+        if (job.kind === "stack") {
+            noteStackAggro(bot, job, now);
+            job.phase = "exit";
+        } else {
+            job.phase = "lead";
+        }
+    }
+    if (job.phase === "exit") {
+        if (now >= (job.exitUntil ?? now)) {
+            job.phase = "done";
+            return false;
+        }
+        while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
+        if (job.waypoint < job.path.length) return moveTo(bot, job.path[job.waypoint]);
+        // At the end of the exit path: stay out of the box until :00 + StackExitUntil.
+        return true;
     }
     if (job.phase === "lead") {
         while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
