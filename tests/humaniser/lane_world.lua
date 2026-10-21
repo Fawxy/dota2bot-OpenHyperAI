@@ -81,6 +81,7 @@ function MakeLaneTowers()
 	return w
 end
 TOWERS_W = MakeLaneTowers()
+function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
@@ -116,7 +117,7 @@ function LaneFresh(laneCfg, extra)
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
 	LANING, STRONGER, NEXT_RUNE = nil, nil, nil
 	clearRandom()
-	local H = FreshHumaniser({ Enable = extra.enable ~= false, SkillOverride = extra.skill, Lane = laneCfg })
+	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
@@ -127,5 +128,6 @@ function LaneFresh(laneCfg, extra)
 	})
 	H.Lane.Config.ResetSettings()
 	H.Lane.Hooks.ResetHooks()
+	H.Lane.Camps.ResetCache()
 	return H
 end

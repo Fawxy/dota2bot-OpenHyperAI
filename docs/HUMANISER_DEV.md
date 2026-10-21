@@ -251,3 +251,11 @@ Other **TODO (in-game)** checks:
 - [ ] `!bhelp` lists the commands, once.
 - [ ] `-都来守家` still makes bots TP to defend.
 - [ ] With `Commands.Enable = false`, behaviour matches upstream.
+
+## Lane management: camp data (task 07)
+
+`camps.ts` resolves `GetNeutralSpawners()` against `camps_data.ts`; seed camps get meet points, pull paths and stack exits derived from lane geometry. Debug commands (need `Humaniser.Debug` and the Lane feature, human issuers): `!hpt` logs the issuer's position as a `Vector(...)` literal, `!hcamp` logs the nearest spawner box and its resolved job.
+
+**TODO (in-game):**
+- `GetAmountAlongLane` / `GetLocationAlongLane` are treated as absolute (0 = Radiant ancient) and `GetLaneFrontAmount` as team-relative, converted only in `camps.ts` `ToTeamAmount`. OHA's `J.GetClosestTeamLane` feeds a team-relative amount straight into `GetLocationAlongLane`, so one assumption may be wrong for Dire. If so, flip `LANE_AMOUNT_TEAM_RELATIVE` in `camps.ts`.
+- Is a neutral spawner's `type` a string (OHA) or an int (API doc)? Both are accepted; confirm which, and that the table key is the spawner index.

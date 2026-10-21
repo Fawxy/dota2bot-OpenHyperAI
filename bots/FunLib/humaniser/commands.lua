@@ -173,7 +173,7 @@ local function teamMembers(team)
     end
     return result
 end
-local function memberByPID(team, pid)
+function ____exports.memberByPID(team, pid)
     for ____, member in ipairs(teamMembers(team)) do
         if member:GetPlayerID() == pid then
             return member
@@ -622,7 +622,7 @@ function ____exports.HandleMessage(team, msg)
     if not msg.teamOnly then
         return
     end
-    local issuer = memberByPID(team, msg.pid)
+    local issuer = ____exports.memberByPID(team, msg.pid)
     if issuer == nil then
         return
     end
@@ -656,7 +656,7 @@ function ____exports.ShouldUseOrderedSmoke(bot)
         do
             local __continue109
             repeat
-                local member = memberByPID(
+                local member = ____exports.memberByPID(
                     bot:GetTeam(),
                     pid
                 )

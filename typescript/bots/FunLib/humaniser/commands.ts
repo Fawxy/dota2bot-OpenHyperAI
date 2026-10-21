@@ -95,7 +95,7 @@ function teamMembers(team: number): Unit[] {
     return result;
 }
 
-function memberByPID(team: number, pid: number): Unit | undefined {
+export function memberByPID(team: number, pid: number): Unit | undefined {
     for (const member of teamMembers(team)) {
         if (member.GetPlayerID() === pid) return member;
     }
