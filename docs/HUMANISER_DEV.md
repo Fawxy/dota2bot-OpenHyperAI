@@ -254,7 +254,7 @@ Other **TODO (in-game)** checks:
 
 ## Lane management (07)
 
-Overview of the whole feature; the per-phase sections below it (camp data, lane state, techniques, camp jobs, stacking) keep their own detail and in-game TODOs. Spec: `handoffs/07-lane-management.md`. Kill switches: `Humaniser.Enable = false`, `Lane.Enable = false`, or every `Lane.*` flag false each restore the pre-07 behaviour (scenario 15, pinned by `test_lane_regression.lua`).
+Overview of the whole feature; the per-phase sections below it (camp data, lane state, techniques, camp jobs, stacking) keep their own detail and in-game TODOs. Spec: `handoffs/07-lane-management.md`. Kill switches: `Humaniser.Enable = false`, `Lane.Enable = false`, or every `Lane.*` flag false each restore the pre-07 behaviour (scenario 15). Offline, `test_lane_regression.lua` exercises the facade hooks, pings, chat commands and rune mode with the flags off (no action, no `GetUnitList` scan, unchanged desire) against a positive control; the laning and farm mode files cannot be loaded offline, so their hook call sites are source-pinned only. Full equivalence of those two files needs the in-game regression check in the test plan.
 
 ### Module map
 All in `typescript/bots/FunLib/humaniser/` (generated Lua beside the TS). Imports only point down this list; a lower module that needs something from a higher one reads it through a probe registered in `lane_hooks`.

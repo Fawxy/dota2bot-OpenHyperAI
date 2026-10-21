@@ -36,7 +36,41 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 **Data calibration run** (first, so later sessions run on measured data)
 - [ ] For every camp index, run `!hstacktest <idx>` and `!hpulltest <idx>` (and `!hpulltest <idx> half` for the pull camps) with a bot nearby; use `!hcamp` to find the index. Note which fail to start.
 - [ ] Copy `console.log` out of the game folder and run `node tools/replay-mining/parse_condebug.js console.log`. Promote entries with a `suggest:` line to `source: "measured"` with `verifiedAt` (dd/mm/yyyy), as described in HUMANISER_DEV.md.
-- [ ] Run through the in-game TODO list in HUMANISER_DEV.md ("Lane management (07)" and its phase sections) and record each answer.
+- [ ] Lane amounts: `LANE_AMOUNT_TEAM_RELATIVE`. For a Dire bot, `!hcamp` and a pull both resolve to the camp near its own lane. Pass: no pull walks to the wrong side; otherwise flip the flag in `camps.ts`.
+- [ ] Spawner data: log `GetNeutralSpawners()` at 0:00. Pass: non-empty, `type` is a string or int (both accepted, note which), table key matches `idx`.
+- [ ] Waves: log `DotaTime() % 30` when the first lane creeps appear, at :00 and :30, and on a later wave. Pass: always about 0.
+- [ ] `GetLaneFrontAmount(team, lane, true)`: compare with the creep front by eye (`!hpt`). Pass: it follows the creeps, not the tower line.
+- [ ] `GetAmountAlongLane` returns a table with `amount` and `distance`. Pass: no Lua error from `lane_state`/`camps`, overlay `eq` sensible.
+- [ ] Lane creep and siege unit names match `creep_goodguys`/`creep_badguys`/siege patterns. Pass: overlay creep counts equal what you see.
+- [ ] Deny detection: handle identity of an enemy hero's `GetAttackTarget()` equals the creep handle across calls. Pass: overlay deny counts rise when an enemy denies.
+- [ ] Aggro drop: attack an allied creep above 50% HP with a bot drop. Pass: the order is accepted and the creeps drop aggro.
+- [ ] Tower aggro drop and swap: the tower's `GetAttackTarget()` is the bot while shot; an attack on an allied creep or on an enemy hero in range switches it. Pass: the bot leaves to 1,000 from the tower; a low-HP allied core is spared by the swap.
+- [ ] Creep block geometry: block at 0:00 with `Block` on and off. Pass: the meeting point is closer to our tower; tune `Radii.BlockAhead`/`BlockSide` otherwise.
+- [ ] Aggro draw: the walk-back moves after the attack order do not cancel the aggro. Pass: enemy creeps follow the bot.
+- [ ] Farm desire 0.7 beats laning's 0.446 (a job runs) but not retreat. Pass: the job executes in the laning phase; a bot at low HP with enemies near retreats out of it.
+- [ ] Pull mechanics: one `Action_AttackUnit(neutral, true)` aggroes the whole camp, neutrals follow the lead path and reach the meet point; `RandomVector(len)` has length `len`. Pass: `job` lines show divert above 0.8 for full pulls.
+- [ ] Aggro confirmation: a melee support lands the hit from the stand point within `Timing.AggroConfirm`. Pass: no `job-abort ... mistake:no-aggro` lines.
+- [ ] Divert measurement: allied creeps' `GetAttackTarget()` reports the neutral while they fight it. Pass: logged `divert` matches what is seen.
+- [ ] Last-hit yield: a support in a pull does not leave the meet point to last-hit. Pass: no walk-off during `lane_job`.
+- [ ] Seed timings per camp (stack :53-:55 by type, pulls :15/:45, :18/:48, half +2 s) and the `unverified` off-lane hard camp: see the calibration run. Pass: `parse_condebug.js` gives at least 80% ok per camp, or a `suggest:` line to promote.
+- [ ] Stacking: one queued attack at the seed second pulls the camp out before :00; the exit path keeps it out. Pass: `stack` lines grade ok for most attempts.
+- [ ] Stack outcome: the stacked neutrals are back in the box by :05 (`StackOutcomeUntil`) and `StackSight` (1,200) sees the box from the exit path. Pass: `after` exceeds `before` on stacks that visibly worked; few `after=?`.
+- [ ] Stack farm desire: a laning support at :45, and a support after laning, take the stack job; two supports do not both take one camp. Pass: at most one bot in the box.
+- [ ] Wards and respawn: a ward in a spawn box blocks the spawn, and a camp respawns on the minute only if empty. Pass: both hold on this patch; if not, leave `CampBlock` off and note it.
+- [ ] Laning vs rune desire at 0:00. Pass: lane bots that stay still block at 0:05 while others go for the bounty rune.
+- [ ] `GetHeroLastSeenInfo(pid)` gives location and time for fogged enemy supports. Pass: counter-play "support unseen" fires only after 4 s unseen, never with no hint (scenario 10).
+- [ ] `J.GetPosition` on enemy heroes gives an estimated role. Pass: counter-play targets the enemy support and mid, not a random hero.
+- [ ] Enemy `GetAttackTarget()` is readable for last-hit detection. Pass: the harass punish fires when an enemy attacks a low-HP creep.
+- [ ] Cross-bot perception: the lane core's `ScoreFor`, `Enemies` and `WeAreStronger` evaluated from another bot's module (`pickFor`, `EnemyLaners`). Pass: the plan and enemy-laner count in the support's `lane` overlay equal what the core's own overlay shows, and no extra delay is visible.
+- [ ] Harass approach and step-back: `GetExtrapolatedLocation` shows an enemy walking up to a last hit; after a hit into 3 or more creeps the bot steps back. Pass: the punish lands as the enemy closes, and the step-back does not walk into the wave.
+- [ ] Counter-play pull arrival: compare `enemyArrivalSec` with the front position after our shove pushes the wave far forward. Pass: no `counter ... noticed=pull` lines from a shoved wave alone.
+- [ ] Rune contest: the mid bot answers an enemy pre-rune shove. Pass: contest desire only acts from :52 of the minute before the spawn, and the bot walks to the right rune.
+- [ ] Counter-play contest and shove responses: contests start in at least some pulls and break-freeze or rune shoves run. Pass: not never; if never, relax `pathSafe` or the `WeAreStronger` gate.
+- [ ] Telegraph lines read naturally and stay within 1 per bot per 10 s. Pass: no spam, no wrong lane in `they're pulling <lane>`.
+- [ ] `OwnLaningThink = 'all'`: compare 07-only enemy bots' lane results with `'allies'`. Pass: no obvious laning regression.
+- [ ] `!freeze !shove !pull !nopull !stack [lane]` resolve the lane from the issuer and lane word, acknowledged once. Pass: one ack, correct lane.
+- [ ] Lane-front ping hands the lane off for 30 s. Pass: no pulls, stacks, shoves or draws from that lane's bots, and it expires.
+- [ ] `GetTeamMember(1..#GetTeamPlayers(team))` is only used for own-team units. Pass: no enemy-team reads in the logs.
 
 **Scenarios 2-14** (spec numbering; run each at `SkillOverride = 0.9`, then at `0.2` or `0.4` where the spec gives a gate, and compare). The checklist with the exact expectations is in HUMANISER_DEV.md.
 - [ ] 2 Full pull, 3 half pull (never at 0.4), 4 stack pull
@@ -53,7 +87,7 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 
 **Regression (scenario 15)**
 - [ ] `Lane.Enable = false`: a 20-minute game behaves like the pre-07 branch (laning, farm, rune and ping behaviour; no `[H:lane]` lines).
-- [ ] Every `Lane.*` flag false (with `Enable = true`): same result.
+- [ ] Every `Lane.*` flag false (with `Enable = true`): same result. This is the only full check that `mode_laning_generic.lua` and `mode_farm_generic.lua` behave exactly as before: offline tests pin their hook call sites but cannot run them.
 - [ ] Each flag off on its own: only that behaviour disappears (`Harass = false` restores 04's original poke).
 
 ## Known risks to watch
