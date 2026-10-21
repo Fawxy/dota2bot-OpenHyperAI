@@ -1,17 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__ArraySort(self, compareFn)
-    if compareFn ~= nil then
-        table.sort(
-            self,
-            function(a, b) return compareFn(nil, a, b) < 0 end
-        )
-    else
-        table.sort(self)
-    end
-    return self
-end
-
 local function __TS__StringIncludes(self, searchString, position)
     if not position then
         position = 1
@@ -167,6 +155,18 @@ local function __TS__Delete(target, key)
     target[key] = nil
     return true
 end
+
+local function __TS__ArraySort(self, compareFn)
+    if compareFn ~= nil then
+        table.sort(
+            self,
+            function(a, b) return compareFn(nil, a, b) < 0 end
+        )
+    else
+        table.sort(self)
+    end
+    return self
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local currentMinute, records
@@ -199,11 +199,14 @@ local rolls = {}
 local before = {}
 records = {}
 local telegraphedAt = {}
+--- Camps an ally's stack job has claimed, until that job's walk-off ends (DotaTime).
+local reservations = {}
 function ____exports.ResetCache()
     rolls = {}
     before = {}
     records = {}
     telegraphedAt = {}
+    reservations = {}
 end
 local function settings()
     return LaneConfig.Settings()
@@ -246,17 +249,15 @@ function ____exports.Eligible(bot, s, enemies)
     if pos == nil or pos < 4 or pos > 5 then
         return false, "not-support"
     end
+    if IDLE_MODES[bot:GetActiveMode()] ~= true then
+        return false, "busy-mode"
+    end
     if LaneConfig.InLaningPhase() then
         if s == nil then
             return false, "no-lane"
         end
-    else
-        if IDLE_MODES[bot:GetActiveMode()] ~= true then
-            return false, "busy-mode"
-        end
-        if Orders.GetFor(bot) ~= nil then
-            return false, "has-order"
-        end
+    elseif Orders.GetFor(bot) ~= nil then
+        return false, "has-order"
     end
     return ____exports.Safe(bot, s, enemies)
 end
@@ -277,6 +278,16 @@ function ____exports.StandPoint(spawner, data)
     local edge = ____temp_2
     return edge or Camps.BoxCenter(spawner)
 end
+--- Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box.
+function ____exports.Reserve(campIdx, pid, ____until)
+    reservations[campIdx] = {pid = pid, ["until"] = ____until}
+end
+function ____exports.Release(campIdx, pid)
+    local ____opt_3 = reservations[campIdx]
+    if (____opt_3 and ____opt_3.pid) == pid then
+        __TS__Delete(reservations, campIdx)
+    end
+end
 local function contested(bot, idx, enemies, allies)
     local margin = settings().Radii.BoxMargin
     for ____, e in ipairs(enemies) do
@@ -285,6 +296,10 @@ local function contested(bot, idx, enemies, allies)
         end
     end
     local pid = bot:GetPlayerID()
+    local claim = reservations[idx]
+    if claim ~= nil and claim.pid ~= pid and DotaTime() < claim["until"] then
+        return true
+    end
     for ____, a in ipairs(allies) do
         if a:GetPlayerID() ~= pid and a:IsAlive() and Camps.InBox(
             idx,
@@ -353,15 +368,15 @@ function ____exports.ChooseCamp(bot, s, minute)
         local bestDist = math.huge
         for ____, data in ipairs(camps) do
             do
-                local __continue45
+                local __continue48
                 repeat
                     if data.team ~= team or data.type == "ancient" then
-                        __continue45 = true
+                        __continue48 = true
                         break
                     end
                     local spawner = Camps.SpawnerByIdx(data.campIdx)
                     if spawner == nil then
-                        __continue45 = true
+                        __continue48 = true
                         break
                     end
                     local d = dist2D(
@@ -372,9 +387,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                         best = data
                         bestDist = d
                     end
-                    __continue45 = true
+                    __continue48 = true
                 until true
-                if not __continue45 then
+                if not __continue48 then
                     break
                 end
             end
@@ -387,15 +402,15 @@ function ____exports.ChooseCamp(bot, s, minute)
     local bestDist = math.huge
     for ____, data in ipairs(camps) do
         do
-            local __continue52
+            local __continue55
             repeat
                 if data.team ~= team or data.type ~= "ancient" then
-                    __continue52 = true
+                    __continue55 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(data.campIdx)
                 if spawner == nil then
-                    __continue52 = true
+                    __continue55 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -406,9 +421,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                     best = data
                     bestDist = d
                 end
-                __continue52 = true
+                __continue55 = true
             until true
-            if not __continue52 then
+            if not __continue55 then
                 break
             end
         end
@@ -459,25 +474,27 @@ function ____exports.NoteStackAttempt(campIdx, _minute, countBefore)
     end
 end
 --- `countAfter` undefined: the box was not visible; `assumed` then decides (aggro timing in the safe band).
+-- Returns whether the attempt counts as stacked.
 function ____exports.NoteStackOutcome(campIdx, minute, countAfter, assumed)
     if assumed == nil then
         assumed = false
     end
     local prior = before[campIdx]
     __TS__Delete(before, campIdx)
-    local ____temp_7
+    local ____temp_9
     if countAfter ~= nil then
-        ____temp_7 = prior ~= nil and countAfter > prior
+        ____temp_9 = prior ~= nil and countAfter > prior
     else
-        ____temp_7 = assumed
+        ____temp_9 = assumed
     end
-    local stacked = ____temp_7
+    local stacked = ____temp_9
     if not stacked then
-        return
+        return false
     end
     local prev = records[campIdx]
     local count = prev ~= nil and prev.minute == minute - 1 and prev.count + 1 or 1
     records[campIdx] = {minute = minute, count = count}
+    return true
 end
 --- "stacked big camp" for allies of humans, at most once per StackTelegraphCooldown per bot.
 function ____exports.Telegraph(bot, ____type)

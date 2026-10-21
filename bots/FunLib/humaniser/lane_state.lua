@@ -15,6 +15,7 @@ end
 local ____exports = {}
 local timing, enemyTeamOf, enemyCache
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Barracks = ____dota.Barracks
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -41,10 +42,10 @@ function ____exports.Enemies(bot, _lane)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue87
+            local __continue94
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue87 = true
+                    __continue94 = true
                     break
                 end
                 local epid = u:GetPlayerID()
@@ -57,30 +58,30 @@ function ____exports.Enemies(bot, _lane)
                     timeSinceSeen = 0,
                     position = LaneConfig.PositionOf(u)
                 }
-                __continue87 = true
+                __continue94 = true
             until true
-            if not __continue87 then
+            if not __continue94 then
                 break
             end
         end
     end
     for ____, epid in ipairs(GetTeamPlayers(enemyTeamOf(bot:GetTeam()))) do
         do
-            local __continue90
+            local __continue97
             repeat
                 if seen[epid] == true or not IsHeroAlive(epid) then
-                    __continue90 = true
+                    __continue97 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(epid)[1]
                 if info == nil then
-                    __continue90 = true
+                    __continue97 = true
                     break
                 end
                 list[#list + 1] = {pid = epid, visible = false, location = info.location, timeSinceSeen = info.time_since_seen}
-                __continue90 = true
+                __continue97 = true
             until true
-            if not __continue90 then
+            if not __continue97 then
                 break
             end
         end
@@ -93,6 +94,8 @@ local TOWER_IDS = {[Lane.Top] = {Tower.Top1, Tower.Top2, Tower.Top3}, [Lane.Mid]
 local WAVE_HISTORY = 3
 local EQ_HISTORY = 4
 local ARRIVAL_CREEPS = 3
+local EXPECTED_MEET_WAVES = 3
+local MELEE_BARRACKS = {[Lane.Top] = Barracks.TopMelee, [Lane.Mid] = Barracks.MidMelee, [Lane.Bot] = Barracks.BotMelee}
 local scans = {}
 local snapshots = {}
 local tracks = {}
@@ -152,6 +155,19 @@ function ____exports.EqPos(meetAmount, ourTower, theirTower)
     end
     return clamp(2 * (meetAmount - ourTower) / span - 1, -1, 1)
 end
+--- A front behind its own side's tower has no wave in lane (it reads that side's base), so the other front is the meet.
+function ____exports.MeetAmount(ourFront, enemyFront, ourTower, theirTower)
+    local span = theirTower - ourTower
+    local oursOut = (ourFront - ourTower) * span < 0
+    local theirsOut = (enemyFront - theirTower) * span > 0
+    if oursOut and not theirsOut then
+        return enemyFront
+    end
+    if theirsOut and not oursOut then
+        return ourFront
+    end
+    return (ourFront + enemyFront) / 2
+end
 function ____exports.LaneKindOf(team, lane)
     if lane == Lane.Mid then
         return "mid"
@@ -190,14 +206,14 @@ local function partition(units, enemy)
     local assign = radii().LaneAssign
     for ____, unit in ipairs(units) do
         do
-            local __continue29
+            local __continue32
             repeat
                 if enemy and not unit:CanBeSeen() then
-                    __continue29 = true
+                    __continue32 = true
                     break
                 end
                 if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
-                    __continue29 = true
+                    __continue32 = true
                     break
                 end
                 local loc = unit:GetLocation()
@@ -213,14 +229,14 @@ local function partition(units, enemy)
                     end
                 end
                 if bestLane == nil or bestDist > assign then
-                    __continue29 = true
+                    __continue32 = true
                     break
                 end
                 local ____byLane_bestLane_0 = byLane[bestLane]
                 ____byLane_bestLane_0[#____byLane_bestLane_0 + 1] = {unit = unit, loc = loc, absAmount = bestAmount}
-                __continue29 = true
+                __continue32 = true
             until true
-            if not __continue29 then
+            if not __continue32 then
                 break
             end
         end
@@ -259,10 +275,10 @@ local function summarise(team, list, front, withLead)
     local leadAmount = -math.huge
     for ____, c in ipairs(list) do
         do
-            local __continue40
+            local __continue43
             repeat
                 if dist2D(c.loc, front) > radius then
-                    __continue40 = true
+                    __continue43 = true
                     break
                 end
                 summary.count = summary.count + 1
@@ -283,9 +299,9 @@ local function summarise(team, list, front, withLead)
                         summary.lead = c.unit
                     end
                 end
-                __continue40 = true
+                __continue43 = true
             until true
-            if not __continue40 then
+            if not __continue43 then
                 break
             end
         end
@@ -296,14 +312,14 @@ end
 local function nearestTowerAbs(owner, lane)
     for ____, id in ipairs(TOWER_IDS[lane]) do
         do
-            local __continue48
+            local __continue51
             repeat
                 local tower = GetTower(owner, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue48 = true
+                    __continue51 = true
                     break
                 end
-                local key = (tostring(owner) .. ":") .. tostring(id)
+                local key = (((tostring(GetTeam()) .. ":") .. tostring(owner)) .. ":") .. tostring(id)
                 local amount = towerAmounts[key]
                 if amount == nil then
                     amount = GetAmountAlongLane(
@@ -314,12 +330,40 @@ local function nearestTowerAbs(owner, lane)
                 end
                 return amount
             until true
-            if not __continue48 then
+            if not __continue51 then
                 break
             end
         end
     end
     return nil
+end
+local function teamAmountAt(team, lane, loc)
+    return Camps.ToTeamAmount(
+        team,
+        GetAmountAlongLane(lane, loc).amount
+    )
+end
+local function expectedMeet(team, lane, now)
+    if now < 0 or now >= EXPECTED_MEET_WAVES * timing().WaveCycle then
+        return nil
+    end
+    local ours = GetBarracks(team, MELEE_BARRACKS[lane])
+    local theirs = GetBarracks(
+        enemyTeamOf(team),
+        MELEE_BARRACKS[lane]
+    )
+    if ours == nil or ours == nil or theirs == nil or theirs == nil then
+        return nil
+    end
+    return (teamAmountAt(
+        team,
+        lane,
+        ours:GetLocation()
+    ) + teamAmountAt(
+        team,
+        lane,
+        theirs:GetLocation()
+    )) / 2
 end
 local function heroesFor(team, lane, front)
     local result = {}
@@ -329,18 +373,18 @@ local function heroesFor(team, lane, front)
         local i = 1
         while i <= count do
             do
-                local __continue53
+                local __continue60
                 repeat
                     local unit = GetTeamMember(i)
                     if unit == nil or unit == nil or unit:IsIllusion() then
-                        __continue53 = true
+                        __continue60 = true
                         break
                     end
                     local alive = unit:IsAlive()
                     local assigned = unit:GetAssignedLane() == lane
                     local dist = alive and GetUnitToLocationDistance(unit, front) or math.huge
                     if not assigned and not (alive and dist <= near) then
-                        __continue53 = true
+                        __continue60 = true
                         break
                     end
                     local maxHP = unit:GetMaxHealth()
@@ -354,9 +398,9 @@ local function heroesFor(team, lane, front)
                         hp = alive and maxHP > 0 and unit:GetHealth() / maxHP or 0,
                         distToFront = dist
                     }
-                    __continue53 = true
+                    __continue60 = true
                 until true
-                if not __continue53 then
+                if not __continue60 then
                     break
                 end
             end
@@ -404,15 +448,15 @@ end
 local function countDenies(t, observer, lane, enemyLane)
     for ____, e in ipairs(____exports.Enemies(observer, lane)) do
         do
-            local __continue62
+            local __continue69
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue62 = true
+                    __continue69 = true
                     break
                 end
                 local target = e.unit:GetAttackTarget()
                 if target == nil or target == nil or t.deniedCreeps[target] == true then
-                    __continue62 = true
+                    __continue69 = true
                     break
                 end
                 for ____, c in ipairs(enemyLane) do
@@ -422,9 +466,9 @@ local function countDenies(t, observer, lane, enemyLane)
                         break
                     end
                 end
-                __continue62 = true
+                __continue69 = true
             until true
-            if not __continue62 then
+            if not __continue69 then
                 break
             end
         end
@@ -437,13 +481,17 @@ local function refresh(team, lane, key, observer)
     local t = trackFor(key, now)
     rollCycle(t, now)
     local frontLoc = GetLaneFrontLocation(team, lane, 0)
-    local ourFront = GetLaneFrontAmount(team, lane, true)
-    local enemyFront = GetLaneFrontAmount(enemyTeam, lane, true)
-    local meetAmount = (ourFront + (1 - enemyFront)) / 2
+    local ourFront = teamAmountAt(team, lane, frontLoc)
+    local enemyFront = teamAmountAt(
+        team,
+        lane,
+        GetLaneFrontLocation(enemyTeam, lane, 0)
+    )
     local ourAbs = nearestTowerAbs(team, lane)
     local theirAbs = nearestTowerAbs(enemyTeam, lane)
     local ourTowerAmount = ourAbs ~= nil and Camps.ToTeamAmount(team, ourAbs) or 0
     local theirTowerAmount = theirAbs ~= nil and Camps.ToTeamAmount(team, theirAbs) or 1
+    local meetAmount = ____exports.MeetAmount(ourFront, enemyFront, ourTowerAmount, theirTowerAmount)
     local eqPos = ____exports.EqPos(meetAmount, ourTowerAmount, theirTowerAmount)
     local kind = ____exports.LaneKindOf(team, lane)
     local ally = summarise(team, scan.ally[lane], frontLoc, true)
@@ -473,6 +521,7 @@ local function refresh(team, lane, key, observer)
         ourFront = ourFront,
         enemyFront = enemyFront,
         meetAmount = meetAmount,
+        expectedMeetAmount = expectedMeet(team, lane, now),
         ourTowerAmount = ourTowerAmount,
         theirTowerAmount = theirTowerAmount,
         eqPos = eqPos,
@@ -536,18 +585,18 @@ function ____exports.ScoreFor(bot, s)
     local seenWithin = timing().ExposureSeen
     for ____, e in ipairs(____exports.Enemies(bot, s.lane)) do
         do
-            local __continue96
+            local __continue103
             repeat
                 if not e.visible and e.timeSinceSeen > seenWithin then
-                    __continue96 = true
+                    __continue103 = true
                     break
                 end
                 if dist2D(e.location, s.frontLoc) <= radius then
                     near = near + 1
                 end
-                __continue96 = true
+                __continue103 = true
             until true
-            if not __continue96 then
+            if not __continue103 then
                 break
             end
         end

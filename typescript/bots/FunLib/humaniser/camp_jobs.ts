@@ -108,8 +108,8 @@ let doneCycle: Record<number, number> = {};
 let pendingStacks: Record<number, PendingStack> = {};
 /** The aggro time of a job aborted before it acted, so the same attempt is not registered again. */
 let skipped: Record<number, number> = {};
-/** Wave cycle of the bot's last lane_plan event. */
-let planNoted: Record<number, number> = {};
+/** Gates of the bot's lane_plan events in its latest wave cycle. */
+let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
 
 export function ResetCache(): void {
     jobs = {};
@@ -279,6 +279,8 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     let base = NextAggroTime(now, [aggroSec], period);
     if (req.forced === true && base < now + travelTo(bot, stand)) base = NextAggroTime(now + travelTo(bot, stand), [aggroSec], period);
     const minuteStart = base - aggroSec;
+    const exitUntil = minuteStart + period + cfg.Timing.StackExitUntil;
+    Stacking.Reserve(req.campIdx, bot.GetPlayerID(), exitUntil);
 
     register(
         bot,
@@ -299,7 +301,7 @@ function startStack(bot: Unit, req: JobRequest): boolean {
             secondTried: false,
             telegraphed: false,
             baseAggro: base,
-            exitUntil: minuteStart + period + cfg.Timing.StackExitUntil,
+            exitUntil,
         },
         data
     );
@@ -466,6 +468,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false): void {
         doneCycle[pid] = cycleOf(DotaTime());
     }
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
+    if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
     Telemetry.Event("lane_job_abort", [
         ["pid", pid],
@@ -598,24 +601,40 @@ function windowTravel(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: nu
     return WindowOpen(now, base, math.min(travel, t.MaxTravel)) ? travel : undefined;
 }
 
+/** In reach, and still able to stand at the camp by the late tolerance: a later start would only end as `late`. */
 function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): boolean {
+    const t = settings().Timing;
     const travel = windowTravel(bot, data, kind, now);
-    return travel !== undefined && travel <= settings().Timing.MaxTravel;
+    if (travel === undefined || travel > t.MaxTravel) return false;
+    return now + travel <= NextAggroTime(now - t.JobStartLate, AggroSecondsFor(kind, data), t.PullPeriod) + t.JobStartLate;
 }
 
-/** One lane_plan event per wave cycle: why this bot did or did not start a pull in it. */
+/**
+ * One lane_plan event per wave cycle and gate: why this bot did or did not start a pull in it. The gates are
+ * re-checked every frame, so a bot that reads `far` early in the cycle may still reach the planner later in it.
+ */
 function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: [string, any][]): void {
     if (!Telemetry.IsEnabled()) return;
     const pid = bot.GetPlayerID();
     const cycle = cycleOf(now);
-    if (planNoted[pid] === cycle) return;
-    planNoted[pid] = cycle;
+    const gate = fields[0][1] as string;
+    let noted = planNoted[pid];
+    if (noted === undefined || noted.cycle !== cycle) {
+        noted = { cycle, gates: {} };
+        planNoted[pid] = noted;
+    }
+    if (noted.gates[gate] === true) return;
+    noted.gates[gate] = true;
     const [mayRun, why] = LaneRoles.MayRunCampJob(bot, s, LaneState.Enemies(bot, s.lane));
     Telemetry.Event("lane_plan", [
         ["pid", pid],
         ...fields,
         ["owner", mayRun ? "ok" : why],
         ["eq", s.eqPos],
+        ["meet", s.meetAmount],
+        // Timing-based cross-check of the in-game reads: absent once the first wave cycles are over.
+        ["xmeet", s.expectedMeetAmount],
+        ["xeq", s.expectedMeetAmount !== undefined ? LaneState.EqPos(s.expectedMeetAmount, s.ourTowerAmount, s.theirTowerAmount) : undefined],
         ["want", s.desiredEq],
         ["front", s.ourFront],
         ["efront", s.enemyFront],
@@ -643,7 +662,7 @@ function schedule(bot: Unit): boolean {
             const travel = windowTravel(bot, camps[0], "full_pull", now);
             if (travel !== undefined)
                 notePlan(bot, s, now, [
-                    ["gate", "far"],
+                    ["gate", travel > settings().Timing.MaxTravel ? "far" : "late"],
                     ["camp", camps[0].campIdx],
                     ["travel", travel],
                 ]);
@@ -844,7 +863,8 @@ function settleStack(bot: Unit, now: number): void {
     const t = settings().Timing;
     const after = p.peak;
     const assumed = after === undefined && p.aggro >= t.StackAssumedFrom && p.aggro <= t.StackAssumedTo;
-    Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
+    const stacked = Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed);
+    // Timing only, as parse_condebug.js calibrates the stack second from it; `stacked` carries the outcome.
     const grade = after === undefined ? "unknown" : StackGrade(p.aggro);
     Telemetry.Event("lane_stack", [
         ["pid", bot.GetPlayerID()],
@@ -855,12 +875,13 @@ function settleStack(bot: Unit, now: number): void {
         ["before", p.before],
         ["after", after ?? "?"],
         ["grade", grade],
+        ["stacked", stacked],
         ["assumed", assumed],
     ]);
     HDebug.Log(
         "lane",
         string.format(
-            "stack pid=%d camp=%d type=%s aggro=%.1f planned=%.1f before=%d after=%s grade=%s",
+            "stack pid=%d camp=%d type=%s aggro=%.1f planned=%.1f before=%d after=%s grade=%s stacked=%d",
             bot.GetPlayerID(),
             p.campIdx,
             p.type,
@@ -868,11 +889,12 @@ function settleStack(bot: Unit, now: number): void {
             p.planned,
             p.before,
             after === undefined ? "?" : tostring(after),
-            grade
+            grade,
+            stacked ? 1 : 0
         )
     );
     if (assumed) HDebug.Log("lane", string.format("stack-assumed pid=%d camp=%d aggro=%.1f", bot.GetPlayerID(), p.campIdx, p.aggro));
-    if (grade === "ok" && after !== undefined && after > p.before) Stacking.Telegraph(bot, p.type);
+    if (grade === "ok" && stacked && after !== undefined) Stacking.Telegraph(bot, p.type);
 }
 
 function laneCreepsNear(bot: Unit, center: Vector, radius: number): Unit[] {

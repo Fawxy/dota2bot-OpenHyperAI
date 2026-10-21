@@ -25,7 +25,7 @@ local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) en
 -- `camps` is a list of { type, location }; spawner idx follows list order.
 local function world(skill, opts)
 	opts = opts or {}
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug })
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry })
 	T = opts.t or 100
 	CURRENT_TEAM = 2
 	OBSERVER = 5
@@ -254,7 +254,7 @@ do
 	check("no desire at :01", d01 == 0 and job.phase == "done")
 
 	local line = find(lines, "[H:lane] stack pid")
-	local pattern = "^%[H:lane%] stack pid=%d+ camp=%d+ type=%a+ aggro=%d+%.%d planned=%d+%.%d before=%d+ after=[%d%?]+ grade=%S+$"
+	local pattern = "^%[H:lane%] stack pid=%d+ camp=%d+ type=%a+ aggro=%d+%.%d planned=%d+%.%d before=%d+ after=[%d%?]+ grade=%S+ stacked=[01]$"
 	check("stack line format", line ~= nil and line:match(pattern) ~= nil, line)
 	check("stack line values", line ~= nil and line:find("camp=1 type=large aggro=53.5 planned=53.5 before=3 after=6 grade=ok", 1, true), line)
 	check("count rose: stacked", H.Lane.Stacking.IsStacked(1) and H.Lane.Hooks.IsStacked(1))
@@ -398,6 +398,52 @@ do
 	H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
 	runStack(H, support, 1, MEDIUM, 1, 3)
 	check("medium camp stack: no telegraph", #said == 0)
+end
+
+do
+	-- grade is timing only; the event's stacked field follows the counts.
+	local function stackEvent(added)
+		local H, support = world(1, { camps = { { "large", LARGE } }, telemetry = { Enable = true } })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		runStack(H, support, 1, LARGE, 1, added)
+		for _, l in ipairs(lines) do if l:find(" ev=lane_stack ", 1, true) then return l end end
+	end
+	local ev = stackEvent(0)
+	check("count unchanged: grade ok but stacked=0", ev ~= nil and ev:find("grade=ok", 1, true) and ev:find(" stacked=0", 1, true), ev)
+	ev = stackEvent(3)
+	check("count rose: stacked=1", ev ~= nil and ev:find(" stacked=1", 1, true), ev)
+end
+
+do
+	-- Two supports en route to the same camp, neither in the box yet: the first one's job claims it.
+	local H, support = world(1, { camps = { { "medium", MEDIUM } }, at = Vector(MEDIUM.x, MEDIUM.y + 1500) })
+	local other = unit({ pid = 4, pos = 4, loc = Vector(MEDIUM.x + 100, MEDIUM.y + 1500) })
+	H.Lane.Config.SkillOf(other)
+	H.Lane.LaneState.ForBot(other)
+	T = 105
+	check("precondition: first support starts the stack", near(H.Lane.CampJobDesire(support), 0.7) and H.Lane.CampJobs.Current(support).campIdx == 1)
+	local s = H.Lane.LaneState.ForBot(other)
+	check("claimed camp skipped by the second support", H.Lane.Stacking.ChooseCamp(other, s, 1) == nil)
+	check("second support starts no stack on it", H.Lane.CampJobDesire(other) == 0 and H.Lane.CampJobs.Current(other) == nil)
+
+	support.hp = 30
+	T = 106
+	H.Lane.CampJobDesire(support)
+	check("precondition: first job aborted", H.Lane.CampJobs.Current(support).phase == "return")
+	check("aborted job releases the camp", H.Lane.Stacking.ChooseCamp(other, s, 1) ~= nil)
+end
+
+do
+	-- In the laning phase too, a support whose active mode is retreat (or roam, defend) starts no stack.
+	local H, support = world(1, { camps = { { "medium", MEDIUM } } })
+	support.loc = standOf(H, 1)
+	support.mode = dota.BotMode.Retreat
+	local ok, why = eligible(H, support)
+	check("retreating support in lane is not eligible", ok == false and why == "busy-mode", why)
+	check("retreating support starts no stack", frame(H, support, 105) == 0 and H.Lane.CampJobs.Current(support) == nil)
+	support.mode = dota.BotMode.Laning
+	check("control: laning support stacks", near(frame(H, support, 105), 0.7))
 end
 
 do

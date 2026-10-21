@@ -7,9 +7,12 @@ local MIN_X, SPAN = -7000, 14000
 LANE_Y = { [Lane.Top] = 5000, [Lane.Mid] = 0, [Lane.Bot] = -5000 }
 local function clamp01(v) return v < 0 and 0 or (v > 1 and 1 or v) end
 
-function GetLocationAlongLane(l, a) return Vector(MIN_X + SPAN * a, LANE_Y[l]) end
+-- As in game (console.9055745679), lane amounts are in the calling script's frame: 0 at CURRENT_TEAM's base.
+local function absLoc(l, a) return Vector(MIN_X + SPAN * a, LANE_Y[l]) end
+local function callerAmount(a) return CURRENT_TEAM == 3 and 1 - a or a end
+function GetLocationAlongLane(l, a) return absLoc(l, callerAmount(a)) end
 function GetAmountAlongLane(l, v)
-	return { amount = clamp01((v.x - MIN_X) / SPAN), distance = math.abs(v.y - LANE_Y[l]) }
+	return { amount = callerAmount(clamp01((v.x - MIN_X) / SPAN)), distance = math.abs(v.y - LANE_Y[l]) }
 end
 
 -- Team-relative amounts: 0 at the team's ancient, 1 at the enemy's.
@@ -19,11 +22,12 @@ function GetLaneFrontAmount(team, lane, ignoreTowers) return (LANE_FRONT[team] o
 function GetLaneFrontLocation(team, lane, d)
 	local a = absAmount(team, GetLaneFrontAmount(team, lane, true))
 	local shift = (team == 2 and -d or d) / SPAN
-	return GetLocationAlongLane(lane, clamp01(a + shift))
+	return absLoc(lane, clamp01(a + shift))
 end
 
 TOWERS_W = { [2] = {}, [3] = {} }
 function GetTower(team, id) return TOWERS_W[team][id] end
+function GetBarracks(team, id) return nil end
 
 CREEPS = { [2] = {}, [3] = {} }
 NEUTRALS = {}
@@ -96,7 +100,7 @@ function MakeLaneTowers()
 	for team = 2, 3 do
 		for lane, id in pairs(T1_ID) do
 			local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {},
-				loc = GetLocationAlongLane(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
+				loc = absLoc(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
 			t.GetUnitName = function() return "tower_t1" end
 			w[team][id] = t
 		end

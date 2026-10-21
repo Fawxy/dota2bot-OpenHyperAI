@@ -12,6 +12,8 @@ export interface CampDataEntry {
     near?: Vector;
     stackAggroSec?: number;
     stackExitPath?: Vector[];
+    /** Overrides Camps.PullCampMaxTowerDist (distance from the lane's T1, or T2 when T1 is dead) for this seed. */
+    maxTowerDist?: number;
     pullAggroSec?: number[];
     halfAggroSec?: number[];
     pullPath?: Vector[];
@@ -29,8 +31,9 @@ export const CAMP_DATA: CampDataEntry[] = [
     { key: "dire_safe_small", team: 3, type: "small", laneKind: "safe", pullAggroSec: [15, 45], halfAggroSec: [17, 47], source: "seed" },
     { key: "radiant_safe_large", team: 2, type: "large", laneKind: "safe", pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed" },
     { key: "dire_safe_large", team: 3, type: "large", laneKind: "safe", pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed" },
-    { key: "radiant_off_large", team: 2, type: "large", laneKind: "off", pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed", unverified: true },
-    { key: "dire_off_large", team: 3, type: "large", laneKind: "off", pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed", unverified: true },
+    // 7.41 map: the off-lane hard camp sits outside the lane beside the off-lane T2, ~3100 (Radiant) / ~2700 (Dire) from T1.
+    { key: "radiant_off_large", team: 2, type: "large", laneKind: "off", maxTowerDist: 3300, pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed", unverified: true },
+    { key: "dire_off_large", team: 3, type: "large", laneKind: "off", maxTowerDist: 3300, pullAggroSec: [18, 48], halfAggroSec: [20, 50], source: "seed", unverified: true },
     // BEGIN GENERATED REPLAY ENTRIES
     // END GENERATED REPLAY ENTRIES
 ];

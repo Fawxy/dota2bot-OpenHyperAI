@@ -2077,7 +2077,7 @@ end
 function J.GetAttackProDelayTime( bot, nCreep )
 	if nCreep == nil then
 		print('[ERROR] nil creep target')
-		print("Stack Trace:", debug.traceback())
+		print("Stack Trace:", debug and debug.traceback() or "")
 		return 0
 	end
 

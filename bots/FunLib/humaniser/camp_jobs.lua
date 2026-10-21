@@ -276,7 +276,7 @@ function settleStack(bot, now)
     local t = settings().Timing
     local after = p.peak
     local assumed = after == nil and p.aggro >= t.StackAssumedFrom and p.aggro <= t.StackAssumedTo
-    Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed)
+    local stacked = Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed)
     local grade = after == nil and "unknown" or ____exports.StackGrade(p.aggro)
     Telemetry.Event(
         "lane_stack",
@@ -292,13 +292,14 @@ function settleStack(bot, now)
             {"before", p.before},
             {"after", after or "?"},
             {"grade", grade},
+            {"stacked", stacked},
             {"assumed", assumed}
         }
     )
     HDebug.Log(
         "lane",
         string.format(
-            "stack pid=%d camp=%d type=%s aggro=%.1f planned=%.1f before=%d after=%s grade=%s",
+            "stack pid=%d camp=%d type=%s aggro=%.1f planned=%.1f before=%d after=%s grade=%s stacked=%d",
             bot:GetPlayerID(),
             p.campIdx,
             p.type,
@@ -306,7 +307,8 @@ function settleStack(bot, now)
             p.planned,
             p.before,
             after == nil and "?" or tostring(after),
-            grade
+            grade,
+            stacked and 1 or 0
         )
     )
     if assumed then
@@ -320,7 +322,7 @@ function settleStack(bot, now)
             )
         )
     end
-    if grade == "ok" and after ~= nil and after > p.before then
+    if grade == "ok" and stacked and after ~= nil then
         Stacking.Telegraph(bot, p.type)
     end
 end
@@ -348,7 +350,7 @@ local doneCycle = {}
 pendingStacks = {}
 --- The aggro time of a job aborted before it acted, so the same attempt is not registered again.
 local skipped = {}
---- Wave cycle of the bot's last lane_plan event.
+--- Gates of the bot's lane_plan events in its latest wave cycle.
 local planNoted = {}
 function ____exports.ResetCache()
     jobs = {}
@@ -569,6 +571,12 @@ local function startStack(bot, req)
         )
     end
     local minuteStart = base - aggroSec
+    local exitUntil = minuteStart + period + cfg.Timing.StackExitUntil
+    Stacking.Reserve(
+        req.campIdx,
+        bot:GetPlayerID(),
+        exitUntil
+    )
     register(
         bot,
         __TS__ObjectAssign(
@@ -590,7 +598,7 @@ local function startStack(bot, req)
                 secondTried = false,
                 telegraphed = false,
                 baseAggro = base,
-                exitUntil = minuteStart + period + cfg.Timing.StackExitUntil
+                exitUntil = exitUntil
             }
         ),
         data
@@ -787,6 +795,9 @@ local function abort(bot, job, reason, keepStack)
     if not keepStack and job.kind == "stack_pull" and job.actualAggro ~= nil then
         Stacking.ClearStack(job.campIdx)
     end
+    if job.kind == "stack" then
+        Stacking.Release(job.campIdx, pid)
+    end
     local token = string.gsub(reason, "%s+", "-")
     local ____Telemetry_Event_7 = Telemetry.Event
     local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
@@ -975,21 +986,37 @@ local function windowTravel(bot, data, kind, now)
         math.min(travel, t.MaxTravel)
     ) and travel or nil
 end
+--- In reach, and still able to stand at the camp by the late tolerance: a later start would only end as `late`.
 local function windowFor(bot, data, kind, now)
+    local t = settings().Timing
     local travel = windowTravel(bot, data, kind, now)
-    return travel ~= nil and travel <= settings().Timing.MaxTravel
+    if travel == nil or travel > t.MaxTravel then
+        return false
+    end
+    return now + travel <= ____exports.NextAggroTime(
+        now - t.JobStartLate,
+        ____exports.AggroSecondsFor(kind, data),
+        t.PullPeriod
+    ) + t.JobStartLate
 end
---- One lane_plan event per wave cycle: why this bot did or did not start a pull in it.
+--- One lane_plan event per wave cycle and gate: why this bot did or did not start a pull in it. The gates are
+-- re-checked every frame, so a bot that reads `far` early in the cycle may still reach the planner later in it.
 local function notePlan(bot, s, now, fields)
     if not Telemetry.IsEnabled() then
         return
     end
     local pid = bot:GetPlayerID()
     local cycle = cycleOf(now)
-    if planNoted[pid] == cycle then
+    local gate = fields[1][2]
+    local noted = planNoted[pid]
+    if noted == nil or noted.cycle ~= cycle then
+        noted = {cycle = cycle, gates = {}}
+        planNoted[pid] = noted
+    end
+    if noted.gates[gate] == true then
         return
     end
-    planNoted[pid] = cycle
+    noted.gates[gate] = true
     local mayRun, why = LaneRoles.MayRunCampJob(
         bot,
         s,
@@ -1004,6 +1031,12 @@ local function notePlan(bot, s, now, fields)
         ____array_15,
         {"owner", mayRun and "ok" or why},
         {"eq", s.eqPos},
+        {"meet", s.meetAmount},
+        {"xmeet", s.expectedMeetAmount},
+        {
+            "xeq",
+            s.expectedMeetAmount ~= nil and LaneState.EqPos(s.expectedMeetAmount, s.ourTowerAmount, s.theirTowerAmount) or nil
+        },
         {"want", s.desiredEq},
         {"front", s.ourFront},
         {"efront", s.enemyFront},
@@ -1040,7 +1073,19 @@ local function schedule(bot)
         if not any then
             local travel = windowTravel(bot, camps[1], "full_pull", now)
             if travel ~= nil then
-                notePlan(bot, s, now, {{"gate", "far"}, {"camp", camps[1].campIdx}, {"travel", travel}})
+                notePlan(
+                    bot,
+                    s,
+                    now,
+                    {
+                        {
+                            "gate",
+                            travel > settings().Timing.MaxTravel and "far" or "late"
+                        },
+                        {"camp", camps[1].campIdx},
+                        {"travel", travel}
+                    }
+                )
             end
             return false
         end
@@ -1241,17 +1286,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue162
+            local __continue165
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue162 = true
+                    __continue165 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue162 = true
+                    __continue165 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1262,9 +1307,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue162 = true
+                __continue165 = true
             until true
-            if not __continue162 then
+            if not __continue165 then
                 break
             end
         end
@@ -1310,10 +1355,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue188
+            local __continue191
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue188 = true
+                    __continue191 = true
                     break
                 end
                 if dist2D(
@@ -1322,9 +1367,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue188 = true
+                __continue191 = true
             until true
-            if not __continue188 then
+            if not __continue191 then
                 break
             end
         end
@@ -1407,10 +1452,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue202
+            local __continue205
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue202 = true
+                    __continue205 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1420,9 +1465,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue202 = true
+                __continue205 = true
             until true
-            if not __continue202 then
+            if not __continue205 then
                 break
             end
         end

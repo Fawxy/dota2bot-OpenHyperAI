@@ -21,10 +21,13 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local ____camps_data = require(GetScriptDirectory().."/FunLib/humaniser/camps_data")
 local CAMP_DATA = ____camps_data.CAMP_DATA
 local DEFAULT_STACK_SEC = ____camps_data.DEFAULT_STACK_SEC
---- **TODO (in-game):** GetAmountAlongLane/GetLocationAlongLane are assumed absolute (0 = Radiant ancient) while
--- GetLaneFrontAmount is team-relative. OHA's J.GetClosestTeamLane feeds a team-relative amount straight into
--- GetLocationAlongLane, so one assumption may be wrong for Dire. Flip this if so.
-local LANE_AMOUNT_TEAM_RELATIVE = false
+--- Engine lane amounts run from the calling script's own base (0) to the enemy's (1): in console.9055745679 Dire's
+-- GetAmountAlongLane tower amounts mirror Radiant's for the mirror lanes. "Abs" amounts below are that engine frame;
+-- ToTeamAmount/ToAbsAmount convert to and from `team`'s frame, which differs from it when a script reasons about the
+-- other team (enemy camps, enemy lane state).
+-- **TODO (in-game):** GetLocationAlongLane is assumed to share GetAmountAlongLane's frame (only the latter was measured).
+-- Set false to go back to treating engine amounts as absolute (0 = Radiant ancient) for both teams.
+local LANE_AMOUNT_TEAM_RELATIVE = true
 local LANES = {Lane.Top, Lane.Mid, Lane.Bot}
 local TYPE_RANK = {small = 0, medium = 1, large = 2, ancient = 3}
 local TYPE_BY_INT = {"small", "medium", "large", "ancient"}
@@ -133,10 +136,8 @@ function ____exports.LaneOfKind(team, kind)
     return kind == "safe" and safe or off
 end
 function ____exports.ToTeamAmount(team, absAmount)
-    if LANE_AMOUNT_TEAM_RELATIVE or team == Team.Radiant then
-        return absAmount
-    end
-    return 1 - absAmount
+    local frameTeam = LANE_AMOUNT_TEAM_RELATIVE and GetTeam() or Team.Radiant
+    return team == frameTeam and absAmount or 1 - absAmount
 end
 function ____exports.ToAbsAmount(team, teamAmount)
     return ____exports.ToTeamAmount(team, teamAmount)
@@ -246,12 +247,14 @@ function ____exports.DeriveStackExit(s, _team)
         end
     end
     local away = LaneConfig.Settings().Radii.StackExit
-    if nearest == nil or nearestDist < 1 then
-        return {Vector(c.x, c.y - away, c.z)}
+    local ux = 0
+    local uy = -1
+    if nearest ~= nil and nearestDist >= 1 then
+        ux = (c.x - nearest.x) / nearestDist
+        uy = (c.y - nearest.y) / nearestDist
     end
-    local ux = (c.x - nearest.x) / nearestDist
-    local uy = (c.y - nearest.y) / nearestDist
-    return {Vector(c.x + ux * away, c.y + uy * away, c.z)}
+    local target = Vector(c.x + ux * away, c.y + uy * away, c.z)
+    return {____exports.BoxEdgePoint(s, target, away) or target}
 end
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local T2 = {[Lane.Top] = Tower.Top2, [Lane.Mid] = Tower.Mid2, [Lane.Bot] = Tower.Bot2}
@@ -268,18 +271,18 @@ local function matchReplay(s)
     local radius = camps().ReplayMatchRadius
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue52
+            local __continue51
             repeat
                 if entry.near == nil or entry.team ~= s.team or entry.type ~= s.type then
-                    __continue52 = true
+                    __continue51 = true
                     break
                 end
                 if dist2D(entry.near, s.location) <= radius then
                     return entry
                 end
-                __continue52 = true
+                __continue51 = true
             until true
-            if not __continue52 then
+            if not __continue51 then
                 break
             end
         end
@@ -301,11 +304,11 @@ function ____exports.Resolve()
     local claimed = {}
     for ____, s in ipairs(spawners) do
         do
-            local __continue59
+            local __continue58
             repeat
                 local entry = matchReplay(s)
                 if entry == nil then
-                    __continue59 = true
+                    __continue58 = true
                     break
                 end
                 claimed[s.idx] = true
@@ -331,51 +334,61 @@ function ____exports.Resolve()
                     }
                 end
                 jobs[s.idx] = job
-                __continue59 = true
+                __continue58 = true
             until true
-            if not __continue59 then
+            if not __continue58 then
                 break
             end
         end
     end
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue63
+            local __continue62
             repeat
                 if entry.near ~= nil or entry.laneKind == nil or entry.pullAggroSec == nil then
-                    __continue63 = true
+                    __continue62 = true
                     break
                 end
                 local lane = ____exports.LaneOfKind(entry.team, entry.laneKind)
                 local tower = laneTower(entry.team, lane)
                 if tower == nil then
-                    __continue63 = true
+                    __continue62 = true
                     break
                 end
+                local maxTowerDist = entry.maxTowerDist or camps().PullCampMaxTowerDist
                 local best
                 local bestDist = math.huge
                 for ____, s in ipairs(spawners) do
                     do
-                        local __continue66
+                        local __continue65
                         repeat
                             if claimed[s.idx] == true or s.team ~= entry.team or s.type ~= entry.type then
-                                __continue66 = true
+                                __continue65 = true
                                 break
                             end
                             local d = dist2D(s.location, tower)
-                            if d < bestDist then
-                                bestDist = d
-                                best = s
+                            if d >= bestDist or d > maxTowerDist then
+                                __continue65 = true
+                                break
                             end
-                            __continue66 = true
+                            if dist2D(
+                                s.location,
+                                ____exports.DeriveMeetPoint(entry.team, lane, s.location)
+                            ) > camps().PullCampMaxLaneDist then
+                                __continue65 = true
+                                break
+                            end
+                            bestDist = d
+                            best = s
+                            __continue65 = true
                         until true
-                        if not __continue66 then
+                        if not __continue65 then
                             break
                         end
                     end
                 end
-                if best == nil or bestDist > camps().PullCampMaxTowerDist then
-                    __continue63 = true
+                if best == nil then
+                    __continue62 = true
                     break
                 end
                 claimed[best.idx] = true
@@ -398,9 +411,9 @@ function ____exports.Resolve()
                     derived = true,
                     unverified = entry.unverified
                 }
-                __continue63 = true
+                __continue62 = true
             until true
-            if not __continue63 then
+            if not __continue62 then
                 break
             end
         end

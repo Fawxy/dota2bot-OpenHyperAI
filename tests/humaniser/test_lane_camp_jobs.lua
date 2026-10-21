@@ -457,11 +457,12 @@ end
 
 do
 	-- Still walking well past the aggro second, with no neutral anywhere: the box was never seen.
+	-- 10 s away, so the job starts as the window opens at 1:02 and the bot then never moves.
 	local H, _, support = jobWorld(1, { debug = true, away = 3000 })
 	markStacked(H)
 	local job
 	local lines = capture(function()
-		frame(H, support, 72.5)
+		frame(H, support, 63)
 		job = H.Lane.CampJobs.Current(support)
 		for t = job.aggroAt, job.aggroAt + 1.5, 0.5 do frame(H, support, t) end
 		check("precondition: still walking after the aggro second", job.phase == "travel")
@@ -620,6 +621,9 @@ local function field(line, key) return line and line:match(" " .. key .. '="([^"
 
 do
 	-- lane_plan: one event per wave cycle with the planner's verdict, however often farm asks.
+	-- Melee barracks at absolute amounts 0.1 and 0.9 put the expected meet at 0.5.
+	local noBarracks = GetBarracks
+	function GetBarracks(team) return { GetLocation = function() return GetLocationAlongLane(Lane.Bot, team == 2 and 0.1 or 0.9) end } end
 	local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
 	local lines = {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
@@ -634,6 +638,11 @@ do
 	for t = 100, 103, 0.5 do T = t H.Lane.CampJobDesire(support) end
 	plans = hev(lines, "lane_plan")
 	check("next cycle: a second lane_plan, now a pull", #plans == 2 and field(plans[2], "tech") == "full_pull", plans[2])
+	check("lane_plan carries the meet amount", tonumber(field(plans[1], "meet")) ~= nil and tonumber(field(plans[2], "meet")) ~= nil, plans[1])
+	check("before 1:30: expected meet and its eqPos logged",
+		near(tonumber(field(plans[1], "xmeet")), 0.5) and near(tonumber(field(plans[1], "xeq")), 0), plans[1])
+	check("from 1:30: no expected meet", field(plans[2], "xmeet") == nil and field(plans[2], "xeq") == nil, plans[2])
+	GetBarracks = noBarracks
 	local starts = hev(lines, "lane_job_start")
 	check("job start event", #starts == 1 and field(starts[1], "kind") == "full" and field(starts[1], "aggroAt") ~= nil, starts[1])
 end
@@ -647,6 +656,36 @@ do
 	local plans = hev(lines, "lane_plan")
 	check("far camp: no job", H.Lane.CampJobs.Current(support) == nil)
 	check("far camp: gate=far with the travel time", #plans == 1 and field(plans[1], "gate") == "far" and near(tonumber(field(plans[1], "travel")), 15), plans[1])
+end
+
+do
+	-- The gates are re-checked every frame: far at the window's opening, back in reach later in the same cycle.
+	local H, _, support, _, stand = jobWorld(1, { away = 4500, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	frame(H, support, 63)
+	check("precondition: far at 1:03", H.Lane.CampJobs.Current(support) == nil)
+	support.loc = Vector(stand.x + 900, stand.y)
+	frame(H, support, 70)
+	local plans = hev(lines, "lane_plan")
+	check("back in reach: the job starts in the same cycle", H.Lane.CampJobs.Current(support) ~= nil)
+	check("far, then planner: both logged in one cycle", #plans == 2 and field(plans[1], "gate") == "far" and field(plans[2], "gate") == "planner",
+		#plans .. " " .. tostring(plans[2]))
+end
+
+do
+	-- 11 s away at 1:12 is inside MaxTravel, but arrives at 1:23, past the :15 pull's late tolerance (1:17).
+	local H, _, support = jobWorld(1, { away = 3300, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local d = frame(H, support, 72)
+	local plans = hev(lines, "lane_plan")
+	check("cannot arrive by the late tolerance: no job", d == 0 and H.Lane.CampJobs.Current(support) == nil)
+	check("cannot arrive: gate=late", #plans == 1 and field(plans[1], "gate") == "late", plans[1])
+
+	-- Control: the same distance when the window opens (1:01, arriving 1:12) starts the pull.
+	H, _, support = jobWorld(1, { away = 3300 })
+	check("11 s away at 1:01: job starts", near(frame(H, support, 61), 0.7) and H.Lane.CampJobs.Current(support).kind ~= nil)
 end
 
 do

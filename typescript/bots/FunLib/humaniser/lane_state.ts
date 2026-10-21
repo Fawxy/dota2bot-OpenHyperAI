@@ -4,7 +4,7 @@
  * Observer-dependent values (exposure, laneScore) are computed per bot in ScoreFor, not stored in the
  * shared snapshot.
  */
-import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Barracks, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 
@@ -36,6 +36,8 @@ export interface LaneSnapshot {
     ourFront: number;
     enemyFront: number;
     meetAmount: number;
+    /** Meet point of two untouched waves (equal speed, same spawn time): midway between the melee barracks. Set for the first three wave cycles only; a logged cross-check for meetAmount. */
+    expectedMeetAmount?: number;
     ourTowerAmount: number;
     theirTowerAmount: number;
     eqPos: number;
@@ -102,6 +104,8 @@ const TOWER_IDS: Record<number, number[]> = {
 const WAVE_HISTORY = 3;
 const EQ_HISTORY = 4;
 const ARRIVAL_CREEPS = 3;
+const EXPECTED_MEET_WAVES = 3;
+const MELEE_BARRACKS: Record<number, number> = { [Lane.Top]: Barracks.TopMelee, [Lane.Mid]: Barracks.MidMelee, [Lane.Bot]: Barracks.BotMelee };
 
 let scans: Record<number, Scan> = {};
 let snapshots: Record<string, LaneSnapshot> = {};
@@ -165,6 +169,16 @@ export function EqPos(meetAmount: number, ourTower: number, theirTower: number):
     const span = theirTower - ourTower;
     if (span === 0) return 0;
     return clamp((2 * (meetAmount - ourTower)) / span - 1, -1, 1);
+}
+
+/** A front behind its own side's tower has no wave in lane (it reads that side's base), so the other front is the meet. */
+export function MeetAmount(ourFront: number, enemyFront: number, ourTower: number, theirTower: number): number {
+    const span = theirTower - ourTower;
+    const oursOut = (ourFront - ourTower) * span < 0;
+    const theirsOut = (enemyFront - theirTower) * span > 0;
+    if (oursOut && !theirsOut) return enemyFront;
+    if (theirsOut && !oursOut) return ourFront;
+    return (ourFront + enemyFront) / 2;
 }
 
 export function LaneKindOf(team: number, lane: Lane): Camps.LaneKind {
@@ -268,7 +282,8 @@ function nearestTowerAbs(owner: number, lane: Lane): number | undefined {
     for (const id of TOWER_IDS[lane]) {
         const tower = GetTower(owner, id);
         if (tower === null || tower === undefined || !tower.IsAlive()) continue;
-        const key = `${owner}:${id}`;
+        // The amount is in the reading script's frame, and this module may be shared by both teams.
+        const key = `${GetTeam()}:${owner}:${id}`;
         let amount = towerAmounts[key];
         if (amount === undefined) {
             amount = GetAmountAlongLane(lane, tower.GetLocation()).amount;
@@ -277,6 +292,18 @@ function nearestTowerAbs(owner: number, lane: Lane): number | undefined {
         return amount;
     }
     return undefined;
+}
+
+function teamAmountAt(team: number, lane: Lane, loc: Vector): number {
+    return Camps.ToTeamAmount(team, GetAmountAlongLane(lane, loc).amount);
+}
+
+function expectedMeet(team: number, lane: Lane, now: number): number | undefined {
+    if (now < 0 || now >= EXPECTED_MEET_WAVES * timing().WaveCycle) return undefined;
+    const ours = GetBarracks(team, MELEE_BARRACKS[lane]);
+    const theirs = GetBarracks(enemyTeamOf(team), MELEE_BARRACKS[lane]);
+    if (ours === null || ours === undefined || theirs === null || theirs === undefined) return undefined;
+    return (teamAmountAt(team, lane, ours.GetLocation()) + teamAmountAt(team, lane, theirs.GetLocation())) / 2;
 }
 
 function heroesFor(team: number, lane: Lane, front: Vector): LaneHero[] {
@@ -362,13 +389,16 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
     rollCycle(t, now);
 
     const frontLoc = GetLaneFrontLocation(team, lane, 0);
-    const ourFront = GetLaneFrontAmount(team, lane, true);
-    const enemyFront = GetLaneFrontAmount(enemyTeam, lane, true);
-    const meetAmount = (ourFront + (1 - enemyFront)) / 2;
+    // In game GetLaneFrontAmount answers in the calling script's frame whatever team is asked (console.9055745679:
+    // both fronts equal at the meet, enemy front 1 before the horn, for both teams), so both fronts come from their
+    // locations in the same frame as the tower amounts. EqPos does not depend on which way that frame runs.
+    const ourFront = teamAmountAt(team, lane, frontLoc);
+    const enemyFront = teamAmountAt(team, lane, GetLaneFrontLocation(enemyTeam, lane, 0));
     const ourAbs = nearestTowerAbs(team, lane);
     const theirAbs = nearestTowerAbs(enemyTeam, lane);
     const ourTowerAmount = ourAbs !== undefined ? Camps.ToTeamAmount(team, ourAbs) : 0;
     const theirTowerAmount = theirAbs !== undefined ? Camps.ToTeamAmount(team, theirAbs) : 1;
+    const meetAmount = MeetAmount(ourFront, enemyFront, ourTowerAmount, theirTowerAmount);
     const eqPos = EqPos(meetAmount, ourTowerAmount, theirTowerAmount);
     const kind = LaneKindOf(team, lane);
 
@@ -394,6 +424,7 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
         ourFront,
         enemyFront,
         meetAmount,
+        expectedMeetAmount: expectedMeet(team, lane, now),
         ourTowerAmount,
         theirTowerAmount,
         eqPos,

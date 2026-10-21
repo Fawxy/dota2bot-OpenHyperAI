@@ -226,6 +226,16 @@ function isNoticed(obs: Observer, hero: Unit, now: number, cfg: PerceptionSettin
     return s.visible;
 }
 
+/**
+ * Units the team cannot currently see are passed through untouched and get no sighting. The engine can list
+ * such a hero with no location (GetUnitToUnitDistance then fails in its override), and a sighting would keep
+ * its lastSeen fresh while out of view, giving it a head start on the notice delay and defeating Permanence.
+ * Passing it through leaves callers exactly the engine's answer; their own CanBeSeen checks drop it.
+ */
+function isPerceivable(unit: Unit): boolean {
+    return !unit.IsNull() && unit.CanBeSeen() && unit.GetLocation() !== undefined;
+}
+
 /** O(n) over the original list; returns the original table untouched when nothing is hidden. */
 function filterList(obs: Observer, list: Unit[], heroesOnly: boolean): Unit[] {
     const now = DotaTime();
@@ -236,7 +246,7 @@ function filterList(obs: Observer, list: Unit[], heroesOnly: boolean): Unit[] {
     let out: Unit[] | undefined;
     for (let i = 0; i < list.length; i++) {
         const unit = list[i];
-        const visible = heroesOnly && !unit.IsHero() ? true : isNoticed(obs, unit, now, cfg);
+        const visible = !isPerceivable(unit) || (heroesOnly && !unit.IsHero()) || isNoticed(obs, unit, now, cfg);
         if (!visible) {
             if (out === undefined) {
                 out = [];

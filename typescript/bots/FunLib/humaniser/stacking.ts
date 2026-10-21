@@ -24,12 +24,15 @@ let rolls: Record<number, { minute: number; ok: boolean }> = {};
 let before: Record<number, number> = {};
 let records: Record<number, StackRecord> = {};
 let telegraphedAt: Record<number, number> = {};
+/** Camps an ally's stack job has claimed, until that job's walk-off ends (DotaTime). */
+let reservations: Record<number, { pid: number; until: number }> = {};
 
 export function ResetCache(): void {
     rolls = {};
     before = {};
     records = {};
     telegraphedAt = {};
+    reservations = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -69,11 +72,12 @@ export function Eligible(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemi
     if (!LaneConfig.IsOn("Stack")) return $multi(false, "flag-off");
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos < 4 || pos > 5) return $multi(false, "not-support");
+    // A job started under a higher mode (retreat, roam, defend) only wins farm's 0.7 in that mode's dip and ends as mode-end.
+    if (IDLE_MODES[bot.GetActiveMode()] !== true) return $multi(false, "busy-mode");
     if (LaneConfig.InLaningPhase()) {
         if (s === undefined) return $multi(false, "no-lane");
-    } else {
-        if (IDLE_MODES[bot.GetActiveMode()] !== true) return $multi(false, "busy-mode");
-        if (Orders.GetFor(bot) !== undefined) return $multi(false, "has-order");
+    } else if (Orders.GetFor(bot) !== undefined) {
+        return $multi(false, "has-order");
     }
     return Safe(bot, s, enemies);
 }
@@ -85,10 +89,21 @@ export function StandPoint(spawner: Camps.Spawner, data: Camps.CampJobData): Vec
     return edge ?? Camps.BoxCenter(spawner);
 }
 
+/** Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box. */
+export function Reserve(campIdx: number, pid: number, until: number): void {
+    reservations[campIdx] = { pid, until };
+}
+
+export function Release(campIdx: number, pid: number): void {
+    if (reservations[campIdx]?.pid === pid) delete reservations[campIdx];
+}
+
 function contested(bot: Unit, idx: number, enemies: LaneState.LaneEnemy[], allies: Unit[]): boolean {
     const margin = settings().Radii.BoxMargin;
     for (const e of enemies) if (e.visible && Camps.InBox(idx, e.location, margin)) return true;
     const pid = bot.GetPlayerID();
+    const claim = reservations[idx];
+    if (claim !== undefined && claim.pid !== pid && DotaTime() < claim.until) return true;
     for (const a of allies) {
         if (a.GetPlayerID() !== pid && a.IsAlive() && Camps.InBox(idx, a.GetLocation(), margin)) return true;
     }
@@ -188,16 +203,20 @@ export function NoteStackAttempt(campIdx: number, _minute: number, countBefore: 
     if (countBefore === 0) ClearStack(campIdx);
 }
 
-/** `countAfter` undefined: the box was not visible; `assumed` then decides (aggro timing in the safe band). */
-export function NoteStackOutcome(campIdx: number, minute: number, countAfter: number | undefined, assumed: boolean = false): void {
+/**
+ * `countAfter` undefined: the box was not visible; `assumed` then decides (aggro timing in the safe band).
+ * Returns whether the attempt counts as stacked.
+ */
+export function NoteStackOutcome(campIdx: number, minute: number, countAfter: number | undefined, assumed: boolean = false): boolean {
     const prior = before[campIdx];
     delete before[campIdx];
     const stacked = countAfter !== undefined ? prior !== undefined && countAfter > prior : assumed;
     // A failed attempt leaves an earlier stack in place: those neutrals are still there.
-    if (!stacked) return;
+    if (!stacked) return false;
     const prev = records[campIdx];
     const count = prev !== undefined && prev.minute === minute - 1 ? prev.count + 1 : 1;
     records[campIdx] = { minute, count };
+    return true;
 }
 
 export function IsStacked(campIdx: number): boolean {

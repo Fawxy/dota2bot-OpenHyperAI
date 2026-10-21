@@ -188,6 +188,13 @@ local function isNoticed(obs, hero, now, cfg)
     s.visible = s.noticed
     return s.visible
 end
+--- Units the team cannot currently see are passed through untouched and get no sighting. The engine can list
+-- such a hero with no location (GetUnitToUnitDistance then fails in its override), and a sighting would keep
+-- its lastSeen fresh while out of view, giving it a head start on the notice delay and defeating Permanence.
+-- Passing it through leaves callers exactly the engine's answer; their own CanBeSeen checks drop it.
+local function isPerceivable(unit)
+    return not unit:IsNull() and unit:CanBeSeen() and unit:GetLocation() ~= nil
+end
 --- O(n) over the original list; returns the original table untouched when nothing is hidden.
 local function filterList(obs, list, heroesOnly)
     local now = DotaTime()
@@ -201,13 +208,7 @@ local function filterList(obs, list, heroesOnly)
         local i = 0
         while i < #list do
             local unit = list[i + 1]
-            local ____temp_0
-            if heroesOnly and not unit:IsHero() then
-                ____temp_0 = true
-            else
-                ____temp_0 = isNoticed(obs, unit, now, cfg)
-            end
-            local visible = ____temp_0
+            local visible = not isPerceivable(unit) or heroesOnly and not unit:IsHero() or isNoticed(obs, unit, now, cfg)
             if not visible then
                 if out == nil then
                     out = {}
@@ -345,12 +346,12 @@ function ____exports.GetIncomingTrackingProjectiles(target)
                     byName = {}
                     ids[key] = byName
                 end
-                local ____byName_name_5 = byName[name]
-                if ____byName_name_5 == nil then
-                    local ____opt_1 = prev and prev[key]
-                    ____byName_name_5 = ____opt_1 and ____opt_1[name]
+                local ____byName_name_4 = byName[name]
+                if ____byName_name_4 == nil then
+                    local ____opt_0 = prev and prev[key]
+                    ____byName_name_4 = ____opt_0 and ____opt_0[name]
                 end
-                local e = ____byName_name_5
+                local e = ____byName_name_4
                 if e == nil then
                     e = newEvent(obs, name, now)
                 end

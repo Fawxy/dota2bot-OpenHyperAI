@@ -131,6 +131,43 @@ do
 	check("creep kept, hero hidden", #list == 1 and list[1] == creep, #list)
 end
 
+-- Part A: an enemy hero the engine lists with no location (seen in live games) must not throw. Dota's bot VM has
+-- no `debug` library, so the GetUnitToUnitDistance override's fallback used to error and the guard then let the
+-- whole list through unfiltered.
+do
+	Load(skill(0))
+	BOT = U({ pid = 1 })
+	U({ pid = 5, team = 3, loc = Vector(1000, 0), name = "lion" })
+	local ghost = U({ pid = 6, team = 3, loc = Vector(800, 0), name = "ghost" })
+	ghost.GetLocation = function() return nil end
+	local savedDebug = debug
+	debug = nil
+	local ok, list = pcall(function() return BOT:GetNearbyHeroes(1600, true, BOT_MODE_NONE) end)
+	local okU, units = pcall(GetUnitList, UNIT_LIST_ENEMY_HEROES)
+	T = 0.56
+	local okLater, later = pcall(function() return BOT:GetNearbyHeroes(1600, true, BOT_MODE_NONE) end)
+	debug = savedDebug
+	check("no-location hero does not throw", ok and okU and okLater, tostring(list))
+	check("no-location hero passed through, unnoticed hero still hidden", ok and #list == 1 and list[1] == ghost, ok and #list)
+	check("unit list filters the same way", okU and #units == 1 and units[1] == ghost, okU and #units)
+	check("other hero noticed on schedule", okLater and #later == 2, okLater and #later)
+end
+
+-- Part A: a hero the engine lists while out of the team's view gets no head start on its notice delay
+do
+	Load(skill(0))
+	BOT = U({ pid = 1 })
+	local e = U({ pid = 5, team = 3, loc = Vector(1000, 0) })
+	e.CanBeSeen = function() return false end
+	check("unseen hero passed through", count(GetUnitList(UNIT_LIST_ENEMY_HEROES)) == 1)
+	T = 1.0 GetUnitList(UNIT_LIST_ENEMY_HEROES)
+	T = 1.5
+	e.CanBeSeen = nil
+	check("first real sighting starts the notice delay", enemiesOf(BOT) == 0)
+	T = 2.06
+	check("noticed a full delay after coming into view", enemiesOf(BOT) == 1)
+end
+
 -- Part A: object permanence within 2 s, a fresh delay after longer absence
 do
 	Load(skill(0))

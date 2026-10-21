@@ -224,7 +224,13 @@ ____exports.DEFAULTS = {
         HoldSignals = 2,
         ShoveHitDamageMult = 1.3
     },
-    Camps = {HalfMeetOffset = 500, PullCampMaxTowerDist = 2500, ReplayMatchRadius = 600, LaneSampleStep = 0.005},
+    Camps = {
+        HalfMeetOffset = 500,
+        PullCampMaxTowerDist = 2500,
+        PullCampMaxLaneDist = 2400,
+        ReplayMatchRadius = 600,
+        LaneSampleStep = 0.005
+    },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
     HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5, TowerAvoidRange = 850}
 }

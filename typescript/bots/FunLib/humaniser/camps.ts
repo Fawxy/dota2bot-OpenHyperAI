@@ -42,11 +42,14 @@ export interface Spawner {
 }
 
 /**
- * **TODO (in-game):** GetAmountAlongLane/GetLocationAlongLane are assumed absolute (0 = Radiant ancient) while
- * GetLaneFrontAmount is team-relative. OHA's J.GetClosestTeamLane feeds a team-relative amount straight into
- * GetLocationAlongLane, so one assumption may be wrong for Dire. Flip this if so.
+ * Engine lane amounts run from the calling script's own base (0) to the enemy's (1): in console.9055745679 Dire's
+ * GetAmountAlongLane tower amounts mirror Radiant's for the mirror lanes. "Abs" amounts below are that engine frame;
+ * ToTeamAmount/ToAbsAmount convert to and from `team`'s frame, which differs from it when a script reasons about the
+ * other team (enemy camps, enemy lane state).
+ * **TODO (in-game):** GetLocationAlongLane is assumed to share GetAmountAlongLane's frame (only the latter was measured).
+ * Set false to go back to treating engine amounts as absolute (0 = Radiant ancient) for both teams.
  */
-const LANE_AMOUNT_TEAM_RELATIVE = false;
+const LANE_AMOUNT_TEAM_RELATIVE = true;
 
 const LANES: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
 const TYPE_RANK: Record<string, number> = { small: 0, medium: 1, large: 2, ancient: 3 };
@@ -131,8 +134,8 @@ export function LaneOfKind(team: number, kind: LaneKind): Lane {
 }
 
 export function ToTeamAmount(team: number, absAmount: number): number {
-    if (LANE_AMOUNT_TEAM_RELATIVE || team === Team.Radiant) return absAmount;
-    return 1 - absAmount;
+    const frameTeam = LANE_AMOUNT_TEAM_RELATIVE ? GetTeam() : Team.Radiant;
+    return team === frameTeam ? absAmount : 1 - absAmount;
 }
 
 export function ToAbsAmount(team: number, teamAmount: number): number {
@@ -162,7 +165,7 @@ export function DeriveMeetPoint(_team: number, lane: Lane, campLoc: Vector): Vec
 export function DeriveHalfMeetPoint(team: number, lane: Lane, meet: Vector): Vector {
     const step = camps().LaneSampleStep;
     const offset = camps().HalfMeetOffset;
-    // Our wave walks toward the enemy base: up the absolute amount for Radiant, down for Dire.
+    // Our wave walks toward the enemy base: up the engine amount in our own frame, down in the other team's.
     const dir = ToAbsAmount(team, 1) > ToAbsAmount(team, 0) ? 1 : -1;
     let a = NearestLaneAmount(lane, meet);
     let prev = GetLocationAlongLane(lane, a);
@@ -222,10 +225,16 @@ export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
         }
     }
     const away = LaneConfig.Settings().Radii.StackExit;
-    if (nearest === undefined || nearestDist < 1) return [Vector(c.x, c.y - away, c.z)];
-    const ux = (c.x - nearest.x) / nearestDist;
-    const uy = (c.y - nearest.y) / nearestDist;
-    return [Vector(c.x + ux * away, c.y + uy * away, c.z)];
+    let ux = 0;
+    let uy = -1;
+    if (nearest !== undefined && nearestDist >= 1) {
+        ux = (c.x - nearest.x) / nearestDist;
+        uy = (c.y - nearest.y) / nearestDist;
+    }
+    const target = Vector(c.x + ux * away, c.y + uy * away, c.z);
+    // StackExit is measured past the box edge, not from the centre: 7.41 boxes are 600-1100 wide, so from the
+    // centre the walk-off from the stand point (edge + StandOffset) shrank to ~300-450 and the camp was not dragged clear.
+    return [BoxEdgePoint(s, target, away) ?? target];
 }
 
 const T1: Record<number, number> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
@@ -288,17 +297,19 @@ export function Resolve(): CampJobData[] {
         const lane = LaneOfKind(entry.team, entry.laneKind);
         const tower = laneTower(entry.team, lane);
         if (tower === undefined) continue;
+        const maxTowerDist = entry.maxTowerDist ?? camps().PullCampMaxTowerDist;
         let best: Spawner | undefined;
         let bestDist = math.huge;
         for (const s of spawners) {
             if (claimed[s.idx] === true || s.team !== entry.team || s.type !== entry.type) continue;
             const d = dist2D(s.location, tower);
-            if (d < bestDist) {
-                bestDist = d;
-                best = s;
-            }
+            if (d >= bestDist || d > maxTowerDist) continue;
+            // Near the tower is not enough: a jungle camp behind it cannot be led to the lane.
+            if (dist2D(s.location, DeriveMeetPoint(entry.team, lane, s.location)) > camps().PullCampMaxLaneDist) continue;
+            bestDist = d;
+            best = s;
         }
-        if (best === undefined || bestDist > camps().PullCampMaxTowerDist) continue;
+        if (best === undefined) continue;
         claimed[best.idx] = true;
         const meet = DeriveMeetPoint(entry.team, lane, best.location);
         jobs[best.idx] = {

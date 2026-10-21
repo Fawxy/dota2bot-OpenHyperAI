@@ -239,7 +239,7 @@ export const DEFAULTS = {
         ApproachExtrapolate: 0.5,
     },
     Infer: { ShoveHits: 4, FreezeDenies: 2, FreezeEqMax: -0.5, HoldSignals: 2, ShoveHitDamageMult: 1.3 },
-    Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
+    Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, PullCampMaxLaneDist: 2400, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
     Orders: { FreezeShove: 90, PullNoPull: 120, Stack: 60 },
     // Idle-poke gates for bots 04 does not own; 04-owned bots read AllyLastHit.Settings() instead.
     HarassIdle: { IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },
