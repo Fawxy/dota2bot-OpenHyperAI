@@ -308,6 +308,7 @@ function Think()
 
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)
+		J.Humaniser.LastHitSkill.NoteAttempt(bot, hTargetCreep)
 		return
 	end
 

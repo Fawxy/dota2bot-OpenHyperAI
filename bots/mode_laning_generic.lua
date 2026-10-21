@@ -262,6 +262,7 @@ local function LastHitThink()
 	else
 		bot:SetTarget(hitCreep)
 		bot:Action_AttackUnit(hitCreep, true)
+		LastHitSkill.NoteAttempt(bot, hitCreep)
 	end
 	return true
 end
@@ -273,6 +274,7 @@ local function DenyThink()
 	if not J.IsValid(denyCreep) then return false end
 	bot:SetTarget(denyCreep)
 	bot:Action_AttackUnit(denyCreep, true)
+	LastHitSkill.NoteAttempt(bot, denyCreep)
 	return true
 end
 

@@ -43,10 +43,9 @@ type CsUnit = Unit & { GetLastHits(): number; GetDenies(): number };
 interface CreepEntry {
     eps: number;
     attempt: boolean;
+    /** Set by NoteAttempt once the bot issues a swing; a kill check alone (desire, lookahead) is not an attempt. */
     attempted: boolean;
     isDeny: boolean;
-    /** The bot's last-hit (or deny) count when it first went for this creep. */
-    countAtAttempt: number;
 }
 
 let helpers: Helpers = {};
@@ -57,6 +56,8 @@ const warned: Record<number, boolean> = {};
 const widthCache: Record<number, { time: number; value: number }> = {};
 const countsByPlayer: Record<number, { attempts: number; misses: number }> = {};
 const tickedAt: Record<number, number> = {};
+const countersAt: Record<number, { lastHits: number; denies: number }> = {};
+const heroTargetAt: Record<number, number> = {};
 
 const TICK_SECONDS = 0.25;
 
@@ -97,10 +98,18 @@ export function IsActiveFor(bot: Unit): boolean {
     return !Settings().RequireOwnedLaning || ownedLaning[bot.GetPlayerID()] === true;
 }
 
+/**
+ * Hit by a hero, or attacked one, in the last PressureSeconds. Harassing is latched on time like the damage
+ * window: turning to a creep must not end the pressure at once, or the last-hit answer would flip its own input.
+ */
 function isUnderPressure(bot: Unit): boolean {
-    if (bot.WasRecentlyDamagedByAnyHero(Settings().PressureSeconds)) return true;
+    const seconds = Settings().PressureSeconds;
     const target = bot.GetAttackTarget();
-    return target !== null && target !== undefined && target.IsHero() && target.GetTeam() !== bot.GetTeam();
+    if (target !== null && target !== undefined && target.IsHero() && target.GetTeam() !== bot.GetTeam()) {
+        heroTargetAt[bot.GetPlayerID()] = GameTime();
+    }
+    if (GameTime() - (heroTargetAt[bot.GetPlayerID()] ?? -math.huge) < seconds) return true;
+    return bot.WasRecentlyDamagedByAnyHero(seconds);
 }
 
 /** The current error half-width e, pressure included. */
@@ -144,16 +153,18 @@ export function WillKill(bot: Unit, creep: Unit, attackDamage: number, delay: nu
         const skill = Profile.Get(bot).skill;
         const rate = isDeny ? lerp(s.DenyAttemptLow, s.DenyAttemptHigh, skill) : lerp(s.AttemptLow, s.AttemptHigh, skill);
         const eps = RandomFloat(-1, 1);
-        entry = { eps, attempt: RandomFloat(0, 1) < rate, attempted: false, isDeny, countAtAttempt: 0 };
+        entry = { eps, attempt: RandomFloat(0, 1) < rate, attempted: false, isDeny };
         entries.set(creep, entry);
     }
     if (!entry.attempt) return false;
-    const kills = Upstream(creep, attackDamage * (1 + entry.eps * ErrorWidth(bot)), delay, isDeny);
-    if (kills && !entry.attempted) {
-        entry.attempted = true;
-        entry.countAtAttempt = counterOf(bot, isDeny);
-    }
-    return kills;
+    return Upstream(creep, attackDamage * (1 + entry.eps * ErrorWidth(bot)), delay, isDeny);
+}
+
+/** Call where the bot issues its last-hit or deny swing on a creep WillKill judged killable. */
+export function NoteAttempt(bot: Unit, creep: Unit): void {
+    if (!IsActiveFor(bot)) return;
+    const entry = entriesFor(bot).get(creep);
+    if (entry !== undefined && entry.attempt) entry.attempted = true;
 }
 
 function isRangedOrSiege(creep: Unit): boolean {
@@ -181,8 +192,9 @@ export function Counts(bot: Unit): { attempts: number; misses: number } {
 }
 
 /**
- * Resolves creeps that are gone: an attempt the bot's own last-hit (or deny) count did not move for is a miss.
- * Dead creeps the bot never went for are dropped uncounted.
+ * Resolves creeps that are gone. Kills are credited per tick: attempts of a kind that resolve in this tick count
+ * as hits up to how far the bot's last-hit (or deny) counter moved since the last tick, and the rest as misses.
+ * A kill the bot made by other means (a spell) can hide one miss; dead creeps it never swung at are dropped.
  */
 export function Tick(bot: Unit): void {
     // Before the horn there are no creeps, and reading skill then would cache it ahead of the FretBots vote.
@@ -191,14 +203,22 @@ export function Tick(bot: Unit): void {
     const now = GameTime();
     if (now - (tickedAt[pid] ?? -1) < TICK_SECONDS) return;
     tickedAt[pid] = now;
+    const current = { lastHits: counterOf(bot, false), denies: counterOf(bot, true) };
+    const previous = countersAt[pid] ?? current;
+    countersAt[pid] = current;
     const entries = entriesFor(bot);
-    const counts = Counts(bot);
+    let lastHitAttempts = 0;
+    let denyAttempts = 0;
     for (const [creep, entry] of entries) {
         if (!creep.IsNull() && creep.IsAlive()) continue;
         if (entry.attempted) {
-            counts.attempts += 1;
-            if (counterOf(bot, entry.isDeny) === entry.countAtAttempt) counts.misses += 1;
+            if (entry.isDeny) denyAttempts += 1;
+            else lastHitAttempts += 1;
         }
         entries.delete(creep);
     }
+    const counts = Counts(bot);
+    counts.attempts += lastHitAttempts + denyAttempts;
+    counts.misses += math.max(0, lastHitAttempts - (current.lastHits - previous.lastHits));
+    counts.misses += math.max(0, denyAttempts - (current.denies - previous.denies));
 }

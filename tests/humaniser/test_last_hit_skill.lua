@@ -142,16 +142,19 @@ do
 	bot.target = MakeUnit({ pid = 7, team = 3 })
 	T = 102
 	check("harassing scales e", near(H.LastHitSkill.ErrorWidth(bot), 0.225), H.LastHitSkill.ErrorWidth(bot))
+	-- Turning to a creep must not end harass pressure at once, or the last-hit answer flips its own input.
 	bot.target = MakeCreep(50)
 	T = 103
-	check("a creep target is not harassing", near(H.LastHitSkill.ErrorWidth(bot), 0.15), H.LastHitSkill.ErrorWidth(bot))
+	check("harass pressure lasts after turning to a creep", near(H.LastHitSkill.ErrorWidth(bot), 0.225), H.LastHitSkill.ErrorWidth(bot))
+	T = 104.5
+	check("harass pressure ends after PressureSeconds", near(H.LastHitSkill.ErrorWidth(bot), 0.15), H.LastHitSkill.ErrorWidth(bot))
 
 	-- The stored eps is unit-scaled, so pressure widens the error on a creep rolled before it began.
 	local c = MakeCreep(12)
 	rolls(1, 0)
 	check("unpressured eps=+1 misses a 12 hp creep", will(H, bot, c) == false)
 	bot.pressured = true
-	T = 104
+	T = 105
 	check("pressure scales e at use time", will(H, bot, c) == true)
 end
 
@@ -222,55 +225,79 @@ do
 	check("team roam bare kill check gone", not has(roam, "J.WillKillTarget(creep, bot:GetAttackDamage()-1"))
 end
 
--- Task 4: attempts and misses, resolved once the creep is gone.
+-- Task 4: an attempt is a swing the bot issued (NoteAttempt); kills are credited per tick from the counter delta.
+local function swing(H, bot, creep, isDeny)
+	rolls(0.5, 0)
+	will(H, bot, creep, 10, isDeny)
+	H.LastHitSkill.NoteAttempt(bot, creep)
+end
+local function counts(H, bot) local n = H.LastHitSkill.Counts(bot) return n.attempts .. "/" .. n.misses end
 do
 	local H, bot = Setup(0)
-	local c = MakeCreep(5)
+	T = 100
+	H.LastHitSkill.Tick(bot)
+
+	local probe = MakeCreep(5)
 	rolls(0.5, 0)
-	for _ = 1, 10 do will(H, bot, c) end
-	c.hp, bot.lastHits = 0, 1
+	will(H, bot, probe)
+	probe.hp = 0
 	T = 101
 	H.LastHitSkill.Tick(bot)
-	local n = H.LastHitSkill.Counts(bot)
-	check("attempt counted once per creep", n.attempts == 1 and n.misses == 0, n.attempts .. "/" .. n.misses)
+	check("a kill check without a swing is not an attempt", counts(H, bot) == "0/0", counts(H, bot))
 
-	local c2 = MakeCreep(5)
-	rolls(0.5, 0)
-	will(H, bot, c2)
-	c2.removed = true
+	local c = MakeCreep(5)
+	for _ = 1, 3 do swing(H, bot, c) end
+	c.hp, bot.lastHits = 0, 1
 	T = 102
 	H.LastHitSkill.Tick(bot)
-	n = H.LastHitSkill.Counts(bot)
-	check("miss when another unit took it", n.attempts == 2 and n.misses == 1, n.attempts .. "/" .. n.misses)
+	check("attempt counted once per creep", counts(H, bot) == "1/0", counts(H, bot))
 
-	local d = MakeCreep(5)
-	rolls(0.5, 0)
-	will(H, bot, d, 10, true)
-	d.hp, bot.lastHits = 0, 5
+	local removed = MakeCreep(5)
+	swing(H, bot, removed)
+	removed.removed = true
 	T = 103
 	H.LastHitSkill.Tick(bot)
-	n = H.LastHitSkill.Counts(bot)
-	check("deny miss uses GetDenies", n.attempts == 3 and n.misses == 2, n.attempts .. "/" .. n.misses)
+	check("miss when another unit took it", counts(H, bot) == "2/1", counts(H, bot))
 
-	local skipped = MakeCreep(5)
-	rolls(0.5, 0.99)
-	will(H, bot, skipped)
-	local far = MakeCreep(50)
-	rolls(0.5, 0)
-	will(H, bot, far)
-	skipped.hp, far.hp = 0, 0
+	local a, b = MakeCreep(5), MakeCreep(5)
+	swing(H, bot, a)
+	swing(H, bot, b)
+	b.hp, bot.lastHits = 0, 2
 	T = 104
 	H.LastHitSkill.Tick(bot)
-	n = H.LastHitSkill.Counts(bot)
-	check("unattempted dead creeps are not counted", n.attempts == 3 and n.misses == 2, n.attempts .. "/" .. n.misses)
-
-	local live = MakeCreep(5)
-	rolls(0.5, 0)
-	will(H, bot, live)
+	a.hp = 0
 	T = 105
 	H.LastHitSkill.Tick(bot)
-	n = H.LastHitSkill.Counts(bot)
-	check("a live attempted creep is not resolved yet", n.attempts == 3, n.attempts)
+	check("a last hit on another creep does not hide a miss", counts(H, bot) == "4/2", counts(H, bot))
+
+	local x, y = MakeCreep(5), MakeCreep(5)
+	swing(H, bot, x)
+	swing(H, bot, y)
+	x.hp, y.hp, bot.lastHits = 0, 0, 3
+	T = 106
+	H.LastHitSkill.Tick(bot)
+	check("two attempts resolved in one tick share one kill", counts(H, bot) == "6/3", counts(H, bot))
+
+	local d = MakeCreep(5)
+	swing(H, bot, d, true)
+	d.hp, bot.lastHits = 0, 4
+	T = 107
+	H.LastHitSkill.Tick(bot)
+	check("deny miss uses GetDenies", counts(H, bot) == "7/4", counts(H, bot))
+
+	local live = MakeCreep(5)
+	swing(H, bot, live)
+	T = 108
+	H.LastHitSkill.Tick(bot)
+	check("a live attempted creep is not resolved yet", counts(H, bot) == "7/4", counts(H, bot))
+end
+
+do
+	local roam = source("bots/mode_team_roam_generic.lua")
+	check("team roam notes its swing", has(roam, "J.Humaniser.LastHitSkill.NoteAttempt(bot, hTargetCreep)"))
+	local laning = source("bots/mode_laning_generic.lua")
+	check("laning notes its last-hit swing", has(laning, "LastHitSkill.NoteAttempt(bot, hitCreep)"))
+	check("laning notes its deny swing", has(laning, "LastHitSkill.NoteAttempt(bot, denyCreep)"))
 end
 
 finish()
