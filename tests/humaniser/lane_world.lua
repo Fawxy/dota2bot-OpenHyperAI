@@ -178,7 +178,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE = nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry })
+		Telemetry = extra.telemetry, Transitions = extra.transitions })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
@@ -191,6 +191,7 @@ function LaneFresh(laneCfg, extra)
 		IsValidBuilding = function(u) return u ~= nil and u.alive end,
 		GetHP = function(u) return u:GetHealth() / u:GetMaxHealth() end,
 	})
+	H.Transitions.SetHelpers({ IsInLaningPhase = function() return LANING ~= false end })
 	H.Lane.Config.ResetSettings()
 	H.Lane.Hooks.ResetHooks()
 	H.Lane.Camps.ResetCache()

@@ -13,6 +13,7 @@ import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
+import * as Transitions from "bots/FunLib/humaniser/transitions/transitions";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
@@ -20,7 +21,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, LastHitSkill, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Transitions, Intent, LastHitSkill, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -96,6 +97,7 @@ function drawOverlay(bot: Unit): void {
         HDebug.Text(bot, "order", order !== undefined ? Orders.Describe(order) : "-");
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
+        if (Transitions.IsActive()) HDebug.Text(bot, "phase", Transitions.Overlay(bot));
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
         if (LastHitSkill.IsActiveFor(bot)) {
             const cs = LastHitSkill.Counts(bot);
@@ -123,6 +125,7 @@ function tick(this: void, bot: Unit): void {
     Pings.Tick(bot);
     Commands.Tick(bot);
     Lane.Tick(bot);
+    Transitions.Tick(bot);
     Trainer.Tick(bot);
     LastHitSkill.Tick(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
@@ -155,6 +158,7 @@ if (Telemetry.GuardsEnabled()) {
         HarassThink: no,
         AdjustPosition: arg2,
     });
+    Telemetry.GuardModule("Transitions", Transitions, { Tick: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

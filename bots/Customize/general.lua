@@ -158,6 +158,17 @@ Customize.Humaniser = {
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
     },
+    -- Lane safety and laning-phase transitions (task 12). Enable = false restores upstream behaviour for all of it.
+    Transitions = {
+        Enable = true,
+        MidRunes = true,  -- the mid laner takes power runes
+        Rotation = true,  -- spare supports rotate to the lane that needs them
+        Caution = true,   -- bots back off or press when enemy heroes go missing
+        Teleports = true, -- bots react to enemy teleports landing near them
+        LaneWard = true,  -- supports ward the lane in the laning phase
+        Phase = true,     -- supports leave lane and cores farm after the laning phase
+        LostLane = true,  -- bots notice a lost lane and suggest leaving it
+    },
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
     Intent = { Enable = true },

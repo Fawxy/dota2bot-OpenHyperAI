@@ -35,6 +35,7 @@ ____exports.DEFAULTS = {
     Pings = {Enable = true},
     Commands = {Enable = true},
     Lane = {Enable = true},
+    Transitions = {Enable = true},
     Intent = {Enable = true},
     LastHitSkill = {Enable = true},
     Trainer = {LastHit = {Enable = true}},
