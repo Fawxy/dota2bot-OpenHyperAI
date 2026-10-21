@@ -4,6 +4,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
 local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LaneDebug = require(GetScriptDirectory().."/FunLib/humaniser/lane_debug")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
@@ -11,6 +12,7 @@ ____exports.Config = LaneConfig
 ____exports.Hooks = LaneHooks
 ____exports.Camps = Camps
 ____exports.LaneState = LaneState
+____exports.LaneRoles = LaneRoles
 ____exports.LanePlan = LanePlan
 function ____exports.IsEnabled()
     return LaneConfig.IsEnabled()

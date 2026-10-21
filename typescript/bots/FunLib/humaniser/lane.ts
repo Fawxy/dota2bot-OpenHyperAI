@@ -7,11 +7,12 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
 import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LanePlan };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();

@@ -142,6 +142,12 @@ function enemyTeamOf(team: number): number {
     return team === Team.Radiant ? Team.Dire : Team.Radiant;
 }
 
+function copyRecord(r: Record<number, number>): Record<number, number> {
+    const copy: Record<number, number> = {};
+    for (const [k, v] of pairs(r)) copy[k as number] = v as number;
+    return copy;
+}
+
 function push(list: number[], v: number, max: number): void {
     list.push(v);
     if (list.length > max) table.remove(list, 1);
@@ -401,7 +407,7 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
         allies: heroesFor(team, lane, frontLoc),
         desiredEq: DesiredEq(kind, preRuneFn(team, lane)),
         enemyDeniesPerCycle: [...t.deniesPerCycle],
-        lastAllyAggroAt: t.aggro,
+        lastAllyAggroAt: copyRecord(t.aggro),
         eqHistory: [...t.eqHistory],
     };
     snapshots[key] = snapshot;

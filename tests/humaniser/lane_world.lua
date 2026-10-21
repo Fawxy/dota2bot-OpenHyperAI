@@ -142,6 +142,7 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Hooks.ResetHooks()
 	H.Lane.Camps.ResetCache()
 	H.Lane.LaneState.ResetCache()
+	H.Lane.LaneRoles.ResetCache()
 	H.Lane.LanePlan.ResetCache()
 	return H
 end
