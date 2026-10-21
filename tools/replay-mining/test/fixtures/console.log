@@ -1,0 +1,16 @@
+[Dota] noise line that is not ours
+[H:lane] job pid=0 kind=half camp=12 key=radiant_safe_large aggro=47.4 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=1 kind=half camp=12 key=radiant_safe_large aggro=47.6 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=2 kind=half camp=12 key=radiant_safe_large aggro=47.8 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=3 kind=half camp=12 key=radiant_safe_large aggro=48.0 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=4 kind=half camp=12 key=radiant_safe_large aggro=48.2 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=0 kind=half camp=12 key=radiant_safe_large aggro=48.4 planned=47.0 divert=0.40 grade=ok
+[H:lane] job pid=2 kind=half camp=12 key=radiant_safe_large aggro=52.0 planned=47.0 divert=1.00 grade=mistake:half->full
+[H:lane] job pid=1 kind=full camp=7 key=- aggro=18.0 planned=18.0 divert=1.00 grade=ok
+[H:lane] job pid=1 kind=full camp=7 key=- aggro=19.0 planned=18.0 divert=1.00 grade=ok
+[H:lane] job pid=1 kind=full camp=7 key=- aggro=20.0 planned=18.0 divert=1.00 grade=ok
+12:03:44 [H:lane] stack pid=3 camp=4 type=medium aggro=53.0 planned=54.0 before=3 after=6 grade=ok
+12:03:44 [H:lane] stack pid=3 camp=4 type=medium aggro=53.4 planned=54.0 before=3 after=6 grade=ok
+12:03:44 [H:lane] stack pid=3 camp=4 type=medium aggro=53.8 planned=54.0 before=3 after=6 grade=ok
+12:03:44 [H:lane] stack pid=3 camp=4 type=medium aggro=54.2 planned=54.0 before=3 after=6 grade=ok
+12:03:44 [H:lane] stack pid=3 camp=4 type=medium aggro=54.6 planned=54.0 before=3 after=6 grade=ok

@@ -5,7 +5,8 @@
     "scripts": {
         "syntax": "node syntax_check.js ../../bots",
         "test": "node run.js",
-        "check": "npm run syntax && npm test"
+        "mining": "node ../../tools/replay-mining/test/run.js",
+        "check": "npm run syntax && npm test && npm run mining"
     },
     "devDependencies": {
         "fengari": "0.1.4",
