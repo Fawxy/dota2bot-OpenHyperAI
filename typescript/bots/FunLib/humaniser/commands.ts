@@ -399,14 +399,15 @@ let lastSummary = "-";
 
 /** Chat hub subscriber for one team. Exported for tests. */
 export function HandleMessage(team: number, msg: Chat.ChatMessage): void {
-    const skip = (reason: string) => HDebug.Log("commands", `skip team=${team} reason=${reason} pid=${msg.pid} text=${msg.text}`);
+    // Runs inside the engine's chat callback, so diagnostics are deferred (see Chat.Defer).
+    const skip = (reason: string) => Chat.Defer("commands", `skip team=${team} reason=${reason} pid=${msg.pid} text=${msg.text}`);
+    if (IsPlayerBot(msg.pid)) return;
     if (!IsActive()) return skip("inactive");
     if (GetGameState() !== GameState.GameInProgress) return skip(`state=${GetGameState()}`);
-    if (IsPlayerBot(msg.pid)) return;
     const parsed = Parse(msg.text, team);
     if (parsed === undefined) return skip("unparsed");
     if (GetTeamPlayers(team).indexOf(msg.pid) < 0) {
-        HDebug.Log("commands", `[WARN] ignoring '${msg.text}' from player ${msg.pid}, not on team ${team}`);
+        Chat.Defer("commands", `[WARN] ignoring '${msg.text}' from player ${msg.pid}, not on team ${team}`);
         return;
     }
     if (!msg.teamOnly) return skip("not_team_chat");
@@ -426,7 +427,7 @@ export function HandleMessage(team: number, msg: Chat.ChatMessage): void {
         sourceKey: `cmd:${countKey}:${n}`,
     });
     lastSummary = `${parsed.name}${parsed.onlyPIDs !== undefined ? ` ->${parsed.onlyPIDs[0]}` : ""} by ${msg.pid}`;
-    HDebug.Log("commands", lastSummary, msg.text);
+    Chat.Defer("commands", `${lastSummary} ${msg.text}`);
 }
 
 /**

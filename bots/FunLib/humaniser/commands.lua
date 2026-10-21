@@ -606,19 +606,19 @@ local lastSummary = "-"
 --- Chat hub subscriber for one team. Exported for tests.
 function ____exports.HandleMessage(team, msg)
     local function skip(reason)
-        return HDebug.Log(
+        return Chat.Defer(
             "commands",
             (((((("skip team=" .. tostring(team)) .. " reason=") .. reason) .. " pid=") .. tostring(msg.pid)) .. " text=") .. msg.text
         )
+    end
+    if IsPlayerBot(msg.pid) then
+        return
     end
     if not ____exports.IsActive() then
         return skip("inactive")
     end
     if GetGameState() ~= GameState.GameInProgress then
         return skip("state=" .. tostring(GetGameState()))
-    end
-    if IsPlayerBot(msg.pid) then
-        return
     end
     local parsed = ____exports.Parse(msg.text, team)
     if parsed == nil then
@@ -628,7 +628,7 @@ function ____exports.HandleMessage(team, msg)
         GetTeamPlayers(team),
         msg.pid
     ) < 0 then
-        HDebug.Log(
+        Chat.Defer(
             "commands",
             (((("[WARN] ignoring '" .. msg.text) .. "' from player ") .. tostring(msg.pid)) .. ", not on team ") .. tostring(team)
         )
@@ -654,7 +654,7 @@ function ____exports.HandleMessage(team, msg)
         sourceKey = (("cmd:" .. countKey) .. ":") .. tostring(n)
     })
     lastSummary = ((parsed.name .. (parsed.onlyPIDs ~= nil and " ->" .. tostring(parsed.onlyPIDs[1]) or "")) .. " by ") .. tostring(msg.pid)
-    HDebug.Log("commands", lastSummary, msg.text)
+    Chat.Defer("commands", (lastSummary .. " ") .. msg.text)
 end
 --- Order-driven smoke: true for the one responder chosen to pop smoke (first responder holding one in an
 -- active slot) once enough allied heroes are close. Called from ConsiderItemDesire['item_smoke_of_deceit'].

@@ -6,7 +6,7 @@
  * If modules turn out to be shared per team, several bots may each deliver the same message,
  * so messages are de-duplicated before dispatch.
  */
-import { Unit } from "bots/ts_libs/dota";
+import { GameState, Unit } from "bots/ts_libs/dota";
 
 export interface ChatMessage {
     pid: number;
@@ -23,19 +23,23 @@ const LOG_LIMIT = 50;
 const subscribers: Record<string, Handler> = {};
 const subscriberOrder: string[] = [];
 
-// Injected by index.ts (this module has no deps). OHA's print override hides plain print().
-let logger: ((this: void, line: string) => void) | undefined;
-export function SetLogger(fn: (this: void, line: string) => void): void {
-    logger = fn;
+// Diagnostics raised inside the chat callback are queued and printed from Tick via FlushDeferred.
+// In-game, printing (and iterating the raw event) inside the engine's callback coincided with game crashes.
+const DEFERRED_LIMIT = 100;
+const deferred: string[][] = [];
+export function Defer(tag: string, line: string): void {
+    if (deferred.length < DEFERRED_LIMIT) deferred.push([tag, line]);
+}
+export function FlushDeferred(log: (this: void, tag: string, line: string) => void): void {
+    while (deferred.length > 0) {
+        const entry = deferred.shift()!;
+        log(entry[0], entry[1]);
+    }
 }
 
-function describeEvent(event: any): string {
-    const keys: string[] = [];
-    for (const [k, v] of pairs(event)) keys.push(`${tostring(k)}=${tostring(v)}`);
-    return keys.join(" ");
-}
 const recent: ChatMessage[] = [];
 let installed = false;
+let installedInProgress = false;
 
 function isDuplicate(msg: ChatMessage): boolean {
     for (const prev of recent) {
@@ -45,11 +49,14 @@ function isDuplicate(msg: ChatMessage): boolean {
 }
 
 function onChat(this: void, event: ChatEvent): void {
-    if (logger !== undefined) logger(`recv ${event === undefined ? "nil" : describeEvent(event)}`);
-    if (event === undefined || event.string === undefined) return;
+    if (event === undefined || event.string === undefined) {
+        Defer("chat", "recv nil_or_no_string");
+        return;
+    }
+    Defer("chat", `recv pid=${tostring(event.player_id)} team_only=${tostring(event.team_only)} text=${tostring(event.string)}`);
     const msg: ChatMessage = { pid: event.player_id, text: event.string, teamOnly: event.team_only === true, time: GameTime() };
     if (isDuplicate(msg)) {
-        if (logger !== undefined) logger(`dup pid=${msg.pid} text=${msg.text}`);
+        Defer("chat", `dup pid=${msg.pid} text=${msg.text}`);
         return;
     }
     recent.push(msg);
@@ -59,16 +66,29 @@ function onChat(this: void, event: ChatEvent): void {
         const [ok, err] = pcall(handler, msg);
         if (!ok) {
             print(`[Humaniser] chat subscriber '${name}' failed: ${tostring(err)}`);
-            if (logger !== undefined) logger(`subscriber_failed name=${name} err=${tostring(err)}`);
+            Defer("chat", `subscriber_failed name=${name} err=${tostring(err)}`);
         }
     }
 }
 
-/** Installs the shared callback once for this script context. Safe to call every frame. */
+/**
+ * Installs the shared callback for this script context: on first call, and once more when the game reaches in-progress.
+ * Safe to call every frame. hero_selection.lua's UpdateLaneAssignments re-installs its own chat callback every frame
+ * until the horn; in-game, a hub installed only during pre-game never received a message, consistent with only the
+ * latest install being kept. If the engine instead keeps every callback, the duplicate delivery is dropped by isDuplicate.
+ */
 export function EnsureInstalled(_bot: Unit): void {
-    if (installed) return;
-    installed = true;
-    InstallChatCallback(onChat);
+    if (!installed) {
+        installed = true;
+        installedInProgress = GetGameState() === GameState.GameInProgress;
+        InstallChatCallback(onChat);
+        Defer("chat", `installed gt=${GameTime()} state=${GetGameState()}`);
+    }
+    if (!installedInProgress && GetGameState() === GameState.GameInProgress) {
+        installedInProgress = true;
+        InstallChatCallback(onChat);
+        Defer("chat", `reinstalled gt=${GameTime()} state=${GetGameState()}`);
+    }
 }
 
 /** Registers (or replaces) a named handler. Names keep re-subscription idempotent. */
