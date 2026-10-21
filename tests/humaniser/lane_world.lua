@@ -65,7 +65,22 @@ function GetNeutralSpawners() return SPAWNERS end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index
-function GetNearbyNeutralsStub() return NEUTRALS end
+
+local T1_AMOUNT = { [2] = 0.3, [3] = 0.7 }
+local T1_ID = { [Lane.Top] = dota.Tower.Top1, [Lane.Mid] = dota.Tower.Mid1, [Lane.Bot] = dota.Tower.Bot1 }
+function MakeLaneTowers()
+	local w = { [2] = {}, [3] = {} }
+	for team = 2, 3 do
+		for lane, id in pairs(T1_ID) do
+			local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {},
+				loc = GetLocationAlongLane(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
+			t.GetUnitName = function() return "tower_t1" end
+			w[team][id] = t
+		end
+	end
+	return w
+end
+TOWERS_W = MakeLaneTowers()
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
@@ -98,7 +113,7 @@ function LaneFresh(laneCfg, extra)
 	extra = extra or {}
 	ResetWorld()
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
-	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, { [2] = {}, [3] = {} }, {}
+	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
 	LANING, STRONGER, NEXT_RUNE = nil, nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, SkillOverride = extra.skill, Lane = laneCfg })

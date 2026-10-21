@@ -98,7 +98,7 @@ do
 	SetRandomSequence({ 0.5, 0.25 })
 	check("zero z gives zero jitter", math.abs(C.Jitter(0)) < 1e-3)
 	SetRandomSequence({ math.exp(-2), 1.0 })
-	check("jitter at high skill", math.abs(C.Jitter(1) - 0.4) < 1e-3, C.Jitter(1))
+	check("jitter at high skill", math.abs(C.Jitter(1) - 0.4) < 1e-3)
 	SetRandomSequence({ math.exp(-2), 1.0 })
 	local j0 = C.Jitter(0)
 	check("jitter scales with sigma", math.abs(j0 - 3.0) < 1e-3, j0)
@@ -120,6 +120,17 @@ do
 	check("laning fallback early", C.InLaningPhase())
 	T = 700
 	check("laning fallback late", not C.InLaningPhase())
+end
+
+do
+	LaneFresh({ Enable = true })
+	local dota = require("bots/ts_libs/dota/index")
+	local r, d = GetTower(2, dota.Tower.Mid1), GetTower(3, dota.Tower.Mid1)
+	check("radiant mid T1 at 0.3", r ~= nil and near(GetAmountAlongLane(dota.Lane.Mid, r.loc).amount, 0.3))
+	check("dire top T1 at 0.7", GetTower(3, dota.Tower.Top1) ~= nil
+		and near(GetAmountAlongLane(dota.Lane.Top, GetTower(3, dota.Tower.Top1):GetLocation()).amount, 0.7))
+	check("bot T1 exists per team", GetTower(2, dota.Tower.Bot1) ~= nil and d ~= nil)
+	check("no T2 stub", GetTower(2, dota.Tower.Mid2) == nil)
 end
 
 finish()
