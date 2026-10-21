@@ -65,6 +65,9 @@ function ____exports.Choose(i)
         end
         return knows("freeze") and pick("freeze", "plan freeze") or pick("hold", "plan freeze: hold")
     end
+    if i.isMid and i.eqPos >= cfg.Thresholds.MidTowerEq and knows("aggro_pull") then
+        return pick("aggro_pull", "mid: out of tower range")
+    end
     if not i.isMid or i.pullCamp then
         if (i.laneScore <= bands.FullPullBelow or plan.pullForced) and campOk then
             if i.stackedPullCamp and knows("stack_pull") and i.enemyLaners > 0 then
@@ -108,18 +111,18 @@ local function humanCoreIn(bot, s)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue30
+            local __continue31
             repeat
                 if h.pid == pid or h.isBot or not h.alive or not h.assigned then
-                    __continue30 = true
+                    __continue31 = true
                     break
                 end
                 if h.position ~= nil and h.position >= 1 and h.position <= 3 then
                     return true
                 end
-                __continue30 = true
+                __continue31 = true
             until true
-            if not __continue30 then
+            if not __continue31 then
                 break
             end
         end

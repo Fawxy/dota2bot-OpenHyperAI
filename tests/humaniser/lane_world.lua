@@ -177,7 +177,7 @@ function LaneFresh(laneCfg, extra)
 		WillKillTarget = function(t, dmg) return t.hp <= dmg end,
 		GetAttackProDelayTime = function() return 0.3 end,
 		WeAreStronger = function() return STRONGER == true end,
-		NextPowerRuneTime = function() return NEXT_RUNE or 120 end,
+		NextPowerRuneTime = function() return NEXT_RUNE or 1e9 end,
 		IsValidHero = function(u) return u ~= nil and u.alive end,
 		IsSuspiciousIllusion = function(u) return u.illusion == true end,
 		IsValidBuilding = function(u) return u ~= nil and u.alive end,
@@ -197,5 +197,6 @@ function LaneFresh(laneCfg, extra)
 	-- ResetHooks dropped the probes registered at module load.
 	H.Lane.CampJobs.RegisterProbes()
 	H.Lane.Stacking.RegisterProbes()
+	H.Lane.LaneMid.RegisterProbes()
 	return H
 end

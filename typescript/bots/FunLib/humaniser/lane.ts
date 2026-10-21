@@ -10,6 +10,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
 import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
+import * as LaneMid from "bots/FunLib/humaniser/lane_mid";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
@@ -18,7 +19,7 @@ import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneTech, CampJobs, Stacking, Harass };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, Stacking, Harass };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -43,13 +44,20 @@ export function OwnsLaning(bot: Unit): boolean {
     return LaneTech.OwnsLaning(bot);
 }
 
+function handsOffHumanMid(bot: Unit, enemyCreeps: Unit[]): boolean {
+    const creep = enemyCreeps[0];
+    return creep !== undefined && !LaneMid.MayTouchWave(bot, creep);
+}
+
 /** Runs before last hits; true means this frame's action is issued. */
 export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
+    if (handsOffHumanMid(bot, enemyCreeps)) return false;
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies);
 }
 
 /** Runs after last hit and deny; true means this frame's action is issued. */
 export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
+    if (handsOffHumanMid(bot, enemyCreeps)) return false;
     return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies);
 }
 
@@ -78,8 +86,8 @@ function nearestVisibleEnemy(bot: Unit, s: LaneState.LaneSnapshot): Unit | undef
     return best;
 }
 
-export function PickDeny(_bot: Unit, _allyCreeps: Unit[]): Unit | undefined {
-    return undefined;
+export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
+    return LaneMid.PickDeny(bot, allyCreeps);
 }
 
 /** With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's. */

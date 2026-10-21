@@ -93,6 +93,8 @@ export function Choose(i: PlannerInput): Choice {
         return knows("freeze") ? pick("freeze", "plan freeze") : pick("hold", "plan freeze: hold");
     }
 
+    if (i.isMid && i.eqPos >= cfg.Thresholds.MidTowerEq && knows("aggro_pull")) return pick("aggro_pull", "mid: out of tower range");
+
     if (!i.isMid || i.pullCamp) {
         if ((i.laneScore <= bands.FullPullBelow || plan.pullForced) && campOk) {
             if (i.stackedPullCamp && knows("stack_pull") && i.enemyLaners > 0) return pick("stack_pull", "deny: stacked camp");

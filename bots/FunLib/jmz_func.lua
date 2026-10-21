@@ -58,6 +58,7 @@ J.Humaniser.Lane.SetHelpers({
 	WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end,
 	GetAttackProDelayTime = function(attacker, target) return J.GetAttackProDelayTime(attacker, target) end,
 	WeAreStronger = function(bot, radius) return J.WeAreStronger(bot, radius) end,
+	NextPowerRuneTime = function() return J.GetNextPowerRuneSpawnTime() end,
 	IsValidHero = function(u) return J.IsValidHero(u) end,
 	IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end,
 	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
@@ -5577,6 +5578,13 @@ end
 
 function J.AdjustLocationWithOffsetTowardsFountain(loc, distance)
 	return J.Utils.GetOffsetLocationTowardsTargetLocation(loc, J.GetTeamFountain(), distance)
+end
+
+-- Next power/water rune spawn (2-minute rhythm from 2:00), shared with mode_rune_generic.lua.
+function J.GetNextPowerRuneSpawnTime()
+	local t = DotaTime()
+	if t < 120 then return 120 end
+	return (math.floor(t / 120) + 1) * 120
 end
 
 function J.IsInLaningPhase()

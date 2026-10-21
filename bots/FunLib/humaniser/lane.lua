@@ -8,6 +8,7 @@ local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
 local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
 local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planner")
+local LaneMid = require(GetScriptDirectory().."/FunLib/humaniser/lane_mid")
 local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
@@ -21,10 +22,10 @@ function nearestVisibleEnemy(bot, s)
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue15
+            local __continue18
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue15 = true
+                    __continue18 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, e.location)
@@ -32,9 +33,9 @@ function nearestVisibleEnemy(bot, s)
                     best = e.unit
                     bestDist = d
                 end
-                __continue15 = true
+                __continue18 = true
             until true
-            if not __continue15 then
+            if not __continue18 then
                 break
             end
         end
@@ -48,6 +49,7 @@ ____exports.LaneState = LaneState
 ____exports.LaneRoles = LaneRoles
 ____exports.LanePlan = LanePlan
 ____exports.LanePlanner = LanePlanner
+____exports.LaneMid = LaneMid
 ____exports.LaneTech = LaneTech
 ____exports.CampJobs = CampJobs
 ____exports.Stacking = Stacking
@@ -80,12 +82,22 @@ end
 function ____exports.OwnsLaning(bot)
     return LaneTech.OwnsLaning(bot)
 end
+local function handsOffHumanMid(bot, enemyCreeps)
+    local creep = enemyCreeps[1]
+    return creep ~= nil and not LaneMid.MayTouchWave(bot, creep)
+end
 --- Runs before last hits; true means this frame's action is issued.
 function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
+    if handsOffHumanMid(bot, enemyCreeps) then
+        return false
+    end
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies)
 end
 --- Runs after last hit and deny; true means this frame's action is issued.
 function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
+    if handsOffHumanMid(bot, enemyCreeps) then
+        return false
+    end
     return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies)
 end
 --- Lane position override for the final move; returns `loc` itself when nothing applies.
@@ -104,8 +116,8 @@ function ____exports.AdjustPosition(bot, loc)
     end
     return Harass.StandPoint(bot, enemy, s.ally.units) or loc
 end
-function ____exports.PickDeny(_bot, _allyCreeps)
-    return nil
+function ____exports.PickDeny(bot, allyCreeps)
+    return LaneMid.PickDeny(bot, allyCreeps)
 end
 --- With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's.
 function ____exports.SupersedesHarass(_bot)
@@ -141,10 +153,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue27
+            local __continue30
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue27 = true
+                    __continue30 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -155,9 +167,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue27 = true
+                __continue30 = true
             until true
-            if not __continue27 then
+            if not __continue30 then
                 break
             end
         end
