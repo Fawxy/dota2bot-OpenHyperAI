@@ -9,6 +9,7 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
+local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -17,6 +18,7 @@ ____exports.Difficulty = Difficulty
 ____exports.Profile = Profile
 ____exports.Orders = Orders
 ____exports.Pings = Pings
+____exports.Commands = Commands
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -133,6 +135,7 @@ function ____exports.Tick(bot)
     end
     logStart(bot)
     Pings.Tick(bot)
+    Commands.Tick(bot)
     Orders.GetFor(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
