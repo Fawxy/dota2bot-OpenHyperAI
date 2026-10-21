@@ -160,6 +160,7 @@ local Localization = {
         say_cmd_no_smoke = {"no smoke", "nobody has smoke"},
         say_cmd_help = {"Bot commands (team chat): !def [top/mid/bot], !push [lane], !rosh, !g(roup), !go (after a ping), !smoke, !back, !farm. Prefix a slot or hero to direct one bot: !2 push bot, !lion def top"},
         say_cmd_help_lane = {"Lane: !freeze/!shove/!pull/!nopull/!stack [lane]"},
+        say_lane_shove_rotate = {"shoving then rotating"},
     },
     zh = {
         welcome_msgs = {
@@ -293,6 +294,7 @@ local Localization = {
         say_defend_top = {"防守上路！", "上路有人推！", "支援上路！"},
         say_defend_mid = {"防守中路！", "中路有人推！", "支援中路！"},
         say_defend_bot = {"防守下路！", "下路有人推！", "支援下路！"},
+        say_lane_shove_rotate = {"推完线就去游走"},
     },
     ru = {
         welcome_msgs = {
@@ -419,6 +421,7 @@ local Localization = {
         say_defend_top = {"Защищаем топ!", "Враги пушат топ!", "Помогите на топе!"},
         say_defend_mid = {"Защищаем мид!", "Враги пушат мид!", "Помогите на миде!"},
         say_defend_bot = {"Защищаем бот!", "Враги пушат бот!", "Помогите на боте!"},
+        say_lane_shove_rotate = {"пушу линию и ухожу"},
     },
     ja = {
         welcome_msgs = {
@@ -545,6 +548,7 @@ local Localization = {
         say_defend_top = {"トップ守れ！", "敵がトップ押してる！", "トップ助けて！"},
         say_defend_mid = {"ミッド守れ！", "敵がミッド押してる！", "ミッド助けて！"},
         say_defend_bot = {"ボット守れ！", "敵がボット押してる！", "ボット助けて！"},
+        say_lane_shove_rotate = {"ウェーブ押してから移動する"},
     },
 }
 

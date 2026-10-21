@@ -161,6 +161,7 @@ ____exports.DEFAULTS = {
         TowerExitMargin = 100,
         Zone = 900,
         ZoneOffset = 150,
+        HoldMinBack = 250,
         HarassStandBack = 50,
         LowHpCreep = 700,
         StepBackCreeps = 700,

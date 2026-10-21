@@ -92,6 +92,7 @@ end
 TOWERS_W = MakeLaneTowers()
 function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
+function UnitMeta:GetAttackRange() return self.range or 550 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
@@ -147,5 +148,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.LaneRoles.ResetCache()
 	H.Lane.LanePlan.ResetCache()
 	H.Lane.LanePlanner.ResetCache()
+	H.Lane.LaneTech.ResetCache()
 	return H
 end

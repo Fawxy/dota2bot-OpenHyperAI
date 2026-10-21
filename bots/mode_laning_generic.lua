@@ -44,6 +44,9 @@ local function CanTakeLastHit(creep)
 	return J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
 end
 local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
+-- Humaniser lane management (task 07): in-lane techniques run inside this Think(); also decided once at load.
+local Lane = J.Humaniser.Lane
+local bLaneLaning = Lane.OwnsLaning(bot)
 
 function GetDesire()
 	PickOneAnnouncer()
@@ -222,8 +225,10 @@ local function HarassThink()
 	return true
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning then
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning then
 	function Think()
+		if bLaneLaning and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
+
 		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 		if J.IsValid(hitCreep) then
 			if fLastHitFilter or J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
@@ -240,12 +245,14 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			end
 		end
 
-		local denyCreep = GetBestDenyCreep(nAllyCreeps)
+		local denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
 		if J.IsValid(denyCreep) then
 			bot:SetTarget(denyCreep)
 			bot:Action_AttackUnit(denyCreep, true)
 			return
 		end
+
+		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
 
 		if bHumaniserLaning and HarassThink() then return end
 
@@ -263,6 +270,7 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
 		end
 
+		if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end
 		bot:Action_MoveToLocation(target_loc + RandomVector(50))
 	end
 end

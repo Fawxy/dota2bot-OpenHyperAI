@@ -269,3 +269,14 @@ Other **TODO (in-game)** checks:
 - `GetLaneFrontAmount(team, lane, true)`: confirm `true` (ignore towers) gives the creep front rather than the tower line.
 - Lane creeps are recognised by unit names containing `creep_goodguys`, `creep_badguys`, `goodguys_siege`, `badguys_siege`; ranged by `ranged`. Confirm against `GetUnitName()` for current lane creeps and siege.
 - Enemy deny counting compares `GetAttackTarget()` of a visible enemy hero to the enemy lane creep handle by identity; confirm handles compare equal across calls.
+
+## Lane management: in-lane techniques (task 07)
+
+`lane_tech.ts` runs inside `mode_laning_generic.lua`'s `Think()` for bots whose laning is owned by `Lane.OwnsLaning` (`Lane.OwnLaningThink`: `'allies'` = allies of humans, `'all'` = every bot including the enemy team, `'off'`). `PreThink` (before last hits) runs the creep block, the aggro pull (draw, walk back for `Timing.WalkBack`, drop on an allied creep) and the tower-aggro drop; `Think` (after deny) shoves; `AdjustPosition` holds a freeze/hold position or zones for a support. A technique only starts when `LanePlanner.Plan` names it and commits on its first action; the tower-aggro drop is a safety reaction outside the planner. Freeze and hold are positions, not actions, so they never commit (committing would lock out the planner's own "freeze: drag back" aggro pull). Each start logs `[H:lane] pid=.. tech=<tech> @<cycleSec> reason=<reason>`, mistakes `[H:lane] mistake pid=.. <kind>`; the overlay line `lane_exec` shows `tech=<tech>@<sec> <phase>`.
+
+**TODO (in-game):**
+- Aggro drop: the attack order on an allied creep above 50% HP may be refused as an invalid deny; check the creeps still drop aggro.
+- Tower-aggro drop: an enemy tower's `GetAttackTarget()` returns the bot while it is being shot; attacking an allied creep (or hero) in range makes the tower switch, then the bot leaves to 1,000 from it.
+- Tower swap: attacking an enemy hero inside the tower's range pulls the tower off a low-HP allied core.
+- Creep block: the block point (120 ahead, ±50 to the side of the lead creep) actually slows the wave; tune `Radii.BlockAhead`/`BlockSide`.
+- Aggro draw: creep aggro is triggered by the attack order itself, so the walk-back moves issued on the next frames do not cancel it.
