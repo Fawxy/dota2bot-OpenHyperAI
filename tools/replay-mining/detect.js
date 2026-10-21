@@ -1,8 +1,9 @@
 'use strict';
 
 // Pure detection functions over parsed replay events (see parser/main.go for the event schema).
-// The parser has no lane-creep entity ids in `dmg.src`, so it also emits `srcEnt` on dmg events and
-// {"k":"creep","t","ent","team","x","y"} samples every second; both are required for divert.
+// Divert (and so half-pull detection) needs `srcEnt` on lane-creep dmg events plus {"k":"creep",...} samples.
+// The Go parser cannot attribute lane-creep damage to a unique entity, so it omits both; pulls then have
+// divert === undefined, half === false, and aggregate treats them as full pulls.
 
 const BOX_MARGIN = 300;
 const DEFAULT_HALF_EXTENT = 150;
@@ -224,14 +225,16 @@ function detectPulls(events, camps) {
         const meet = neutralPos(idx, parseRef(first.dst, 'neutral:'), first.t, first.campHint);
         if (!meet) return;
         const meetPt = { x: meet.x, y: meet.y };
-        const engaged = new Set(hits.filter((h) => h.t <= first.t + 5).map((h) => h.srcEnt ?? `anon${h.t}`));
+        const early = hits.filter((h) => h.t <= first.t + 5);
+        const hasDivert = early.every((h) => h.srcEnt !== undefined && h.srcEnt >= 0);
+        const engaged = new Set(early.map((h) => h.srcEnt));
         const nearby = new Set();
         for (let i = firstIndexAtOrAfter(idx.creeps, first.t - 1); i < idx.creeps.length && idx.creeps[i].t <= first.t; i++) {
             const c = idx.creeps[i];
             if (c.team === team && dist(c, meetPt) <= DIVERT_RADIUS) nearby.add(c.ent);
         }
         const denom = Math.max(nearby.size, engaged.size);
-        const divert = denom > 0 ? engaged.size / denom : 0;
+        const divert = !hasDivert ? undefined : denom > 0 ? engaged.size / denom : 0;
         pulls.push({
             camp,
             team,
@@ -239,7 +242,7 @@ function detectPulls(events, camps) {
             meet: meetPt,
             path: heroPath(idx, slot, ev.t, first.t),
             divert,
-            half: divert < 0.6 && divert > 0,
+            half: divert !== undefined && divert < 0.6 && divert > 0,
         });
     });
     return pulls;

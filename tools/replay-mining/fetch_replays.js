@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const https = require('https');
 const { spawnSync } = require('child_process');
 
@@ -13,6 +14,7 @@ const opt = (name, def) => (args.includes(`--${name}`) ? args[args.indexOf(`--${
 const count = Number(opt('count', 50));
 const outDir = path.resolve(opt('out', path.join(__dirname, 'replays')));
 
+const REQUEST_TIMEOUT_MS = 60000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let lastRequest = 0;
 
@@ -24,8 +26,9 @@ async function throttle() {
 
 function get(url, onResponse, redirects = 5) {
     return new Promise((resolve, reject) => {
-        https
-            .get(url, (res) => {
+        const client = new URL(url).protocol === 'http:' ? http : https;
+        client
+            .get(url, { timeout: REQUEST_TIMEOUT_MS }, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
                     res.resume();
                     resolve(get(new URL(res.headers.location, url).toString(), onResponse, redirects - 1));
@@ -33,6 +36,9 @@ function get(url, onResponse, redirects = 5) {
                     res.resume();
                     reject(new Error(`${url}: HTTP ${res.statusCode}`));
                 } else resolve(onResponse(res));
+            })
+            .on('timeout', function () {
+                this.destroy(new Error(`${url}: timed out`));
             })
             .on('error', reject);
     });
@@ -55,9 +61,16 @@ const getJson = async (url) => {
 
 const download = (url, dest) => get(url, (res) => new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    res.pipe(file);
+    const fail = (e) => {
+        file.destroy();
+        fs.rmSync(dest, { force: true });
+        reject(e);
+    };
+    res.on('error', fail);
+    res.on('aborted', () => fail(new Error(`${url}: connection aborted`)));
+    file.on('error', fail);
     file.on('finish', () => file.close(resolve));
-    file.on('error', reject);
+    res.pipe(file);
 }));
 
 async function main() {

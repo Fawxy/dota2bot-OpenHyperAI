@@ -13,9 +13,9 @@
 //
 // Events (NDJSON, one per line):
 //   {"k":"pos","t","hero":slot,"team":2|3,"x","y"}            every 0.5 s per hero
-//   {"k":"dmg","t","src":"hero:<slot>"|"lanecreep:<team>"|"neutral","srcEnt":<idx>,"dst":"neutral:<idx>","campHint":[x,y]}
+//   {"k":"dmg","t","src":"hero:<slot>"|"lanecreep:<team>"|"neutral","dst":"neutral:<idx>","campHint":[x,y]}
 //   {"k":"neutral","t","ent","x","y","alive"}                 every 1 s
-//   {"k":"creep","t","ent","team","x","y"}                    every 1 s (lane creeps; needed for divert)
+//   srcEnt and creep samples are deliberately not emitted (see README): pull divert/half detection is unavailable.
 //   {"k":"camp","x","y","type","hx","hy"}                    spawner boxes at game start
 package main
 
@@ -62,6 +62,38 @@ func gameTime(p *manta.Parser, s *state) float64 {
 		s.gameStart = start
 	}
 	return float64(now - s.gameStart)
+}
+
+func entitiesNamed(p *manta.Parser, name string) []*manta.Entity {
+	return p.FilterEntity(func(e *manta.Entity) bool {
+		n, ok := e.GetString("m_iszUnitName")
+		return ok && n == name
+	})
+}
+
+func laneCreepTeam(name string) (int, bool) {
+	switch {
+	case strings.Contains(name, "creep_goodguys"):
+		return 2, true
+	case strings.Contains(name, "creep_badguys"):
+		return 3, true
+	}
+	return 0, false
+}
+
+func nearest(cands, anchors []*manta.Entity) *manta.Entity {
+	var best *manta.Entity
+	bestD := math.Inf(1)
+	for _, c := range cands {
+		cx, cy := worldPos(c)
+		for _, a := range anchors {
+			ax, ay := worldPos(a)
+			if d := math.Hypot(cx-ax, cy-ay); d < bestD {
+				bestD, best = d, c
+			}
+		}
+	}
+	return best
 }
 
 func teamOf(e *manta.Entity) int {
@@ -130,14 +162,9 @@ func main() {
 		if t-s.lastSecond >= 1 {
 			s.lastSecond = t
 			for _, e := range p.FilterEntity(func(e *manta.Entity) bool {
-				c := e.GetClassName()
-				return c == "CDOTA_BaseNPC_Creep_Neutral" || c == "CDOTA_BaseNPC_Creep_Lane"
+				return e.GetClassName() == "CDOTA_BaseNPC_Creep_Neutral"
 			}) {
 				x, y := worldPos(e)
-				if e.GetClassName() == "CDOTA_BaseNPC_Creep_Lane" {
-					emit(map[string]any{"k": "creep", "t": t, "ent": e.GetIndex(), "team": teamOf(e), "x": x, "y": y})
-					continue
-				}
 				life, _ := e.GetInt32("m_lifeState")
 				emit(map[string]any{"k": "neutral", "t": t, "ent": e.GetIndex(), "x": x, "y": y, "alive": life == 0})
 			}
@@ -152,22 +179,39 @@ func main() {
 		t := float64(m.GetTimestamp()) - float64(s.gameStart)
 		attacker, _ := p.LookupStringByIndex("CombatLogNames", int32(m.GetAttackerName()))
 		target, _ := p.LookupStringByIndex("CombatLogNames", int32(m.GetTargetName()))
-		dstEnt := s.byName[target]
-		if dstEnt == nil || !strings.Contains(target, "neutral") {
+		if !strings.Contains(target, "neutral") {
 			return nil
 		}
+		neutrals := entitiesNamed(p, target)
+		if len(neutrals) == 0 {
+			return nil
+		}
+		// Combat-log names are shared by many entities, so entities are resolved by proximity:
+		// a hero is unique by name and hits the nearest same-name neutral; lane-creep attackers
+		// cannot be told apart, so only the team is emitted (no srcEnt) and the target is the
+		// same-name neutral closest to any creep of that team.
+		var dst *manta.Entity
 		src := "neutral"
-		srcEnt := int32(-1)
 		if ae := s.byName[attacker]; ae != nil {
-			srcEnt = ae.GetIndex()
 			if slot, ok := s.heroSlot[ae.GetIndex()]; ok {
 				src = fmt.Sprintf("hero:%d", slot)
-			} else if ae.GetClassName() == "CDOTA_BaseNPC_Creep_Lane" {
-				src = fmt.Sprintf("lanecreep:%d", teamOf(ae))
+				dst = nearest(neutrals, []*manta.Entity{ae})
 			}
+		} else if team, ok := laneCreepTeam(attacker); ok {
+			src = fmt.Sprintf("lanecreep:%d", team)
+			var creeps []*manta.Entity
+			for _, e := range p.FilterEntity(func(e *manta.Entity) bool { return e.GetClassName() == "CDOTA_BaseNPC_Creep_Lane" }) {
+				if teamOf(e) == team {
+					creeps = append(creeps, e)
+				}
+			}
+			dst = nearest(neutrals, creeps)
 		}
-		x, y := worldPos(dstEnt)
-		emit(map[string]any{"k": "dmg", "t": t, "src": src, "srcEnt": srcEnt, "dst": fmt.Sprintf("neutral:%d", dstEnt.GetIndex()), "campHint": []float64{x, y}})
+		if dst == nil {
+			return nil
+		}
+		x, y := worldPos(dst)
+		emit(map[string]any{"k": "dmg", "t": t, "src": src, "dst": fmt.Sprintf("neutral:%d", dst.GetIndex()), "campHint": []float64{x, y}})
 		return nil
 	})
 
