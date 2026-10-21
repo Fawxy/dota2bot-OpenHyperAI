@@ -20,6 +20,7 @@ export interface PullData {
 
 export interface CampJobData {
     campIdx: number;
+    /** The team whose job this is; differs from the spawner's team for an enemy-side (off-lane) camp. */
     team: number;
     lane?: Lane;
     stack?: { aggroSec: number; exitPath: Vector[] };
@@ -75,12 +76,16 @@ function dist2D(a: Vector, b: Vector): number {
 
 let spawnerCache: Spawner[] | undefined;
 let resolveCache: CampJobData[] | undefined;
+/** Job of the spawner's own team, per camp. */
 let byIdx: Record<number, CampJobData> = {};
+/** Seed and replay jobs per team, per camp: one camp can be one team's safe-lane camp and the other's off-lane camp. */
+let byTeam: Record<number, Record<number, CampJobData>> = {};
 
 export function ResetCache(): void {
     spawnerCache = undefined;
     resolveCache = undefined;
     byIdx = {};
+    byTeam = {};
 }
 
 export function Spawners(): Spawner[] {
@@ -251,7 +256,7 @@ export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
         ux = (c.x - nearest.x) / nearestDist;
         uy = (c.y - nearest.y) / nearestDist;
     }
-    // Directly away from the lane can run into the map edge: evil_7 (Dire off-lane hard camp) sits ~200 from it, so the
+    // Directly away from the lane can run into the map edge: evil_7 (Dire hard camp behind the bot T2) sits ~200 from it, so the
     // walk-off ended 350 past the box and its ranged trolls kept shooting from inside (console.9055828679, after=3).
     // Turn by 45 degree steps, at each step the side farther from the lane first, until the whole walk is passable.
     // StackExit is measured past the box edge, not from the centre: 7.41 boxes are 600-1100 wide, so from the
@@ -294,10 +299,15 @@ function laneTower(team: number, lane: Lane): Vector | undefined {
     return undefined;
 }
 
+function campTeamOf(entry: CampDataEntry): number {
+    if (entry.enemySide !== true) return entry.team;
+    return entry.team === Team.Radiant ? Team.Dire : Team.Radiant;
+}
+
 function matchReplay(s: Spawner): CampDataEntry | undefined {
     const radius = camps().ReplayMatchRadius;
     for (const entry of CAMP_DATA) {
-        if (entry.near === undefined || entry.team !== s.team || entry.type !== s.type) continue;
+        if (entry.near === undefined || campTeamOf(entry) !== s.team || entry.type !== s.type) continue;
         if (dist2D(entry.near, s.location) <= radius) return entry;
     }
     return undefined;
@@ -313,17 +323,15 @@ function stackFor(s: Spawner, entry: CampDataEntry | undefined): { aggroSec: num
 export function Resolve(): CampJobData[] {
     if (resolveCache !== undefined) return resolveCache;
     const spawners = Spawners();
-    const jobs: Record<number, CampJobData> = {};
-    const claimed: Record<number, boolean> = {};
+    const jobs: Record<number, Record<number, CampJobData>> = { [Team.Radiant]: {}, [Team.Dire]: {} };
 
     for (const s of spawners) {
         const entry = matchReplay(s);
         if (entry === undefined) continue;
-        claimed[s.idx] = true;
         const lane = entry.laneKind !== undefined ? LaneOfKind(entry.team, entry.laneKind) : undefined;
         const job: CampJobData = {
             campIdx: s.idx,
-            team: s.team,
+            team: entry.team,
             lane,
             stack: stackFor(s, entry),
             source: entry.source,
@@ -335,7 +343,7 @@ export function Resolve(): CampJobData[] {
         if (lane !== undefined && entry.pullAggroSec !== undefined && entry.pullPath !== undefined && entry.meetPoint !== undefined) {
             job.pull = { aggroSec: entry.pullAggroSec, halfAggroSec: entry.halfAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint, halfMeetPoint: entry.halfMeetPoint };
         }
-        jobs[s.idx] = job;
+        jobs[entry.team][s.idx] = job;
     }
 
     for (const entry of CAMP_DATA) {
@@ -344,10 +352,12 @@ export function Resolve(): CampJobData[] {
         const tower = laneTower(entry.team, lane);
         if (tower === undefined) continue;
         const maxTowerDist = entry.maxTowerDist ?? camps().PullCampMaxTowerDist;
+        const own = jobs[entry.team];
+        const campTeam = campTeamOf(entry);
         let best: Spawner | undefined;
         let bestDist = math.huge;
         for (const s of spawners) {
-            if (claimed[s.idx] === true || s.team !== entry.team || s.type !== entry.type) continue;
+            if (own[s.idx] !== undefined || s.team !== campTeam || s.type !== entry.type) continue;
             const d = dist2D(s.location, tower);
             if (d >= bestDist || d > maxTowerDist) continue;
             // Near the tower is not enough: a jungle camp behind it cannot be led to the lane.
@@ -356,11 +366,10 @@ export function Resolve(): CampJobData[] {
             best = s;
         }
         if (best === undefined) continue;
-        claimed[best.idx] = true;
         const meet = DeriveMeetPoint(entry.team, lane, best.location);
-        jobs[best.idx] = {
+        own[best.idx] = {
             campIdx: best.idx,
-            team: best.team,
+            team: entry.team,
             lane,
             stack: stackFor(best, entry),
             pull: {
@@ -380,7 +389,7 @@ export function Resolve(): CampJobData[] {
 
     const result: CampJobData[] = [];
     for (const s of spawners) {
-        const job = jobs[s.idx] ?? {
+        const job = jobs[s.team]?.[s.idx] ?? {
             campIdx: s.idx,
             team: s.team,
             stack: stackFor(s, undefined),
@@ -390,14 +399,18 @@ export function Resolve(): CampJobData[] {
         };
         result.push(job);
         byIdx[s.idx] = job;
+        const enemyJob = jobs[s.team === Team.Radiant ? Team.Dire : Team.Radiant][s.idx];
+        if (enemyJob !== undefined) result.push(enemyJob);
     }
+    byTeam = jobs;
     if (spawners.length > 0) resolveCache = result;
     return result;
 }
 
-export function ByIdx(idx: number): CampJobData | undefined {
+/** `team`'s job on the camp, else the job of the spawner's own team (every spawner has one). */
+export function ByIdx(idx: number, team?: number): CampJobData | undefined {
     Resolve();
-    return byIdx[idx];
+    return (team !== undefined ? byTeam[team]?.[idx] : undefined) ?? byIdx[idx];
 }
 
 export function PullCampsFor(team: number, lane: Lane): CampJobData[] {

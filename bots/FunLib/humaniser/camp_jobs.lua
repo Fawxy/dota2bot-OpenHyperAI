@@ -218,6 +218,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 function settings()
     return LaneConfig.Settings()
 end
@@ -494,6 +495,26 @@ local function leadPath(pull, meet)
     result[#result + 1] = meet
     return result
 end
+--- The camp's pull seconds for `kind`: from our wave's arrival at the meet point (`meet`, default the kind's own) for
+-- seed camps, else the data table's. Replay and measured seconds are measurements, so they are kept.
+local function timingFor(kind, data, meet)
+    local seed = ____exports.AggroSecondsFor(kind, data)
+    local spawner = Camps.SpawnerByIdx(data.campIdx)
+    if data.pull == nil or data.source ~= "seed" or spawner == nil then
+        return {seconds = seed, source = "seed"}
+    end
+    local half = kind == "half_pull"
+    local target = meet or (half and (data.pull.halfMeetPoint or data.pull.meetPoint) or data.pull.meetPoint)
+    return PullTiming.For(
+        data.team,
+        data.lane,
+        spawner.location,
+        data.type,
+        leadPath(data.pull, target),
+        half,
+        seed
+    )
+end
 local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
     return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
@@ -528,20 +549,22 @@ local function register(bot, job, data)
                 dataLabel(data)
             },
             {"aggroAt", job.aggroAt},
-            {"forced", job.forced == true}
+            {"forced", job.forced == true},
+            {"timing", job.timing or "seed"}
         }
     )
     HDebug.Log(
         "lane",
         string.format(
-            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s",
+            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s timing=%s",
             bot:GetPlayerID(),
             LOG_KIND[job.kind],
             job.campIdx,
             data.key or "-",
             dataLabel(data),
             job.aggroAt,
-            tostring(job.forced == true)
+            tostring(job.forced == true),
+            job.timing or "seed"
         )
     )
 end
@@ -653,12 +676,16 @@ function ____exports.Start(bot, req)
     if PULL_KINDS[req.kind] ~= true then
         return false
     end
-    local data = Camps.ByIdx(req.campIdx)
+    local data = Camps.ByIdx(
+        req.campIdx,
+        bot:GetTeam()
+    )
     local spawner = Camps.SpawnerByIdx(req.campIdx)
     if data == nil or data.pull == nil or spawner == nil then
         return false
     end
-    local seconds = ____exports.AggroSecondsFor(req.kind, data)
+    local timing = timingFor(req.kind, data)
+    local seconds = timing.seconds
     if #seconds == 0 then
         return false
     end
@@ -686,12 +713,20 @@ function ____exports.Start(bot, req)
             period
         )
     end
+    local slot = base
+    local shift = PullTiming.LiveShift(timing, base, now)
+    if shift ~= nil then
+        base = base + shift
+    end
     local job = __TS__ObjectAssign({}, req, {
         phase = "travel",
         aggroAt = base + jitter,
         plannedSec = base % period,
         path = path,
         meet = meet,
+        slot = slot,
+        waveAt = timing.waveAfter ~= nil and base + timing.waveAfter or nil,
+        timing = shift ~= nil and "live" or timing.source,
         startedAt = now,
         peakDivert = 0,
         waveSize = 0,
@@ -805,7 +840,10 @@ function ____exports.Covering(bot)
     return covering[bot:GetPlayerID()] ~= nil
 end
 local function logJob(bot, job, grade)
-    local data = Camps.ByIdx(job.campIdx)
+    local data = Camps.ByIdx(
+        job.campIdx,
+        bot:GetTeam()
+    )
     local aggro = job.plannedSec + ((job.actualAggro or job.aggroAt) - job.baseAggro)
     Telemetry.Event(
         "lane_job",
@@ -873,7 +911,7 @@ local function abort(bot, job, reason, keepStack, extra)
             bot,
             commitTech(job.kind)
         )
-        skipped[pid] = job.baseAggro
+        skipped[pid] = job.slot or job.baseAggro
     elseif job.kind ~= "stack" then
         doneCycle[pid] = cycleOf(DotaTime())
     end
@@ -886,7 +924,10 @@ local function abort(bot, job, reason, keepStack, extra)
     local token = string.gsub(reason, "%s+", "-")
     local ____Telemetry_Event_7 = Telemetry.Event
     local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
-    local ____opt_4 = Camps.ByIdx(job.campIdx)
+    local ____opt_4 = Camps.ByIdx(
+        job.campIdx,
+        bot:GetTeam()
+    )
     __TS__SparseArrayPush(
         ____array_6,
         {"key", ____opt_4 and ____opt_4.key},
@@ -908,7 +949,10 @@ local function abort(bot, job, reason, keepStack, extra)
         LOG_KIND[job.kind],
         job.campIdx
     )
-    local ____opt_8 = Camps.ByIdx(job.campIdx)
+    local ____opt_8 = Camps.ByIdx(
+        job.campIdx,
+        bot:GetTeam()
+    )
     __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, job.peakDivert)
     ____HDebug_Log_12(
         "lane",
@@ -1124,7 +1168,7 @@ local function windowTravel(bot, data, kind, now)
     local t = settings().Timing
     local base = ____exports.NextAggroTime(
         now - t.JobStartLate,
-        ____exports.AggroSecondsFor(kind, data),
+        timingFor(kind, data).seconds,
         t.PullPeriod
     )
     if not ____exports.CampsUp(base) then
@@ -1152,7 +1196,7 @@ local function windowFor(bot, data, kind, now)
     end
     return now + travel <= ____exports.NextAggroTime(
         now - t.JobStartLate,
-        ____exports.AggroSecondsFor(kind, data),
+        timingFor(kind, data).seconds,
         t.PullPeriod
     ) + t.JobStartLate
 end
@@ -1235,7 +1279,11 @@ local function schedule(bot)
                             travel > settings().Timing.MaxTravel and "far" or "late"
                         },
                         {"camp", camps[1].campIdx},
-                        {"travel", travel}
+                        {"travel", travel},
+                        {
+                            "timing",
+                            timingFor("full_pull", camps[1]).source
+                        }
                     }
                 )
             end
@@ -1244,17 +1292,26 @@ local function schedule(bot)
     end
     local choice = LanePlanner.Plan(bot, s)
     local input = LanePlanner.LastInput(bot)
-    notePlan(bot, s, now, {
-        {"gate", "planner"},
-        {"camp", camps[1].campIdx},
-        {"tech", choice.tech},
-        {"reason", choice.reason},
-        {"score", input and input.laneScore},
-        {"plan", input and input.plan.plan},
-        {"pullOk", input and input.plan.pullAllowed},
-        {"partner", input and input.partnerSafe},
-        {"laners", input and input.enemyLaners}
-    })
+    notePlan(
+        bot,
+        s,
+        now,
+        {
+            {"gate", "planner"},
+            {"camp", camps[1].campIdx},
+            {
+                "timing",
+                timingFor("full_pull", camps[1]).source
+            },
+            {"tech", choice.tech},
+            {"reason", choice.reason},
+            {"score", input and input.laneScore},
+            {"plan", input and input.plan.plan},
+            {"pullOk", input and input.plan.pullAllowed},
+            {"partner", input and input.partnerSafe},
+            {"laners", input and input.enemyLaners}
+        }
+    )
     local kind = PULL_TECHS[choice.tech]
     if kind == nil then
         return false
@@ -1265,7 +1322,7 @@ local function schedule(bot)
     end
     local base = ____exports.NextAggroTime(
         now - settings().Timing.JobStartLate,
-        ____exports.AggroSecondsFor(kind, camp),
+        timingFor(kind, camp).seconds,
         settings().Timing.PullPeriod
     )
     if skipped[pid] == base then
@@ -1473,17 +1530,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue189
+            local __continue192
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue189 = true
+                    __continue192 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue189 = true
+                    __continue192 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1494,9 +1551,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue189 = true
+                __continue192 = true
             until true
-            if not __continue189 then
+            if not __continue192 then
                 break
             end
         end
@@ -1542,10 +1599,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue215
+            local __continue218
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue215 = true
+                    __continue218 = true
                     break
                 end
                 if dist2D(
@@ -1554,9 +1611,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue215 = true
+                __continue218 = true
             until true
-            if not __continue215 then
+            if not __continue218 then
                 break
             end
         end
@@ -1591,17 +1648,17 @@ local function trySecondCamp(bot, job, now)
         return false
     end
     job.secondTried = true
-    local data = Camps.ByIdx(job.secondCampIdx)
+    local data = Camps.ByIdx(
+        job.secondCampIdx,
+        bot:GetTeam()
+    )
     local spawner = Camps.SpawnerByIdx(job.secondCampIdx)
     if data == nil or data.pull == nil or spawner == nil or job.meet == nil then
         return false
     end
     local cfg = settings()
-    local base = ____exports.NextAggroTime(
-        now,
-        ____exports.AggroSecondsFor("full_pull", data),
-        cfg.Timing.PullPeriod
-    )
+    local timing = timingFor("full_pull", data, job.meet)
+    local base = ____exports.NextAggroTime(now, timing.seconds, cfg.Timing.PullPeriod)
     if base - now > cfg.Timing.DoublePullReach then
         return false
     end
@@ -1618,6 +1675,7 @@ local function trySecondCamp(bot, job, now)
         function(____, p) return noisy(p, noise) end
     )
     job.aggroAt = base + jitter
+    job.waveAt = timing.waveAfter ~= nil and base + timing.waveAfter or nil
     job.activeCamp = job.secondCampIdx
     job.stage = 2
     job.waypoint = 0
@@ -1639,10 +1697,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue229
+            local __continue232
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue229 = true
+                    __continue232 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1652,9 +1710,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue229 = true
+                __continue232 = true
             until true
-            if not __continue229 then
+            if not __continue232 then
                 break
             end
         end
@@ -1840,7 +1898,7 @@ local function step(bot, job)
         if trySecondCamp(bot, job, now) then
             return step(bot, job)
         end
-        if now - (job.watchFrom or now) >= cfg.Timing.WatchSec then
+        if now - (job.watchFrom or now) >= cfg.Timing.WatchSec and (job.waveAt == nil or now >= job.waveAt + cfg.PullTiming.WatchAfterWave) then
             close(
                 bot,
                 job,

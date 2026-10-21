@@ -83,11 +83,15 @@ local function camps()
 end
 local spawnerCache
 local resolveCache
+--- Job of the spawner's own team, per camp.
 local byIdx = {}
+--- Seed and replay jobs per team, per camp: one camp can be one team's safe-lane camp and the other's off-lane camp.
+local byTeam = {}
 function ____exports.ResetCache()
     spawnerCache = nil
     resolveCache = nil
     byIdx = {}
+    byTeam = {}
 end
 function ____exports.Spawners()
     if spawnerCache ~= nil then
@@ -346,22 +350,28 @@ local function laneTower(team, lane)
     end
     return nil
 end
+local function campTeamOf(entry)
+    if entry.enemySide ~= true then
+        return entry.team
+    end
+    return entry.team == Team.Radiant and Team.Dire or Team.Radiant
+end
 local function matchReplay(s)
     local radius = camps().ReplayMatchRadius
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue64
+            local __continue66
             repeat
-                if entry.near == nil or entry.team ~= s.team or entry.type ~= s.type then
-                    __continue64 = true
+                if entry.near == nil or campTeamOf(entry) ~= s.team or entry.type ~= s.type then
+                    __continue66 = true
                     break
                 end
                 if dist2D(entry.near, s.location) <= radius then
                     return entry
                 end
-                __continue64 = true
+                __continue66 = true
             until true
-            if not __continue64 then
+            if not __continue66 then
                 break
             end
         end
@@ -379,22 +389,20 @@ function ____exports.Resolve()
         return resolveCache
     end
     local spawners = ____exports.Spawners()
-    local jobs = {}
-    local claimed = {}
+    local jobs = {[Team.Radiant] = {}, [Team.Dire] = {}}
     for ____, s in ipairs(spawners) do
         do
-            local __continue71
+            local __continue73
             repeat
                 local entry = matchReplay(s)
                 if entry == nil then
-                    __continue71 = true
+                    __continue73 = true
                     break
                 end
-                claimed[s.idx] = true
                 local lane = entry.laneKind ~= nil and ____exports.LaneOfKind(entry.team, entry.laneKind) or nil
                 local job = {
                     campIdx = s.idx,
-                    team = s.team,
+                    team = entry.team,
                     lane = lane,
                     stack = stackFor(s, entry),
                     source = entry.source,
@@ -412,69 +420,70 @@ function ____exports.Resolve()
                         halfMeetPoint = entry.halfMeetPoint
                     }
                 end
-                jobs[s.idx] = job
-                __continue71 = true
+                jobs[entry.team][s.idx] = job
+                __continue73 = true
             until true
-            if not __continue71 then
+            if not __continue73 then
                 break
             end
         end
     end
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue75
+            local __continue77
             repeat
                 if entry.near ~= nil or entry.laneKind == nil or entry.pullAggroSec == nil then
-                    __continue75 = true
+                    __continue77 = true
                     break
                 end
                 local lane = ____exports.LaneOfKind(entry.team, entry.laneKind)
                 local tower = laneTower(entry.team, lane)
                 if tower == nil then
-                    __continue75 = true
+                    __continue77 = true
                     break
                 end
                 local maxTowerDist = entry.maxTowerDist or camps().PullCampMaxTowerDist
+                local own = jobs[entry.team]
+                local campTeam = campTeamOf(entry)
                 local best
                 local bestDist = math.huge
                 for ____, s in ipairs(spawners) do
                     do
-                        local __continue78
+                        local __continue80
                         repeat
-                            if claimed[s.idx] == true or s.team ~= entry.team or s.type ~= entry.type then
-                                __continue78 = true
+                            if own[s.idx] ~= nil or s.team ~= campTeam or s.type ~= entry.type then
+                                __continue80 = true
                                 break
                             end
                             local d = dist2D(s.location, tower)
                             if d >= bestDist or d > maxTowerDist then
-                                __continue78 = true
+                                __continue80 = true
                                 break
                             end
                             if dist2D(
                                 s.location,
                                 ____exports.DeriveMeetPoint(entry.team, lane, s.location)
                             ) > camps().PullCampMaxLaneDist then
-                                __continue78 = true
+                                __continue80 = true
                                 break
                             end
                             bestDist = d
                             best = s
-                            __continue78 = true
+                            __continue80 = true
                         until true
-                        if not __continue78 then
+                        if not __continue80 then
                             break
                         end
                     end
                 end
                 if best == nil then
-                    __continue75 = true
+                    __continue77 = true
                     break
                 end
-                claimed[best.idx] = true
                 local meet = ____exports.DeriveMeetPoint(entry.team, lane, best.location)
-                jobs[best.idx] = {
+                own[best.idx] = {
                     campIdx = best.idx,
-                    team = best.team,
+                    team = entry.team,
                     lane = lane,
                     stack = stackFor(best, entry),
                     pull = {
@@ -490,16 +499,17 @@ function ____exports.Resolve()
                     derived = true,
                     unverified = entry.unverified
                 }
-                __continue75 = true
+                __continue77 = true
             until true
-            if not __continue75 then
+            if not __continue77 then
                 break
             end
         end
     end
     local result = {}
     for ____, s in ipairs(spawners) do
-        local job = jobs[s.idx] or ({
+        local ____opt_4 = jobs[s.team]
+        local job = ____opt_4 and ____opt_4[s.idx] or ({
             campIdx = s.idx,
             team = s.team,
             stack = stackFor(s, nil),
@@ -509,15 +519,28 @@ function ____exports.Resolve()
         })
         result[#result + 1] = job
         byIdx[s.idx] = job
+        local enemyJob = jobs[s.team == Team.Radiant and Team.Dire or Team.Radiant][s.idx]
+        if enemyJob ~= nil then
+            result[#result + 1] = enemyJob
+        end
     end
+    byTeam = jobs
     if #spawners > 0 then
         resolveCache = result
     end
     return result
 end
-function ____exports.ByIdx(idx)
+--- `team`'s job on the camp, else the job of the spawner's own team (every spawner has one).
+function ____exports.ByIdx(idx, team)
     ____exports.Resolve()
-    return byIdx[idx]
+    local ____temp_8
+    if team ~= nil then
+        local ____opt_6 = byTeam[team]
+        ____temp_8 = ____opt_6 and ____opt_6[idx]
+    else
+        ____temp_8 = nil
+    end
+    return ____temp_8 or byIdx[idx]
 end
 function ____exports.PullCampsFor(team, lane)
     local found = {}

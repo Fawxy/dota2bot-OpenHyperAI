@@ -245,6 +245,20 @@ ____exports.DEFAULTS = {
         ReplayMatchRadius = 600,
         LaneSampleStep = 0.005
     },
+    PullTiming = {
+        FromWave = true,
+        CreepSpeed = 325,
+        NeutralSpeed = {small = 290, medium = 300, large = 300, ancient = 290},
+        Lead = 1.5,
+        WaveSlots = {0, 30},
+        PathMaxOffset = 300,
+        LiveFrom = 2,
+        LiveWindow = 5,
+        LiveMaxOffset = 600,
+        LiveMaxShift = 4,
+        WatchAfterWave = 3,
+        LanePaths = {}
+    },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
     HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5, TowerAvoidRange = 850}
 }

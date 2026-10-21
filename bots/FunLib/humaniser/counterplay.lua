@@ -1050,17 +1050,17 @@ local function campBlock(bot, st, s, enemies, now)
     if ward == nil then
         return false
     end
-    local camp = Camps.PullCampsFor(
+    local spawner
+    for ____, camp in ipairs(Camps.PullCampsFor(
         enemyTeamOf(s.team),
         s.lane
-    )[1]
-    local ____temp_8
-    if camp ~= nil then
-        ____temp_8 = Camps.SpawnerByIdx(camp.campIdx)
-    else
-        ____temp_8 = nil
+    )) do
+        local sp = Camps.SpawnerByIdx(camp.campIdx)
+        if sp ~= nil and sp.team ~= s.team then
+            spawner = sp
+            break
+        end
     end
-    local spawner = ____temp_8
     if spawner == nil then
         return false
     end
@@ -1195,18 +1195,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue193
+            local __continue196
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue193 = true
+                    __continue196 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue193 = true
+                __continue196 = true
             until true
-            if not __continue193 then
+            if not __continue196 then
                 break
             end
         end
@@ -1237,31 +1237,31 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue201
+            local __continue204
             repeat
-                local ____opt_result_13
+                local ____opt_result_12
                 if camp ~= nil then
-                    ____opt_result_13 = camp.cattr
+                    ____opt_result_12 = camp.cattr
                 end
-                local ____opt_result_14
-                if ____opt_result_13 ~= nil then
-                    ____opt_result_14 = ____opt_result_13.location
+                local ____opt_result_13
+                if ____opt_result_12 ~= nil then
+                    ____opt_result_13 = ____opt_result_12.location
                 end
-                local loc = ____opt_result_14
+                local loc = ____opt_result_13
                 if loc == nil then
-                    __continue201 = true
+                    __continue204 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue201 = true
+                    __continue204 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue201 = true
+                    __continue204 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1269,9 +1269,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue201 = true
+                __continue204 = true
             until true
-            if not __continue201 then
+            if not __continue204 then
                 break
             end
         end

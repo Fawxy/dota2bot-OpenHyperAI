@@ -19,6 +19,7 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 
 export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -56,6 +57,11 @@ export interface Job extends JobRequest {
     /** The camp whose stand point was moved in toward its spawner origin because no neutral was seen from it. */
     approachedCamp?: number;
     watchFrom?: number;
+    /** When the pulled wave should reach the meet point (wave-timed pulls); the watch waits for it. */
+    waveAt?: number;
+    /** Pull: the aggro slot before any live shift, which `skipped` and the scheduler compare against. */
+    slot?: number;
+    timing?: PullTiming.TimingSource;
     sampledAt?: number;
     /** Stack: the next :00 + StackExitUntil, when the walk-off ends. */
     exitUntil?: number;
@@ -231,6 +237,19 @@ function leadPath(pull: Camps.PullData, meet: Vector): Vector[] {
     return result;
 }
 
+/**
+ * The camp's pull seconds for `kind`: from our wave's arrival at the meet point (`meet`, default the kind's own) for
+ * seed camps, else the data table's. Replay and measured seconds are measurements, so they are kept.
+ */
+function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
+    const seed = AggroSecondsFor(kind, data);
+    const spawner = Camps.SpawnerByIdx(data.campIdx);
+    if (data.pull === undefined || data.source !== "seed" || spawner === undefined) return { seconds: seed, source: "seed" };
+    const half = kind === "half_pull";
+    const target = meet ?? (half ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint);
+    return PullTiming.For(data.team, data.lane, spawner.location, data.type, leadPath(data.pull, target), half, seed);
+}
+
 function hpOk(bot: Unit): boolean {
     const maxHP = bot.GetMaxHealth();
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
@@ -255,18 +274,20 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["data", dataLabel(data)],
         ["aggroAt", job.aggroAt],
         ["forced", job.forced === true],
+        ["timing", job.timing ?? "seed"],
     ]);
     HDebug.Log(
         "lane",
         string.format(
-            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s",
+            "job-start pid=%d kind=%s camp=%d key=%s data=%s aggroAt=%.1f forced=%s timing=%s",
             bot.GetPlayerID(),
             LOG_KIND[job.kind],
             job.campIdx,
             data.key ?? "-",
             dataLabel(data),
             job.aggroAt,
-            tostring(job.forced === true)
+            tostring(job.forced === true),
+            job.timing ?? "seed"
         )
     );
 }
@@ -355,10 +376,11 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     if (!hpOk(bot)) return false;
     if (req.kind === "contest") return startContest(bot, req);
     if (PULL_KINDS[req.kind] !== true) return false;
-    const data = Camps.ByIdx(req.campIdx);
+    const data = Camps.ByIdx(req.campIdx, bot.GetTeam());
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;
-    const seconds = AggroSecondsFor(req.kind, data);
+    const timing = timingFor(req.kind, data);
+    const seconds = timing.seconds;
     if (seconds.length === 0) return false;
     const cfg = settings();
     const skill = LaneConfig.SkillOf(bot);
@@ -375,6 +397,9 @@ export function Start(bot: Unit, req: JobRequest): boolean {
 
     let base = NextAggroTime(now - cfg.Timing.JobStartLate, seconds, period);
     if (req.forced === true && base < now + travelTo(bot, stand)) base = NextAggroTime(now + travelTo(bot, stand), seconds, period);
+    const slot = base;
+    const shift = PullTiming.LiveShift(timing, base, now);
+    if (shift !== undefined) base += shift;
 
     const job: Job = {
         ...req,
@@ -383,6 +408,9 @@ export function Start(bot: Unit, req: JobRequest): boolean {
         plannedSec: base % period,
         path,
         meet,
+        slot,
+        waveAt: timing.waveAfter !== undefined ? base + timing.waveAfter : undefined,
+        timing: shift !== undefined ? "live" : timing.source,
         startedAt: now,
         peakDivert: 0,
         waveSize: 0,
@@ -487,7 +515,7 @@ export function Covering(bot: Unit): boolean {
 // ---------------------------------------------------------------------------------------------- ending
 
 function logJob(bot: Unit, job: Job, grade: string): void {
-    const data = Camps.ByIdx(job.campIdx);
+    const data = Camps.ByIdx(job.campIdx, bot.GetTeam());
     // Relative to the planned second, so a jittered pull past the minute does not wrap to 0.
     const aggro = job.plannedSec + ((job.actualAggro ?? job.aggroAt) - job.baseAggro);
     Telemetry.Event("lane_job", [
@@ -539,7 +567,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
     if (job.acted !== true) {
         // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
         LanePlanner.Release(bot, commitTech(job.kind));
-        skipped[pid] = job.baseAggro;
+        skipped[pid] = job.slot ?? job.baseAggro;
     } else if (job.kind !== "stack") {
         // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
         doneCycle[pid] = cycleOf(DotaTime());
@@ -551,7 +579,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         ["pid", pid],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
-        ["key", Camps.ByIdx(job.campIdx)?.key],
+        ["key", Camps.ByIdx(job.campIdx, bot.GetTeam())?.key],
         ["reason", token],
         ["phase", phase],
         ["acted", job.acted === true],
@@ -565,7 +593,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
             bot.GetPlayerID(),
             LOG_KIND[job.kind],
             job.campIdx,
-            Camps.ByIdx(job.campIdx)?.key ?? "-",
+            Camps.ByIdx(job.campIdx, bot.GetTeam())?.key ?? "-",
             token,
             job.peakDivert
         )
@@ -702,7 +730,7 @@ function windowTravel(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: nu
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (spawner === undefined || data.pull === undefined) return undefined;
     const t = settings().Timing;
-    const base = NextAggroTime(now - t.JobStartLate, AggroSecondsFor(kind, data), t.PullPeriod);
+    const base = NextAggroTime(now - t.JobStartLate, timingFor(kind, data).seconds, t.PullPeriod);
     if (!CampsUp(base)) return undefined;
     const travel = travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]));
     return WindowOpen(now, base, math.min(travel, t.MaxTravel)) ? travel : undefined;
@@ -713,7 +741,7 @@ function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: numbe
     const t = settings().Timing;
     const travel = windowTravel(bot, data, kind, now);
     if (travel === undefined || travel > t.MaxTravel) return false;
-    return now + travel <= NextAggroTime(now - t.JobStartLate, AggroSecondsFor(kind, data), t.PullPeriod) + t.JobStartLate;
+    return now + travel <= NextAggroTime(now - t.JobStartLate, timingFor(kind, data).seconds, t.PullPeriod) + t.JobStartLate;
 }
 
 /**
@@ -769,6 +797,7 @@ function schedule(bot: Unit): boolean {
                     ["gate", travel > settings().Timing.MaxTravel ? "far" : "late"],
                     ["camp", camps[0].campIdx],
                     ["travel", travel],
+                    ["timing", timingFor("full_pull", camps[0]).source],
                 ]);
             return false;
         }
@@ -778,6 +807,7 @@ function schedule(bot: Unit): boolean {
     notePlan(bot, s, now, [
         ["gate", "planner"],
         ["camp", camps[0].campIdx],
+        ["timing", timingFor("full_pull", camps[0]).source],
         ["tech", choice.tech],
         ["reason", choice.reason],
         ["score", input?.laneScore],
@@ -790,7 +820,7 @@ function schedule(bot: Unit): boolean {
     if (kind === undefined) return false;
     const camp = pullCampFor(kind, camps);
     if (!windowFor(bot, camp, kind, now)) return false;
-    const base = NextAggroTime(now - settings().Timing.JobStartLate, AggroSecondsFor(kind, camp), settings().Timing.PullPeriod);
+    const base = NextAggroTime(now - settings().Timing.JobStartLate, timingFor(kind, camp).seconds, settings().Timing.PullPeriod);
     if (skipped[pid] === base) return false;
     const req: JobRequest = { kind, campIdx: camp.campIdx };
     if (kind === "full_pull" && camps.length > 1 && LaneConfig.Knows("stack_pull", LaneConfig.SkillOf(bot))) {
@@ -1047,11 +1077,13 @@ function sample(bot: Unit, job: Job, now: number): void {
 function trySecondCamp(bot: Unit, job: Job, now: number): boolean {
     if (job.kind !== "double_pull" || job.stage !== 1 || job.secondTried || job.peakDivert <= 0 || job.secondCampIdx === undefined) return false;
     job.secondTried = true;
-    const data = Camps.ByIdx(job.secondCampIdx);
+    const data = Camps.ByIdx(job.secondCampIdx, bot.GetTeam());
     const spawner = Camps.SpawnerByIdx(job.secondCampIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined || job.meet === undefined) return false;
     const cfg = settings();
-    const base = NextAggroTime(now, AggroSecondsFor("full_pull", data), cfg.Timing.PullPeriod);
+    // Timed into the first camp's meet point, where the wave is.
+    const timing = timingFor("full_pull", data, job.meet);
+    const base = NextAggroTime(now, timing.seconds, cfg.Timing.PullPeriod);
     if (base - now > cfg.Timing.DoublePullReach) return false;
     const skill = LaneConfig.SkillOf(bot);
     const jitter = LaneConfig.Jitter(skill);
@@ -1060,6 +1092,7 @@ function trySecondCamp(bot: Unit, job: Job, now: number): boolean {
     job.stand = noisy(standFor(spawner, exact[0]), noise);
     job.path = exact.map((p) => noisy(p, noise));
     job.aggroAt = base + jitter;
+    job.waveAt = timing.waveAfter !== undefined ? base + timing.waveAfter : undefined;
     job.activeCamp = job.secondCampIdx;
     job.stage = 2;
     job.waypoint = 0;
@@ -1235,7 +1268,7 @@ function step(bot: Unit, job: Job): boolean {
     if (job.phase === "watch") {
         sample(bot, job, now);
         if (trySecondCamp(bot, job, now)) return step(bot, job);
-        if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec) {
+        if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec && (job.waveAt === undefined || now >= job.waveAt + cfg.PullTiming.WatchAfterWave)) {
             close(bot, job, "done", Grade(job.kind, job.peakDivert));
             return false;
         }

@@ -25,13 +25,13 @@ Register("hpt", (_team, issuer) => {
     HDebug.Log("lane", "hpt", fmt(issuer.GetLocation()));
 });
 
-Register("hcamp", (_team, issuer) => {
+Register("hcamp", (team, issuer) => {
     const [s] = Camps.NearestSpawner(issuer.GetLocation());
     if (s === undefined) {
         HDebug.Log("lane", "hcamp none");
         return;
     }
-    const job = Camps.ByIdx(s.idx);
+    const job = Camps.ByIdx(s.idx, team);
     HDebug.Log(
         "lane",
         "hcamp",

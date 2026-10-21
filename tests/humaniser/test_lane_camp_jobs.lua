@@ -287,11 +287,12 @@ do
 end
 
 do
-	-- Off-lane large seeds are unverified; the start line says so.
+	-- Off-lane large seeds are unverified; the start line says so. The camp is Dire's: the job uses Radiant's data on it.
 	local H = LaneFresh({ Enable = true }, { skill = 1, debug = true })
 	T = 70
 	CURRENT_TEAM = 2
 	SPAWNERS = { spawner("large", Vector(-1600, 6200)) }
+	SPAWNERS[1].team = 3
 	H.Lane.Camps.ResetCache()
 	local bot = unit({ pid = 5, pos = 4, lane = Lane.Top, loc = Vector(-1600, 5900) })
 	local lines = capture(function() H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 }) end)

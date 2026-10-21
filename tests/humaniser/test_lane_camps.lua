@@ -207,28 +207,63 @@ local function campNamesFor(C, names, team, lane)
 	return table.concat(r, ",")
 end
 
+local function idxOf(names, name) for i, n in pairs(names) do if n == name then return i end end end
+
 withMapLanes(function()
+	-- console.9055874680: the off-lane seeds claimed their own team's hard camp behind the off-lane T2 (good_13 / evil_7),
+	-- 12-20 s from the lane. The 7.41 off-lane pull is the enemy's hard camp beside their safe-lane T1.
 	local C, names = mapWorld()
 	local radOff = campNamesFor(C, names, RAD, Lane.Top)
-	check("7.41 radiant offlane resolves its hard camp", radOff == "good_13=radiant_off_large", radOff)
+	check("7.41 radiant offlane resolves the dire hard camp", radOff == "evil_1=radiant_off_large", radOff)
 	local direOff = campNamesFor(C, names, DIRE, Lane.Bot)
-	check("7.41 dire offlane resolves its hard camp", direOff == "evil_7=dire_off_large", direOff)
-	local radOffJob = C.PullCampsFor(RAD, Lane.Top)[1]
-	check("off-lane camp stays seed and unverified", radOffJob and radOffJob.source == "seed" and radOffJob.unverified == true and radOffJob.derived == true)
-	check("radiant off meet point near own T2", radOffJob and math.abs(radOffJob.pull.meetPoint.y + 783) < 150, radOffJob and radOffJob.pull.meetPoint.y)
+	check("7.41 dire offlane resolves the radiant hard camp", direOff == "good_2=dire_off_large", direOff)
+	local direOffJob = C.PullCampsFor(DIRE, Lane.Bot)[1]
+	check("off-lane camp stays seed and unverified", direOffJob and direOffJob.source == "seed" and direOffJob.unverified == true and direOffJob.derived == true)
+	check("off-lane job belongs to the pulling team", direOffJob and direOffJob.team == DIRE and C.SpawnerByIdx(direOffJob.campIdx).team == RAD)
+	-- Dire's laners stood at (6150..6230, -4100..-3450): the meet point is on their side of the bot-lane corner.
+	local m = direOffJob and direOffJob.pull.meetPoint
+	check("dire off meet point where dire's wave walks", m and m.x > 6100 and m.x < 6300 and m.y > -4200 and m.y < -3400, m and (m.x .. "," .. m.y))
+	local h = direOffJob and direOffJob.pull.halfMeetPoint
+	check("dire off half meet further toward the radiant base", h and m and h.y < m.y - 400, h and h.y)
+	local path = direOffJob and direOffJob.pull.path
+	check("dire off pull path ends at the meet point", path and path[#path] == m)
 	check("7.41 radiant safe small still resolved", campNamesFor(C, names, RAD, Lane.Bot):find("good_1=radiant_safe_small", 1, true) ~= nil)
 	local direSafe = campNamesFor(C, names, DIRE, Lane.Top)
 	check("7.41 dire safe camps unchanged", direSafe == "evil_2=dire_safe_small,evil_1=dire_safe_large", direSafe)
 	check("7.41 no mid pull camps", #C.PullCampsFor(RAD, Lane.Mid) == 0 and #C.PullCampsFor(DIRE, Lane.Mid) == 0)
+	for _, name in ipairs({ "good_13", "evil_7" }) do
+		local job = C.ByIdx(idxOf(names, name))
+		check(name .. " is a stack camp only", job and job.pull == nil and job.stack ~= nil and job.key == nil)
+	end
 end)
 
 withMapLanes(function()
-	-- A large camp nearer the Radiant top T1 than good_13 but ~2900 from the lane (inside the jungle) is not pullable into it.
-	local C, names = mapWorld({ { "jungle_large", RAD, "large", -3500, 1500 } })
+	-- evil_1 is Dire's safe-lane hard camp and Radiant's off-lane pull: one job per team, each in its own frame.
+	local C, names = mapWorld()
+	local idx = idxOf(names, "evil_1")
+	local dire, rad = C.ByIdx(idx, DIRE), C.ByIdx(idx, RAD)
+	check("shared camp: dire job is dire_safe_large", dire and dire.key == "dire_safe_large" and dire.team == DIRE, dire and dire.key)
+	check("shared camp: radiant job is radiant_off_large", rad and rad.key == "radiant_off_large" and rad.team == RAD, rad and rad.key)
+	check("shared camp: no team falls back to the spawner's team", C.ByIdx(idx) == dire)
+	-- Each team's half meet point is further along its own wave's walk: Dire's south, Radiant's north.
+	local dm, dh = dire.pull.meetPoint, dire.pull.halfMeetPoint
+	local rm, rh = rad.pull.meetPoint, rad.pull.halfMeetPoint
+	check("shared camp: dire half meet toward radiant", dh.y < dm.y - 400, dh.y - dm.y)
+	check("shared camp: radiant half meet toward dire", rh.y > rm.y + 400, rh.y - rm.y)
+	local count = 0
+	for _, job in ipairs(C.Resolve()) do if job.campIdx == idx then count = count + 1 end end
+	check("shared camp listed once per team", count == 2, count)
+	local good2 = idxOf(names, "good_2")
+	check("radiant keeps its own job on good_2", C.ByIdx(good2, RAD).team == RAD and C.ByIdx(good2, RAD) ~= C.ByIdx(good2, DIRE) and C.ByIdx(good2, DIRE).key == "dire_off_large")
+end)
+
+withMapLanes(function()
+	-- A Dire large camp nearer the Radiant top T1 than evil_1 but ~2650 from the lane (inside the jungle) is not pullable.
+	local C, names = mapWorld({ { "jungle_large", DIRE, "large", -3900, 2000 } })
 	local radOff = campNamesFor(C, names, RAD, Lane.Top)
-	check("jungle camp far from lane skipped for the real off camp", radOff == "good_13=radiant_off_large", radOff)
-	C, names = mapWorld({ { "jungle_large", RAD, "large", -3500, 1500 } }, nil, "good_13")
-	check("jungle camp far from lane never claimed", campNamesFor(C, names, RAD, Lane.Top) == "")
+	check("jungle camp far from lane skipped for the real off camp", radOff == "evil_1=radiant_off_large", radOff)
+	C, names = mapWorld({ { "jungle_large", DIRE, "large", -3900, 2000 } }, nil, "evil_1")
+	check("off seed never falls back to an own-side or jungle camp", campNamesFor(C, names, RAD, Lane.Top) == "", campNamesFor(C, names, RAD, Lane.Top))
 end)
 
 withMapLanes(function()
@@ -236,9 +271,9 @@ withMapLanes(function()
 	local C, names = mapWorld(nil, { { RAD, Lane.Bot } })
 	local radSafe = campNamesFor(C, names, RAD, Lane.Bot)
 	check("dead safe T1 does not claim the mid-side hard camp", radSafe:find("good_5", 1, true) == nil, radSafe)
+	-- Off-lane T1 down: the enemy hard camp is ~4400 / ~5100 from the T2, out of reach.
 	C, names = mapWorld(nil, { { RAD, Lane.Top }, { DIRE, Lane.Bot } })
-	check("dead off T1 still resolves via T2", campNamesFor(C, names, RAD, Lane.Top) == "good_13=radiant_off_large"
-		and campNamesFor(C, names, DIRE, Lane.Bot) == "evil_7=dire_off_large")
+	check("dead off T1: no off-lane pull camp", campNamesFor(C, names, RAD, Lane.Top) == "" and campNamesFor(C, names, DIRE, Lane.Bot) == "")
 end)
 
 withMapLanes(function()

@@ -436,6 +436,23 @@ do
 end
 
 do
+	-- A camp both teams have a job on (the enemy off lane's pull camp): only an ally's stack claim blocks it.
+	local H, support = world(1, { camps = { { "medium", MEDIUM } }, at = Vector(MEDIUM.x, MEDIUM.y + 1500) })
+	local S = H.Lane.Stacking
+	local s = H.Lane.LaneState.ForBot(support)
+	T = 105
+	S.Reserve(1, 4, T + 30)
+	unit({ pid = 4, pos = 4, loc = Vector(0, 0) })
+	check("precondition: an ally's claim blocks", S.ChooseCamp(support, s, 1) == nil)
+	S.Reserve(1, 10, T + 30)
+	S.Release(1, 4)
+	check("enemy's claim on the same camp does not block", S.ChooseCamp(support, s, 1) ~= nil)
+	S.Reserve(1, 4, T + 30)
+	S.Release(1, 10)
+	check("enemy's release keeps the ally's claim", S.ChooseCamp(support, s, 1) == nil)
+end
+
+do
 	-- In the laning phase too, a support whose active mode is retreat (or roam, defend) starts no stack.
 	local H, support = world(1, { camps = { { "medium", MEDIUM } } })
 	support.loc = standOf(H, 1)

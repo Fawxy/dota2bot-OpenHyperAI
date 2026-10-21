@@ -530,8 +530,15 @@ function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enem
         return ward !== undefined && math.floor(st.campBlockAt / 60) === math.floor(now / 60);
     }
     if (ward === undefined) return false;
-    const camp = Camps.PullCampsFor(enemyTeamOf(s.team), s.lane)[0];
-    const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
+    let spawner: Camps.Spawner | undefined;
+    for (const camp of Camps.PullCampsFor(enemyTeamOf(s.team), s.lane)) {
+        const sp = Camps.SpawnerByIdx(camp.campIdx);
+        // The enemy off lane pulls our own hard camp: a ward there would block our pulls too.
+        if (sp !== undefined && sp.team !== s.team) {
+            spawner = sp;
+            break;
+        }
+    }
     if (spawner === undefined) return false;
     const center = Camps.BoxCenter(spawner);
     const eta = GetUnitToLocationDistance(bot, center) / math.max(bot.GetCurrentMovementSpeed(), 1);

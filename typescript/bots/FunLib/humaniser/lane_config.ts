@@ -258,6 +258,26 @@ export const DEFAULTS = {
     },
     Infer: { ShoveHits: 4, FreezeDenies: 2, FreezeEqMax: -0.5, HoldSignals: 2, ShoveHitDamageMult: 1.3 },
     Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, PullCampMaxLaneDist: 2400, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
+    // Pull aggro from wave arrival (pull_timing.ts); FromWave false keeps the camp data seconds.
+    PullTiming: {
+        FromWave: true,
+        // npc_units.txt (7.41): every lane creep MovementSpeed 325.
+        CreepSpeed: 325,
+        // Camp leaders' speeds from npc_units.txt (fastest common member per type), capped near a support's ~300,
+        // since the camp chases the puller.
+        NeutralSpeed: { small: 290, medium: 300, large: 300, ancient: 290 } as Record<string, number>,
+        // Seconds the neutrals reach the meet point before the wave.
+        Lead: 1.5,
+        WaveSlots: [0, 30],
+        PathMaxOffset: 300,
+        LiveFrom: 2,
+        LiveWindow: 5,
+        LiveMaxOffset: 600,
+        LiveMaxShift: 4,
+        WatchAfterWave: 3,
+        // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
+        LanePaths: {} as Record<string, number[][]>,
+    },
     Orders: { FreezeShove: 90, PullNoPull: 120, Stack: 60 },
     // Idle-poke gates for bots 04 does not own; 04-owned bots read AllyLastHit.Settings() instead.
     HarassIdle: { IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },

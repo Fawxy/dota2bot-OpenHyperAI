@@ -25,13 +25,13 @@ ____exports.Register(
 )
 ____exports.Register(
     "hcamp",
-    function(_team, issuer)
+    function(team, issuer)
         local s = Camps.NearestSpawner(issuer:GetLocation())
         if s == nil then
             HDebug.Log("lane", "hcamp none")
             return
         end
-        local job = Camps.ByIdx(s.idx)
+        local job = Camps.ByIdx(s.idx, team)
         HDebug.Log(
             "lane",
             "hcamp",

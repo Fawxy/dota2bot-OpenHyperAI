@@ -199,7 +199,8 @@ local rolls = {}
 local before = {}
 records = {}
 local telegraphedAt = {}
---- Camps an ally's stack job has claimed, until that job's walk-off ends (DotaTime).
+--- Camps a bot's stack job has claimed, by camp then pid, until that job's walk-off ends (DotaTime). Per pid so a camp
+-- both teams have a job on (an off-lane pull camp) keeps each team's claim; only allies' claims block.
 local reservations = {}
 function ____exports.ResetCache()
     rolls = {}
@@ -283,12 +284,12 @@ function ____exports.StandPoint(spawner, data)
 end
 --- Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box.
 function ____exports.Reserve(campIdx, pid, ____until)
-    reservations[campIdx] = {pid = pid, ["until"] = ____until}
+    reservations[campIdx] = reservations[campIdx] or ({})
+    reservations[campIdx][pid] = ____until
 end
 function ____exports.Release(campIdx, pid)
-    local ____opt_2 = reservations[campIdx]
-    if (____opt_2 and ____opt_2.pid) == pid then
-        __TS__Delete(reservations, campIdx)
+    if reservations[campIdx] ~= nil then
+        __TS__Delete(reservations[campIdx], pid)
     end
 end
 local function contested(bot, idx, enemies, allies)
@@ -299,17 +300,31 @@ local function contested(bot, idx, enemies, allies)
         end
     end
     local pid = bot:GetPlayerID()
-    local claim = reservations[idx]
-    if claim ~= nil and claim.pid ~= pid and DotaTime() < claim["until"] then
-        return true
-    end
+    local claims = reservations[idx] or ({})
     for ____, a in ipairs(allies) do
-        if a:GetPlayerID() ~= pid and a:IsAlive() and Camps.InBox(
-            idx,
-            a:GetLocation(),
-            margin
-        ) then
-            return true
+        do
+            local __continue30
+            repeat
+                if a:GetPlayerID() == pid then
+                    __continue30 = true
+                    break
+                end
+                local ____until = claims[a:GetPlayerID()]
+                if ____until ~= nil and DotaTime() < ____until then
+                    return true
+                end
+                if a:IsAlive() and Camps.InBox(
+                    idx,
+                    a:GetLocation(),
+                    margin
+                ) then
+                    return true
+                end
+                __continue30 = true
+            until true
+            if not __continue30 then
+                break
+            end
         end
     end
     return false
@@ -371,15 +386,15 @@ function ____exports.ChooseCamp(bot, s, minute)
         local bestDist = math.huge
         for ____, data in ipairs(camps) do
             do
-                local __continue49
+                local __continue50
                 repeat
                     if data.team ~= team or data.type == "ancient" then
-                        __continue49 = true
+                        __continue50 = true
                         break
                     end
                     local spawner = Camps.SpawnerByIdx(data.campIdx)
-                    if spawner == nil then
-                        __continue49 = true
+                    if spawner == nil or spawner.team ~= team then
+                        __continue50 = true
                         break
                     end
                     local d = dist2D(
@@ -390,9 +405,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                         best = data
                         bestDist = d
                     end
-                    __continue49 = true
+                    __continue50 = true
                 until true
-                if not __continue49 then
+                if not __continue50 then
                     break
                 end
             end
@@ -405,15 +420,15 @@ function ____exports.ChooseCamp(bot, s, minute)
     local bestDist = math.huge
     for ____, data in ipairs(camps) do
         do
-            local __continue56
+            local __continue57
             repeat
                 if data.team ~= team or data.type ~= "ancient" then
-                    __continue56 = true
+                    __continue57 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(data.campIdx)
                 if spawner == nil then
-                    __continue56 = true
+                    __continue57 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -424,9 +439,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                     best = data
                     bestDist = d
                 end
-                __continue56 = true
+                __continue57 = true
             until true
-            if not __continue56 then
+            if not __continue57 then
                 break
             end
         end
@@ -484,13 +499,13 @@ function ____exports.NoteStackOutcome(campIdx, minute, countAfter, assumed)
     end
     local prior = before[campIdx]
     __TS__Delete(before, campIdx)
-    local ____temp_8
+    local ____temp_6
     if countAfter ~= nil then
-        ____temp_8 = prior ~= nil and countAfter > prior
+        ____temp_6 = prior ~= nil and countAfter > prior
     else
-        ____temp_8 = assumed
+        ____temp_6 = assumed
     end
-    local stacked = ____temp_8
+    local stacked = ____temp_6
     if not stacked then
         return false
     end

@@ -24,8 +24,11 @@ let rolls: Record<number, { minute: number; ok: boolean }> = {};
 let before: Record<number, number> = {};
 let records: Record<number, StackRecord> = {};
 let telegraphedAt: Record<number, number> = {};
-/** Camps an ally's stack job has claimed, until that job's walk-off ends (DotaTime). */
-let reservations: Record<number, { pid: number; until: number }> = {};
+/**
+ * Camps a bot's stack job has claimed, by camp then pid, until that job's walk-off ends (DotaTime). Per pid so a camp
+ * both teams have a job on (an off-lane pull camp) keeps each team's claim; only allies' claims block.
+ */
+let reservations: Record<number, Record<number, number>> = {};
 
 export function ResetCache(): void {
     rolls = {};
@@ -94,21 +97,24 @@ export function StandPoint(spawner: Camps.Spawner, data: Camps.CampJobData): Vec
 
 /** Claims `campIdx` for `pid`'s stack job so allies still choosing a camp skip it, not only once it stands in the box. */
 export function Reserve(campIdx: number, pid: number, until: number): void {
-    reservations[campIdx] = { pid, until };
+    reservations[campIdx] = reservations[campIdx] ?? {};
+    reservations[campIdx][pid] = until;
 }
 
 export function Release(campIdx: number, pid: number): void {
-    if (reservations[campIdx]?.pid === pid) delete reservations[campIdx];
+    if (reservations[campIdx] !== undefined) delete reservations[campIdx][pid];
 }
 
 function contested(bot: Unit, idx: number, enemies: LaneState.LaneEnemy[], allies: Unit[]): boolean {
     const margin = settings().Radii.BoxMargin;
     for (const e of enemies) if (e.visible && Camps.InBox(idx, e.location, margin)) return true;
     const pid = bot.GetPlayerID();
-    const claim = reservations[idx];
-    if (claim !== undefined && claim.pid !== pid && DotaTime() < claim.until) return true;
+    const claims = reservations[idx] ?? {};
     for (const a of allies) {
-        if (a.GetPlayerID() !== pid && a.IsAlive() && Camps.InBox(idx, a.GetLocation(), margin)) return true;
+        if (a.GetPlayerID() === pid) continue;
+        const until = claims[a.GetPlayerID()];
+        if (until !== undefined && DotaTime() < until) return true;
+        if (a.IsAlive() && Camps.InBox(idx, a.GetLocation(), margin)) return true;
     }
     return false;
 }
@@ -151,7 +157,8 @@ export function ChooseCamp(bot: Unit, s: LaneState.LaneSnapshot | undefined, min
         for (const data of camps) {
             if (data.team !== team || data.type === "ancient") continue;
             const spawner = Camps.SpawnerByIdx(data.campIdx);
-            if (spawner === undefined) continue;
+            // The enemy camp our off lane pulls is in their jungle: not one to stack for a core.
+            if (spawner === undefined || spawner.team !== team) continue;
             const d = dist2D(Camps.BoxCenter(spawner), loc);
             if (d <= radius && d < bestDist && ok(data)) {
                 best = data;
