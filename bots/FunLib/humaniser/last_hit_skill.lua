@@ -2,6 +2,7 @@
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
+local GameState = ____dota.GameState
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
@@ -179,7 +180,7 @@ end
 --- Resolves creeps that are gone: an attempt the bot's own last-hit (or deny) count did not move for is a miss.
 -- Dead creeps the bot never went for are dropped uncounted.
 function ____exports.Tick(bot)
-    if not ____exports.IsActiveFor(bot) then
+    if GetGameState() ~= GameState.GameInProgress or not ____exports.IsActiveFor(bot) then
         return
     end
     local pid = bot:GetPlayerID()

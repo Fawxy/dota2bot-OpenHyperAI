@@ -13,7 +13,7 @@
  *
  * jmz_func cannot be required from here (it requires the humaniser), so WillKillTarget is injected.
  */
-import { DamageType, Unit } from "bots/ts_libs/dota";
+import { DamageType, GameState, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
@@ -185,7 +185,8 @@ export function Counts(bot: Unit): { attempts: number; misses: number } {
  * Dead creeps the bot never went for are dropped uncounted.
  */
 export function Tick(bot: Unit): void {
-    if (!IsActiveFor(bot)) return;
+    // Before the horn there are no creeps, and reading skill then would cache it ahead of the FretBots vote.
+    if (GetGameState() !== GameState.GameInProgress || !IsActiveFor(bot)) return;
     const pid = bot.GetPlayerID();
     const now = GameTime();
     if (now - (tickedAt[pid] ?? -1) < TICK_SECONDS) return;
