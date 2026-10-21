@@ -160,6 +160,7 @@ local function buildInput(bot, s, now)
         override = LaneHooks.TechniqueOverride(bot)
     }
 end
+local ORDERED_BY_PULL = {full_pull = true, stack_pull = true, half_pull = true}
 local function gate(bot, i, choice)
     local tech = choice.tech
     if tech == "none" or tech == "hold" then
@@ -172,7 +173,10 @@ local function gate(bot, i, choice)
     if c.committed ~= nil then
         return c.committed == tech and choice or pick("none", ("one per cycle (" .. c.committed) .. ")")
     end
-    if i.plan.pullForced or i.plan.stackRequested then
+    if ORDERED_BY_PULL[tech] == true and i.plan.pullForced then
+        return choice
+    end
+    if tech == "stack_pull" and i.plan.stackRequested then
         return choice
     end
     local ok = c.rolls[tech]

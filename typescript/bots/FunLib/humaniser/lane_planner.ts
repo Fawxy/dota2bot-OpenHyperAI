@@ -167,12 +167,16 @@ function buildInput(bot: Unit, s: LaneState.LaneSnapshot, now: number): PlannerI
     };
 }
 
+// Only the technique a human ordered skips the attempt roll; anything else chosen meanwhile still rolls.
+const ORDERED_BY_PULL: Record<string, boolean> = { full_pull: true, stack_pull: true, half_pull: true };
+
 function gate(bot: Unit, i: PlannerInput, choice: Choice): Choice {
     const tech = choice.tech;
     if (tech === "none" || tech === "hold") return choice;
     const c = stateFor(bot.GetPlayerID(), i.now);
     if (c.committed !== undefined) return c.committed === tech ? choice : pick("none", `one per cycle (${c.committed})`);
-    if (i.plan.pullForced || i.plan.stackRequested) return choice;
+    if (ORDERED_BY_PULL[tech] === true && i.plan.pullForced) return choice;
+    if (tech === "stack_pull" && i.plan.stackRequested) return choice;
     let ok = c.rolls[tech];
     if (ok === undefined) {
         ok = LaneConfig.Roll(LaneConfig.Curve("AttemptRate", i.skill));

@@ -36,6 +36,11 @@ do
 end
 
 do
+	check("full pull at the 0.3 gate", choose({ laneScore = -1.6, skill = 0.3 }).tech == "full_pull")
+	check("no full pull at 0.29", choose({ laneScore = -1.6, skill = 0.29 }).tech ~= "full_pull")
+end
+
+do
 	local c = choose({ laneScore = -1.6 })
 	check("full pull when pushed to the enemy T1", c.tech == "full_pull", desc(c))
 	c = choose({ laneScore = -1.6, partnerSafe = false })
@@ -218,6 +223,30 @@ do
 	check("commit clears with the cycle", P.Committed(support) == nil)
 	c = plan(H, P, support)
 	check("next cycle picks the new technique", c.tech == "aggro_pull", desc(c))
+end
+
+local function forcePull(H)
+	H.Orders.Post(2, { type = "LANE_PULL", sourceKey = "pull", issuerPID = 0, lane = Lane.Bot, duration = 120,
+		maxResponders = 2, onlyPIDs = { 1, 5 }, delayKind = "chat" })
+	T = T + 20
+end
+
+do
+	local H, core, _, P = planWorld(0.4)
+	forcePull(H)
+	ROTATING = true
+	check("precondition: pull ordered", H.Lane.LanePlan.View(core, H.Lane.LaneState.ForBot(core)).pullForced)
+	SetRandomSequence({ 0.9 })
+	local c = plan(H, P, core)
+	check("ordered pull does not waive the roll for a rotation shove", c.tech == "none" and c.reason == "skip: attempt-roll shove", desc(c))
+end
+
+do
+	local H, _, support, P = planWorld(0.4, { t = 75 })
+	forcePull(H)
+	SetRandomSequence({ 0.9, 0.9 })
+	local c = plan(H, P, support)
+	check("the ordered pull itself skips the roll", c.tech == "full_pull", desc(c))
 end
 
 -- PF9: the core's own aggro stagger counts from when the planner first chose aggro_pull.
