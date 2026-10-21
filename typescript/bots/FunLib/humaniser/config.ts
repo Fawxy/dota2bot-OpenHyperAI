@@ -56,6 +56,8 @@ export const DEFAULTS = {
     Commands: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
     Trainer: { LastHit: { Enable: true } } as Record<string, any>,
+    // tasks: coroutine task runner spike (see humaniser/tasks.ts).
+    Tasks: { Enable: true, Demo: false } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;

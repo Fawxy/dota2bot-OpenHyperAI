@@ -1,0 +1,9 @@
+lua	.	tasks.lua
+lua	.	VERSION
+types	../../../../typescript/bots/FunLib/sdk/tasks	tasks.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/adapter.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/index.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/runner.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/support.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/types.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs.d.ts
