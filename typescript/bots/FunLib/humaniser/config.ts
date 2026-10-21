@@ -56,6 +56,17 @@ export const DEFAULTS = {
     Commands: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
     Trainer: { LastHit: { Enable: true } } as Record<string, any>,
+    /** Localhost sidecar probe (dota-bot-sdk lua-bridge). Off: never touches the HTTP API. */
+    Bridge: {
+        Enable: false,
+        Url: "http://127.0.0.1:41234/tick",
+        Hz: 4,
+        TimeoutSec: 2,
+        FailuresBeforeBackoff: 3,
+        MaxBackoffSec: 30,
+        PayloadBytes: 2048,
+        SummaryEverySec: 30,
+    },
 };
 
 export type HumaniserConfig = typeof DEFAULTS;

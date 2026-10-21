@@ -35,7 +35,17 @@ ____exports.DEFAULTS = {
     Pings = {Enable = true},
     Commands = {Enable = true},
     Intent = {Enable = true},
-    Trainer = {LastHit = {Enable = true}}
+    Trainer = {LastHit = {Enable = true}},
+    Bridge = {
+        Enable = false,
+        Url = "http://127.0.0.1:41234/tick",
+        Hz = 4,
+        TimeoutSec = 2,
+        FailuresBeforeBackoff = 3,
+        MaxBackoffSec = 30,
+        PayloadBytes = 2048,
+        SummaryEverySec = 30
+    }
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then

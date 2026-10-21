@@ -79,6 +79,8 @@ declare global {
         SetHTTPRequestRawPostBody(contentType: string, body: string): void;
         SetHTTPRequestGetOrPostParameter(aString: string, bString: string): boolean;
         Send(callback: (result: any) => void): void;
+        // Unverified in the bot VM (see CreateHTTPRequest below).
+        SetHTTPRequestHeaderValue(name: string, value: string): void;
     }
 
     interface LastSeenInfo {
@@ -93,6 +95,9 @@ declare global {
     }
 
     function CreateRemoteHTTPRequest(url: string): HTTPRequest;
+    // Shapes below are unverified in the bot VM; the lua-bridge probes them at runtime rather than trusting these.
+    function CreateHTTPRequest(url: string): HTTPRequest;
+    function RealTime(): number;
     function IsCMPickedHero(team: Team, heroName: string): boolean;
     function IsCMBannedHero(heroName: string): boolean;
     function GetCMPhaseTimeRemaining(): number;

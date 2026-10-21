@@ -14,9 +14,10 @@ import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
+import * as Bridge from "bots/FunLib/humaniser/bridge";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Intent, Trainer };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Intent, Trainer, Bridge };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -105,5 +106,6 @@ export function Tick(bot: Unit): void {
     Orders.GetFor(bot);
     Intent.Tick(bot);
     HDebug.SharedStateProbe(bot);
+    Bridge.Tick(bot);
     drawOverlay(bot);
 }
