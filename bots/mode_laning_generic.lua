@@ -246,7 +246,10 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			end
 		end
 
-		local denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
+		local denyCreep = nil
+		if not bLaneLaning or Lane.MayDeny(bot, nAllyCreeps) then
+			denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
+		end
 		if J.IsValid(denyCreep) then
 			bot:SetTarget(denyCreep)
 			bot:Action_AttackUnit(denyCreep, true)

@@ -44,20 +44,25 @@ export function OwnsLaning(bot: Unit): boolean {
     return LaneTech.OwnsLaning(bot);
 }
 
-function handsOffHumanMid(bot: Unit, enemyCreeps: Unit[]): boolean {
-    const creep = enemyCreeps[0];
-    return creep !== undefined && !LaneMid.MayTouchWave(bot, creep);
+function mayTouchAny(bot: Unit, creeps: Unit[]): boolean {
+    for (const creep of creeps) if (!LaneMid.MayTouchWave(bot, creep)) return false;
+    return true;
+}
+
+/** False when any of these creeps is a human mid's wave this bot must leave alone (deny included). */
+export function MayDeny(bot: Unit, allyCreeps: Unit[]): boolean {
+    return mayTouchAny(bot, allyCreeps);
 }
 
 /** Runs before last hits; true means this frame's action is issued. */
 export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
-    if (handsOffHumanMid(bot, enemyCreeps)) return false;
+    if (!mayTouchAny(bot, enemyCreeps)) return false;
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies);
 }
 
 /** Runs after last hit and deny; true means this frame's action is issued. */
 export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
-    if (handsOffHumanMid(bot, enemyCreeps)) return false;
+    if (!mayTouchAny(bot, enemyCreeps)) return false;
     return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies);
 }
 

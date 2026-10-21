@@ -116,6 +116,74 @@ do
 	check("a bot mid is not protected", M.MayTouchWave(support, creep) == true)
 end
 
+-- Hands-off: a bot-lane bot whose own lane is active, with a creep of a human mid's wave among the creeps it was handed.
+local BOT_Y = LANE_Y[Lane.Bot]
+local function botLaneWorld(humanMid, opts)
+	opts = opts or {}
+	local H = LaneFresh({ Enable = true, Mid = opts.mid }, { skill = 0.8 })
+	T, CURRENT_TEAM = opts.t or 5, 2
+	LANE_FRONT[2][Lane.Bot] = 4000 / 14000
+	local bot = unit({ pid = 1, pos = 1, lane = Lane.Bot, loc = Vector(-2800, BOT_Y) })
+	if humanMid then unit({ pid = 3, pos = 2, bot = false }) end
+	local midCreep = MakeCreep({ team = 3, x = 100, y = 0 })
+	return H, bot, midCreep
+end
+local function blockWorld(humanMid, opts)
+	local H, bot, midCreep = botLaneWorld(humanMid, opts)
+	MakeCreep({ team = 2, x = -3000, y = BOT_Y })
+	MakeCreep({ team = 2, x = -3100, y = BOT_Y })
+	MakeCreep({ team = 3, x = 3000, y = BOT_Y })
+	return H, bot, midCreep
+end
+local function shoveWorld(humanMid, opts)
+	opts = opts or {}
+	opts.t = 95
+	local H, bot, midCreep = botLaneWorld(humanMid, opts)
+	STRONGER = true
+	LANE_FRONT[2][Lane.Bot] = 0.5
+	bot.loc = Vector(-200, BOT_Y)
+	H.Lane.Hooks.SetRotationProbe(function() return true end)
+	local creeps = { MakeCreep({ team = 3, x = 100, y = BOT_Y, hp = 300 }), MakeCreep({ team = 3, x = 200, y = BOT_Y, hp = 400 }), midCreep }
+	return H, bot, creeps
+end
+local function actions(pid) return #ActionsOf(pid) end
+
+do
+	local H, bot, midCreep = blockWorld(false)
+	check("control: a bot-lane bot blocks at 0:05", H.Lane.PreThink(bot, {}, { midCreep }, {}) == true and actions(1) > 0)
+	H, bot, midCreep = blockWorld(true)
+	check("PreThink stands down beside a human mid's wave", H.Lane.PreThink(bot, {}, { midCreep }, {}) == false and actions(1) == 0)
+	H, bot, midCreep = blockWorld(true, { mid = false })
+	check("Mid flag off leaves PreThink alone", H.Lane.PreThink(bot, {}, { midCreep }, {}) == true)
+end
+
+do
+	local H, bot, creeps = shoveWorld(false)
+	check("control: the shove runs", H.Lane.Think(bot, {}, creeps, {}) == true and #ActionsOf(1, "AttackUnit") > 0)
+	H, bot, creeps = shoveWorld(true)
+	check("Think stands down when any creep is a human mid's", H.Lane.Think(bot, {}, creeps, {}) == false and actions(1) == 0)
+	H, bot, creeps = shoveWorld(true, { mid = false })
+	check("Mid flag off leaves Think alone", H.Lane.Think(bot, {}, creeps, {}) == true)
+end
+
+do
+	local H, mid = midWorld(0.8, { t = 5 })
+	unit({ pid = 3, pos = 2, bot = false })
+	local creep = MakeCreep({ team = 3, x = 100, y = 0 })
+	local allyCreeps = { MakeCreep({ team = 2, x = 50, y = 0 }) }
+	check("the mid bot itself may deny", H.Lane.MayDeny(mid, allyCreeps) == true)
+	local support = unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = Vector(300, 0) })
+	check("a passing support may not deny a human mid's wave", H.Lane.MayDeny(support, allyCreeps) == false)
+	check("no creeps, nothing to deny", H.Lane.MayDeny(support, {}) == true)
+	local top = MakeCreep({ team = 2, x = 0, y = 5000 })
+	check("a creep in another lane is fair game", H.Lane.MayDeny(support, { top }) == true)
+end
+
+do
+	local src = io.open("bots/mode_laning_generic.lua", "r"):read("a")
+	check("laning mode asks Lane.MayDeny before denying", src:find("Lane.MayDeny(bot, nAllyCreeps)", 1, true) ~= nil)
+end
+
 local MID_CAMP = { team = 2, type = "small", location = Vector(-2800, 400, 0), min = Vector(-2950, 250, 0),
 	max = Vector(-2650, 550, 0), speed = 0 }
 

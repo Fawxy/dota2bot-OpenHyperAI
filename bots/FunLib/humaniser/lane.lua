@@ -22,10 +22,10 @@ function nearestVisibleEnemy(bot, s)
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue18
+            local __continue22
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue18 = true
+                    __continue22 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, e.location)
@@ -33,9 +33,9 @@ function nearestVisibleEnemy(bot, s)
                     best = e.unit
                     bestDist = d
                 end
-                __continue18 = true
+                __continue22 = true
             until true
-            if not __continue18 then
+            if not __continue22 then
                 break
             end
         end
@@ -82,20 +82,28 @@ end
 function ____exports.OwnsLaning(bot)
     return LaneTech.OwnsLaning(bot)
 end
-local function handsOffHumanMid(bot, enemyCreeps)
-    local creep = enemyCreeps[1]
-    return creep ~= nil and not LaneMid.MayTouchWave(bot, creep)
+local function mayTouchAny(bot, creeps)
+    for ____, creep in ipairs(creeps) do
+        if not LaneMid.MayTouchWave(bot, creep) then
+            return false
+        end
+    end
+    return true
+end
+--- False when any of these creeps is a human mid's wave this bot must leave alone (deny included).
+function ____exports.MayDeny(bot, allyCreeps)
+    return mayTouchAny(bot, allyCreeps)
 end
 --- Runs before last hits; true means this frame's action is issued.
 function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
-    if handsOffHumanMid(bot, enemyCreeps) then
+    if not mayTouchAny(bot, enemyCreeps) then
         return false
     end
     return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies)
 end
 --- Runs after last hit and deny; true means this frame's action is issued.
 function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
-    if handsOffHumanMid(bot, enemyCreeps) then
+    if not mayTouchAny(bot, enemyCreeps) then
         return false
     end
     return LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies)
@@ -153,10 +161,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue30
+            local __continue34
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue30 = true
+                    __continue34 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -167,9 +175,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue30 = true
+                __continue34 = true
             until true
-            if not __continue30 then
+            if not __continue34 then
                 break
             end
         end
