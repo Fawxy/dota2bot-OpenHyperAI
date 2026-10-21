@@ -3,6 +3,7 @@ local ____exports = {}
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Merged under Customize.Humaniser.Perception; its Enable key is the kill switch, read via Config.
 ____exports.DEFAULTS = {
     Permanence = 2,
@@ -169,6 +170,19 @@ local function isNoticed(obs, hero, now, cfg)
                 "perception",
                 ((((((("pid=" .. tostring(obs.pid)) .. " noticed ") .. hero:GetUnitName()) .. " after ") .. format2(obs.lastNoticeDelay)) .. "s (") .. reason) .. ")"
             )
+            Telemetry.Event(
+                "notice",
+                {
+                    {"pid", obs.pid},
+                    {
+                        "target",
+                        hero:GetUnitName()
+                    },
+                    {"delay", obs.lastNoticeDelay},
+                    {"due", s.noticeAt - s.firstVisible},
+                    {"reason", reason}
+                }
+            )
         end
     end
     s.visible = s.noticed
@@ -256,6 +270,7 @@ local function markKnown(obs, e, now, who)
                 "perception",
                 ((((((("pid=" .. tostring(obs.pid)) .. " react ") .. who) .. " ") .. e.name) .. " known after ") .. format2(obs.lastReactDelay)) .. "s"
             )
+            Telemetry.Event("react", {{"pid", obs.pid}, {"who", who}, {"what", e.name}, {"delay", obs.lastReactDelay}})
         end
     end
     return true

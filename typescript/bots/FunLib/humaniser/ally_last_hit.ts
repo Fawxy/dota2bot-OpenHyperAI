@@ -16,6 +16,7 @@ import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export const DEFAULTS = {
     ProtectPositions: [1, 2, 3],
@@ -231,6 +232,7 @@ export function MayLastHit(bot: Unit, creep: Unit): LuaMultiReturn<[boolean, str
     const tier = GetTier(bot);
     const [allowed, reason] = decide(bot, human, creep, tier);
     showOverlay(bot, tier, allowed, reason);
+    Telemetry.NoteLastHitDecision(bot, creep, allowed, reason);
     return $multi(allowed, reason);
 }
 

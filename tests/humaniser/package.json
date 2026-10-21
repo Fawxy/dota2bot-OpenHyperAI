@@ -1,11 +1,12 @@
 {
     "name": "humaniser-offline-tests",
     "private": true,
-    "description": "Offline checks for the humaniser Lua: syntax over bots/, and behaviour tests against stubbed Dota globals.",
+    "description": "Offline checks for the humaniser Lua: syntax over bots/, behaviour tests against stubbed Dota globals, and the telemetry analyser (tools/hlog).",
     "scripts": {
         "syntax": "node syntax_check.js ../../bots",
         "test": "node run.js",
-        "check": "npm run syntax && npm test"
+        "hlog": "node --test ../../tools/hlog/test/hlog.test.js",
+        "check": "npm run syntax && npm test && npm run hlog"
     },
     "devDependencies": {
         "fengari": "0.1.4",

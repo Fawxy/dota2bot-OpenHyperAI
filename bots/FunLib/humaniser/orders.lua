@@ -133,6 +133,7 @@ local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function teamOrders(team)
     local list = ordersByTeam[team]
@@ -372,6 +373,23 @@ function ____exports.Post(team, spec)
     )
     list[#list + 1] = order
     version = version + 1
+    Telemetry.Event(
+        "order_post",
+        {
+            {"id", order.id},
+            {"team", team},
+            {"type", order.type},
+            {"lane", order.lane},
+            {"issuer", order.issuerPID},
+            {
+                "responders",
+                table.concat(order.responders, ",")
+            },
+            {"dur", order.duration},
+            {"kind", order.delayKind or "ping"},
+            {"src", order.sourceKey}
+        }
+    )
     return order
 end
 function ____exports.Cancel(team, id)
@@ -448,11 +466,41 @@ function ____exports.TryAccept(bot, order)
     local reason = ____exports.DeclineReason(bot, order)
     if reason ~= nil then
         state.declined = reason
+        Telemetry.Event(
+            "order_decline",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"id", order.id},
+                {"type", order.type},
+                {"reason", reason}
+            }
+        )
         ____exports.Say(bot, "say_order_decline_" .. reason)
         return false
     end
     if state.announced ~= true then
         state.announced = true
+        Telemetry.Event(
+            "order_accept",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"id", order.id},
+                {"type", order.type},
+                {"lane", order.lane},
+                {"kind", order.delayKind or "ping"},
+                {"read", state.readAt - order.createdAt},
+                {
+                    "latency",
+                    GameTime() - order.createdAt
+                }
+            }
+        )
         onAccepted(bot, order)
     end
     return true

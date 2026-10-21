@@ -56,6 +56,8 @@ export const DEFAULTS = {
     Commands: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
     Trainer: { LastHit: { Enable: true } } as Record<string, any>,
+    /** [HEV] event lines for tools/hlog. Off unless Customize turns it on; never changes behaviour. */
+    Telemetry: { Enable: false } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;

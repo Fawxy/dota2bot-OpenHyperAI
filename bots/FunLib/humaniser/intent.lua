@@ -30,6 +30,7 @@ local GameState = ____dota.GameState
 local Team = ____dota.Team
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local TIER_RANK = {
     MOOD = 1,
@@ -349,6 +350,14 @@ local function competingModes(s, now)
     end
     return table.concat(parts, " ")
 end
+--- The freshest resolved desires, highest first, e.g. "farm=0.62 laning=0.40".
+function ____exports.Competing(bot)
+    local s = states[bot:GetPlayerID()]
+    return s ~= nil and competingModes(
+        s,
+        GameTime()
+    ) or ""
+end
 local function onModeSwitch(bot, s, mode, now)
     local first = s.mode == nil
     s.mode = mode
@@ -371,6 +380,25 @@ local function onModeSwitch(bot, s, mode, now)
         HDebug.Log(
             "intent",
             (((((((("thrash pid=" .. tostring(bot:GetPlayerID())) .. " switches=") .. tostring(#s.switchTimes)) .. "/") .. tostring(cfg.Window)) .. "s now=") .. HDebug.ModeName(mode)) .. " ") .. competingModes(s, now)
+        )
+        Telemetry.Event(
+            "thrash",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"switches", #s.switchTimes},
+                {"window", cfg.Window},
+                {
+                    "mode",
+                    HDebug.ModeName(mode)
+                },
+                {
+                    "competing",
+                    competingModes(s, now)
+                }
+            }
         )
     end
 end
@@ -441,6 +469,22 @@ local function checkStuck(bot, s, mode, now)
     HDebug.Log(
         "intent",
         (((((("stuck pid=" .. tostring(bot:GetPlayerID())) .. " mode=") .. HDebug.ModeName(mode)) .. " desire=") .. string.format("%.2f", desire)) .. " since=") .. string.format("%.1f", s.modeSince)
+    )
+    Telemetry.Event(
+        "stuck",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "mode",
+                HDebug.ModeName(mode)
+            },
+            {"d", desire},
+            {"raw", raw},
+            {"inMode", now - s.modeSince}
+        }
     )
 end
 local function ancientDown(team)

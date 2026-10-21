@@ -164,6 +164,14 @@ Customize.Humaniser = {
             SelfTest = false,
         },
     },
+    -- Machine-readable "[HEV]" event lines (decisions, mode switches, last hits, 1 s snapshots) for
+    -- tools/hlog. Launch Dota with -condebug to write them to game/dota/console.log. "!mark <note>" in
+    -- chat records a mark and every bot's state at that moment. Never changes bot behaviour.
+    Telemetry = {
+        Enable = true,
+        SnapshotInterval = 1.0,
+        MarkAck = true, -- the team's lowest-PID bot replies "mark N saved" in team chat
+    },
 }
 
 return Customize

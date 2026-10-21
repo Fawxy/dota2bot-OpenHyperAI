@@ -5,6 +5,7 @@
 import { GameState, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Settings from "bots/FunLib/humaniser/trainer/settings";
 import { CreepKind, GetTrainerHelpers, HeroLabel, SetTrainerHelpers, T, TrainerHelpers, TUnit } from "bots/FunLib/humaniser/trainer/api";
 import { SpikeTick } from "bots/FunLib/humaniser/trainer/spike";
@@ -549,6 +550,17 @@ function fmt(x: number | undefined): string {
 }
 
 function onVerdict(s: TeamState, st: SubjectState, subject: Unit, v: Verdict, now: number): void {
+    Telemetry.Event("trainer", [
+        ["pid", subject.GetPlayerID()],
+        ["selftest", IsPlayerBot(subject.GetPlayerID())],
+        ["kind", v.kind],
+        ["creep", v.creepKind],
+        ["deny", v.isDeny],
+        ["offset", v.offset],
+        ["window", v.window],
+        ["pred", v.predictedLand],
+        ["landed", v.landedAt],
+    ]);
     if (IsPlayerBot(subject.GetPlayerID())) {
         HDebug.Log("trainer", `selftest predicted=${fmt(v.predictedLand)} actual=${fmt(v.landedAt)} verdict=${v.kind}`);
         return;

@@ -13,6 +13,7 @@
 import { BotMode, GameState, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Utils from "bots/FunLib/utils";
 
 declare const BOT_ACTION_TYPE_IDLE: number;
@@ -339,6 +340,12 @@ function competingModes(s: BotState, now: number): string {
     return parts.join(" ");
 }
 
+/** The freshest resolved desires, highest first, e.g. "farm=0.62 laning=0.40". */
+export function Competing(bot: Unit): string {
+    const s = states[bot.GetPlayerID()];
+    return s !== undefined ? competingModes(s, GameTime()) : "";
+}
+
 function onModeSwitch(bot: Unit, s: BotState, mode: number, now: number): void {
     const first = s.mode === undefined;
     s.mode = mode;
@@ -355,6 +362,13 @@ function onModeSwitch(bot: Unit, s: BotState, mode: number, now: number): void {
         s.thrashMode = mode;
         s.thrashEpisodes++;
         HDebug.Log("intent", `thrash pid=${bot.GetPlayerID()} switches=${s.switchTimes.length}/${cfg.Window}s now=${HDebug.ModeName(mode)} ${competingModes(s, now)}`);
+        Telemetry.Event("thrash", [
+            ["pid", bot.GetPlayerID()],
+            ["switches", s.switchTimes.length],
+            ["window", cfg.Window],
+            ["mode", HDebug.ModeName(mode)],
+            ["competing", competingModes(s, now)],
+        ]);
     }
 }
 
@@ -412,6 +426,13 @@ function checkStuck(bot: Unit, s: BotState, mode: number, now: number): void {
         "intent",
         `stuck pid=${bot.GetPlayerID()} mode=${HDebug.ModeName(mode)} desire=${string.format("%.2f", desire)} since=${string.format("%.1f", s.modeSince)}`
     );
+    Telemetry.Event("stuck", [
+        ["pid", bot.GetPlayerID()],
+        ["mode", HDebug.ModeName(mode)],
+        ["d", desire],
+        ["raw", raw],
+        ["inMode", now - s.modeSince],
+    ]);
 }
 
 function ancientDown(team: Team): boolean {

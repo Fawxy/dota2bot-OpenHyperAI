@@ -76,6 +76,56 @@ cd tests/humaniser && npm install && npm run check
 - `syntax` parses every `.lua` under `bots/` as LuaJIT, Dota's dialect. The checker also accepts `break;`, which upstream uses and LuaJIT allows.
 - `test` runs `tests/humaniser/test_*.lua` in fengari (Lua 5.3 in JS) against the stubs in `dota_stubs.lua`. `FreshHumaniser(cfg)` loads a new module instance with the given `Customize.Humaniser`. Two instances in one test stand in for "modules are not shared between bots".
 - These check logic and wiring only. Valve API semantics (ping types, chat callback delivery, modifier stacks) still need the in-game checks marked TODO in this file.
+- `hlog` runs the telemetry analyser's tests (`tools/hlog/test`), including `hlog_session.lua`: a scripted `!def mid` + `!mark` session through the real modules whose `[HEV]` output must pass the analyser's checks.
+
+## Telemetry and log analysis
+`Customize.Humaniser.Telemetry.Enable = true` (on in `general.lua`, off in the `config.ts` defaults) makes every bot print machine-readable `[HEV]` lines. They're independent of `Debug` and never change behaviour. The only visible effect is the `mark N saved` reply to `!mark`. The module is `typescript/bots/FunLib/humaniser/telemetry.ts`.
+
+**Setup, once:** add `-condebug` to Dota's Steam launch options (next to `-console`). Dota then writes its console to `…/dota 2 beta/game/dota/console.log`. **TODO (in-game):** confirm that bot-VM prints reach that file, and whether it's overwritten or appended per launch. The analyser splits games on clock resets either way.
+
+**While playing:** type `!mark <what looks wrong>` in chat (team or all). The team's lowest-PID bot replies `mark N saved`. Every bot logs its state at that moment (`mark_state`), including Dire's bots when you use all chat.
+
+**Afterwards:**
+```bash
+node tools/hlog/analyse.js                 # latest game: per-player summary and checks
+node tools/hlog/analyse.js --mark 2        # every bot's state at mark 2, plus the 20 s before it
+node tools/hlog/analyse.js --from 4:30 --to 5:10 --pid 3 --ev mode,lasthit,order_accept
+node tools/hlog/analyse.js --check         # checks only; exit 1 on any FAIL (e.g. after an all-bot run)
+node tools/hlog/analyse.js --list          # games in the log; --game N picks one
+```
+
+**Line format:** `[HEV] t=<DotaTime> ev=<name> k=v ...`. A value with spaces, `"` or `=` is double-quoted with inner quotes turned into single quotes. Order posts, pings, commands and marks are emitted by every module instance. The analyser de-duplicates them, so the log looks the same whether or not modules are shared.
+
+| `ev` | When | Key fields |
+|---|---|---|
+| `bot` | First tick, and whenever the profile changes | `skill ally notice react ping chat jitter lapse lapseMax minReact deference` |
+| `player` / `snap` | Human allies are reported by the team's lowest-PID bot | Every `SnapshotInterval` (1 s): `x y alive hp mp lvl lh dn tgt`, plus for bots `mode d act gold by order` |
+| `mode` | Active mode changed | `from to d dwell by` |
+| `lasthit` / `deny` | Last-hit or deny counter rose | `human creep dec decAge` (`dec` = the etiquette decision on the creep it was attacking the frame before) |
+| `notice` / `react` | Perception noticed an enemy, or knew of a cast | `target delay due reason` / `who what delay` |
+| `order_post` / `order_accept` / `order_decline` | Orders bus | `id type lane responders dur kind` / `read latency` / `reason` |
+| `ping` / `cmd` | Human ping or chat command | `context danger order` / `name args only text` |
+| `thrash` / `stuck` | Intent episodes | `switches competing` / `mode d raw inMode` |
+| `trainer` | Trainer verdict | `selftest kind creep deny offset window pred landed` |
+| `mark` / `mark_state` | `!mark` | `n by text` / one bot's full state at the mark |
+| `game_end` | An ancient fell or post-game started | |
+
+**Checks** (`tools/hlog/checks.js`):
+
+| Check | Fails or warns when |
+|---|---|
+| `script_errors` | **FAIL:** any Lua error line in the console (runtime errors and `[Humaniser] chat subscriber failed`). |
+| `snapshot_gaps` | **FAIL:** a bot stops reporting for more than 10 s (its script stalled or errored). |
+| `notice_delay` | **FAIL:** a sampled notice delay is outside the bot's profile bounds (`base × (1 ± jitter/2)`, plus up to `LapseMaxExtra`), or a hero is noticed before its delay elapsed. **WARN:** it was noticed more than 1 s late. |
+| `react_delay` | **FAIL:** a reaction is under `MinReact` or outside the profile bounds. |
+| `order_read_delay` | **FAIL:** an order's read delay is outside the `ping`/`chat` bounds, or the order was accepted before it. |
+| `order_followed` | **WARN:** an accepted order's mode (assemble, roshan, `defend_<lane>`, `push_<lane>`) never appears within 8 s while the bot is alive. |
+| `lasthit_etiquette` | **FAIL:** an allied bot last-hits a creep it had decided to leave for a human (`dec=skip…`). |
+| `intent_health` | **WARN:** each `stuck` or `thrash` episode. |
+| `frozen_bots` | **WARN:** a live bot outside fountain range doesn't move for 10 s. Independent of Intent's stuck detector. |
+| `trainer_selftest` | **FAIL:** with at least 20 self-test verdicts, under 85% `PERFECT`+`OK` or at least 5% `MISSED_EASY`. |
+
+**Hands-off regression run:** an all-bot lobby (spectate, `host_timescale 4`, about 15 minutes of game time), then `analyse.js --check`. That covers errors, stalls, perception bounds, thrash and freezes. Etiquette, orders and pings need a human on the team.
 
 ## Humaniser core (task 02): design notes
 All of these are built to work whichever way the shared-state check turns out.

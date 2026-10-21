@@ -9,6 +9,7 @@
 import { GameState, Lane, Ping, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Orders from "bots/FunLib/humaniser/orders";
 
 export const DEFAULTS = {
@@ -254,6 +255,15 @@ export function Scan(team: number): void {
         const result = Classify(pid, ping, smoked);
         lastSummary = `${result.context} by ${pid} @${string.format("%.1f", ping.time)}`;
         HDebug.Log("pings", lastSummary, `danger=${tostring(IsDangerPing(ping))}`);
+        Telemetry.Event("ping", [
+            ["by", pid],
+            ["team", team],
+            ["context", result.context],
+            ["danger", IsDangerPing(ping)],
+            ["x", math.floor(ping.location.x)],
+            ["y", math.floor(ping.location.y)],
+            ["order", result.spec?.type],
+        ]);
         if (result.spec === undefined) continue;
         if (smoked && (result.spec.type === "GATHER" || result.spec.type === "ATTACK")) cancelSmokeFrom(team, pid);
         Orders.Post(team, result.spec);

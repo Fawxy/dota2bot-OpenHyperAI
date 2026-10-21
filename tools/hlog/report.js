@@ -1,0 +1,140 @@
+// Human-readable views over a parsed game: summary, marks and timelines.
+'use strict';
+
+const { fmtT } = require('./checks');
+
+const MARK_STATE_KEYS = ['mode', 'd', 'by', 'order', 'hp', 'mp', 'tgt', 'x', 'y', 'competing'];
+const NOISY = new Set(['snap', 'bot', 'player']);
+
+function pad(s, n) {
+    s = String(s);
+    return s.length >= n ? s : s + ' '.repeat(n - s.length);
+}
+
+function table(rows) {
+    if (rows.length === 0) return '';
+    const widths = rows[0].map((_, i) => Math.max(...rows.map(r => String(r[i]).length)));
+    return rows.map(r => r.map((c, i) => pad(c, widths[i])).join('  ').trimEnd()).join('\n');
+}
+
+function mean(xs) {
+    return xs.length === 0 ? undefined : xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function f2(x) {
+    return x === undefined ? '-' : x.toFixed(2);
+}
+
+function who(game, pid) {
+    const b = game.bots[pid];
+    return b && b.hero ? `${b.hero}[${pid}]` : `pid${pid}`;
+}
+
+/** Share of snapshot time per mode, top three. */
+function modeShare(bot) {
+    const counts = {};
+    for (const s of bot.snaps) counts[s.mode] = (counts[s.mode] || 0) + 1;
+    const total = bot.snaps.length || 1;
+    return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([m, n]) => `${m} ${Math.round((100 * n) / total)}%`)
+        .join(', ');
+}
+
+function gameLine(game) {
+    const bots = Object.values(game.bots);
+    const humans = bots.filter(b => b.human).length;
+    return `game ${game.index}: ${fmtT(game.minT)} to ${fmtT(game.maxT)}, ${bots.length - humans} bots, ${humans} humans, ${game.events.length} events, ${game.marks.length} marks, ${game.errors.length} errors${
+        game.ended ? ', ended' : ''
+    }`;
+}
+
+function summary(game) {
+    const out = [gameLine(game), ''];
+    const rows = [['player', 'team', 'skill', 'ally', 'lh/dn', 'switches', 'notice n/avg', 'react n/avg', 'orders acc/dec', 'stuck', 'thrash', 'time in mode']];
+    const by = (ev, pid) => game.events.filter(e => e.ev === ev && e.pid === pid);
+    const players = Object.values(game.bots).sort((a, b) => (a.team || 0) - (b.team || 0) || a.pid - b.pid);
+    for (const b of players) {
+        const last = b.snaps[b.snaps.length - 1];
+        const p = b.profiles[b.profiles.length - 1];
+        const notices = by('notice', b.pid).filter(e => e.reason === 'delay');
+        const reacts = by('react', b.pid);
+        rows.push([
+            `${b.hero || '?'}[${b.pid}]${b.human ? ' (human)' : ''}`,
+            b.team === 2 ? 'rad' : b.team === 3 ? 'dire' : '?',
+            p ? p.skill.toFixed(2) : '-',
+            b.human ? '-' : b.allyOfHuman === undefined ? '?' : b.allyOfHuman ? 'yes' : 'no',
+            last ? `${last.lh}/${last.dn}` : '-',
+            by('mode', b.pid).length,
+            `${notices.length}/${f2(mean(notices.map(e => e.delay)))}`,
+            `${reacts.length}/${f2(mean(reacts.map(e => e.delay)))}`,
+            `${by('order_accept', b.pid).length}/${by('order_decline', b.pid).length}`,
+            by('stuck', b.pid).length,
+            by('thrash', b.pid).length,
+            b.human ? '-' : modeShare(b),
+        ]);
+    }
+    out.push(table(rows));
+    const orders = game.events.filter(e => e.ev === 'order_post');
+    const cmds = game.events.filter(e => e.ev === 'cmd');
+    const pings = game.events.filter(e => e.ev === 'ping');
+    out.push('', `orders posted ${orders.length} (${[...new Set(orders.map(o => o.type))].join(', ') || '-'}), commands ${cmds.length}, pings ${pings.length}`);
+    if (game.marks.length > 0) {
+        out.push('', 'marks:');
+        for (const m of game.marks) out.push(`  #${m.n} ${fmtT(m.t)} by ${who(game, m.by)}: ${m.text || '(no note)'}`);
+    }
+    return out.join('\n');
+}
+
+function checksText(results) {
+    const icon = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', skip: 'skip' };
+    const out = [];
+    for (const r of results) {
+        out.push(`${icon[r.level]}  ${r.id}: ${r.summary}`);
+        for (const d of r.details) out.push(`        ${d}`);
+        if (r.more > 0) out.push(`        ... ${r.more} more`);
+    }
+    return out.join('\n');
+}
+
+function eventText(game, e) {
+    const skip = new Set(['t', 'ev', 'pid']);
+    const fields = Object.entries(e)
+        .filter(([k]) => !skip.has(k))
+        .map(([k, v]) => `${k}=${typeof v === 'string' && v.includes(' ') ? JSON.stringify(v) : v}`)
+        .join(' ');
+    return `${pad(fmtT(e.t) + ` (${e.t.toFixed(1)})`, 14)} ${pad(e.pid !== undefined ? who(game, e.pid) : '', 22)} ${pad(e.ev, 13)} ${fields}`;
+}
+
+/** Events in [from, to], optionally for some players and event names. Snapshots only when asked. */
+function timeline(game, { from = -Infinity, to = Infinity, pids, evs, snaps = false } = {}) {
+    const lines = [];
+    for (const e of game.events) {
+        if (e.t < from || e.t > to) continue;
+        if (pids && e.pid !== undefined && !pids.includes(e.pid)) continue;
+        if (evs ? !evs.includes(e.ev) : !snaps && NOISY.has(e.ev)) continue;
+        lines.push(eventText(game, e));
+    }
+    return lines.join('\n');
+}
+
+function markView(game, n, window, opts = {}) {
+    const m = game.marks.find(x => x.n === n);
+    if (!m) return `no mark #${n} in game ${game.index} (it has ${game.marks.length})`;
+    const out = [`mark #${m.n} at ${fmtT(m.t)} by ${who(game, m.by)}: ${m.text || '(no note)'}`, ''];
+    const states = game.events.filter(e => e.ev === 'mark_state' && Math.abs(e.t - m.t) <= 1 && e.n === m.n);
+    // Both teams' VMs report state for an all-chat mark; keep the first line per player.
+    const seen = new Set();
+    const rows = [['player', ...MARK_STATE_KEYS]];
+    for (const s of states) {
+        if (seen.has(s.pid)) continue;
+        seen.add(s.pid);
+        rows.push([who(game, s.pid), ...MARK_STATE_KEYS.map(k => (s[k] === undefined ? '-' : s[k]))]);
+    }
+    out.push('state at the mark:', table(rows), '', `events ${fmtT(m.t - window)} to ${fmtT(m.t + window / 2)}:`);
+    out.push(timeline(game, { from: m.t - window, to: m.t + window / 2, pids: opts.pids, snaps: opts.snaps }));
+    return out.join('\n');
+}
+
+module.exports = { summary, checksText, timeline, markView, gameLine };

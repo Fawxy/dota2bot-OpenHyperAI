@@ -17,6 +17,7 @@ import { Ability, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 /** Merged under Customize.Humaniser.Perception; its Enable key is the kill switch, read via Config. */
 export const DEFAULTS = {
@@ -212,6 +213,13 @@ function isNoticed(obs: Observer, hero: Unit, now: number, cfg: PerceptionSettin
             s.noticedAt = now;
             obs.lastNoticeDelay = now - s.firstVisible;
             HDebug.Log("perception", `pid=${obs.pid} noticed ${hero.GetUnitName()} after ${format2(obs.lastNoticeDelay)}s (${reason})`);
+            Telemetry.Event("notice", [
+                ["pid", obs.pid],
+                ["target", hero.GetUnitName()],
+                ["delay", obs.lastNoticeDelay],
+                ["due", s.noticeAt - s.firstVisible],
+                ["reason", reason],
+            ]);
         }
     }
     s.visible = s.noticed;
@@ -266,7 +274,10 @@ function markKnown(obs: Observer, e: ReactEvent, now: number, who: string): bool
     if (!e.logged) {
         e.logged = true;
         obs.lastReactDelay = e.knownAt - e.firstSeen;
-        if (e.name !== "attack") HDebug.Log("perception", `pid=${obs.pid} react ${who} ${e.name} known after ${format2(obs.lastReactDelay)}s`);
+        if (e.name !== "attack") {
+            HDebug.Log("perception", `pid=${obs.pid} react ${who} ${e.name} known after ${format2(obs.lastReactDelay)}s`);
+            Telemetry.Event("react", [["pid", obs.pid], ["who", who], ["what", e.name], ["delay", obs.lastReactDelay]]);
+        }
     }
     return true;
 }

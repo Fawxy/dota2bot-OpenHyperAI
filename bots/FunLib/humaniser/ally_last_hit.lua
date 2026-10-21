@@ -7,6 +7,7 @@ local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function cached(store, key, compute)
     local now = DotaTime()
     local entry = store[key]
@@ -292,6 +293,7 @@ function ____exports.MayLastHit(bot, creep)
     local tier = ____exports.GetTier(bot)
     local allowed, reason = decide(bot, human, creep, tier)
     showOverlay(bot, tier, allowed, reason)
+    Telemetry.NoteLastHitDecision(bot, creep, allowed, reason)
     return allowed, reason
 end
 --- Returns `creeps` unchanged when etiquette is off for this bot, otherwise only the creeps it may hit.
