@@ -43,7 +43,7 @@ end
 function ____exports.NearbyUnits(loc, radius)
     local result = {}
     for ____, u in ipairs(unitsForTeam()) do
-        if u:IsAlive() and GetUnitToLocationDistance(u, loc) <= radius then
+        if not u:IsNull() and u:IsAlive() and GetUnitToLocationDistance(u, loc) <= radius then
             result[#result + 1] = u
         end
     end
@@ -53,7 +53,7 @@ end
 function ____exports.Heroes()
     local result = {}
     for ____, u in ipairs(unitsForTeam()) do
-        if u:IsHero() and not u:IsIllusion() then
+        if not u:IsNull() and u:IsHero() and not u:IsIllusion() then
             result[#result + 1] = u
         end
     end
@@ -62,7 +62,7 @@ end
 function ____exports.Towers()
     local result = {}
     for ____, u in ipairs(unitsForTeam()) do
-        if T(u):IsTower() and u:IsAlive() then
+        if not u:IsNull() and T(u):IsTower() and u:IsAlive() then
             result[#result + 1] = u
         end
     end

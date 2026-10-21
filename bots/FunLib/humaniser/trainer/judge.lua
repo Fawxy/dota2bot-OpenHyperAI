@@ -245,6 +245,7 @@ function Judge.prototype.____constructor(self, easyWindow)
     self.widest = {}
     self.handled = {}
     self.engaged = {}
+    self.previous = {}
 end
 function Judge.prototype.Step(self, s, creeps)
     local events = {}
@@ -257,6 +258,13 @@ function Judge.prototype.Step(self, s, creeps)
     self:detectEasyMisses(s, creeps, events)
     self:trackSwing(s, byId, events)
     self:emitOutcomes(creeps, events)
+    self:forget(byId)
+    self.previous = {}
+    for ____, c in ipairs(creeps) do
+        if c.alive and c.prediction ~= nil then
+            self.previous[c.id] = c.prediction
+        end
+    end
     self.prevAnim = s.anim
     self.prevTarget = s.target
     return events
@@ -404,11 +412,11 @@ end
 function Judge.prototype.recordWindows(self, now, creeps)
     for ____, c in ipairs(creeps) do
         do
-            local __continue34
+            local __continue37
             repeat
                 local p = c.prediction
                 if not c.alive or p == nil or p.startClose <= now then
-                    __continue34 = true
+                    __continue37 = true
                     break
                 end
                 local w = math.min(p.startClose, now + WIDEST_LOOKAHEAD) - math.max(p.startOpen, now)
@@ -417,9 +425,9 @@ function Judge.prototype.recordWindows(self, now, creeps)
                 end
                 local ____self_widest_c_id_3 = self.widest[c.id]
                 ____self_widest_c_id_3[#____self_widest_c_id_3 + 1] = {t = now, w = w}
-                __continue34 = true
+                __continue37 = true
             until true
-            if not __continue34 then
+            if not __continue37 then
                 break
             end
         end
@@ -444,10 +452,10 @@ end
 function Judge.prototype.detectEasyMisses(self, s, creeps, events)
     for ____, c in ipairs(creeps) do
         do
-            local __continue46
+            local __continue49
             repeat
                 if c.alive or c.killer == nil or self.handled[c.id] then
-                    __continue46 = true
+                    __continue49 = true
                     break
                 end
                 self.handled[c.id] = true
@@ -458,9 +466,9 @@ function Judge.prototype.detectEasyMisses(self, s, creeps, events)
                     end
                 end
                 __TS__Delete(self.widest, c.id)
-                __continue46 = true
+                __continue49 = true
             until true
-            if not __continue46 then
+            if not __continue49 then
                 break
             end
         end
@@ -532,7 +540,11 @@ function Judge.prototype.trackSwing(self, s, byId, events)
         return
     end
     local c = byId[s.target]
-    if c == nil or not c.alive or c.prediction == nil then
+    if c == nil or not c.alive then
+        return
+    end
+    local prediction = self.previous[c.id] or c.prediction
+    if prediction == nil then
         return
     end
     local swingStart = s.swingStart or s.now
@@ -543,14 +555,27 @@ function Judge.prototype.trackSwing(self, s, byId, events)
         creepKind = c.kind,
         isDeny = c.isDeny,
         harassed = s.harassed,
-        prediction = c.prediction,
+        prediction = prediction,
         swingStart = swingStart,
         startedAt = s.now,
-        predictedLand = swingStart + c.prediction.delay,
+        predictedLand = swingStart + prediction.delay,
         hp = c.hp,
         baselineHp = c.hp,
         swinging = true
     }
+end
+function Judge.prototype.forget(self, present)
+    local open = {}
+    for ____, a in ipairs(self.attempts) do
+        open[a.creepId] = true
+    end
+    for ____, marks in ipairs({self.attempted, self.reported, self.handled, self.engaged}) do
+        for ____, id in ipairs(__TS__ObjectKeys(marks)) do
+            if present[id] == nil and not open[id] then
+                __TS__Delete(marks, id)
+            end
+        end
+    end
 end
 function Judge.prototype.swingingAttempt(self)
     do
@@ -567,17 +592,17 @@ end
 function Judge.prototype.emitOutcomes(self, creeps, events)
     for ____, c in ipairs(creeps) do
         do
-            local __continue67
+            local __continue79
             repeat
                 if c.alive or c.killer == nil or not self.attempted[c.id] or self.reported[c.id] then
-                    __continue67 = true
+                    __continue79 = true
                     break
                 end
                 self.reported[c.id] = true
                 events[#events + 1] = {type = "outcome", creepId = c.id, subjectGotIt = c.killer.kind == "subject"}
-                __continue67 = true
+                __continue79 = true
             until true
-            if not __continue67 then
+            if not __continue79 then
                 break
             end
         end

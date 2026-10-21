@@ -12,6 +12,7 @@ local Unit = getmetatable(MakeUnit({ pid = 99 })).__index
 function Unit:GetUnitName() return self.name or ("npc_dota_hero_" .. self.pid) end
 function Unit:IsHero() return self.isHero ~= false end
 function Unit:IsTower() return self.tower == true end
+function Unit:IsNull() return self.null == true end
 function Unit:GetAttackTarget() return self.target end
 function Unit:GetAnimActivity() return self.anim or 1500 end
 function Unit:GetAnimCycle() return self.cycle or 0 end
@@ -189,6 +190,25 @@ do
 	Incoming.NearbyUnits(Vector(0, 0), 1600)
 	check("NearbyUnits refreshes after 0.25 s", calls > afterFirst, calls)
 	GetUnitList = real
+end
+
+-- A cached handle can go null within the 0.25 s cache; it must be skipped before any other call.
+do
+	reset()
+	local gone = Attacker("melee", { loc = Vector(100, 0) })
+	local kept = Attacker("tower", { loc = Vector(200, 0) })
+	Incoming.NearbyUnits(Vector(0, 0), 1600)
+	gone.null = true
+	function gone:IsAlive() error("IsAlive on a null handle") end
+	function gone:IsHero() error("IsHero on a null handle") end
+	function gone:IsTower() error("IsTower on a null handle") end
+	T = T + 0.1
+	local ok, found = pcall(Incoming.NearbyUnits, Vector(0, 0), 1600)
+	check("NearbyUnits skips a cached handle gone null", ok and #found == 1 and found[1] == kept, ok and #found or found)
+	ok = pcall(Incoming.Heroes)
+	check("Heroes skips a cached handle gone null", ok)
+	local okTowers, towers = pcall(Incoming.Towers)
+	check("Towers skips a cached handle gone null", okTowers and #towers == 1 and towers[1] == kept, okTowers and #towers or towers)
 end
 
 -- EffectiveDamage and Predict.

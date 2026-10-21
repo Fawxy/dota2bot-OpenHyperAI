@@ -229,6 +229,7 @@ end
 -- (lane management) can add steps without rewriting Think().
 local function LastHitThink()
 	if bTrainerSelfTest then
+		if Trainer.SelfTestHolding(bot) then return true end
 		local creep = Trainer.SelfTestTarget(bot)
 		if not J.IsValid(creep) then return false end
 		bot:SetTarget(creep)

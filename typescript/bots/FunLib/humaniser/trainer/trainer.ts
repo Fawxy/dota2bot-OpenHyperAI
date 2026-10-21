@@ -220,8 +220,8 @@ export function OnCommand(team: number, _pid: number, args: string[]): void {
     if (sub === undefined) {
         reply(status(s));
     } else if (sub === "on" || sub === "off") {
-        if (sub === "on") switchOn(s);
-        else switchOff(s);
+        if (sub === "off") switchOff(s);
+        else if (!s.on) switchOn(s);
         reply(status(s));
     } else if (sub === "bar" || sub === "denies") {
         const value = parseOnOff(args[1]);
@@ -245,7 +245,9 @@ export function OnCommand(team: number, _pid: number, args: string[]): void {
         } else {
             const pid = humanPID(team);
             const st = pid === undefined ? newSubject() : subjectState(s, pid);
-            for (const line of summaryLines(s, st)) reply(line);
+            const lines = summaryLines(s, st);
+            st.summary = { lines, at: GameTime() };
+            for (const line of lines) reply(line);
         }
     } else if (sub === "reset") {
         for (const [, st] of pairs(s.subjects)) {
@@ -326,12 +328,20 @@ export function IsSelfTestBot(bot: Unit): boolean {
 
 /** The bot's own creep whose start window has reached now; the earliest-closing one wins. */
 export function SelfTestTarget(bot: Unit): Unit | undefined {
-    const now = DotaTime();
+    const now = GameTime();
     let best: Prediction | undefined;
     for (const p of SubjectPredictions(bot.GetTeam(), bot.GetPlayerID())) {
         if (p.startOpen <= now && now < p.startClose && (best === undefined || p.startClose < best.startClose)) best = p;
     }
     return best?.creep;
+}
+
+/** True while the self-test bot's own swing at a creep is before its attack point: any order now would cancel it. */
+export function SelfTestHolding(bot: Unit): boolean {
+    if (!IsSelfTestBot(bot)) return false;
+    const target = bot.GetAttackTarget();
+    if (target === null || target === undefined || target.IsHero()) return false;
+    return swingOf(T(bot), GameTime()).anim === "swing";
 }
 
 interface Candidate {

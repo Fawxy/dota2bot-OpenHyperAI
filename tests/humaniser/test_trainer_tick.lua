@@ -538,4 +538,40 @@ do
 	check("control: Bars draws for a creep 1100 away", #LINES > 0)
 end
 
+do
+	local H, human, bots = setup()
+	say(H, "!trainer on")
+	scriptedLastHit(H, bots, human, Creep(3, {}))
+	tick(H, bots, 10)
+	say(H, "!trainer on")
+	tick(H, bots, 10)
+	say(H, "!trainer stats")
+	tick(H, bots, 40)
+	local said = bots[1].said or {}
+	check("on while already on still replies with the status", count(said, "trainer on") == 2, #said)
+	check("on while already on keeps the stats", count(said, "LH 1/1 (100%)") == 1, said[#said])
+	check("stats also shows the summary on screen", drawnStarting("LH 1/1 (100%)") ~= nil)
+end
+
+do
+	-- A creep handle's address can be reused by a later creep; that creep is judged afresh.
+	local H, human, bots = setup()
+	local function recycled()
+		local c = Creep(3, {})
+		return setmetatable(c, { __index = Unit, __tostring = function() return "creep: 0xreused" end })
+	end
+	say(H, "!trainer on")
+	for _ = 1, 2 do
+		local creep = recycled()
+		-- Past the 0.25 s unit-list cache, so the new creep is seen.
+		tick(H, bots, 8)
+		creep.alive = false
+		tick(H, bots, 3)
+	end
+	say(H, "!trainer stats")
+	tick(H, bots, 40)
+	local said = bots[1].said or {}
+	check("a reused creep id gets its own easy miss", count(said, "LH 0/2 (0%) - denies 0/0 - easy misses 2") == 1, said[#said])
+end
+
 finish()

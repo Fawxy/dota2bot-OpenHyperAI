@@ -267,6 +267,7 @@ local function __TS__ArrayFind(self, predicate, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local swingOf, ATTACK_ACTIVITIES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local GameState = ____dota.GameState
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -300,6 +301,16 @@ local ____draw = require(GetScriptDirectory().."/FunLib/humaniser/trainer/draw")
 local Bars = ____draw.Bars
 local SummaryText = ____draw.SummaryText
 local VerdictLines = ____draw.VerdictLines
+function swingOf(u, now)
+    if ATTACK_ACTIVITIES[u:GetAnimActivity()] ~= true then
+        return {anim = "none"}
+    end
+    local cycle = u:GetAnimCycle()
+    return {
+        anim = cycle < u:GetAttackPoint() and "swing" or "followthrough",
+        swingStart = now - cycle / u:GetAttackSpeed()
+    }
+end
 local REPLY_INTERVAL = 0.5
 local REPLY_CAP = 8
 local USAGE = "usage: !trainer on|off|stats|reset|bar on|off|chat off|misses|all|denies on|off"
@@ -311,7 +322,7 @@ local CANDIDATE_RADIUS = 800
 local DENY_HP_FRACTION = 0.6
 local HERO_FIGHT_SECONDS = 2
 local HARASS_SECONDS = 2
-local ATTACK_ACTIVITIES = {[1503] = true, [1504] = true}
+ATTACK_ACTIVITIES = {[1503] = true, [1504] = true}
 local VERDICT_LINES_KEPT = 3
 local CHAT_INTERVAL = 2
 local MISS_KINDS = {EARLY = true, LATE = true, MISS = true, MISSED_EASY = true}
@@ -458,10 +469,10 @@ function ____exports.OnCommand(team, _pid, args)
     if sub == nil then
         reply(status(s))
     elseif sub == "on" or sub == "off" then
-        if sub == "on" then
-            switchOn(s)
-        else
+        if sub == "off" then
             switchOff(s)
+        elseif not s.on then
+            switchOn(s)
         end
         reply(status(s))
     elseif sub == "bar" or sub == "denies" then
@@ -498,7 +509,12 @@ function ____exports.OnCommand(team, _pid, args)
         else
             local pid = humanPID(team)
             local st = pid == nil and newSubject() or subjectState(s, pid)
-            for ____, line in ipairs(summaryLines(s, st)) do
+            local lines = summaryLines(s, st)
+            st.summary = {
+                lines = lines,
+                at = GameTime()
+            }
+            for ____, line in ipairs(lines) do
                 reply(line)
             end
         end
@@ -626,7 +642,7 @@ function ____exports.IsSelfTestBot(bot)
 end
 --- The bot's own creep whose start window has reached now; the earliest-closing one wins.
 function ____exports.SelfTestTarget(bot)
-    local now = DotaTime()
+    local now = GameTime()
     local best
     for ____, p in ipairs(____exports.SubjectPredictions(
         bot:GetTeam(),
@@ -637,6 +653,20 @@ function ____exports.SelfTestTarget(bot)
         end
     end
     return best and best.creep
+end
+--- True while the self-test bot's own swing at a creep is before its attack point: any order now would cancel it.
+function ____exports.SelfTestHolding(bot)
+    if not ____exports.IsSelfTestBot(bot) then
+        return false
+    end
+    local target = bot:GetAttackTarget()
+    if target == nil or target == nil or target:IsHero() then
+        return false
+    end
+    return swingOf(
+        T(bot),
+        GameTime()
+    ).anim == "swing"
 end
 local function creepId(u)
     return tostring(u)
@@ -655,15 +685,15 @@ local function candidatesFor(subject, denies)
         CANDIDATE_RADIUS
     )) do
         do
-            local __continue83
+            local __continue86
             repeat
                 if not isLaneCreep(u) or not u:CanBeSeen() then
-                    __continue83 = true
+                    __continue86 = true
                     break
                 end
                 local ally = u:GetTeam() == subject:GetTeam()
                 if ally and not (denies and u:GetHealth() < DENY_HP_FRACTION * u:GetMaxHealth()) then
-                    __continue83 = true
+                    __continue86 = true
                     break
                 end
                 result[#result + 1] = {
@@ -671,9 +701,9 @@ local function candidatesFor(subject, denies)
                     creep = u,
                     isDeny = ally
                 }
-                __continue83 = true
+                __continue86 = true
             until true
-            if not __continue83 then
+            if not __continue86 then
                 break
             end
         end
@@ -791,11 +821,11 @@ local function snapshot(heroes)
     local seen = {}
     for ____, h in ipairs(heroes) do
         do
-            local __continue124
+            local __continue127
             repeat
                 local pid = h:GetPlayerID()
                 if counters.lastHits[pid] ~= nil then
-                    __continue124 = true
+                    __continue127 = true
                     break
                 end
                 counters.lastHits[pid] = T(h):GetLastHits()
@@ -805,9 +835,9 @@ local function snapshot(heroes)
                     team = h:GetTeam(),
                     name = HeroLabel(h)
                 }
-                __continue124 = true
+                __continue127 = true
             until true
-            if not __continue124 then
+            if not __continue127 then
                 break
             end
         end
@@ -872,7 +902,7 @@ local function creepObservations(s, st, subject, frame, refs)
     local result = {}
     for ____, id in ipairs(__TS__ObjectKeys(st.tracked)) do
         do
-            local __continue145
+            local __continue148
             repeat
                 local t = st.tracked[id]
                 local c = t.creep
@@ -902,12 +932,12 @@ local function creepObservations(s, st, subject, frame, refs)
                         dist = t.dist,
                         prediction = p
                     }
-                    __continue145 = true
+                    __continue148 = true
                     break
                 end
                 __TS__Delete(st.tracked, id)
                 if state == "lost" and not IsDeathLikely(t.hp, t.maxHp, t.effDmg, t.dist) then
-                    __continue145 = true
+                    __continue148 = true
                     break
                 end
                 local obs = {
@@ -929,9 +959,9 @@ local function creepObservations(s, st, subject, frame, refs)
                     refs
                 )
                 result[#result + 1] = obs
-                __continue145 = true
+                __continue148 = true
             until true
-            if not __continue145 then
+            if not __continue148 then
                 break
             end
         end
@@ -940,16 +970,6 @@ local function creepObservations(s, st, subject, frame, refs)
         table.remove(st.credits, 1)
     end
     return result
-end
-local function swingOf(u, now)
-    if ATTACK_ACTIVITIES[u:GetAnimActivity()] ~= true then
-        return {anim = "none"}
-    end
-    local cycle = u:GetAnimCycle()
-    return {
-        anim = cycle < u:GetAttackPoint() and "swing" or "followthrough",
-        swingStart = now - cycle / u:GetAttackSpeed()
-    }
 end
 local function subjectObservation(st, subject, target, now)
     local u = T(subject)

@@ -274,11 +274,11 @@ Other **TODO (in-game)** checks:
 | Command | Effect |
 |---|---|
 | `!trainer` | Status line: `trainer off - bar on - chat off - denies on` |
-| `!trainer on` / `off` | Start (stats reset) or stop all drawing, text and chat |
+| `!trainer on` / `off` | Start (stats reset; already on just replies the status) or stop all drawing, text and chat |
 | `!trainer bar on\|off` | Show or hide the bar |
 | `!trainer denies on\|off` | Grade denies |
 | `!trainer chat off\|misses\|all` | Send verdicts to team chat |
-| `!trainer stats` | Print the summary and the biggest leak |
+| `!trainer stats` | Print the summary and the biggest leak; also shown as screen text for 15 s |
 | `!trainer stats selftest` | The trainer bot's own score (see self-test) |
 | `!trainer reset` | Clear stats; replies `trainer stats reset` |
 | `!trainer spike` | Toggle the spike probe (only with `Debug = true`) |
@@ -335,7 +335,12 @@ The plan overrides the spec in four places:
 - **One-player warning** goes through `HDebug.Log`, so it only prints with Debug on.
 
 ### Merge note with 07 (lane management)
-Both 07 and this task edit `mode_laning_generic.lua`: 07 adds `or bLaneLaning` to the `Think()` definition condition, and the trainer adds `or bTrainerSelfTest`. When merging, keep both on that line. The other shared files (`general.lua`, `config.ts`, `index.ts`, `commands.ts`, `jmz_func.lua`, this document) only gained additions next to existing blocks. New Dota API typings live in `trainer/api.ts`, not `ts_libs/dota/*`.
+07 (`h-07-lane`) branched from `535087f`, before the laning `Think()` step refactor this branch builds on, so 07's `mode_laning_generic.lua` still has the older inline `Think()`. That file will not merge textually:
+- Take the step layout (`LastHitThink`, `DenyThink`, `HarassThink`, `PositionThink`) from this branch, then port 07's lane-management logic into it as steps by hand.
+- Keep the self-test branches at the top of `LastHitThink` (`SelfTestHolding`, then `SelfTestTarget`) and `DenyThink` (return false) as they are. They must run before any of 07's steps can issue an order, or the self-test bot's swings get cancelled.
+- The `Think()` definition condition needs both 07's `or bLaneLaning` and this branch's `or bTrainerSelfTest`.
+
+The other shared files (`general.lua`, `config.ts`, `index.ts`, `commands.ts`, `jmz_func.lua`, this document) only gained additions next to existing blocks, so their conflicts are additive siblings: keep both sides. New Dota API typings live in `trainer/api.ts`, not `ts_libs/dota/*`.
 
 ### Self-test lobby recipe
 Calibrates the predictor against a bot that last-hits from the trainer's own window.

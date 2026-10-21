@@ -50,19 +50,27 @@ function Direction(avg: number): string {
 
 export class Stats {
     private takeable: Verdict[] = [];
-    private gotIt: Record<string, boolean> = {};
+    /** EARLY verdicts waiting for their creep's outcome. Ids can be reused, so an outcome settles only these. */
+    private awaiting: Record<string, Verdict[]> = {};
+    private earlyLost = 0;
 
     Add(e: JudgeEvent): void {
         if (e.type === "outcome") {
-            this.gotIt[e.creepId] = e.subjectGotIt;
+            if (!e.subjectGotIt) this.earlyLost += (this.awaiting[e.creepId] ?? []).length;
+            delete this.awaiting[e.creepId];
         } else if (e.v.kind !== "CANCELLED") {
             this.takeable.push(e.v);
+            if (e.v.kind === "EARLY") {
+                if (this.awaiting[e.v.creepId] === undefined) this.awaiting[e.v.creepId] = [];
+                this.awaiting[e.v.creepId].push(e.v);
+            }
         }
     }
 
     Reset(): void {
         this.takeable = [];
-        this.gotIt = {};
+        this.awaiting = {};
+        this.earlyLost = 0;
     }
 
     Lines(o: { outcomeOnly: boolean; denies: boolean }): string[] {
@@ -212,8 +220,7 @@ export class Stats {
         const mean = Mean(offsets);
         const early = this.takeable.filter((v) => v.kind === "EARLY");
         if (mean > -BIAS_MIN_MEAN || early.length < BIAS_MIN_SHARE * this.attempts()) return undefined;
-        const lost = early.filter((v) => this.gotIt[v.creepId] === false).length;
-        return { cost: lost, line: `you're early: wait about ${this.adjustment(mean)}s longer before swinging` };
+        return { cost: this.earlyLost, line: `you're early: wait about ${this.adjustment(mean)}s longer before swinging` };
     }
 
     private harassRule(): Rule | undefined {

@@ -166,4 +166,16 @@ do
 	check("reset clears the leak", lines[3] == "not enough data yet", lines[3])
 end
 
+do
+	-- Creep ids are handle addresses and can be reused, so each outcome settles only the verdicts before it.
+	local s = NewStats()
+	for _, got in ipairs({ false, false, false, false, true }) do
+		feed(s, repeated(1, "EARLY", { offset = -0.2, creepId = "reused" }))
+		s:Add({ type = "outcome", creepId = "reused", subjectGotIt = got })
+	end
+	feed(s, concat(repeated(3, "MISSED_EASY", { swung = false }), repeated(2, "PERFECT", { offset = -0.2 })))
+	check("a reused id: earlier creeps lost still count for the early bias",
+		s:Leak(true) == "you're early: wait about 0.2s longer before swinging", s:Leak(true))
+end
+
 finish()

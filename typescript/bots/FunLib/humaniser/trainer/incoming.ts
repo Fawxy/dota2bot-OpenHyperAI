@@ -47,7 +47,7 @@ function unitsForTeam(): Unit[] {
 export function NearbyUnits(loc: Vector, radius: number): Unit[] {
     const result: Unit[] = [];
     for (const u of unitsForTeam()) {
-        if (u.IsAlive() && GetUnitToLocationDistance(u, loc) <= radius) result.push(u);
+        if (!u.IsNull() && u.IsAlive() && GetUnitToLocationDistance(u, loc) <= radius) result.push(u);
     }
     return result;
 }
@@ -56,7 +56,7 @@ export function NearbyUnits(loc: Vector, radius: number): Unit[] {
 export function Heroes(): Unit[] {
     const result: Unit[] = [];
     for (const u of unitsForTeam()) {
-        if (u.IsHero() && !u.IsIllusion()) result.push(u);
+        if (!u.IsNull() && u.IsHero() && !u.IsIllusion()) result.push(u);
     }
     return result;
 }
@@ -64,7 +64,7 @@ export function Heroes(): Unit[] {
 export function Towers(): Unit[] {
     const result: Unit[] = [];
     for (const u of unitsForTeam()) {
-        if (T(u).IsTower() && u.IsAlive()) result.push(u);
+        if (!u.IsNull() && T(u).IsTower() && u.IsAlive()) result.push(u);
     }
     return result;
 }

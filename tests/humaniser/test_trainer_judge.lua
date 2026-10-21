@@ -300,4 +300,56 @@ do
 	check("no attempt, no verdict and no outcome", #r.verdicts == 0 and #r.outcomes == 0)
 end
 
+-- Mid-swing the predictor measures the delay from now, not from the swing start, so the attempt keeps the
+-- prediction made on the last frame before the swing was seen.
+do
+	local r = newRun()
+	local swingStart = t0 + 0.11
+	r.play(t0, t0 + 1.0, function(now)
+		local s, cs = killScript(swingStart, t0 + 0.5, pred(t0 - 0.2, t0 + 0.4, { ideal = t0 }), { kind = "subject" })(now)
+		if now >= swingStart then cs[1].prediction = pred(t0 - 0.3, t0 + 0.3, { ideal = t0 - 0.1, delay = 0.34 }) end
+		return s, cs
+	end)
+	local v = only("delay shrinks mid-swing", r, "PERFECT")
+	check("predictedLand uses the pre-swing delay", v.predictedLand ~= nil and near(v.predictedLand, swingStart + 0.4), v.predictedLand)
+	check("offset uses the pre-swing ideal", near(v.offset or 99, swingStart - t0), v.offset)
+end
+
+-- Creep ids are handle addresses and can be reused: once a creep has died and left the list, a new creep with
+-- the same id is judged afresh. Each death is seen on one frame only, as the trainer reports it.
+do
+	local r = newRun()
+	r.play(t0, t0 + 1.0, function(now)
+		if now < t0 + 0.3 - 1e-9 then return { anim = "none" }, { creep("A", { prediction = pred(t0 + 0.2, t0 + 1.2) }) } end
+		if now < t0 + 0.32 then return { anim = "none" }, { creep("A", { alive = false, hp = 0, killer = { kind = "creep" } }) } end
+		if now < t0 + 0.4 then return { anim = "none" }, {} end
+		if now < t0 + 0.7 - 1e-9 then return { anim = "none" }, { creep("A", { prediction = pred(t0 + 0.6, t0 + 1.6) }) } end
+		if now < t0 + 0.72 then return { anim = "none" }, { creep("A", { alive = false, hp = 0, killer = { kind = "creep" } }) } end
+		return { anim = "none" }, {}
+	end)
+	local easy = 0
+	for _, v in ipairs(r.verdicts) do if v.kind == "MISSED_EASY" then easy = easy + 1 end end
+	check("a reused id gets its own easy miss", easy == 2, easy)
+
+	r = newRun()
+	local function life(from, now)
+		if now < from + 0.5 - 1e-9 then
+			return { anim = swingAnim(from + 0.1, now), target = "A", swingStart = from + 0.1 }, { creep("A", { prediction = pred(from, from + 0.4) }) }
+		end
+		if now < from + 0.52 then return { anim = "none" }, { creep("A", { alive = false, hp = 0, killer = { kind = "subject" } }) } end
+		return { anim = "none" }, {}
+	end
+	r.play(t0, t0 + 2.0, function(now)
+		if now < t0 + 1.0 then
+			local s, cs = life(t0, now)
+			if now < t0 + 0.1 then s.anim = "none" end
+			return s, cs
+		end
+		local s, cs = life(t0 + 1.0, now)
+		if now < t0 + 1.1 then s.anim = "none" end
+		return s, cs
+	end)
+	check("a reused id gets its own outcome", #r.outcomes == 2 and r.outcomes[1].subjectGotIt and r.outcomes[2].subjectGotIt, #r.outcomes)
+end
+
 finish()

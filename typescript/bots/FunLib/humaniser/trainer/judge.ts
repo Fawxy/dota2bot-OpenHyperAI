@@ -86,6 +86,11 @@ export class Judge {
     private handled: Record<string, boolean> = {};
     /** Creeps the subject committed to: an attempt on them resolved as something other than CANCELLED. */
     private engaged: Record<string, boolean> = {};
+    /**
+     * Last frame's prediction per creep. Mid-swing the predictor measures the delay from now rather than from
+     * the swing start, so an attempt is graded on the prediction made before its swing was seen.
+     */
+    private previous: Record<string, Prediction> = {};
 
     constructor(readonly easyWindow: number) {}
 
@@ -99,7 +104,12 @@ export class Judge {
         this.detectEasyMisses(s, creeps, events);
         this.trackSwing(s, byId, events);
         this.emitOutcomes(creeps, events);
+        this.forget(byId);
 
+        this.previous = {};
+        for (const c of creeps) {
+            if (c.alive && c.prediction !== undefined) this.previous[c.id] = c.prediction;
+        }
         this.prevAnim = s.anim;
         this.prevTarget = s.target;
         return events;
@@ -290,7 +300,9 @@ export class Judge {
         const started = s.anim === "swing" && (this.prevAnim !== "swing" || s.target !== this.prevTarget);
         if (!started || s.target === undefined) return;
         const c = byId[s.target];
-        if (c === undefined || !c.alive || c.prediction === undefined) return;
+        if (c === undefined || !c.alive) return;
+        const prediction = this.previous[c.id] ?? c.prediction;
+        if (prediction === undefined) return;
 
         const swingStart = s.swingStart ?? s.now;
         this.attempted[c.id] = true;
@@ -299,14 +311,28 @@ export class Judge {
             creepKind: c.kind,
             isDeny: c.isDeny,
             harassed: s.harassed,
-            prediction: c.prediction,
+            prediction,
             swingStart,
             startedAt: s.now,
-            predictedLand: swingStart + c.prediction.delay,
+            predictedLand: swingStart + prediction.delay,
             hp: c.hp,
             baselineHp: c.hp,
             swinging: true,
         });
+    }
+
+    /**
+     * Creep ids are handle addresses, which the game can reuse. Once a creep has left the list and no attempt on
+     * it is open, its marks go, so a later creep with the same id is judged afresh.
+     */
+    private forget(present: Record<string, CreepObs>) {
+        const open: Record<string, boolean> = {};
+        for (const a of this.attempts) open[a.creepId] = true;
+        for (const marks of [this.attempted, this.reported, this.handled, this.engaged]) {
+            for (const id of Object.keys(marks)) {
+                if (present[id] === undefined && !open[id]) delete marks[id];
+            }
+        }
     }
 
     private swingingAttempt(): Attempt | undefined {

@@ -125,6 +125,12 @@ local function capturePrint(fn)
 	return lines
 end
 
+local function count(list, prefix)
+	local n = 0
+	for _, l in ipairs(list or {}) do if l:sub(1, #prefix) == prefix then n = n + 1 end end
+	return n
+end
+
 do
 	local H, _, bots = setup({ SelfTest = true })
 	check("the lowest-PID bot is the self-test bot", H.Trainer.IsSelfTestBot(bots[1]) == true)
@@ -197,3 +203,57 @@ do
 	check("self-test bot attempts are logged", logged > 0, #printed)
 	check("nothing is drawn as text for the self-test bot", textDrawn == 0, textDrawn)
 end
+
+-- In game DotaTime lags GameTime by the whole pre-game; predictions and attack times are on GameTime.
+local function withDotaLag(lag, fn)
+	local real = DotaTime
+	DotaTime = function() return T - lag end
+	local ok, err = pcall(fn)
+	DotaTime = real
+	if not ok then error(err) end
+end
+
+withDotaLag(90, function()
+	local H, _, bots = setup({ SelfTest = true })
+	local A = T
+	local caster = setmetatable({ pid = 801, team = 2, alive = true, loc = Vector(0, 0), modifiers = {}, damage = 50, isHero = false }, Unit)
+	local creep = Creep(3, { hp = 60, incoming = { { at = A + 1.0, damage = 50, caster = caster }, { at = A + 2.0, damage = 50, caster = caster } } })
+	local found
+	while found == nil and T < A + 3 do
+		tick(H, bots, 1)
+		found = H.Trainer.SelfTestTarget(bots[1])
+	end
+	check("DotaTime behind GameTime: the self-test target is still found", found == creep)
+end)
+
+withDotaLag(90, function()
+	-- GameTime 350 is DotaTime 260, so the 300 s checkpoint is still ahead at switch-on.
+	local H, _, bots = setup({ SelfTest = true }, { start = 350 })
+	tick(H, bots, 2)
+	while T < 385 do tick(H, bots, 1) end
+	check("control: no checkpoint summary before DotaTime 300", count(bots[1].said, "LH ") == 0, #(bots[1].said or {}))
+	while T < 392 do tick(H, bots, 1) end
+	tick(H, bots, 20)
+	check("the checkpoint fires on DotaTime, not GameTime", count(bots[1].said, "LH 0/0") == 1, #(bots[1].said or {}))
+end)
+
+-- SelfTestHolding: mid-swing on a creep the laning Think must not issue an order, or it cancels the swing.
+do
+	local H, _, bots = setup({ SelfTest = true })
+	local bot = bots[1]
+	local creep = Creep(3, { hp = 60 })
+	local hero = MakeUnit({ pid = 7, team = 3 })
+	bot.anim, bot.cycle, bot.target = ATTACK, 0.2, creep
+	check("holds while swinging at a creep before the attack point", H.Trainer.SelfTestHolding(bot) == true)
+	bot.cycle = 0.6
+	check("does not hold after the attack point", H.Trainer.SelfTestHolding(bot) == false)
+	bot.cycle, bot.target = 0.2, hero
+	check("does not hold while swinging at a hero", H.Trainer.SelfTestHolding(bot) == false)
+	bot.anim, bot.target = 1500, creep
+	check("does not hold outside the attack animation", H.Trainer.SelfTestHolding(bot) == false)
+	local H2, _, bots2 = setup({ SelfTest = false })
+	bots2[1].anim, bots2[1].cycle, bots2[1].target = ATTACK, 0.2, Creep(3, { hp = 60 })
+	check("SelfTest off: never holds", H2.Trainer.SelfTestHolding(bots2[1]) == false)
+end
+
+finish()
