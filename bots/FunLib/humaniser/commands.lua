@@ -83,6 +83,7 @@ local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
+local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 ____exports.DEFAULTS = {
     Enable = true,
     Def = {Duration = 25, MaxResponders = 5},
@@ -538,6 +539,11 @@ local COMMANDS = {
         end
     },
     {
+        name = "trainer",
+        aliases = {},
+        handler = function(ctx) return Trainer.OnCommand(ctx.team, ctx.issuerPID, ctx.args) end
+    },
+    {
         name = "bhelp",
         aliases = {},
         handler = function(ctx) return queueSay(ctx.team, "say_cmd_help") end
@@ -586,7 +592,7 @@ function ____exports.Parse(text, team)
     end
     local second = string.sub(words[2], 1, 1) == "!" and string.sub(words[2], 2) or words[2]
     local def = findCommand(second)
-    if def == nil or def.name == "bhelp" or def.name == "farm" then
+    if def == nil or def.name == "bhelp" or def.name == "farm" or def.name == "trainer" then
         return nil
     end
     return {
@@ -654,14 +660,14 @@ function ____exports.ShouldUseOrderedSmoke(bot)
     local holder
     for ____, pid in ipairs(order.responders) do
         do
-            local __continue109
+            local __continue110
             repeat
                 local member = memberByPID(
                     bot:GetTeam(),
                     pid
                 )
                 if member == nil then
-                    __continue109 = true
+                    __continue110 = true
                     break
                 end
                 local slot = member:FindItemSlot("item_smoke_of_deceit")
@@ -669,9 +675,9 @@ function ____exports.ShouldUseOrderedSmoke(bot)
                     holder = pid
                     break
                 end
-                __continue109 = true
+                __continue110 = true
             until true
-            if not __continue109 then
+            if not __continue110 then
                 break
             end
         end

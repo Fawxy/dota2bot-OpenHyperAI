@@ -13,6 +13,7 @@ import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
+import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 
 export const DEFAULTS = {
     Enable: true,
@@ -347,6 +348,11 @@ const COMMANDS: CommandDef[] = [
         },
     },
     {
+        name: "trainer",
+        aliases: [],
+        handler: (ctx) => Trainer.OnCommand(ctx.team, ctx.issuerPID, ctx.args),
+    },
+    {
         name: "bhelp",
         aliases: [],
         handler: (ctx) => queueSay(ctx.team, "say_cmd_help"),
@@ -384,7 +390,7 @@ export function Parse(text: string, team: number): ParsedCommand | undefined {
     const second = string.sub(words[1], 1, 1) === "!" ? string.sub(words[1], 2) : words[1];
     const def = findCommand(second);
     // A named bot can't print help for the team or release everyone; those stay team-wide.
-    if (def === undefined || def.name === "bhelp" || def.name === "farm") return undefined;
+    if (def === undefined || def.name === "bhelp" || def.name === "farm" || def.name === "trainer") return undefined;
     return { name: def.name, args: words.slice(2), onlyPIDs };
 }
 

@@ -335,3 +335,99 @@ Post claims instead of editing desires: camp jobs as `CAMP_JOB` floors on the jo
 - [ ] A bot under 20% HP with a stack job due: retreat wins.
 - [ ] `Intent.Enable = false`: behaviour matches the `humaniser` branch (the overlay's top-3 desire line goes back to empty).
 - [ ] No visible FPS drop at `host_timescale 2`.
+
+## Last-hit trainer (task 14)
+`FunLib/humaniser/trainer/` (TS: `api.ts`, `settings.ts`, `incoming.ts`, `predict.ts`, `judge.ts`, `stats.ts`, `format.ts`, `watch.ts`, `draw.ts`, `trainer.ts`, `spike.ts`). Tuning in `settings.ts` `DEFAULTS`, overridable via `Customize.Humaniser.Trainer.LastHit`. Kill switch: `Trainer.LastHit.Enable = false`. The trainer then does nothing: no helper calls, no chat, no `[H:trainer]` lines. Only the lowest-PID bot on each team runs it, and nothing happens in game until `!trainer on` (or `SelfTest = true`).
+
+### Commands
+| Command | Effect |
+|---|---|
+| `!trainer` | Status line: `trainer off - bar on - chat off - denies on` |
+| `!trainer on` / `off` | Start (stats reset; already on just replies the status) or stop all drawing, text and chat |
+| `!trainer bar on\|off` | Show or hide the bar |
+| `!trainer denies on\|off` | Grade denies |
+| `!trainer chat off\|misses\|all` | Send verdicts to team chat |
+| `!trainer stats` | Print the summary and the biggest leak; also shown as screen text for 15 s |
+| `!trainer stats selftest` | The trainer bot's own score (see self-test) |
+| `!trainer reset` | Clear stats; replies `trainer stats reset` |
+| `!trainer spike` | Toggle the spike probe (only with `Debug = true`) |
+
+`trainer` takes no bot selector (`!lion trainer` and `!2 trainer on` don't parse). Unknown subcommands print the usage line. Replies are queued per team (capped at 8 lines) and spoken by the trainer bot, one line per 0.5 s.
+
+### Config keys (`Customize.Humaniser.Trainer.LastHit`)
+| Key | Default | Meaning |
+|---|---|---|
+| `Enable` | `true` | Kill switch |
+| `Bar` / `BarStyle` | `true` / `'time'` | Draw the bar; `'time'` or `'hp'` |
+| `OutcomeOnly` | `false` | Spike fallback: grade outcomes only if swing timing can't be read |
+| `ScreenText` | `true` | `false` sends verdicts and summaries to team chat |
+| `Denies` / `Chat` | `true` / `'off'` | Grade denies; `'off'`, `'misses'` or `'all'` |
+| `EasyWindow` | `0.3` | Seconds of window that make a creep an "easy" one |
+| `Checkpoints` | `{300, 600}` | Summary times in game seconds |
+| `SelfTest` | `false` | The trainer bot times its last hits from the trainer's window |
+| `TextX`, `TextY` | `560`, `40` | Screen text position (not in `general.lua`) |
+| `WatchInterval`, `MaxWatched` | `0.1`, `2` | Prediction refresh and watched-creep budget (not in `general.lua`) |
+
+### Spike results (Phase 0, Task 1 Step 7)
+The spike has not been run. Every result below is **pending (run `!trainer spike`)**: Local Host lobby, cheats on, `Debug = true`, `!trainer spike`.
+
+| # | Question | Result |
+|---|---|---|
+| 1 | Are draws visible with `Debug = true`, and with `Debug = false` (change `HDebug.IsEnabled()` locally)? | pending |
+| 2 | Bars smooth or flickering? Think rate? | pending |
+| 3 | Which human-hero reads work? | pending |
+| 4 | Is `GetAttackProDelayTime` sane on the human? | pending |
+| 5 | Which bar style does the user prefer? | pending |
+| 6 | Optional: latency from a bot `ActionImmediate_Chat` line to a FretBots `player_chat` listener (probed by hand, no code) | pending |
+| 7 | Does a Unicode text line render (plan correction 4)? | pending |
+
+Decisions still to record, in `settings.ts` and `general.lua` in one small commit: `BarStyle`, `OutcomeOnly`, `ScreenText`.
+
+### Plan corrections
+The plan overrides the spec in four places:
+1. **Incoming damage is ported, not called.** OHA's helpers scan creeps around `GetBot()` (the trainer bot, possibly in another lane), add bot-level fudge factors, and see only attacks already under way. The trainer needs the subject's lane, no fudge, and projected idle swings.
+2. **`SetHelpers` exposes only `GetAttackProDelayTime` and `IsInLaningPhase`.**
+3. **`IsFeatureEnabled` is not extended.** The config is nested (`Trainer.LastHit.Enable`), so the trainer has its own `IsEnabled()`.
+4. **Screen text uses ASCII `-`** instead of `–`/`−`, because `DebugDrawText` may not render non-ASCII text (spike item 7).
+
+### Behaviour decisions
+- **Time bar:** the track spans now-0.5 .. now+2.0 s. The white "now" tick sits at 0.5/2.5 of the width, so your swing start (the blue tick) shows next to the window (R14).
+- **`uncertain` (amber):** compares the close edge always, and the open edge only when it's in the future. A close capped at the 2 s horizon is ignored (R15, R15b).
+- **Cancelled swings:** a creep whose only swings were cancelled still counts as an easy miss, with no swing. EARLY hits shield the creep (R9).
+- **One verdict per creep death** (R7). When two swings are in flight and the creep dies to the player, the older swing is credited if its landing time was no more than 0.1 s ago (R8).
+- **Allied heroes:** their denies count against our own creeps, and their last hits against enemy creeps (R10).
+- **Prediction budget:** 2 bars + `MaxWatched` applies per subject. A self-test lobby with a human runs up to 8 predictions per frame (R11).
+- **Counter matching:** last-hit counters are matched looking back up to 0.15 s before the death frame (R12).
+- **Bar stickiness:** bars stay put unless another creep's window closes more than 0.2 s sooner (`BAR_STICKINESS`). Keep it at or above `WatchInterval`.
+- **Creep ids** are `tostring(handle)`.
+- **SelfTest** switches the trainer on at game start; `!trainer off` still turns it off.
+- **One-player warning** goes through `HDebug.Log`, so it only prints with Debug on.
+
+### Merge note with 07 (lane management)
+07 (`h-07-lane`) branched from `535087f`, before the laning `Think()` step refactor this branch builds on, so 07's `mode_laning_generic.lua` still has the older inline `Think()`. That file will not merge textually:
+- Take the step layout (`LastHitThink`, `DenyThink`, `HarassThink`, `PositionThink`) from this branch, then port 07's lane-management logic into it as steps by hand.
+- Keep the self-test branches at the top of `LastHitThink` (`SelfTestHolding`, then `SelfTestTarget`) and `DenyThink` (return false) as they are. They must run before any of 07's steps can issue an order, or the self-test bot's swings get cancelled.
+- The `Think()` definition condition needs both 07's `or bLaneLaning` and this branch's `or bTrainerSelfTest`.
+
+The other shared files (`general.lua`, `config.ts`, `index.ts`, `commands.ts`, `jmz_func.lua`, this document) only gained additions next to existing blocks, so their conflicts are additive siblings: keep both sides. New Dota API typings live in `trainer/api.ts`, not `ts_libs/dota/*`.
+
+### Self-test lobby recipe
+Calibrates the predictor against a bot that last-hits from the trainer's own window.
+1. Put the human in a different lane from the trainer bot (the lowest-PID bot on the team).
+2. Set `Humaniser.Lane.Enable = false` (07) and `Trainer.LastHit.SelfTest = true`.
+3. Play 10 minutes.
+4. Run `!trainer stats selftest`. Pass: at least 85% `PERFECT` + `OK` and under 5% `MISSED_EASY`.
+
+### Regression check
+`Trainer.LastHit.Enable = false` (with `Debug = true`): `!trainer on`, then play. No `[H:trainer]` lines, no trainer chat, no draws.
+
+**TODO (in-game):**
+- `GetLastAttackTime` semantics (attack start vs projectile release). The idle-swing projection assumes attack start.
+- `IsAlive()` on cached handles that may have gone invalid.
+- Do `GetLastHits` and `GetDenies` rise on the creep's death frame, or within the 0.15 s look-back? If counters update later, every last hit reads LATE. The fix would be a short death hold in `creepObservations` (R12).
+- `ACTIVITY_ATTACK2` (1504) is treated as an attack.
+- Swing-timing units: `cycle < GetAttackPoint()` and `swingStart = now - cycle / GetAttackSpeed()`.
+- Unit-handle identity is stable across frames (`SelectCreeps` target matching and the ids rely on it).
+- Frame cost with 2 bars and 2 watched creeps (spike item 7).
+
+**Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).

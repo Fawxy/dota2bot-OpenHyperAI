@@ -151,6 +151,19 @@ Customize.Humaniser = {
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
     Intent = { Enable = true },
+    -- Last-hit trainer (task 14): practice feedback for the human. Nothing runs in game until "!trainer on".
+    Trainer = {
+        LastHit = {
+            Enable = true,
+            Bar = true, BarStyle = 'time', -- 'time' | 'hp'; picked in the Phase 0 spike
+            OutcomeOnly = false, -- true if the human's swing timing can't be read (spike fallback)
+            ScreenText = true, -- false sends verdicts and summaries to team chat instead (spike fallback)
+            Denies = true, Chat = 'off', -- 'off' | 'misses' | 'all'
+            EasyWindow = 0.3, Checkpoints = { 300, 600 },
+            -- Calibration: the lowest-PID bot on each team times its last hits from the trainer's window.
+            SelfTest = false,
+        },
+    },
 }
 
 return Customize

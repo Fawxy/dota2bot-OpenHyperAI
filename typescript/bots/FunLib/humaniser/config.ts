@@ -55,6 +55,7 @@ export const DEFAULTS = {
     Pings: { Enable: true } as Record<string, any>,
     Commands: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
+    Trainer: { LastHit: { Enable: true } } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
