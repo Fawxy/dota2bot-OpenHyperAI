@@ -5,8 +5,9 @@
  */
 import { Unit } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
-export { Settings };
+export { Settings, Runes };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;

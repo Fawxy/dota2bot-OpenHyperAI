@@ -13,7 +13,9 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 ____exports.Settings = Settings
+____exports.Runes = Runes
 local function NEVER()
     return false
 end
