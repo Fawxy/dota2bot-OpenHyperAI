@@ -223,6 +223,7 @@ export const DEFAULTS = {
         PullCampLastSeen: 1500,
         PathSafe: 1500,
         StackedCampSafe: 1500,
+        ContestReach: 1200,
         CounterNeutralScan: 1600,
         MidFront: 1200,
         MidHuman: 1500,

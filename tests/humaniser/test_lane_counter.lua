@@ -167,35 +167,45 @@ do
 	check("punish ends after 6 s", attacksOn(4, ecore) == 2)
 	check("no contest while punishing", H.Lane.CampJobs.Current(support) == nil)
 
-	H, support = pulled({ enemyCoreAt = Vector(-4000, 5000) })
+	H, support = pulled()
 	H.Lane.Counter.Think(support, {})
 	local job = H.Lane.CampJobs.Current(support)
-	check("not stronger, safe path: contest job at their camp", job ~= nil and job.kind == "contest" and job.campIdx == 1 and job.targetPid == 15)
+	check("not stronger, enemy core in our lane: contest job at their camp", job ~= nil and job.kind == "contest" and job.campIdx == 1 and job.targetPid == 15)
 	check("contest is the cycle's technique", H.Lane.LanePlanner.Committed(support) == "contest")
 	check("contest desire", near(H.Lane.CampJobDesire(support), 0.65))
 
-	H, support = pulled({ enemyCoreAt = Vector(-4000, 5000) })
+	H, support = pulled()
 	local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
 	hide(mid, 4)
-	LAST_SEEN[12] = { location = Vector(800, 4700), time_since_seen = 2 }
+	-- 632 from the camp end of the route, 2,500 from our front: a third enemy, not one of this lane's laners.
+	LAST_SEEN[12] = { location = Vector(1800, 6800), time_since_seen = 2 }
 	T = 76
 	H.Lane.Counter.Think(support, {})
 	check("unsafe path: no contest", H.Lane.CampJobs.Current(support) == nil)
 	check("unsafe path: no attack", #ActionsOf(4, "AttackUnit") == 0)
+
+	H, support = pulled()
+	mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
+	hide(mid, 4)
+	LAST_SEEN[12] = { location = Vector(1800, 6800), time_since_seen = 8 }
+	T = 76
+	H.Lane.Counter.Think(support, {})
+	check("third enemy seen 8 s ago: contest goes ahead", H.Lane.CampJobs.Current(support) ~= nil)
 end
 
 do
 	-- The contest executor: walk to the camp, hit the visible puller every 2.5 s, give up after 10 s.
-	local H, support, _, _, esup = world(1, { enemyCoreAt = Vector(-4000, 5000) })
+	local H, support, _, _, esup = world(1)
 	esup.loc = THEIR_SMALL
 	tick(H, support, 75)
 	H.Lane.Counter.Think(support, {})
-	esup.loc = Vector(-6000, 5000)
-	hide(esup, 4)
+	-- Visible but 2,000 from the camp: the contest does not chase it.
+	esup.loc = Vector(THEIR_SMALL.x + 2000, THEIR_SMALL.y)
 	T = 75.6
 	H.Lane.CampJobThink(support)
 	local moves = ActionsOf(4, "MoveToLocation")
 	check("contest walks to their camp", #moves == 1 and moves[1].args[1].x == THEIR_SMALL.x and moves[1].args[1].y == THEIR_SMALL.y)
+	check("puller far from the camp is not chased", attacksOn(4, esup) == 0)
 	show(esup)
 	esup.loc = THEIR_SMALL
 	T = 76.2
@@ -211,11 +221,13 @@ do
 end
 
 do
-	local function blockWorld(cfg, skill)
+	-- Support at (0, 5300): 1,836 from the camp at 300 speed is a 6.1 s walk.
+	local function blockWorld(cfg, skill, at, setup)
 		local H, support = world(skill, { cfg = cfg })
 		local ward = { GetName = function() return "item_ward_sentry" end }
 		support.GetItemInSlot = function(_, i) if i == 0 then return ward end end
-		T = 114
+		if setup then setup() end
+		T = at or 110
 		H.Lane.Counter.Think(support, {})
 		return H, support, ward
 	end
@@ -227,14 +239,24 @@ do
 	local uses = ActionsOf(4, "UseAbilityOnLocation")
 	check("CampBlock on: one ward at their pull camp", #uses == 1 and uses[1].args[1] == ward
 		and uses[1].args[2].x == THEIR_SMALL.x and uses[1].args[2].y == THEIR_SMALL.y)
-	T = 115
+	T = 111
 	check("walking to plant keeps the frame", H.Lane.Counter.Think(support, {}) == true)
-	T = 174
+	T = 170
 	H.Lane.Counter.Think(support, {})
 	check("60 s later: still on the 180 s cooldown", #ActionsOf(4, "UseAbilityOnLocation") == 1)
 
 	blockWorld({ Enable = true, CampBlock = true }, 0.6)
 	check("skill 0.6 is not above the gate", #ActionsOf(4, "UseAbilityOnLocation") == 0)
+
+	blockWorld({ Enable = true, CampBlock = true }, 0.7, 114)
+	check(":54 with a 6.1 s walk: cannot plant before :58", #ActionsOf(4, "UseAbilityOnLocation") == 0)
+
+	blockWorld({ Enable = true, CampBlock = true }, 0.7, 110, function()
+		local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
+		hide(mid, 4)
+		LAST_SEEN[12] = { location = Vector(1800, 6800), time_since_seen = 2 }
+	end)
+	check("enemy near the route: no camp block", #ActionsOf(4, "UseAbilityOnLocation") == 0)
 end
 
 do
@@ -258,21 +280,44 @@ do
 		return H, support, core
 	end
 	local H, support = frozen(0.5)
+	STRONGER = true
 	check("freeze noticed", #signalsOf(H, support, "freeze") == 1)
-	check("support's override: shove", H.Lane.Hooks.TechniqueOverride(support) == "shove")
+	check("stronger support's override: shove", H.Lane.Hooks.TechniqueOverride(support) == "shove")
 	SetRandomSequence({ 0.99, 0.0 })
 	local c = H.Lane.LanePlanner.Plan(support, H.Lane.LaneState.ForBot(support))
 	check("planner under HOLD shoves for the counter", c.tech == "shove" and c.reason == "counter: shove", c.tech .. " " .. c.reason)
 	check("plan is HOLD", H.Lane.LanePlan.View(support, H.Lane.LaneState.ForBot(support)).plan == "HOLD")
+	-- The wave moves back to mid-lane, out of their tower's reach: the shove executor hits a creep.
+	LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.5, 0.5
+	local n1 = MakeCreep({ team = 3, x = 100, y = 5000, hp = 300 })
+	local n2 = MakeCreep({ team = 3, x = 150, y = 5000 })
+	T = 122
+	check("shove issued under the override", H.Lane.Think(support, {}, { n1, n2 }, {}) == true and attacksOn(4, n1) == 1)
+	support.hp = 40
+	check("below ShoveMinHP: no shove override", H.Lane.Hooks.TechniqueOverride(support) == nil)
+	support.hp = 100
 	T = 179
 	check("override lasts through the next cycle", H.Lane.Hooks.TechniqueOverride(support) == "shove")
 	T = 181
 	check("next-next cycle: override cleared", H.Lane.Hooks.TechniqueOverride(support) == nil)
 
-	H, support = frozen(0.3)
+	H, support = frozen(0.5)
+	STRONGER = false
 	MakeCreep({ team = 2, x = 2500, y = 5000 })
 	T = 122
 	local loc = Vector(2000, 5000)
+	check("not stronger: no shove override", H.Lane.Hooks.TechniqueOverride(support) == nil)
+	check("not stronger: zones instead", H.Lane.AdjustPosition(support, loc) ~= loc)
+	SetRandomSequence({ 0.99, 0.0, 0.0 })
+	c = H.Lane.LanePlanner.Plan(support, H.Lane.LaneState.ForBot(support))
+	check("not stronger: planner not stuck on shove", c.tech ~= "shove", c.tech .. " " .. c.reason)
+
+	H, support = frozen(0.3)
+	STRONGER = true
+	MakeCreep({ team = 2, x = 2500, y = 5000 })
+	T = 122
+	local loc = Vector(2000, 5000)
+	loc = Vector(2000, 5000)
 	check("support that cannot shove: no override", H.Lane.Hooks.TechniqueOverride(support) == nil)
 	check("support that cannot shove zones instead", H.Lane.AdjustPosition(support, loc) ~= loc)
 end
@@ -284,7 +329,8 @@ do
 		SPAWNERS = {}
 		H.Lane.Camps.ResetCache()
 		local mid = unit({ pid = 2, pos = 2, lane = Lane.Mid, loc = Vector(-2800, 0) })
-		unit({ pid = 7, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
+		unit({ pid = 7, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-2600, 0) })
+		MakeCreep({ team = 2, x = -2700, y = 0 })
 		H.Lane.Config.SkillOf(mid)
 		LANE_FRONT[2][Lane.Mid], LANE_FRONT[3][Lane.Mid] = 0.3, 0.65
 		STRONGER = stronger
@@ -303,7 +349,11 @@ do
 
 	H, mid = midWorld(false)
 	check("not stronger: no rune contest", H.Lane.RuneContestDesire(mid) == 0)
-	check("not stronger: shove override", H.Lane.Hooks.TechniqueOverride(mid) == "shove")
+	check("not stronger: no shove override", H.Lane.Hooks.TechniqueOverride(mid) == nil)
+	local here = Vector(-3000, 0)
+	check("not stronger: zones until the rune", H.Lane.AdjustPosition(mid, here) ~= here)
+	T = 121
+	check("after the rune: no zoning", H.Lane.AdjustPosition(mid, here) == here)
 end
 
 do
@@ -315,11 +365,16 @@ do
 		check("precondition: stack noticed", #signalsOf(H, support, "stack") == 1)
 		return H, support, core, ecore, esup
 	end
-	local H, support, _, _, esup = stackWorld(true)
+	local H, support, _, ecore, esup = stackWorld(true)
 	H.Lane.Counter.Think(support, {})
 	T = 114.6
-	H.Lane.Counter.Think(support, {})
+	local held = H.Lane.Counter.Think(support, {})
 	check("stronger: one attack on the stacker", attacksOn(4, esup) == 1, attacksOn(4, esup))
+	check("frame held until the hit lands", held == true and #ActionsOf(4) == 1)
+	support.lastAttack = GameTime()
+	T = 115.2
+	H.Lane.Counter.Think(support, {})
+	check("hit landed: frame released (the pull punish follows)", attacksOn(4, esup) == 1 and attacksOn(4, ecore) == 1)
 	check("stronger: camp not marked", #H.Lane.Counter.MarkedStacked(2) == 0)
 
 	local core
@@ -427,7 +482,7 @@ end
 do
 	local function read(path) return io.open(HARNESS_DIR .. "/../../" .. path, "r"):read("a") end
 	check("farm mode prefers a marked stacked camp", read("bots/mode_farm_generic.lua"):find("preferedCamp = J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp", 1, true) ~= nil)
-	check("rune mode takes the lane's rune contest desire", read("bots/mode_rune_generic.lua"):find("local nLaneContest = J.Humaniser.Lane.RuneContestDesire(bot)", 1, true) ~= nil)
+	check("rune mode takes the lane's rune contest desire", read("bots/mode_rune_generic.lua"):find("math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot))", 1, true) ~= nil)
 	local loc = read("bots/FunLib/localization.lua")
 	for _, key in ipairs({ "say_lane_they_pull_top", "say_lane_they_pull_mid", "say_lane_they_pull_bot", "say_lane_their_sup_missing", "say_lane_they_freeze", "say_lane_ss_mid" }) do
 		local _, n = loc:gsub(key .. " = ", "")

@@ -52,9 +52,9 @@ interface ObserverState {
     waveCycle?: number;
     waveMax: number;
     punish?: Punish;
-    stackAttack?: { pid: number; until: number };
-    overrideUntil?: number;
-    zoneUntil?: number;
+    stackAttack?: { pid: number; until: number; orderedAt?: number };
+    /** Break-freeze / rune-shove answer: shove while that is safe, otherwise zone. */
+    counterUntil?: number;
     runeContestUntil?: number;
     campBlockAt?: number;
     said: Record<string, number>;
@@ -213,9 +213,7 @@ function onNotice(bot: Unit, st: ObserverState, sig: Signal, s: LaneState.LaneSn
     } else if (sig.kind === "freeze") {
         say(bot, st, "say_lane_they_freeze");
         if (!isSupport(bot)) return;
-        const until = (cycleOf(now) + 2) * cfg.Timing.WaveCycle;
-        if (LaneConfig.Knows("shove", LaneConfig.SkillOf(bot))) st.overrideUntil = until;
-        else st.zoneUntil = until;
+        st.counterUntil = (cycleOf(now) + 2) * cfg.Timing.WaveCycle;
     } else if (sig.kind === "stack") {
         const stacker = visibleEnemy(enemies, sig.enemyPid);
         // The attack is issued from laning Think; after laning the camp is marked instead.
@@ -232,7 +230,7 @@ function onNotice(bot: Unit, st: ObserverState, sig: Signal, s: LaneState.LaneSn
         const next = LaneConfig.Helpers().NextPowerRuneTime;
         const rune = next !== undefined ? next() : now;
         if (stronger(bot)) st.runeContestUntil = rune + cfg.Timing.RuneContestAfter;
-        else if (LaneConfig.Knows("shove", LaneConfig.SkillOf(bot))) st.overrideUntil = rune;
+        else st.counterUntil = rune;
     }
 }
 
@@ -442,11 +440,22 @@ function remainingLaner(s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[
     return best;
 }
 
-function pathSafe(bot: Unit, to: Vector, enemies: LaneState.LaneEnemy[], exceptPid: number | undefined): boolean {
+/** This lane's enemy laners: seen near our front, the same test LanePlan.EnemyLaners uses. */
+function isLaner(e: LaneState.LaneEnemy, s: LaneState.LaneSnapshot): boolean {
+    const cfg = settings();
+    if (!e.visible && e.timeSinceSeen > cfg.Timing.ExposureSeen) return false;
+    return dist2D(e.location, s.frontLoc) <= cfg.Radii.Exposure;
+}
+
+/**
+ * No enemy other than this lane's laners (the puller included) seen near the route recently. The laners are
+ * already weighed by the partner-safety check the camp-job executor repeats every frame.
+ */
+function pathSafe(bot: Unit, s: LaneState.LaneSnapshot, to: Vector, enemies: LaneState.LaneEnemy[], pullerPid: number | undefined): boolean {
     const cfg = settings();
     const from = bot.GetLocation();
     for (const e of enemies) {
-        if (e.pid === exceptPid || (!e.visible && e.timeSinceSeen > cfg.Timing.PathSafeSeen)) continue;
+        if (e.pid === pullerPid || isLaner(e, s) || (!e.visible && e.timeSinceSeen > cfg.Timing.PathSafeSeen)) continue;
         if (distToSegment(e.location, from, to) <= cfg.Radii.PathSafe) return false;
     }
     return true;
@@ -483,7 +492,7 @@ function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, 
         if (sig.campIdx === undefined || LaneRoles.CampJobOwner(s) !== bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined) continue;
         if (CampJobs.Active(bot)) continue;
         const spawner = Camps.SpawnerByIdx(sig.campIdx);
-        if (spawner === undefined || !pathSafe(bot, Camps.BoxCenter(spawner), enemies, sig.enemyPid)) continue;
+        if (spawner === undefined || !pathSafe(bot, s, Camps.BoxCenter(spawner), enemies, sig.enemyPid)) continue;
         if (CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid })) st.responded[key] = true;
         return;
     }
@@ -501,7 +510,7 @@ function findWard(bot: Unit): any | undefined {
  * Blocks the enemy pull camp's next spawn with a ward in its box at :50-:58.
  * TODO (in-game): confirm a sentry/observer ward in the box still blocks the neutral spawn on the current patch.
  */
-function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, now: number): boolean {
+function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): boolean {
     const cfg = settings();
     if (!LaneConfig.IsOn("CampBlock") || !LaneConfig.InLaningPhase() || !isSupport(bot)) return false;
     if (LaneConfig.SkillOf(bot) <= cfg.Gates.CampBlock) return false;
@@ -516,7 +525,10 @@ function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, now:
     const camp = Camps.PullCampsFor(enemyTeamOf(s.team), s.lane)[0];
     const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
     if (spawner === undefined) return false;
-    bot.Action_UseAbilityOnLocation(ward, Camps.BoxCenter(spawner));
+    const center = Camps.BoxCenter(spawner);
+    const eta = GetUnitToLocationDistance(bot, center) / math.max(bot.GetCurrentMovementSpeed(), 1);
+    if (eta > cfg.Timing.CampBlockTo - sec || !pathSafe(bot, s, center, enemies, undefined)) return false;
+    bot.Action_UseAbilityOnLocation(ward, center);
     st.campBlockAt = now;
     HDebug.Log("lane", `counter pid=${bot.GetPlayerID()} camp-block camp=${spawner.idx}`);
     return true;
@@ -530,50 +542,64 @@ export function Think(bot: Unit, _enemies: Unit[]): boolean {
     if (s === undefined) return false;
     const st = stateOf(bot.GetPlayerID());
     const now = DotaTime();
+    const enemies = LaneState.Enemies(bot, s.lane);
     if (counter) {
-        const enemies = LaneState.Enemies(bot, s.lane);
-        const sa = st.stackAttack;
-        if (sa !== undefined) {
-            st.stackAttack = undefined;
-            const stacker = visibleEnemy(enemies, sa.pid);
-            if (now <= sa.until && stacker !== undefined && stacker.unit !== undefined) {
-                bot.Action_AttackUnit(stacker.unit, true);
-                return true;
-            }
-        }
+        if (runStackAttack(bot, st, enemies, now)) return true;
         if (runPunish(bot, st, enemies, now)) return true;
         respondToPull(bot, st, s, enemies, now);
         if (runPunish(bot, st, enemies, now)) return true;
     }
-    return campBlock(bot, st, s, now);
+    return campBlock(bot, st, s, enemies, now);
 }
 
-/** Zoning point for a support that noticed a freeze but cannot shove; `loc` itself otherwise. */
-export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    if (!on()) return loc;
-    const st = observers[bot.GetPlayerID()];
-    if (st === undefined || st.zoneUntil === undefined) return loc;
-    if (DotaTime() >= st.zoneUntil) {
-        st.zoneUntil = undefined;
-        return loc;
+/** One hit on a stacker; the frame is held until the hit lands (GetLastAttackTime is on the GameTime clock). */
+function runStackAttack(bot: Unit, st: ObserverState, enemies: LaneState.LaneEnemy[], now: number): boolean {
+    const sa = st.stackAttack;
+    if (sa === undefined) return false;
+    const stacker = visibleEnemy(enemies, sa.pid);
+    if (now > sa.until || stacker === undefined || stacker.unit === undefined) {
+        st.stackAttack = undefined;
+        return false;
     }
+    if (sa.orderedAt === undefined) {
+        bot.Action_AttackUnit(stacker.unit, true);
+        sa.orderedAt = GameTime();
+        return true;
+    }
+    if (bot.GetLastAttackTime() >= sa.orderedAt) {
+        st.stackAttack = undefined;
+        return false;
+    }
+    return true;
+}
+
+/** The live break-freeze / rune-shove answer: "shove", "zone", or undefined when none applies. */
+function counterAnswer(bot: Unit): { answer: "shove" | "zone"; s: LaneState.LaneSnapshot } | undefined {
+    if (!on()) return undefined;
+    const st = observers[bot.GetPlayerID()];
+    if (st === undefined || st.counterUntil === undefined) return undefined;
+    if (DotaTime() >= st.counterUntil) {
+        st.counterUntil = undefined;
+        return undefined;
+    }
+    // Never push out a wave our own lane plan is freezing.
     const s = LaneState.ForBot(bot);
-    if (s === undefined || LanePlan.View(bot, s).plan === "FREEZE") return loc;
-    return LaneTech.ZonePoint(bot, s) ?? loc;
+    if (s === undefined || LanePlan.View(bot, s).plan === "FREEZE") return undefined;
+    // The same gates LaneTech's shove executor applies, so the planner never commits to a shove that cannot run.
+    const canShove = LaneConfig.Knows("shove", LaneConfig.SkillOf(bot)) && stronger(bot) && hpOf(bot) >= settings().Thresholds.ShoveMinHP;
+    return { answer: canShove ? "shove" : "zone", s };
+}
+
+/** Zoning point while the counter answer is to zone; `loc` itself otherwise. */
+export function AdjustPosition(bot: Unit, loc: Vector): Vector {
+    const c = counterAnswer(bot);
+    if (c === undefined || c.answer !== "zone") return loc;
+    return LaneTech.ZonePoint(bot, c.s) ?? loc;
 }
 
 function techniqueOverride(bot: Unit): LaneConfig.Technique | undefined {
-    if (!on()) return undefined;
-    const st = observers[bot.GetPlayerID()];
-    if (st === undefined || st.overrideUntil === undefined) return undefined;
-    if (DotaTime() >= st.overrideUntil) {
-        st.overrideUntil = undefined;
-        return undefined;
-    }
-    // Never shove out a wave our own lane plan is freezing.
-    const s = LaneState.ForBot(bot);
-    if (s === undefined || LanePlan.View(bot, s).plan === "FREEZE") return undefined;
-    return "shove";
+    const c = counterAnswer(bot);
+    return c !== undefined && c.answer === "shove" ? "shove" : undefined;
 }
 
 export function RuneContestDesire(bot: Unit): number {

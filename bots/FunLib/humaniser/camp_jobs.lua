@@ -1186,9 +1186,10 @@ local function trySecondCamp(bot, job, now)
     )
     return true
 end
+--- The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map.
 local function contestTarget(bot, job)
     local center = job.stand
-    local reach = settings().Radii.EnemyNearCamp
+    local radii = settings().Radii
     local best
     for ____, e in ipairs(LaneState.Enemies(
         bot,
@@ -1201,10 +1202,11 @@ local function contestTarget(bot, job)
                     __continue181 = true
                     break
                 end
-                if e.pid == job.targetPid then
+                local d = dist2D(e.location, center)
+                if e.pid == job.targetPid and d <= radii.ContestReach then
                     return e.unit
                 end
-                if best == nil and dist2D(e.location, center) <= reach then
+                if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
                 __continue181 = true

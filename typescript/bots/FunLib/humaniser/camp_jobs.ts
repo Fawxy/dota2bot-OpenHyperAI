@@ -767,14 +767,16 @@ function trySecondCamp(bot: Unit, job: Job, now: number): boolean {
     return true;
 }
 
+/** The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map. */
 function contestTarget(bot: Unit, job: Job): Unit | undefined {
     const center = job.stand;
-    const reach = settings().Radii.EnemyNearCamp;
+    const radii = settings().Radii;
     let best: Unit | undefined;
     for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
         if (!e.visible || e.unit === undefined) continue;
-        if (e.pid === job.targetPid) return e.unit;
-        if (best === undefined && dist2D(e.location, center) <= reach) best = e.unit;
+        const d = dist2D(e.location, center);
+        if (e.pid === job.targetPid && d <= radii.ContestReach) return e.unit;
+        if (best === undefined && d <= radii.EnemyNearCamp) best = e.unit;
     }
     return best;
 }

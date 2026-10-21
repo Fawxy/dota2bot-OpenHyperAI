@@ -88,9 +88,6 @@ function GetDesire()
 		end
 	end
 
-	local nLaneContest = J.Humaniser.Lane.RuneContestDesire(bot)
-	if nLaneContest > 0 then return nLaneContest end
-
 	-- Wisdom Rune
 	if bot:GetLevel() < 30 then
 		nShrineOfWisdomTime = X.GetCurrentWisdomTime()
@@ -196,35 +193,43 @@ function GetDesire()
 				end
 			else
 				-- Power rune / water rune
-				if rune.status == RUNE_STATUS_AVAILABLE then
-					if X.IsEnemyPickRune(rune.location) then return BOT_MODE_DESIRE_NONE end
-
-					local nRuneType = rune.type
-					-- Water rune support (local addition)
-					if nRuneType == RUNE_WATER and (bBottle or botHP < 0.6 or botMP < 0.5) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3200)
-					elseif nRuneType == RUNE_WATER and not bBottle then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
-					end
-
-					if bBottle or (not J.IsEarlyGame() and botPos <= 3) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
-					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
-					end
-				elseif rune.status == RUNE_STATUS_UNKNOWN and DotaTime() > 113 then
-					if bBottle or (not J.IsEarlyGame() and botPos <= 3) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
-					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
-					end
-				elseif rune.status == RUNE_STATUS_MISSING and DotaTime() > 60 and (J.GetNextPowerRuneSpawnTime() - DotaTime() < 7) then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
-				elseif rune.status == RUNE_STATUS_UNKNOWN and X.IsTeamMustSaveRune(rune.location) and DotaTime() > 113 and rune.distance <= nProximityRadius * 2 then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2)
-				end
+				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return BOT_MODE_DESIRE_NONE end
+				return math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot))
 			end
 		end
+	end
+
+	return BOT_MODE_DESIRE_NONE
+end
+
+--------------------------------------------------------------------
+-- PowerRuneDesire  (power/water rune branch of GetDesire)
+--------------------------------------------------------------------
+function X.PowerRuneDesire(rune, nProximityRadius)
+	if rune.status == RUNE_STATUS_AVAILABLE then
+		local nRuneType = rune.type
+		-- Water rune support (local addition)
+		if nRuneType == RUNE_WATER and (bBottle or botHP < 0.6 or botMP < 0.5) then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3200)
+		elseif nRuneType == RUNE_WATER and not bBottle then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+		end
+
+		if bBottle or (not J.IsEarlyGame() and botPos <= 3) then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
+		else
+			return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
+		end
+	elseif rune.status == RUNE_STATUS_UNKNOWN and DotaTime() > 113 then
+		if bBottle or (not J.IsEarlyGame() and botPos <= 3) then
+			return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
+		else
+			return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+		end
+	elseif rune.status == RUNE_STATUS_MISSING and DotaTime() > 60 and (J.GetNextPowerRuneSpawnTime() - DotaTime() < 7) then
+		return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+	elseif rune.status == RUNE_STATUS_UNKNOWN and X.IsTeamMustSaveRune(rune.location) and DotaTime() > 113 and rune.distance <= nProximityRadius * 2 then
+		return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2)
 	end
 
 	return BOT_MODE_DESIRE_NONE
