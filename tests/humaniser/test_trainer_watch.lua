@@ -137,6 +137,31 @@ do
 	check("an EARLY attempt shields the creep from MISSED_EASY", #v == 1 and v[1].kind == "EARLY", table.concat(kinds, ","))
 end
 
+-- Swing at A, retarget to B mid-swing, then A dies to a lane creep.
+do
+	local judge, verdicts = NewJudge(), {}
+	local now = t0
+	while now <= t0 + 2.0 do
+		local dead = now >= t0 + 0.7 - 1e-9
+		local a = { id = "A", kind = "melee", isDeny = false, alive = not dead, hp = dead and 0 or 71, dist = 100 }
+		if dead then a.killer = { kind = "creep" } else a.prediction = wide(now) end
+		local b = { id = "B", kind = "melee", isDeny = false, alive = true, hp = 71, dist = 100 }
+		local s = { now = now, alive = true, eligible = true, harassed = false, anim = "none", lastHits = 0, denies = 0 }
+		if now >= t0 + 0.1 and now < t0 + 0.5 then
+			s.anim, s.swingStart = "swing", t0 + 0.1
+			s.target = now < t0 + 0.2 and "A" or "B"
+		end
+		for _, e in ipairs(judge:Step(s, { a, b })) do
+			if e.type == "verdict" then table.insert(verdicts, e.v) end
+		end
+		now = now + DT
+	end
+	check("retarget away from A: CANCELLED then MISSED_EASY for A", #verdicts == 2 and verdicts[1].kind == "CANCELLED" and verdicts[1].creepId == "A"
+		and verdicts[2].kind == "MISSED_EASY" and verdicts[2].creepId == "A", #verdicts)
+	local e = verdicts[2] or {}
+	check("retargeted attempt does not count as a swing", e.swung == false and e.reason == "missed easy one - 0.42s window, melee creep, no swing", e.reason)
+end
+
 -- A creep that leaves vision is never graded: the lifecycle drops it, so the judge only stops seeing it.
 do
 	check("invalid handle at 80% HP is not a death", Watch.IsDeathLikely(80, 100, 58, 300) == false)
