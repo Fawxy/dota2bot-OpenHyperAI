@@ -1161,3 +1161,23 @@ Claims (all `tier: "TRANSITION"`, re-posted each `Tick` while they apply): `tran
 
 ### TODO (in-game)
 Spelled out in the "Transitions (12)" checklist of [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md): the spec's seven scenarios, `GetIncomingTeleports` listing a TP to a fogged tower (8), walking each `GANK_ANCHORS` point (9), mid-rune behaviour and `GetRuneStatus` semantics (10), that `ItemUsageThink` runs while the bot is dead so the death edge is seen (11), and the 850-unit TP setup clamp plus the 60 s missing cap (12), post-laning behaviour (13), and no lost lane from even last hits (14).
+
+## Task runner (spike)
+Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, ...) resumed once per frame from its host mode's `Think()`. OHA side: `FunLib/humaniser/tasks.lua` (TS: `tasks.ts`), exposed as `J.Humaniser.Tasks`.
+
+- **Vendored code:** `bots/FunLib/sdk/tasks/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/sdk/tasks/` (declarations) come from dota-bot-sdk `packages/lua-tasks`. Do not edit them. To update, from that package run
+  ```bash
+  npm run build && npm run vendor -- --lua <oha>/bots/FunLib/sdk/tasks --types <oha>/typescript/bots/FunLib/sdk/tasks
+  ```
+  and commit everything it writes. `VERSION` records the SDK commit (it must not end in `-dirty`); `.vendored` lists the files so the next run removes stale ones.
+- **Loading:** the bundle is required lazily under `pcall`, only when the humaniser and `Tasks.Enable` are on, so a bundle that fails to load cannot break the rest of the humaniser. The first load attempt in each script context always prints one `[H:tasks] support ...` line (not gated on Debug).
+- **Adapter:** task claims are `Intent.Claim` floors (default `LANE_PLAN` 0.6, source `task:<name>`) without `until`, so `ClaimTTL` applies and a task that stops stepping loses its claim. `lastHit` candidates go through `AllyLastHit.MayLastHit`; a veto ends the task with `etiquette`. Logging goes through `HDebug.Log` (Debug only).
+- **API:** `Tasks.Start(bot, { name, host, tier?, floor? }, body)`, `Tasks.Step(bot, mode)` from the host mode's `Think()`, `Tasks.Tick(bot)` (run from `Humaniser.Tick`: cancels the task when the bot dies or leaves the host mode), `Tasks.Describe(bot)`, `Tasks.Verbs()`. All return false/nil when disabled or the bundle failed to load.
+- **Kill switch:** `Customize.Humaniser.Tasks.Enable = false` (or `Humaniser.Enable = false`): the bundle is never required and nothing is printed. `Tasks.Demo` gates the GATHER demo task.
+- **Overlay** (Debug): `task: <name> step=<n>`, or `- last=<name> <ok|reason>` once it ends.
+- **Offline:** `tests/humaniser/test_tasks_integration.lua`.
+
+### In-game: check first
+1. **`coroutine` is present in Dota's bot VM.** Expected console line: `[H:tasks] support coroutine=table bundle=ok`. `coroutine=nil` means the bundle loaded but every task reports `unsupported`.
+2. **The luaBundle `require` shim works in Dota.** The same line shows `bundle=ok`. If it shows `bundle=fail <err>`, record the error here: no task code can run.
+3. **TODO (in-game):** a task's `task:<name>` claim shows on the overlay's `intent:` line while it runs, and disappears within 0.2 s of the task ending or the bot leaving the host mode.

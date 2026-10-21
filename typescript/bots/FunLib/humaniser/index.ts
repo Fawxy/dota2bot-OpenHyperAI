@@ -24,6 +24,10 @@ import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
 export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry };
+// tasks: task runner spike
+import * as Tasks from "bots/FunLib/humaniser/tasks";
+// tasks: task runner spike
+export { Tasks };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -106,6 +110,8 @@ function drawOverlay(bot: Unit): void {
             const cs = LastHitSkill.Counts(bot);
             HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));
         }
+        // tasks: task runner spike
+        if (Tasks.IsActive()) HDebug.Text(bot, "task", Tasks.Describe(bot) ?? "-");
     }
     HDebug.Draw(bot);
 }
@@ -136,6 +142,8 @@ function tick(this: void, bot: Unit): void {
     Orders.GetFor(bot);
     Intent.Tick(bot);
     Telemetry.Tick(bot, telemetryContext);
+    // tasks: task runner spike
+    Tasks.Tick(bot);
     HDebug.SharedStateProbe(bot);
     drawOverlay(bot);
 }

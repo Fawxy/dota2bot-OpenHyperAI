@@ -21,6 +21,7 @@ local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -38,6 +39,7 @@ ____exports.LastHitSkill = LastHitSkill
 ____exports.FarmPattern = FarmPattern
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
+____exports.Tasks = Tasks
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -181,6 +183,13 @@ local function drawOverlay(bot)
                 )
             )
         end
+        if Tasks.IsActive() then
+            HDebug.Text(
+                bot,
+                "task",
+                Tasks.Describe(bot) or "-"
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -215,6 +224,7 @@ local function tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
+    Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
 end

@@ -217,6 +217,8 @@ Customize.Humaniser = {
         LuaErrors = true,
         LuaErrorRepeat = 10,
     },
+    -- tasks: coroutine task runner spike (FunLib/sdk/tasks, vendored). Demo gates the GATHER demo task.
+    Tasks = { Enable = true, Demo = false },
 }
 
 return Customize
