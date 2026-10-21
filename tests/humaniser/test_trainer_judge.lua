@@ -108,6 +108,17 @@ do
 	check("ok reason says how early", v.reason == "got it (window said 0.1s early)", v.reason)
 end
 
+-- Window edges: the window opens inclusively and closes exclusively.
+do
+	local r = newRun()
+	r.play(t0, t0 + 1.0, killScript(t0, t0 + 0.4, pred(t0, t0 + 0.5), { kind = "subject" }))
+	only("swing exactly at startOpen", r, "PERFECT")
+
+	r = newRun()
+	r.play(t0, t0 + 1.0, killScript(t0, t0 + 0.4, pred(t0 - 0.5, t0), { kind = "subject" }))
+	only("swing exactly at startClose", r, "OK")
+end
+
 -- EARLY: the hit lands without killing.
 do
 	local r = newRun()
@@ -179,9 +190,50 @@ do
 	check("retarget: two verdicts", #r.verdicts == 2, #r.verdicts)
 	local a, b = r.verdicts[1] or {}, r.verdicts[2] or {}
 	check("retarget: A is cancelled", a.kind == "CANCELLED" and a.creepId == "A", a.kind)
-	check("retarget: B starts a fresh attempt and resolves on its own", b.creepId == "B" and (b.kind == "OK" or b.kind == "PERFECT"), b.kind)
+	check("retarget: B starts a fresh attempt and resolves on its own", b.creepId == "B" and b.kind == "OK", b.kind)
 	check("retarget: B's offset is measured from its own swing start", near(b.offset or 99, swingB - (t0 + 0.6)), b.offset)
 	check("retarget: only B has an outcome", #r.outcomes == 1 and r.outcomes[1].creepId == "B" and r.outcomes[1].subjectGotIt == true)
+end
+
+-- Two swings in flight on one creep; w is narrow so no easy-miss verdict applies.
+local function twoSwings(deathAt, killer)
+	local r = newRun()
+	local w = pred(t0 - 0.1, t0 + 0.1)
+	local second = t0 + 0.35
+	r.play(t0, t0 + 2.0, function(now)
+		local dead = now >= deathAt - 1e-9
+		local c = creep("A", { prediction = w })
+		if dead then c.alive = false c.hp = 0 c.killer = killer end
+		local s = { target = "A", anim = "none" }
+		if not dead then
+			if now < second - 1e-9 then
+				s.anim, s.swingStart = swingAnim(t0, now), t0
+			else
+				s.anim, s.swingStart = swingAnim(second, now), second
+			end
+		end
+		return s, { c }
+	end)
+	return r
+end
+
+do
+	local r = twoSwings(t0 + 0.45, { kind = "creep" })
+	local v = only("non-subject kill with two open attempts", r, "LATE")
+	check("only the newest attempt is graded", v.reason == "late by 0.28s - lane creep took it", v.reason)
+	check("graded attempt is the second swing", v.predictedLand ~= nil and near(v.predictedLand, t0 + 0.35 + 0.4), v.predictedLand)
+	check("one outcome for the creep", #r.outcomes == 1 and r.outcomes[1].subjectGotIt == false, #r.outcomes)
+end
+
+do
+	local r = twoSwings(t0 + 0.45, { kind = "subject" })
+	local v = only("fast double swing, first lands the kill", r, "PERFECT")
+	check("older attempt gets the credit", near(v.offset or 99, t0 - (t0 - 0.1 + t0 + 0.1) / 2), v.offset)
+	check("credited kill is the subject's outcome", #r.outcomes == 1 and r.outcomes[1].subjectGotIt == true)
+
+	r = twoSwings(t0 + 0.6, { kind = "subject" })
+	check("slow double swing: older EARLY, newer graded", #r.verdicts == 2 and r.verdicts[1].kind == "EARLY" and r.verdicts[2].kind == "OK",
+		#r.verdicts .. " " .. tostring(r.verdicts[1] and r.verdicts[1].kind) .. " " .. tostring(r.verdicts[2] and r.verdicts[2].kind))
 end
 
 -- MISS: our hit should have landed, nothing happened.

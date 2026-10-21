@@ -7,6 +7,10 @@ const MISS_GRACE = 0.3;
 const EARLY_WINDOW = 0.2;
 const EARLY_DROP_FRACTION = 0.6;
 const MIN_EARLY = 0.01;
+const EASY_RADIUS = 800;
+const WIDEST_MEMORY = 2;
+const WIDEST_LOOKAHEAD = 2;
+const SAME_SWING_SLACK = 0.1;
 
 export interface SubjectObs {
     now: number;
@@ -53,6 +57,8 @@ export interface Verdict {
     reason: string;
 }
 
+type Closed = Verdict | "silent";
+
 export type JudgeEvent = { type: "verdict"; v: Verdict } | { type: "outcome"; creepId: string; subjectGotIt: boolean };
 
 interface Attempt {
@@ -76,6 +82,8 @@ export class Judge {
     private reported: Record<string, boolean> = {};
     private prevAnim: string = "none";
     private prevTarget: string | undefined = undefined;
+    private widest: Record<string, { t: number; w: number }[]> = {};
+    private handled: Record<string, boolean> = {};
 
     constructor(readonly easyWindow: number) {}
 
@@ -84,7 +92,9 @@ export class Judge {
         const byId: Record<string, CreepObs> = {};
         for (const c of creeps) byId[c.id] = c;
 
+        this.recordWindows(s.now, creeps);
         this.resolveOpen(s, byId, events);
+        this.detectEasyMisses(s, creeps, events);
         this.trackSwing(s, byId, events);
         this.emitOutcomes(creeps, events);
 
@@ -95,24 +105,27 @@ export class Judge {
 
     private resolveOpen(s: SubjectObs, byId: Record<string, CreepObs>, events: JudgeEvent[]) {
         const open: Attempt[] = [];
-        let lastForCreep: Record<string, Attempt> = {};
-        for (const a of this.attempts) lastForCreep[a.creepId] = a;
+        const group: Record<string, Attempt[]> = {};
+        for (const a of this.attempts) {
+            if (group[a.creepId] === undefined) group[a.creepId] = [];
+            group[a.creepId].push(a);
+        }
 
         for (const a of this.attempts) {
             const c = byId[a.creepId];
-            const verdict = c === undefined ? this.forced(s, a) : this.resolve(s, a, c, lastForCreep[a.creepId] === a);
-            if (verdict === undefined) {
+            const closed = c === undefined ? this.forced(s, a) : this.resolve(s, a, c, group[a.creepId]);
+            if (closed === undefined) {
                 open.push(a);
-            } else {
-                events.push({ type: "verdict", v: verdict });
+            } else if (closed !== "silent") {
+                events.push({ type: "verdict", v: closed });
             }
         }
         this.attempts = open;
     }
 
-    private resolve(s: SubjectObs, a: Attempt, c: CreepObs, isLatest: boolean): Verdict | undefined {
+    private resolve(s: SubjectObs, a: Attempt, c: CreepObs, onCreep: Attempt[]): Closed | undefined {
         if (!c.alive) {
-            return c.killer === undefined ? this.forced(s, a) : this.resolveDeath(s, a, c.killer, isLatest);
+            return c.killer === undefined ? this.forced(s, a) : this.resolveDeath(s, a, c, c.killer, onCreep);
         }
 
         const dropWindowStart = a.predictedLand - EARLY_WINDOW;
@@ -139,25 +152,107 @@ export class Judge {
         return this.verdict("EARLY", s, a, reason, a.swingStart - a.prediction.ideal, s.now);
     }
 
-    private resolveDeath(s: SubjectObs, a: Attempt, killer: Killer, isLatest: boolean): Verdict {
-        const offset = a.swingStart - a.prediction.ideal;
+    private resolveDeath(s: SubjectObs, a: Attempt, c: CreepObs, killer: Killer, onCreep: Attempt[]): Closed {
         if (killer.kind === "subject") {
-            // An older swing on the same creep landed without killing it.
-            if (!isLatest) return this.early(s, a);
-            const p = a.prediction;
-            if (a.swingStart >= p.startOpen && a.swingStart < p.startClose) {
-                return this.verdict("PERFECT", s, a, `perfect (${Signed(offset)}s)`, offset, s.now);
-            }
-            const early = a.swingStart < p.startOpen;
-            const distance = early ? p.startOpen - a.swingStart : a.swingStart - p.startClose;
-            return this.verdict("OK", s, a, `got it (window said ${Sec(distance)}s ${early ? "early" : "late"})`, offset, s.now);
+            const credited = this.creditedAttempt(s, onCreep);
+            if (a === credited) return this.credit(s, a);
+            // Attempts after the credited one are the same kill seen twice; earlier ones landed without killing.
+            return onCreep.indexOf(a) < onCreep.indexOf(credited) ? this.early(s, a) : "silent";
         }
 
-        const taker = Taker(killer);
+        // One death gets one verdict: only the newest attempt on the creep is graded.
+        if (a !== onCreep[onCreep.length - 1]) return "silent";
+        const offset = a.swingStart - a.prediction.ideal;
         if (s.now < a.predictedLand) {
-            return this.verdict("LATE", s, a, `late by ${Sec(a.predictedLand - s.now)}s - ${taker}`, offset, s.now);
+            const easy = this.easyMiss(s, c, killer, a);
+            if (easy !== undefined) return easy;
+            return this.verdict("LATE", s, a, `late by ${Sec(a.predictedLand - s.now)}s - ${Taker(killer)}`, offset, s.now);
         }
-        return this.verdict("MISS", s, a, `missed - ${taker}`);
+        return this.verdict("MISS", s, a, `missed - ${Taker(killer)}`);
+    }
+
+    /**
+     * A fast ranged attacker can have two swings in flight, and the first one lands the killing blow.
+     * The older attempt gets the credit when its projectile was due no more than SAME_SWING_SLACK ago.
+     */
+    private creditedAttempt(s: SubjectObs, onCreep: Attempt[]): Attempt {
+        const latest = onCreep[onCreep.length - 1];
+        if (onCreep.length < 2) return latest;
+        const older = onCreep[onCreep.length - 2];
+        return s.now - older.predictedLand <= SAME_SWING_SLACK ? older : latest;
+    }
+
+    private credit(s: SubjectObs, a: Attempt): Verdict {
+        const offset = a.swingStart - a.prediction.ideal;
+        const p = a.prediction;
+        if (a.swingStart >= p.startOpen && a.swingStart < p.startClose) {
+            return this.verdict("PERFECT", s, a, `perfect (${Signed(offset)}s)`, offset, s.now);
+        }
+        const early = a.swingStart < p.startOpen;
+        const distance = early ? p.startOpen - a.swingStart : a.swingStart - p.startClose;
+        return this.verdict("OK", s, a, `got it (window said ${Sec(distance)}s ${early ? "early" : "late"})`, offset, s.now);
+    }
+
+    private recordWindows(now: number, creeps: CreepObs[]) {
+        for (const c of creeps) {
+            const p = c.prediction;
+            if (!c.alive || p === undefined || p.startClose <= now) continue;
+            const w = math.min(p.startClose, now + WIDEST_LOOKAHEAD) - math.max(p.startOpen, now);
+            if (this.widest[c.id] === undefined) this.widest[c.id] = [];
+            this.widest[c.id].push({ t: now, w });
+        }
+        for (const id of Object.keys(this.widest)) {
+            const samples = this.widest[id];
+            while (samples.length > 0 && now - samples[0].t > WIDEST_MEMORY) table.remove(samples, 1);
+            if (samples.length === 0) delete this.widest[id];
+        }
+    }
+
+    private widestFor(id: string): number {
+        let best = 0;
+        for (const sample of this.widest[id] ?? []) best = math.max(best, sample.w);
+        return best;
+    }
+
+    private detectEasyMisses(s: SubjectObs, creeps: CreepObs[], events: JudgeEvent[]) {
+        for (const c of creeps) {
+            if (c.alive || c.killer === undefined || this.handled[c.id]) continue;
+            this.handled[c.id] = true;
+            if (c.killer.kind !== "subject" && !this.attempted[c.id]) {
+                const v = this.easyMiss(s, c, c.killer, undefined);
+                if (v !== undefined) events.push({ type: "verdict", v });
+            }
+            delete this.widest[c.id];
+        }
+    }
+
+    /** `a` is the creep's LATE attempt, or undefined when the subject never swung at it. */
+    private easyMiss(s: SubjectObs, c: CreepObs, killer: Killer, a: Attempt | undefined): Verdict | undefined {
+        const window = this.widestFor(c.id);
+        if (!s.alive || !s.eligible || c.dist > EASY_RADIUS || window < this.easyWindow) return undefined;
+
+        const what = c.isDeny ? "easy deny" : "easy one";
+        let reason = `missed ${what} - ${Sec(window)}s window, `;
+        reason += a === undefined ? `${c.kind} creep, no swing` : `you were ${Sec(a.predictedLand - s.now)}s late`;
+        if (killer.kind === "ally") reason += ` - ${killer.name ?? "an ally"} took it after you passed`;
+
+        const v: Verdict = {
+            kind: "MISSED_EASY",
+            at: s.now,
+            creepId: c.id,
+            creepKind: c.kind,
+            isDeny: c.isDeny,
+            harassed: s.harassed,
+            swung: a !== undefined,
+            window,
+            reason,
+        };
+        if (a !== undefined) {
+            v.offset = a.swingStart - a.prediction.ideal;
+            v.predictedLand = a.predictedLand;
+            v.landedAt = s.now;
+        }
+        return v;
     }
 
     private verdict(kind: VerdictKind, s: SubjectObs, a: Attempt, reason: string, offset?: number, landedAt?: number): Verdict {
