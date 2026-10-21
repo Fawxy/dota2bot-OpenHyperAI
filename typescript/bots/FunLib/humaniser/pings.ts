@@ -9,6 +9,7 @@
 import { GameState, Lane, Ping, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Orders from "bots/FunLib/humaniser/orders";
 
 export const DEFAULTS = {
@@ -132,6 +133,26 @@ function nearReservedSpot(loc: Vector, radius: number): boolean {
     return false;
 }
 
+/**
+ * The lane whose creep front the ping is on ("leave the wave alone") and the bots laning there; only during
+ * laning with the lane plan on. Lanes nobody is assigned to are skipped, as nobody could respond there.
+ */
+function laneFrontPing(team: number, loc: Vector): { lane: Lane; pids: number[] } | undefined {
+    if (!LaneConfig.IsOn("Plan") || !LaneConfig.InLaningPhase()) return undefined;
+    let best: { lane: Lane; pids: number[] } | undefined;
+    let bestDist = LaneConfig.Settings().Radii.LaneFrontPing;
+    for (const lane of [Lane.Top, Lane.Mid, Lane.Bot]) {
+        const pids = Orders.BotsAssignedTo(team, lane);
+        if (pids.length === 0) continue;
+        const d = dist2D(GetLaneFrontLocation(team, lane, 0), loc);
+        if (d <= bestDist) {
+            best = { lane, pids };
+            bestDist = d;
+        }
+    }
+    return best;
+}
+
 export interface Classification {
     context: string;
     spec?: Orders.OrderSpec;
@@ -141,7 +162,7 @@ export interface Classification {
  * Classifies a ping by what is near it, in the spec's precedence order. Only reads state every bot on the
  * team sees identically. `issuerSmoked` widens GATHER/ATTACK to the whole team (moving out of a smoke).
  */
-export function Classify(issuerPID: number, ping: Ping, issuerSmoked: boolean): Classification {
+export function Classify(issuerPID: number, ping: Ping, issuerSmoked: boolean, team: number = GetTeam()): Classification {
     const cfg = Get();
     const loc = ping.location;
     const sourceKey = `ping:${issuerPID}:${string.format("%.2f", ping.time)}`;
@@ -211,6 +232,22 @@ export function Classify(issuerPID: number, ping: Ping, issuerSmoked: boolean): 
         };
     }
 
+    const front = laneFrontPing(team, loc);
+    if (front !== undefined) {
+        return {
+            context: "lane_front",
+            spec: {
+                ...base,
+                type: "LANE_HANDSOFF",
+                lane: front.lane,
+                duration: LaneConfig.Settings().Timing.PingHandsOff,
+                maxResponders: front.pids.length,
+                onlyPIDs: front.pids,
+                ackPing: false,
+            },
+        };
+    }
+
     return {
         context: "ground",
         spec: { ...base, type: "GATHER", duration: cfg.Gather.Duration, maxResponders: issuerSmoked ? 5 : cfg.Gather.MaxResponders },
@@ -248,7 +285,7 @@ export function Scan(team: number): void {
         if (now - ping.time > cfg.MaxPingAge) continue;
 
         const smoked = member.HasModifier("modifier_smoke_of_deceit");
-        const result = Classify(pid, ping, smoked);
+        const result = Classify(pid, ping, smoked, team);
         lastSummary = `${result.context} by ${pid} @${string.format("%.1f", ping.time)}`;
         HDebug.Log("pings", lastSummary, `danger=${tostring(IsDangerPing(ping))}`);
         if (result.spec === undefined) continue;

@@ -193,7 +193,7 @@ export function ResetCache(): void {
     viewCache = {};
 }
 
-function isLaneCreepName(name: string): boolean {
+export function IsLaneCreepName(name: string): boolean {
     return contains(name, "creep_goodguys") || contains(name, "creep_badguys") || contains(name, "goodguys_siege") || contains(name, "badguys_siege");
 }
 
@@ -202,7 +202,7 @@ function partition(units: Unit[], enemy: boolean): Record<number, ScannedCreep[]
     const assign = radii().LaneAssign;
     for (const unit of units) {
         if (enemy && !unit.CanBeSeen()) continue;
-        if (!unit.IsAlive() || !isLaneCreepName(unit.GetUnitName())) continue;
+        if (!unit.IsAlive() || !IsLaneCreepName(unit.GetUnitName())) continue;
         const loc = unit.GetLocation();
         let bestLane: Lane | undefined;
         let bestDist = math.huge;

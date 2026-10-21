@@ -11,6 +11,7 @@ import { GameState, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
 
@@ -65,6 +66,8 @@ interface CommandDef {
     name: string;
     aliases: string[];
     handler: (this: void, ctx: CommandContext) => void;
+    /** Only recognised while the lane plan is on, so pre-07 behaviour is unchanged otherwise. */
+    needsLanePlan?: boolean;
 }
 
 const LANE_WORDS: Record<string, Lane> = {
@@ -235,6 +238,29 @@ function release(ctx: CommandContext): void {
     Orders.Post(ctx.team, { type: "RELEASE", sourceKey: `${ctx.sourceKey}:release`, issuerPID: ctx.issuerPID, duration: 0, maxResponders: 0 });
 }
 
+function laneCommand(name: string, type: Orders.OrderType, duration: (this: void) => number): CommandDef {
+    return {
+        name,
+        aliases: [],
+        needsLanePlan: true,
+        handler: (ctx) => {
+            const lane = ParseLane(ctx.args[0], ctx.team) ?? laneNearest(ctx.team, ctx.issuer.GetLocation());
+            const pids = ctx.onlyPIDs ?? Orders.BotsAssignedTo(ctx.team, lane);
+            if (pids.length === 0) return;
+            Orders.Post(ctx.team, {
+                type,
+                sourceKey: ctx.sourceKey,
+                issuerPID: ctx.issuerPID,
+                lane,
+                duration: duration(),
+                maxResponders: pids.length,
+                onlyPIDs: pids,
+                delayKind: "chat",
+            });
+        },
+    };
+}
+
 const COMMANDS: CommandDef[] = [
     {
         name: "def",
@@ -349,12 +375,21 @@ const COMMANDS: CommandDef[] = [
     {
         name: "bhelp",
         aliases: [],
-        handler: (ctx) => queueSay(ctx.team, "say_cmd_help"),
+        handler: (ctx) => {
+            queueSay(ctx.team, "say_cmd_help");
+            if (LaneConfig.IsOn("Plan")) queueSay(ctx.team, "say_cmd_help_lane");
+        },
     },
+    laneCommand("freeze", "LANE_FREEZE", () => LaneConfig.Settings().Orders.FreezeShove),
+    laneCommand("shove", "LANE_SHOVE", () => LaneConfig.Settings().Orders.FreezeShove),
+    laneCommand("pull", "LANE_PULL", () => LaneConfig.Settings().Orders.PullNoPull),
+    laneCommand("nopull", "LANE_NOPULL", () => LaneConfig.Settings().Orders.PullNoPull),
+    laneCommand("stack", "LANE_STACK", () => LaneConfig.Settings().Orders.Stack),
 ];
 
 function findCommand(word: string): CommandDef | undefined {
     for (const def of COMMANDS) {
+        if (def.needsLanePlan === true && !LaneConfig.IsOn("Plan")) continue;
         if (def.name === word || def.aliases.indexOf(word) >= 0) return def;
     }
     return undefined;

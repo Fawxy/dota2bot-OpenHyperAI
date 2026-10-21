@@ -7,10 +7,11 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 
-export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState };
+export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LanePlan };
 
 export function IsEnabled(): boolean {
     return LaneConfig.IsEnabled();
@@ -24,5 +25,8 @@ export function Tick(bot: Unit): void {
     LaneDebug.Tick(bot);
     const snapshot = LaneState.ForBot(bot);
     if (snapshot === undefined) return;
-    if (HDebug.IsEnabled()) HDebug.Text(bot, "lane", LaneState.Describe(snapshot, LaneState.ScoreFor(bot, snapshot)));
+    if (HDebug.IsEnabled()) {
+        const state = LaneState.Describe(snapshot, LaneState.ScoreFor(bot, snapshot));
+        HDebug.Text(bot, "lane", `${state} ${LanePlan.Describe(LanePlan.View(bot, snapshot))}`);
+    }
 }

@@ -13,7 +13,22 @@ import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
 
-export type OrderType = "GATHER" | "ATTACK" | "DEFEND" | "PUSH" | "ROSHAN" | "AVOID" | "SMOKE" | "BACK" | "RELEASE";
+export type OrderType =
+    | "GATHER"
+    | "ATTACK"
+    | "DEFEND"
+    | "PUSH"
+    | "ROSHAN"
+    | "AVOID"
+    | "SMOKE"
+    | "BACK"
+    | "RELEASE"
+    | "LANE_FREEZE"
+    | "LANE_SHOVE"
+    | "LANE_PULL"
+    | "LANE_NOPULL"
+    | "LANE_STACK"
+    | "LANE_HANDSOFF";
 
 export interface OrderSpec {
     type: OrderType;
@@ -60,6 +75,25 @@ const PRIORITY: Record<OrderType, number> = {
     GATHER: 2,
     PUSH: 1,
     RELEASE: 0,
+    LANE_FREEZE: -1,
+    LANE_SHOVE: -1,
+    LANE_PULL: -1,
+    LANE_NOPULL: -1,
+    LANE_STACK: -1,
+    LANE_HANDSOFF: -1,
+};
+
+// Lane orders adjust the shared lane plan; a bot adopts them on top of whatever order it is executing.
+function isLaneOrder(type: OrderType): boolean {
+    return string.sub(type, 1, 5) === "LANE_";
+}
+
+// Posting one of these cancels the active order of the other type on the same lane.
+const EXCLUSIVE: Partial<Record<OrderType, OrderType>> = {
+    LANE_FREEZE: "LANE_SHOVE",
+    LANE_SHOVE: "LANE_FREEZE",
+    LANE_PULL: "LANE_NOPULL",
+    LANE_NOPULL: "LANE_PULL",
 };
 
 const ordersByTeam: Record<number, TeamOrder[]> = {};
@@ -130,6 +164,15 @@ function teamBots(team: number): Unit[] {
     return result;
 }
 
+/** Player IDs of the team's bots whose assigned lane is `lane`. */
+export function BotsAssignedTo(team: number, lane: Lane): number[] {
+    const pids: number[] = [];
+    for (const member of teamBots(team)) {
+        if (member.GetAssignedLane() === lane) pids.push(member.GetPlayerID());
+    }
+    return pids;
+}
+
 export function OrderLocation(order: TeamOrder): Vector | undefined {
     if (order.target !== undefined && order.target.CanBeSeen() && order.target.IsAlive()) return order.target.GetLocation();
     return order.location;
@@ -181,7 +224,8 @@ export function Post(team: number, spec: OrderSpec): TeamOrder | undefined {
     prune(team);
     const list = teamOrders(team);
     for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].type === spec.type && list[i].lane === spec.lane) removeAt(list, i);
+        const other = EXCLUSIVE[spec.type];
+        if (list[i].lane === spec.lane && (list[i].type === spec.type || list[i].type === other)) removeAt(list, i);
     }
     const now = GameTime();
     const order: TeamOrder = {
@@ -244,6 +288,8 @@ export function IsSpokesperson(bot: Unit, order: TeamOrder): boolean {
 
 /** Why this bot cannot respond right now, or undefined if it can. */
 export function DeclineReason(bot: Unit, order: TeamOrder): string | undefined {
+    // A dead bot still adopts the lane plan once it respawns.
+    if (isLaneOrder(order.type)) return undefined;
     if (!bot.IsAlive()) return "dead";
     if (bot.IsChanneling()) return "channeling";
     if (bot.GetActiveMode() === BotMode.Retreat && bot.GetHealth() / bot.GetMaxHealth() < 0.35) return "low_hp";
@@ -340,8 +386,8 @@ function acceptedFor(bot: Unit): ForCache {
     for (const order of GetActive(bot.GetTeam())) {
         if (!TryAccept(bot, order)) continue;
         accepted.push(order);
-        // AVOID has no mode of its own; it must not hide the order a bot is executing.
-        if (order.type === "AVOID") continue;
+        // AVOID and lane orders have no mode of their own; they must not hide the order a bot is executing.
+        if (order.type === "AVOID" || isLaneOrder(order.type)) continue;
         if (best === undefined || PRIORITY[order.type] > PRIORITY[best.type]) best = order;
     }
     // GetActive may have pruned (bumping version), so record the version after the scan.
@@ -359,6 +405,14 @@ export function GetFor(bot: Unit): TeamOrder | undefined {
 export function GetAccepted(bot: Unit, type: OrderType): TeamOrder | undefined {
     for (const order of acceptedFor(bot).accepted) {
         if (order.type === type) return order;
+    }
+    return undefined;
+}
+
+/** An accepted lane order of the given type for this lane. */
+export function GetAcceptedForLane(bot: Unit, type: OrderType, lane: Lane): TeamOrder | undefined {
+    for (const order of acceptedFor(bot).accepted) {
+        if (order.type === type && order.lane === lane) return order;
     }
     return undefined;
 }

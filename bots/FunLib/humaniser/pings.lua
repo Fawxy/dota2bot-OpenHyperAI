@@ -18,6 +18,7 @@ local Lane = ____dota.Lane
 local UnitType = ____dota.UnitType
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 ____exports.DEFAULTS = {
     Enable = true,
@@ -169,9 +170,46 @@ local function nearReservedSpot(loc, radius)
     end
     return false
 end
+--- The lane whose creep front the ping is on ("leave the wave alone") and the bots laning there; only during
+-- laning with the lane plan on. Lanes nobody is assigned to are skipped, as nobody could respond there.
+local function laneFrontPing(team, loc)
+    if not LaneConfig.IsOn("Plan") or not LaneConfig.InLaningPhase() then
+        return nil
+    end
+    local best
+    local bestDist = LaneConfig.Settings().Radii.LaneFrontPing
+    for ____, lane in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
+        do
+            local __continue35
+            repeat
+                local pids = Orders.BotsAssignedTo(team, lane)
+                if #pids == 0 then
+                    __continue35 = true
+                    break
+                end
+                local d = dist2D(
+                    GetLaneFrontLocation(team, lane, 0),
+                    loc
+                )
+                if d <= bestDist then
+                    best = {lane = lane, pids = pids}
+                    bestDist = d
+                end
+                __continue35 = true
+            until true
+            if not __continue35 then
+                break
+            end
+        end
+    end
+    return best
+end
 --- Classifies a ping by what is near it, in the spec's precedence order. Only reads state every bot on the
 -- team sees identically. `issuerSmoked` widens GATHER/ATTACK to the whole team (moving out of a smoke).
-function ____exports.Classify(issuerPID, ping, issuerSmoked)
+function ____exports.Classify(issuerPID, ping, issuerSmoked, team)
+    if team == nil then
+        team = GetTeam()
+    end
     local cfg = ____exports.Get()
     local loc = ping.location
     local sourceKey = (("ping:" .. tostring(issuerPID)) .. ":") .. string.format("%.2f", ping.time)
@@ -269,6 +307,24 @@ function ____exports.Classify(issuerPID, ping, issuerSmoked)
             })
         }
     end
+    local front = laneFrontPing(team, loc)
+    if front ~= nil then
+        return {
+            context = "lane_front",
+            spec = __TS__ObjectAssign(
+                {},
+                base,
+                {
+                    type = "LANE_HANDSOFF",
+                    lane = front.lane,
+                    duration = LaneConfig.Settings().Timing.PingHandsOff,
+                    maxResponders = #front.pids,
+                    onlyPIDs = front.pids,
+                    ackPing = false
+                }
+            )
+        }
+    end
     return {
         context = "ground",
         spec = __TS__ObjectAssign({}, base, {type = "GATHER", duration = cfg.Gather.Duration, maxResponders = issuerSmoked and 5 or cfg.Gather.MaxResponders})
@@ -294,34 +350,34 @@ function ____exports.Scan(team)
         local i = 1
         while i <= #players do
             do
-                local __continue45
+                local __continue52
                 repeat
                     local pid = players[i]
                     if IsPlayerBot(pid) then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     local ping = member:GetMostRecentPing()
                     if ping == nil or ping == nil or ping.time == 0 or ping.location == nil then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     if lastPingTime[pid] == ping.time then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     lastPingTime[pid] = ping.time
                     if now - ping.time > cfg.MaxPingAge then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     local smoked = member:HasModifier("modifier_smoke_of_deceit")
-                    local result = ____exports.Classify(pid, ping, smoked)
+                    local result = ____exports.Classify(pid, ping, smoked, team)
                     lastSummary = (((result.context .. " by ") .. tostring(pid)) .. " @") .. string.format("%.1f", ping.time)
                     HDebug.Log(
                         "pings",
@@ -329,16 +385,16 @@ function ____exports.Scan(team)
                         "danger=" .. tostring(____exports.IsDangerPing(ping))
                     )
                     if result.spec == nil then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     if smoked and (result.spec.type == "GATHER" or result.spec.type == "ATTACK") then
                         cancelSmokeFrom(team, pid)
                     end
                     Orders.Post(team, result.spec)
-                    __continue45 = true
+                    __continue52 = true
                 until true
-                if not __continue45 then
+                if not __continue52 then
                     break
                 end
             end

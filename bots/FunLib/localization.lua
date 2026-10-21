@@ -151,8 +151,15 @@ local Localization = {
         say_order_ack_push_bot = {"ok, pushing bot", "bot, let's go"},
         say_order_ack_back = {"ok, backing off", "falling back"},
         say_order_ack_release = {"ok, back to farming", "ok, playing normally"},
+        say_order_ack_lane_freeze = {"ok, freezing", "will hold it"},
+        say_order_ack_lane_shove = {"ok, pushing it"},
+        say_order_ack_lane_pull = {"will pull"},
+        say_order_ack_lane_nopull = {"no pulls"},
+        say_order_ack_lane_stack = {"will stack"},
+        say_order_ack_lane_handsoff = {"ok, leaving the wave"},
         say_cmd_no_smoke = {"no smoke", "nobody has smoke"},
         say_cmd_help = {"Bot commands (team chat): !def [top/mid/bot], !push [lane], !rosh, !g(roup), !go (after a ping), !smoke, !back, !farm. Prefix a slot or hero to direct one bot: !2 push bot, !lion def top"},
+        say_cmd_help_lane = {"Lane: !freeze/!shove/!pull/!nopull/!stack [lane]"},
     },
     zh = {
         welcome_msgs = {

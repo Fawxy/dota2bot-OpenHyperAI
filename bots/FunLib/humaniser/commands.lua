@@ -81,6 +81,7 @@ local UnitType = ____dota.UnitType
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 ____exports.DEFAULTS = {
@@ -361,6 +362,36 @@ local function release(ctx)
         maxResponders = 0
     })
 end
+local function laneCommand(name, ____type, duration)
+    return {
+        name = name,
+        aliases = {},
+        needsLanePlan = true,
+        handler = function(ctx)
+            local lane = ____exports.ParseLane(ctx.args[1], ctx.team) or laneNearest(
+                ctx.team,
+                ctx.issuer:GetLocation()
+            )
+            local pids = ctx.onlyPIDs or Orders.BotsAssignedTo(ctx.team, lane)
+            if #pids == 0 then
+                return
+            end
+            Orders.Post(
+                ctx.team,
+                {
+                    type = ____type,
+                    sourceKey = ctx.sourceKey,
+                    issuerPID = ctx.issuerPID,
+                    lane = lane,
+                    duration = duration(),
+                    maxResponders = #pids,
+                    onlyPIDs = pids,
+                    delayKind = "chat"
+                }
+            )
+        end
+    }
+end
 local COMMANDS = {
     {
         name = "def",
@@ -540,13 +571,56 @@ local COMMANDS = {
     {
         name = "bhelp",
         aliases = {},
-        handler = function(ctx) return queueSay(ctx.team, "say_cmd_help") end
-    }
+        handler = function(ctx)
+            queueSay(ctx.team, "say_cmd_help")
+            if LaneConfig.IsOn("Plan") then
+                queueSay(ctx.team, "say_cmd_help_lane")
+            end
+        end
+    },
+    laneCommand(
+        "freeze",
+        "LANE_FREEZE",
+        function() return LaneConfig.Settings().Orders.FreezeShove end
+    ),
+    laneCommand(
+        "shove",
+        "LANE_SHOVE",
+        function() return LaneConfig.Settings().Orders.FreezeShove end
+    ),
+    laneCommand(
+        "pull",
+        "LANE_PULL",
+        function() return LaneConfig.Settings().Orders.PullNoPull end
+    ),
+    laneCommand(
+        "nopull",
+        "LANE_NOPULL",
+        function() return LaneConfig.Settings().Orders.PullNoPull end
+    ),
+    laneCommand(
+        "stack",
+        "LANE_STACK",
+        function() return LaneConfig.Settings().Orders.Stack end
+    )
 }
 local function findCommand(word)
     for ____, def in ipairs(COMMANDS) do
-        if def.name == word or __TS__ArrayIndexOf(def.aliases, word) >= 0 then
-            return def
+        do
+            local __continue96
+            repeat
+                if def.needsLanePlan == true and not LaneConfig.IsOn("Plan") then
+                    __continue96 = true
+                    break
+                end
+                if def.name == word or __TS__ArrayIndexOf(def.aliases, word) >= 0 then
+                    return def
+                end
+                __continue96 = true
+            until true
+            if not __continue96 then
+                break
+            end
         end
     end
     return nil
@@ -654,14 +728,14 @@ function ____exports.ShouldUseOrderedSmoke(bot)
     local holder
     for ____, pid in ipairs(order.responders) do
         do
-            local __continue109
+            local __continue119
             repeat
                 local member = ____exports.memberByPID(
                     bot:GetTeam(),
                     pid
                 )
                 if member == nil then
-                    __continue109 = true
+                    __continue119 = true
                     break
                 end
                 local slot = member:FindItemSlot("item_smoke_of_deceit")
@@ -669,9 +743,9 @@ function ____exports.ShouldUseOrderedSmoke(bot)
                     holder = pid
                     break
                 end
-                __continue109 = true
+                __continue119 = true
             until true
-            if not __continue109 then
+            if not __continue119 then
                 break
             end
         end

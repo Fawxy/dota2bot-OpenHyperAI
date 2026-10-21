@@ -175,7 +175,7 @@ function ____exports.ResetCache()
     enemyCache = {}
     viewCache = {}
 end
-local function isLaneCreepName(name)
+function ____exports.IsLaneCreepName(name)
     return contains(name, "creep_goodguys") or contains(name, "creep_badguys") or contains(name, "goodguys_siege") or contains(name, "badguys_siege")
 end
 local function partition(units, enemy)
@@ -189,7 +189,7 @@ local function partition(units, enemy)
                     __continue27 = true
                     break
                 end
-                if not unit:IsAlive() or not isLaneCreepName(unit:GetUnitName()) then
+                if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
                     __continue27 = true
                     break
                 end

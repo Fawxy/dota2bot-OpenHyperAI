@@ -239,8 +239,18 @@ local PRIORITY = {
     SMOKE = 3,
     GATHER = 2,
     PUSH = 1,
-    RELEASE = 0
+    RELEASE = 0,
+    LANE_FREEZE = -1,
+    LANE_SHOVE = -1,
+    LANE_PULL = -1,
+    LANE_NOPULL = -1,
+    LANE_STACK = -1,
+    LANE_HANDSOFF = -1
 }
+local function isLaneOrder(____type)
+    return string.sub(____type, 1, 5) == "LANE_"
+end
+local EXCLUSIVE = {LANE_FREEZE = "LANE_SHOVE", LANE_SHOVE = "LANE_FREEZE", LANE_PULL = "LANE_NOPULL", LANE_NOPULL = "LANE_PULL"}
 ordersByTeam = {}
 local seenSourceKeys = {}
 local nextId = 1
@@ -282,6 +292,16 @@ local function teamBots(team)
     end
     return result
 end
+--- Player IDs of the team's bots whose assigned lane is `lane`.
+function ____exports.BotsAssignedTo(team, lane)
+    local pids = {}
+    for ____, member in ipairs(teamBots(team)) do
+        if member:GetAssignedLane() == lane then
+            pids[#pids + 1] = member:GetPlayerID()
+        end
+    end
+    return pids
+end
 local function hasTeleportByPID(team, pid)
     for ____, member in ipairs(teamBots(team)) do
         if member:GetPlayerID() == pid then
@@ -295,22 +315,22 @@ local function rankResponders(spec, team)
     local candidates = {}
     for ____, member in ipairs(teamBots(team)) do
         do
-            local __continue20
+            local __continue25
             repeat
                 local pid = member:GetPlayerID()
                 if spec.onlyPIDs ~= nil and __TS__ArrayIndexOf(spec.onlyPIDs, pid) < 0 then
-                    __continue20 = true
+                    __continue25 = true
                     break
                 end
                 local dist = loc ~= nil and GetUnitToLocationDistance(member, loc) or 0
                 if spec.maxDistance ~= nil and spec.maxDistance > 0 and dist > spec.maxDistance then
-                    __continue20 = true
+                    __continue25 = true
                     break
                 end
                 candidates[#candidates + 1] = {pid, dist}
-                __continue20 = true
+                __continue25 = true
             until true
-            if not __continue20 then
+            if not __continue25 then
                 break
             end
         end
@@ -348,7 +368,8 @@ function ____exports.Post(team, spec)
     do
         local i = #list - 1
         while i >= 0 do
-            if list[i + 1].type == spec.type and list[i + 1].lane == spec.lane then
+            local other = EXCLUSIVE[spec.type]
+            if list[i + 1].lane == spec.lane and (list[i + 1].type == spec.type or list[i + 1].type == other) then
                 removeAt(list, i)
             end
             i = i - 1
@@ -411,6 +432,9 @@ function ____exports.IsResponder(bot, order)
 end
 --- Why this bot cannot respond right now, or undefined if it can.
 function ____exports.DeclineReason(bot, order)
+    if isLaneOrder(order.type) then
+        return nil
+    end
     if not bot:IsAlive() then
         return "dead"
     end
@@ -469,23 +493,23 @@ local function acceptedFor(bot)
     local best
     for ____, order in ipairs(____exports.GetActive(bot:GetTeam())) do
         do
-            local __continue70
+            local __continue76
             repeat
                 if not ____exports.TryAccept(bot, order) then
-                    __continue70 = true
+                    __continue76 = true
                     break
                 end
                 accepted[#accepted + 1] = order
-                if order.type == "AVOID" then
-                    __continue70 = true
+                if order.type == "AVOID" or isLaneOrder(order.type) then
+                    __continue76 = true
                     break
                 end
                 if best == nil or PRIORITY[order.type] > PRIORITY[best.type] then
                     best = order
                 end
-                __continue70 = true
+                __continue76 = true
             until true
-            if not __continue70 then
+            if not __continue76 then
                 break
             end
         end
@@ -502,6 +526,15 @@ end
 function ____exports.GetAccepted(bot, ____type)
     for ____, order in ipairs(acceptedFor(bot).accepted) do
         if order.type == ____type then
+            return order
+        end
+    end
+    return nil
+end
+--- An accepted lane order of the given type for this lane.
+function ____exports.GetAcceptedForLane(bot, ____type, lane)
+    for ____, order in ipairs(acceptedFor(bot).accepted) do
+        if order.type == ____type and order.lane == lane then
             return order
         end
     end
@@ -526,21 +559,21 @@ function ____exports.CapRetreatDesire(bot, desire)
 end
 local function modeMatches(order, botMode, lane)
     repeat
-        local ____switch85 = order.type
-        local ____cond85 = ____switch85 == "GATHER" or ____switch85 == "ATTACK" or ____switch85 == "SMOKE" or ____switch85 == "BACK"
-        if ____cond85 then
+        local ____switch95 = order.type
+        local ____cond95 = ____switch95 == "GATHER" or ____switch95 == "ATTACK" or ____switch95 == "SMOKE" or ____switch95 == "BACK"
+        if ____cond95 then
             return botMode == BotMode.Assemble
         end
-        ____cond85 = ____cond85 or ____switch85 == "ROSHAN"
-        if ____cond85 then
+        ____cond95 = ____cond95 or ____switch95 == "ROSHAN"
+        if ____cond95 then
             return botMode == BotMode.Roshan
         end
-        ____cond85 = ____cond85 or ____switch85 == "DEFEND"
-        if ____cond85 then
+        ____cond95 = ____cond95 or ____switch95 == "DEFEND"
+        if ____cond95 then
             return (botMode == BotMode.DefendTowerTop or botMode == BotMode.DefendTowerMid or botMode == BotMode.DefendTowerBot) and (order.lane == nil or order.lane == lane)
         end
-        ____cond85 = ____cond85 or ____switch85 == "PUSH"
-        if ____cond85 then
+        ____cond95 = ____cond95 or ____switch95 == "PUSH"
+        if ____cond95 then
             return (botMode == BotMode.PushTowerTop or botMode == BotMode.PushTowerMid or botMode == BotMode.PushTowerBot) and (order.lane == nil or order.lane == lane)
         end
         do
