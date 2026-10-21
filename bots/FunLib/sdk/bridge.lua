@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-bridge @ 638cc7e. Do not edit; rebuild and re-vendor.
+-- Vendored from dota-bot-sdk packages/lua-bridge @ b95900d. Do not edit; rebuild and re-vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 ____exports.DEFAULTS = {
@@ -11,7 +11,7 @@ ____exports.DEFAULTS = {
     PayloadBytes = 2048,
     SummaryEverySec = 30
 }
-local FORMS = {{name = "CreateHTTPRequest2", global = "CreateHTTPRequest", twoArg = true}, {name = "CreateHTTPRequest1", global = "CreateHTTPRequest", twoArg = false}, {name = "CreateRemoteHTTPRequest", global = "CreateRemoteHTTPRequest", twoArg = false}}
+local FORMS = {{name = "CreateHTTPRequest1", global = "CreateHTTPRequest", twoArg = false}, {name = "CreateRemoteHTTPRequest", global = "CreateRemoteHTTPRequest", twoArg = false}}
 local METHODS = {"SetHTTPRequestRawPostBody", "SetHTTPRequestHeaderValue", "SetHTTPRequestGetOrPostParameter", "Send"}
 local RING_SIZE = 200
 local STATUS0_BEFORE_ROTATE = 2
@@ -324,7 +324,7 @@ local function logShape(s, t, r)
     if t == "table" or t == "userdata" then
         local sc = tonumber(r.StatusCode)
         local body = r.Body
-        line = (((((line .. " status=") .. (sc ~= nil and int(sc) or "na")) .. " body_len=") .. int(type(body) == "string" and #body or 0)) .. " request=") .. clean(r.Request)
+        line = (((line .. " status=") .. (sc ~= nil and int(sc) or "na")) .. " body_len=") .. int(type(body) == "string" and #body or 0)
     else
         line = (line .. " status=na body_len=") .. int(t == "string" and #r or 0)
     end

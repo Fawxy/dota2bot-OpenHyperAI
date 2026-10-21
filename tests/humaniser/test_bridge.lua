@@ -4,13 +4,17 @@ local Json = require("bots/ts_libs/utils/json")
 REAL_T = 0
 function RealTime() return REAL_T end
 
-local ctorCalls, requests, printed
+local ctorCalls, requests, printed, twoArgCalls
 
 -- A stub request that captures its body and answers synchronously, like a sidecar echoing {}.
--- Accepts both CreateHTTPRequest(url) and CreateHTTPRequest("POST", url).
+-- The 2-arg CreateHTTPRequest("POST", url) raised in the bot VM in-game; the stub raises too and counts it.
 local function okRequest(a, b)
+	if b ~= nil then
+		twoArgCalls = twoArgCalls + 1
+		error("CreateHTTPRequest: bad argument")
+	end
 	ctorCalls = ctorCalls + 1
-	local req = { url = b or a }
+	local req = { url = a }
 	function req:SetHTTPRequestHeaderValue() end
 	function req:SetHTTPRequestRawPostBody(_, body) self.body = body end
 	function req:Send(cb) table.insert(requests, self) cb({ StatusCode = 200, Body = "{}" }) end
@@ -27,7 +31,7 @@ local function setup(customHumaniser, ctor)
 	ResetWorld()
 	-- The vendored module holds its state at module level; drop it so each case starts clean.
 	package.loaded["bots/FunLib/sdk/bridge"] = nil
-	ctorCalls, requests, printed = 0, {}, {}
+	ctorCalls, requests, printed, twoArgCalls = 0, {}, {}, 0
 	REAL_T = 0
 	CreateHTTPRequest = ctor or okRequest
 	CreateRemoteHTTPRequest = ctor or okRequest
@@ -80,8 +84,9 @@ do
 	runTicks(H, bots, 20)
 	print = ORIG_PRINT
 	local api = bridgeLines("[H:bridge] ev=api ")
-	check("enabled: api line names the first form tried", #api == 1 and api[1]:find("ctor=CreateHTTPRequest2 ", 1, true) ~= nil, api[1])
-	check("enabled: locks on the first form that answers 200", #bridgeLines("[H:bridge] ev=locked inst=") == 1 and bridgeLines("[H:bridge] ev=locked ")[1]:find("form=CreateHTTPRequest2 ", 1, true) ~= nil)
+	check("enabled: api line names the 1-arg form", #api == 1 and api[1]:find("ctor=CreateHTTPRequest1 ", 1, true) ~= nil, api[1])
+	check("enabled: locks on the first form that answers 200", #bridgeLines("[H:bridge] ev=locked inst=") == 1 and bridgeLines("[H:bridge] ev=locked ")[1]:find("form=CreateHTTPRequest1 ", 1, true) ~= nil)
+	check("enabled: 2-arg CreateHTTPRequest never called", twoArgCalls == 0, twoArgCalls)
 	check("enabled: send logged", #bridgeLines("[H:bridge] ev=send ") > 0)
 	check("enabled: requests posted", #requests > 1, #requests)
 	local last = requests[#requests]
