@@ -13,9 +13,10 @@ do
 	check("key not remembered at skill 0 (0.5 >= 0.35)", not M.Record(1, 6, "key", "key", 10, 0, 10))
 	check("key remembered at skill 1", M.Record(1, 6, "key", "key", 10, 1, 10))
 	check("other not remembered at skill 0", not M.Record(1, 6, "other", "other", 10, 0, 10))
+	local ready, conf = M.ProbablyReady(1, 6, "other", true, 11, 0)
+	check("a rejected cast leaves no memory", ready and conf == 0)
 	check("other remembered at skill 1 (0.5 < 0.6)", M.Record(1, 6, "other", "other", 10, 1, 10))
 	check("only remembered casts count", M.Count(1, 10) == 3)
-	check("a rejected cast leaves no memory", select(2, M.ProbablyReady(1, 6, "ult", true, 10, 0)) == 1)
 end
 
 do
@@ -96,6 +97,38 @@ do
 	check("re-recorded entry uses the new cast", not M.ProbablyReady(1, 6, "stun", true, 110, 1))
 	M.Reset()
 	check("Reset clears everything", M.Count(1, 100) == 0)
+end
+
+do
+	local M = fresh()
+	M.Record(1, 6, "stun", "key", 100, 1, 0)
+	check("remembered at skill 1", not M.ProbablyReady(1, 6, "stun", true, 10, 1))
+	check("recast that fails its roll at skill 0 is forgotten", not M.Record(1, 6, "stun", "key", 100, 0, 20))
+	local ready, conf = M.ProbablyReady(1, 6, "stun", true, 25, 1)
+	check("forgotten cast is assumed ready", ready and conf == 0 and M.Count(1, 25) == 0)
+end
+
+do
+	local M = fresh()
+	M.Record(1, 6, "stun", "key", 20, 1, 0)
+	RANDOM_FRACTION = 0.5
+	M.Share(1, { 2 }, 6, "stun", 0)
+	-- skill 0 window is 20s; the sharer (skill 1) alone would still remember at est + 30
+	local est = 20
+	local ready, conf = M.ProbablyReady(2, 6, "stun", true, est + 10, 1)
+	check("shared entry uses the recipient's forget window", ready and near(conf, 0.5))
+	check("Count and ProbablyReady agree on forgotten", M.Count(2, est + 19) == 1 and M.Count(2, est + 21) == 0
+		and select(2, M.ProbablyReady(2, 6, "stun", true, est + 21, 1)) == 0)
+end
+
+do
+	local M = fresh()
+	M.Record(1, 6, "stun", "key", 20, 1, 0)
+	M.Share(1, { 1, 2 }, 6, "stun", 1)
+	check("Share skips self", M.Count(1, 5) == 1 and M.Count(2, 5) == 1)
+	M.Record(3, 6, "stun", "key", 20, 1, 50)
+	M.Share(1, { 3 }, 6, "stun", 1)
+	check("Share keeps a fresher entry on the recipient", not M.ProbablyReady(3, 6, "stun", true, 60, 1))
 end
 
 finish()

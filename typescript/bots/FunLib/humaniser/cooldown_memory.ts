@@ -48,7 +48,11 @@ export function Record(
     skill: number,
     now: number,
 ): boolean {
-    if (!roll(rememberChance(cls, skill))) return false;
+    if (!roll(rememberChance(cls, skill))) {
+        const byEnemy = memory[observerPid];
+        if (byEnemy !== undefined && byEnemy[enemyPid] !== undefined) byEnemy[enemyPid][ability] = undefined as any;
+        return false;
+    }
     const x = LaneFightConfig.Curve("TimingError", skill);
     const estReadyAt = now + cooldown * (1 + RandomFloat(-x, x));
     store(observerPid, enemyPid, ability, {
@@ -75,7 +79,7 @@ export function Share(fromPid: number, toPids: number[], enemyPid: number, abili
             estReadyAt: entry.estReadyAt,
             cls: entry.cls,
             shared: true,
-            forgetAt: entry.forgetAt,
+            forgetAt: entry.estReadyAt + LaneFightConfig.Curve("ForgetWindow", skill),
         });
     }
 }
@@ -86,14 +90,14 @@ export function ProbablyReady(
     ability: string,
     learned: boolean,
     now: number,
-    skill: number,
+    _skill: number,
 ): LuaMultiReturn<[boolean, number]> {
     if (!learned) return $multi(false, 1);
     const entry = find(observerPid, enemyPid, ability);
     if (entry === undefined) return $multi(true, 0);
     if (now < entry.estReadyAt) return $multi(false, 1);
-    const window = LaneFightConfig.Curve("ForgetWindow", skill);
-    const confidence = math.max(0, 1 - (now - entry.estReadyAt) / window);
+    const window = entry.forgetAt - entry.estReadyAt;
+    const confidence = window > 0 ? math.max(0, 1 - (now - entry.estReadyAt) / window) : 0;
     return $multi(true, confidence);
 }
 
@@ -126,5 +130,5 @@ export function Count(observerPid: number, now: number): number {
 }
 
 export function Reset(): void {
-    for (const [k] of pairs(memory)) delete memory[k as number];
+    for (const [k] of pairs(memory)) memory[k as number] = undefined as any;
 }
