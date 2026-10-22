@@ -228,3 +228,5 @@ do
 	local spots = { { location = Vector(-4310, 3639) }, { location = Vector(3810, -4562) }, { location = Vector(-2159, 1987) } }
 	check("Dire offlane support gets the spot nearest Dire's bot-lane anchor", H.Transitions.LaneWard.Pick(off, spots) == spots[2])
 end
+
+finish()

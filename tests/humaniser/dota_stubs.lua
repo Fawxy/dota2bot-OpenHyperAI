@@ -85,7 +85,7 @@ function check(name, cond, detail)
 	if cond then PASSES = PASSES + 1 else FAILS = FAILS + 1 print("FAIL: " .. name .. (detail and (" -- " .. tostring(detail)) or "")) end
 end
 function near(a, b) return math.abs(a - b) < 1e-6 end
-function finish() print(string.format("%d passed, %d failed", PASSES, FAILS)) if FAILS > 0 then error("tests failed") end end
+function finish() FINISHED = true print(string.format("%d passed, %d failed", PASSES, FAILS)) if FAILS > 0 then error("tests failed") end end
 
 -- Each fresh require of the humaniser gives a new module instance (as if modules were per-bot).
 function FreshHumaniser(customHumaniser)
