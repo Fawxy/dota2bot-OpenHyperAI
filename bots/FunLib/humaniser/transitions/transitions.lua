@@ -20,6 +20,7 @@ local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mi
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Caution = require(GetScriptDirectory().."/FunLib/humaniser/transitions/caution")
 local Teleports = require(GetScriptDirectory().."/FunLib/humaniser/transitions/teleports")
+local LaneWard = require(GetScriptDirectory().."/FunLib/humaniser/transitions/lane_ward")
 ____exports.Settings = Settings
 ____exports.Runes = Runes
 ____exports.Busy = Busy
@@ -27,6 +28,7 @@ ____exports.MidRunes = MidRunes
 ____exports.Rotation = Rotation
 ____exports.Caution = Caution
 ____exports.Teleports = Teleports
+____exports.LaneWard = LaneWard
 local helpers = {}
 local providers = {
     Busy = function(bot) return LaneState.ForBot(bot) ~= nil and (Busy.IsBusy(
@@ -69,6 +71,7 @@ function ____exports.Tick(bot)
     Rotation.Tick(bot)
     Teleports.Tick(bot)
     Caution.Tick(bot)
+    LaneWard.Tick(bot)
 end
 --- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
 function ____exports.MidRunesOn(bot)
@@ -104,5 +107,9 @@ function ____exports.RotationYield(bot)
 end
 function ____exports.Overlay(bot)
     return (((((((("phase: " .. (____exports.InLaningPhase() and "laning" or "post")) .. " busy=") .. tostring(providers.Busy(bot))) .. " spare=") .. tostring(providers.Spare(bot))) .. " alone=") .. tostring(providers.Alone(bot))) .. " rot=") .. (providers.Rotation(bot) or "-")
+end
+--- Ward-mode hook: the spot (from `spots`) on our lane's gank path to ward early, or undefined for the upstream choice.
+function ____exports.PickLaneWard(bot, spots)
+    return LaneWard.Pick(bot, spots)
 end
 return ____exports

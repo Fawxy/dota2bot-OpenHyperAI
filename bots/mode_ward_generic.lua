@@ -56,7 +56,7 @@ function GetDesireHelper()
     -- Observer
     if J.CanCastAbility(ObserverWard) then
         local hAvailabeObserverWardSpots = W.GetAvailabeObserverWardSpots(bot)
-        hTargetSpot = W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots)
+        hTargetSpot = J.Humaniser.Transitions.PickLaneWard(bot, hAvailabeObserverWardSpots) or W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots)
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or J.IsRealInvisible(bot)) then
 			if DotaTime() < 0 and DotaTime() > (J.IsModeTurbo() and -45 or -60) then
 				return BOT_MODE_DESIRE_ABSOLUTE

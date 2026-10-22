@@ -85,6 +85,7 @@ function GetUnitList(t)
 		return r
 	end
 	if t == UnitType.AlliedHeroes then return UNITS[CURRENT_TEAM] end
+	if t == UnitType.AlliedWards then return (WARDS or {})[CURRENT_TEAM] or {} end
 	return {}
 end
 function GetNeutralSpawners() return SPAWNERS end
@@ -253,6 +254,8 @@ function LaneFresh(laneCfg, extra)
 	H.Transitions.Caution.ResetCache()
 	H.Transitions.Caution.RegisterProbes()
 	TELEPORTS, TELEPORT_READS = {}, 0
+	WARDS = { [2] = {}, [3] = {} }
+	H.Transitions.LaneWard.ResetCache()
 	H.Transitions.Teleports.ResetCache()
 	return H
 end

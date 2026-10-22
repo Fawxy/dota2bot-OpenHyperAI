@@ -3,7 +3,7 @@
  * Imports every transitions module so their load-time registrations run; later tasks add their Tick calls and hooks.
  * J.* helpers cannot be required from humaniser modules, so they arrive through SetHelpers.
  */
-import { Unit } from "bots/ts_libs/dota";
+import { Unit, Vector } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -12,8 +12,9 @@ import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Caution from "bots/FunLib/humaniser/transitions/caution";
 import * as Teleports from "bots/FunLib/humaniser/transitions/teleports";
+import * as LaneWard from "bots/FunLib/humaniser/transitions/lane_ward";
 
-export { Settings, Runes, Busy, MidRunes, Rotation, Caution, Teleports };
+export { Settings, Runes, Busy, MidRunes, Rotation, Caution, Teleports, LaneWard };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -66,6 +67,7 @@ export function Tick(bot: Unit): void {
     Rotation.Tick(bot);
     Teleports.Tick(bot);
     Caution.Tick(bot);
+    LaneWard.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */
@@ -104,4 +106,9 @@ export function Overlay(bot: Unit): string {
     return `phase: ${InLaningPhase() ? "laning" : "post"} busy=${tostring(providers.Busy(bot))} spare=${tostring(providers.Spare(bot))} alone=${tostring(
         providers.Alone(bot)
     )} rot=${providers.Rotation(bot) ?? "-"}`;
+}
+
+/** Ward-mode hook: the spot (from `spots`) on our lane's gank path to ward early, or undefined for the upstream choice. */
+export function PickLaneWard(bot: Unit, spots: { location: Vector }[]): { location: Vector } | undefined {
+    return LaneWard.Pick(bot, spots);
 }
