@@ -158,7 +158,8 @@ do
 end
 
 do
-	for _, case in ipairs({ { name = "LaneFight off", laneFight = { Enable = false } }, { name = "Memory off", laneFight = { Memory = false } } }) do
+	for _, case in ipairs({ { name = "LaneFight off", laneFight = { Enable = false } }, { name = "Memory off", laneFight = { Memory = false } },
+		{ name = "Memory, Trade and Kill off", laneFight = { Memory = false, Trade = false, Kill = false } } }) do
 		local H, bot, enemy, records = world({ laneFight = case.laneFight })
 		enemy.casting = enemy.impale
 		poll(H, bot, 5)

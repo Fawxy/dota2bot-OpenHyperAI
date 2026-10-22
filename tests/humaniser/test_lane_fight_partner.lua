@@ -128,6 +128,7 @@ local function play(W, seconds)
 				if W.LF.Think(b) then
 					local a = ActionsOf(b.pid)[1]
 					if a and a.kind == "AttackUnit" then
+						if dist(b, a.args[1]) > b:GetAttackRange() + 50 then W.attackOrderedOutOfRange = (W.attackOrderedOutOfRange or 0) + 1 end
 						b.target = a.args[1]
 						if dist(b, a.args[1]) > b:GetAttackRange() then step(b, a.args[1].loc) end
 					elseif a and a.kind == "MoveToLocation" then
@@ -184,6 +185,8 @@ for _, team in ipairs({ 2, 3 }) do
 		and coreModes[BotMode.Laning] and not coreModes[BotMode.TeamRoam])
 	playUntil(W, function() return W.events("lanefight_start", "pid=1 phase=commit") > 0 end, 4)
 	local coreAt = W.firstAt("lanefight_start", "pid=1 phase=commit")
+	check("the support's commit Think attack-orders from out of range (walks in with the attack target set)" .. tag,
+		(W.attackOrderedOutOfRange or 0) > 0 and #ActionsOf(2, "MoveToLocation") == 0)
 	check("the core commits only after the support's visible commit" .. tag, firstHit ~= nil and coreAt ~= nil and coreAt > firstHit
 		and W.events("lanefight_end", "pid=1 phase=wait_partner reason=commit") == 1
 		and W.events("lanefight_start", "pid=1 phase=commit target=6 margin=") == 1, table.concat(W.lines, "\n"))
@@ -264,6 +267,46 @@ do
 end
 
 do
+	-- One in-range right-click, then walking away: a harass hit, not a commit.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -200 } })
+	local hitAt = T + 0.3
+	W.onFrame = function()
+		if math.abs(T - hitAt) < FRAME / 2 then W.partner.target, W.partner.lastAttack = W.enemy, T end
+		if T > hitAt + 0.2 then W.partner.target = nil step(W.partner, W.loc(-1500)) end
+	end
+	play(W, 3)
+	check("one in-range hit then walking away is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
+
+	-- Sustained attacks from range: two within 1.5 s make a commit.
+	W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -200 } })
+	W.partner.target = W.enemy
+	local first = T + 0.3
+	W.onFrame = function()
+		if T >= first - 1e-9 and (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then W.partner.lastAttack = T end
+	end
+	play(W, 3)
+	local at = W.firstAt("lanefight_start", "via=follow")
+	local want = first + 0.5 + W.H.Profile.SampleDelay(W.bot, "react") + W.LF.Config.Curve("SyncDelay", 1)
+	check("sustained in-range attacks are followed after the second hit", at ~= nil and at >= want - 1e-6 and at <= want + 2 * FRAME + 1e-6,
+		string.format("at %s want %.3f", tostring(at), want))
+
+	-- The partner starts in, then stops before the follow time (skill 0: 1.1 s): no follow, logged once.
+	W = world({ skill = 0, burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	local tp = T + 0.3
+	W.onFrame = function()
+		if T >= tp - 1e-9 and T < tp + 0.2 then
+			W.partner.target = W.enemy
+			step(W.partner, W.enemy.loc)
+		elseif T >= tp + 0.2 then
+			W.partner.target = nil
+		end
+	end
+	play(W, 4)
+	check("a partner that backs off before the follow time is not followed", W.events("lanefight_start") == 0
+		and W.events("lanefight_gate", "gate=partner_backed_off") == 1, table.concat(W.lines, "\n"))
+end
+
+do
 	-- A human's key-class cast towards the enemy, within its cast range + 200, is a commit.
 	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
 	local cast = ability("lion_impale", { range = 600 })
@@ -327,7 +370,43 @@ do
 		W.events("lanefight_start", "phase=commit") == 0 and W.events("lanefight_start", "phase=wait_partner") == 1, table.concat(W.lines, "\n"))
 end
 
+do
+	-- Two supports, neither with a ready disable: each goes on its own solo check rather than waiting on the other.
+	local W = world({ botPos = 4, burst = 400, partner = { driven = true, pos = 5, burst = 400 } })
+	play(W, 1.5)
+	check("a dual-support lane without disables still commits", W.events("lanefight_start", "pid=1 phase=commit") == 1
+		and W.events("lanefight_start", "pid=2 phase=commit") == 1 and W.events("lanefight_start", "phase=wait_partner") == 0,
+		table.concat(W.lines, "\n"))
+end
+
+do
+	-- Out of range, a commit's Think attack-orders the target (a trade still walks there).
+	local W = world({ burst = 1000, botPos = 5, botX = -700 })
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	W.bot.mode = BotMode.TeamRoam
+	ACTIONS = {}
+	W.LF.Think(W.bot)
+	local a = ActionsOf(1)[1]
+	check("an out-of-range commit Think orders an attack, not a move", a ~= nil and a.kind == "AttackUnit" and a.args[1] == W.enemy
+		and dist(W.bot, W.enemy) > W.bot:GetAttackRange() + 50, a and a.kind)
+end
+
 -- ------------------------------------------------------------------------------------------------ aborts
+
+do
+	-- A follow went in on margin 0.9 (no full pass): its re-check after an escape holds it to FollowMargin, not a pass.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 }, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
+		[1] = ability("antimage_blink", { cd = 15 }) } })
+	charge(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 3)
+	check("setup: a follow commit", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	W.enemy.casting = W.enemy.abilities[1]
+	play(W, 0.2)
+	W.enemy.casting = nil
+	play(W, 0.5)
+	check("a follow commit's re-check passes on FollowMargin", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_recheck", "reason=escape pass=1") == 1, table.concat(W.lines, "\n"))
+end
 
 local blinkWorld = function(skill)
 	local W = world({ skill = skill, burst = 1000, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
@@ -437,6 +516,27 @@ do
 	check("casting an ability that was not believed down is no mistake", W.events("lanefight_mistake") == 0)
 end
 
+do
+	-- A spell-window trade (impale and voodoo believed down) upgrades to a commit after voodoo's remembered cooldown
+	-- ran out, so the commit's own read has no spell window. The trade's bet must survive the upgrade.
+	local W = world({ burst = 0, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }), [1] = ability("lion_voodoo", { cd = 12 }) } })
+	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
+	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_voodoo", "key", 1, 1, T)
+	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
+	local tradeAt = T
+	check("setup: a spell-window trade", W.events("lanefight_start", "phase=trade target=6 window=spell") == 1, table.concat(W.lines, "\n"))
+	play(W, 0.9)
+	W.bot.estDamage = 1000
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 1)
+	W.enemy.casting = W.enemy.abilities[0]
+	play(W, 0.2)
+	check("setup: the upgrade and the cast are within 2 s of the trade", W.LF.CastWatch.LastSeenCast(1) ~= nil
+		and W.LF.CastWatch.LastSeenCast(1).at - tradeAt <= 2 and W.events("lanefight_end", "phase=trade reason=commit") == 1,
+		table.concat(W.lines, "\n"))
+	check("a trade's bad-memory bet survives its upgrade to a commit", W.events("lanefight_mistake", "ability=lion_impale") == 1,
+		table.concat(W.lines, "\n"))
+end
+
 -- --------------------------------------------------------------------------------------- camp-job probe
 
 do
@@ -448,6 +548,12 @@ do
 	play(W, ROUND)
 	check("the lane-fight probe is true only while a commit is live", not before and during
 		and not W.H.Lane.Hooks.IsFightCommitting(W.bot) and W.events("lanefight_end") == 1)
+
+	W = world({ burst = 1000, botPos = 5 })
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	W.H.Config.Get().LaneFight.Enable = false
+	check("the probe is false once LaneFight is off, before the commit is ended", W.LF.CurrentPhase(W.bot) == "commit"
+		and not W.H.Lane.Hooks.IsFightCommitting(W.bot))
 end
 
 finish()
