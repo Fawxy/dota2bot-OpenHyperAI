@@ -532,12 +532,16 @@ function X.GetBestRune()
 	-- whoever is nearer; a human claiming or pinging it still wins. Once the rune is up with an allied
 	-- core within 1200 of the spot, the pick falls to the loop below, whose gates give the core the rune.
 	local hForced = J.Humaniser.Transitions.RuneTarget(bot)
+	local hYielded = nil
 	if hForced then
 		local vForced = GetRuneSpawnLocation(hForced)
-		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced)
-		and not (GetRuneStatus(hForced) == RUNE_STATUS_AVAILABLE and X.IsAllyCoreNear(vForced, 1200))
-		then
-			return hForced, GetUnitToLocationDistance(bot, vForced)
+		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced) then
+			if GetRuneStatus(hForced) == RUNE_STATUS_AVAILABLE and X.IsAllyCoreNear(vForced, 1200) then
+				-- The loop's core gate measures from this bot, not the spot, so it could still hand the rune back.
+				hYielded = hForced
+			else
+				return hForced, GetUnitToLocationDistance(bot, vForced)
+			end
 		end
 	end
 
@@ -549,6 +553,7 @@ function X.GetBestRune()
 
 		if (bPower or not bPowerOnly)
 		and (nPowerTarget == nil or rune == nPowerTarget)
+		and rune ~= hYielded
 		and X.IsTheClosestAlly(bot, vRuneLocation)
 		and not X.IsPingedByHumanPlayer(vRuneLocation, math.huge)
 		and not IsHumanClaimingRune(rune)

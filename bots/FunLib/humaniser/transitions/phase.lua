@@ -343,7 +343,9 @@ local function evaluate(bot, st, now)
     st.phaseEnded = false
     st.lostResp = false
     st.cap = nil
-    if not LaneConfig.InLaningPhase() or not st.wasLaning then
+    local team = bot:GetTeam()
+    local lane = bot:GetAssignedLane()
+    if not LaneConfig.InLaningPhase() or towerDown(team, lane) or towerDown(team == 2 and 3 or 2, lane) then
         st.lostLatched = false
     end
     if not LaneConfig.InLaningPhase() then

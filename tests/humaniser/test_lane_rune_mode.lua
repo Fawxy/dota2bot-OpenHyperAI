@@ -391,12 +391,12 @@ do
 			end,
 		}
 	end
-	local function run(midLoc, status, t)
+	local function run(midLoc, status, t, supLoc)
 		RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = status }
 		local H = rotatingHumaniser()
 		local mid = MakeUnit({ pid = 3, team = 2, bot = true, loc = midLoc })
 		mid.pos = 2
-		local bot = load(0, { H = H, T = t or 361, loc = Vector(1750, 500), runeAt = ROT_WORLD, pos = 4, J = J() })
+		local bot = load(0, { H = H, T = t or 361, loc = supLoc or Vector(1750, 500), runeAt = ROT_WORLD, pos = 4, J = J() })
 		local d = frame(H, bot)
 		return bot.rune.normal.location, d
 	end
@@ -407,6 +407,8 @@ do
 		run(Vector(-6000, 0), RUNE_STATUS_AVAILABLE) == RUNE_POWERUP_1)
 	check("contrast: before the spawn, mid near: the support still heads for the spot",
 		run(Vector(1800, -400), RUNE_STATUS_MISSING, 355) == RUNE_POWERUP_1)
+	check("mid 1100 from the spot on the far side, 1350 from the support: still the mid's rune",
+		run(Vector(2900, 500), RUNE_STATUS_AVAILABLE, nil, Vector(1550, 500)) ~= RUNE_POWERUP_1)
 end
 
 do

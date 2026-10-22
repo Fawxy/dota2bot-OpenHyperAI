@@ -271,8 +271,11 @@ function evaluate(bot: Unit, st: PhaseState, now: number): void {
     st.phaseEnded = false;
     st.lostResp = false;
     st.cap = undefined;
-    // sample() has just read IsLaningFor into wasLaning.
-    if (!LaneConfig.InLaningPhase() || !st.wasLaning) st.lostLatched = false;
+    // The latch outlives a farm-item "not laning" read (jungle last hits would look like recovery); only
+    // the end of laning itself or a fallen T1 in this lane clears it.
+    const team = bot.GetTeam();
+    const lane = bot.GetAssignedLane();
+    if (!LaneConfig.InLaningPhase() || towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) st.lostLatched = false;
     if (!LaneConfig.InLaningPhase()) return;
     if (Settings.IsOn("Phase") && !st.wasLaning) {
         st.phaseEnded = true;

@@ -464,6 +464,27 @@ do
 end
 
 do
+	-- A lost core that briefly reads "not laning" (farm item, clear jungle) keeps its latch: otherwise the next
+	-- enemy sighting by its camp re-judges the lane from jungle stats and sends it back to the lane it lost.
+	-- Healthy last-hitting throughout, so only the deaths make the lane lost.
+	local w = world({ T = 60 })
+	for t = 60, 90, 10 do w.core.lh = math.floor((t - 60) / 60 * 8) tick(w, w.core, t) end
+	die(w, w.core, 92)
+	die(w, w.core, 95)
+	w.core.lh = 6
+	tick(w, w.core, 100)
+	check("farm-item flicker: lost and capped", claim(w, w.core, LOST) ~= nil)
+	-- Farming the jungle on the farm-item path until the deaths have aged out of the window...
+	w.core.items = { [0] = { name = "item_maelstrom" } }
+	for t = 110, 340, 10 do w.core.lh = math.floor((t - 60) / 60 * 8) tick(w, w.core, t) end
+	-- ...then an enemy shows up by the camp, so the core reads as laning again.
+	w.core.items = {}
+	for t = 350, 400, 10 do w.core.lh = math.floor((t - 60) / 60 * 8) tick(w, w.core, t) end
+	check("farm-item flicker: the lane itself no longer reads lost", w.P.LaneLost(w.core) == false)
+	check("farm-item flicker: back to laning with the deaths aged out, the latch holds", claim(w, w.core, LOST) ~= nil)
+end
+
+do
 	-- The lost state clears when the deaths age out, and the human flow starts over.
 	local w = world({ humanCore = true })
 	die(w, w.sup, 90)
