@@ -969,6 +969,7 @@ function schedule(bot: Unit): boolean {
     }
     const choice = LanePlanner.Plan(bot, s);
     const input = LanePlanner.LastInput(bot);
+    const view = LaneState.ScoreFor(bot, s);
     notePlan(bot, s, now, [
         ["gate", "planner"],
         ["camp", camps[0].campIdx],
@@ -976,6 +977,12 @@ function schedule(bot: Unit): boolean {
         ["tech", choice.tech],
         ["reason", choice.reason],
         ["score", input?.laneScore],
+        ["fscore", input?.forecastScore],
+        ["w", view.foresight],
+        ["imb", s.imbalance],
+        ["feq", s.forecastEq],
+        ["apow", s.allyPower],
+        ["epow", s.enemyPower],
         ["plan", input?.plan.plan],
         ["pullOk", input?.plan.pullAllowed],
         ["partner", input?.partnerSafe],

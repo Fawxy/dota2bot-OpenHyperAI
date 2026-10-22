@@ -69,6 +69,8 @@ export interface LaneEnemy {
 export interface ObserverView {
     exposure: number;
     laneScore: number;
+    foresight: number;
+    forecastScore: number;
 }
 
 interface ScannedCreep {
@@ -215,6 +217,14 @@ export function DesiredEq(kind: Camps.LaneKind, preRune: boolean): number {
 
 export function LaneScore(desired: number, eqPos: number, enemyXpExposure: number): number {
     return desired - eqPos - LaneConfig.Settings().Eq.XpDenyWeight * enemyXpExposure;
+}
+
+export function ForesightOf(skill: number): number {
+    return LaneConfig.IsOn("Forecast") ? LaneConfig.Curve("Foresight", skill) : 0;
+}
+
+export function ForecastScore(desired: number, eqPos: number, forecastEq: number, foresight: number, exposure: number): number {
+    return LaneScore(desired, eqPos + foresight * (forecastEq - eqPos), exposure);
 }
 
 export function SetPreRune(fn: (this: void, team: number, lane: Lane) => boolean): void {
@@ -528,7 +538,13 @@ export function ScoreFor(bot: Unit, s: LaneSnapshot): ObserverView {
         if (dist2D(e.location, s.frontLoc) <= radius) near++;
     }
     const exposure = math.min(1, near / LaneConfig.Settings().Thresholds.ExposureEnemies);
-    const view: ObserverView = { exposure, laneScore: LaneScore(s.desiredEq, s.eqPos, exposure) };
+    const foresight = ForesightOf(LaneConfig.SkillOf(bot));
+    const view: ObserverView = {
+        exposure,
+        laneScore: LaneScore(s.desiredEq, s.eqPos, exposure),
+        foresight,
+        forecastScore: ForecastScore(s.desiredEq, s.eqPos, s.forecastEq, foresight, exposure),
+    };
     viewCache[key] = { time: s.time, view };
     return view;
 }

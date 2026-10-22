@@ -284,6 +284,13 @@ do
 end
 
 do
+	check("forecast score drives the full pull", choose({ laneScore = -0.4, forecastScore = -0.62 }).tech == "full_pull")
+	check("forecast score can hold back a full pull", choose({ laneScore = -0.6, forecastScore = -0.38 }).tech == "half_pull")
+	local c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -1.0, forecastScore = -0.1 })
+	check("freeze branch ignores the forecast", c.tech == "freeze", desc(c))
+end
+
+do
 	local H = LaneFresh({ Enable = false }, { skill = 0.9 })
 	T = 95
 	CURRENT_TEAM = 2

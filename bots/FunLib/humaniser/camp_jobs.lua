@@ -1569,6 +1569,7 @@ local function schedule(bot)
     end
     local choice = LanePlanner.Plan(bot, s)
     local input = LanePlanner.LastInput(bot)
+    local view = LaneState.ScoreFor(bot, s)
     notePlan(
         bot,
         s,
@@ -1583,6 +1584,12 @@ local function schedule(bot)
             {"tech", choice.tech},
             {"reason", choice.reason},
             {"score", input and input.laneScore},
+            {"fscore", input and input.forecastScore},
+            {"w", view.foresight},
+            {"imb", s.imbalance},
+            {"feq", s.forecastEq},
+            {"apow", s.allyPower},
+            {"epow", s.enemyPower},
             {"plan", input and input.plan.plan},
             {"pullOk", input and input.plan.pullAllowed},
             {"partner", input and input.partnerSafe},
@@ -1655,13 +1662,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_36
+    local ____temp_38
     if data ~= nil then
-        ____temp_36 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_38 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_36 = nil
+        ____temp_38 = nil
     end
-    local spawner = ____temp_36
+    local spawner = ____temp_38
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1780,13 +1787,13 @@ local function pingPartner(bot, job)
         return
     end
     local s = LaneState.ForBot(bot)
-    local ____temp_37
+    local ____temp_39
     if s ~= nil then
-        ____temp_37 = LaneRoles.Partner(bot, s)
+        ____temp_39 = LaneRoles.Partner(bot, s)
     else
-        ____temp_37 = nil
+        ____temp_39 = nil
     end
-    local partner = ____temp_37
+    local partner = ____temp_39
     if partner == nil or partner.isBot or not Orders.Ping(bot, job.stand) then
         return
     end
@@ -2054,13 +2061,13 @@ local function supply(bot, job, now)
     end
     if job.tangoUsed ~= true and bot:GetMaxHealth() - bot:GetHealth() >= cfg.Thresholds.TangoMinLost and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing") then
         local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
-        local ____temp_40
+        local ____temp_42
         if tango ~= nil then
-            ____temp_40 = tangoTree(bot)
+            ____temp_42 = tangoTree(bot)
         else
-            ____temp_40 = nil
+            ____temp_42 = nil
         end
-        local tree = ____temp_40
+        local tree = ____temp_42
         if tango ~= nil and tree ~= nil then
             job.tangoUsed = true
             awaitSupply(job, now, "modifier_tango_heal")

@@ -317,4 +317,18 @@ do
 		near(s.imbalance, S.Imbalance(s.allyPower, s.enemyPower)) and s.imbalance > 0 and s.forecastEq > s.eqPos, s.forecastEq)
 end
 
+do
+	local _, _, S = world()
+	local function fscore(eq, imb, skill) return S.ForecastScore(-0.7, eq, S.ForecastEq(eq, imb), S.ForesightOf(skill), 0) end
+	check("skill 0 reads the lane as today", near(fscore(-0.3, 0.6, 0), S.LaneScore(-0.7, -0.3, 0)))
+	check("skill 0.9, winning clash: full-pull score", fscore(-0.3, 0.6, 0.9) <= -0.5, fscore(-0.3, 0.6, 0.9))
+	check("skill 0.3, same lane: still half-pull score", fscore(-0.3, 0.6, 0.3) > -0.5, fscore(-0.3, 0.6, 0.3))
+	check("skill 0.9, losing clash: no longer a full-pull score", fscore(-0.1, -0.6, 0.9) > -0.5, fscore(-0.1, -0.6, 0.9))
+end
+
+do
+	local _, _, S = world({ Enable = true, Forecast = false })
+	check("Forecast off: no foresight at any skill", S.ForesightOf(1) == 0, S.ForesightOf(1))
+end
+
 finish()
