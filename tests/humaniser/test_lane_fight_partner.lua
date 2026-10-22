@@ -499,6 +499,53 @@ do
 		and W.events("lanefight_recheck") == 0 and W.events("lanefight_abort") == 0, table.concat(W.lines, "\n"))
 end
 
+-- The target jukes into fog mid-commit while the partner keeps chasing it. As in the engine, the handle answers
+-- CanBeSeen false at once. Skill 1: AbortNotice 0.15 s, FogGrace 1 s.
+local function fog(W, on)
+	W.enemy.hiddenFrom = on and { [W.bot] = true } or nil
+	W.enemy.CanBeSeen = function() return not on end
+end
+
+do
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: a follow commit counting its partner", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	play(W, 0.3)
+	fog(W, true)
+	play(W, 0.5)
+	fog(W, false)
+	play(W, 1)
+	check("a 0.5 s fog blip on the target with the partner still chasing keeps the commit", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_end") == 0 and W.events("lanefight_recheck", "reason=partner_abandon") == 0, table.concat(W.lines, "\n"))
+
+	W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	play(W, 0.3)
+	fog(W, true)
+	LAST_SEEN[6] = { location = W.enemy.loc, time_since_seen = 0 }
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 2)
+	check("a target in fog past FogGrace ends a partnered commit on fog, not partner_abandon",
+		W.events("lanefight_end", "phase=commit reason=fog") == 1 and W.events("lanefight_recheck", "reason=partner_abandon") == 0,
+		table.concat(W.lines, "\n"))
+	LAST_SEEN[6] = nil
+
+	-- After a fog blip the partner stops chasing while the target is visible: the abandon still fires.
+	W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	local from = T
+	trading(W, from, 2.5)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	play(W, 0.3)
+	fog(W, true)
+	play(W, 0.5)
+	fog(W, false)
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 4)
+	local endAt = W.firstAt("lanefight_end")
+	check("after a fog blip, a partner that backs off with the target visible still ends partner_abandon", endAt ~= nil
+		and endAt >= from + 2.5 and W.events("lanefight_end", "phase=commit reason=partner_abandon") == 1, table.concat(W.lines, "\n"))
+end
+
 local blinkWorld = function(skill)
 	local W = world({ skill = skill, burst = 1000, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
 		[1] = ability("antimage_blink", { cd = 15 }) } })

@@ -594,7 +594,7 @@ function abortSignal(bot, s, target, now)
         s.escapeAt = seen.at
         return "escape"
     end
-    if #s.partners > 0 and partnerAbandoned(bot, s, target, now) then
+    if #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now) then
         return PARTNER_ABANDON
     end
     if now - s.countAt < COUNT_EVERY then
@@ -612,6 +612,13 @@ function abortSignal(bot, s, target, now)
     return rose and "outnumbered" or nil
 end
 function abortReason(bot, s, target, now)
+    if target == nil then
+        for ____, u in ipairs(s.partners) do
+            if not u:IsNull() then
+                s.partnerSeen[u:GetPlayerID()] = now
+            end
+        end
+    end
     if s.abort == nil then
         local why = abortSignal(bot, s, target, now)
         if why == nil then
@@ -636,10 +643,11 @@ function abortReason(bot, s, target, now)
     end
     s.abort = nil
     local abandon = a.why == PARTNER_ABANDON
-    if abandon and not partnerAbandoned(bot, s, target, now) then
+    if abandon and (target == nil or not partnerAbandoned(bot, s, target, now)) then
         return nil
     end
-    local partners = abandon and ({}) or s.partners
+    local solo = abandon or #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now)
+    local partners = solo and ({}) or s.partners
     local ____temp_3
     if target ~= nil then
         ____temp_3 = KillCheck.Check(
@@ -656,7 +664,7 @@ function abortReason(bot, s, target, now)
     local ____temp_5 = k ~= nil
     if ____temp_5 then
         local ____temp_4
-        if not abandon and s.recheckMargin ~= nil then
+        if not solo and s.recheckMargin ~= nil then
             ____temp_4 = k.margin >= s.recheckMargin
         else
             ____temp_4 = k.pass
@@ -664,7 +672,7 @@ function abortReason(bot, s, target, now)
         ____temp_5 = ____temp_4
     end
     local pass = ____temp_5
-    if pass and abandon then
+    if pass and solo then
         s.partners = {}
         s.recheckMargin = nil
     end

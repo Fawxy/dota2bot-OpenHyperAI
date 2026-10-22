@@ -601,7 +601,7 @@ function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: nu
         s.escapeAt = seen.at;
         return "escape";
     }
-    if (s.partners.length > 0 && partnerAbandoned(bot, s, target, now)) return PARTNER_ABANDON;
+    if (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now)) return PARTNER_ABANDON;
     if (now - s.countAt < COUNT_EVERY) return undefined;
     s.countAt = now;
     const snap = LaneState.ForBot(bot);
@@ -616,9 +616,11 @@ function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: nu
 /**
  * The commit's abort: a signal is noticed and re-checked AbortNotice later (late at low skill). A re-check that still
  * passes lets the commit go on. A partner abandon re-checks solo, and a commit that goes on is solo from then on; a
- * partner back in by the re-check cancels it.
+ * partner back in by the re-check cancels it. While the target is unseen the partner cannot be seen going in on it, so
+ * FogGrace decides: no abandon is raised or re-checked, and the partner's clock restarts when the target reappears.
  */
 function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: number): string | undefined {
+    if (target === undefined) for (const u of s.partners) if (!u.IsNull()) s.partnerSeen[u.GetPlayerID()] = now;
     if (s.abort === undefined) {
         const why = abortSignal(bot, s, target, now);
         if (why === undefined) return undefined;
@@ -629,11 +631,12 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     if (now < a.at) return undefined;
     s.abort = undefined;
     const abandon = a.why === PARTNER_ABANDON;
-    if (abandon && !partnerAbandoned(bot, s, target, now)) return undefined;
-    const partners = abandon ? [] : s.partners;
+    if (abandon && (target === undefined || !partnerAbandoned(bot, s, target, now))) return undefined;
+    const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now));
+    const partners = solo ? [] : s.partners;
     const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
-    const pass = k !== undefined && (!abandon && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);
-    if (pass && abandon) {
+    const pass = k !== undefined && (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);
+    if (pass && solo) {
         s.partners = [];
         s.recheckMargin = undefined;
     }
