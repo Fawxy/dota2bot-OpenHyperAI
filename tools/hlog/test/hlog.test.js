@@ -141,16 +141,21 @@ test('times accept seconds or m:ss', () => {
     assert.strictEqual(parseTime('42.5'), 42.5);
 });
 
-test('real Lua telemetry from a scripted session analyses cleanly', () => {
+/** Runs a scripted Lua session from the offline harness and returns the [HEV] lines it left in HLOG_LINES. */
+function luaSession(file) {
     const { lua, lauxlib, lualib, to_luastring } = require(path.join(HARNESS, 'node_modules/fengari'));
     const L = lauxlib.luaL_newstate();
     lualib.luaL_openlibs(L);
     const prelude = `package.path = "${ROOT}/?.lua;" .. package.path\nunpack = unpack or table.unpack\nHARNESS_DIR = "${HARNESS}"\n`;
     lauxlib.luaL_dostring(L, to_luastring(prelude));
-    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, 'hlog_session.lua')));
+    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, file)));
     assert.strictEqual(status, 0, status !== 0 ? lua.lua_tojsstring(L, -1) : '');
     lauxlib.luaL_dostring(L, to_luastring('return table.concat(HLOG_LINES, "\\n")'));
-    const text = lua.lua_tojsstring(L, -1);
+    return lua.lua_tojsstring(L, -1);
+}
+
+test('real Lua telemetry from a scripted session analyses cleanly', () => {
+    const text = luaSession('hlog_session.lua');
 
     const games = parseLog(text);
     assert.strictEqual(games.length, 1);
@@ -287,4 +292,21 @@ test('errors caught by humaniser guards fail the check once per hook and message
     assert.strictEqual(r.script_errors.level, 'fail');
     assert.strictEqual(r.script_errors.details.length, 1, r.script_errors.details.join('; '));
     assert.match(r.script_errors.details[0], /^guarded 37x from 0:08: Intent\.Resolve: intent\.lua:40/);
+});
+
+test('real FarmPattern telemetry: trips summarised per core, a trip lost to another mode is flagged with the winner', () => {
+    const games = parseLog(luaSession('hlog_farm_session.lua'));
+    assert.strictEqual(games.length, 1);
+    const game = games[0];
+    const ends = game.events.filter(e => e.ev === 'farm_trip_end');
+    assert.deepStrictEqual(ends.map(e => e.why), ['back', 'preempted']);
+    assert.strictEqual(ends[1].to, 'rune');
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.level, 'warn', r.summary);
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x, first at 8:26/);
+    // Trip 1 left its camp unfinished, so trip 2 starts with the pace grown by LateGrowth (1.15).
+    const row = report.summary(game).split('\n').find(l => /^pid1 /.test(l));
+    assert.ok(row, report.summary(game));
+    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15$/);
 });

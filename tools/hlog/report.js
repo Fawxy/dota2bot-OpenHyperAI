@@ -82,6 +82,38 @@ function churnSection(game) {
     ];
 }
 
+function counts(items) {
+    const m = new Map();
+    for (const x of items) m.set(x, (m.get(x) || 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
+}
+
+/** FarmPattern trips per core: camps per trip, stacks and whether they landed (lane_stack), how trips ended, pace. */
+function farmSection(game) {
+    const farm = game.events.filter(e => e.ev.startsWith('farm_trip_'));
+    if (farm.length === 0) return [];
+    const rows = [['player', 'trips', 'camps', 'stacks ok/tried', 'avg s', 'returns', 'ends', 'pace']];
+    for (const pid of [...new Set(farm.map(e => e.pid))].sort((a, b) => a - b)) {
+        const of = ev => farm.filter(e => e.pid === pid && e.ev === ev);
+        const starts = of('farm_trip_start');
+        const ends = of('farm_trip_end');
+        const stacks = [...starts, ...of('farm_trip_next')].filter(e => e.phase === 'stack');
+        const outcomes = game.events.filter(e => e.ev === 'lane_stack' && e.pid === pid && stacks.some(s => s.camp === e.camp && e.t >= s.t));
+        const pace = starts.length > 0 ? starts[starts.length - 1].pace : undefined;
+        rows.push([
+            who(game, pid),
+            starts.length,
+            ends.reduce((a, e) => a + (e.camps || 0), 0),
+            `${outcomes.filter(e => e.stacked === 1).length}/${stacks.length}`,
+            f2(mean(ends.map(e => e.secs).filter(x => typeof x === 'number'))),
+            counts(of('farm_trip_return').map(e => e.why)),
+            counts(ends.map(e => e.why)),
+            pace === undefined ? '-' : String(pace),
+        ]);
+    }
+    return ['', 'farm trips (FarmPattern; pace is the latest learned clear-time factor, 1 = prior):', table(rows)];
+}
+
 function summary(game) {
     const out = [gameLine(game), ''];
     const rows = [['player', 'team', 'skill', 'ally', 'lh/dn', 'switches', 'notice n/avg', 'react n/avg', 'orders acc/dec', 'stuck', 'thrash', 'time in mode']];
@@ -109,6 +141,7 @@ function summary(game) {
     }
     out.push(table(rows));
     out.push(...churnSection(game));
+    out.push(...farmSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');
     const cmds = game.events.filter(e => e.ev === 'cmd');
     const pings = game.events.filter(e => e.ev === 'ping');

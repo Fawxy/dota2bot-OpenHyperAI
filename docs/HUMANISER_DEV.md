@@ -805,6 +805,11 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 - On `preempted` / `mode-end`, `farm_trip_end` names the winning mode (`to`, `toBy`).
 - Overlay key: `farm`.
 
+### Reading a game
+- `node tools/hlog/analyse.js` shows a `farm trips` table per core: trips, camps, stacks landed/tried (from `lane_stack`), average trip length, why trips walked back, how they ended, and the latest pace factor.
+- `--check` adds `farm_trips`. It warns on trips that ended under another mode (with the winning mode), walk-backs that timed out, and a core leaving more than 40% of its camps unfinished.
+- `--from 5:00 --to 8:00 --ev farm_trip_start,farm_trip_next,farm_trip_return,farm_trip_end,lane_job_start,lane_stack` gives the trip timeline. A core's stack jobs have `core=1` on `lane_job_start`.
+
 ### TODO (in-game)
 - Wave ETA against real arrivals: safe-lane speed-up and off-lane slow-down (patch notes give no figure).
 - Whether the pace factor settles. The priors only need to be close for the first camp.

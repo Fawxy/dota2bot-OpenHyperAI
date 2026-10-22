@@ -890,7 +890,10 @@ local function schedule(bot, now)
             {"lane", lane},
             {
                 "pace",
-                fmt(____exports.PaceFactor(bot))
+                string.format(
+                    "%.2f",
+                    ____exports.PaceFactor(bot)
+                )
             }
         }
     )

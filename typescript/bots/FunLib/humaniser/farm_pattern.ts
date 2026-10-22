@@ -448,7 +448,7 @@ function schedule(bot: Unit, now: number): boolean {
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };
     if (!adopt(bot, trip, plan)) return false;
     trips[bot.GetPlayerID()] = trip;
-    log(bot, "farm_trip_start", trip, [["lane", lane], ["pace", fmt(PaceFactor(bot))]]);
+    log(bot, "farm_trip_start", trip, [["lane", lane], ["pace", string.format("%.2f", PaceFactor(bot))]]);
     return true;
 }
 

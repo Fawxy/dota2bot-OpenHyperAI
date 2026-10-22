@@ -644,6 +644,7 @@ local function register(bot, job, data)
             },
             {"aggroAt", job.aggroAt},
             {"forced", job.forced == true},
+            {"core", job.core == true},
             {"timing", job.timing or "seed"}
         }
     )

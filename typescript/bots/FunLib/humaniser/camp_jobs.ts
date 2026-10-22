@@ -307,6 +307,7 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["data", dataLabel(data)],
         ["aggroAt", job.aggroAt],
         ["forced", job.forced === true],
+        ["core", job.core === true],
         ["timing", job.timing ?? "seed"],
     ]);
     HDebug.Log(
