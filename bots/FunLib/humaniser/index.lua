@@ -150,6 +150,13 @@ local function drawOverlay(bot)
                 )
             )
         end
+        if LaneFight.IsActive() and LaneFight.Config.AppliesTo(bot) then
+            HDebug.Text(
+                bot,
+                "fight",
+                LaneFight.Describe(bot)
+            )
+        end
         if LastHitSkill.IsActiveFor(bot) then
             local cs = LastHitSkill.Counts(bot)
             HDebug.Text(

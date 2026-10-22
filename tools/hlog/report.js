@@ -1,7 +1,7 @@
 // Human-readable views over a parsed game: summary, marks and timelines.
 'use strict';
 
-const { fmtT, modeChurn, BLIP_DWELL, LANING_ROAM_CAP } = require('./checks');
+const { fmtT, modeChurn, laneFightStats, BLIP_DWELL, LANING_ROAM_CAP } = require('./checks');
 
 const MARK_STATE_KEYS = ['mode', 'd', 'by', 'order', 'hp', 'mp', 'tgt', 'x', 'y', 'competing'];
 const NOISY = new Set(['snap', 'bot', 'player']);
@@ -82,6 +82,20 @@ function churnSection(game) {
     ];
 }
 
+function counts(m) {
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
+}
+
+/** Lane fights (task 11) per bot, from the lanefight_* events. */
+function laneFightSection(game) {
+    const stats = Object.values(laneFightStats(game)).sort((a, b) => a.pid - b.pid);
+    if (stats.length === 0) return [];
+    const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes', 'mem']];
+    for (const b of stats)
+        rows.push([who(game, b.pid), counts(b.windows), counts(b.starts), `${b.took}/${b.fights} took`, counts(b.ends), counts(b.gates), counts(b.aborts), counts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
+    return ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
+}
+
 function summary(game) {
     const out = [gameLine(game), ''];
     const rows = [['player', 'team', 'skill', 'ally', 'lh/dn', 'switches', 'notice n/avg', 'react n/avg', 'orders acc/dec', 'stuck', 'thrash', 'time in mode']];
@@ -109,6 +123,7 @@ function summary(game) {
     }
     out.push(table(rows));
     out.push(...churnSection(game));
+    out.push(...laneFightSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');
     const cmds = game.events.filter(e => e.ev === 'cmd');
     const pings = game.events.filter(e => e.ev === 'ping');

@@ -57,6 +57,9 @@ export const DEFAULTS = {
     CommitHoldHP: 0.5,
     TowerOverride: 1.3,
     FollowMargin: 0.8,
+    // A partner's attacks from within range make a commit when two land within this window (one harass hit does not).
+    // About two attack intervals of a slow level-1 hero.
+    InRangeWindow: 2.5,
     Overwhelming: 1.5,
     SoloSkill: 0.7,
     CallCooldown: 30,

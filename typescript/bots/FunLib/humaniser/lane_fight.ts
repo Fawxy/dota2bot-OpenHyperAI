@@ -169,12 +169,13 @@ const SAMPLE_GAP = 0.02;
 // The enemy-count abort signal is read this often.
 const COUNT_EVERY = 0.1;
 const COUNT_RADIUS = 1200;
-// Attacks on the target from within range that make a commit (one harass hit does not), and their window.
+// Attacks on the target from within range (within Settings().InRangeWindow) that make a commit.
 const IN_RANGE_ATTACKS = 2;
-const IN_RANGE_WINDOW = 1.5;
 // At follow time the partner must have been seen committing this recently.
 const FOLLOW_FRESH = 0.3;
 const FOCUS_SOURCE = "lanefight:commit_focus";
+// lanefight_commit role per start `via`.
+const COMMIT_ROLES: Record<string, string> = { initiate: "initiator", follow: "follower", solo: "solo" };
 // The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
 const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
 // Modes a lane fight may start from.
@@ -307,13 +308,13 @@ function skillOf(bot: Unit): number {
 export interface Sample {
     dist: number;
     at: number;
-    // Attacks the ally landed on the target within IN_RANGE_WINDOW before this sample.
+    // Attacks the ally landed on the target within InRangeWindow before this sample.
     attacks?: number;
 }
 
 /**
  * The ally's visible commit on `target`: it attacks the target while closing on it, or keeps attacking it from within
- * its attack range (IN_RANGE_ATTACKS within IN_RANGE_WINDOW: one harass hit is not a commit), or it is casting a
+ * its attack range (IN_RANGE_ATTACKS within InRangeWindow: one harass hit is not a commit), or it is casting a
  * key-class ability or an ultimate at it. The bot API rarely exposes a cast's target, so "at it" is: facing within 30
  * degrees of the target and within the ability's cast range + 200. `prev` is the sample taken before this one.
  */
@@ -364,7 +365,8 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
         if (at !== null && at !== undefined && !at.IsNull() && at.GetPlayerID() === target.GetPlayerID()) t.attackTimes.push(now);
     }
     const recent: number[] = [];
-    for (const a of t.attackTimes) if (now - a <= IN_RANGE_WINDOW) recent.push(a);
+    const window = LaneFightConfig.Settings().InRangeWindow;
+    for (const a of t.attackTimes) if (now - a <= window) recent.push(a);
     t.attackTimes = recent;
     if (t.cur === undefined || now - t.cur.at >= SAMPLE_GAP) {
         t.prev = t.cur;
@@ -471,6 +473,20 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     const fields: [string, any][] = [["pid", bot.GetPlayerID()], ["phase", phase], ["target", s.targetPid]];
     for (const d of detail) fields.push(d);
     Telemetry.Event("lanefight_start", fields);
+    if (phase === "commit") {
+        let margin: any;
+        let via: any;
+        for (const [k, v] of detail) {
+            if (k === "margin") margin = v;
+            else if (k === "via") via = v;
+        }
+        Telemetry.Event("lanefight_commit", [
+            ["pid", bot.GetPlayerID()],
+            ["target", s.targetPid],
+            ["margin", margin],
+            ["role", COMMIT_ROLES[via] ?? via],
+        ]);
+    }
     HDebug.Log("lanefight", `start pid=${bot.GetPlayerID()} phase=${phase} target=${s.targetPid}`);
 }
 
@@ -971,11 +987,11 @@ export function CurrentPhase(bot: Unit): Phase {
     return fights[bot.GetPlayerID()]?.phase ?? "idle";
 }
 
-/** "fight: window=<type|none> kill=<margin|-> mem=<n> phase=<p>" for the overlay. */
+/** "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line. */
 export function Describe(bot: Unit): string {
     const s = fights[bot.GetPlayerID()];
     const margin = s?.lastMargin !== undefined ? string.format("%.2f", s.lastMargin) : "-";
-    return `fight: window=${s?.lastWindow ?? "none"} kill=${margin} mem=${CooldownMemory.Count(bot.GetPlayerID(), DotaTime())} phase=${s?.phase ?? "idle"}`;
+    return `window=${s?.lastWindow ?? "none"} kill=${margin} mem=${CooldownMemory.Count(bot.GetPlayerID(), DotaTime())} phase=${s?.phase ?? "idle"}`;
 }
 
 export function RegisterProbes(): void {

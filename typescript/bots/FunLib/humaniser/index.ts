@@ -98,6 +98,7 @@ function drawOverlay(bot: Unit): void {
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
+        if (LaneFight.IsActive() && LaneFight.Config.AppliesTo(bot)) HDebug.Text(bot, "fight", LaneFight.Describe(bot));
         if (LastHitSkill.IsActiveFor(bot)) {
             const cs = LastHitSkill.Counts(bot);
             HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));

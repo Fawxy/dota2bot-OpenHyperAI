@@ -179,6 +179,8 @@ for _, team in ipairs({ 2, 3 }) do
 	check("support with a stun initiates" .. tag, W.events("lanefight_start", "pid=2 phase=commit") == 1
 		and W.events("lanefight_start", "pid=2 phase=commit target=6 margin=") == 1 and W.events("lanefight_start", "via=initiate") == 1,
 		table.concat(W.lines, "\n"))
+	check("the initiating support logs lanefight_commit role=initiator" .. tag,
+		W.events("lanefight_commit", "pid=2 target=6 margin=") == 1 and W.events("lanefight_commit", "role=initiator") == 1, table.concat(W.lines, "\n"))
 	check("the core waits for its support" .. tag, W.events("lanefight_start", "pid=1 phase=wait_partner target=6") == 1
 		and W.events("lanefight_start", "with=2 human=0") == 1, table.concat(W.lines, "\n"))
 	check("a waiting core holds still on purpose, posts no floor and keeps laning" .. tag, waitingHeld and not waitingFloor
@@ -229,6 +231,8 @@ for _, skill in ipairs({ 0, 1 }) do
 	check(string.format("core follows the partner's visible commit after react + SyncDelay at skill %d", skill),
 		at ~= nil and at >= want - 1e-6 and at <= want + FRAME + 1e-6 and W.events("lanefight_start", "via=follow") == 1,
 		string.format("at %s want %.3f (react %.3f sync %.3f)", tostring(at), want, react, sync))
+	check(string.format("the following core logs lanefight_commit role=follower at skill %d", skill),
+		W.events("lanefight_commit", "pid=1 target=6 margin=") == 1 and W.events("lanefight_commit", "role=follower") == 1, table.concat(W.lines, "\n"))
 end
 
 -- ------------------------------------------------------------------------------------------ human partner
@@ -289,6 +293,26 @@ do
 	local want = first + 0.5 + W.H.Profile.SampleDelay(W.bot, "react") + W.LF.Config.Curve("SyncDelay", 1)
 	check("sustained in-range attacks are followed after the second hit", at ~= nil and at >= want - 1e-6 and at <= want + 2 * FRAME + 1e-6,
 		string.format("at %s want %.3f", tostring(at), want))
+
+	-- A level-1 hero attacking every 2 s: the second hit lands inside InRangeWindow (2.5 s), so it is a commit.
+	local function slowAttacks(cfg)
+		local w = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -200 }, laneFight = cfg })
+		w.partner.target = w.enemy
+		local f = T + 0.3
+		w.onFrame = function()
+			if T >= f - 1e-9 and (w.partner.lastAttack or -1000) < T - 2 + 1e-9 then w.partner.lastAttack = T end
+		end
+		play(w, 4)
+		return w, f
+	end
+	local slow, slowFirst = slowAttacks()
+	local slowAt = slow.firstAt("lanefight_start", "via=follow")
+	local slowWant = slowFirst + 2 + slow.H.Profile.SampleDelay(slow.bot, "react") + slow.LF.Config.Curve("SyncDelay", 1)
+	check("in-range attacks 2 s apart are followed after the second hit", slowAt ~= nil and slowAt >= slowWant - 1e-6
+		and slowAt <= slowWant + 2 * FRAME + 1e-6, string.format("at %s want %.3f", tostring(slowAt), slowWant))
+	slow = slowAttacks({ InRangeWindow = 1.5 })
+	check("InRangeWindow is read from config: at 1.5 s, attacks 2 s apart are not a commit", slow.events("lanefight_start") == 0,
+		table.concat(slow.lines, "\n"))
 
 	-- The partner starts in, then stops before the follow time (skill 0: 1.1 s): no follow, logged once.
 	W = world({ skill = 0, burst = 50, partner = { human = true, pos = 5, burst = 40 } })
@@ -363,6 +387,8 @@ do
 	play(W, 1.5)
 	check("overwhelming kill at skill 0.8 commits alone", W.events("lanefight_start", "phase=commit") == 1
 		and W.events("lanefight_start", "via=solo") == 1 and W.events("lanefight_start", "phase=wait_partner") == 0, table.concat(W.lines, "\n"))
+	check("a solo commit logs lanefight_commit role=solo", W.events("lanefight_commit", "pid=1 target=6 margin=") == 1
+		and W.events("lanefight_commit", "role=solo") == 1, table.concat(W.lines, "\n"))
 	-- The solo check leaves the human out: 120 of burst alone is a margin of 1.2, not overwhelming.
 	W = world({ skill = 0.8, burst = 120, partner = { human = true, pos = 5, burst = 1000 } })
 	play(W, 1.5)

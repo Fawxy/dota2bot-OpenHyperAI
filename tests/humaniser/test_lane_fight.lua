@@ -30,7 +30,7 @@ local function world(o)
 	local laneFight = o.laneFight or {}
 	if laneFight.Enable == nil then laneFight.Enable = true end
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true },
-		intent = o.intent, enable = o.enable })
+		intent = o.intent, enable = o.enable, debug = o.debug })
 	T = 100
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
@@ -514,6 +514,141 @@ for _, case in ipairs({ { phase = "trade", laning = 0.45 }, { phase = "commit", 
 		and W.events("thrash", "mode=laning") >= 1, before)
 	check("a " .. case.phase .. " survives the thrash limiter", hasStart(W, case.phase) and W.bot.mode == BotMode.TeamRoam
 		and W.events("lanefight_end") == 0, table.concat(W.lines, "\n"))
+end
+
+-- ------------------------------------------------------------------------------ overlay, telemetry and regression
+
+do
+	-- Spell window: the stun is remembered as down. Kill margin 112 / 100 = 1.12 fails under their tower (TowerOverride
+	-- 1.3), so the bot keeps trading. Two remembered cooldowns.
+	local W = world({ burst = 112, debug = true })
+	TOWERS_W[3][dota.Tower.Bot1].loc = Vector(1150, BOT_Y)
+	SetRandomSequence({ 0.1, 0.5, 0.1, 0.5 })
+	W.LF.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
+	W.LF.CooldownMemory.Record(1, 6, "lion_finger_of_death", "ult", 100, 1, T)
+	SetRandomSequence({})
+	play(W, 0.7)
+	-- The humaniser tick also takes a telemetry snapshot.
+	function W.bot:GetLastHits() return 0 end
+	function W.bot:GetDenies() return 0 end
+	function W.bot:GetGold() return 600 end
+	check("setup: the overlay world trades", W.LF.CurrentPhase(W.bot) == "trade", W.LF.CurrentPhase(W.bot))
+	local drawn = {}
+	local realDraw = DebugDrawText
+	DebugDrawText = function(_, _, text) table.insert(drawn, text) end
+	W.H.Tick(W.bot)
+	DebugDrawText = realDraw
+	local line
+	for _, t in ipairs(drawn) do if t:sub(1, 6) == "fight:" then line = t end end
+	check("overlay shows window, kill margin and remembered count", line == "fight: window=spell kill=1.12 mem=2 phase=trade",
+		tostring(line) .. " | " .. table.concat(drawn, " | ") .. table.concat(W.lines, "\n"))
+
+	local W2 = world({ burst = 112 })
+	local drawn2 = {}
+	DebugDrawText = function(_, _, text) table.insert(drawn2, text) end
+	play(W2, 0.7)
+	W2.H.Tick(W2.bot)
+	DebugDrawText = realDraw
+	local any = false
+	for _, t in ipairs(drawn2) do if t:find("fight:", 1, true) then any = true end end
+	check("no fight overlay line with Debug off", not any)
+end
+
+-- [HEV] fields as hlog's parser reads them: k=v, v quoted when it holds spaces.
+local function hevFields(line)
+	local ev = line:match(" ev=(%S+)")
+	local fields, pos = {}, (line:find(" ev=", 1, true) or 1) + 4 + #ev
+	while true do
+		local s, e, k = line:find("^%s+(%w+)=", pos)
+		if s == nil then break end
+		local v
+		if line:sub(e + 1, e + 1) == '"' then
+			local close = line:find('"', e + 2, true)
+			v, pos = line:sub(e + 2, close - 1), close + 1
+		else
+			local _, ve, raw = line:find("^(%S+)", e + 1)
+			v, pos = tonumber(raw) or raw, ve + 1
+		end
+		table.insert(fields, { k, v })
+	end
+	return ev, fields
+end
+
+local function fieldSet(fields)
+	local set = {}
+	for _, f in ipairs(fields) do set[f[1]] = f[2] end
+	return set
+end
+
+do
+	local W = world({ burst = 1000 })
+	play(W, 1.5)
+	local stripT = function(l) return (l:gsub(" t=%S+", "", 1)) end
+	local seen, roundTrip = {}, true
+	for _, l in ipairs(W.lines) do
+		local ev, fields = hevFields(l)
+		if ev:sub(1, 10) == "lanefight_" then
+			seen[ev] = fieldSet(fields)
+			if stripT(W.H.Telemetry.FormatLine(ev, fields)) ~= stripT(l) then roundTrip = false end
+		end
+	end
+	check("telemetry lines parse through hlog: every lanefight line round-trips through FormatLine", roundTrip and seen.lanefight_start ~= nil,
+		table.concat(W.lines, "\n"))
+	local w = seen.lanefight_window
+	check("lanefight_window carries pid, window, target and noticed", w ~= nil and w.pid == 1 and w.window == "level" and w.target == 6
+		and w.noticed ~= nil, table.concat(W.lines, "\n"))
+	local c = seen.lanefight_commit
+	check("lanefight_commit carries pid, target, margin and role", c ~= nil and c.pid == 1 and c.target == 6 and c.margin == 10
+		and c.role == "solo", table.concat(W.lines, "\n"))
+end
+
+-- With LaneFight.Enable = false, everything the lane-fight hooks return, order and draw matches the humaniser being off.
+-- The defaults run through the same world as a positive control.
+do
+	local function run(o)
+		local W = world(o)
+		local R = { desires = {}, thinks = {}, actions = {}, draws = 0 }
+		local function hook(fn)
+			local real = RandomFloat
+			RandomFloat = function(a, b) R.draws = R.draws + 1 return real(a, b) end
+			ACTIONS = {}
+			local r = fn()
+			RandomFloat = real
+			for _, a in ipairs(ACTIONS) do table.insert(R.actions, a.kind .. ":" .. tostring(a.args[1] and a.args[1].pid)) end
+			return r
+		end
+		local stop, nextRound, i = T + 3, T, 0
+		while T < stop do
+			hook(function() W.LF.Tick(W.bot) end)
+			if T >= nextRound - 1e-9 then
+				i = i + 1
+				local raw = i % 2 == 0 and 0.5 or 0.2
+				-- As mode_team_roam_generic's GetDesire: the lane-fight hook, then Intent.Resolve (where its FIGHT floor lands).
+				table.insert(R.desires, string.format("%.4f", hook(function()
+					return W.H.Intent.Resolve(W.bot, BotMode.TeamRoam, W.LF.RoamDesire(W.bot, raw, false))
+				end)))
+				nextRound = nextRound + ROUND
+			end
+			W.bot.mode = BotMode.TeamRoam
+			table.insert(R.thinks, tostring(hook(function() return W.LF.Think(W.bot) end)))
+			T = T + FRAME
+		end
+		R.lines = 0
+		for _, l in ipairs(W.lines) do if l:find("ev=lanefight_", 1, true) then R.lines = R.lines + 1 end end
+		return R
+	end
+	local same = function(a, b) return table.concat(a, ",") == table.concat(b, ",") end
+	for _, team in ipairs({ 2, 3 }) do
+		local tag = team == 2 and " (radiant)" or " (dire)"
+		local base = run({ team = team, burst = 1000, enable = false })
+		local off = run({ team = team, burst = 1000, laneFight = { Enable = false } })
+		local on = run({ team = team, burst = 1000 })
+		check("control: with defaults the lane-fight hooks change desire, actions and draws" .. tag, not same(on.desires, base.desires)
+			and #on.actions > 0 and on.draws > 0, on.draws)
+		check("regression: LaneFight.Enable=false leaves team_roam desire, actions and RandomFloat draws unchanged" .. tag,
+			same(off.desires, base.desires) and same(off.thinks, base.thinks) and same(off.actions, base.actions)
+			and off.draws == base.draws and off.draws == 0 and #off.actions == 0 and off.lines == 0, string.format("draws %d/%d actions %d/%d", off.draws, base.draws, #off.actions, #base.actions))
+	end
 end
 
 -- ------------------------------------------------------------------------------------------------ hook pins

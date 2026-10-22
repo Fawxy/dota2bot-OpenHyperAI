@@ -288,3 +288,72 @@ test('errors caught by humaniser guards fail the check once per hook and message
     assert.strictEqual(r.script_errors.details.length, 1, r.script_errors.details.join('; '));
     assert.match(r.script_errors.details[0], /^guarded 37x from 0:08: Intent\.Resolve: intent\.lua:40/);
 });
+
+/** A lane-fight episode for pid: a window, a start, then its end. */
+function fight(pid, t, { window = 'spell', phase = 'trade', reason = 'hits', took = 1, via } = {}) {
+    const start = phase === 'commit' ? `margin=1.200 via=${via || 'solo'}` : `window=${window}`;
+    const out = [
+        `[HEV] t=${t} ev=lanefight_window pid=${pid} window=${window} target=6 noticed=1`,
+        `[HEV] t=${t + 0.3} ev=lanefight_start pid=${pid} phase=${phase} target=6 ${start}`,
+    ];
+    if (phase === 'commit') out.push(`[HEV] t=${t + 0.3} ev=lanefight_commit pid=${pid} target=6 margin=1.200 role=solo`);
+    out.push(`[HEV] t=${t + 2.5} ev=lanefight_end pid=${pid} phase=${phase} reason=${reason} hits=2 took=${took}`);
+    return out;
+}
+
+const mem = (pid, t, extra) => `[HEV] t=${t} ev=lanefight_mem pid=${pid} enemy=6 ability=lion_impale ${extra}`;
+
+test('the summary lists lane fights per bot: windows, starts, ends, took share, gates and mistakes', () => {
+    const lines = [
+        ...header(0),
+        ...snaps(1, 0, 60),
+        ...snaps(2, 0, 60),
+        ...fight(1, 10, { window: 'spell' }),
+        ...fight(1, 20, { window: 'level', reason: 'mode:laning', took: 0 }),
+        ...fight(1, 30, { phase: 'commit', reason: 'target-dead' }),
+        '[HEV] t=40 ev=lanefight_gate pid=1 gate=low-hp',
+        '[HEV] t=41 ev=lanefight_gate pid=1 gate=low-hp',
+        '[HEV] t=42 ev=lanefight_gate pid=1 gate=respect:their_ult',
+        '[HEV] t=43 ev=lanefight_abort pid=1 phase=commit reason=escape',
+        '[HEV] t=44 ev=lanefight_mistake pid=1 kind=bad_memory ability=lion_impale target=6 after=0.500',
+        mem(1, 9, 'cls=key cd=12 remembered=1 src=poll'),
+    ];
+    const game = parseLog(ordered(lines).join('\n'))[0];
+    const text = report.summary(game);
+    const row = text.split('\n').find(l => /^lion\[1\]/.test(l) && l.includes('spell'));
+    assert.ok(row, text);
+    assert.match(row, /spell 2, level 1/);
+    assert.match(row, /trade 2, commit 1/);
+    assert.match(row, /2\/3 took/);
+    assert.match(row, /hits 1, mode:laning 1, target-dead 1/);
+    assert.match(row, /low-hp 2, respect:their_ult 1/);
+    assert.match(row, /escape 1/);
+    assert.match(row, /bad_memory 1/);
+    assert.match(row, /mem 1\/1/);
+    assert.ok(!text.split('\n').some(l => /^lina\[2\].*took/.test(l)), 'a bot with no lane-fight events gets no row');
+    assert.strictEqual(levels(game).lane_fight.level, 'pass', levels(game).lane_fight.summary);
+});
+
+test('lane_fight warns when no start ever took over, and when GetCooldown reads nothing on enemies', () => {
+    const lines = [
+        ...header(0),
+        ...snaps(1, 0, 60),
+        ...fight(1, 10, { reason: 'mode:laning', took: 0 }),
+        ...fight(1, 20, { reason: 'mode:retreat', took: 0 }),
+        ...fight(1, 30, { phase: 'commit', reason: 'mode:laning', took: 0 }),
+        '[HEV] t=35 ev=lanefight_start pid=1 phase=wait_partner target=6 margin=1.100 with=2 human=0',
+        '[HEV] t=38 ev=lanefight_end pid=1 phase=wait_partner reason=partner_timeout hits=0 took=0',
+        mem(1, 5, 'remembered=0 reason=no_cd'),
+        mem(1, 6, 'remembered=0 reason=no_cd').replace('lion_impale', 'lion_voodoo'),
+        mem(1, 7, 'remembered=0 reason=no_cd').replace('lion_impale', 'lion_finger_of_death'),
+        mem(1, 8, 'cls=key cd=12 remembered=1 src=jump'),
+    ];
+    const r = levels(parseLog(ordered(lines).join('\n'))[0]).lane_fight;
+    assert.strictEqual(r.level, 'warn', r.summary);
+    assert.ok(r.details.some(d => /lion\[1\].*3 trades\/commits.*none took over/.test(d)), r.details.join('; '));
+    assert.ok(r.details.some(d => /no_cd 3\/4/.test(d) && /Task 4b/.test(d)), r.details.join('; '));
+
+    const one = [...header(0), ...snaps(1, 0, 60), ...fight(1, 10, { reason: 'mode:laning', took: 0 })];
+    assert.strictEqual(levels(parseLog(ordered(one).join('\n'))[0]).lane_fight.level, 'pass', 'one start that never took over is too few to warn');
+    assert.strictEqual(levels(parseLog(ordered([...header(0), ...snaps(1, 0, 20)]).join('\n'))[0]).lane_fight.level, 'skip');
+});

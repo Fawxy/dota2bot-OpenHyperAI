@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, skillOf, castingAt, sampleDistance, partnerCommitTarget, focusCap, claim, believedDown, start, ____end, checkMistake, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, visibleEnemy, coordinate, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, IN_RANGE_WINDOW, FOLLOW_FRESH, FOCUS_SOURCE, FOCUS_MODES, START_MODES, fights, tracks
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, skillOf, castingAt, sampleDistance, partnerCommitTarget, focusCap, claim, believedDown, start, ____end, checkMistake, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, visibleEnemy, coordinate, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, FOCUS_SOURCE, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -158,7 +158,7 @@ function skillOf(bot)
     return Profile.Get(bot).skill
 end
 --- The ally's visible commit on `target`: it attacks the target while closing on it, or keeps attacking it from within
--- its attack range (IN_RANGE_ATTACKS within IN_RANGE_WINDOW: one harass hit is not a commit), or it is casting a
+-- its attack range (IN_RANGE_ATTACKS within InRangeWindow: one harass hit is not a commit), or it is casting a
 -- key-class ability or an ultimate at it. The bot API rarely exposes a cast's target, so "at it" is: facing within 30
 -- degrees of the target and within the ability's cast range + 200. `prev` is the sample taken before this one.
 function ____exports.IsCommitting(ally, target, prev)
@@ -225,8 +225,9 @@ function sampleDistance(bot, ally, target, now)
         end
     end
     local recent = {}
+    local window = LaneFightConfig.Settings().InRangeWindow
     for ____, a in ipairs(t.attackTimes) do
-        if now - a <= IN_RANGE_WINDOW then
+        if now - a <= window then
             recent[#recent + 1] = a
         end
     end
@@ -394,6 +395,31 @@ function start(bot, s, phase, target, inst, now, detail, opts)
         fields[#fields + 1] = d
     end
     Telemetry.Event("lanefight_start", fields)
+    if phase == "commit" then
+        local margin
+        local via
+        for ____, ____value in ipairs(detail) do
+            local k = ____value[1]
+            local v = ____value[2]
+            if k == "margin" then
+                margin = v
+            elseif k == "via" then
+                via = v
+            end
+        end
+        Telemetry.Event(
+            "lanefight_commit",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"target", s.targetPid},
+                {"margin", margin},
+                {"role", COMMIT_ROLES[via] or via}
+            }
+        )
+    end
     HDebug.Log(
         "lanefight",
         (((("start pid=" .. tostring(bot:GetPlayerID())) .. " phase=") .. phase) .. " target=") .. tostring(s.targetPid)
@@ -900,9 +926,9 @@ SAMPLE_GAP = 0.02
 COUNT_EVERY = 0.1
 COUNT_RADIUS = 1200
 IN_RANGE_ATTACKS = 2
-IN_RANGE_WINDOW = 1.5
 FOLLOW_FRESH = 0.3
 FOCUS_SOURCE = "lanefight:commit_focus"
+COMMIT_ROLES = {initiate = "initiator", follow = "follower", solo = "solo"}
 FOCUS_MODES = {
     BotMode.Laning,
     BotMode.Ward,
@@ -1270,11 +1296,11 @@ function ____exports.CurrentPhase(bot)
     local ____opt_18 = fights[bot:GetPlayerID()]
     return ____opt_18 and ____opt_18.phase or "idle"
 end
---- "fight: window=<type|none> kill=<margin|-> mem=<n> phase=<p>" for the overlay.
+--- "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line.
 function ____exports.Describe(bot)
     local s = fights[bot:GetPlayerID()]
     local margin = (s and s.lastMargin) ~= nil and string.format("%.2f", s.lastMargin) or "-"
-    return (((((("fight: window=" .. (s and s.lastWindow or "none")) .. " kill=") .. margin) .. " mem=") .. tostring(CooldownMemory.Count(
+    return (((((("window=" .. (s and s.lastWindow or "none")) .. " kill=") .. margin) .. " mem=") .. tostring(CooldownMemory.Count(
         bot:GetPlayerID(),
         DotaTime()
     ))) .. " phase=") .. (s and s.phase or "idle")
