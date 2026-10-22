@@ -151,6 +151,7 @@ const END_GRACE = 0.5;
 const MODE_GRACE = 1;
 // team_roam drops a target farther than this.
 const LEASH = 1800;
+// Beyond attack range + both hulls (the engine measures range edge to edge; distances here are centre to centre).
 const RANGE_SLACK = 50;
 // A trade starts only on a target this far beyond the bot's attack range at most.
 const TRADE_REACH = 400;
@@ -178,6 +179,9 @@ const IN_RANGE_ATTACKS = 2;
 const FOLLOW_FRESH = 0.3;
 // A counted partner farther than this from the target has left the commit.
 const PARTNER_RANGE = 1200;
+// A counted partner's attack on the target keeps it seen going in this long: between attacks (about 1.7 s at level 1)
+// and while casting it has no attack target.
+const PARTNER_RECENT_ATTACK = 1.5;
 // An initiator's partner gets this long to be seen following (its react + SyncDelay, then closing) before AbortNotice
 // starts to run.
 const INITIATE_GRACE = 1.5;
@@ -346,7 +350,7 @@ export function IsCommitting(ally: Unit, target: Unit, prev: Sample | undefined)
     if (!usableUnit(ally) || !usableUnit(target)) return false;
     const dist = GetUnitToUnitDistance(ally, target);
     if (isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID())) {
-        if (dist <= ally.GetAttackRange() + RANGE_SLACK && (prev?.attacks ?? 0) >= IN_RANGE_ATTACKS) return true;
+        if (inAttackRange(ally, target, dist) && (prev?.attacks ?? 0) >= IN_RANGE_ATTACKS) return true;
         if (prev !== undefined && DotaTime() - prev.at <= PREV_MAX_AGE && dist < prev.dist - CLOSE_MIN) return true;
     }
     return castingAt(ally, target, dist);
@@ -423,7 +427,11 @@ function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number):
         const prev = sampleDistance(bot, ally, e.unit, now);
         const committing = IsCommitting(ally, e.unit, prev);
         if (found === undefined && committing && followable(s, ally, e.unit, e.pid, prev)) found = e.unit;
-        if (counted && e.pid === s.targetPid && (committing || attackingInRange(ally, e.unit))) s.partnerSeen[ally.GetPlayerID()] = now;
+        if (counted && e.pid === s.targetPid) {
+            const hit = lastAttackOn(bot, ally, e.unit);
+            if (committing || attackingInRange(ally, e.unit) || (hit !== undefined && now - hit <= PARTNER_RECENT_ATTACK))
+                s.partnerSeen[ally.GetPlayerID()] = now;
+        }
     }
     return found;
 }
@@ -434,7 +442,17 @@ function countsPartner(s: FightState, pid: number): boolean {
 }
 
 function attackingInRange(ally: Unit, target: Unit): boolean {
-    return isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID()) && GetUnitToUnitDistance(ally, target) <= ally.GetAttackRange() + RANGE_SLACK;
+    return isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID()) && inAttackRange(ally, target, GetUnitToUnitDistance(ally, target));
+}
+
+function inAttackRange(attacker: Unit, target: Unit, dist: number): boolean {
+    return dist <= attacker.GetAttackRange() + attacker.GetBoundingRadius() + target.GetBoundingRadius() + RANGE_SLACK;
+}
+
+/** When the bot last saw `ally` land an attack on `target`, from the attack samples. */
+function lastAttackOn(bot: Unit, ally: Unit, target: Unit): number | undefined {
+    const times = tracks[`${bot.GetPlayerID()}:${ally.GetPlayerID()}:${target.GetPlayerID()}`]?.attackTimes;
+    return times !== undefined && times.length > 0 ? times[times.length - 1] : undefined;
 }
 
 function focusCap(bot: Unit): number {
@@ -596,14 +614,17 @@ interface Abandon {
     since: number;
 }
 
-/** A partner the commit's checks count is dead, farther than PARTNER_RANGE from the target, or not seen going in. */
-function partnerAbandoned(bot: Unit, s: FightState, target: Unit | undefined, now: number): Abandon | undefined {
-    const notice = LaneFightConfig.Curve("AbortNotice", skillOf(bot));
+/**
+ * A partner the commit's checks count is dead, farther than PARTNER_RANGE from the target, or not seen going in for
+ * PartnerLapse.
+ */
+function partnerAbandoned(s: FightState, target: Unit | undefined, now: number): Abandon | undefined {
+    const lapse = LaneFightConfig.Settings().PartnerLapse;
     for (const u of s.partners) {
         if (!usableUnit(u)) return { ally: u, why: "gone", since: 0 };
         const last = math.max(s.partnerSince, s.partnerSeen[u.GetPlayerID()] ?? -math.huge);
         if (target !== undefined && GetUnitToUnitDistance(u, target) > PARTNER_RANGE) return { ally: u, why: "far", since: now - last };
-        if (now - last >= notice) return { ally: u, why: "unseen", since: now - last };
+        if (now - last >= lapse) return { ally: u, why: "unseen", since: now - last };
     }
     return undefined;
 }
@@ -625,7 +646,7 @@ function logAbandon(bot: Unit, s: FightState, target: Unit, a: Abandon): void {
             ["atk", named],
             ["dist", GetUnitToUnitDistance(a.ally, target)],
             ["range", a.ally.GetAttackRange()],
-            ["lastatk", DotaTime() - a.ally.GetLastAttackTime()],
+            ["lastatk", GameTime() - a.ally.GetLastAttackTime()],
         );
     }
     Telemetry.Event("lanefight_abandon", fields);
@@ -642,7 +663,7 @@ function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: nu
         return "escape";
     }
     if (s.partners.length > 0 && target !== undefined) {
-        const a = partnerAbandoned(bot, s, target, now);
+        const a = partnerAbandoned(s, target, now);
         if (a !== undefined) {
             logAbandon(bot, s, target, a);
             return PARTNER_ABANDON;
@@ -677,8 +698,8 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     if (now < a.at) return undefined;
     s.abort = undefined;
     const abandon = a.why === PARTNER_ABANDON;
-    if (abandon && (target === undefined || partnerAbandoned(bot, s, target, now) === undefined)) return undefined;
-    const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now) !== undefined);
+    if (abandon && (target === undefined || partnerAbandoned(s, target, now) === undefined)) return undefined;
+    const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(s, target, now) !== undefined);
     const partners = solo ? [] : s.partners;
     const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
     const pass = k !== undefined && (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);

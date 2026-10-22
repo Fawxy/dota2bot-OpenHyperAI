@@ -11,7 +11,7 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, inAttackRange, lastAttackOn, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, PARTNER_RECENT_ATTACK, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -227,7 +227,7 @@ function ____exports.IsCommitting(ally, target, prev)
         target,
         target:GetPlayerID()
     ) then
-        if dist <= ally:GetAttackRange() + RANGE_SLACK and (prev and prev.attacks or 0) >= IN_RANGE_ATTACKS then
+        if inAttackRange(ally, target, dist) and (prev and prev.attacks or 0) >= IN_RANGE_ATTACKS then
             return true
         end
         if prev ~= nil and DotaTime() - prev.at <= PREV_MAX_AGE and dist < prev.dist - CLOSE_MIN then
@@ -348,8 +348,11 @@ function partnerCommitTarget(bot, s, ally, now)
                 ) then
                     found = e.unit
                 end
-                if counted and e.pid == s.targetPid and (committing or attackingInRange(ally, e.unit)) then
-                    s.partnerSeen[ally:GetPlayerID()] = now
+                if counted and e.pid == s.targetPid then
+                    local hit = lastAttackOn(bot, ally, e.unit)
+                    if committing or attackingInRange(ally, e.unit) or hit ~= nil and now - hit <= PARTNER_RECENT_ATTACK then
+                        s.partnerSeen[ally:GetPlayerID()] = now
+                    end
                 end
                 __continue76 = true
             until true
@@ -373,7 +376,19 @@ function attackingInRange(ally, target)
         ally:GetAttackTarget(),
         target,
         target:GetPlayerID()
-    ) and GetUnitToUnitDistance(ally, target) <= ally:GetAttackRange() + RANGE_SLACK
+    ) and inAttackRange(
+        ally,
+        target,
+        GetUnitToUnitDistance(ally, target)
+    )
+end
+function inAttackRange(attacker, target, dist)
+    return dist <= attacker:GetAttackRange() + attacker:GetBoundingRadius() + target:GetBoundingRadius() + RANGE_SLACK
+end
+function lastAttackOn(bot, ally, target)
+    local ____opt_5 = tracks[(((tostring(bot:GetPlayerID()) .. ":") .. tostring(ally:GetPlayerID())) .. ":") .. tostring(target:GetPlayerID())]
+    local times = ____opt_5 and ____opt_5.attackTimes
+    return times ~= nil and #times > 0 and times[#times] or nil
 end
 function focusCap(bot)
     return floorOf(bot, "commit") / ACTIVE_BOOST - LaneFightConfig.Settings().CommitFocusMargin
@@ -408,15 +423,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue94
+            local __continue97
             repeat
                 if not a.learned then
-                    __continue94 = true
+                    __continue97 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue94 = true
+                    __continue97 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -430,9 +445,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue94 = true
+                __continue97 = true
             until true
-            if not __continue94 then
+            if not __continue97 then
                 break
             end
         end
@@ -598,11 +613,8 @@ function checkMistake(bot, s, now)
         s.bet = nil
     end
 end
-function partnerAbandoned(bot, s, target, now)
-    local notice = LaneFightConfig.Curve(
-        "AbortNotice",
-        skillOf(bot)
-    )
+function partnerAbandoned(s, target, now)
+    local lapse = LaneFightConfig.Settings().PartnerLapse
     for ____, u in ipairs(s.partners) do
         if not usableUnit(u) then
             return {ally = u, why = "gone", since = 0}
@@ -614,7 +626,7 @@ function partnerAbandoned(bot, s, target, now)
         if target ~= nil and GetUnitToUnitDistance(u, target) > PARTNER_RANGE then
             return {ally = u, why = "far", since = now - last}
         end
-        if now - last >= notice then
+        if now - last >= lapse then
             return {ally = u, why = "unseen", since = now - last}
         end
     end
@@ -657,7 +669,7 @@ function logAbandon(bot, s, target, a)
             },
             {
                 "lastatk",
-                DotaTime() - a.ally:GetLastAttackTime()
+                GameTime() - a.ally:GetLastAttackTime()
             }
         )
     end
@@ -670,7 +682,7 @@ function abortSignal(bot, s, target, now)
         return "escape"
     end
     if #s.partners > 0 and target ~= nil then
-        local a = partnerAbandoned(bot, s, target, now)
+        local a = partnerAbandoned(s, target, now)
         if a ~= nil then
             logAbandon(bot, s, target, a)
             return PARTNER_ABANDON
@@ -722,14 +734,14 @@ function abortReason(bot, s, target, now)
     end
     s.abort = nil
     local abandon = a.why == PARTNER_ABANDON
-    if abandon and (target == nil or partnerAbandoned(bot, s, target, now) == nil) then
+    if abandon and (target == nil or partnerAbandoned(s, target, now) == nil) then
         return nil
     end
-    local solo = abandon or #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now) ~= nil
+    local solo = abandon or #s.partners > 0 and target ~= nil and partnerAbandoned(s, target, now) ~= nil
     local partners = solo and ({}) or s.partners
-    local ____temp_5
+    local ____temp_7
     if target ~= nil then
-        ____temp_5 = KillCheck.Check(
+        ____temp_7 = KillCheck.Check(
             bot,
             partners,
             target,
@@ -737,20 +749,20 @@ function abortReason(bot, s, target, now)
             true
         )
     else
-        ____temp_5 = nil
+        ____temp_7 = nil
     end
-    local k = ____temp_5
-    local ____temp_7 = k ~= nil
-    if ____temp_7 then
-        local ____temp_6
+    local k = ____temp_7
+    local ____temp_9 = k ~= nil
+    if ____temp_9 then
+        local ____temp_8
         if not solo and s.recheckMargin ~= nil then
-            ____temp_6 = k.margin >= s.recheckMargin
+            ____temp_8 = k.margin >= s.recheckMargin
         else
-            ____temp_6 = k.pass
+            ____temp_8 = k.pass
         end
-        ____temp_7 = ____temp_6
+        ____temp_9 = ____temp_8
     end
-    local pass = ____temp_7
+    local pass = ____temp_9
     if pass and solo then
         s.partners = {}
         s.recheckMargin = nil
@@ -814,13 +826,13 @@ function targetEntry(bot, s)
 end
 function seenTarget(bot, s)
     local e = targetEntry(bot, s)
-    local ____temp_12
+    local ____temp_14
     if (e and e.visible) == true then
-        ____temp_12 = e.unit
+        ____temp_14 = e.unit
     else
-        ____temp_12 = nil
+        ____temp_14 = nil
     end
-    local u = ____temp_12
+    local u = ____temp_14
     if u == nil or u:IsNull() or not u:CanBeSeen() or u:GetLocation() == nil then
         return nil
     end
@@ -949,13 +961,13 @@ function checkEnd(bot, s, now)
 end
 function heroName(u)
     local h = LaneConfig.Helpers().HeroDisplayName
-    local ____temp_13
+    local ____temp_15
     if h ~= nil then
-        ____temp_13 = h(u)
+        ____temp_15 = h(u)
     else
-        ____temp_13 = nil
+        ____temp_15 = nil
     end
-    local name = ____temp_13
+    local name = ____temp_15
     return name or (string.gsub(
         u:GetUnitName(),
         "npc_dota_hero_",
@@ -1050,13 +1062,13 @@ function coordinate(bot, s, snap, now)
         Intent.Hold(bot, WAIT_HOLD)
     end
     checkMistake(bot, s, now)
-    local ____LaneFightConfig_IsOn_result_14
+    local ____LaneFightConfig_IsOn_result_16
     if LaneFightConfig.IsOn("Kill") then
-        ____LaneFightConfig_IsOn_result_14 = partnerOf(bot, snap)
+        ____LaneFightConfig_IsOn_result_16 = partnerOf(bot, snap)
     else
-        ____LaneFightConfig_IsOn_result_14 = nil
+        ____LaneFightConfig_IsOn_result_16 = nil
     end
-    local p = ____LaneFightConfig_IsOn_result_14
+    local p = ____LaneFightConfig_IsOn_result_16
     if p == nil then
         s.follow = nil
         return
@@ -1157,9 +1169,9 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
     local tpid = target:GetPlayerID()
     local p = partnerOf(bot, snap)
     local plan = planKill(bot, p, target, now)
-    local ____s_18 = s
-    local ____opt_16 = plan.k
-    ____s_18.lastMargin = ____opt_16 and ____opt_16.margin
+    local ____s_20 = s
+    local ____opt_18 = plan.k
+    ____s_20.lastMargin = ____opt_18 and ____opt_18.margin
     if plan.action == "none" then
         s.killSince = nil
         local k = plan.k
@@ -1210,8 +1222,8 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
         if windowKey ~= nil then
             local w = touch(s, windowKey, now)
             w.started = true
-            local ____s_spent_19 = s.spent
-            ____s_spent_19[#____s_spent_19 + 1] = w
+            local ____s_spent_21 = s.spent
+            ____s_spent_21[#____s_spent_21 + 1] = w
         end
     elseif p ~= nil then
         if p.human then
@@ -1289,6 +1301,7 @@ COUNT_RADIUS = 1200
 IN_RANGE_ATTACKS = 2
 FOLLOW_FRESH = 0.3
 PARTNER_RANGE = 1200
+PARTNER_RECENT_ATTACK = 1.5
 INITIATE_GRACE = 1.5
 NEAR_MISS = 0.8
 FOCUS_SOURCE = "lanefight:commit_focus"
@@ -1370,13 +1383,13 @@ local function considerStart(bot, s, snap, now)
         return
     end
     local blocked = startBlocked(bot, false)
-    local ____temp_15
+    local ____temp_17
     if blocked == nil then
-        ____temp_15 = visibleEnemy(bot, tpid)
+        ____temp_17 = visibleEnemy(bot, tpid)
     else
-        ____temp_15 = nil
+        ____temp_17 = nil
     end
-    local seen = ____temp_15
+    local seen = ____temp_17
     if blocked == nil and seen == nil then
         blocked = "unseen"
     end
@@ -1489,17 +1502,17 @@ end
 --- The trade or commit target, while one runs.
 function ____exports.Target(bot)
     local s = fights[bot:GetPlayerID()]
-    local ____temp_20
+    local ____temp_22
     if s ~= nil and (s.phase == "trade" or s.phase == "commit") then
-        ____temp_20 = s.target
+        ____temp_22 = s.target
     else
-        ____temp_20 = nil
+        ____temp_22 = nil
     end
-    return ____temp_20
+    return ____temp_22
 end
 function ____exports.CurrentPhase(bot)
-    local ____opt_21 = fights[bot:GetPlayerID()]
-    return ____opt_21 and ____opt_21.phase or "idle"
+    local ____opt_23 = fights[bot:GetPlayerID()]
+    return ____opt_23 and ____opt_23.phase or "idle"
 end
 --- "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line.
 function ____exports.Describe(bot)

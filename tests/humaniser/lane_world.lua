@@ -119,9 +119,12 @@ function UnitMeta:IsCastingAbility() return self.casting ~= nil end
 function UnitMeta:GetCurrentActiveAbility() ACTIVE_ABILITY_CALLS = ACTIVE_ABILITY_CALLS + 1 return self.casting end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end
+-- Heroes are 24 in the engine; attack range is measured from the hulls' edges.
+function UnitMeta:GetBoundingRadius() return self.hull or 24 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
+-- On GameTime()'s clock, as in the engine (DotaTime() + the pre-horn time).
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:IsMagicImmune() return self.magicImmune == true end
 function UnitMeta:GetFacing() return self.facing or 0 end

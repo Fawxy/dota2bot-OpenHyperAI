@@ -66,6 +66,8 @@ export const DEFAULTS = {
     // A partner's attacks from within range make a commit when two land within this window (one harass hit does not).
     // About two attack intervals of a slow level-1 hero.
     InRangeWindow: 2.5,
+    // A counted partner not seen going in for this long raises partner_abandon (re-checked AbortNotice later).
+    PartnerLapse: 1.0,
     Overwhelming: 1.5,
     SoloSkill: 0.7,
     CallCooldown: 30,

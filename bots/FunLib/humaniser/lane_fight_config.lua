@@ -37,6 +37,7 @@ ____exports.DEFAULTS = {
     TowerOverride = 1.3,
     FollowMargin = 0.8,
     InRangeWindow = 2.5,
+    PartnerLapse = 1,
     Overwhelming = 1.5,
     SoloSkill = 0.7,
     CallCooldown = 30,

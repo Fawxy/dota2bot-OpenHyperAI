@@ -159,6 +159,7 @@ export interface Unit {
     GetActiveMode(): number;
     GetAbilityByName(abilityName: string): Ability;
     GetAttackRange(): number;
+    GetBoundingRadius(): number;
     GetCurrentVisionRange(): number;
     GetNetWorth(): number;
     FindItemSlot(itemName: string): number;

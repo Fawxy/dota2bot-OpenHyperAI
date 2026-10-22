@@ -167,8 +167,8 @@ local function trading(W, from, trade)
 		end
 		W.partner.target = W.enemy
 		if dist(W.partner, W.enemy) > W.partner:GetAttackRange() - 50 then step(W.partner, W.enemy.loc)
-		elseif (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then
-			W.partner.lastAttack = T
+		elseif (W.partner.lastAttack or -1000) < GameTime() - 0.5 + 1e-9 then
+			W.partner.lastAttack = GameTime()
 			table.insert(W.hits, T)
 		end
 	end
@@ -527,6 +527,80 @@ do
 	play(W, 4)
 	check("a partner that keeps committing raises no partner abort", W.LF.CurrentPhase(W.bot) == "commit"
 		and W.events("lanefight_recheck") == 0 and W.events("lanefight_abort") == 0, table.concat(W.lines, "\n"))
+end
+
+-- In game most partner abandons were partners plainly on the target: chasing just past range + slack measured
+-- centre to centre, or next to it between attacks with no attack target set at that instant.
+do
+	-- A melee partner (range 150) holding the target at 230 centre to centre: 182 edge to edge with 24 hulls.
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: a follow commit", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	W.partner.range = 150
+	W.onFrame = function()
+		W.partner.target = W.enemy
+		W.partner.loc = Vector(W.enemy.loc.x - W.sign * 230, BOT_Y)
+	end
+	play(W, 3)
+	check("a melee partner on the target within range + both hulls is not abandoned", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_abandon") == 0, table.concat(W.lines, "\n"))
+
+	-- Next to the target, attacking every 1.7 s (level 1), the attack target set only on the attack's frame.
+	W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	W.onFrame = function()
+		W.partner.target = nil
+		if (W.partner.lastAttack or -1000) < GameTime() - 1.7 + 1e-9 then
+			W.partner.target = W.enemy
+			W.partner.lastAttack = GameTime()
+		end
+	end
+	play(W, 4)
+	check("a partner attacking the target every 1.7 s is not abandoned between attacks", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_abandon") == 0, table.concat(W.lines, "\n"))
+end
+
+do
+	-- A partner that stops: its last attack counts for PARTNER_RECENT_ATTACK, then PartnerLapse, then the re-check.
+	local function stops(cfg)
+		local W = world({ burst = 50, partner = { pos = 5, burst = 40 }, laneFight = cfg })
+		trading(W, T)
+		playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+		play(W, 0.6)
+		W.onFrame = function()
+			W.partner.target = nil
+			step(W.partner, W.loc(-1500))
+		end
+		local stop = W.partner.lastAttack
+		playUntil(W, function() return W.events("lanefight_abandon") > 0 end, 6)
+		return W, stop, W.firstAt("lanefight_abandon")
+	end
+	local W, stop, at = stops()
+	check("an abandon waits for the last attack's 1.5 s and PartnerLapse (1 s)", at ~= nil and at >= stop + 2.5 - 1e-6
+		and at <= stop + 2.5 + 0.4, string.format("stop %.3f abandon %s", stop, tostring(at)))
+	W, stop, at = stops({ PartnerLapse = 0.3 })
+	check("PartnerLapse is read from config", at ~= nil and at >= stop + 1.8 - 1e-6 and at <= stop + 1.8 + 0.4,
+		string.format("stop %.3f abandon %s", stop, tostring(at)))
+end
+
+do
+	-- The engine's GetLastAttackTime is on GameTime(), which runs ahead of DotaTime() by the pre-horn time.
+	local dotaGameTime = GameTime
+	GameTime = function() return T + 190 end
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T, 2.5)
+	local ok = pcall(function()
+		playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+		playUntil(W, function() return W.events("lanefight_abandon") > 0 end, 6)
+	end)
+	GameTime = dotaGameTime
+	local line
+	for _, l in ipairs(W.lines) do if l:find("ev=lanefight_abandon", 1, true) then line = l end end
+	local since = line and tonumber(line:match("lastatk=([%-%d%.]+)"))
+	check("lanefight_abandon's lastatk is seconds since the partner's last attack on the game clock", ok and since ~= nil
+		and since >= 0 and since < 4, tostring(line))
 end
 
 -- The target jukes into fog mid-commit while the partner keeps chasing it. As in the engine, the handle answers
