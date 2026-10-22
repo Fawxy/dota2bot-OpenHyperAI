@@ -21,6 +21,8 @@ import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
+declare function GetRuneStatus(this: void, rune: number): number;
+declare const RUNE_STATUS_AVAILABLE: number;
 
 export const SOURCE = "transitions:rotate";
 
@@ -41,9 +43,11 @@ interface Entry {
 }
 
 const entries: Record<number, Entry> = {};
+const holdState: Record<number, string> = {};
 
 export function ResetCache(): void {
     for (const [k] of pairs(entries)) delete entries[k as number];
+    for (const [k] of pairs(holdState)) delete holdState[k as number];
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -67,13 +71,13 @@ function teammate(bot: Unit, pos: number, botsOnly: boolean): Unit | undefined {
     return undefined;
 }
 
-/** Enemies visible, or seen within ContestSeenWithin, inside ContestRadius of the spot. Perception goes through LaneState. */
-function enemiesNear(bot: Unit, spot: Vector): number {
+/** Enemies visible, or seen within ContestSeenWithin, inside `radius` (ContestRadius) of the spot. Perception goes through LaneState. */
+function enemiesNear(bot: Unit, spot: Vector, radius = Settings.Get().ContestRadius): number {
     const cfg = Settings.Get();
     let n = 0;
     for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
         if (!e.visible && e.timeSinceSeen > cfg.ContestSeenWithin) continue;
-        if (dist2D(e.location, spot) <= cfg.ContestRadius) n++;
+        if (dist2D(e.location, spot) <= radius) n++;
     }
     return n;
 }
@@ -158,17 +162,56 @@ export function Active(bot: Unit): RotationDecision | undefined {
     if (e === undefined || !e.decision.go) return undefined;
     const now = DotaTime();
     const d = e.decision;
-    return d.leaveAt !== undefined && now >= d.leaveAt && now <= d.spawn + Settings.Get().RotateLinger ? d : undefined;
+    const cfg = Settings.Get();
+    if (d.leaveAt === undefined || now < d.leaveAt) return undefined;
+    if (now <= d.spawn + cfg.RotateLinger) return d;
+    const rune = runeAt(d.side);
+    return rune !== undefined && now <= d.spawn + cfg.RuneHoldMax && GetRuneStatus(rune) === RUNE_STATUS_AVAILABLE ? d : undefined;
 }
 
-/** The power rune id at the active decision's side (named by the spot's y, as Runes.NearestPowerSpot does). */
-export function RuneTarget(bot: Unit): number | undefined {
-    const d = Active(bot);
-    if (d === undefined) return undefined;
+/** The power rune id at a side (named by the spot's y, as Runes.NearestPowerSpot does). */
+function runeAt(side: "top" | "bot" | undefined): number | undefined {
     for (const rune of [Rune.Power1, Rune.Power2]) {
-        if ((GetRuneSpawnLocation(rune).y > 0 ? "top" : "bot") === d.side) return rune;
+        if ((GetRuneSpawnLocation(rune).y > 0 ? "top" : "bot") === side) return rune;
     }
     return undefined;
+}
+
+/** The power rune id at the active decision's side. */
+export function RuneTarget(bot: Unit): number | undefined {
+    const d = Active(bot);
+    return d !== undefined ? runeAt(d.side) : undefined;
+}
+
+/**
+ * Whether a rotating support at its spawned rune leaves it on the ground for our mid (who is coming while within
+ * ContestMidRadius of the spot). It takes the rune once an enemy hero is near, once our mid is still not coming
+ * RuneHoldGrace s after the spawn, or at RuneHoldMax.
+ */
+export function HoldsRune(bot: Unit, rune: number): boolean {
+    const d = Active(bot);
+    if (d === undefined || d.spot === undefined || runeAt(d.side) !== rune) return false;
+    const cfg = Settings.Get();
+    const now = DotaTime();
+    const mid = teammate(bot, 2, false);
+    const midComing = mid !== undefined && dist2D(mid.GetLocation(), d.spot) <= cfg.ContestMidRadius;
+    let take: string | undefined;
+    if (now >= d.spawn + cfg.RuneHoldMax) take = "max";
+    else if (enemiesNear(bot, d.spot, cfg.RuneHoldEnemyRadius) > 0) take = "enemy";
+    else if (now >= d.spawn + cfg.RuneHoldGrace && !midComing) take = "late";
+    const state = take ?? "hold";
+    const pid = bot.GetPlayerID();
+    if (holdState[pid] !== `${d.spawn}:${state}`) {
+        holdState[pid] = `${d.spawn}:${state}`;
+        Telemetry.Event("tr_rune_hold", [
+            ["pid", pid],
+            ["spawn", d.spawn],
+            ["state", take === undefined ? "hold" : "take"],
+            ["reason", take],
+            ["mid", mid !== undefined ? math.floor(dist2D(mid.GetLocation(), d.spot)) : undefined],
+        ]);
+    }
+    return take === undefined;
 }
 
 /** For our mid: contest the rune harder when a rotating support is with it or at the spot. */
@@ -180,7 +223,8 @@ export function MidRuneDesire(bot: Unit): number {
         const support = teammate(bot, pos, true);
         const d = support !== undefined ? Active(support) : undefined;
         if (support === undefined || d === undefined || d.spot === undefined) continue;
-        if (now < d.spawn - cfg.MidContestFrom || now > d.spawn + cfg.RotateLinger) continue;
+        // Active covers the support holding a spawned rune for us past RotateLinger.
+        if (now < d.spawn - cfg.MidContestFrom) continue;
         const sLoc = support.GetLocation();
         if (dist2D(sLoc, bot.GetLocation()) <= cfg.MidSupportRadius || dist2D(sLoc, d.spot) <= cfg.MidSupportRadius) return cfg.MidContestDesire;
     }

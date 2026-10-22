@@ -403,6 +403,16 @@ function Think()
 		local vRuneLocation = GetRuneSpawnLocation(rune.location)
 
 		if rune.status == RUNE_STATUS_AVAILABLE then
+			-- A rotating support leaves the rune for our mid (task 12): it stands on the spot without picking it up.
+			if J.Humaniser.Transitions.HoldsRune(bot, rune.location) then
+				if rune.distance > 150 then
+					bot:Action_MoveToLocation(vRuneLocation)
+				else
+					bot:Action_ClearActions(false)
+				end
+				return
+			end
+
 			if Bottle and J.CanCastAbility(Bottle) and rune.distance < 1200 then
 				local nCharges = Bottle:GetCurrentCharges()
 				if nCharges > 0 and (botHP ~= 1 or botMP ~= 1) then

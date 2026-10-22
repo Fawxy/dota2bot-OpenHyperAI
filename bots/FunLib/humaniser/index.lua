@@ -252,6 +252,7 @@ if Telemetry.GuardsEnabled() then
             MidRuneYield = none,
             MidRuneSkip = none,
             RuneTarget = none,
+            HoldsRune = no,
             MidRuneDesire = zero,
             RotationYield = none,
             PickLaneWard = none,

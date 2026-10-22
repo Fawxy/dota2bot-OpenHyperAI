@@ -341,4 +341,68 @@ do
 	check("tr_rotate: a skip says why", has(ev("tr_rotate")[1], "go=0", "reason=hp"), ev("tr_rotate")[1])
 end
 
+
+-- Holding a spawned rune for our mid. The pos 4 decided at 5:35 for the top spot and stands on it.
+local RUNE_UP = {}
+local baseStatus = GetRuneStatus
+function GetRuneStatus(r) return RUNE_UP[r] and RUNE_STATUS_AVAILABLE or RUNE_STATUS_MISSING end
+local function holding(opts)
+	opts = opts or {}
+	local w = world({ telemetry = opts.telemetry })
+	if opts.telemetry then w.ev = capture(w) end
+	rolls(PASS)
+	w.R.Decide(w.p4, 335)
+	w.p4.loc = TOP_SPOT
+	w.mid.loc = opts.mid or MID
+	RUNE_UP = { [Rune.Power1] = opts.taken ~= true }
+	T = opts.T or 361
+	return w
+end
+
+do
+	local w = holding()
+	check("rune up, our mid 2,121 away: the support leaves it for the mid", w.R.HoldsRune(w.p4, Rune.Power1) == true)
+	check("... only the rune it rotated for", w.R.HoldsRune(w.p4, Rune.Power2) == false)
+	w = holding({ mid = BOT, T = 362 })
+	check("mid 5,600 away, 2 s after the spawn: still holding", w.R.HoldsRune(w.p4, Rune.Power1) == true)
+	T = 363.5
+	check("mid not coming 3 s after the spawn: the support takes it", w.R.HoldsRune(w.p4, Rune.Power1) == false)
+	w = holding({ T = 363.5 })
+	check("contrast: mid coming 3.5 s after the spawn: still holding", w.R.HoldsRune(w.p4, Rune.Power1) == true)
+	T = 375
+	check("mid coming but 15 s after the spawn: the support takes it", w.R.HoldsRune(w.p4, Rune.Power1) == false)
+end
+
+do
+	local w = holding()
+	MakeUnit({ pid = 10, team = 3, loc = Vector(-1500, 2600) })
+	check("an enemy 1,100 from the rune: the support takes it", w.R.HoldsRune(w.p4, Rune.Power1) == false)
+	w = holding()
+	MakeUnit({ pid = 10, team = 3, loc = Vector(-1500, 2900) })
+	check("an enemy 1,400 away: still holding", w.R.HoldsRune(w.p4, Rune.Power1) == true)
+end
+
+do
+	-- The rotation (and its rune-mode floor) outlasts RotateLinger while the rune lies there.
+	local w = holding({ T = 370 })
+	check("10 s after the spawn with the rune up: still rotating", w.R.Active(w.p4) ~= nil)
+	RUNE_UP = {}
+	check("once the rune is taken: the rotation ends", w.R.Active(w.p4) == nil)
+	w = holding({ T = 376 })
+	check("past RuneHoldMax: the rotation ends even with the rune up", w.R.Active(w.p4) == nil)
+end
+
+do
+	local w = holding({ mid = BOT, telemetry = { Enable = true } })
+	local ev = w.ev
+	w.R.HoldsRune(w.p4, Rune.Power1)
+	T = 362
+	w.R.HoldsRune(w.p4, Rune.Power1)
+	T = 364
+	w.R.HoldsRune(w.p4, Rune.Power1)
+	local l = ev("tr_rune_hold")
+	check("tr_rune_hold: hold, then one take line with the reason", #l == 2 and has(l[1], "pid=4", "state=hold") and has(l[2], "state=take", "reason=late"), #l)
+end
+GetRuneStatus = baseStatus
+
 finish()

@@ -78,6 +78,11 @@ export function RuneTarget(bot: Unit): number | undefined {
     return Trainer.IsSelfTestBot(bot) ? undefined : Rotation.RuneTarget(bot);
 }
 
+/** Rune-mode hook: a rotating support at its spawned rune leaves it for our mid. */
+export function HoldsRune(bot: Unit, rune: number): boolean {
+    return !Trainer.IsSelfTestBot(bot) && Rotation.HoldsRune(bot, rune);
+}
+
 /** Our mid's power-rune desire while a rotating support is with it or at the spot; 0 otherwise. */
 export function MidRuneDesire(bot: Unit): number {
     return Trainer.IsSelfTestBot(bot) ? 0 : Rotation.MidRuneDesire(bot);

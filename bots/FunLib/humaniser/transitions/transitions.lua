@@ -94,6 +94,10 @@ function ____exports.RuneTarget(bot)
     end
     return ____Trainer_IsSelfTestBot_result_0
 end
+--- Rune-mode hook: a rotating support at its spawned rune leaves it for our mid.
+function ____exports.HoldsRune(bot, rune)
+    return not Trainer.IsSelfTestBot(bot) and Rotation.HoldsRune(bot, rune)
+end
 --- Our mid's power-rune desire while a rotating support is with it or at the spot; 0 otherwise.
 function ____exports.MidRuneDesire(bot)
     return Trainer.IsSelfTestBot(bot) and 0 or Rotation.MidRuneDesire(bot)

@@ -73,6 +73,7 @@ local function load(contest, opts)
 			RuneTarget = function() return nil end,
 			MidRuneDesire = function() return 0 end,
 			RotationYield = function() end,
+			HoldsRune = function() return false end,
 		},
 	}
 	local J = setmetatable({
@@ -421,6 +422,32 @@ do
 	H.Transitions.Rotation.MidRuneDesire = function() return 0.55 end
 	bot = load(0, { H = H, T = 357, loc = Vector(0, 0), runeAt = FAR_POWER })
 	check("mid with a rotating support near contests the rune", near(frame(H, bot), 0.55))
+end
+
+
+do
+	-- A rotating support on its spawned rune (top spot, 1800,500): what Think does with it.
+	local function think(midLoc, t)
+		RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE }
+		local H = rotatingHumaniser()
+		local mid = MakeUnit({ pid = 3, team = 2, bot = true, loc = midLoc })
+		mid.pos = 2
+		local bot = load(0, { H = H, T = t, loc = Vector(1800, 520), runeAt = ROT_WORLD, pos = 4 })
+		local did = {}
+		bot.Action_PickUpRune = function() table.insert(did, "pickup") end
+		bot.Action_ClearActions = function() table.insert(did, "stand") end
+		bot.Action_MoveToLocation = function() table.insert(did, "move") end
+		bot.Action_AttackUnit = function() table.insert(did, "attack") end
+		bot.GetAttackRange = function() return 150 end
+		bot.GetNearbyCreeps = function() return {} end
+		local d = frame(H, bot)
+		Think()
+		return did[1], d
+	end
+	local act, d = think(Vector(-600, 0), 361)
+	check("our mid 2,450 from the rune: the support stands on it without picking it up", act == "stand", act)
+	check("... and stays in the rune mode", d >= 0.7, d)
+	check("our mid not coming 4 s after the spawn: the support picks it up", think(Vector(-6000, 0), 364) == "pickup", think(Vector(-6000, 0), 364))
 end
 
 finish()

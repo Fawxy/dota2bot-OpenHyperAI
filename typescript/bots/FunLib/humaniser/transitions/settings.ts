@@ -73,6 +73,12 @@ export const DEFAULTS = {
     RotateFloor: 0.7,
     // Standing this close to the spot before the spawn is a deliberate wait (Intent.Hold).
     RotateHoldRadius: 300,
+    // A rotating support at its spawned rune leaves it for our mid (within ContestMidRadius of the spot). It takes it
+    // with an enemy hero within RuneHoldEnemyRadius, with our mid not coming RuneHoldGrace s after the spawn, or at
+    // RuneHoldMax; the rotation stays active up to RuneHoldMax while the rune lies there.
+    RuneHoldEnemyRadius: 1200,
+    RuneHoldGrace: 3,
+    RuneHoldMax: 15,
     // The contest check starts this many seconds before the planned arrival.
     ContestFrom: 6,
     // Our mid counts towards a contest within this distance of the spot.

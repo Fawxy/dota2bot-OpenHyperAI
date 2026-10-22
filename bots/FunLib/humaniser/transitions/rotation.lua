@@ -157,6 +157,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local runeAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
@@ -172,11 +173,23 @@ local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/se
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
+function runeAt(side)
+    for ____, rune in ipairs({Rune.Power1, Rune.Power2}) do
+        if (GetRuneSpawnLocation(rune).y > 0 and "top" or "bot") == side then
+            return rune
+        end
+    end
+    return nil
+end
 ____exports.SOURCE = "transitions:rotate"
 local entries = {}
+local holdState = {}
 function ____exports.ResetCache()
     for k in pairs(entries) do
         __TS__Delete(entries, k)
+    end
+    for k in pairs(holdState) do
+        __TS__Delete(holdState, k)
     end
 end
 local function dist2D(a, b)
@@ -203,8 +216,11 @@ local function teammate(bot, pos, botsOnly)
     end
     return nil
 end
---- Enemies visible, or seen within ContestSeenWithin, inside ContestRadius of the spot. Perception goes through LaneState.
-local function enemiesNear(bot, spot)
+--- Enemies visible, or seen within ContestSeenWithin, inside `radius` (ContestRadius) of the spot. Perception goes through LaneState.
+local function enemiesNear(bot, spot, radius)
+    if radius == nil then
+        radius = Settings.Get().ContestRadius
+    end
     local cfg = Settings.Get()
     local n = 0
     for ____, e in ipairs(LaneState.Enemies(
@@ -212,18 +228,18 @@ local function enemiesNear(bot, spot)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue10
+            local __continue11
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.ContestSeenWithin then
-                    __continue10 = true
+                    __continue11 = true
                     break
                 end
-                if dist2D(e.location, spot) <= cfg.ContestRadius then
+                if dist2D(e.location, spot) <= radius then
                     n = n + 1
                 end
-                __continue10 = true
+                __continue11 = true
             until true
-            if not __continue10 then
+            if not __continue11 then
                 break
             end
         end
@@ -347,20 +363,72 @@ function ____exports.Active(bot)
     end
     local now = DotaTime()
     local d = e.decision
-    return d.leaveAt ~= nil and now >= d.leaveAt and now <= d.spawn + Settings.Get().RotateLinger and d or nil
-end
---- The power rune id at the active decision's side (named by the spot's y, as Runes.NearestPowerSpot does).
-function ____exports.RuneTarget(bot)
-    local d = ____exports.Active(bot)
-    if d == nil then
+    local cfg = Settings.Get()
+    if d.leaveAt == nil or now < d.leaveAt then
         return nil
     end
-    for ____, rune in ipairs({Rune.Power1, Rune.Power2}) do
-        if (GetRuneSpawnLocation(rune).y > 0 and "top" or "bot") == d.side then
-            return rune
-        end
+    if now <= d.spawn + cfg.RotateLinger then
+        return d
     end
-    return nil
+    local rune = runeAt(d.side)
+    return rune ~= nil and now <= d.spawn + cfg.RuneHoldMax and GetRuneStatus(rune) == RUNE_STATUS_AVAILABLE and d or nil
+end
+--- The power rune id at the active decision's side.
+function ____exports.RuneTarget(bot)
+    local d = ____exports.Active(bot)
+    local ____temp_1
+    if d ~= nil then
+        ____temp_1 = runeAt(d.side)
+    else
+        ____temp_1 = nil
+    end
+    return ____temp_1
+end
+--- Whether a rotating support at its spawned rune leaves it on the ground for our mid (who is coming while within
+-- ContestMidRadius of the spot). It takes the rune once an enemy hero is near, once our mid is still not coming
+-- RuneHoldGrace s after the spawn, or at RuneHoldMax.
+function ____exports.HoldsRune(bot, rune)
+    local d = ____exports.Active(bot)
+    if d == nil or d.spot == nil or runeAt(d.side) ~= rune then
+        return false
+    end
+    local cfg = Settings.Get()
+    local now = DotaTime()
+    local mid = teammate(bot, 2, false)
+    local midComing = mid ~= nil and dist2D(
+        mid:GetLocation(),
+        d.spot
+    ) <= cfg.ContestMidRadius
+    local take
+    if now >= d.spawn + cfg.RuneHoldMax then
+        take = "max"
+    elseif enemiesNear(bot, d.spot, cfg.RuneHoldEnemyRadius) > 0 then
+        take = "enemy"
+    elseif now >= d.spawn + cfg.RuneHoldGrace and not midComing then
+        take = "late"
+    end
+    local state = take or "hold"
+    local pid = bot:GetPlayerID()
+    if holdState[pid] ~= (tostring(d.spawn) .. ":") .. state then
+        holdState[pid] = (tostring(d.spawn) .. ":") .. state
+        Telemetry.Event(
+            "tr_rune_hold",
+            {
+                {"pid", pid},
+                {"spawn", d.spawn},
+                {"state", take == nil and "hold" or "take"},
+                {"reason", take},
+                {
+                    "mid",
+                    mid ~= nil and math.floor(dist2D(
+                        mid:GetLocation(),
+                        d.spot
+                    )) or nil
+                }
+            }
+        )
+    end
+    return take == nil
 end
 --- For our mid: contest the rune harder when a rotating support is with it or at the spot.
 function ____exports.MidRuneDesire(bot)
@@ -371,22 +439,22 @@ function ____exports.MidRuneDesire(bot)
     local now = DotaTime()
     for ____, pos in ipairs({4, 5}) do
         do
-            local __continue41
+            local __continue50
             repeat
                 local support = teammate(bot, pos, true)
-                local ____temp_1
+                local ____temp_2
                 if support ~= nil then
-                    ____temp_1 = ____exports.Active(support)
+                    ____temp_2 = ____exports.Active(support)
                 else
-                    ____temp_1 = nil
+                    ____temp_2 = nil
                 end
-                local d = ____temp_1
+                local d = ____temp_2
                 if support == nil or d == nil or d.spot == nil then
-                    __continue41 = true
+                    __continue50 = true
                     break
                 end
-                if now < d.spawn - cfg.MidContestFrom or now > d.spawn + cfg.RotateLinger then
-                    __continue41 = true
+                if now < d.spawn - cfg.MidContestFrom then
+                    __continue50 = true
                     break
                 end
                 local sLoc = support:GetLocation()
@@ -396,9 +464,9 @@ function ____exports.MidRuneDesire(bot)
                 ) <= cfg.MidSupportRadius or dist2D(sLoc, d.spot) <= cfg.MidSupportRadius then
                     return cfg.MidContestDesire
                 end
-                __continue41 = true
+                __continue50 = true
             until true
-            if not __continue41 then
+            if not __continue50 then
                 break
             end
         end
@@ -454,11 +522,11 @@ local function ours(bot, d)
         local i = 1
         while i <= count do
             do
-                local __continue55
+                local __continue64
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == mid or m == bot or m:IsBot() or not m:IsAlive() then
-                        __continue55 = true
+                        __continue64 = true
                         break
                     end
                     if dist2D(
@@ -467,9 +535,9 @@ local function ours(bot, d)
                     ) <= cfg.ContestRadius then
                         n = n + 1
                     end
-                    __continue55 = true
+                    __continue64 = true
                 until true
-                if not __continue55 then
+                if not __continue64 then
                     break
                 end
             end
