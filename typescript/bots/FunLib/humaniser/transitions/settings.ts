@@ -98,6 +98,8 @@ export const DEFAULTS = {
     // An allied observer this close to the gank anchor already covers the lane.
     WardCoverRadius: 1600,
     // The allied-ward list is read once per team per this many seconds.
+    // Only a spot this close to the gank anchor is worth the early ward; otherwise the ward mode chooses.
+    WardAnchorRadius: 1500,
     WardScanPeriod: 5,
     WardFloor: 0.6,
     // A lane-ward pick counts as live (the claim keeps posting) this long after the ward mode last asked.

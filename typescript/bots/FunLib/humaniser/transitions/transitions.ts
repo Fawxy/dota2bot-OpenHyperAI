@@ -112,3 +112,8 @@ export function Overlay(bot: Unit): string {
 export function PickLaneWard(bot: Unit, spots: { location: Vector }[]): { location: Vector } | undefined {
     return LaneWard.Pick(bot, spots);
 }
+
+/** Ward-mode hook: the ward mode accepted `spot` (a PickLaneWard result) as its target, so the lane-ward floor may apply. */
+export function ConfirmLaneWard(bot: Unit, spot: { location: Vector }): void {
+    LaneWard.Confirm(bot, spot);
+}

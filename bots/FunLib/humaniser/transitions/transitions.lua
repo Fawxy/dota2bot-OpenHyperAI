@@ -112,4 +112,8 @@ end
 function ____exports.PickLaneWard(bot, spots)
     return LaneWard.Pick(bot, spots)
 end
+--- Ward-mode hook: the ward mode accepted `spot` (a PickLaneWard result) as its target, so the lane-ward floor may apply.
+function ____exports.ConfirmLaneWard(bot, spot)
+    LaneWard.Confirm(bot, spot)
+end
 return ____exports

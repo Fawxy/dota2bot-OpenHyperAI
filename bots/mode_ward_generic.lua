@@ -64,6 +64,7 @@ function GetDesireHelper()
 
 			if DotaTime() > fLastWardPlantTime + 1.0 then
 				if GetUnitToLocationDistance(bot, hTargetSpot.location) <= 3200 then
+					J.Humaniser.Transitions.ConfirmLaneWard(bot, hTargetSpot)
 					return BOT_MODE_DESIRE_VERYHIGH
 				end
 			end

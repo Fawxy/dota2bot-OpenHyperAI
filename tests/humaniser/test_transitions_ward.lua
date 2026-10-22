@@ -75,7 +75,7 @@ end
 do
 	local w = world()
 	dice(PASS)
-	check("pos 4 asked about the safelane gets no pick", w.W.Pick(w.p4 and hero({ pid = 6, pos = 4, lane = Lane.Bot }), SPOTS) == nil)
+	check("pos 4 asked about the safelane gets no pick", w.W.Pick(hero({ pid = 6, pos = 4, lane = Lane.Bot }), SPOTS) == nil)
 	check("the safelane carry gets no pick", w.W.Pick(w.carry, SPOTS) == nil)
 	check("the mid gets no pick", w.W.Pick(w.mid, SPOTS) == nil)
 	check("the offlane pos 3 gets no pick", w.W.Pick(w.off, SPOTS) == nil)
@@ -122,6 +122,7 @@ do
 		local w = world({ transitions = { Enable = true, LaneWard = on } })
 		dice(PASS)
 		local pick = w.W.Pick(w.p5, SPOTS)
+		if pick then w.H.Transitions.ConfirmLaneWard(w.p5, pick) end
 		w.H.Transitions.Tick(w.p5)
 		res[on] = { pick = pick, claim = w.H.Intent.ClaimAge(w.p5, SOURCE, BotMode.Ward) }
 	end
@@ -142,7 +143,7 @@ end
 do
 	local w = world()
 	dice(PASS)
-	w.W.Pick(w.p5, SPOTS)
+	w.H.Transitions.ConfirmLaneWard(w.p5, w.W.Pick(w.p5, SPOTS))
 	w.H.Transitions.Tick(w.p5)
 	check("claim is posted while the pick is live", w.H.Intent.ClaimAge(w.p5, SOURCE, BotMode.Ward) ~= nil)
 	T = 203
@@ -162,4 +163,55 @@ do
 	end
 	local n = (GETUNITLIST_CALLS[dota.UnitType.AlliedWards] or 0) - base
 	check("allied-ward scans: at most one per 5 s for the team", n == 2, n)
+end
+
+do
+	-- The ward mode rejected the spot (enemy closer / too far / cooldown): it never confirms, so no claim.
+	local w = world()
+	dice(PASS)
+	check("pick is returned", w.W.Pick(w.p5, SPOTS) == NEAR)
+	w.H.Transitions.Tick(w.p5)
+	check("unconfirmed pick: no claim", w.H.Intent.ClaimAge(w.p5, SOURCE, BotMode.Ward) == nil)
+	w.H.Transitions.ConfirmLaneWard(w.p5, NEAR)
+	w.H.Transitions.Tick(w.p5)
+	check("confirmed pick: claim", w.H.Intent.ClaimAge(w.p5, SOURCE, BotMode.Ward) ~= nil)
+	w.H.Transitions.ConfirmLaneWard(w.p5, SPOTS[1])
+	local w2 = world()
+	dice(PASS)
+	w2.W.Pick(w2.p5, SPOTS)
+	w2.H.Transitions.ConfirmLaneWard(w2.p5, SPOTS[3])
+	w2.H.Transitions.Tick(w2.p5)
+	check("confirming a different spot: no claim", w2.H.Intent.ClaimAge(w2.p5, SOURCE, BotMode.Ward) == nil)
+end
+
+do
+	local w = world()
+	dice(PASS)
+	check("only far spots: no pick", w.W.Pick(w.p5, { SPOTS[1], SPOTS[3] }) == nil)
+	check("a spot 1400 from the anchor is still taken", w.W.Pick(w.p5, { { location = Vector(ANCHOR.x + 1400, ANCHOR.y) } }) ~= nil)
+	check("a spot 1600 away is not", w.W.Pick(w.p5, { { location = Vector(ANCHOR.x + 1600, ANCHOR.y) } }) == nil)
+end
+
+do
+	-- The support's own fresh ward covers the lane before the scan cache catches up.
+	local w = world()
+	dice(PASS)
+	local pick = w.W.Pick(w.p5, SPOTS)
+	w.H.Transitions.ConfirmLaneWard(w.p5, pick)
+	check("precondition: still a pick before planting", w.W.Pick(w.p5, SPOTS) == pick)
+	pick.plant_time_obs = T
+	T = 202
+	check("after planting: lane covered despite the cached scan", w.W.Pick(w.p5, SPOTS) == nil)
+end
+
+do
+	-- Dire: safelane is Top, offlane is Bot; anchors are Dire's own river spots.
+	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = { Enable = true } })
+	T, CURRENT_TEAM = 200, 3
+	local function d(o) local u = MakeUnit({ pid = o.pid, team = 3, bot = true, loc = Vector(0, 0) }); u.lane, u.pos = o.lane, o.pos; return u end
+	d({ pid = 11, pos = 1, lane = Lane.Top }); d({ pid = 12, pos = 5, lane = Lane.Top })
+	d({ pid = 13, pos = 3, lane = Lane.Bot }); local off = d({ pid = 14, pos = 4, lane = Lane.Bot })
+	dice(PASS)
+	local spots = { { location = Vector(-4310, 3639) }, { location = Vector(3810, -4562) }, { location = Vector(-2159, 1987) } }
+	check("Dire offlane support gets the spot nearest Dire's bot-lane anchor", H.Transitions.LaneWard.Pick(off, spots) == spots[2])
 end

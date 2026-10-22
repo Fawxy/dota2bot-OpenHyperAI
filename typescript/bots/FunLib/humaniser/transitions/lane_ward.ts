@@ -11,8 +11,8 @@ import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 
 export const SOURCE = "transitions:ward";
 
-// First-pass coordinates, derived from the early-game ward spots in aba_ward_utility (the river legs of each lane).
-// Dire's are Radiant's mirrored through the map centre. They need calibrating in game.
+// First-pass coordinates: each team's own RADIANT_/DIRE_LANE_PHASE river spots in aba_ward_utility (the map is not
+// exactly point-symmetric, so Dire's are not mirrored). They need calibrating in game.
 export const GANK_ANCHORS: Record<number, Record<Lane, Vector>> = {
     2: {
         [Lane.Top]: Vector(-4014, 2569, 0),
@@ -20,11 +20,16 @@ export const GANK_ANCHORS: Record<number, Record<Lane, Vector>> = {
         [Lane.Bot]: Vector(3097, -4069, 0),
     },
     3: {
-        [Lane.Top]: Vector(-3097, 4069, 0),
-        [Lane.Mid]: Vector(1615, 122, 0),
-        [Lane.Bot]: Vector(4014, -2569, 0),
+        [Lane.Top]: Vector(-4310, 3639, 0),
+        [Lane.Mid]: Vector(1141, -458, 0),
+        [Lane.Bot]: Vector(3810, -4562, 0),
     },
 };
+
+interface PendingPick {
+    spot: { location: Vector };
+    key: string;
+}
 
 interface WardRead {
     at: number;
@@ -34,11 +39,15 @@ interface WardRead {
 let rolls: Record<string, boolean> = {};
 let reads: Record<number, WardRead> = {};
 let liveAt: Record<number, number> = {};
+let pending: Record<number, PendingPick> = {};
+let planted: Record<string, { location: Vector; spot: { plant_time_obs?: number } }> = {};
 
 export function ResetCache(): void {
     rolls = {};
     reads = {};
     liveAt = {};
+    pending = {};
+    planted = {};
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -100,6 +109,9 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
 
     const anchor = GANK_ANCHORS[s.team]?.[s.lane];
     if (anchor === undefined) return undefined;
+    // The ward mode stamps plant_time_obs on the spot it plants, which covers the lane before the scan cache catches up.
+    const done = planted[key];
+    if (done !== undefined && done.spot.plant_time_obs !== undefined && done.spot.plant_time_obs > 0 && now - done.spot.plant_time_obs < 360) return undefined;
     for (const loc of observers(s.team)) if (dist2D(loc, anchor) <= cfg.WardCoverRadius) return undefined;
 
     let best: { location: Vector } | undefined;
@@ -111,8 +123,17 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
             best = spot;
         }
     }
-    if (best !== undefined) liveAt[bot.GetPlayerID()] = now;
+    if (best === undefined || bestD > cfg.WardAnchorRadius) return undefined;
+    pending[bot.GetPlayerID()] = { spot: best, key };
     return best;
+}
+
+/** The ward mode took `spot` as its target after its own safety checks: only now does the pick count as live. */
+export function Confirm(bot: Unit, spot: { location: Vector }): void {
+    const p = pending[bot.GetPlayerID()];
+    if (!Settings.IsOn("LaneWard") || p === undefined || p.spot !== spot) return;
+    liveAt[bot.GetPlayerID()] = DotaTime();
+    planted[p.key] = { location: spot.location, spot: spot as any };
 }
 
 export function Tick(bot: Unit): void {

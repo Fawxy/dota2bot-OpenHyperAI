@@ -254,7 +254,8 @@ if Telemetry.GuardsEnabled() then
             RuneTarget = none,
             MidRuneDesire = zero,
             RotationYield = none,
-            PickLaneWard = none
+            PickLaneWard = none,
+            ConfirmLaneWard = none
         }
     )
     Telemetry.GuardModule(

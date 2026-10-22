@@ -69,6 +69,7 @@ ____exports.DEFAULTS = {
     WardTo = 270,
     WardChance = {Low = 0.4, High = 0.95},
     WardCoverRadius = 1600,
+    WardAnchorRadius = 1500,
     WardScanPeriod = 5,
     WardFloor = 0.6,
     WardLive = 1,

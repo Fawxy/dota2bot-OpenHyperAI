@@ -16,18 +16,22 @@ ____exports.GANK_ANCHORS = {
         [Lane.Bot] = Vector(3097, -4069, 0)
     },
     [3] = {
-        [Lane.Top] = Vector(-3097, 4069, 0),
-        [Lane.Mid] = Vector(1615, 122, 0),
-        [Lane.Bot] = Vector(4014, -2569, 0)
+        [Lane.Top] = Vector(-4310, 3639, 0),
+        [Lane.Mid] = Vector(1141, -458, 0),
+        [Lane.Bot] = Vector(3810, -4562, 0)
     }
 }
 local rolls = {}
 local reads = {}
 local liveAt = {}
+local pending = {}
+local planted = {}
 function ____exports.ResetCache()
     rolls = {}
     reads = {}
     liveAt = {}
+    pending = {}
+    planted = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -124,6 +128,10 @@ function ____exports.Pick(bot, spots)
     if anchor == nil then
         return nil
     end
+    local done = planted[key]
+    if done ~= nil and done.spot.plant_time_obs ~= nil and done.spot.plant_time_obs > 0 and now - done.spot.plant_time_obs < 360 then
+        return nil
+    end
     for ____, loc in ipairs(observers(s.team)) do
         if dist2D(loc, anchor) <= cfg.WardCoverRadius then
             return nil
@@ -138,10 +146,20 @@ function ____exports.Pick(bot, spots)
             best = spot
         end
     end
-    if best ~= nil then
-        liveAt[bot:GetPlayerID()] = now
+    if best == nil or bestD > cfg.WardAnchorRadius then
+        return nil
     end
+    pending[bot:GetPlayerID()] = {spot = best, key = key}
     return best
+end
+--- The ward mode took `spot` as its target after its own safety checks: only now does the pick count as live.
+function ____exports.Confirm(bot, spot)
+    local p = pending[bot:GetPlayerID()]
+    if not Settings.IsOn("LaneWard") or p == nil or p.spot ~= spot then
+        return
+    end
+    liveAt[bot:GetPlayerID()] = DotaTime()
+    planted[p.key] = {location = spot.location, spot = spot}
 end
 function ____exports.Tick(bot)
     local at = liveAt[bot:GetPlayerID()]
