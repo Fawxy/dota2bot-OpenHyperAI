@@ -331,11 +331,20 @@ test('summary reports take-pull outcomes and swings', () => {
             '[HEV] t=104 ev=lane_job_end pid=0 kind=contest camp=2 reason=outnumbered pre=0 take=1 swings=1',
             '[HEV] t=110 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
             '[HEV] t=112 ev=lane_job_abort pid=0 kind=contest camp=2 reason=mode-end phase=travel take=1',
+            '[HEV] t=114 ev=lane_job_end pid=0 kind=contest camp=2 reason=low-hp pre=0 take=1 swings=0',
+            '[HEV] t=115 ev=lane_job_end pid=0 kind=contest camp=2 reason=lane-wave pre=0 take=1 swings=0',
+            '[HEV] t=116 ev=lane_signal pid=0 kind=pull lane=3 camp=2 enemy=8 noticed=1 inferred=0',
+            '[HEV] t=116.5 ev=lane_signal pid=0 kind=half_pull lane=3 camp=2 enemy=-1 noticed=0 inferred=0',
+            '[HEV] t=117 ev=lane_signal pid=4 kind=stack lane=3 camp=5 enemy=8 noticed=1 inferred=0',
+            '[HEV] t=117.5 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
+            '[HEV] t=118 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
+            '[HEV] t=118.5 ev=lane_take_skip pid=1 kind=pull camp=2 reason=owner',
             '[HEV] t=120 ev=lane_job_start pid=4 kind=contest camp=2',
             '[HEV] t=125 ev=lane_job_end pid=4 kind=contest camp=2 reason=timeout pre=0',
         ].join('\n')
     )[0];
     const text = report.summary(game);
-    assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 aborted 1/);
+    assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 low-hp 1 lane-wave 1 aborted 1/);
+    assert.match(text, /pull signals: 2 noticed 1; take skipped: lane-creeps 2 owner 1/);
     assert.doesNotMatch(text, /pre-contest:/);
 });

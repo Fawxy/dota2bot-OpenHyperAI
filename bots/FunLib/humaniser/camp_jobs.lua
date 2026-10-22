@@ -264,17 +264,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue253
+            local __continue257
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue253 = true
+                    __continue257 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue253 = true
+                    __continue257 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -285,9 +285,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue253 = true
+                __continue257 = true
             until true
-            if not __continue253 then
+            if not __continue257 then
                 break
             end
         end
@@ -1102,6 +1102,9 @@ local function abort(bot, job, reason, keepStack, extra)
     elseif job.kind ~= "stack" then
         doneCycle[pid] = cycleOf(DotaTime())
     end
+    if job.take == true then
+        LanePlanner.Release(bot, "contest")
+    end
     if not keepStack and job.kind == "stack_pull" and job.actualAggro ~= nil then
         Stacking.ClearStack(job.campIdx)
     end
@@ -1175,6 +1178,9 @@ end
 local function endContest(bot, job, reason)
     job.phase = "return"
     releaseClaims(bot)
+    if job.take == true then
+        LanePlanner.Release(bot, "contest")
+    end
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     local pre = job.preAggroAt ~= nil and 1 or 0
     if pre == 1 and (reason == "enemy-in-lane" or reason == "no-pull") then
@@ -1428,11 +1434,18 @@ local function keepTaking(bot, job, now)
         abort(bot, job, "flag-off")
         return false
     end
+    local s = LaneState.ForBot(bot)
+    if s ~= nil and LanePlan.View(bot, s).handsOff then
+        abort(bot, job, "handsoff")
+        return false
+    end
     local reason
     if not hpOk(bot) then
         reason = "low-hp"
     elseif now - job.startedAt >= cfg.Timing.TakePullMax then
         reason = "timeout"
+    elseif job.creepSeenAt == nil and s ~= nil and s.enemy.count > cfg.Thresholds.TakePullLaneCreeps then
+        reason = "lane-wave"
     else
         local near = 0
         local here = bot:GetLocation()
@@ -1884,7 +1897,7 @@ function ____exports.Desire(bot)
         if not keepGoing(bot, job) then
             return 0
         end
-        if job.kind ~= "stack" and LanePlanner.Committed(bot) == nil then
+        if job.kind ~= "stack" and job.take ~= true and LanePlanner.Committed(bot) == nil then
             LanePlanner.Commit(
                 bot,
                 commitTech(job.kind)
@@ -2015,10 +2028,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue281
+            local __continue285
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue281 = true
+                    __continue285 = true
                     break
                 end
                 if dist2D(
@@ -2027,9 +2040,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue281 = true
+                __continue285 = true
             until true
-            if not __continue281 then
+            if not __continue285 then
                 break
             end
         end
@@ -2068,10 +2081,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue290
+            local __continue294
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue290 = true
+                    __continue294 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2081,9 +2094,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue290 = true
+                __continue294 = true
             until true
-            if not __continue290 then
+            if not __continue294 then
                 break
             end
         end
@@ -2187,10 +2200,11 @@ local function stepTake(bot, job, now)
         Intent.Hold(bot, "lane:take_pull")
         return true
     end
-    if job.arrivedAt == nil then
+    local since = job.creepSeenAt or job.arrivedAt
+    if since == nil then
         return moveTo(bot, job.stand)
     end
-    if now - math.max(job.arrivedAt, job.creepSeenAt or job.arrivedAt) >= t.TakePullWait then
+    if now - since >= t.TakePullWait then
         endContest(bot, job, "no-creeps")
         return false
     end

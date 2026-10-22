@@ -39,7 +39,7 @@ interface Shove {
 }
 
 const IN_LANE_FLAGS: LaneConfig.LaneFlag[] = ["Block", "AggroPull", "Freeze", "Shove", "Harass", "Mid"];
-const TOWER_IDS: Tower[] = [
+export const TOWER_IDS: Tower[] = [
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,

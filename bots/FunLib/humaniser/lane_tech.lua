@@ -178,7 +178,7 @@ local IN_LANE_FLAGS = {
     "Harass",
     "Mid"
 }
-local TOWER_IDS = {
+____exports.TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,
@@ -298,7 +298,7 @@ local function enemyTowers(team)
     end
     local list = {}
     local enemy = enemyTeamOf(team)
-    for ____, id in ipairs(TOWER_IDS) do
+    for ____, id in ipairs(____exports.TOWER_IDS) do
         local tower = GetTower(enemy, id)
         if tower ~= nil and tower ~= nil and tower:IsAlive() then
             list[#list + 1] = tower

@@ -217,7 +217,6 @@ local settings, dist2D, visibleEnemy, isLaner, runStackAttack
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
-local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -232,6 +231,7 @@ local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function settings()
     return LaneConfig.Settings()
 end
@@ -337,7 +337,13 @@ end
 local function stateOf(pid)
     local st = observers[pid]
     if st == nil then
-        st = {instances = {}, responded = {}, waveMax = 0, said = {}}
+        st = {
+            instances = {},
+            responded = {},
+            waveMax = 0,
+            said = {},
+            takeSkipped = {}
+        }
         observers[pid] = st
     end
     return st
@@ -502,6 +508,21 @@ local function observe(bot, st, key, sig, s, enemies, inferred)
         ))}
     )
     st.instances[key] = signal
+    Telemetry.Event(
+        "lane_signal",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", sig.kind},
+            {"lane", sig.lane},
+            {"camp", sig.campIdx or -1},
+            {"enemy", sig.enemyPid or -1},
+            {"noticed", signal.noticed},
+            {"inferred", inferred}
+        }
+    )
     if signal.noticed then
         onNotice(
             bot,
@@ -520,6 +541,7 @@ local function prune(st, now)
         if now - sig.at > forget and key ~= st.freezeKey then
             __TS__Delete(st.instances, key)
             __TS__Delete(st.responded, key)
+            __TS__Delete(st.takeSkipped, key)
         end
     end
 end
@@ -1107,57 +1129,104 @@ local function preContest(bot, s, sig, enemies, now)
 end
 local function towerGuards(team, loc)
     local range = settings().Thresholds.EnemyTowerRange
-    do
-        local id = Tower.Top1
-        while id <= Tower.Bot3 do
-            local t = GetTower(team, id)
-            if t ~= nil and t ~= nil and t:IsAlive() and dist2D(
-                t:GetLocation(),
-                loc
-            ) <= range then
-                return true
-            end
-            id = id + 1
+    for ____, id in ipairs(LaneTech.TOWER_IDS) do
+        local t = GetTower(team, id)
+        if t ~= nil and t ~= nil and t:IsAlive() and dist2D(
+            t:GetLocation(),
+            loc
+        ) <= range then
+            return true
         end
     end
     return false
 end
---- A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty.
-local function takePull(bot, s, sig, enemies)
+--- Why this bot does not take their pulled wave now, or undefined when it may.
+local function takeBlock(bot, s, sig, enemies)
     local cfg = settings()
-    if sig.campIdx == nil or not LaneConfig.IsOn("TakePull") or LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull then
-        return false
+    if LaneRoles.CampJobOwner(s) == bot:GetPlayerID() then
+        return "owner"
     end
-    if LaneRoles.CampJobOwner(s) == bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil or CampJobs.Active(bot) then
-        return false
+    if LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull then
+        return "skill"
+    end
+    if LanePlanner.Committed(bot) ~= nil or CampJobs.Active(bot) then
+        return "committed"
+    end
+    if LanePlan.View(bot, s).handsOff then
+        return "handsoff"
     end
     if s.enemy.count > cfg.Thresholds.TakePullLaneCreeps then
-        return false
+        return "lane-creeps"
     end
-    local spawner = Camps.SpawnerByIdx(sig.campIdx)
+    local ____temp_11
+    if sig.campIdx ~= nil then
+        ____temp_11 = Camps.SpawnerByIdx(sig.campIdx)
+    else
+        ____temp_11 = nil
+    end
+    local spawner = ____temp_11
     if spawner == nil then
-        return false
+        return "no-camp"
     end
     local center = Camps.BoxCenter(spawner)
     if CampJobs.TravelTime(
         GetUnitToLocationDistance(bot, center),
         bot:GetCurrentMovementSpeed()
     ) > cfg.Timing.MaxTravel then
-        return false
+        return "far"
     end
     if towerGuards(
         enemyTeamOf(s.team),
         center
-    ) or not pathSafe(
+    ) then
+        return "tower"
+    end
+    if not pathSafe(
         bot,
         s,
         center,
         enemies,
         sig.enemyPid
     ) then
+        return "path"
+    end
+    return nil
+end
+local function noteTakeSkip(bot, st, key, sig, reason)
+    if st.takeSkipped[key] == true then
+        return
+    end
+    st.takeSkipped[key] = true
+    Telemetry.Event(
+        "lane_take_skip",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", sig.kind},
+            {"camp", sig.campIdx or -1},
+            {"reason", reason}
+        }
+    )
+end
+--- A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty.
+local function takePull(bot, st, key, s, sig, enemies)
+    if not LaneConfig.IsOn("TakePull") or sig.campIdx == nil then
         return false
     end
-    return CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid, take = true})
+    local block = takeBlock(bot, s, sig, enemies)
+    if block == nil and CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid, take = true}) then
+        return true
+    end
+    noteTakeSkip(
+        bot,
+        st,
+        key,
+        sig,
+        block or "start"
+    )
+    return false
 end
 local function preContested(st, sig)
     local pc = st.preContested
@@ -1172,10 +1241,10 @@ local function respondToPull(bot, st, s, enemies, now)
         local key = ____value[1]
         local sig = ____value[2]
         do
-            local __continue173
+            local __continue182
             repeat
                 if st.responded[key] == true then
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
                 if sig.kind == "pull_expected" then
@@ -1186,7 +1255,7 @@ local function respondToPull(bot, st, s, enemies, now)
                         enemies,
                         now
                     ) then
-                        __continue173 = true
+                        __continue182 = true
                         break
                     end
                     st.responded[key] = true
@@ -1197,34 +1266,52 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.kind ~= "pull" and sig.kind ~= "half_pull" then
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
                 if preContested(st, sig) then
                     st.responded[key] = true
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
+                local ____stronger_result_12
                 if stronger(bot) then
-                    local laner = remainingLaner(s, enemies, sig.enemyPid)
-                    if laner == nil then
-                        __continue173 = true
-                        break
-                    end
+                    ____stronger_result_12 = remainingLaner(s, enemies, sig.enemyPid)
+                else
+                    ____stronger_result_12 = nil
+                end
+                local laner = ____stronger_result_12
+                if laner ~= nil then
                     st.responded[key] = true
                     st.punish = {pid = laner.pid, startAt = now}
+                    if LaneConfig.IsOn("TakePull") and sig.campIdx ~= nil then
+                        noteTakeSkip(
+                            bot,
+                            st,
+                            key,
+                            sig,
+                            "punish"
+                        )
+                    end
                     return
                 end
-                if takePull(bot, s, sig, enemies) then
+                if takePull(
+                    bot,
+                    st,
+                    key,
+                    s,
+                    sig,
+                    enemies
+                ) then
                     st.responded[key] = true
                     return
                 end
                 if sig.campIdx == nil or LaneRoles.CampJobOwner(s) ~= bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil then
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
                 if CampJobs.Active(bot) then
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(sig.campIdx)
@@ -1235,7 +1322,7 @@ local function respondToPull(bot, st, s, enemies, now)
                     enemies,
                     sig.enemyPid
                 ) then
-                    __continue173 = true
+                    __continue182 = true
                     break
                 end
                 if CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid}) then
@@ -1243,7 +1330,7 @@ local function respondToPull(bot, st, s, enemies, now)
                 end
                 return
             until true
-            if not __continue173 then
+            if not __continue182 then
                 break
             end
         end
@@ -1428,18 +1515,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue231
+            local __continue240
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue231 = true
+                    __continue240 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue231 = true
+                __continue240 = true
             until true
-            if not __continue231 then
+            if not __continue240 then
                 break
             end
         end
@@ -1470,31 +1557,31 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue239
+            local __continue248
             repeat
-                local ____opt_result_15
+                local ____opt_result_17
                 if camp ~= nil then
-                    ____opt_result_15 = camp.cattr
+                    ____opt_result_17 = camp.cattr
                 end
-                local ____opt_result_16
-                if ____opt_result_15 ~= nil then
-                    ____opt_result_16 = ____opt_result_15.location
+                local ____opt_result_18
+                if ____opt_result_17 ~= nil then
+                    ____opt_result_18 = ____opt_result_17.location
                 end
-                local loc = ____opt_result_16
+                local loc = ____opt_result_18
                 if loc == nil then
-                    __continue239 = true
+                    __continue248 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue239 = true
+                    __continue248 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue239 = true
+                    __continue248 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1502,9 +1589,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue239 = true
+                __continue248 = true
             until true
-            if not __continue239 then
+            if not __continue248 then
                 break
             end
         end

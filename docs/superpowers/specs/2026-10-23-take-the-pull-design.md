@@ -36,9 +36,11 @@ should be farming.
 For each live, noticed, not yet answered `pull` or `half_pull` signal, after the existing pre-contested and punish branches, a bot
 that is **not** `LaneRoles.CampJobOwner(s)` starts a take when all hold:
 
+0. Punish still comes first, but only when there is a remaining laner to punish: `J.WeAreStronger` reads an empty radius as
+   stronger, so "stronger with nobody to punish" falls through to the take (and, for the owner, to its contest).
 1. Flag `TakePull` on and `SkillOf(bot) > Gates.TakePull` (0.5). The notice roll already scales how often a pull is seen; the gate
    keeps low difficulties from doing this at all.
-2. Nothing committed this cycle (`LanePlanner.Committed`) and no camp job running (`CampJobs.Active`).
+2. Nothing committed this cycle (`LanePlanner.Committed`), no camp job running (`CampJobs.Active`), no `LANE_HANDSOFF` order.
 3. The lane has nothing to stay for: `s.enemy.count <= Thresholds.TakePullLaneCreeps` (1).
 4. The signal names a camp whose box centre is reachable within `Timing.MaxTravel` (12 s) and `pathSafe` (as the contest).
 5. No enemy tower within `Thresholds.EnemyTowerRange` of the camp's box centre.
@@ -60,7 +62,8 @@ Stand point: the camp's box centre; phase `travel`, telegraphed (no ping). Each 
 3. Else, with creeps present: walk to the lowest-HP creep while it is out of attack range, otherwise hold (`lane:take_pull`).
 4. No creeps: walk to the stand; once there, end `no-creeps` after `Timing.TakePullWait` (3 s) with none seen.
 
-Ends: `no-creeps`; `timeout` after `Timing.TakePullMax` (15 s) from the start (instead of `ContestMax`); `outnumbered` when
+Ends: `no-creeps` (the wait counts from the last pulled creep seen, else from reaching the stand); `lane-wave` when no pulled
+creep has been seen and our front has more than `TakePullLaneCreeps` enemy creeps again (their wave was only late); `timeout` after `Timing.TakePullMax` (15 s) from the start (instead of `ContestMax`); `outnumbered` when
 `Thresholds.TakePullDangerEnemies` (2) or more visible enemy heroes are within `Radii.TakePullDanger` (1200) of the bot; `low-hp`
 below `JobMinHP`. The take does not use `MayRunCampJob`. Retreat and other higher modes still preempt it through the contest's
 desire (`ContestDesire` 0.65).
@@ -69,7 +72,10 @@ desire (`ContestDesire` 0.65).
 
 - `lane_job_start` carries `take=1`.
 - `lane_job_end` (contest) carries `take=1` and `swings=<n>`, the last-hit swings it made.
-- `tools/hlog` prints `take-pull: started=<n> swings=<n> no-creeps=<n> timeout=<n> outnumbered=<n> aborted=<n>`.
+- `lane_signal` once per signal instance and bot (`kind lane camp enemy noticed inferred`); `lane_take_skip` once per noticed pull
+  not taken, with the first declining check.
+- `tools/hlog` prints `take-pull: started <n> swings <n> no-creeps <n> timeout <n> outnumbered <n> low-hp <n> lane-wave <n> aborted <n>`
+  and `pull signals: <n> noticed <n>; take skipped: <reason> <n> ...`.
 
 ## Config
 
@@ -81,7 +87,12 @@ desire (`ContestDesire` 0.65).
 
 ## Calls made without asking
 
-- Any non-owner laner can take, not only pos 1/2: in a two-lane that is the core, which is the case seen.
+- Any non-owner laner can take, not only pos 1/2: in a two-lane that is the core, which is the case seen. With a human support
+  in lane `CampJobOwner` is undefined, so a bot support may take too.
+- The take commits `contest` for the cycle and releases it on its end, so the core's own techniques stay available.
+- Counter-play responses run from laning `Think()`, so with the default `OwnLaningThink = 'allies'` only allies of a human take.
+  Bots-only testing needs `OwnLaningThink = 'all'`. (console.9057013636 was bots-only with `'allies'`: no bot could contest or
+  take at all, which is the root cause of what was seen, alongside the owner-only design.)
 - The wave-anomaly `pull` signal names the first pull camp; with two enemy pull camps it can name the wrong one, and the take then
   ends `no-creeps`. Accepted rather than adding camp disambiguation.
 - Last hits only. No hitting the creeps down and no attacking the puller.
@@ -96,5 +107,5 @@ desire (`ContestDesire` 0.65).
 
 ## In game
 
-Run `oha/bots` (re-point the `scripts/vscripts/bots` symlink) and check `take-pull:` in the hlog summary: takes should mostly end
+Run `oha/bots` (re-point the `scripts/vscripts/bots` symlink), with `OwnLaningThink = 'all'` for a bots-only game, and check `take-pull:` in the hlog summary: takes should mostly end
 `no-creeps`/`timeout` with swings > 0, rarely `outnumbered`.

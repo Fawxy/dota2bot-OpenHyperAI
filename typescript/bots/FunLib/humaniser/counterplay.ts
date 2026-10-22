@@ -4,7 +4,7 @@
  * visible heroes plus GetHeroLastSeenInfo), visible creeps and neutrals, and public map data. Each bot notices a
  * signal instance at most once, with a skill-scaled chance; an unnoticed instance is remembered so it is not re-rolled.
  */
-import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -19,6 +19,7 @@ import * as Harass from "bots/FunLib/humaniser/harass";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export interface PullSignalInput {
     now: number;
@@ -71,6 +72,8 @@ interface ObserverState {
     campBlockAt?: number;
     /** The latest pre-contest: its camp's pull signals in the aggro's wave cycle and the next count as answered. */
     preContested?: { campIdx: number; cycle: number };
+    /** Pull signal keys whose take was declined; `lane_take_skip` reports each once. */
+    takeSkipped: Record<string, boolean>;
     said: Record<string, number>;
 }
 
@@ -143,7 +146,7 @@ function stronger(bot: Unit): boolean {
 function stateOf(pid: number): ObserverState {
     let st = observers[pid];
     if (st === undefined) {
-        st = { instances: {}, responded: {}, waveMax: 0, said: {} };
+        st = { instances: {}, responded: {}, waveMax: 0, said: {}, takeSkipped: {} };
         observers[pid] = st;
     }
     return st;
@@ -271,6 +274,15 @@ function observe(bot: Unit, st: ObserverState, key: string, sig: Omit<Signal, "n
     if (st.instances[key] !== undefined) return;
     const signal: Signal = { ...sig, noticed: LaneConfig.Roll(LaneConfig.Curve("CounterNotice", LaneConfig.SkillOf(bot))) };
     st.instances[key] = signal;
+    Telemetry.Event("lane_signal", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", sig.kind],
+        ["lane", sig.lane],
+        ["camp", sig.campIdx ?? -1],
+        ["enemy", sig.enemyPid ?? -1],
+        ["noticed", signal.noticed],
+        ["inferred", inferred],
+    ]);
     if (signal.noticed) onNotice(bot, st, key, signal, s, enemies, inferred);
 }
 
@@ -280,6 +292,7 @@ function prune(st: ObserverState, now: number): void {
         if (now - sig.at > forget && key !== st.freezeKey) {
             delete st.instances[key];
             delete st.responded[key];
+            delete st.takeSkipped[key];
         }
     }
 }
@@ -566,25 +579,48 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
 
 function towerGuards(team: number, loc: Vector): boolean {
     const range = settings().Thresholds.EnemyTowerRange;
-    for (let id = Tower.Top1; id <= Tower.Bot3; id++) {
+    for (const id of LaneTech.TOWER_IDS) {
         const t = GetTower(team, id);
         if (t !== null && t !== undefined && t.IsAlive() && dist2D(t.GetLocation(), loc) <= range) return true;
     }
     return false;
 }
 
-/** A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty. */
-function takePull(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[]): boolean {
+/** Why this bot does not take their pulled wave now, or undefined when it may. */
+function takeBlock(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[]): string | undefined {
     const cfg = settings();
-    if (sig.campIdx === undefined || !LaneConfig.IsOn("TakePull") || LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull) return false;
-    if (LaneRoles.CampJobOwner(s) === bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return false;
-    if (s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) return false;
-    const spawner = Camps.SpawnerByIdx(sig.campIdx);
-    if (spawner === undefined) return false;
+    if (LaneRoles.CampJobOwner(s) === bot.GetPlayerID()) return "owner";
+    if (LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull) return "skill";
+    if (LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return "committed";
+    if (LanePlan.View(bot, s).handsOff) return "handsoff";
+    if (s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) return "lane-creeps";
+    const spawner = sig.campIdx !== undefined ? Camps.SpawnerByIdx(sig.campIdx) : undefined;
+    if (spawner === undefined) return "no-camp";
     const center = Camps.BoxCenter(spawner);
-    if (CampJobs.TravelTime(GetUnitToLocationDistance(bot, center), bot.GetCurrentMovementSpeed()) > cfg.Timing.MaxTravel) return false;
-    if (towerGuards(enemyTeamOf(s.team), center) || !pathSafe(bot, s, center, enemies, sig.enemyPid)) return false;
-    return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, take: true });
+    if (CampJobs.TravelTime(GetUnitToLocationDistance(bot, center), bot.GetCurrentMovementSpeed()) > cfg.Timing.MaxTravel) return "far";
+    if (towerGuards(enemyTeamOf(s.team), center)) return "tower";
+    if (!pathSafe(bot, s, center, enemies, sig.enemyPid)) return "path";
+    return undefined;
+}
+
+function noteTakeSkip(bot: Unit, st: ObserverState, key: string, sig: Signal, reason: string): void {
+    if (st.takeSkipped[key] === true) return;
+    st.takeSkipped[key] = true;
+    Telemetry.Event("lane_take_skip", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", sig.kind],
+        ["camp", sig.campIdx ?? -1],
+        ["reason", reason],
+    ]);
+}
+
+/** A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty. */
+function takePull(bot: Unit, st: ObserverState, key: string, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[]): boolean {
+    if (!LaneConfig.IsOn("TakePull") || sig.campIdx === undefined) return false;
+    const block = takeBlock(bot, s, sig, enemies);
+    if (block === undefined && CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, take: true })) return true;
+    noteTakeSkip(bot, st, key, sig, block ?? "start");
+    return false;
 }
 
 function preContested(st: ObserverState, sig: Signal): boolean {
@@ -608,14 +644,15 @@ function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, 
             st.responded[key] = true;
             continue;
         }
-        if (stronger(bot)) {
-            const laner = remainingLaner(s, enemies, sig.enemyPid);
-            if (laner === undefined) continue;
+        // WeAreStronger reads no enemy in range as stronger, so with no laner to punish the pull is still answered below.
+        const laner = stronger(bot) ? remainingLaner(s, enemies, sig.enemyPid) : undefined;
+        if (laner !== undefined) {
             st.responded[key] = true;
             st.punish = { pid: laner.pid, startAt: now };
+            if (LaneConfig.IsOn("TakePull") && sig.campIdx !== undefined) noteTakeSkip(bot, st, key, sig, "punish");
             return;
         }
-        if (takePull(bot, s, sig, enemies)) {
+        if (takePull(bot, st, key, s, sig, enemies)) {
             st.responded[key] = true;
             return;
         }

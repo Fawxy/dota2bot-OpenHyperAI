@@ -660,6 +660,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
         doneCycle[pid] = cycleOf(DotaTime());
     }
+    if (job.take === true) LanePlanner.Release(bot, "contest");
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
@@ -708,6 +709,8 @@ function endStack(bot: Unit, job: Job): void {
 function endContest(bot: Unit, job: Job, reason: string): void {
     job.phase = "return";
     releaseClaims(bot);
+    // The core's own lane techniques are free again once the take is over.
+    if (job.take === true) LanePlanner.Release(bot, "contest");
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
     const pre = job.preAggroAt !== undefined ? 1 : 0;
     if (pre === 1 && (reason === "enemy-in-lane" || reason === "no-pull")) {
@@ -879,9 +882,16 @@ function keepTaking(bot: Unit, job: Job, now: number): boolean {
         abort(bot, job, "flag-off");
         return false;
     }
+    const s = LaneState.ForBot(bot);
+    if (s !== undefined && LanePlan.View(bot, s).handsOff) {
+        abort(bot, job, "handsoff");
+        return false;
+    }
     let reason: string | undefined;
     if (!hpOk(bot)) reason = "low-hp";
     else if (now - job.startedAt >= cfg.Timing.TakePullMax) reason = "timeout";
+    // A late wave reads as a pull: back to the lane once it arrives, unless the pulled wave has been found.
+    else if (job.creepSeenAt === undefined && s !== undefined && s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) reason = "lane-wave";
     else {
         let near = 0;
         const here = bot.GetLocation();
@@ -1176,7 +1186,7 @@ export function Desire(bot: Unit): number {
         job.unthought = true;
         if (!keepGoing(bot, job)) return 0;
         // A stack's walk-off past :00 does not claim the new cycle: the stack was the previous cycle's technique.
-        if (job.kind !== "stack" && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
+        if (job.kind !== "stack" && job.take !== true && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
         return desireOf(job.kind);
     }
     if (!bot.IsAlive()) return 0;
@@ -1439,8 +1449,9 @@ function stepTake(bot: Unit, job: Job, now: number): boolean {
         Intent.Hold(bot, "lane:take_pull");
         return true;
     }
-    if (job.arrivedAt === undefined) return moveTo(bot, job.stand);
-    if (now - math.max(job.arrivedAt, job.creepSeenAt ?? job.arrivedAt) >= t.TakePullWait) {
+    const since = job.creepSeenAt ?? job.arrivedAt;
+    if (since === undefined) return moveTo(bot, job.stand);
+    if (now - since >= t.TakePullWait) {
         endContest(bot, job, "no-creeps");
         return false;
     }
