@@ -1015,4 +1015,19 @@ do
 	Unit.ActionImmediate_Ping = old
 end
 
+do
+	-- A mode-end abort says which mode took over and how old the job's retreat hold was when it did.
+	local H, support, job, lines = leadingWorld()
+	support.hp = 70
+	retreatAgainstJob(H, support, 0.82)
+	T = T + 0.25
+	support.mode = dota.BotMode.Retreat
+	H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82)
+	H.Lane.CampJobOnEnd(support)
+	local a = hev(lines, "lane_job_abort")[1]
+	check("mode-end names the winner", a ~= nil and field(a, "reason") == "mode-end" and field(a, "to") == "retreat", a)
+	check("the hold was on but last posted 0.25 s earlier", field(a, "hold") == "on" and near(tonumber(field(a, "holdAge")), 0.25), a)
+	check("retreat's resolve was this frame", near(tonumber(field(a, "toAge")), 0), a)
+end
+
 finish()

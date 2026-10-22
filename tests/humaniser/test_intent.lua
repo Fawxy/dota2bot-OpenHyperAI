@@ -381,4 +381,57 @@ for _, switch in ipairs({ function(cfg) cfg.Intent.Enable = false end, function(
 	check("disabled: raw desire returned", near(H.Intent.Resolve(b, FARM, 0.3), 0.3), H.Intent.Resolve(b, FARM, 0.3))
 end
 
+-- console.9055950349: a camp job's retreat cap, posted from farm's GetDesire with the 0.2 s TTL, never once showed in
+-- retreat's resolve. intent_cadence reports each mode's GetDesire period and how often such a claim had expired
+-- by the time a mode it applies to was resolved, so a game can say whether the TTL is shorter than the period.
+local function cadenceRun(retreatOffset)
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Intent = { Enable = true }, Telemetry = { Enable = true } })
+	local b = MakeUnit({ pid = 1, mode = LANING })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local I = H.Intent
+	T = 0
+	H.Tick(b)
+	for i = 1, 210 do
+		T = i * 0.3
+		I.Claim(b, { source = "lane:job_hold", tier = "CAMP_JOB", mode = RETREAT, cap = 0.68 })
+		I.Resolve(b, FARM, 0.7)
+		T = i * 0.3 + retreatOffset
+		I.Resolve(b, RETREAT, 0.8)
+		H.Tick(b)
+	end
+	local out = {}
+	for _, l in ipairs(lines) do if l:find("ev=intent_cadence", 1, true) then table.insert(out, l) end end
+	return out
+end
+
+do
+	local late = cadenceRun(0.25)
+	check("one cadence line per minute", #late == 1, #late)
+	local l = late[1] or ""
+	check("farm's period is reported", l:find("farm=199:0.300:0.300", 1, true) ~= nil, l)
+	check("retreat measured from farm", l:find("rf=200:0.250:0.250", 1, true) ~= nil, l)
+	check("retreat 0.25 s after farm: every read of the 0.2 s hold missed it", l:find("lane:job_hold>retreat=200/200", 1, true) ~= nil, l)
+
+	local early = cadenceRun(0.1)
+	check("retreat 0.1 s after farm: the hold was live every time", (early[1] or ""):find("lane:job_hold>retreat=0/200", 1, true) ~= nil, early[1])
+end
+
+do
+	-- A claim that stops being posted is its end, not a run of lapses.
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Intent = { Enable = true }, Telemetry = { Enable = true } })
+	local b = MakeUnit({ pid = 1, mode = LANING })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	T = 0
+	H.Tick(b)
+	H.Intent.Claim(b, { source = "lane:job_hold", tier = "CAMP_JOB", mode = RETREAT, cap = 0.68 })
+	for i = 1, 200 do T = i * 0.3; H.Intent.Resolve(b, RETREAT, 0.8); H.Tick(b) end
+	local l
+	for _, x in ipairs(lines) do if x:find("ev=intent_cadence", 1, true) then l = x end end
+	check("an ended claim counts at most once", l ~= nil and l:find("lane:job_hold>retreat=1/1", 1, true) ~= nil, l)
+end
+
 finish()

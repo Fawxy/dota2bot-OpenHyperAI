@@ -201,7 +201,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, neutralsInBox, boxInSight, settleStack, pendingStacks
+local settings, neutralsInBox, boxInSight, settleStack, round3, modeEndFields, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -327,6 +327,46 @@ function settleStack(bot, now)
     if grade == "ok" and stacked and after ~= nil then
         Stacking.Telegraph(bot, p.type)
     end
+end
+function round3(v)
+    return v == nil and -1 or math.floor(v * 1000 + 0.5) / 1000
+end
+function modeEndFields(bot, job)
+    if not Telemetry.IsEnabled() then
+        return {}
+    end
+    local to = bot:GetActiveMode()
+    return {
+        {
+            "to",
+            HDebug.ModeName(to)
+        },
+        {
+            "toBy",
+            Intent.Explain(bot, to)
+        },
+        {
+            "competing",
+            Intent.Competing(bot)
+        },
+        {"hold", job.retreatHold or "-"},
+        {
+            "holdAge",
+            round3(Intent.ClaimAge(bot, "lane:job_hold", BotMode.Retreat))
+        },
+        {
+            "focusAge",
+            round3(Intent.ClaimAge(bot, "lane:job_focus", BotMode.Ward))
+        },
+        {
+            "farmAge",
+            round3(Intent.SampleAge(bot, BotMode.Farm))
+        },
+        {
+            "toAge",
+            round3(Intent.SampleAge(bot, to))
+        }
+    }
 end
 local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
 local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
@@ -2059,7 +2099,13 @@ function ____exports.OnEnd(bot)
     end
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
-        abort(bot, job, "mode-end")
+        abort(
+            bot,
+            job,
+            "mode-end",
+            false,
+            modeEndFields(bot, job)
+        )
     end
 end
 function ____exports.RegisterProbes()

@@ -1406,7 +1406,27 @@ export function Think(bot: Unit): boolean {
 export function OnEnd(bot: Unit): void {
     if (!LaneConfig.IsActive()) return;
     const job = jobs[bot.GetPlayerID()];
-    if (isLive(job)) abort(bot, job, "mode-end");
+    if (isLive(job)) abort(bot, job, "mode-end", false, modeEndFields(bot, job));
+}
+
+function round3(v: number | undefined): number {
+    return v === undefined ? -1 : math.floor(v * 1000 + 0.5) / 1000;
+}
+
+/** Which mode took farm's place and whether the job's claims on other modes were still live when it did. */
+function modeEndFields(bot: Unit, job: Job): [string, any][] {
+    if (!Telemetry.IsEnabled()) return [];
+    const to = bot.GetActiveMode();
+    return [
+        ["to", HDebug.ModeName(to)],
+        ["toBy", Intent.Explain(bot, to)],
+        ["competing", Intent.Competing(bot)],
+        ["hold", job.retreatHold ?? "-"],
+        ["holdAge", round3(Intent.ClaimAge(bot, "lane:job_hold", BotMode.Retreat))],
+        ["focusAge", round3(Intent.ClaimAge(bot, "lane:job_focus", BotMode.Ward))],
+        ["farmAge", round3(Intent.SampleAge(bot, BotMode.Farm))],
+        ["toAge", round3(Intent.SampleAge(bot, to))],
+    ];
 }
 
 export function RegisterProbes(): void {

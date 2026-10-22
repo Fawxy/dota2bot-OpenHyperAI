@@ -24,6 +24,7 @@ local function __TS__ArraySort(self, compareFn)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local applies
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -32,6 +33,22 @@ local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
+function applies(claim, mode)
+    if claim.mode == mode then
+        return true
+    end
+    if claim.mode ~= "ANY" then
+        return false
+    end
+    if claim.except ~= nil then
+        for ____, m in ipairs(claim.except) do
+            if m == mode then
+                return false
+            end
+        end
+    end
+    return true
+end
 local TIER_RANK = {
     MOOD = 1,
     TRANSITION = 2,
@@ -41,6 +58,8 @@ local TIER_RANK = {
     HUMAN_ORDER = 6,
     SURVIVAL = 7
 }
+local CADENCE_EVERY = 60
+local LAPSE_WINDOW = 0.5
 ____exports.DEFAULTS = {
     Enable = true,
     ClaimTTL = 0.2,
@@ -118,7 +137,13 @@ local function stateFor(bot)
             conflicts = {},
             lastConflict = {},
             summaryCheckAt = -math.huge,
-            summaryPrinted = false
+            summaryPrinted = false,
+            cadence = {},
+            retreatAfterFarm = {n = 0, sum = 0, max = 0},
+            posted = {},
+            postedAt = {},
+            lapses = {},
+            cadenceAt = GameTime()
         }
         states[pid] = s
     end
@@ -139,7 +164,12 @@ function ____exports.Claim(bot, claim)
         claim,
         {expires = claim["until"] or now + ____exports.Get().ClaimTTL}
     )
-    s.claims[(claim.source .. "|") .. tostring(claim.mode)] = stored
+    local key = (claim.source .. "|") .. tostring(claim.mode)
+    s.claims[key] = stored
+    s.postedAt[key] = now
+    if claim["until"] == nil then
+        s.posted[key] = {claim = stored}
+    end
     if claim.tier == "SURVIVAL" or claim.tier == "HUMAN_ORDER" then
         s.priorityAt = now
     end
@@ -171,25 +201,130 @@ function ____exports.HeldBy(bot)
 end
 function ____exports.Release(bot, source, mode)
     local s = states[bot:GetPlayerID()]
-    if s ~= nil then
-        s.claims[(source .. "|") .. tostring(mode)] = nil
+    if s == nil then
+        return
+    end
+    local key = (source .. "|") .. tostring(mode)
+    s.claims[key] = nil
+    s.posted[key] = nil
+    s.postedAt[key] = nil
+end
+--- Seconds since this claim was last posted, or undefined when it never was or was released.
+function ____exports.ClaimAge(bot, source, mode)
+    local ____opt_3 = states[bot:GetPlayerID()]
+    local at = ____opt_3 and ____opt_3.postedAt[(source .. "|") .. tostring(mode)]
+    return at ~= nil and GameTime() - at or nil
+end
+--- Seconds since this mode's GetDesire was last resolved.
+function ____exports.SampleAge(bot, mode)
+    local ____opt_5 = states[bot:GetPlayerID()]
+    local c = ____opt_5 and ____opt_5.cadence[mode]
+    return (c and c.last) ~= nil and GameTime() - c.last or nil
+end
+local function addGap(c, gap)
+    c.n = c.n + 1
+    c.sum = c.sum + gap
+    if gap > c.max then
+        c.max = gap
     end
 end
-local function applies(claim, mode)
-    if claim.mode == mode then
-        return true
+local function noteCadence(s, mode, now)
+    local c = s.cadence[mode]
+    if c == nil then
+        c = {n = 0, sum = 0, max = 0}
+        s.cadence[mode] = c
     end
-    if claim.mode ~= "ANY" then
-        return false
+    if c.last ~= nil and now > c.last then
+        addGap(c, now - c.last)
     end
-    if claim.except ~= nil then
-        for ____, m in ipairs(claim.except) do
-            if m == mode then
-                return false
+    c.last = now
+    local farm = s.cadence[BotMode.Farm]
+    if mode == BotMode.Retreat and (farm and farm.last) ~= nil then
+        addGap(s.retreatAfterFarm, now - farm.last)
+    end
+end
+local function noteLapses(s, mode, now)
+    for key, p in pairs(s.posted) do
+        do
+            local __continue30
+            repeat
+                if not applies(p.claim, mode) then
+                    __continue30 = true
+                    break
+                end
+                local lateBy = now - p.claim.expires
+                if lateBy > LAPSE_WINDOW then
+                    __continue30 = true
+                    break
+                end
+                local k = (p.claim.source .. ">") .. HDebug.ModeName(mode)
+                local l = s.lapses[k]
+                if l == nil then
+                    l = {live = 0, lapsed = 0}
+                    s.lapses[k] = l
+                end
+                if lateBy <= 0 then
+                    l.live = l.live + 1
+                else
+                    l.lapsed = l.lapsed + 1
+                    s.posted[key] = nil
+                end
+                __continue30 = true
+            until true
+            if not __continue30 then
+                break
             end
         end
     end
-    return true
+end
+local function fmtCadence(c)
+    return c.n > 0 and string.format("%d:%.3f:%.3f", c.n, c.sum / c.n, c.max) or "0"
+end
+local function maybeCadence(bot, s, now)
+    if now - s.cadenceAt < CADENCE_EVERY or not Telemetry.IsEnabled() then
+        return
+    end
+    s.cadenceAt = now
+    local modes = {}
+    for mode, c in pairs(s.cadence) do
+        if c.n > 0 then
+            modes[#modes + 1] = (HDebug.ModeName(mode) .. "=") .. fmtCadence(c)
+        end
+    end
+    __TS__ArraySort(modes)
+    local lapses = {}
+    for k, l in pairs(s.lapses) do
+        lapses[#lapses + 1] = (((k .. "=") .. tostring(l.lapsed)) .. "/") .. tostring(l.live + l.lapsed)
+    end
+    __TS__ArraySort(lapses)
+    Telemetry.Event(
+        "intent_cadence",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "rf",
+                fmtCadence(s.retreatAfterFarm)
+            },
+            {
+                "modes",
+                table.concat(modes, ",")
+            },
+            {
+                "lapses",
+                #lapses > 0 and table.concat(lapses, ",") or "-"
+            }
+        }
+    )
+    for ____, c in pairs(s.cadence) do
+        c.n = 0
+        c.sum = 0
+        c.max = 0
+    end
+    s.retreatAfterFarm = {n = 0, sum = 0, max = 0}
+    s.lapses = {}
 end
 local function compareClaims(a, b)
     local ta = TIER_RANK[a.tier]
@@ -229,12 +364,21 @@ end
 --- Applies this bot's claims to a mode's raw desire. Call at the end of every GetDesire().
 -- Non-numbers (nil = use Valve's desire) pass through untouched.
 function ____exports.Resolve(bot, mode, raw)
-    if type(raw) ~= "number" or mode == nil or not ____exports.IsActive() or sharesPlayerID(bot) then
+    if mode == nil or not ____exports.IsActive() or sharesPlayerID(bot) then
+        return raw
+    end
+    noteCadence(
+        stateFor(bot),
+        mode,
+        GameTime()
+    )
+    if type(raw) ~= "number" then
         return raw
     end
     local cfg = ____exports.Get()
     local now = GameTime()
     local s = stateFor(bot)
+    noteLapses(s, mode, now)
     local ordered
     local scale = 1
     local riskAllowed = false
@@ -242,11 +386,11 @@ function ____exports.Resolve(bot, mode, raw)
     local unstuck = false
     for key, claim in pairs(s.claims) do
         do
-            local __continue39
+            local __continue63
             repeat
                 if claim.expires < now then
                     s.claims[key] = nil
-                    __continue39 = true
+                    __continue63 = true
                     break
                 end
                 if claim.unsticks == true and claim.mode ~= mode then
@@ -269,9 +413,9 @@ function ____exports.Resolve(bot, mode, raw)
                         ordered[#ordered + 1] = claim
                     end
                 end
-                __continue39 = true
+                __continue63 = true
             until true
-            if not __continue39 then
+            if not __continue63 then
                 break
             end
         end
@@ -293,14 +437,14 @@ function ____exports.Resolve(bot, mode, raw)
         end
         for ____, claim in ipairs(ordered) do
             do
-                local __continue51
+                local __continue75
                 repeat
                     if claim.tier == "SURVIVAL" and riskAllowed then
-                        __continue51 = true
+                        __continue75 = true
                         break
                     end
                     if claim.onlyLifted == true and desire <= scaled then
-                        __continue51 = true
+                        __continue75 = true
                         break
                     end
                     local value = desire
@@ -319,9 +463,9 @@ function ____exports.Resolve(bot, mode, raw)
                         by = claim.source
                         desire = value
                     end
-                    __continue51 = true
+                    __continue75 = true
                 until true
-                if not __continue51 then
+                if not __continue75 then
                     break
                 end
             end
@@ -412,8 +556,8 @@ local function onModeSwitch(bot, s, mode, now)
     end
     local cfg = ____exports.Get().Thrash
     s.switchCount = s.switchCount + 1
-    local ____s_switchTimes_5 = s.switchTimes
-    ____s_switchTimes_5[#____s_switchTimes_5 + 1] = now
+    local ____s_switchTimes_13 = s.switchTimes
+    ____s_switchTimes_13[#____s_switchTimes_13 + 1] = now
     while #s.switchTimes > 0 and s.switchTimes[1] < now - cfg.Window do
         table.remove(s.switchTimes, 1)
     end
@@ -501,13 +645,13 @@ local function checkStuck(bot, s, mode, now)
     end
     local idle = s.idleSince ~= nil and now - s.idleSince >= cfg.After
     local still = now - s.stillSince >= cfg.After
-    local ____temp_6
+    local ____temp_14
     if cfg.Match == "idle_or_still" then
-        ____temp_6 = idle or still
+        ____temp_14 = idle or still
     else
-        ____temp_6 = idle and still
+        ____temp_14 = idle and still
     end
-    local frozen = ____temp_6
+    local frozen = ____temp_14
     local desire = bot:GetActiveModeDesire()
     local sample = s.samples[mode]
     local raw = sample ~= nil and now - sample.time <= SAMPLE_FRESH and sample.raw or desire
@@ -605,6 +749,7 @@ function ____exports.Tick(bot)
         onModeSwitch(bot, s, mode, now)
     end
     checkStuck(bot, s, mode, now)
+    maybeCadence(bot, s, now)
     maybeSummary(bot, s, now)
 end
 return ____exports

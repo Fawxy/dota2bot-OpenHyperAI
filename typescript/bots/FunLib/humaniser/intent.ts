@@ -58,6 +58,21 @@ interface StoredClaim extends Claim {
     expires: number;
 }
 
+// Diagnostics for claims posted from one mode's GetDesire and read by another's: how often each mode's GetDesire
+// runs, and how often a re-posted (TTL) claim had already expired when a mode it applies to was resolved.
+interface Cadence {
+    last?: number;
+    n: number;
+    sum: number;
+    max: number;
+}
+interface PostedClaim {
+    claim: StoredClaim;
+}
+const CADENCE_EVERY = 60;
+// A TTL claim expired this recently was still being re-posted, so missing it is a lapse rather than its end.
+const LAPSE_WINDOW = 0.5;
+
 interface ModeSample {
     raw: number;
     resolved: number;
@@ -89,6 +104,14 @@ interface BotState {
     lastConflict: Record<number, string>;
     summaryCheckAt: number;
     summaryPrinted: boolean;
+    cadence: Record<number, Cadence>;
+    // Retreat's GetDesire measured from farm's last one: a camp job's retreat hold is posted from farm's.
+    retreatAfterFarm: Cadence;
+    posted: Record<string, PostedClaim>;
+    // When each claim was last posted, kept after it lapses (posted drops it) and cleared only by Release.
+    postedAt: Record<string, number>;
+    lapses: Record<string, { live: number; lapsed: number }>;
+    cadenceAt: number;
 }
 
 /** Bot API methods used here that ts_libs does not declare yet. */
@@ -180,6 +203,12 @@ function stateFor(bot: Unit): BotState {
             lastConflict: {},
             summaryCheckAt: -math.huge,
             summaryPrinted: false,
+            cadence: {},
+            retreatAfterFarm: { n: 0, sum: 0, max: 0 },
+            posted: {},
+            postedAt: {},
+            lapses: {},
+            cadenceAt: GameTime(),
         };
         states[pid] = s;
     }
@@ -196,7 +225,10 @@ export function Claim(bot: Unit, claim: Claim): boolean {
     const s = stateFor(bot);
     const now = GameTime();
     const stored: StoredClaim = { ...claim, expires: claim.until ?? now + Get().ClaimTTL };
-    s.claims[`${claim.source}|${tostring(claim.mode)}`] = stored;
+    const key = `${claim.source}|${tostring(claim.mode)}`;
+    s.claims[key] = stored;
+    s.postedAt[key] = now;
+    if (claim.until === undefined) s.posted[key] = { claim: stored };
     if (claim.tier === "SURVIVAL" || claim.tier === "HUMAN_ORDER") s.priorityAt = now;
     return true;
 }
@@ -220,7 +252,91 @@ export function HeldBy(bot: Unit): string | undefined {
 
 export function Release(bot: Unit, source: string, mode: BotMode | "ANY"): void {
     const s = states[bot.GetPlayerID()];
-    if (s !== undefined) s.claims[`${source}|${tostring(mode)}`] = undefined as any;
+    if (s === undefined) return;
+    const key = `${source}|${tostring(mode)}`;
+    s.claims[key] = undefined as any;
+    s.posted[key] = undefined as any;
+    s.postedAt[key] = undefined as any;
+}
+
+/** Seconds since this claim was last posted, or undefined when it never was or was released. */
+export function ClaimAge(bot: Unit, source: string, mode: BotMode | "ANY"): number | undefined {
+    const at = states[bot.GetPlayerID()]?.postedAt[`${source}|${tostring(mode)}`];
+    return at !== undefined ? GameTime() - at : undefined;
+}
+
+/** Seconds since this mode's GetDesire was last resolved. */
+export function SampleAge(bot: Unit, mode: number): number | undefined {
+    const c = states[bot.GetPlayerID()]?.cadence[mode];
+    return c?.last !== undefined ? GameTime() - c.last : undefined;
+}
+
+function addGap(c: Cadence, gap: number): void {
+    c.n++;
+    c.sum += gap;
+    if (gap > c.max) c.max = gap;
+}
+
+function noteCadence(s: BotState, mode: number, now: number): void {
+    let c = s.cadence[mode];
+    if (c === undefined) {
+        c = { n: 0, sum: 0, max: 0 };
+        s.cadence[mode] = c;
+    }
+    // A second resolve in the same frame (Explain, tests) is not a GetDesire period.
+    if (c.last !== undefined && now > c.last) addGap(c, now - c.last);
+    c.last = now;
+    const farm = s.cadence[BotMode.Farm];
+    if (mode === BotMode.Retreat && farm?.last !== undefined) addGap(s.retreatAfterFarm, now - farm.last);
+}
+
+function noteLapses(s: BotState, mode: number, now: number): void {
+    for (const [key, p] of pairs(s.posted)) {
+        if (!applies(p.claim, mode)) continue;
+        const lateBy = now - p.claim.expires;
+        if (lateBy > LAPSE_WINDOW) continue;
+        const k = `${p.claim.source}>${HDebug.ModeName(mode)}`;
+        let l = s.lapses[k];
+        if (l === undefined) {
+            l = { live: 0, lapsed: 0 };
+            s.lapses[k] = l;
+        }
+        if (lateBy <= 0) l.live++;
+        else {
+            // Once per expiry: a re-post starts a new entry, and a claim that stopped being posted ended.
+            l.lapsed++;
+            s.posted[key] = undefined as any;
+        }
+    }
+}
+
+function fmtCadence(c: Cadence): string {
+    return c.n > 0 ? string.format("%d:%.3f:%.3f", c.n, c.sum / c.n, c.max) : "0";
+}
+
+function maybeCadence(bot: Unit, s: BotState, now: number): void {
+    if (now - s.cadenceAt < CADENCE_EVERY || !Telemetry.IsEnabled()) return;
+    s.cadenceAt = now;
+    const modes: string[] = [];
+    for (const [mode, c] of pairs(s.cadence)) if (c.n > 0) modes.push(`${HDebug.ModeName(mode)}=${fmtCadence(c)}`);
+    modes.sort();
+    const lapses: string[] = [];
+    for (const [k, l] of pairs(s.lapses)) lapses.push(`${k}=${l.lapsed}/${l.live + l.lapsed}`);
+    lapses.sort();
+    Telemetry.Event("intent_cadence", [
+        ["pid", bot.GetPlayerID()],
+        ["rf", fmtCadence(s.retreatAfterFarm)],
+        ["modes", modes.join(",")],
+        ["lapses", lapses.length > 0 ? lapses.join(",") : "-"],
+    ]);
+    // Keep each mode's last time so the next window's first gap is measured.
+    for (const [, c] of pairs(s.cadence)) {
+        c.n = 0;
+        c.sum = 0;
+        c.max = 0;
+    }
+    s.retreatAfterFarm = { n: 0, sum: 0, max: 0 };
+    s.lapses = {};
 }
 
 function applies(claim: StoredClaim, mode: number): boolean {
@@ -264,10 +380,13 @@ function noteConflict(s: BotState, mode: number, key: string): void {
  */
 export function Resolve(bot: Unit, mode: number, raw: any): any {
     // mode is nil when a BOT_MODE_* global is missing in this game build (BOT_MODE_OUTPOST is unverified).
-    if (type(raw) !== "number" || mode === undefined || !IsActive() || sharesPlayerID(bot)) return raw;
+    if (mode === undefined || !IsActive() || sharesPlayerID(bot)) return raw;
+    noteCadence(stateFor(bot), mode, GameTime());
+    if (type(raw) !== "number") return raw;
     const cfg = Get();
     const now = GameTime();
     const s = stateFor(bot);
+    noteLapses(s, mode, now);
 
     let ordered: StoredClaim[] | undefined;
     let scale = 1;
@@ -527,5 +646,6 @@ export function Tick(bot: Unit): void {
     const mode = bot.GetActiveMode();
     if (mode !== s.mode) onModeSwitch(bot, s, mode, now);
     checkStuck(bot, s, mode, now);
+    maybeCadence(bot, s, now);
     maybeSummary(bot, s, now);
 }
