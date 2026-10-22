@@ -382,7 +382,15 @@ function compute(bot: Unit, now: number): Read {
 export function ReadFor(bot: Unit, now: number): Read {
     const pid = bot.GetPlayerID();
     const cached = readCache[pid];
-    if (cached !== undefined && now >= cached.at && now - cached.at < LaneFightConfig.Settings().WindowReadEvery) return cached.read;
+    // A target handle can go null inside the cache window, and any method call on it then throws. A target gone into
+    // fog stays: the executor gates it as unseen.
+    if (
+        cached !== undefined &&
+        now >= cached.at &&
+        now - cached.at < LaneFightConfig.Settings().WindowReadEvery &&
+        (cached.read.target === undefined || !cached.read.target.IsNull())
+    )
+        return cached.read;
     const read = compute(bot, now);
     readCache[pid] = { at: now, read };
     return read;

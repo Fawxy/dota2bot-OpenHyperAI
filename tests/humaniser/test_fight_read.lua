@@ -381,6 +381,17 @@ do
 end
 
 do
+	-- In game a cached target went invalid inside WindowReadEvery and the caller's GetPlayerID threw.
+	local W = world()
+	rememberStun(W)
+	T = T + 1
+	local first = W.read()
+	W.enemy.removed = true
+	local again = W.read()
+	check("a cached read whose target handle went null is read again", first.target == W.enemy and again.target == nil, again)
+end
+
+do
 	local W = world({ laneFight = { Enable = false } })
 	rememberStun(W)
 	T = T + 1

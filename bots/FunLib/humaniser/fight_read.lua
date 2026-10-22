@@ -508,7 +508,7 @@ end
 function ____exports.ReadFor(bot, now)
     local pid = bot:GetPlayerID()
     local cached = readCache[pid]
-    if cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().WindowReadEvery then
+    if cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().WindowReadEvery and (cached.read.target == nil or not cached.read.target:IsNull()) then
         return cached.read
     end
     local read = compute(bot, now)
