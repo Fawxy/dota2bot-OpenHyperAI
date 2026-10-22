@@ -19,7 +19,8 @@ local function ability(name, o)
 	}
 end
 
--- Bottom lane, one laner per side; fronts meet at x = 0 with one enemy creep there. The bot is level 2 and the enemy
+-- Bottom lane, one laner per side; fronts meet at x = 0 with one enemy creep there. The bot stands at x = -500, 800
+-- from the enemy: out of attack range (550) but within the 950 a trade may start from. The bot is level 2 and the enemy
 -- level 1, so the read gives a "level" window. `sign` mirrors x so our side is always negative x.
 local function world(o)
 	o = o or {}
@@ -29,11 +30,11 @@ local function world(o)
 	local laneFight = o.laneFight or {}
 	if laneFight.Enable == nil then laneFight.Enable = true end
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true },
-		intent = o.intent })
+		intent = o.intent, enable = o.enable })
 	T = 100
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
-	local bot = MakeUnit({ pid = 1, team = team, loc = Vector(sign * -800, BOT_Y), level = o.botLevel or 2, hp = o.botHP or 100,
+	local bot = MakeUnit({ pid = 1, team = team, loc = Vector(sign * (o.botX or -500), BOT_Y), level = o.botLevel or 2, hp = o.botHP or 100,
 		mode = BotMode.Laning })
 	bot.pos, bot.lane = 5, Lane.Bot
 	bot.estDamage = o.burst or 0
@@ -139,6 +140,31 @@ do
 	check("the end is logged with its reason", W.events("lanefight_end", "phase=trade reason=low-hp") == 1, table.concat(W.lines, "\n"))
 end
 
+do
+	local W = world({ botX = -800 })
+	play(W, 2)
+	check("no trade on a target beyond attack range + 400", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=range") == 1,
+		table.concat(W.lines, "\n"))
+end
+
+do
+	-- Out of range for 1.5 s after the start, then in range: the clock starts at the first in-range attack order.
+	local W = world()
+	play(W, 0.7)
+	local started = T
+	play(W, 1.5)
+	W.at(-200)
+	play(W, 2.2)
+	check("the trade clock starts at the first in-range attack, not at the start", W.events("lanefight_end") == 0 and W.age("trade") ~= nil,
+		T - started)
+	play(W, 0.6)
+	check("the trade ends TradeDuration after its first attack", W.events("lanefight_end", "reason=duration") == 1, table.concat(W.lines, "\n"))
+	local W2 = world()
+	play(W2, 3.4)
+	check("a trade that never gets in range ends after TradeDuration", W2.events("lanefight_end", "reason=reach") == 1,
+		table.concat(W2.lines, "\n"))
+end
+
 local function hitWorld(onCreep)
 	local W = world()
 	W.at(-200)
@@ -157,7 +183,7 @@ end
 do
 	local W = hitWorld(false)
 	play(W, 1.7)
-	check("trade ends after TradeHits landed attacks", W.events("lanefight_end", "reason=hits") == 1 and W.age("trade") == nil,
+	check("trade ends after TradeHits landed attacks", W.events("lanefight_end", "reason=hits hits=3") == 1 and W.age("trade") == nil,
 		table.concat(W.lines, "\n"))
 	local W2 = hitWorld(true)
 	play(W2, 1.7)
@@ -185,15 +211,20 @@ do
 	check("setup: the trade started while laning outbids team_roam", hasStart(W, "trade") and W.bot.mode == BotMode.Laning)
 	play(W, 0.6)
 	check("a mode other than team_roam or attack does not end it within 1 s", W.events("lanefight_end") == 0)
-	play(W, 0.6)
-	check("another mode active for over 1 s ends the phase", W.events("lanefight_abort", "reason=mode:laning") == 1
-		and W.events("lanefight_end", "reason=mode:laning") == 1 and W.age("trade") == nil, table.concat(W.lines, "\n"))
+	local guard = 0
+	while W.events("lanefight_end") == 0 and guard < 60 do play(W, FRAME) guard = guard + 1 end
+	check("trades are not protected: laning at 0.9 ends a trade after 1 s", W.events("lanefight_abort", "reason=mode:laning") == 1
+		and W.events("lanefight_end", "reason=mode:laning") == 1 and W.age("trade") == nil and T - 100.31 < 1.7, table.concat(W.lines, "\n"))
+	play(W, 1)
+	check("a trade that never took over does not use up its window instance", W.events("lanefight_start", "phase=trade") == 2,
+		W.events("lanefight_start", "phase=trade"))
 end
 
 do
 	local W = world()
 	W.attack = 0.95
-	play(W, 3.2)
+	W.bot.target = W.enemy
+	play(W, 3.6)
 	check("Valve's attack mode taking over does not abort the trade", W.bot.mode == BotMode.Attack and W.events("lanefight_abort") == 0
 		and W.events("lanefight_end", "reason=duration") == 1, table.concat(W.lines, "\n"))
 end
@@ -281,7 +312,8 @@ do
 	check("a blocked start logs gate=low-hp once per window instance", W.events("lanefight_gate", "gate=low-hp") == 1,
 		table.concat(W.lines, "\n"))
 
-	W = gateWorld({}, function(W) W.retreat = 0.72 end)
+	-- Laning stays the active mode, so the gate is retreat's desire, not the mode.
+	W = gateWorld({}, function(W) W.retreat, W.laning = 0.72, 0.8 end)
 	check("retreat at StartMaxRetreat blocks the start", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=retreat") == 1,
 		table.concat(W.lines, "\n"))
 
@@ -326,6 +358,7 @@ offCase("LaneFight off", { burst = 1000, laneFight = { Enable = false } })
 offCase("Trade and Kill off", { burst = 1000, laneFight = { Trade = false, Kill = false } })
 offCase("the laning phase over", { burst = 1000 }, function() LANING = false end)
 offCase("Teams = allies and no human ally", { burst = 1000, laneFight = { Teams = "allies" } })
+offCase("Humaniser off", { burst = 1000, enable = false })
 
 do
 	local W = world({ laneFight = { Trade = false } })
@@ -360,6 +393,106 @@ do
 		and W2.events("lanefight_start") == W2.events("lanefight_end") and W2.events("lanefight_start") >= 1, table.concat(W2.lines, "\n"))
 end
 
+-- ------------------------------------------------------------------------------------------- commit focus
+
+local function focusAge(mode, W) return W.H.Intent.ClaimAge(W.bot, "lanefight:commit_focus", mode) end
+
+do
+	local W = world({ burst = 1000 })
+	W.laning = 0.9
+	W.bot.mode = BotMode.Laning
+	play(W, 1.5)
+	check("a commit takes over from laning at 0.9 as the active mode", W.bot.mode == BotMode.TeamRoam and W.events("lanefight_end") == 0
+		and W.age("commit") ~= nil, string.format("laning %.3f roam %.3f", W.last.laning, W.last.roam))
+	check("the commit caps laning below its floor even with the x1.1", W.last.laning * 1.1 < W.last.roam, W.last.laning)
+
+	W.at(-200)
+	W.laning = 0.45
+	W.bot.hp = 70
+	W.retreat = 0.85
+	play(W, 1.5)
+	check("retreat's creep branch at 0.85 and 70% HP does not end the commit", W.bot.mode == BotMode.TeamRoam and W.events("lanefight_end") == 0
+		and W.last.retreat < W.last.roam, string.format("retreat %.3f roam %.3f", W.last.retreat, W.last.roam))
+
+	W.bot.hp = 45
+	play(W, 1.5)
+	check("below CommitHoldHP retreat wins", W.bot.mode == BotMode.Retreat and W.events("lanefight_end", "phase=commit reason=retreat") == 1,
+		table.concat(W.lines, "\n"))
+	check("the focus caps go with the commit", focusAge(BotMode.Laning, W) == nil and focusAge(BotMode.Retreat, W) == nil
+		and focusAge(BotMode.Ward, W) == nil)
+end
+
+do
+	local W = world()
+	W.at(-200)
+	play(W, 0.7)
+	check("a trade posts no focus caps", W.age("trade") ~= nil and focusAge(BotMode.Laning, W) == nil and focusAge(BotMode.Retreat, W) == nil)
+end
+
+-- ------------------------------------------------------------------------------- avoid, mode gate, switches
+
+do
+	local W = world()
+	play(W, 0.7)
+	T = T + FRAME
+	local r = W.LF.RoamDesire(W.bot, 0.3, true)
+	check("team_roam's ability-zone escape ends the phase", r == 0.3 and W.age("trade") == nil
+		and W.events("lanefight_end", "reason=avoid") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	local W = world()
+	W.bot.mode = BotMode.Farm
+	for _ = 1, 6 do
+		T = T + ROUND
+		W.H.Intent.Resolve(W.bot, BotMode.Retreat, 0.2)
+		W.LF.RoamDesire(W.bot, 0.2)
+	end
+	check("no start from another active mode, logged once", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=mode:farm") == 1,
+		table.concat(W.lines, "\n"))
+end
+
+do
+	local W = world({ burst = 1000 })
+	play(W, 0.7)
+	W.H.Config.Get().LaneFight.Enable = false
+	play(W, ROUND)
+	check("turning LaneFight off mid-commit ends it and releases the claims", W.age("commit") == nil and focusAge(BotMode.Laning, W) == nil
+		and W.events("lanefight_end", "reason=off") == 1, table.concat(W.lines, "\n"))
+	local W2 = world()
+	play(W2, 0.7)
+	W2.LF.Config.Settings().Trade = false
+	play(W2, ROUND)
+	check("turning Trade off mid-trade ends it and releases the claim", W2.age("trade") == nil
+		and W2.events("lanefight_end", "reason=flag-off") == 1, table.concat(W2.lines, "\n"))
+end
+
+-- Five switches in five seconds turn on Intent's thrash limiter; the phase starts right after and must still win.
+for _, case in ipairs({ { phase = "trade", laning = 0.45 }, { phase = "commit", laning = 0.7 } }) do
+	local W = world({ botLevel = 1 })
+	W.bot.action = BOT_ACTION_TYPE_MOVE_TO
+	W.laning = case.laning
+	local switches, i = 0, 0
+	local prev = W.bot.mode
+	W.onFrame = function()
+		W.H.Intent.Tick(W.bot)
+		if W.bot.mode ~= prev then switches, prev = switches + 1, W.bot.mode end
+	end
+	-- team_roam's raw desire alternates above and below laning's every round.
+	W.beforeRetreat = function()
+		i = i + 1
+		W.roam = (i % 2 == 1 and i <= 7) and 0.9 or 0.2
+	end
+	play(W, 7 * ROUND)
+	local before = switches
+	if case.phase == "trade" then W.bot.level = 2 else W.bot.estDamage = 1000 end
+	play(W, 1.2)
+	check("setup: five or more mode switches before the " .. case.phase .. " turned the thrash limiter on", before >= 5
+		and W.events("thrash", "mode=laning") >= 1, before)
+	check("a " .. case.phase .. " survives the thrash limiter", hasStart(W, case.phase) and W.bot.mode == BotMode.TeamRoam
+		and W.events("lanefight_end") == 0, table.concat(W.lines, "\n"))
+end
+
 -- ------------------------------------------------------------------------------------------------ hook pins
 
 -- team_roam's mode file cannot be loaded offline, so pin the two call sites and their order.
@@ -368,10 +501,10 @@ do
 	local src = f:read("*a")
 	f:close()
 	check("team_roam GetDesire hook: RoamDesire after CapForLanePush, before Intent.Resolve", src:find(
-		"    res = CapForLanePush(res)\n    res = J.Humaniser.LaneFight.RoamDesire(bot, res)\n", 1, true) ~= nil
-		and src:find("    res = J.Humaniser.LaneFight.RoamDesire(bot, res)\n\n    -- J.Utils.SetCachedVars(cacheKey, res)\n    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)", 1, true) ~= nil)
+		"    res = CapForLanePush(res)\n    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)\n", 1, true) ~= nil
+		and src:find("    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)\n\n    -- J.Utils.SetCachedVars(cacheKey, res)\n    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)", 1, true) ~= nil)
 	check("team_roam Think hook: after ItemOpsThink, before the last-hit creep branch", src:find(
-		"    ItemOpsThink()\n    if J.Humaniser.LaneFight.Think(bot) then return end\n\n\tif J.IsValid(hTargetCreep) then", 1, true) ~= nil)
+		"    ItemOpsThink()\n    if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end\n\n\tif J.IsValid(hTargetCreep) then", 1, true) ~= nil)
 end
 
 finish()

@@ -1,5 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local attackingTarget
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -17,6 +18,10 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+function attackingTarget(bot, s)
+    local t = bot:GetAttackTarget()
+    return t ~= nil and not t:IsNull() and t:IsHero() and t:GetPlayerID() == s.targetPid
+end
 ____exports.Config = LaneFightConfig
 ____exports.AbilityClasses = AbilityClasses
 ____exports.CooldownMemory = CooldownMemory
@@ -47,6 +52,18 @@ local END_GRACE = 0.5
 local MODE_GRACE = 1
 local LEASH = 1800
 local RANGE_SLACK = 50
+local TRADE_REACH = 400
+local ACTIVE_BOOST = 1.1
+local FOCUS_SOURCE = "lanefight:commit_focus"
+local FOCUS_MODES = {
+    BotMode.Laning,
+    BotMode.Ward,
+    BotMode.Rune,
+    BotMode.SecretShop,
+    BotMode.SideShop,
+    BotMode.Roam
+}
+local START_MODES = {BotMode.Laning, BotMode.TeamRoam, BotMode.Attack}
 local fights = {}
 local function stateFor(bot)
     local pid = bot:GetPlayerID()
@@ -55,6 +72,8 @@ local function stateFor(bot)
         s = {
             phase = "idle",
             startedAt = 0,
+            tookOver = false,
+            spent = {},
             hits = 0,
             lastAttack = 0,
             streak = 0,
@@ -110,6 +129,16 @@ end
 --- Why a trade or commit must not start now, else undefined.
 local function startBlocked(bot)
     local cfg = LaneFightConfig.Settings()
+    local mode = bot:GetActiveMode()
+    local modeOk = false
+    for ____, m in ipairs(START_MODES) do
+        if m == mode then
+            modeOk = true
+        end
+    end
+    if not modeOk then
+        return "mode:" .. HDebug.ModeName(mode)
+    end
     if hpFraction(bot) < cfg.StartHP then
         return "low-hp"
     end
@@ -132,8 +161,15 @@ local function partnerUnits(bot, snap)
     local partner = LaneRoles.Partner(bot, snap)
     return partner ~= nil and partner.unit ~= nil and not partner.unit:IsNull() and ({partner.unit}) or ({})
 end
+local function focusCap()
+    local cfg = LaneFightConfig.Settings()
+    return cfg.CommitFloor / ACTIVE_BOOST - cfg.CommitFocusMargin
+end
+--- The phase's floor on team_roam. A commit also caps laning and the errands (as 07's camp jobs do), and retreat while
+-- HP is at least CommitHoldHP: retreat's laning-phase creep-damage branch bids 0.8-0.9 at healthy HP. SURVIVAL and
+-- HUMAN_ORDER sit on higher tiers, and StopHP ends the phase.
 local function claim(bot, phase)
-    return Intent.Claim(
+    local posted = Intent.Claim(
         bot,
         {
             source = "lanefight:" .. phase,
@@ -142,9 +178,26 @@ local function claim(bot, phase)
             floor = floorOf(phase)
         }
     )
+    if not posted or phase ~= "commit" then
+        return posted
+    end
+    local cap = focusCap()
+    for ____, mode in ipairs(FOCUS_MODES) do
+        Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = mode, cap = cap})
+    end
+    if hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP then
+        Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = BotMode.Retreat, cap = cap})
+    else
+        Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat)
+    end
+    return posted
 end
 local function start(bot, s, phase, target, inst, now, detail)
     inst.started = true
+    s.spent = {inst}
+    s.tookOver = false
+    s.clockAt = nil
+    s.retreatSince = nil
     s.phase = phase
     s.target = target
     s.targetPid = target:GetPlayerID()
@@ -179,6 +232,15 @@ local function ____end(bot, s, reason)
         return
     end
     Intent.ReleaseSource(bot, "lanefight:" .. phase)
+    Intent.ReleaseSource(bot, FOCUS_SOURCE)
+    if not s.tookOver then
+        for ____, inst in ipairs(s.spent) do
+            inst.started = false
+        end
+    end
+    s.spent = {}
+    s.streak = 0
+    s.streakKey = nil
     s.phase = "idle"
     s.target = nil
     s.targetPid = nil
@@ -191,7 +253,8 @@ local function ____end(bot, s, reason)
                 bot:GetPlayerID()
             },
             {"phase", phase},
-            {"reason", reason}
+            {"reason", reason},
+            {"hits", s.hits}
         }
     )
     HDebug.Log(
@@ -205,8 +268,7 @@ local function lastHits(bot, s)
         return
     end
     s.lastAttack = at
-    local t = bot:GetAttackTarget()
-    if t ~= nil and not t:IsNull() and t:IsHero() and t:GetPlayerID() == s.targetPid then
+    if attackingTarget(bot, s) then
         s.hits = s.hits + 1
     end
 end
@@ -290,15 +352,31 @@ local function endReason(bot, s, now)
         if s.hits >= cfg.TradeHits then
             return "hits"
         end
-        if now - s.startedAt >= cfg.TradeDuration then
+        if s.clockAt == nil and attackingTarget(bot, s) then
+            s.clockAt = now
+        end
+        if s.clockAt ~= nil and now - s.clockAt >= cfg.TradeDuration then
             return "duration"
+        end
+        if s.clockAt == nil and now - s.startedAt >= cfg.TradeDuration then
+            return "reach"
         end
     elseif s.phase == "commit" and now - s.startedAt >= cfg.CommitMax then
         return "commit-max"
     end
+    local retreat = Intent.Resolved(bot, BotMode.Retreat)
+    if hpFraction(bot) < cfg.CommitHoldHP and retreat ~= nil and retreat >= floorOf(s.phase) then
+        s.retreatSince = s.retreatSince or now
+        if now - s.retreatSince > END_GRACE then
+            return "retreat"
+        end
+    else
+        s.retreatSince = nil
+    end
     local mode = bot:GetActiveMode()
     if mode == BotMode.TeamRoam or mode == BotMode.Attack then
         s.offModeSince = nil
+        s.tookOver = true
     else
         s.offModeSince = s.offModeSince or now
         if now - s.offModeSince > MODE_GRACE then
@@ -404,7 +482,10 @@ local function considerStart(bot, s, snap, now)
                         {"margin", k.margin}
                     )
                     if windowKey ~= nil then
-                        touch(s, windowKey, now).started = true
+                        local w = touch(s, windowKey, now)
+                        w.started = true
+                        local ____s_spent_5 = s.spent
+                        ____s_spent_5[#____s_spent_5 + 1] = w
                     end
                 end
             end
@@ -419,7 +500,7 @@ local function considerStart(bot, s, snap, now)
     if s.phase ~= "idle" or inst.started or s.streak < 2 then
         return
     end
-    local blocked = startBlocked(bot)
+    local blocked = GetUnitToUnitDistance(bot, target) > bot:GetAttackRange() + TRADE_REACH and "range" or startBlocked(bot)
     if blocked ~= nil then
         gate(bot, inst, blocked)
     else
@@ -436,7 +517,8 @@ local function considerStart(bot, s, snap, now)
 end
 --- mode_team_roam_generic GetDesire, after CapForLanePush. While a trade or commit runs it posts the FIGHT floor on
 -- team_roam and returns `raw`; the claim lifts it in Intent.Resolve. Without intent it returns max(raw, floor).
-function ____exports.RoamDesire(bot, raw)
+-- `avoiding` is team_roam's IsAvoidingAbilityZone: its escape runs instead of the fight, so the phase ends.
+function ____exports.RoamDesire(bot, raw, avoiding)
     if type(raw) ~= "number" then
         return raw
     end
@@ -444,6 +526,12 @@ function ____exports.RoamDesire(bot, raw)
     if not gatesOpen(bot) then
         if s ~= nil then
             ____end(bot, s, "off")
+        end
+        return raw
+    end
+    if avoiding == true then
+        if s ~= nil then
+            ____end(bot, s, "avoid")
         end
         return raw
     end
@@ -500,6 +588,9 @@ function ____exports.Think(bot)
     claim(bot, s.phase)
     bot:SetTarget(target)
     if GetUnitToUnitDistance(bot, target) <= bot:GetAttackRange() + RANGE_SLACK then
+        if s.clockAt == nil then
+            s.clockAt = DotaTime()
+        end
         bot:Action_AttackUnit(target, false)
     else
         bot:Action_MoveToLocation(target:GetLocation())
@@ -509,17 +600,17 @@ end
 --- The trade or commit target, while one runs.
 function ____exports.Target(bot)
     local s = fights[bot:GetPlayerID()]
-    local ____temp_5
+    local ____temp_6
     if s ~= nil and (s.phase == "trade" or s.phase == "commit") then
-        ____temp_5 = s.target
+        ____temp_6 = s.target
     else
-        ____temp_5 = nil
+        ____temp_6 = nil
     end
-    return ____temp_5
+    return ____temp_6
 end
 function ____exports.CurrentPhase(bot)
-    local ____opt_6 = fights[bot:GetPlayerID()]
-    return ____opt_6 and ____opt_6.phase or "idle"
+    local ____opt_7 = fights[bot:GetPlayerID()]
+    return ____opt_7 and ____opt_7.phase or "idle"
 end
 --- "fight: window=<type|none> kill=<margin|-> mem=<n> phase=<p>" for the overlay.
 function ____exports.Describe(bot)

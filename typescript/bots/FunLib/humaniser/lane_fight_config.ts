@@ -51,6 +51,10 @@ export const DEFAULTS = {
     FogGrace: 1.0,
     TradeFloor: 0.75,
     CommitFloor: 0.82,
+    // While committing, laning, the errands and retreat are capped at CommitFloor / 1.1 - CommitFocusMargin: the capped
+    // mode may be the active one and get the engine's x1.1. Retreat is held only while HP is at least CommitHoldHP.
+    CommitFocusMargin: 0.01,
+    CommitHoldHP: 0.5,
     TowerOverride: 1.3,
     FollowMargin: 0.8,
     Overwhelming: 1.5,

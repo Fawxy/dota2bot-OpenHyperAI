@@ -61,6 +61,13 @@ interface FightState {
     targetPid?: number;
     lastLoc?: Vector;
     startedAt: number;
+    // TradeDuration runs from the first in-range attack order (or the target seen as the bot's attack target).
+    clockAt?: number;
+    // team_roam or attack was the active mode at some point in this phase.
+    tookOver: boolean;
+    // Window instances this phase spends; given back if the phase never took over.
+    spent: Instance[];
+    retreatSince?: number;
     hits: number;
     lastAttack: number;
     fogSince?: number;
@@ -88,6 +95,15 @@ const MODE_GRACE = 1;
 // team_roam drops a target farther than this.
 const LEASH = 1800;
 const RANGE_SLACK = 50;
+// A trade starts only on a target this far beyond the bot's attack range at most.
+const TRADE_REACH = 400;
+// The engine's bonus on the active mode's desire.
+const ACTIVE_BOOST = 1.1;
+const FOCUS_SOURCE = "lanefight:commit_focus";
+// The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
+const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
+// Modes a lane fight may start from.
+const START_MODES: BotMode[] = [BotMode.Laning, BotMode.TeamRoam, BotMode.Attack];
 
 const fights: Record<number, FightState> = {};
 
@@ -95,7 +111,7 @@ function stateFor(bot: Unit): FightState {
     const pid = bot.GetPlayerID();
     let s = fights[pid];
     if (s === undefined) {
-        s = { phase: "idle", startedAt: 0, hits: 0, lastAttack: 0, streak: 0, killDelay: 0, instances: {} };
+        s = { phase: "idle", startedAt: 0, tookOver: false, spent: [], hits: 0, lastAttack: 0, streak: 0, killDelay: 0, instances: {} };
         fights[pid] = s;
     }
     return s;
@@ -142,8 +158,13 @@ function priorityLive(bot: Unit): boolean {
 /** Why a trade or commit must not start now, else undefined. */
 function startBlocked(bot: Unit): string | undefined {
     const cfg = LaneFightConfig.Settings();
+    const mode = bot.GetActiveMode();
+    let modeOk = false;
+    for (const m of START_MODES) if (m === mode) modeOk = true;
+    if (!modeOk) return `mode:${HDebug.ModeName(mode)}`;
     if (hpFraction(bot) < cfg.StartHP) return "low-hp";
-    // Retreat is scored before team_roam in each round, so this is this round's retreat desire (none with intent off).
+    // Retreat is scored before team_roam in each round, so this is this round's retreat desire. With intent off there
+    // is no resolved retreat desire to read, so the StartMaxRetreat gate is not enforced.
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= cfg.StartMaxRetreat) return "retreat";
     if (CampJobs.Active(bot)) return "camp";
@@ -157,12 +178,32 @@ function partnerUnits(bot: Unit, snap: LaneState.LaneSnapshot): Unit[] {
     return partner !== undefined && partner.unit !== undefined && !partner.unit.IsNull() ? [partner.unit] : [];
 }
 
+function focusCap(): number {
+    const cfg = LaneFightConfig.Settings();
+    return cfg.CommitFloor / ACTIVE_BOOST - cfg.CommitFocusMargin;
+}
+
+/**
+ * The phase's floor on team_roam. A commit also caps laning and the errands (as 07's camp jobs do), and retreat while
+ * HP is at least CommitHoldHP: retreat's laning-phase creep-damage branch bids 0.8-0.9 at healthy HP. SURVIVAL and
+ * HUMAN_ORDER sit on higher tiers, and StopHP ends the phase.
+ */
 function claim(bot: Unit, phase: Phase): boolean {
-    return Intent.Claim(bot, { source: `lanefight:${phase}`, tier: "FIGHT", mode: BotMode.TeamRoam, floor: floorOf(phase) });
+    const posted = Intent.Claim(bot, { source: `lanefight:${phase}`, tier: "FIGHT", mode: BotMode.TeamRoam, floor: floorOf(phase) });
+    if (!posted || phase !== "commit") return posted;
+    const cap = focusCap();
+    for (const mode of FOCUS_MODES) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode, cap });
+    if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode: BotMode.Retreat, cap });
+    else Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat);
+    return posted;
 }
 
 function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: [string, any]): void {
     inst.started = true;
+    s.spent = [inst];
+    s.tookOver = false;
+    s.clockAt = undefined;
+    s.retreatSince = undefined;
     s.phase = phase;
     s.target = target;
     s.targetPid = target.GetPlayerID();
@@ -183,6 +224,13 @@ function end(bot: Unit, s: FightState, reason: string): void {
     const phase = s.phase;
     if (phase === "idle") return;
     Intent.ReleaseSource(bot, `lanefight:${phase}`);
+    Intent.ReleaseSource(bot, FOCUS_SOURCE);
+    // A claim that never won the takeover did not use the window.
+    if (!s.tookOver) for (const inst of s.spent) inst.started = false;
+    s.spent = [];
+    // A restart needs the window on two fresh reads again.
+    s.streak = 0;
+    s.streakKey = undefined;
     s.phase = "idle";
     s.target = undefined;
     s.targetPid = undefined;
@@ -191,6 +239,7 @@ function end(bot: Unit, s: FightState, reason: string): void {
         ["pid", bot.GetPlayerID()],
         ["phase", phase],
         ["reason", reason],
+        ["hits", s.hits],
     ]);
     HDebug.Log("lanefight", `end pid=${bot.GetPlayerID()} phase=${phase} reason=${reason}`);
 }
@@ -199,8 +248,12 @@ function lastHits(bot: Unit, s: FightState): void {
     const at = bot.GetLastAttackTime();
     if (at <= s.lastAttack) return;
     s.lastAttack = at;
+    if (attackingTarget(bot, s)) s.hits++;
+}
+
+function attackingTarget(bot: Unit, s: FightState): boolean {
     const t = bot.GetAttackTarget() as Unit | undefined;
-    if (t !== undefined && !t.IsNull() && t.IsHero() && t.GetPlayerID() === s.targetPid) s.hits++;
+    return t !== undefined && !t.IsNull() && t.IsHero() && t.GetPlayerID() === s.targetPid;
 }
 
 /** The lane-enemy entry for the target, from the perception-filtered cached list. */
@@ -248,12 +301,24 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
 
     if (s.phase === "trade") {
         if (s.hits >= cfg.TradeHits) return "hits";
-        if (now - s.startedAt >= cfg.TradeDuration) return "duration";
+        // Valve's attack mode on the target counts as the trade under way.
+        if (s.clockAt === undefined && attackingTarget(bot, s)) s.clockAt = now;
+        if (s.clockAt !== undefined && now - s.clockAt >= cfg.TradeDuration) return "duration";
+        if (s.clockAt === undefined && now - s.startedAt >= cfg.TradeDuration) return "reach";
     } else if (s.phase === "commit" && now - s.startedAt >= cfg.CommitMax) return "commit-max";
 
+    // Below CommitHoldHP a retreat bidding at the floor wants out; the engine's x1.1 on team_roam would keep it in.
+    const retreat = Intent.Resolved(bot, BotMode.Retreat);
+    if (hpFraction(bot) < cfg.CommitHoldHP && retreat !== undefined && retreat >= floorOf(s.phase)) {
+        s.retreatSince = s.retreatSince ?? now;
+        if (now - s.retreatSince > END_GRACE) return "retreat";
+    } else s.retreatSince = undefined;
+
     const mode = bot.GetActiveMode();
-    if (mode === BotMode.TeamRoam || mode === BotMode.Attack) s.offModeSince = undefined;
-    else {
+    if (mode === BotMode.TeamRoam || mode === BotMode.Attack) {
+        s.offModeSince = undefined;
+        s.tookOver = true;
+    } else {
         s.offModeSince = s.offModeSince ?? now;
         if (now - s.offModeSince > MODE_GRACE) {
             const reason = `mode:${HDebug.ModeName(mode)}`;
@@ -322,7 +387,11 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
                     if (s.phase === "trade") end(bot, s, "commit");
                     start(bot, s, "commit", target, inst, now, ["margin", k.margin]);
                     // A commit spends the trade window on the same target too.
-                    if (windowKey !== undefined) touch(s, windowKey, now).started = true;
+                    if (windowKey !== undefined) {
+                        const w = touch(s, windowKey, now);
+                        w.started = true;
+                        s.spent.push(w);
+                    }
                 }
             }
         } else s.killSince = undefined;
@@ -331,7 +400,7 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
     if (windowKey === undefined || !LaneFightConfig.IsOn("Trade")) return;
     const inst = touch(s, windowKey, now);
     if (s.phase !== "idle" || inst.started || s.streak < 2) return;
-    const blocked = startBlocked(bot);
+    const blocked = GetUnitToUnitDistance(bot, target) > bot.GetAttackRange() + TRADE_REACH ? "range" : startBlocked(bot);
     if (blocked !== undefined) gate(bot, inst, blocked);
     else start(bot, s, "trade", target, inst, now, ["window", read.window]);
 }
@@ -339,12 +408,17 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
 /**
  * mode_team_roam_generic GetDesire, after CapForLanePush. While a trade or commit runs it posts the FIGHT floor on
  * team_roam and returns `raw`; the claim lifts it in Intent.Resolve. Without intent it returns max(raw, floor).
+ * `avoiding` is team_roam's IsAvoidingAbilityZone: its escape runs instead of the fight, so the phase ends.
  */
-export function RoamDesire(bot: Unit, raw: number): number {
+export function RoamDesire(bot: Unit, raw: number, avoiding?: boolean): number {
     if (type(raw) !== "number") return raw;
     const s = fights[bot.GetPlayerID()];
     if (!gatesOpen(bot)) {
         if (s !== undefined) end(bot, s, "off");
+        return raw;
+    }
+    if (avoiding === true) {
+        if (s !== undefined) end(bot, s, "avoid");
         return raw;
     }
     const snap = LaneState.ForBot(bot);
@@ -383,8 +457,10 @@ export function Think(bot: Unit): boolean {
     }
     claim(bot, s.phase);
     bot.SetTarget(target);
-    if (GetUnitToUnitDistance(bot, target) <= bot.GetAttackRange() + RANGE_SLACK) bot.Action_AttackUnit(target, false);
-    else bot.Action_MoveToLocation(target.GetLocation());
+    if (GetUnitToUnitDistance(bot, target) <= bot.GetAttackRange() + RANGE_SLACK) {
+        if (s.clockAt === undefined) s.clockAt = DotaTime();
+        bot.Action_AttackUnit(target, false);
+    } else bot.Action_MoveToLocation(target.GetLocation());
     return true;
 }
 
