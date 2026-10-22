@@ -320,7 +320,7 @@ local function underEnemyTower(team, loc)
     return false
 end
 local function isUsable(unit)
-    return unit ~= nil and unit ~= nil and unit:IsAlive() and unit:CanBeSeen()
+    return unit ~= nil and unit ~= nil and not unit:IsNull() and unit:IsAlive() and unit:CanBeSeen()
 end
 local function isLaneCreep(unit)
     return isUsable(unit) and LaneState.IsLaneCreepName(unit:GetUnitName())

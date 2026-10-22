@@ -1426,7 +1426,8 @@ function pulledCreeps(bot: Unit, job: Job): Unit[] {
 function stepTake(bot: Unit, job: Job, now: number): boolean {
     const t = settings().Timing;
     if (job.swing !== undefined) {
-        if (job.swing.target.IsAlive() && now - job.swing.at < t.TakePullSwing) return true;
+        const target = job.swing.target;
+        if (!target.IsNull() && target.IsAlive() && now - job.swing.at < t.TakePullSwing) return true;
         job.swing = undefined;
     }
     if (job.arrivedAt === undefined && arrived(bot, job.stand)) job.arrivedAt = now;

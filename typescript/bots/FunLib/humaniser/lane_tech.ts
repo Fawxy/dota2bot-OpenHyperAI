@@ -165,7 +165,7 @@ function underEnemyTower(team: number, loc: Vector): boolean {
 }
 
 function isUsable(unit: Unit | null | undefined): unit is Unit {
-    return unit !== null && unit !== undefined && unit.IsAlive() && unit.CanBeSeen();
+    return unit !== null && unit !== undefined && !unit.IsNull() && unit.IsAlive() && unit.CanBeSeen();
 }
 
 function isLaneCreep(unit: Unit | null | undefined): unit is Unit {

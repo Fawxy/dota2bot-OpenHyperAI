@@ -2149,7 +2149,8 @@ end
 local function stepTake(bot, job, now)
     local t = settings().Timing
     if job.swing ~= nil then
-        if job.swing.target:IsAlive() and now - job.swing.at < t.TakePullSwing then
+        local target = job.swing.target
+        if not target:IsNull() and target:IsAlive() and now - job.swing.at < t.TakePullSwing then
             return true
         end
         job.swing = nil

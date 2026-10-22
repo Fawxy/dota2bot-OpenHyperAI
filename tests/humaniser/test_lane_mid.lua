@@ -98,6 +98,10 @@ do
 	local creep = MakeCreep({ team = 3, x = 100, y = 0 })
 	check("support hands off a human mid's wave", M.MayTouchWave(support, creep) == false)
 	check("the mid bot itself may touch it", M.MayTouchWave(mid, creep) == true)
+	local gone = MakeCreep({ team = 3, x = 100, y = 0 })
+	RemoveCreep(gone)
+	local ok, err = pcall(M.MayTouchWave, support, gone)
+	check("a removed creep handle does not throw", ok, err)
 	T = 700
 	LANING = false
 	check("after laning anyone may touch it", M.MayTouchWave(support, creep) == true)

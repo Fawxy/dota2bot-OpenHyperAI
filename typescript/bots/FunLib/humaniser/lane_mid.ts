@@ -49,7 +49,8 @@ export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
 
 /** False for a non-mid bot near the wave of a human mid, so it does not shove, pull or deny there. */
 export function MayTouchWave(bot: Unit, creep: Unit): boolean {
-    if (!LaneConfig.IsOn("Mid") || !LaneConfig.InLaningPhase() || bot.GetAssignedLane() === Lane.Mid) return true;
+    // A removed handle is nobody's wave; callers filter it out before acting.
+    if (creep.IsNull() || !LaneConfig.IsOn("Mid") || !LaneConfig.InLaningPhase() || bot.GetAssignedLane() === Lane.Mid) return true;
     const s = LaneState.Get(bot.GetTeam(), Lane.Mid, bot);
     if (s === undefined) return true;
     const radii = LaneConfig.Settings().Radii;
