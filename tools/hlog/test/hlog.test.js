@@ -427,6 +427,20 @@ test('summary reports the forecast fit and pre-contest outcomes', () => {
     assert.match(text, /forecast fit:\n {2}safe n=2 K=0\.30 r2=1\.00/);
     assert.match(text, /pre-contest: started 2 attacked 1 no-pull 1 enemy-in-lane 0 aborted 1/);
 });
+test('summary reports pull traces per camp', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=90 ev=lane_pull_trace pid=3 kind=full camp=18 key=radiant_off_large end=mistake:no-divert expWave=6.8 wave=9.8 nIn=5 nLast=8 nAtWave=0 waveMax=4 ever=0 peak=0 dur=12',
+            '[HEV] t=150 ev=lane_pull_trace pid=3 kind=full camp=18 key=radiant_off_large end=ok expWave=6.8 wave=7.8 nIn=5 nLast=12 nAtWave=3 waveMax=4 ever=4 peak=1 dur=12',
+            '[HEV] t=200 ev=lane_pull_trace pid=3 kind=full camp=18 key=radiant_off_large end=mistake:no-divert expWave=6.8 wave=-1 nIn=-1 nLast=-1 nAtWave=0 waveMax=0 ever=0 peak=0 dur=12',
+            '[HEV] t=210 ev=lane_pull_trace pid=4 kind=full camp=1 key=radiant_safe_small end=mistake:weak-pull expWave=5 wave=4.5 nIn=4 nLast=11 nAtWave=2 waveMax=4 ever=4 peak=0.5 dur=12',
+        ].join('\n')
+    )[0];
+    const text = report.summary(game);
+    assert.match(text, /radiant_off_large n=3 wave seen 2 late \+2\.0s camp gone 1 camp never there 1 ever 4\/8 peak 0\.00/);
+    assert.match(text, /radiant_safe_small n=1 wave seen 1 late -0\.5s camp gone 0 camp never there 0 ever 4\/4 peak 0\.50/);
+});
 test('summary reports take-pull outcomes and swings', () => {
     const game = parseLog(
         [

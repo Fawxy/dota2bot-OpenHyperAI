@@ -217,6 +217,27 @@ function forecastSection(game) {
             `take-pull: started ${started} swings ${swings} no-creeps ${n('no-creeps')} timeout ${n('timeout')} outnumbered ${n('outnumbered')} low-hp ${n('low-hp')} lane-wave ${n('lane-wave')} aborted ${aborted}`
         );
     }
+    const traces = game.events.filter(e => e.ev === 'lane_pull_trace');
+    if (traces.length > 0) {
+        const byKey = new Map();
+        for (const e of traces) byKey.set(e.key, [...(byKey.get(e.key) || []), e]);
+        const median = xs => {
+            if (xs.length === 0) return undefined;
+            const s = [...xs].sort((a, b) => a - b);
+            return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+        };
+        const sec = v => (v === undefined ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}s`);
+        out.push('', 'pull trace (wave vs expected at the meet; camp gone = neutrals last seen there before the wave):');
+        for (const [key, es] of [...byKey].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+            const seen = es.filter(e => e.wave >= 0);
+            const late = median(seen.filter(e => e.expWave >= 0).map(e => e.wave - e.expWave));
+            const gone = seen.filter(e => e.nLast >= 0 && e.nLast < e.wave).length;
+            const noCamp = es.filter(e => e.nIn < 0).length;
+            const ever = es.reduce((a, e) => a + (e.ever || 0), 0);
+            const wave = es.reduce((a, e) => a + (e.waveMax || 0), 0);
+            out.push(`  ${key} n=${es.length} wave seen ${seen.length} late ${sec(late)} camp gone ${gone} camp never there ${noCamp} ever ${ever}/${wave} peak ${(median(es.map(e => e.peak)) ?? 0).toFixed(2)}`);
+        }
+    }
     const roleReads = game.events.filter(e => e.ev === 'lane_enemy_role');
     const LANES = { 1: 'top', 2: 'mid', 3: 'bot' };
     for (const team of [2, 3]) {

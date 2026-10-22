@@ -282,6 +282,51 @@ do
 		and line:find("planned=15.0 divert=1.00 grade=ok", 1, true), line)
 end
 
+local function traceEvent(lines)
+	for _, l in ipairs(lines) do
+		if l:find("ev=lane_pull_trace ", 1, true) then
+			local f = {}
+			for k, v in l:gmatch("(%w+)=(%S+)") do f[k] = tonumber(v) or v end
+			return f
+		end
+	end
+end
+
+do
+	-- The camp reaches the meet a second before the wave; two creeps hit it, then the other two: never all four at
+	-- once, so the peak is half the wave while all four were diverted.
+	local H, _, support = jobWorld(1, { telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local job = runToWatch(H, support, neutral, 76.5)
+	neutral.loc = Vector(job.meet.x, job.meet.y)
+	frame(H, support, 77)
+	local creeps = {}
+	for i = 1, 4 do creeps[i] = MakeCreep({ team = 2, x = job.meet.x, y = job.meet.y, target = i <= 2 and neutral or nil }) end
+	frame(H, support, 78)
+	for i = 1, 4 do creeps[i].target = i > 2 and neutral or nil end
+	frame(H, support, 79)
+	frame(H, support, 85)
+	check("precondition: pull graded", job.phase == "done")
+	local e = traceEvent(lines)
+	check("pull trace logged once the pull is graded", e ~= nil and e.kind == "full" and e["end"] == "mistake:weak-pull", table.concat(lines, "\n"))
+	check("every creep that hit the camp counts, not only at once", e.ever == 4 and e.waveMax == 4 and near(e.peak, 0.5), e and (e.ever .. " " .. e.peak))
+	check("camp and wave arrivals are timed from the hit", near(e.nIn, 77 - job.actualAggro) and near(e.wave, 78 - job.actualAggro) and e.nAtWave == 1,
+		e and (e.nIn .. " " .. e.wave))
+
+	local core
+	H, core, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+	lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	frame(H, support, 70)
+	core.hp = 30
+	T = 70.6
+	H.Lane.CampJobDesire(support)
+	check("precondition: aborted on the walk", H.Lane.CampJobs.Current(support).phase == "return")
+	check("no trace for a pull that was never hit", traceEvent(lines) == nil)
+end
+
 -- A creep path along the stub bot lane (y = -5000), so the small camp's pull is wave-timed: the :00 wave reaches its
 -- meet (-1600, -5000) after 7,800 / 325 = 24 s.
 local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }

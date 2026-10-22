@@ -101,6 +101,27 @@ export interface Job extends JobRequest {
     supplyItem?: SupplyItem;
     /** lane_job_supply events already logged, once per item and outcome. */
     supplyNoted?: Record<string, boolean>;
+    /** Pull with telemetry on: what reached the meet point and when, for lane_pull_trace. */
+    trace?: PullTrace;
+}
+
+/** Times are DotaTime; the event reports them relative to the hit. */
+interface PullTrace {
+    shift?: number;
+    sampledAt?: number;
+    /** First sample with one of our lane creeps within MeetWatch of the meet point. */
+    waveAt?: number;
+    /** Neutrals within MeetWatch of the meet point at that sample. */
+    neutralsAtWave: number;
+    /** First and last samples with a neutral within MeetWatch of the meet point. */
+    neutralsIn?: number;
+    neutralsLast?: number;
+    /** Most of our lane creeps within WaveSize of the meet point at one sample. */
+    waveMax: number;
+    /** Lane creeps seen with a neutral target at any sample: unlike peakDivert, not required to be at the same time. */
+    everDiverted: LuaTable<Unit, boolean>;
+    everN: number;
+    logged?: boolean;
 }
 
 type SupplyItem = "tango" | "clarity";
@@ -524,6 +545,7 @@ export function Start(bot: Unit, req: JobRequest): boolean {
         slot,
         waveAt: timing.waveAfter !== undefined ? base + timing.waveAfter : undefined,
         timing: shift !== undefined ? "live" : timing.source,
+        trace: Telemetry.IsEnabled() ? newTrace(shift) : undefined,
         startedAt: now,
         peakDivert: 0,
         waveSize: 0,
@@ -676,6 +698,7 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
     if (job.kind === "stack_pull") Stacking.ClearStack(job.campIdx);
     logJob(bot, job, grade);
+    logTrace(bot, job, grade);
 }
 
 /**
@@ -715,6 +738,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
     ];
     if (deferLog && Telemetry.IsEnabled()) pendingModeEnd[pid] = { fields, at: GameTime() };
     else Telemetry.Event("lane_job_abort", fields);
+    if (job.actualAggro !== undefined) logTrace(bot, job, `abort:${token}`);
     HDebug.Log(
         "lane",
         string.format(
@@ -1422,6 +1446,68 @@ function sample(bot: Unit, job: Job, now: number): void {
     job.peakDivert = math.max(job.peakDivert, MeasureDivert(watched, job.waveSize));
 }
 
+function newTrace(shift: number | undefined): PullTrace {
+    return { shift, neutralsAtWave: 0, waveMax: 0, everDiverted: setmetatable(new LuaTable<Unit, boolean>(), { __mode: "k" }), everN: 0 };
+}
+
+function tracePull(bot: Unit, job: Job, now: number): void {
+    const tr = job.trace;
+    const meet = job.meet;
+    const cfg = settings();
+    if (tr === undefined || meet === undefined) return;
+    if (tr.sampledAt !== undefined && now - tr.sampledAt < cfg.Timing.WatchEvery) return;
+    tr.sampledAt = now;
+    let neutrals = 0;
+    for (const n of bot.GetNearbyNeutralCreeps(cfg.Radii.LaneCreepScan, false) ?? []) {
+        if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && dist2D(n.GetLocation(), meet) <= cfg.Radii.MeetWatch) neutrals++;
+    }
+    if (neutrals > 0) {
+        tr.neutralsIn ??= now;
+        tr.neutralsLast = now;
+    }
+    const wave = laneCreepsNear(bot, meet, cfg.Radii.WaveSize);
+    tr.waveMax = math.max(tr.waveMax, wave.length);
+    let atMeet = 0;
+    for (const c of wave) {
+        if (dist2D(c.GetLocation(), meet) > cfg.Radii.MeetWatch) continue;
+        atMeet++;
+        if (isNeutral(c.GetAttackTarget()) && tr.everDiverted.get(c) !== true) {
+            tr.everDiverted.set(c, true);
+            tr.everN++;
+        }
+    }
+    if (atMeet > 0 && tr.waveAt === undefined) {
+        tr.waveAt = now;
+        tr.neutralsAtWave = neutrals;
+    }
+}
+
+/** Once per pull that was hit: what the trace saw, in seconds after the hit (-1 when never seen). */
+function logTrace(bot: Unit, job: Job, end: string): void {
+    const tr = job.trace;
+    if (tr === undefined || tr.logged === true || !Telemetry.IsEnabled()) return;
+    tr.logged = true;
+    const hit = job.actualAggro ?? job.aggroAt;
+    const rel = (t: number | undefined) => (t === undefined ? -1 : round3(t - hit));
+    Telemetry.Event("lane_pull_trace", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["key", Camps.ByIdx(job.campIdx, bot.GetTeam())?.key],
+        ["end", end],
+        ["expWave", rel(job.waveAt)],
+        ["wave", rel(tr.waveAt)],
+        ["nIn", rel(tr.neutralsIn)],
+        ["nLast", rel(tr.neutralsLast)],
+        ["nAtWave", tr.neutralsAtWave],
+        ["waveMax", tr.waveMax],
+        ["ever", tr.everN],
+        ["peak", round3(job.peakDivert)],
+        ["dur", round3(DotaTime() - hit)],
+        ...(tr.shift !== undefined ? ([["shift", round3(tr.shift)]] as [string, any][]) : []),
+    ]);
+}
+
 /** The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map. */
 function contestTarget(bot: Unit, job: Job): Unit | undefined {
     const center = job.stand;
@@ -1767,6 +1853,7 @@ function step(bot: Unit, job: Job): boolean {
         return true;
     }
     if (job.phase === "lead") {
+        tracePull(bot, job, now);
         while (job.waypoint < job.path.length && arrived(bot, job.path[job.waypoint])) job.waypoint++;
         if (job.waypoint < job.path.length) return moveTo(bot, job.path[job.waypoint]);
         job.phase = "watch";
@@ -1774,6 +1861,7 @@ function step(bot: Unit, job: Job): boolean {
     }
     if (job.phase === "watch") {
         sample(bot, job, now);
+        tracePull(bot, job, now);
         if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec && (job.waveAt === undefined || now >= job.waveAt + cfg.PullTiming.WatchAfterWave)) {
             close(bot, job, "done", Grade(job.kind, job.peakDivert));
             return false;
