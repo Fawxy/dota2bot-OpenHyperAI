@@ -252,5 +252,7 @@ function LaneFresh(laneCfg, extra)
 	H.Transitions.Rotation.RegisterProbes()
 	H.Transitions.Caution.ResetCache()
 	H.Transitions.Caution.RegisterProbes()
+	TELEPORTS, TELEPORT_READS = {}, 0
+	H.Transitions.Teleports.ResetCache()
 	return H
 end

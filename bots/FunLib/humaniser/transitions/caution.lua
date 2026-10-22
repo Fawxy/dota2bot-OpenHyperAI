@@ -31,9 +31,32 @@ function ____exports.CautionLevel(i)
 end
 local states = {}
 local episodes = {}
+local forced = {}
 function ____exports.ResetCache()
     states = {}
     episodes = {}
+    forced = {}
+end
+local function forcedOf(bot)
+    local pid = bot:GetPlayerID()
+    local f = forced[pid]
+    if f == nil then
+        f = {level = 0, levelUntil = -math.huge, pointUntil = -math.huge}
+        forced[pid] = f
+    end
+    return f
+end
+--- Holds the caution level at no less than `level` until `until` (game time); `until` in the past clears it.
+function ____exports.ForceLevel(bot, level, ____until)
+    local f = forcedOf(bot)
+    f.level = level
+    f.levelUntil = ____until
+end
+--- Holds the lane position at `point` (where OHA owns laning) until `until`; an undefined point clears it.
+function ____exports.ForceSetup(bot, point, ____until)
+    local f = forcedOf(bot)
+    f.point = point
+    f.pointUntil = ____until
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -73,18 +96,18 @@ function ____exports.Missing(bot, s, alone)
     local n = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue14
+            local __continue18
             repeat
                 if e.visible or e.timeSinceSeen <= after or not IsHeroAlive(e.pid) then
-                    __continue14 = true
+                    __continue18 = true
                     break
                 end
                 if dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius then
                     n = n + 1
                 end
-                __continue14 = true
+                __continue18 = true
             until true
-            if not __continue14 then
+            if not __continue18 then
                 break
             end
         end
@@ -146,10 +169,10 @@ function ____exports.Level(bot)
     if not Settings.IsOn("Caution") then
         return 0
     end
-    return update(
-        bot,
-        DotaTime()
-    ).applied
+    local now = DotaTime()
+    local applied = update(bot, now).applied
+    local f = forced[bot:GetPlayerID()]
+    return f ~= nil and now < f.levelUntil and math.max(applied, f.level) or applied
 end
 local function clamp01(v)
     return v < 0 and 0 or (v > 1 and 1 or v)
@@ -175,6 +198,10 @@ end
 function ____exports.AdjustPosition(bot, loc)
     if not Settings.IsOn("Caution") then
         return loc
+    end
+    local f = forced[bot:GetPlayerID()]
+    if f ~= nil and f.point ~= nil and DotaTime() < f.pointUntil then
+        return LaneMain.OwnsLaning(bot) and f.point or loc
     end
     local level = ____exports.Level(bot)
     if level <= 0 or not LaneMain.OwnsLaning(bot) then
@@ -241,7 +268,7 @@ function ____exports.Tick(bot)
     local now = DotaTime()
     local st = update(bot, now)
     callout(bot, st, now)
-    local level = st.applied
+    local level = ____exports.Level(bot)
     if level <= 0 then
         Intent.ReleaseSource(bot, ____exports.SOURCE)
         return

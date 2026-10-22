@@ -49,12 +49,45 @@ interface Episode {
     saidAt: number;
 }
 
+interface Forced {
+    level: number;
+    levelUntil: number;
+    point?: Vector;
+    pointUntil: number;
+}
+
 let states: Record<number, State> = {};
 let episodes: Record<string, Episode> = {};
+let forced: Record<number, Forced> = {};
 
 export function ResetCache(): void {
     states = {};
     episodes = {};
+    forced = {};
+}
+
+function forcedOf(bot: Unit): Forced {
+    const pid = bot.GetPlayerID();
+    let f = forced[pid];
+    if (f === undefined) {
+        f = { level: 0, levelUntil: -math.huge, pointUntil: -math.huge };
+        forced[pid] = f;
+    }
+    return f;
+}
+
+/** Holds the caution level at no less than `level` until `until` (game time); `until` in the past clears it. */
+export function ForceLevel(bot: Unit, level: number, until: number): void {
+    const f = forcedOf(bot);
+    f.level = level;
+    f.levelUntil = until;
+}
+
+/** Holds the lane position at `point` (where OHA owns laning) until `until`; an undefined point clears it. */
+export function ForceSetup(bot: Unit, point: Vector | undefined, until: number): void {
+    const f = forcedOf(bot);
+    f.point = point;
+    f.pointUntil = until;
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -130,7 +163,10 @@ function update(bot: Unit, now: number): State {
 
 export function Level(bot: Unit): number {
     if (!Settings.IsOn("Caution")) return 0;
-    return update(bot, DotaTime()).applied;
+    const now = DotaTime();
+    const applied = update(bot, now).applied;
+    const f = forced[bot.GetPlayerID()];
+    return f !== undefined && now < f.levelUntil ? math.max(applied, f.level) : applied;
 }
 
 function clamp01(v: number): number {
@@ -151,6 +187,8 @@ function towardTower(bot: Unit, loc: Vector, level: number): Vector {
 /** Lane position override (plan call 6); returns `loc` itself when caution does not apply. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     if (!Settings.IsOn("Caution")) return loc;
+    const f = forced[bot.GetPlayerID()];
+    if (f !== undefined && f.point !== undefined && DotaTime() < f.pointUntil) return LaneMain.OwnsLaning(bot) ? f.point : loc;
     const level = Level(bot);
     if (level <= 0 || !LaneMain.OwnsLaning(bot)) return loc;
     return towardTower(bot, loc, level);
@@ -199,7 +237,7 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     const st = update(bot, now);
     callout(bot, st, now);
-    const level = st.applied;
+    const level = Level(bot);
     if (level <= 0) {
         Intent.ReleaseSource(bot, SOURCE);
         return;

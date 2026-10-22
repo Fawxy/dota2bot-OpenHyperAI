@@ -86,6 +86,10 @@ export const DEFAULTS = {
     TpLinger: 2,
     TpSetupSkill: 0.7,
     TpSetupDistance: 600,
+    // Radius for the WeAreStronger check that picks setup over backing off.
+    TpStrongerRadius: 1600,
+    // Enemy TPs are read once per team per this many seconds.
+    TpRefresh: 0.25,
     WardFrom: 150,
     WardTo: 270,
     WardChance: { Low: 0.4, High: 0.95 } as LerpPair,

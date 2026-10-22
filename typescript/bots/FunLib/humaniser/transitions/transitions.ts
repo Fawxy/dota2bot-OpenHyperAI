@@ -11,8 +11,9 @@ import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Caution from "bots/FunLib/humaniser/transitions/caution";
+import * as Teleports from "bots/FunLib/humaniser/transitions/teleports";
 
-export { Settings, Runes, Busy, MidRunes, Rotation, Caution };
+export { Settings, Runes, Busy, MidRunes, Rotation, Caution, Teleports };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -64,6 +65,7 @@ export function Tick(bot: Unit): void {
     MidRunes.Tick(bot);
     Rotation.Tick(bot);
     Caution.Tick(bot);
+    Teleports.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */

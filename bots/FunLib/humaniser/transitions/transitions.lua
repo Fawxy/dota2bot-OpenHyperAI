@@ -19,12 +19,14 @@ local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mid_runes")
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Caution = require(GetScriptDirectory().."/FunLib/humaniser/transitions/caution")
+local Teleports = require(GetScriptDirectory().."/FunLib/humaniser/transitions/teleports")
 ____exports.Settings = Settings
 ____exports.Runes = Runes
 ____exports.Busy = Busy
 ____exports.MidRunes = MidRunes
 ____exports.Rotation = Rotation
 ____exports.Caution = Caution
+____exports.Teleports = Teleports
 local helpers = {}
 local providers = {
     Busy = function(bot) return LaneState.ForBot(bot) ~= nil and (Busy.IsBusy(
@@ -66,6 +68,7 @@ function ____exports.Tick(bot)
     MidRunes.Tick(bot)
     Rotation.Tick(bot)
     Caution.Tick(bot)
+    Teleports.Tick(bot)
 end
 --- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
 function ____exports.MidRunesOn(bot)
