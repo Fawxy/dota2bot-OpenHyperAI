@@ -241,7 +241,10 @@ if Telemetry.GuardsEnabled() then
         {
             Tick = none,
             ReadFor = function() return {noticed = false} end,
-            CheckKill = none
+            CheckKill = none,
+            RoamDesire = arg2,
+            Think = no,
+            Target = none
         }
     )
     Telemetry.GuardModule(

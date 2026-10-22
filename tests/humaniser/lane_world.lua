@@ -48,6 +48,7 @@ function CreepMeta:CanBeSeen() return true end
 function CreepMeta:GetLocation() return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
+function CreepMeta:IsNull() return false end
 
 function MakeCreep(o)
 	local c = setmetatable({
@@ -122,6 +123,13 @@ function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
+function UnitMeta:IsMagicImmune() return self.magicImmune == true end
+-- SetTarget(nil) clears it; setTargets keeps every call for assertions.
+function UnitMeta:SetTarget(t)
+	self.setTarget = t
+	self.setTargets = self.setTargets or {}
+	table.insert(self.setTargets, t == nil and "nil" or t)
+end
 function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
@@ -216,7 +224,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry, LaneFight = extra.laneFight })
+		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

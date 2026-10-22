@@ -76,6 +76,7 @@ function GetDesire()
 
     local res = GetDesireHelper()
     res = CapForLanePush(res)
+    res = J.Humaniser.LaneFight.RoamDesire(bot, res)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
     return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
@@ -305,6 +306,7 @@ function Think()
     -- if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "team_roam") then return end
 
     ItemOpsThink()
+    if J.Humaniser.LaneFight.Think(bot) then return end
 
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)
