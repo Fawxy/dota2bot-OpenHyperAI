@@ -182,6 +182,8 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
+local ____camps_data = require(GetScriptDirectory().."/FunLib/humaniser/camps_data")
+local DEFAULT_STACK_SEC = ____camps_data.DEFAULT_STACK_SEC
 function currentMinute()
     return math.floor(DotaTime() / 60)
 end
@@ -217,6 +219,70 @@ local function dist2D(a, b)
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
 end
+--- 7.41 stack windows (seconds to land the hit) from scripts/creep_pull_timings.txt in pak01_dir.vpk (read 22/10/2026,
+-- what the `dota_hud_show_creep_spawn_camp_names` overlay shows), by the camp's spawner origin from maps/dota.vpk:
+-- [x, y, stack_start, stack_end]. Camps 1,300+ apart, so WINDOW_MATCH cannot pick the wrong one.
+local WINDOWS = {
+    {-4824, 3915, 54, 56},
+    {-3911, 4829, 55, 57},
+    {1224, 4176, 55, 56},
+    {1064, 2580, 55, 56},
+    {-852, 4940, 54, 55},
+    {7928, -120, 55, 56},
+    {4352, 48, 53, 55},
+    {3392, -1408, 53, 55},
+    {-2880, 7376, 54, 56},
+    {2016, 7896, 55, 57},
+    {8430, 1263, 55, 56},
+    {336, 7696, 55, 56},
+    {-2596, 3850, 55, 56},
+    {-4208, 8336, 55, 56},
+    {3978, -5027, 55, 57},
+    {4649, -3699, 52, 54},
+    {186, -5197, 54, 55},
+    {-1454, -3356, 55, 56},
+    {-4013, 992, 53, 55},
+    {-5015, -96, 52, 54},
+    {-1983, -4815, 56, 57},
+    {-720, -7696, 55, 57},
+    {-2415, -8402, 53, 55},
+    {-8313, -553, 55, 56},
+    {2768, -8336, 55, 57},
+    {1922, -3975, 56, 57},
+    {-8023, -1838, 55, 56},
+    {4416, -8432, 55, 56}
+}
+local WINDOW_MATCH = 300
+--- Valve's stack window for the camp, or undefined (another map, a moved camp, StackFromValve off).
+function ____exports.Window(campIdx)
+    local spawner = Camps.SpawnerByIdx(campIdx)
+    if spawner == nil or settings().Timing.StackFromValve ~= true then
+        return nil, nil
+    end
+    for ____, w in ipairs(WINDOWS) do
+        local dx = w[1] - spawner.location.x
+        local dy = w[2] - spawner.location.y
+        if dx * dx + dy * dy <= WINDOW_MATCH * WINDOW_MATCH then
+            return w[3], w[4]
+        end
+    end
+    return nil, nil
+end
+--- The second the stack hit should land: StackWindowAt through Valve's window for a camp on the type's default second,
+-- else the data's (a replay or measured stack second is kept). The seeds (small 54.5 to ancient 53.0) were 1-2.5 s
+-- early for most 7.41 camps (evil_2/good_1 55-57, evil_1 54-56) and 1.5 s late for good_2/good_8 (52-54).
+function ____exports.AggroSec(data)
+    local ____opt_0 = data.stack
+    local sec = ____opt_0 and ____opt_0.aggroSec or DEFAULT_STACK_SEC[data.type]
+    if sec ~= DEFAULT_STACK_SEC[data.type] then
+        return sec
+    end
+    local from, to = ____exports.Window(data.campIdx)
+    if from == nil or to == nil then
+        return sec
+    end
+    return from + (to - from) * settings().Timing.StackWindowAt
+end
 local IDLE_MODES = {[BotMode.Laning] = true, [BotMode.Farm] = true, [BotMode.None] = true}
 --- The safety half of Eligible; forced (debug) stack jobs check only this. `committed`: the stack is already under way,
 -- so the partner check is LaneRoles.PartnerHolding instead of the start gate.
@@ -225,19 +291,25 @@ function ____exports.Safe(bot, s, enemies, committed)
         committed = false
     end
     local t = settings().Thresholds
+    local maxHP = bot:GetMaxHealth()
     if LaneConfig.InLaningPhase() then
+        if committed then
+            if maxHP <= 0 or bot:GetHealth() / maxHP <= t.StableMinHP then
+                return false, "low-hp"
+            end
+            if s ~= nil then
+                return LaneRoles.PartnerHolding(bot, s, enemies)
+            end
+            return true, "ok"
+        end
         if not LaneRoles.LaneStable(bot, enemies) then
             return false, "unstable"
-        end
-        if s ~= nil and committed then
-            return LaneRoles.PartnerHolding(bot, s, enemies)
         end
         if s ~= nil and not LaneRoles.PartnerSafe(bot, s, enemies) then
             return false, "partner-unsafe"
         end
         return true, "ok"
     end
-    local maxHP = bot:GetMaxHealth()
     if maxHP <= 0 or bot:GetHealth() / maxHP <= t.StableMinHP then
         return false, "low-hp"
     end
@@ -274,8 +346,8 @@ function ____exports.Eligible(bot, s, enemies, committed)
 end
 --- Where a stack job waits: just outside the box on the exit side, so the walk-off starts away from the camp.
 function ____exports.StandPoint(spawner, data)
-    local ____opt_0 = data.stack
-    local exit = ____opt_0 and ____opt_0.exitPath[1]
+    local ____opt_2 = data.stack
+    local exit = ____opt_2 and ____opt_2.exitPath[1]
     return exit ~= nil and Camps.StandPoint(
         spawner,
         exit,
@@ -303,10 +375,10 @@ local function contested(bot, idx, enemies, allies)
     local claims = reservations[idx] or ({})
     for ____, a in ipairs(allies) do
         do
-            local __continue30
+            local __continue40
             repeat
                 if a:GetPlayerID() == pid then
-                    __continue30 = true
+                    __continue40 = true
                     break
                 end
                 local ____until = claims[a:GetPlayerID()]
@@ -320,9 +392,9 @@ local function contested(bot, idx, enemies, allies)
                 ) then
                     return true
                 end
-                __continue30 = true
+                __continue40 = true
             until true
-            if not __continue30 then
+            if not __continue40 then
                 break
             end
         end
@@ -341,7 +413,7 @@ local function reachable(bot, data, minute)
         bot:GetCurrentMovementSpeed(),
         1
     )
-    return travel <= settings().Timing.MaxTravel and DotaTime() + travel <= minute * 60 + data.stack.aggroSec
+    return travel <= settings().Timing.MaxTravel and DotaTime() + travel <= minute * 60 + ____exports.AggroSec(data)
 end
 local function multiStackOk(bot, data)
     if ____exports.StackCount(data.campIdx) < settings().Thresholds.StackMaxCampCount then
@@ -386,15 +458,15 @@ function ____exports.ChooseCamp(bot, s, minute)
         local bestDist = math.huge
         for ____, data in ipairs(camps) do
             do
-                local __continue50
+                local __continue60
                 repeat
                     if data.team ~= team or data.type == "ancient" then
-                        __continue50 = true
+                        __continue60 = true
                         break
                     end
                     local spawner = Camps.SpawnerByIdx(data.campIdx)
                     if spawner == nil or spawner.team ~= team then
-                        __continue50 = true
+                        __continue60 = true
                         break
                     end
                     local d = dist2D(
@@ -405,9 +477,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                         best = data
                         bestDist = d
                     end
-                    __continue50 = true
+                    __continue60 = true
                 until true
-                if not __continue50 then
+                if not __continue60 then
                     break
                 end
             end
@@ -420,15 +492,15 @@ function ____exports.ChooseCamp(bot, s, minute)
     local bestDist = math.huge
     for ____, data in ipairs(camps) do
         do
-            local __continue57
+            local __continue67
             repeat
                 if data.team ~= team or data.type ~= "ancient" then
-                    __continue57 = true
+                    __continue67 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(data.campIdx)
                 if spawner == nil then
-                    __continue57 = true
+                    __continue67 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -439,9 +511,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                     best = data
                     bestDist = d
                 end
-                __continue57 = true
+                __continue67 = true
             until true
-            if not __continue57 then
+            if not __continue67 then
                 break
             end
         end
@@ -499,13 +571,13 @@ function ____exports.NoteStackOutcome(campIdx, minute, countAfter, assumed)
     end
     local prior = before[campIdx]
     __TS__Delete(before, campIdx)
-    local ____temp_6
+    local ____temp_8
     if countAfter ~= nil then
-        ____temp_6 = prior ~= nil and countAfter > prior
+        ____temp_8 = prior ~= nil and countAfter > prior
     else
-        ____temp_6 = assumed
+        ____temp_8 = assumed
     end
-    local stacked = ____temp_6
+    local stacked = ____temp_8
     if not stacked then
         return false
     end

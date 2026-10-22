@@ -550,4 +550,67 @@ do
 	check("unseen camp: attacks once it is in sight", #ActionsOf(5, "AttackUnit") == 1)
 end
 
+do
+	-- 7.41 stack windows from creep_pull_timings.txt, matched by spawner origin: evil_1 (Dire safe hard) 54-56 and
+	-- good_2 (Radiant safe hard) 52-54, so :55 and :53 rather than the large seed :53.5.
+	local EVIL_1, GOOD_2 = Vector(-4824, 3915), Vector(4649, -3699)
+	local H, support = world(1, { camps = { { "large", EVIL_1 }, { "large", GOOD_2 }, { "large", LARGE } } })
+	local S, C = H.Lane.Stacking, H.Lane.Camps
+	check("evil_1 stacks mid-window at :55", near(S.AggroSec(C.ByIdx(1)), 55), S.AggroSec(C.ByIdx(1)))
+	check("good_2 stacks mid-window at :53", near(S.AggroSec(C.ByIdx(2)), 53), S.AggroSec(C.ByIdx(2)))
+	check("a camp off the table keeps the type's seed", near(S.AggroSec(C.ByIdx(3)), 53.5), S.AggroSec(C.ByIdx(3)))
+	support.loc = standOf(H, 1)
+	T = 100
+	SetRandomSequence({ 1.0, 0.25 })
+	check("precondition: stack job starts", H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 }))
+	local job = H.Lane.CampJobs.Current(support)
+	check("the evil_1 stack job is planned for :55", near(job.plannedSec, 55) and near(job.aggroAt, 115), job.aggroAt)
+	H = world(1, { camps = { { "large", EVIL_1 } }, cfg = { Enable = true, Timing = { StackFromValve = false } } })
+	check("StackFromValve off: the large seed", near(H.Lane.Stacking.AggroSec(H.Lane.Camps.ByIdx(1)), 53.5))
+end
+
+do
+	-- console.9055921786: skywrath's walk-off from evil_1 ended at :58.3 as `unstable` (an enemy seen within 1,200), the
+	-- start gate re-read every frame, and the camp went back into its box. A running stack goes on its HP and partner.
+	local H, support = world(1, { camps = { { "medium", MEDIUM } } })
+	support.loc = standOf(H, 1)
+	T = 100
+	check("precondition: stack job starts", H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 }))
+	frame(H, support, 100)
+	unit({ pid = 11, team = 3, pos = 4, loc = Vector(support.loc.x + 900, support.loc.y) })
+	T = 100.5
+	local ok, why = eligible(H, support)
+	check("precondition: a new stack would not start", ok == false and why == "unstable", why)
+	check("enemy 900 from the stacking support: the stack goes on", near(frame(H, support, 100.5), 0.7) and H.Lane.CampJobs.Active(support))
+	support.hp = 45
+	check("support at 45%: the stack is dropped", frame(H, support, 101) == 0 and not H.Lane.CampJobs.Active(support))
+end
+
+do
+	-- console.9055921786: ogre on good_2 at 8:02, night (hero vision 800), counted 2 of 3 neutrals from ~1,100 away and
+	-- graded the stack failed. A fogged spawner origin is out of sight: unknown, then assumed from the aggro timing.
+	local H, support = world(1, { camps = { { "large", LARGE } }, debug = true })
+	local lines = capture(function()
+		runStack(H, support, 1, LARGE, 1, 0, true)
+		FOGGED = function() return true end
+		frame(H, support, 122)
+		frame(H, support, 125)
+	end)
+	FOGGED = nil
+	local line = find(lines, "[H:lane] stack pid")
+	check("fogged box: outcome unknown, not an undercount", line ~= nil and line:find("after=? grade=unknown stacked=1", 1, true), line)
+end
+
+do
+	-- The walk-off's end is logged (lane_job_end), so a stack ending at :01 never reads as overlapping a pull started
+	-- after it (ogre, console.9055921786: stack to 8:01.0, full pull from 8:11).
+	local H, support = world(1, { camps = { { "large", LARGE } }, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	runStack(H, support, 1, LARGE, 1, 0, true)
+	local ends = {}
+	for _, l in ipairs(lines) do if l:find(" ev=lane_job_end ", 1, true) then table.insert(ends, l) end end
+	check("one lane_job_end at the walk-off's end", #ends == 1 and ends[1]:find("kind=stack camp=1", 1, true) ~= nil, ends[1])
+end
+
 finish()

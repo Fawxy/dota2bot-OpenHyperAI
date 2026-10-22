@@ -14,6 +14,7 @@ import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
 import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as Harass from "bots/FunLib/humaniser/harass";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
@@ -288,7 +289,14 @@ function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy,
     for (const camp of camps) {
         const spawner = Camps.SpawnerByIdx(camp.campIdx);
         if (spawner === undefined || camp.pull === undefined) continue;
-        const input = { now, enemySupport: support, campLoc: Camps.BoxCenter(spawner), campPullSec: camp.pull.aggroSec, campHalfSec: camp.pull.halfAggroSec };
+        // The enemy's own wave-timed seconds (pull_timing), as our jobs use, else the seeds.
+        const input = {
+            now,
+            enemySupport: support,
+            campLoc: Camps.BoxCenter(spawner),
+            campPullSec: PullTiming.ForCamp(camp, false).seconds,
+            campHalfSec: PullTiming.ForCamp(camp, true).seconds,
+        };
         if (EnemyPullSuspected(input)) return camp.campIdx;
     }
     return undefined;

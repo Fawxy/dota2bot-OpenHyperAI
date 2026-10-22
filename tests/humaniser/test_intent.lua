@@ -68,9 +68,10 @@ end
 do
 	local H, I, b = fresh()
 	I.Claim(b, { source = "lane:pull", tier = "LANE_PLAN", mode = FARM, cap = 0.1 })
-	T = 0.1
-	check("claim live within TTL", near(I.Resolve(b, FARM, 0.5), 0.1))
-	T = 0.3
+	-- console.9055963380: modes are scored in rounds ~0.31 s (at most 0.4 s) apart, so a claim must last into the next round.
+	T = 0.4
+	check("claim live into the next scoring round", near(I.Resolve(b, FARM, 0.5), 0.1))
+	T = 0.6
 	check("claim gone after TTL", near(I.Resolve(b, FARM, 0.5), 0.5), I.Resolve(b, FARM, 0.5))
 end
 
@@ -83,6 +84,11 @@ do
 	local farm = I.Resolve(b, FARM, 0.3)
 	check("retreat wins over a lifted floor at low HP", near(farm, 0.65), string.format("farm %.2f retreat %.2f", farm, retreat))
 	check("survival leaves an unlifted raw desire alone", near(I.Resolve(b, ROSHAN, 0.9), 0.9), I.Resolve(b, ROSHAN, 0.9))
+	-- Healed within the claim's lifetime: the next round's retreat scoring drops the cap rather than letting it run out.
+	b.hp = 60
+	T = T + 0.3
+	I.Resolve(b, RETREAT, 0.3)
+	check("healed: the camp job's floor is back", near(I.Resolve(b, FARM, 0.3), 0.9), I.Resolve(b, FARM, 0.3))
 end
 do
 	local H, I, b = fresh()
@@ -379,6 +385,62 @@ for _, switch in ipairs({ function(cfg) cfg.Intent.Enable = false end, function(
 	check("enabled: claim applies", near(H.Intent.Resolve(b, FARM, 0.3), 0.9))
 	switch(H.Config.Get())
 	check("disabled: raw desire returned", near(H.Intent.Resolve(b, FARM, 0.3), 0.3), H.Intent.Resolve(b, FARM, 0.3))
+end
+
+-- console.9055950349: a camp job's retreat cap, posted from farm's GetDesire, never once showed in retreat's resolve.
+-- intent_cadence reports each mode's scoring period and how often such a claim had expired by the time a mode it
+-- applies to was resolved (console.9055963380: every round, with the 0.2 s TTL then in use).
+local function cadenceRun(period, retreatOffset)
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Intent = { Enable = true }, Telemetry = { Enable = true } })
+	local b = MakeUnit({ pid = 1, mode = LANING })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local I = H.Intent
+	local capped = 0
+	T = 0
+	H.Tick(b)
+	for i = 1, math.ceil(63 / period) do
+		T = i * period
+		I.Claim(b, { source = "lane:job_hold", tier = "CAMP_JOB", mode = RETREAT, cap = 0.68 })
+		I.Resolve(b, FARM, 0.7)
+		T = i * period + retreatOffset
+		if near(I.Resolve(b, RETREAT, 0.8), 0.68) then capped = capped + 1 end
+		H.Tick(b)
+	end
+	local out = {}
+	for _, l in ipairs(lines) do if l:find("ev=intent_cadence", 1, true) then table.insert(out, l) end end
+	return out, capped
+end
+
+do
+	-- The game's shape: retreat is scored a round (0.31 s) after farm last posted the hold.
+	local game, capped = cadenceRun(0.31, 0.31)
+	check("game cadence: the hold caps retreat in every round", capped == math.ceil(63 / 0.31), capped)
+	local l = game[1] or ""
+	check("one cadence line per minute", #game == 1, #game)
+	check("farm's period is reported", l:find("farm=192:0.310:0.310", 1, true) ~= nil, l)
+	check("retreat measured from farm", l:find("rf=193:0.310:0.310", 1, true) ~= nil, l)
+	check("game cadence: no lapses", l:find("lane:job_hold>retreat=0/193", 1, true) ~= nil, l)
+
+	local slow = cadenceRun(0.6, 0.55)
+	check("a round slower than the TTL: every read counted as a lapse", (slow[1] or ""):find("lane:job_hold>retreat=100/100", 1, true) ~= nil, slow[1])
+end
+
+do
+	-- A claim that stops being posted is its end, not a run of lapses.
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Intent = { Enable = true }, Telemetry = { Enable = true } })
+	local b = MakeUnit({ pid = 1, mode = LANING })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	T = 0
+	H.Tick(b)
+	H.Intent.Claim(b, { source = "lane:job_hold", tier = "CAMP_JOB", mode = RETREAT, cap = 0.68 })
+	for i = 1, 100 do T = i * 0.61; H.Intent.Resolve(b, RETREAT, 0.8); H.Tick(b) end
+	local l
+	for _, x in ipairs(lines) do if x:find("ev=intent_cadence", 1, true) then l = x end end
+	check("an ended claim counts at most once", l ~= nil and l:find("lane:job_hold>retreat=1/1", 1, true) ~= nil, l)
 end
 
 finish()

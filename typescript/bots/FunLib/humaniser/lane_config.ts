@@ -94,6 +94,9 @@ export const DEFAULTS = {
         StackLateAfter: 57,
         StackAssumedFrom: 53,
         StackAssumedTo: 56,
+        // Stack the camps creep_pull_timings.txt names at StackWindowAt through Valve's window (Stacking.WINDOWS).
+        StackFromValve: true,
+        StackWindowAt: 0.5,
         JobDesire: 0.7,
         PartnerHPWindow: 2,
         PartnerBailConfirm: 0.4,
@@ -104,6 +107,7 @@ export const DEFAULTS = {
         JobStartLate: 2,
         JobMaxAfterAggro: 15,
         JobPreemptAfter: 1,
+        JobHoldHeroHit: 1.5,
         JobUpcoming: 10,
         MaxTravel: 12,
         WatchSec: 8,
@@ -119,7 +123,11 @@ export const DEFAULTS = {
         AggroLeadMax: 1.5,
         // A stand point with no neutral in sight moves in toward the spawner origin from this long before the aggro.
         StandApproachLead: 3,
-        DoublePullReach: 8,
+        // Double pull, hard camp first: its hit leaves DoublePullHitGap before the walk to the small camp's stand, that
+        // walk is at most DoublePullMaxGap, and the hard camp must reach the meet by DoublePullJoin after the wave.
+        DoublePullHitGap: 1,
+        DoublePullMaxGap: 6,
+        DoublePullJoin: 3,
         ShoveMaxSec: 8,
         PingHandsOff: 30,
         PlanSustain: 5,
@@ -166,6 +174,7 @@ export const DEFAULTS = {
         CoreBusyDamageMult: 1.3,
         PartnerMinHP: 0.4,
         JobMinHP: 0.4,
+        JobHoldMinHP: 0.5,
         PartnerDangerEnemies: 2,
         PartnerDangerRadius: 1200,
         PartnerBailHP: 0.35,
@@ -224,6 +233,8 @@ export const DEFAULTS = {
         StepBackCreeps: 700,
         StepBackEps: 50,
         NeutralSearch: 700,
+        // An enemy hero this close lets a camp job's bot cast again (camp_jobs HoldsCasts).
+        CastHoldEnemy: 1200,
         StandOffset: 150,
         // Stand at most this far from the spawner origin: inside NeutralSearch with room for the camp's spread.
         StandReach: 450,
@@ -269,7 +280,8 @@ export const DEFAULTS = {
         // Seconds the neutrals reach the meet point before the wave.
         Lead: 1.5,
         WaveSlots: [0, 30],
-        PathMaxOffset: 300,
+        // evil_2's meet from GetLocationAlongLane stands ~340 off the Dire top creep path (watch positions, 9055874680).
+        PathMaxOffset: 500,
         LiveFrom: 2,
         LiveWindow: 5,
         LiveMaxOffset: 600,

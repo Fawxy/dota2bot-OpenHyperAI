@@ -8391,6 +8391,7 @@ function ItemUsageThink()
 	if RefreshBotHandle() then return end
 	J.Humaniser.Tick(bot)
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
+	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	if bot.lastItemFrameProcessTime == nil then bot.lastItemFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastItemFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) then return end
 	bot.lastItemFrameProcessTime = DotaTime()
@@ -8400,6 +8401,7 @@ end
 function AbilityUsageThink()
 	if RefreshBotHandle() then return end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
+	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	if bot.lastAbilityFrameProcessTime == nil then bot.lastAbilityFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastAbilityFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) and bot.isBear == nil then return end
 	bot.lastAbilityFrameProcessTime = DotaTime()

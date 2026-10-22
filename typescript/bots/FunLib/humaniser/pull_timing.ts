@@ -78,7 +78,7 @@ export function Along(path: number[][], p: Vector): LuaMultiReturn<[number, numb
     return $multi(bestAlong, bestOff);
 }
 
-function walkLength(from: Vector, path: Vector[]): number {
+export function WalkLength(from: Vector, path: Vector[]): number {
     let d = 0;
     let prev = from;
     for (const p of path) {
@@ -109,10 +109,44 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const t = LaneConfig.Settings().Timing;
     const waveTravel = meetAlong / cfg.CreepSpeed;
     // A half pull is timed as a full pull to its own (later) meet point, then HalfPullLater later, as the seeds were.
-    const waveAfter = walkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half ? t.HalfPullLater : 0);
+    const waveAfter = WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half ? t.HalfPullLater : 0);
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
     return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path };
+}
+
+/** The camp's lead waypoints with its own meet point replaced by `meet`. */
+export function LeadPath(pull: Camps.PullData, meet: Vector): Vector[] {
+    const result: Vector[] = [];
+    const n = pull.path.length;
+    for (let i = 0; i < n; i++) {
+        const p = pull.path[i];
+        if (i === n - 1 && hypot(p.x, p.y, pull.meetPoint.x, pull.meetPoint.y) < 1) continue;
+        result.push(p);
+    }
+    result.push(meet);
+    return result;
+}
+
+/** The data table's pull seconds; a half pull without its own is HalfPullLater after the full pull. */
+export function SeedSeconds(pull: Camps.PullData, half: boolean): number[] {
+    if (!half) return pull.aggroSec;
+    if (pull.halfAggroSec !== undefined) return pull.halfAggroSec;
+    const later = LaneConfig.Settings().Timing.HalfPullLater;
+    return pull.aggroSec.map((s) => s + later);
+}
+
+/**
+ * `data`'s pull seconds: from its team's wave reaching `meet` (default the pull's own meet point, or the half one) for
+ * seed camps, else the data table's, since replay and measured seconds are measurements.
+ */
+export function ForCamp(data: Camps.CampJobData, half: boolean, meet?: Vector): PullTiming {
+    if (data.pull === undefined) return { seconds: [], source: "seed" };
+    const seed = SeedSeconds(data.pull, half);
+    const spawner = Camps.SpawnerByIdx(data.campIdx);
+    if (data.source !== "seed" || spawner === undefined) return { seconds: seed, source: "seed" };
+    const target = meet ?? (half ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint);
+    return For(data.team, data.lane, spawner.location, data.type, LeadPath(data.pull, target), half, seed);
 }
 
 /**

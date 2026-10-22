@@ -205,7 +205,20 @@ function ____exports.CampJobRawDesire(bot, desire)
     for ____, mode in ipairs(JOB_FOCUS_MODES) do
         Intent.Claim(bot, {source = "lane:job_focus", tier = "CAMP_JOB", mode = mode, cap = cap})
     end
+    if CampJobs.HoldsRetreat(bot) then
+        Intent.Claim(bot, {source = "lane:job_hold", tier = "CAMP_JOB", mode = BotMode.Retreat, cap = cap})
+    else
+        Intent.Release(bot, "lane:job_hold", BotMode.Retreat)
+    end
     return 0
+end
+--- mode_farm_generic's ShouldRun: neutrals hitting a bot leading a pull are not a reason to run.
+function ____exports.CampJobHoldsRetreat(bot)
+    return CampJobs.HoldsRetreat(bot)
+end
+--- ability_item_usage_generic: no spells or items on the camp a job is working.
+function ____exports.CampJobHoldsCasts(bot)
+    return CampJobs.HoldsCasts(bot)
 end
 --- mode_farm_generic Think: true when the camp job owns this frame.
 function ____exports.CampJobThink(bot)
@@ -235,10 +248,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue49
+            local __continue53
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue49 = true
+                    __continue53 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -249,9 +262,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue49 = true
+                __continue53 = true
             until true
-            if not __continue49 then
+            if not __continue53 then
                 break
             end
         end

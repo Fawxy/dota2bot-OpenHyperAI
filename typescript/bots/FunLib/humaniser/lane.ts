@@ -146,7 +146,21 @@ export function CampJobRawDesire(bot: Unit, desire: number): number {
     // errands wait until the job is done; attack, retreat, defend and orders are left alone.
     const cap = desire - LaneConfig.Settings().Thresholds.JobFocusMargin;
     for (const mode of JOB_FOCUS_MODES) Intent.Claim(bot, { source: "lane:job_focus", tier: "CAMP_JOB", mode, cap });
+    // Retreat's laning-phase creep-damage branch counts the chasing neutrals, so it beat the job at healthy HP once
+    // the camp was hit. Held while only neutrals threaten; survival and order claims sit on higher tiers.
+    if (CampJobs.HoldsRetreat(bot)) Intent.Claim(bot, { source: "lane:job_hold", tier: "CAMP_JOB", mode: BotMode.Retreat, cap });
+    else Intent.Release(bot, "lane:job_hold", BotMode.Retreat);
     return 0;
+}
+
+/** mode_farm_generic's ShouldRun: neutrals hitting a bot leading a pull are not a reason to run. */
+export function CampJobHoldsRetreat(bot: Unit): boolean {
+    return CampJobs.HoldsRetreat(bot);
+}
+
+/** ability_item_usage_generic: no spells or items on the camp a job is working. */
+export function CampJobHoldsCasts(bot: Unit): boolean {
+    return CampJobs.HoldsCasts(bot);
 }
 
 /** mode_farm_generic Think: true when the camp job owns this frame. */

@@ -1034,7 +1034,8 @@ function X.ShouldRun(bot)
 	and bot:WasRecentlyDamagedByCreep(1)
 	and J.GetHP(bot) < 0.7
 	and botTarget ~= nil
-	and J.GetHP(botTarget) > J.GetHP(bot) - 0.15 then
+	and J.GetHP(botTarget) > J.GetHP(bot) - 0.15
+	and not J.Humaniser.Lane.CampJobHoldsRetreat(bot) then
 		return 2;
 	end
 

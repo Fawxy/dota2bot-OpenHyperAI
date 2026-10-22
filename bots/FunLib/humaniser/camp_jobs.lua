@@ -201,7 +201,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, neutralsInBox, boxInSight, settleStack, pendingStacks
+local settings, campNeutral, neutralsInBox, boxInSight, settleStack, round3, modeEndFields, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -222,6 +222,44 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 function settings()
     return LaneConfig.Settings()
 end
+function campNeutral(bot, job)
+    local best
+    local bestDist = math.huge
+    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
+        settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        do
+            local __continue222
+            repeat
+                if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
+                    __continue222 = true
+                    break
+                end
+                if not Camps.InBox(
+                    job.activeCamp,
+                    n:GetLocation()
+                ) then
+                    __continue222 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(
+                    bot,
+                    n:GetLocation()
+                )
+                if d < bestDist then
+                    best = n
+                    bestDist = d
+                end
+                __continue222 = true
+            until true
+            if not __continue222 then
+                break
+            end
+        end
+    end
+    return best
+end
 function neutralsInBox(bot, campIdx)
     local margin = settings().Radii.BoxMargin
     local n = 0
@@ -241,10 +279,10 @@ function neutralsInBox(bot, campIdx)
 end
 function boxInSight(bot, campIdx)
     local spawner = Camps.SpawnerByIdx(campIdx)
-    return spawner ~= nil and bot:IsAlive() and GetUnitToLocationDistance(
-        bot,
-        Camps.BoxCenter(spawner)
-    ) <= settings().Radii.StackSight
+    if spawner == nil or not bot:IsAlive() then
+        return false
+    end
+    return GetUnitToLocationDistance(bot, spawner.location) <= settings().Radii.StackSight and IsLocationVisible(spawner.location)
 end
 function ____exports.StackGrade(aggroSec)
     local t = settings().Timing
@@ -276,7 +314,8 @@ function settleStack(bot, now)
     )
     local t = settings().Timing
     local after = p.peak
-    local assumed = after == nil and p.aggro >= t.StackAssumedFrom and p.aggro <= t.StackAssumedTo
+    local from, to = Stacking.Window(p.campIdx)
+    local assumed = after == nil and p.aggro >= (from or t.StackAssumedFrom) and p.aggro <= (to or t.StackAssumedTo)
     local stacked = Stacking.NoteStackOutcome(p.campIdx, p.minute, after, assumed)
     local grade = after == nil and "unknown" or ____exports.StackGrade(p.aggro)
     Telemetry.Event(
@@ -326,6 +365,46 @@ function settleStack(bot, now)
     if grade == "ok" and stacked and after ~= nil then
         Stacking.Telegraph(bot, p.type)
     end
+end
+function round3(v)
+    return v == nil and -1 or math.floor(v * 1000 + 0.5) / 1000
+end
+function modeEndFields(bot, job)
+    if not Telemetry.IsEnabled() then
+        return {}
+    end
+    local to = bot:GetActiveMode()
+    return {
+        {
+            "to",
+            HDebug.ModeName(to)
+        },
+        {
+            "toBy",
+            Intent.Explain(bot, to)
+        },
+        {
+            "competing",
+            Intent.Competing(bot)
+        },
+        {"hold", job.retreatHold or "-"},
+        {
+            "holdAge",
+            round3(Intent.ClaimAge(bot, "lane:job_hold", BotMode.Retreat))
+        },
+        {
+            "focusAge",
+            round3(Intent.ClaimAge(bot, "lane:job_focus", BotMode.Ward))
+        },
+        {
+            "farmAge",
+            round3(Intent.SampleAge(bot, BotMode.Farm))
+        },
+        {
+            "toAge",
+            round3(Intent.SampleAge(bot, to))
+        }
+    }
 end
 local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
 local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
@@ -383,23 +462,9 @@ local function commitTech(kind)
 end
 function ____exports.AggroSecondsFor(kind, data)
     if kind == "stack" or kind == "contest" then
-        return data.stack ~= nil and ({data.stack.aggroSec}) or ({})
+        return data.stack ~= nil and ({Stacking.AggroSec(data)}) or ({})
     end
-    local pull = data.pull
-    if pull == nil then
-        return {}
-    end
-    if kind ~= "half_pull" then
-        return pull.aggroSec
-    end
-    if pull.halfAggroSec ~= nil then
-        return pull.halfAggroSec
-    end
-    local later = settings().Timing.HalfPullLater
-    return __TS__ArrayMap(
-        pull.aggroSec,
-        function(____, s) return s + later end
-    )
+    return data.pull ~= nil and PullTiming.SeedSeconds(data.pull, kind == "half_pull") or ({})
 end
 function ____exports.NextAggroTime(dotaTime, seconds, period)
     local base = math.floor(dotaTime / period) * period
@@ -467,53 +532,55 @@ local function standFor(spawner, firstWaypoint)
         settings().Radii.StandOffset
     )
 end
---- The camp's lead waypoints with its own meet point replaced by `meet`.
-local function leadPath(pull, meet)
-    local result = {}
-    local n = #pull.path
-    do
-        local i = 0
-        while i < n do
-            do
-                local __continue37
-                repeat
-                    local p = pull.path[i + 1]
-                    if i == n - 1 and dist2D(p, pull.meetPoint) < 1 then
-                        __continue37 = true
-                        break
-                    end
-                    result[#result + 1] = p
-                    __continue37 = true
-                until true
-                if not __continue37 then
-                    break
-                end
-            end
-            i = i + 1
-        end
-    end
-    result[#result + 1] = meet
-    return result
-end
---- The camp's pull seconds for `kind`: from our wave's arrival at the meet point (`meet`, default the kind's own) for
--- seed camps, else the data table's. Replay and measured seconds are measurements, so they are kept.
+local leadPath = PullTiming.LeadPath
 local function timingFor(kind, data, meet)
-    local seed = ____exports.AggroSecondsFor(kind, data)
-    local spawner = Camps.SpawnerByIdx(data.campIdx)
-    if data.pull == nil or data.source ~= "seed" or spawner == nil then
-        return {seconds = seed, source = "seed"}
+    return PullTiming.ForCamp(data, kind == "half_pull", meet)
+end
+--- The classic double pull: hit the hard camp from its side facing the small camp, walk to the small camp's stand, hit
+-- it on its own second and lead both; the hard camp follows and must reach the meet point by DoublePullJoin after the
+-- wave. The reverse (the hard camp led in once the small one engaged) cannot fit on 7.41: evil_1 / good_2 are 6-9 s of
+-- neutral walk from the small camp's meet plus the bot's walk there, so they would arrive 10-16 s after the wave.
+-- `why`: no-camp, no-wave (the small camp is not wave-timed, so the hard camp cannot be placed), far, join.
+function ____exports.DoubleGeometry(small, hard, speed)
+    local smallSp = Camps.SpawnerByIdx(small.campIdx)
+    local hardSp = Camps.SpawnerByIdx(hard.campIdx)
+    if small.pull == nil or smallSp == nil or hardSp == nil then
+        return {why = "no-camp", before = 0, late = 0, gap = 0}
     end
-    local half = kind == "half_pull"
-    local target = meet or (half and (data.pull.halfMeetPoint or data.pull.meetPoint) or data.pull.meetPoint)
-    return PullTiming.For(
-        data.team,
-        data.lane,
-        spawner.location,
-        data.type,
-        leadPath(data.pull, target),
-        half,
-        seed
+    local timing = timingFor("full_pull", small)
+    if timing.waveAfter == nil then
+        return {why = "no-wave", before = 0, late = 0, gap = 0}
+    end
+    local cfg = settings()
+    local exact = leadPath(small.pull, small.pull.meetPoint)
+    local smallStand = standFor(smallSp, exact[1])
+    local hardStand = Camps.StandPoint(hardSp, smallStand, cfg.Radii.StandOffset)
+    local gap = ____exports.TravelTime(
+        dist2D(hardStand, smallStand),
+        speed
     )
+    local before = gap + cfg.Timing.DoublePullHitGap
+    local hardSpeed = cfg.PullTiming.NeutralSpeed[hard.type] or 300
+    local late = PullTiming.WalkLength(
+        hardSp.location,
+        {
+            smallStand,
+            unpack(exact)
+        }
+    ) / hardSpeed - before - timing.waveAfter
+    local why
+    if gap > cfg.Timing.DoublePullMaxGap then
+        why = "far"
+    elseif late > cfg.Timing.DoublePullJoin then
+        why = "join"
+    end
+    return {
+        why = why,
+        before = before,
+        late = late,
+        gap = gap,
+        hardStand = hardStand
+    }
 end
 local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
@@ -578,7 +645,7 @@ local function startStack(bot, req)
     local skill = LaneConfig.SkillOf(bot)
     local now = DotaTime()
     local period = cfg.Timing.PullPeriod
-    local aggroSec = data.stack.aggroSec
+    local aggroSec = Stacking.AggroSec(data)
     local jitter = LaneConfig.Jitter(skill)
     local noise = LaneConfig.Curve("PathNoise", skill)
     local stand = noisy(
@@ -622,7 +689,6 @@ local function startStack(bot, req)
                 stand = stand,
                 waypoint = 0,
                 stage = 1,
-                secondTried = false,
                 telegraphed = false,
                 baseAggro = base,
                 exitUntil = exitUntil
@@ -655,7 +721,6 @@ local function startContest(bot, req)
             stand = center,
             waypoint = 0,
             stage = 1,
-            secondTried = false,
             telegraphed = true,
             baseAggro = now
         }),
@@ -705,6 +770,32 @@ function ____exports.Start(bot, req)
         exact,
         function(____, p) return noisy(p, noise) end
     )
+    local first
+    if req.kind == "double_pull" then
+        local ____temp_0
+        if req.secondCampIdx ~= nil then
+            ____temp_0 = Camps.ByIdx(
+                req.secondCampIdx,
+                bot:GetTeam()
+            )
+        else
+            ____temp_0 = nil
+        end
+        local hard = ____temp_0
+        local g = hard ~= nil and ____exports.DoubleGeometry(
+            data,
+            hard,
+            bot:GetCurrentMovementSpeed()
+        ) or nil
+        if hard == nil or g == nil or g.why ~= nil or g.hardStand == nil then
+            return false
+        end
+        first = {
+            camp = hard.campIdx,
+            stand = noisy(g.hardStand, noise),
+            before = g.before
+        }
+    end
     local base = ____exports.NextAggroTime(now - cfg.Timing.JobStartLate, seconds, period)
     if req.forced == true and base < now + travelTo(bot, stand) then
         base = ____exports.NextAggroTime(
@@ -720,7 +811,8 @@ function ____exports.Start(bot, req)
     end
     local job = __TS__ObjectAssign({}, req, {
         phase = "travel",
-        aggroAt = base + jitter,
+        aggroAt = base + jitter - (first and first.before or 0),
+        chain = first ~= nil and ({stand = stand, aggroAt = base + jitter}) or nil,
         plannedSec = base % period,
         path = path,
         meet = meet,
@@ -730,11 +822,10 @@ function ____exports.Start(bot, req)
         startedAt = now,
         peakDivert = 0,
         waveSize = 0,
-        activeCamp = req.campIdx,
-        stand = stand,
+        activeCamp = first and first.camp or req.campIdx,
+        stand = first and first.stand or stand,
         waypoint = 0,
         stage = 1,
-        secondTried = false,
         telegraphed = false,
         baseAggro = base
     })
@@ -806,6 +897,7 @@ function ____exports.CoverTick(bot)
     if via == nil then
         if cur ~= nil then
             __TS__Delete(covering, pid)
+            Intent.Release(bot, "lane:cover", BotMode.Retreat)
             Telemetry.Event("lane_cover", {
                 {"pid", pid},
                 {"state", "end"},
@@ -876,9 +968,16 @@ local function logJob(bot, job, grade)
         )
     )
 end
+local JOB_CLAIM_SOURCES = {"lane:camp_job", "lane:job_focus", "lane:job_hold"}
+local function releaseClaims(bot)
+    for ____, source in ipairs(JOB_CLAIM_SOURCES) do
+        Intent.ReleaseSource(bot, source)
+    end
+end
 --- Completed pull: the graded `job` line that parse_condebug.js counts as an attempt.
 local function close(bot, job, phase, grade)
     job.phase = phase
+    releaseClaims(bot)
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     if job.kind == "stack_pull" then
         Stacking.ClearStack(job.campIdx)
@@ -886,7 +985,7 @@ local function close(bot, job, phase, grade)
     logJob(bot, job, grade)
 end
 --- Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
--- against a camp's timing. A double pull aborted in its second stage still grades the first pull.
+-- against a camp's timing.
 local function abort(bot, job, reason, keepStack, extra)
     if keepStack == nil then
         keepStack = false
@@ -894,17 +993,9 @@ local function abort(bot, job, reason, keepStack, extra)
     if extra == nil then
         extra = {}
     end
-    if job.stage == 2 then
-        close(
-            bot,
-            job,
-            "return",
-            ____exports.Grade(job.kind, job.peakDivert)
-        )
-        return
-    end
     local phase = job.phase
     job.phase = "return"
+    releaseClaims(bot)
     local pid = bot:GetPlayerID()
     if job.acted ~= true then
         LanePlanner.Release(
@@ -922,46 +1013,64 @@ local function abort(bot, job, reason, keepStack, extra)
         Stacking.Release(job.campIdx, pid)
     end
     local token = string.gsub(reason, "%s+", "-")
-    local ____Telemetry_Event_7 = Telemetry.Event
-    local ____array_6 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
-    local ____opt_4 = Camps.ByIdx(
+    local ____Telemetry_Event_14 = Telemetry.Event
+    local ____array_13 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
+    local ____opt_11 = Camps.ByIdx(
         job.campIdx,
         bot:GetTeam()
     )
     __TS__SparseArrayPush(
-        ____array_6,
-        {"key", ____opt_4 and ____opt_4.key},
+        ____array_13,
+        {"key", ____opt_11 and ____opt_11.key},
         {"reason", token},
         {"phase", phase},
         {"acted", job.acted == true},
         {"divert", job.peakDivert},
         unpack(extra)
     )
-    ____Telemetry_Event_7(
+    ____Telemetry_Event_14(
         "lane_job_abort",
-        {__TS__SparseArraySpread(____array_6)}
+        {__TS__SparseArraySpread(____array_13)}
     )
-    local ____HDebug_Log_12 = HDebug.Log
-    local ____string_format_11 = string.format
-    local ____array_10 = __TS__SparseArrayNew(
+    local ____HDebug_Log_19 = HDebug.Log
+    local ____string_format_18 = string.format
+    local ____array_17 = __TS__SparseArrayNew(
         "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
         bot:GetPlayerID(),
         LOG_KIND[job.kind],
         job.campIdx
     )
-    local ____opt_8 = Camps.ByIdx(
+    local ____opt_15 = Camps.ByIdx(
         job.campIdx,
         bot:GetTeam()
     )
-    __TS__SparseArrayPush(____array_10, ____opt_8 and ____opt_8.key or "-", token, job.peakDivert)
-    ____HDebug_Log_12(
+    __TS__SparseArrayPush(____array_17, ____opt_15 and ____opt_15.key or "-", token, job.peakDivert)
+    ____HDebug_Log_19(
         "lane",
-        ____string_format_11(__TS__SparseArraySpread(____array_10))
+        ____string_format_18(__TS__SparseArraySpread(____array_17))
+    )
+end
+--- A stack's walk-off ended (its outcome follows on `lane_stack`). Logged so the end is never only implied: without it a
+-- stack ending at :01 and a pull starting 10 s later read as two jobs at once (ogre, console.9055921786, 8:01 / 8:11).
+local function endStack(bot, job)
+    job.phase = "done"
+    releaseClaims(bot)
+    Telemetry.Event(
+        "lane_job_end",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", LOG_KIND[job.kind]},
+            {"camp", job.campIdx}
+        }
     )
 end
 --- A contest is no pull attempt, so it ends on its own line, which the console parser does not read.
 local function endContest(bot, job, reason)
     job.phase = "return"
+    releaseClaims(bot)
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     HDebug.Log(
         "lane",
@@ -1015,17 +1124,17 @@ local function stackAllowed(bot, job)
     return true, "ok"
 end
 local function partnerFields(bot, s)
-    local ____temp_15
+    local ____temp_22
     if s ~= nil then
-        ____temp_15 = LaneRoles.ReadPartner(
+        ____temp_22 = LaneRoles.ReadPartner(
             bot,
             s,
             LaneState.Enemies(bot, s.lane)
         )
     else
-        ____temp_15 = nil
+        ____temp_22 = nil
     end
-    local r = ____temp_15
+    local r = ____temp_22
     if r == nil then
         return {}
     end
@@ -1068,12 +1177,115 @@ local function noteHeld(bot, job, s)
                 "pid",
                 bot:GetPlayerID()
             },
+            {"hold", "partner"},
             {"kind", LOG_KIND[job.kind]},
             {"camp", job.campIdx},
             {"phase", job.phase},
             unpack(partnerFields(bot, s))
         }
     )
+end
+--- The camp has been hit and is chasing the bot: from the hit in the aggro phase through lead and watch, and for a
+-- double pull also the walk to the small camp and its hit once the hard camp is on the bot (its chain is taken up).
+local function drawingCamp(job)
+    if job.kind == "stack" or job.kind == "contest" then
+        return false
+    end
+    if job.kind == "double_pull" and job.chain == nil then
+        return true
+    end
+    return job.phase == "lead" or job.phase == "watch" or job.phase == "aggro" and job.aggroOrderedAt ~= nil
+end
+--- What should still send a pulling bot home; the neutrals' own hits (the point of a pull) are not on the list.
+local function retreatThreat(bot)
+    local cfg = settings()
+    local maxHP = bot:GetMaxHealth()
+    if maxHP <= 0 or bot:GetHealth() / maxHP < cfg.Thresholds.JobHoldMinHP then
+        return "hp"
+    end
+    local hit = cfg.Timing.JobHoldHeroHit
+    if bot:WasRecentlyDamagedByAnyHero(hit) then
+        return "hero-hit"
+    end
+    if bot:WasRecentlyDamagedByTower(hit) then
+        return "tower"
+    end
+    for ____, e in ipairs(LaneState.Enemies(
+        bot,
+        bot:GetAssignedLane()
+    )) do
+        if e.visible and e.unit ~= nil and e.unit:GetAttackTarget() == bot then
+            return "hero-attack"
+        end
+    end
+    for ____, tower in ipairs(bot:GetNearbyTowers(1000, true)) do
+        if tower:GetAttackTarget() == bot then
+            return "tower"
+        end
+    end
+    return nil
+end
+local function logRetreatHold(bot, job, state, reason)
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    local maxHP = bot:GetMaxHealth()
+    Telemetry.Event(
+        "lane_job_hold",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"hold", "retreat"},
+            {"state", state},
+            {"reason", reason or "neutrals"},
+            {"kind", LOG_KIND[job.kind]},
+            {"camp", job.campIdx},
+            {"phase", job.phase},
+            {
+                "hp",
+                maxHP > 0 and bot:GetHealth() / maxHP or 0
+            }
+        }
+    )
+end
+--- True while a pull's retreat may be held below the job: the camp is drawn and nothing but neutrals threatens.
+-- The first real threat releases the hold for the rest of the job. lane_job_hold logs the hold and its release once each.
+function ____exports.HoldsRetreat(bot)
+    local job = jobs[bot:GetPlayerID()]
+    if not isLive(job) or job.retreatHold == "off" or not drawingCamp(job) then
+        return false
+    end
+    local why = retreatThreat(bot)
+    if why == nil then
+        if job.retreatHold ~= "on" then
+            job.retreatHold = "on"
+            logRetreatHold(bot, job, "on")
+        end
+        return true
+    end
+    job.retreatHold = "off"
+    Intent.ReleaseSource(bot, "lane:job_hold")
+    logRetreatHold(bot, job, "off", why)
+    return false
+end
+--- Spells and items wait while a job works a camp: upstream's farm branches (J.IsFarming is true in farm mode or on a
+-- neutral target) cast stuns and nukes on the camp it is drawing. From the camp coming into sight, or being drawn,
+-- until the job ends; an enemy hero in range lifts it so the bot can still fight or save itself.
+function ____exports.HoldsCasts(bot)
+    local job = jobs[bot:GetPlayerID()]
+    if not isLive(job) or job.kind == "contest" then
+        return false
+    end
+    if job.phase == "travel" and not drawingCamp(job) and campNeutral(bot, job) == nil then
+        return false
+    end
+    return #(bot:GetNearbyHeroes(
+        settings().Radii.CastHoldEnemy,
+        true,
+        BotMode.None
+    ) or ({})) == 0
 end
 --- Abort checks for a running job; true when it may continue.
 local function keepGoing(bot, job)
@@ -1105,13 +1317,13 @@ local function keepGoing(bot, job)
     end
     if job.kind == "stack" then
         local ok, why = stackAllowed(bot, job)
-        local ____LaneConfig_InLaningPhase_result_16
+        local ____LaneConfig_InLaningPhase_result_23
         if LaneConfig.InLaningPhase() then
-            ____LaneConfig_InLaningPhase_result_16 = LaneState.ForBot(bot)
+            ____LaneConfig_InLaningPhase_result_23 = LaneState.ForBot(bot)
         else
-            ____LaneConfig_InLaningPhase_result_16 = nil
+            ____LaneConfig_InLaningPhase_result_23 = nil
         end
-        local ls = ____LaneConfig_InLaningPhase_result_16
+        local ls = ____LaneConfig_InLaningPhase_result_23
         if not ok then
             abortUnsafe(bot, job, why, ls)
         else
@@ -1223,13 +1435,13 @@ local function notePlan(bot, s, now, fields)
         s,
         LaneState.Enemies(bot, s.lane)
     )
-    local ____Telemetry_Event_18 = Telemetry.Event
-    local ____array_17 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_25 = Telemetry.Event
+    local ____array_24 = __TS__SparseArrayNew(
         {"pid", pid},
         unpack(fields)
     )
     __TS__SparseArrayPush(
-        ____array_17,
+        ____array_24,
         {"owner", mayRun and "ok" or why},
         {"eq", s.eqPos},
         {"meet", s.meetAmount},
@@ -1239,10 +1451,43 @@ local function notePlan(bot, s, now, fields)
         {"tower", s.ourTowerAmount},
         {"etower", s.theirTowerAmount}
     )
-    ____Telemetry_Event_18(
+    ____Telemetry_Event_25(
         "lane_plan",
-        {__TS__SparseArraySpread(____array_17)}
+        {__TS__SparseArraySpread(____array_24)}
     )
+end
+--- Whether this bot may double pull its lane's first two camps (skill, a second camp), and if so whether its start
+-- window, the hard camp's hit `before` ahead of the small camp's second, is open now; `why` says what rules it out.
+local function doubleFor(bot, camps, now)
+    if #camps < 2 or not LaneConfig.Knows(
+        "stack_pull",
+        LaneConfig.SkillOf(bot)
+    ) then
+        return nil
+    end
+    local g = ____exports.DoubleGeometry(
+        camps[1],
+        camps[2],
+        bot:GetCurrentMovementSpeed()
+    )
+    if g.why ~= nil or g.hardStand == nil then
+        return {open = false, why = g.why, g = g}
+    end
+    local t = settings().Timing
+    local base = ____exports.NextAggroTime(
+        now - t.JobStartLate,
+        timingFor("full_pull", camps[1]).seconds,
+        t.PullPeriod
+    )
+    local hardAt = base - g.before
+    local travel = travelTo(bot, g.hardStand)
+    if not ____exports.CampsUp(base) or travel > t.MaxTravel or now + travel > hardAt then
+        return {open = false, why = "reach", g = g}
+    end
+    return {
+        open = ____exports.WindowOpen(now, hardAt, travel),
+        g = g
+    }
 end
 local function schedule(bot)
     local now = DotaTime()
@@ -1259,7 +1504,9 @@ local function schedule(bot)
         notePlan(bot, s, now, {{"gate", "no-camp"}})
         return false
     end
-    if not windowFor(bot, camps[1], "full_pull", now) and not windowFor(bot, camps[1], "half_pull", now) then
+    local double = doubleFor(bot, camps, now)
+    local doubleOpen = double ~= nil and double.open
+    if not doubleOpen and not windowFor(bot, camps[1], "full_pull", now) and not windowFor(bot, camps[1], "half_pull", now) then
         local any = false
         for ____, c in ipairs(camps) do
             if LaneHooks.IsStacked(c.campIdx) and windowFor(bot, c, "stack_pull", now) then
@@ -1317,7 +1564,11 @@ local function schedule(bot)
         return false
     end
     local camp = pullCampFor(kind, camps)
-    if not windowFor(bot, camp, kind, now) then
+    local asDouble = kind == "full_pull" and doubleOpen
+    if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
+        return false
+    end
+    if not asDouble and not windowFor(bot, camp, kind, now) then
         return false
     end
     local base = ____exports.NextAggroTime(
@@ -1329,12 +1580,18 @@ local function schedule(bot)
         return false
     end
     local req = {kind = kind, campIdx = camp.campIdx}
-    if kind == "full_pull" and #camps > 1 and LaneConfig.Knows(
-        "stack_pull",
-        LaneConfig.SkillOf(bot)
-    ) then
+    if asDouble then
         req.kind = "double_pull"
         req.secondCampIdx = camps[2].campIdx
+    elseif kind == "full_pull" and double ~= nil then
+        notePlan(bot, s, now, {
+            {"gate", "double-unfit"},
+            {"camp", camp.campIdx},
+            {"second", camps[2].campIdx},
+            {"why", double.why},
+            {"late", double.g.late},
+            {"gap", double.g.gap}
+        })
     end
     return ____exports.Start(bot, req)
 end
@@ -1344,7 +1601,10 @@ local function earliestStackStart()
     local earliest = t.StackMoveFrom
     for ____, data in ipairs(Camps.Resolve()) do
         if data.stack ~= nil then
-            earliest = math.min(earliest, data.stack.aggroSec - t.MaxTravel - t.JobStartLate)
+            earliest = math.min(
+                earliest,
+                Stacking.AggroSec(data) - t.MaxTravel - t.JobStartLate
+            )
         end
     end
     return earliest
@@ -1360,13 +1620,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_29
+    local ____temp_36
     if data ~= nil then
-        ____temp_29 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_36 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_29 = nil
+        ____temp_36 = nil
     end
-    local spawner = ____temp_29
+    local spawner = ____temp_36
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1374,11 +1634,12 @@ local function scheduleStack(bot, now)
         bot,
         Stacking.StandPoint(spawner, data)
     )
-    local from = math.min(t.StackMoveFrom, data.stack.aggroSec - travel - t.JobStartLate)
-    if sec < from or sec > data.stack.aggroSec then
+    local aggroSec = Stacking.AggroSec(data)
+    local from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate)
+    if sec < from or sec > aggroSec then
         return false
     end
-    if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {data.stack.aggroSec}, t.PullPeriod) then
+    if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {aggroSec}, t.PullPeriod) then
         return false
     end
     return ____exports.Start(bot, {kind = "stack", campIdx = data.campIdx, minute = minute})
@@ -1413,7 +1674,7 @@ function ____exports.Desire(bot)
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
         if job.kind == "stack" and job.phase == "exit" and now >= (job.exitUntil or now) then
-            job.phase = "done"
+            endStack(bot, job)
             return 0
         end
         if preempted(bot, job, now) then
@@ -1481,13 +1742,13 @@ local function pingPartner(bot, job)
         return
     end
     local s = LaneState.ForBot(bot)
-    local ____temp_30
+    local ____temp_37
     if s ~= nil then
-        ____temp_30 = LaneRoles.Partner(bot, s)
+        ____temp_37 = LaneRoles.Partner(bot, s)
     else
-        ____temp_30 = nil
+        ____temp_37 = nil
     end
-    local partner = ____temp_30
+    local partner = ____temp_37
     if partner == nil or partner.isBot or not Orders.Ping(bot, job.stand) then
         return
     end
@@ -1522,47 +1783,12 @@ local function telegraph(bot, job, now)
         settings().Timing.PullTelegraphCooldown
     )
 end
-local function campNeutral(bot, job)
-    local best
-    local bestDist = math.huge
-    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
-        settings().Radii.NeutralSearch,
-        false
-    ) or ({})) do
-        do
-            local __continue192
-            repeat
-                if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue192 = true
-                    break
-                end
-                if not Camps.InBox(
-                    job.activeCamp,
-                    n:GetLocation()
-                ) then
-                    __continue192 = true
-                    break
-                end
-                local d = GetUnitToLocationDistance(
-                    bot,
-                    n:GetLocation()
-                )
-                if d < bestDist then
-                    best = n
-                    bestDist = d
-                end
-                __continue192 = true
-            until true
-            if not __continue192 then
-                break
-            end
-        end
-    end
-    return best
-end
 local function aggroConfirmed(bot, job)
     if job.aggroOrderedAt ~= nil and bot:GetLastAttackTime() >= job.aggroOrderedAt then
         return true
+    end
+    if job.kind == "double_pull" and job.activeCamp == job.campIdx then
+        return false
     end
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
         settings().Radii.NeutralSearch,
@@ -1599,10 +1825,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue218
+            local __continue250
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue218 = true
+                    __continue250 = true
                     break
                 end
                 if dist2D(
@@ -1611,9 +1837,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue218 = true
+                __continue250 = true
             until true
-            if not __continue218 then
+            if not __continue250 then
                 break
             end
         end
@@ -1642,51 +1868,6 @@ local function sample(bot, job, now)
         ____exports.MeasureDivert(watched, job.waveSize)
     )
 end
---- Double pull: once the first camp has engaged, lead the second camp into the same wave if it pulls soon enough.
-local function trySecondCamp(bot, job, now)
-    if job.kind ~= "double_pull" or job.stage ~= 1 or job.secondTried or job.peakDivert <= 0 or job.secondCampIdx == nil then
-        return false
-    end
-    job.secondTried = true
-    local data = Camps.ByIdx(
-        job.secondCampIdx,
-        bot:GetTeam()
-    )
-    local spawner = Camps.SpawnerByIdx(job.secondCampIdx)
-    if data == nil or data.pull == nil or spawner == nil or job.meet == nil then
-        return false
-    end
-    local cfg = settings()
-    local timing = timingFor("full_pull", data, job.meet)
-    local base = ____exports.NextAggroTime(now, timing.seconds, cfg.Timing.PullPeriod)
-    if base - now > cfg.Timing.DoublePullReach then
-        return false
-    end
-    local skill = LaneConfig.SkillOf(bot)
-    local jitter = LaneConfig.Jitter(skill)
-    local noise = LaneConfig.Curve("PathNoise", skill)
-    local exact = leadPath(data.pull, job.meet)
-    job.stand = noisy(
-        standFor(spawner, exact[1]),
-        noise
-    )
-    job.path = __TS__ArrayMap(
-        exact,
-        function(____, p) return noisy(p, noise) end
-    )
-    job.aggroAt = base + jitter
-    job.waveAt = timing.waveAfter ~= nil and base + timing.waveAfter or nil
-    job.activeCamp = job.secondCampIdx
-    job.stage = 2
-    job.waypoint = 0
-    job.watchFrom = nil
-    job.phase = "travel"
-    HDebug.Log(
-        "lane",
-        (((("job-second pid=" .. tostring(bot:GetPlayerID())) .. " camp=") .. tostring(job.secondCampIdx)) .. " aggroAt=") .. string.format("%.1f", job.aggroAt)
-    )
-    return true
-end
 --- The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map.
 local function contestTarget(bot, job)
     local center = job.stand
@@ -1697,10 +1878,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue232
+            local __continue259
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue232 = true
+                    __continue259 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1710,9 +1891,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue232 = true
+                __continue259 = true
             until true
-            if not __continue232 then
+            if not __continue259 then
                 break
             end
         end
@@ -1858,10 +2039,23 @@ local function step(bot, job)
             Intent.Hold(bot, "lane:job_aggro")
             return true
         end
-        if job.stage == 1 then
+        if job.stage == 1 and job.chain == nil then
             job.actualAggro = aggroLanded(bot, job, now)
         end
         job.aggroTarget = nil
+        if job.chain ~= nil then
+            job.activeCamp = job.campIdx
+            job.stand = job.chain.stand
+            job.aggroAt = job.chain.aggroAt
+            job.chain = nil
+            job.aggroOrderedAt = nil
+            job.phase = "travel"
+            HDebug.Log(
+                "lane",
+                (((("job-second pid=" .. tostring(bot:GetPlayerID())) .. " camp=") .. tostring(job.campIdx)) .. " aggroAt=") .. string.format("%.1f", job.aggroAt)
+            )
+            return step(bot, job)
+        end
         if job.kind == "stack" then
             noteStackAggro(bot, job, now)
             job.phase = "exit"
@@ -1871,7 +2065,7 @@ local function step(bot, job)
     end
     if job.phase == "exit" then
         if now >= (job.exitUntil or now) then
-            job.phase = "done"
+            endStack(bot, job)
             return false
         end
         while job.waypoint < #job.path and arrived(bot, job.path[job.waypoint + 1]) do
@@ -1895,9 +2089,6 @@ local function step(bot, job)
     end
     if job.phase == "watch" then
         sample(bot, job, now)
-        if trySecondCamp(bot, job, now) then
-            return step(bot, job)
-        end
         if now - (job.watchFrom or now) >= cfg.Timing.WatchSec and (job.waveAt == nil or now >= job.waveAt + cfg.PullTiming.WatchAfterWave) then
             close(
                 bot,
@@ -1937,7 +2128,13 @@ function ____exports.OnEnd(bot)
     end
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
-        abort(bot, job, "mode-end")
+        abort(
+            bot,
+            job,
+            "mode-end",
+            false,
+            modeEndFields(bot, job)
+        )
     end
 end
 function ____exports.RegisterProbes()

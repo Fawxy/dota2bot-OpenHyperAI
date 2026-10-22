@@ -94,6 +94,8 @@ function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
 RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = RUNE_STATUS_UNKNOWN or 0, RUNE_STATUS_AVAILABLE or 1, RUNE_STATUS_MISSING or 2
 function GetRuneSpawnLocation(r) return Vector(-9000 + 1000 * (r or 0), 9000) end
 function GetRuneStatus(r) return RUNE_STATUS_MISSING end
+-- FOGGED(v) true marks a location the team cannot see; nil means everything is visible.
+function IsLocationVisible(v) return FOGGED == nil or not FOGGED(v) end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index
@@ -125,12 +127,24 @@ function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
+-- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
+function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
+function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end
 function UnitMeta:GetNearbyTowers(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}
 	for _, t in pairs(TOWERS_W[team]) do
 		local dx, dy = t.loc.x - self.loc.x, t.loc.y - self.loc.y
 		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, t) end
+	end
+	return out
+end
+function UnitMeta:GetNearbyHeroes(r, enemy)
+	local team = enemy and (self.team == 2 and 3 or 2) or self.team
+	local out = {}
+	for _, u in ipairs(UNITS[team]) do
+		local dx, dy = u.loc.x - self.loc.x, u.loc.y - self.loc.y
+		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, u) end
 	end
 	return out
 end

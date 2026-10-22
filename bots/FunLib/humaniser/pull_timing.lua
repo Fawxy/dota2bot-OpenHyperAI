@@ -26,6 +26,7 @@ local Lane = ____dota.Lane
 local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 --- 7.41 lane creep paths from maps/dota.vpk (entity lump, 22/10/2026): each team's npc_dota_spawner_<team>_<lane>
 -- origin (the melee spawner), then the path_corner chain from its NPCFirstWaypoint. The first corner lies ~150-540
@@ -155,7 +156,7 @@ function ____exports.Along(path, p)
     end
     return bestAlong, bestOff
 end
-local function walkLength(from, path)
+function ____exports.WalkLength(from, path)
     local d = 0
     local prev = from
     for ____, p in ipairs(path) do
@@ -187,7 +188,7 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
     end
     local t = LaneConfig.Settings().Timing
     local waveTravel = meetAlong / cfg.CreepSpeed
-    local waveAfter = walkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half and t.HalfPullLater or 0)
+    local waveAfter = ____exports.WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half and t.HalfPullLater or 0)
     local seconds = __TS__ArrayMap(
         cfg.WaveSlots,
         function(____, slot) return normalise(slot + waveTravel - waveAfter, t.PullPeriod) end
@@ -204,6 +205,70 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         meetAlong = meetAlong,
         lanePath = path
     }
+end
+--- The camp's lead waypoints with its own meet point replaced by `meet`.
+function ____exports.LeadPath(pull, meet)
+    local result = {}
+    local n = #pull.path
+    do
+        local i = 0
+        while i < n do
+            do
+                local __continue20
+                repeat
+                    local p = pull.path[i + 1]
+                    if i == n - 1 and hypot(p.x, p.y, pull.meetPoint.x, pull.meetPoint.y) < 1 then
+                        __continue20 = true
+                        break
+                    end
+                    result[#result + 1] = p
+                    __continue20 = true
+                until true
+                if not __continue20 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    result[#result + 1] = meet
+    return result
+end
+--- The data table's pull seconds; a half pull without its own is HalfPullLater after the full pull.
+function ____exports.SeedSeconds(pull, half)
+    if not half then
+        return pull.aggroSec
+    end
+    if pull.halfAggroSec ~= nil then
+        return pull.halfAggroSec
+    end
+    local later = LaneConfig.Settings().Timing.HalfPullLater
+    return __TS__ArrayMap(
+        pull.aggroSec,
+        function(____, s) return s + later end
+    )
+end
+--- `data`'s pull seconds: from its team's wave reaching `meet` (default the pull's own meet point, or the half one) for
+-- seed camps, else the data table's, since replay and measured seconds are measurements.
+function ____exports.ForCamp(data, half, meet)
+    if data.pull == nil then
+        return {seconds = {}, source = "seed"}
+    end
+    local seed = ____exports.SeedSeconds(data.pull, half)
+    local spawner = Camps.SpawnerByIdx(data.campIdx)
+    if data.source ~= "seed" or spawner == nil then
+        return {seconds = seed, source = "seed"}
+    end
+    local target = meet or (half and (data.pull.halfMeetPoint or data.pull.meetPoint) or data.pull.meetPoint)
+    return ____exports.For(
+        data.team,
+        data.lane,
+        spawner.location,
+        data.type,
+        ____exports.LeadPath(data.pull, target),
+        half,
+        seed
+    )
 end
 --- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, the lead creep
 -- of our lane creeps within LiveWindow of where the wave should be says how early or late it really is. 7.41 speeds
@@ -226,10 +291,10 @@ function ____exports.LiveShift(timing, aggroAt, now)
     local lead
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue23
+            local __continue33
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue23 = true
+                    __continue33 = true
                     break
                 end
                 local along, off = ____exports.Along(
@@ -237,15 +302,15 @@ function ____exports.LiveShift(timing, aggroAt, now)
                     c:GetLocation()
                 )
                 if off > cfg.LiveMaxOffset or math.abs(along - expected) > window then
-                    __continue23 = true
+                    __continue33 = true
                     break
                 end
                 if lead == nil or along > lead then
                     lead = along
                 end
-                __continue23 = true
+                __continue33 = true
             until true
-            if not __continue23 then
+            if not __continue33 then
                 break
             end
         end
