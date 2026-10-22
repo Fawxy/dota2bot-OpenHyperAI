@@ -39,7 +39,7 @@ interface Shove {
 }
 
 const IN_LANE_FLAGS: LaneConfig.LaneFlag[] = ["Block", "AggroPull", "Freeze", "Shove", "Harass", "Mid"];
-const TOWER_IDS: Tower[] = [
+export const TOWER_IDS: Tower[] = [
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,
@@ -165,7 +165,7 @@ function underEnemyTower(team: number, loc: Vector): boolean {
 }
 
 function isUsable(unit: Unit | null | undefined): unit is Unit {
-    return unit !== null && unit !== undefined && unit.IsAlive() && unit.CanBeSeen();
+    return unit !== null && unit !== undefined && !unit.IsNull() && unit.IsAlive() && unit.CanBeSeen();
 }
 
 function isLaneCreep(unit: Unit | null | undefined): unit is Unit {
