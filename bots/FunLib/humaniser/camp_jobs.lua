@@ -201,7 +201,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, enemyHeroNear, desireOf, campNeutral, neutralsInBox, boxInSight, settleStack, awaitSupply, round3, modeEndFields, pendingStacks
+local settings, inFight, enemyHeroNear, desireOf, campNeutral, neutralsInBox, boxInSight, settleStack, awaitSupply, noteSupply, round3, modeEndFields, LOG_KIND, pendingStacks, pendingModeEnd
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -222,6 +222,18 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 function settings()
     return LaneConfig.Settings()
 end
+function inFight(bot)
+    local cfg = settings()
+    local enemies = bot:GetNearbyHeroes(cfg.Radii.JobStartEnemy, true, BotMode.None) or ({})
+    if #enemies == 0 then
+        return false
+    end
+    if bot:WasRecentlyDamagedByAnyHero(cfg.Timing.JobStartHeroHit) then
+        return true
+    end
+    local target = bot:GetAttackTarget()
+    return target ~= nil and target ~= nil and target:IsHero() and target:GetTeam() ~= bot:GetTeam()
+end
 function enemyHeroNear(bot)
     return #(bot:GetNearbyHeroes(
         settings().Radii.JobEnemyHero,
@@ -241,17 +253,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue240
+            local __continue246
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue240 = true
+                    __continue246 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue240 = true
+                    __continue246 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -262,9 +274,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue240 = true
+                __continue246 = true
             until true
-            if not __continue240 then
+            if not __continue246 then
                 break
             end
         end
@@ -377,19 +389,73 @@ function settleStack(bot, now)
         Stacking.Telegraph(bot, p.type)
     end
 end
-function awaitSupply(job, now, modifier)
+function awaitSupply(bot, job, now, item, modifier)
     job.supplyUntil = now + settings().Timing.SupplyWait
     job.supplyModifier = modifier
+    job.supplyItem = item
+    noteSupply(bot, job, item, "use")
 end
-function round3(v)
-    return v == nil and -1 or math.floor(v * 1000 + 0.5) / 1000
+function noteSupply(bot, job, item, state, reason)
+    if item == nil or not Telemetry.IsEnabled() then
+        return
+    end
+    local key = (item .. ":") .. state
+    if job.supplyNoted == nil then
+        job.supplyNoted = {}
+    end
+    if job.supplyNoted[key] == true then
+        return
+    end
+    job.supplyNoted[key] = true
+    local maxHP = bot:GetMaxHealth()
+    local maxMP = bot:GetMaxMana()
+    local ____Telemetry_Event_44 = Telemetry.Event
+    local ____array_43 = __TS__SparseArrayNew(
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"item", item},
+        {"state", state},
+        unpack(reason ~= nil and ({{"reason", reason}}) or ({}))
+    )
+    __TS__SparseArrayPush(
+        ____array_43,
+        {"kind", LOG_KIND[job.kind]},
+        {"phase", job.phase},
+        {
+            "hp",
+            maxHP > 0 and round3(bot:GetHealth() / maxHP) or -1
+        },
+        {
+            "mp",
+            maxMP > 0 and round3(bot:GetMana() / maxMP) or -1
+        }
+    )
+    ____Telemetry_Event_44(
+        "lane_job_supply",
+        {__TS__SparseArraySpread(____array_43)}
+    )
 end
-function modeEndFields(bot, job)
-    if not Telemetry.IsEnabled() then
-        return {}
+--- Logs a pending mode-end abort once farm has given way, or at once when forced; it waits at most a second.
+function ____exports.FlushModeEnd(bot, force)
+    if force == nil then
+        force = false
+    end
+    local pid = bot:GetPlayerID()
+    local pending = pendingModeEnd[pid]
+    if pending == nil then
+        return
     end
     local to = bot:GetActiveMode()
-    return {
+    if not force and to == BotMode.Farm and GameTime() - pending.at < 1 then
+        return
+    end
+    __TS__Delete(pendingModeEnd, pid)
+    local ____Telemetry_Event_46 = Telemetry.Event
+    local ____array_45 = __TS__SparseArrayNew(unpack(pending.fields))
+    __TS__SparseArrayPush(
+        ____array_45,
         {
             "to",
             HDebug.ModeName(to)
@@ -398,6 +464,28 @@ function modeEndFields(bot, job)
             "toBy",
             Intent.Explain(bot, to)
         },
+        {
+            "toAge",
+            round3(Intent.SampleAge(bot, to))
+        },
+        {
+            "logLag",
+            round3(GameTime() - pending.at)
+        }
+    )
+    ____Telemetry_Event_46(
+        "lane_job_abort",
+        {__TS__SparseArraySpread(____array_45)}
+    )
+end
+function round3(v)
+    return v == nil and -1 or math.floor(v * 1000 + 0.5) / 1000
+end
+function modeEndFields(bot, job)
+    if not Telemetry.IsEnabled() then
+        return {}
+    end
+    return {
         {
             "competing",
             Intent.Competing(bot)
@@ -414,16 +502,12 @@ function modeEndFields(bot, job)
         {
             "farmAge",
             round3(Intent.SampleAge(bot, BotMode.Farm))
-        },
-        {
-            "toAge",
-            round3(Intent.SampleAge(bot, to))
         }
     }
 end
 local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
 local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
-local LOG_KIND = {
+LOG_KIND = {
     full_pull = "full",
     half_pull = "half",
     stack_pull = "stackpull",
@@ -452,6 +536,7 @@ local planNoted = {}
 local covering = {}
 --- Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling.
 local preContestRest = {}
+pendingModeEnd = {}
 function ____exports.ResetCache()
     jobs = {}
     doneCycle = {}
@@ -460,6 +545,7 @@ function ____exports.ResetCache()
     planNoted = {}
     covering = {}
     preContestRest = {}
+    pendingModeEnd = {}
 end
 local function dist2D(a, b)
     local dx = a.x - b.x
@@ -628,6 +714,9 @@ local function startBlocked(bot)
     local retreat = Intent.Resolved(bot, BotMode.Retreat)
     if retreat ~= nil and retreat >= settings().Timing.JobDesire then
         return "retreat"
+    end
+    if inFight(bot) then
+        return "fight"
     end
     return nil
 end
@@ -1047,13 +1136,17 @@ local function close(bot, job, phase, grade)
 end
 --- Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
 -- against a camp's timing.
-local function abort(bot, job, reason, keepStack, extra)
+local function abort(bot, job, reason, keepStack, extra, deferLog)
     if keepStack == nil then
         keepStack = false
     end
     if extra == nil then
         extra = {}
     end
+    if deferLog == nil then
+        deferLog = false
+    end
+    ____exports.FlushModeEnd(bot, true)
     local phase = job.phase
     job.phase = "return"
     releaseClaims(bot)
@@ -1074,7 +1167,6 @@ local function abort(bot, job, reason, keepStack, extra)
         Stacking.Release(job.campIdx, pid)
     end
     local token = string.gsub(reason, "%s+", "-")
-    local ____Telemetry_Event_14 = Telemetry.Event
     local ____array_13 = __TS__SparseArrayNew({"pid", pid}, {"kind", LOG_KIND[job.kind]}, {"camp", job.campIdx})
     local ____opt_11 = Camps.ByIdx(
         job.campIdx,
@@ -1093,26 +1185,31 @@ local function abort(bot, job, reason, keepStack, extra)
         ____array_13,
         unpack(extra)
     )
-    ____Telemetry_Event_14(
-        "lane_job_abort",
-        {__TS__SparseArraySpread(____array_13)}
-    )
-    local ____HDebug_Log_19 = HDebug.Log
-    local ____string_format_18 = string.format
-    local ____array_17 = __TS__SparseArrayNew(
+    local fields = {__TS__SparseArraySpread(____array_13)}
+    if deferLog and Telemetry.IsEnabled() then
+        pendingModeEnd[pid] = {
+            fields = fields,
+            at = GameTime()
+        }
+    else
+        Telemetry.Event("lane_job_abort", fields)
+    end
+    local ____HDebug_Log_18 = HDebug.Log
+    local ____string_format_17 = string.format
+    local ____array_16 = __TS__SparseArrayNew(
         "job-abort pid=%d kind=%s camp=%d key=%s reason=%s divert=%.2f",
         bot:GetPlayerID(),
         LOG_KIND[job.kind],
         job.campIdx
     )
-    local ____opt_15 = Camps.ByIdx(
+    local ____opt_14 = Camps.ByIdx(
         job.campIdx,
         bot:GetTeam()
     )
-    __TS__SparseArrayPush(____array_17, ____opt_15 and ____opt_15.key or "-", token, job.peakDivert)
-    ____HDebug_Log_19(
+    __TS__SparseArrayPush(____array_16, ____opt_14 and ____opt_14.key or "-", token, job.peakDivert)
+    ____HDebug_Log_18(
         "lane",
-        ____string_format_18(__TS__SparseArraySpread(____array_17))
+        ____string_format_17(__TS__SparseArraySpread(____array_16))
     )
 end
 --- A stack's walk-off ended (its outcome follows on `lane_stack`). Logged so the end is never only implied: without it a
@@ -1210,17 +1307,17 @@ local function stackAllowed(bot, job)
     return true, "ok"
 end
 local function partnerFields(bot, s)
-    local ____temp_22
+    local ____temp_21
     if s ~= nil then
-        ____temp_22 = LaneRoles.ReadPartner(
+        ____temp_21 = LaneRoles.ReadPartner(
             bot,
             s,
             LaneState.Enemies(bot, s.lane)
         )
     else
-        ____temp_22 = nil
+        ____temp_21 = nil
     end
-    local r = ____temp_22
+    local r = ____temp_21
     if r == nil then
         return {}
     end
@@ -1392,13 +1489,13 @@ local function keepGoing(bot, job)
     end
     local now = DotaTime()
     if job.kind == "contest" then
-        local ____temp_23
+        local ____temp_22
         if job.preAggroAt ~= nil then
-            ____temp_23 = job.attackFrom
+            ____temp_22 = job.attackFrom
         else
-            ____temp_23 = job.startedAt
+            ____temp_22 = job.startedAt
         end
-        local from = ____temp_23
+        local from = ____temp_22
         if from ~= nil and now - from >= settings().Timing.ContestMax then
             endContest(bot, job, "timeout")
             return false
@@ -1419,13 +1516,13 @@ local function keepGoing(bot, job)
     end
     if job.kind == "stack" then
         local ok, why = stackAllowed(bot, job)
-        local ____LaneConfig_InLaningPhase_result_24
+        local ____LaneConfig_InLaningPhase_result_23
         if LaneConfig.InLaningPhase() then
-            ____LaneConfig_InLaningPhase_result_24 = LaneState.ForBot(bot)
+            ____LaneConfig_InLaningPhase_result_23 = LaneState.ForBot(bot)
         else
-            ____LaneConfig_InLaningPhase_result_24 = nil
+            ____LaneConfig_InLaningPhase_result_23 = nil
         end
-        local ls = ____LaneConfig_InLaningPhase_result_24
+        local ls = ____LaneConfig_InLaningPhase_result_23
         if not ok then
             abortUnsafe(bot, job, why, ls)
         else
@@ -1533,13 +1630,13 @@ local function notePlan(bot, s, now, fields)
         s,
         LaneState.Enemies(bot, s.lane)
     )
-    local ____Telemetry_Event_26 = Telemetry.Event
-    local ____array_25 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_25 = Telemetry.Event
+    local ____array_24 = __TS__SparseArrayNew(
         {"pid", pid},
         unpack(fields)
     )
     __TS__SparseArrayPush(
-        ____array_25,
+        ____array_24,
         {"owner", mayRun and "ok" or why},
         {"eq", s.eqPos},
         {"meet", s.meetAmount},
@@ -1549,9 +1646,9 @@ local function notePlan(bot, s, now, fields)
         {"tower", s.ourTowerAmount},
         {"etower", s.theirTowerAmount}
     )
-    ____Telemetry_Event_26(
+    ____Telemetry_Event_25(
         "lane_plan",
-        {__TS__SparseArraySpread(____array_25)}
+        {__TS__SparseArraySpread(____array_24)}
     )
 end
 --- Whether this bot may double pull its lane's first two camps (skill, a second camp), and if so whether its start
@@ -1730,13 +1827,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_39
+    local ____temp_38
     if data ~= nil then
-        ____temp_39 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_38 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_39 = nil
+        ____temp_38 = nil
     end
-    local spawner = ____temp_39
+    local spawner = ____temp_38
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1855,13 +1952,13 @@ local function pingPartner(bot, job)
         return
     end
     local s = LaneState.ForBot(bot)
-    local ____temp_40
+    local ____temp_39
     if s ~= nil then
-        ____temp_40 = LaneRoles.Partner(bot, s)
+        ____temp_39 = LaneRoles.Partner(bot, s)
     else
-        ____temp_40 = nil
+        ____temp_39 = nil
     end
-    local partner = ____temp_40
+    local partner = ____temp_39
     if partner == nil or partner.isBot or not Orders.Ping(bot, job.stand) then
         return
     end
@@ -1938,10 +2035,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue268
+            local __continue274
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue268 = true
+                    __continue274 = true
                     break
                 end
                 if dist2D(
@@ -1950,9 +2047,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue268 = true
+                __continue274 = true
             until true
-            if not __continue268 then
+            if not __continue274 then
                 break
             end
         end
@@ -1991,10 +2088,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue277
+            local __continue283
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue277 = true
+                    __continue283 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2004,9 +2101,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue277 = true
+                __continue283 = true
             until true
-            if not __continue277 then
+            if not __continue283 then
                 break
             end
         end
@@ -2145,36 +2242,72 @@ end
 local function supply(bot, job, now)
     local slack = job.aggroAt - now - travelTo(bot, job.stand)
     if job.supplyUntil ~= nil then
-        if now < job.supplyUntil and slack > 0 and not bot:HasModifier(job.supplyModifier or "") then
+        local taken = bot:HasModifier(job.supplyModifier or "")
+        if now < job.supplyUntil and slack > 0 and not taken then
             return true
         end
+        noteSupply(bot, job, job.supplyItem, taken and "taken" or "missed")
         job.supplyUntil = nil
     end
     local cfg = settings()
-    if job.tangoUsed == true and job.clarityUsed == true or slack < cfg.Timing.SupplySlack or enemyHeroNear(bot) then
+    if job.tangoUsed == true and job.clarityUsed == true then
         return false
     end
-    if job.clarityUsed ~= true and bot:GetMaxMana() - bot:GetMana() >= cfg.Thresholds.ClarityMinLost and not bot:HasModifier("modifier_clarity_potion") then
+    local needClarity = job.clarityUsed ~= true and bot:GetMaxMana() - bot:GetMana() >= cfg.Thresholds.ClarityMinLost and not bot:HasModifier("modifier_clarity_potion")
+    local needTango = job.tangoUsed ~= true and bot:GetMaxHealth() - bot:GetHealth() >= cfg.Thresholds.TangoMinLost and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing")
+    if not needClarity and not needTango then
+        return false
+    end
+    local blocked = slack < cfg.Timing.SupplySlack and "slack" or (enemyHeroNear(bot) and "enemy" or nil)
+    if needClarity then
         local clarity = usableItem(bot, "item_clarity")
-        if clarity ~= nil then
+        if blocked ~= nil or clarity == nil then
+            noteSupply(
+                bot,
+                job,
+                "clarity",
+                "skip",
+                blocked or "no-item"
+            )
+        else
             job.clarityUsed = true
-            awaitSupply(job, now, "modifier_clarity_potion")
+            awaitSupply(
+                bot,
+                job,
+                now,
+                "clarity",
+                "modifier_clarity_potion"
+            )
             bot:Action_UseAbilityOnEntity(clarity, bot)
             return true
         end
     end
-    if job.tangoUsed ~= true and bot:GetMaxHealth() - bot:GetHealth() >= cfg.Thresholds.TangoMinLost and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing") then
+    if needTango then
         local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
-        local ____temp_43
-        if tango ~= nil then
-            ____temp_43 = tangoTree(bot)
+        local ____temp_42
+        if tango ~= nil and blocked == nil then
+            ____temp_42 = tangoTree(bot)
         else
-            ____temp_43 = nil
+            ____temp_42 = nil
         end
-        local tree = ____temp_43
-        if tango ~= nil and tree ~= nil then
+        local tree = ____temp_42
+        if tango == nil or tree == nil then
+            noteSupply(
+                bot,
+                job,
+                "tango",
+                "skip",
+                blocked or (tango == nil and "no-item" or "no-tree")
+            )
+        else
             job.tangoUsed = true
-            awaitSupply(job, now, "modifier_tango_heal")
+            awaitSupply(
+                bot,
+                job,
+                now,
+                "tango",
+                "modifier_tango_heal"
+            )
             bot:Action_UseAbilityOnTree(tango, tree)
             return true
         end
@@ -2344,7 +2477,8 @@ function ____exports.OnEnd(bot)
             job,
             "mode-end",
             false,
-            modeEndFields(bot, job)
+            modeEndFields(bot, job),
+            true
         )
     end
 end

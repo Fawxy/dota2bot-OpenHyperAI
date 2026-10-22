@@ -34,6 +34,7 @@ export function SetHelpers(h: LaneConfig.LaneHelpers): void {
 
 export function Tick(bot: Unit): void {
     LaneDebug.Tick(bot);
+    CampJobs.FlushModeEnd(bot);
     const snapshot = LaneState.ForBot(bot);
     if (snapshot === undefined) return;
     Counter.Tick(bot);

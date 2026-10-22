@@ -88,7 +88,12 @@ export interface Job extends JobRequest {
     clarityUsed?: boolean;
     supplyUntil?: number;
     supplyModifier?: string;
+    supplyItem?: SupplyItem;
+    /** lane_job_supply events already logged, once per item and outcome. */
+    supplyNoted?: Record<string, boolean>;
 }
+
+type SupplyItem = "tango" | "clarity";
 
 /**
  * A stack whose aggro landed; its outcome is read from the next :00 + StackOutcomeAt to :00 + StackOutcomeUntil,
@@ -140,6 +145,8 @@ let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }>
 let covering: Record<number, { since: number; via: string; partner: number; kind: string }> = {};
 /** Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling. */
 let preContestRest: Record<number, { lane: number; until: number }> = {};
+/** A mode-end abort waiting to be logged: farm's OnEnd runs while farm is still the active mode, so the mode that took over is read on a later tick. */
+let pendingModeEnd: Record<number, { fields: [string, any][]; at: number }> = {};
 
 export function ResetCache(): void {
     jobs = {};
@@ -149,6 +156,7 @@ export function ResetCache(): void {
     planNoted = {};
     covering = {};
     preContestRest = {};
+    pendingModeEnd = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -306,7 +314,21 @@ function startBlocked(bot: Unit): string | undefined {
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
+    if (inFight(bot)) return "fight";
     return undefined;
+}
+
+/**
+ * Retreat dips mid-fight, and a start then walks the support to the camp under the enemy (console.9057032878,
+ * shadow_demon 2:08). An enemy laner merely in range is the usual lane and not a fight.
+ */
+function inFight(bot: Unit): boolean {
+    const cfg = settings();
+    const enemies = bot.GetNearbyHeroes(cfg.Radii.JobStartEnemy, true, BotMode.None) ?? [];
+    if (enemies.length === 0) return false;
+    if (bot.WasRecentlyDamagedByAnyHero(cfg.Timing.JobStartHeroHit)) return true;
+    const target = bot.GetAttackTarget();
+    return target !== undefined && target !== null && target.IsHero() && target.GetTeam() !== bot.GetTeam();
 }
 
 function travelTo(bot: Unit, loc: Vector): number {
@@ -638,7 +660,8 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing.
  */
-function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = []): void {
+function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = [], deferLog = false): void {
+    FlushModeEnd(bot, true);
     const phase = job.phase;
     job.phase = "return";
     releaseClaims(bot);
@@ -654,7 +677,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
-    Telemetry.Event("lane_job_abort", [
+    const fields: [string, any][] = [
         ["pid", pid],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -665,7 +688,9 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         ["divert", job.peakDivert],
         ...(job.preAggroAt !== undefined ? ([["pre", 1]] as [string, any][]) : []),
         ...extra,
-    ]);
+    ];
+    if (deferLog && Telemetry.IsEnabled()) pendingModeEnd[pid] = { fields, at: GameTime() };
+    else Telemetry.Event("lane_job_abort", fields);
     HDebug.Log(
         "lane",
         string.format(
@@ -1463,27 +1488,36 @@ function tangoTree(bot: Unit): number | undefined {
 function supply(bot: Unit, job: Job, now: number): boolean {
     const slack = job.aggroAt - now - travelTo(bot, job.stand);
     if (job.supplyUntil !== undefined) {
-        if (now < job.supplyUntil && slack > 0 && !bot.HasModifier(job.supplyModifier ?? "")) return true;
+        const taken = bot.HasModifier(job.supplyModifier ?? "");
+        if (now < job.supplyUntil && slack > 0 && !taken) return true;
+        noteSupply(bot, job, job.supplyItem, taken ? "taken" : "missed");
         job.supplyUntil = undefined;
     }
     const cfg = settings();
-    if ((job.tangoUsed === true && job.clarityUsed === true) || slack < cfg.Timing.SupplySlack || enemyHeroNear(bot)) return false;
-    if (job.clarityUsed !== true && bot.GetMaxMana() - bot.GetMana() >= cfg.Thresholds.ClarityMinLost && !bot.HasModifier("modifier_clarity_potion")) {
+    if (job.tangoUsed === true && job.clarityUsed === true) return false;
+    const needClarity = job.clarityUsed !== true && bot.GetMaxMana() - bot.GetMana() >= cfg.Thresholds.ClarityMinLost
+        && !bot.HasModifier("modifier_clarity_potion");
+    const needTango = job.tangoUsed !== true && bot.GetMaxHealth() - bot.GetHealth() >= cfg.Thresholds.TangoMinLost
+        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing");
+    if (!needClarity && !needTango) return false;
+    const blocked = slack < cfg.Timing.SupplySlack ? "slack" : enemyHeroNear(bot) ? "enemy" : undefined;
+    if (needClarity) {
         const clarity = usableItem(bot, "item_clarity");
-        if (clarity !== undefined) {
+        if (blocked !== undefined || clarity === undefined) noteSupply(bot, job, "clarity", "skip", blocked ?? "no-item");
+        else {
             job.clarityUsed = true;
-            awaitSupply(job, now, "modifier_clarity_potion");
+            awaitSupply(bot, job, now, "clarity", "modifier_clarity_potion");
             (bot as unknown as SupplyBot).Action_UseAbilityOnEntity(clarity, bot);
             return true;
         }
     }
-    if (job.tangoUsed !== true && bot.GetMaxHealth() - bot.GetHealth() >= cfg.Thresholds.TangoMinLost
-        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing")) {
+    if (needTango) {
         const tango = usableItem(bot, "item_tango_single") ?? usableItem(bot, "item_tango");
-        const tree = tango !== undefined ? tangoTree(bot) : undefined;
-        if (tango !== undefined && tree !== undefined) {
+        const tree = tango !== undefined && blocked === undefined ? tangoTree(bot) : undefined;
+        if (tango === undefined || tree === undefined) noteSupply(bot, job, "tango", "skip", blocked ?? (tango === undefined ? "no-item" : "no-tree"));
+        else {
             job.tangoUsed = true;
-            awaitSupply(job, now, "modifier_tango_heal");
+            awaitSupply(bot, job, now, "tango", "modifier_tango_heal");
             (bot as unknown as SupplyBot).Action_UseAbilityOnTree(tango, tree);
             return true;
         }
@@ -1491,9 +1525,30 @@ function supply(bot: Unit, job: Job, now: number): boolean {
     return false;
 }
 
-function awaitSupply(job: Job, now: number, modifier: string): void {
+function awaitSupply(bot: Unit, job: Job, now: number, item: SupplyItem, modifier: string): void {
     job.supplyUntil = now + settings().Timing.SupplyWait;
     job.supplyModifier = modifier;
+    job.supplyItem = item;
+    noteSupply(bot, job, item, "use");
+}
+
+function noteSupply(bot: Unit, job: Job, item: SupplyItem | undefined, state: string, reason?: string): void {
+    if (item === undefined || !Telemetry.IsEnabled()) return;
+    const key = `${item}:${state}`;
+    job.supplyNoted ??= {};
+    if (job.supplyNoted[key] === true) return;
+    job.supplyNoted[key] = true;
+    const maxHP = bot.GetMaxHealth(), maxMP = bot.GetMaxMana();
+    Telemetry.Event("lane_job_supply", [
+        ["pid", bot.GetPlayerID()],
+        ["item", item],
+        ["state", state],
+        ...(reason !== undefined ? ([["reason", reason]] as [string, any][]) : []),
+        ["kind", LOG_KIND[job.kind]],
+        ["phase", job.phase],
+        ["hp", maxHP > 0 ? round3(bot.GetHealth() / maxHP) : -1],
+        ["mp", maxMP > 0 ? round3(bot.GetMana() / maxMP) : -1],
+    ]);
 }
 
 function step(bot: Unit, job: Job): boolean {
@@ -1623,26 +1678,39 @@ export function Think(bot: Unit): boolean {
 export function OnEnd(bot: Unit): void {
     if (!LaneConfig.IsActive()) return;
     const job = jobs[bot.GetPlayerID()];
-    if (isLive(job)) abort(bot, job, "mode-end", false, modeEndFields(bot, job));
+    if (isLive(job)) abort(bot, job, "mode-end", false, modeEndFields(bot, job), true);
+}
+
+/** Logs a pending mode-end abort once farm has given way, or at once when forced; it waits at most a second. */
+export function FlushModeEnd(bot: Unit, force = false): void {
+    const pid = bot.GetPlayerID();
+    const pending = pendingModeEnd[pid];
+    if (pending === undefined) return;
+    const to = bot.GetActiveMode();
+    if (!force && to === BotMode.Farm && GameTime() - pending.at < 1) return;
+    delete pendingModeEnd[pid];
+    Telemetry.Event("lane_job_abort", [
+        ...pending.fields,
+        ["to", HDebug.ModeName(to)],
+        ["toBy", Intent.Explain(bot, to)],
+        ["toAge", round3(Intent.SampleAge(bot, to))],
+        ["logLag", round3(GameTime() - pending.at)],
+    ]);
 }
 
 function round3(v: number | undefined): number {
     return v === undefined ? -1 : math.floor(v * 1000 + 0.5) / 1000;
 }
 
-/** Which mode took farm's place and whether the job's claims on other modes were still live when it did. */
+/** Whether the job's claims on other modes were still live when farm ended; FlushModeEnd adds the mode that took over. */
 function modeEndFields(bot: Unit, job: Job): [string, any][] {
     if (!Telemetry.IsEnabled()) return [];
-    const to = bot.GetActiveMode();
     return [
-        ["to", HDebug.ModeName(to)],
-        ["toBy", Intent.Explain(bot, to)],
         ["competing", Intent.Competing(bot)],
         ["hold", job.retreatHold ?? "-"],
         ["holdAge", round3(Intent.ClaimAge(bot, "lane:job_hold", BotMode.Retreat))],
         ["focusAge", round3(Intent.ClaimAge(bot, "lane:job_focus", BotMode.Ward))],
         ["farmAge", round3(Intent.SampleAge(bot, BotMode.Farm))],
-        ["toAge", round3(Intent.SampleAge(bot, to))],
     ];
 }
 

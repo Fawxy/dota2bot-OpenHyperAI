@@ -123,6 +123,7 @@ export const DEFAULTS = {
         JobMaxAfterAggro: 15,
         JobPreemptAfter: 1,
         JobHoldHeroHit: 1.5,
+        JobStartHeroHit: 2,
         JobUpcoming: 10,
         MaxTravel: 12,
         PreContestLead: 2,
@@ -265,6 +266,8 @@ export const DEFAULTS = {
         JobEnemyHero: 1200,
         // Tango's tree, near enough not to cost the pull its timing.
         TangoTree: 300,
+        // A start is a fight's when an enemy hero this close is hitting the bot or being hit by it.
+        JobStartEnemy: 800,
         StandOffset: 150,
         // Stand at most this far from the spawner origin: inside NeutralSearch with room for the camp's spread.
         StandReach: 450,

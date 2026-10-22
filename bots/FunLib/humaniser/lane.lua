@@ -69,6 +69,7 @@ function ____exports.SetHelpers(h)
 end
 function ____exports.Tick(bot)
     LaneDebug.Tick(bot)
+    CampJobs.FlushModeEnd(bot)
     local snapshot = LaneState.ForBot(bot)
     if snapshot == nil then
         return
