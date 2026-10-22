@@ -21,7 +21,9 @@ export type LaneFlag =
     | "Mid"
     | "CounterPlay"
     | "Telegraph"
-    | "CampBlock";
+    | "CampBlock"
+    | "Forecast"
+    | "PreContest";
 export type Technique = "block" | "full_pull" | "half_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
@@ -32,7 +34,8 @@ export type CurveName =
     | "CounterNotice"
     | "PlanMisread"
     | "CoverAbsentCore"
-    | "DoubleDraw";
+    | "DoubleDraw"
+    | "Foresight";
 
 export const DEFAULTS = {
     Enable: true,
@@ -51,6 +54,9 @@ export const DEFAULTS = {
     CounterPlay: true,
     Telegraph: true,
     CampBlock: false,
+    Forecast: true,
+    PreContest: true,
+    ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
         FullPull: 0.3,
@@ -64,6 +70,7 @@ export const DEFAULTS = {
         CampBlock: 0.6,
         HarassPosition: 0.6,
         RandomHarass: 0.5,
+        PreContest: 0.7,
     },
     Curves: {
         JitterSigma: [1.5, 0.2],
@@ -75,6 +82,7 @@ export const DEFAULTS = {
         PlanMisread: [0.3, 0.05],
         CoverAbsentCore: [0.3, 0.9],
         DoubleDraw: [0.2, 0.0],
+        Foresight: [0, 1],
     } as Record<string, number[]>,
     Eq: { Safe: -0.7, Off: -0.7, Mid: -0.1, MidPreRune: 0.15, XpDenyWeight: 0.2 },
     Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },
@@ -221,6 +229,9 @@ export const DEFAULTS = {
         StackMaxCampCount: 1,
         ApproachEpsilon: 25,
         ExposureEnemies: 2,
+        PreContestLead: 2,
+        PreContestWait: 4,
+        EqSampleAt: 10,
     },
     Radii: {
         LaneCreep: 1200,
@@ -238,6 +249,7 @@ export const DEFAULTS = {
         BlockLost: 400,
         BlockContact: 700,
         TowerAggro: 900,
+        PreContestStand: 400,
         TowerExitMargin: 100,
         Zone: 900,
         ZoneOffset: 150,

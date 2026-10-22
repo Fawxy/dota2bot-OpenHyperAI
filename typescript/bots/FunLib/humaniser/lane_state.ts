@@ -51,6 +51,10 @@ export interface LaneSnapshot {
     enemyDeniesPerCycle: number[];
     lastAllyAggroAt: Record<number, number>;
     eqHistory: number[];
+    allyPower: number;
+    enemyPower: number;
+    imbalance: number;
+    forecastEq: number;
 }
 
 export interface LaneEnemy {
@@ -175,6 +179,27 @@ export function MeetAmount(ourFront: number, enemyFront: number, ourTower: numbe
     if (oursOut && !theirsOut) return enemyFront;
     if (theirsOut && !oursOut) return ourFront;
     return (ourFront + enemyFront) / 2;
+}
+
+export function CreepWeight(name: string): number {
+    const w = LaneConfig.Settings().ForecastModel.TypeWeight;
+    if (contains(name, "ranged")) return w.ranged;
+    if (contains(name, "siege")) return w.siege;
+    return w.melee;
+}
+
+export function LanePower(units: Unit[]): number {
+    let power = 0;
+    for (const u of units) if (u.IsAlive()) power += u.GetHealth() * CreepWeight(u.GetUnitName());
+    return power;
+}
+
+export function Imbalance(allyPower: number, enemyPower: number): number {
+    return (allyPower - enemyPower) / (allyPower + enemyPower + LaneConfig.Settings().ForecastModel.PowerFloor);
+}
+
+export function ForecastEq(eqPos: number, imbalance: number): number {
+    return clamp(eqPos + LaneConfig.Settings().ForecastModel.K * imbalance, -1, 1);
 }
 
 export function LaneKindOf(team: number, lane: Lane): Camps.LaneKind {
@@ -393,6 +418,10 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
     const ally = summarise(team, scan.ally[lane], frontLoc, true);
     const enemy = summarise(team, scan.enemy[lane], frontLoc, false);
 
+    const allyPower = LanePower(ally.units);
+    const enemyPower = LanePower(enemy.units);
+    const imbalance = Imbalance(allyPower, enemyPower);
+
     const cycleSec = now % timing().WaveCycle;
     if (enemy.count > t.maxEnemy) t.maxEnemy = enemy.count;
     if (t.arrivalSec === undefined && enemy.count >= ARRIVAL_CREEPS) t.arrivalSec = cycleSec;
@@ -427,6 +456,10 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
         enemyDeniesPerCycle: [...t.deniesPerCycle],
         lastAllyAggroAt: copyRecord(t.aggro),
         eqHistory: [...t.eqHistory],
+        allyPower,
+        enemyPower,
+        imbalance,
+        forecastEq: ForecastEq(eqPos, imbalance),
     };
     snapshots[key] = snapshot;
     for (const fn of refreshCallbacks) fn(snapshot);

@@ -286,4 +286,35 @@ do
 	check("control: and scan the world", (GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0) > 0)
 end
 
+do
+	local _, bot, S = world()
+	allFronts({ 0.6, 0.45 })
+	local empty = S.ForBot(bot)
+	check("no creeps: no imbalance and forecast stays at eq", empty.imbalance == 0 and empty.forecastEq == empty.eqPos, empty.imbalance)
+
+	local ranged = { MakeCreep({ team = 2, x = 0, y = 0, hp = 300, name = "npc_dota_creep_goodguys_ranged" }),
+		MakeCreep({ team = 2, x = 0, y = 0, hp = 300, name = "npc_dota_creep_goodguys_ranged" }) }
+	local melee = { MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }), MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }),
+		MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }) }
+	check("ranged outweigh melee of equal HP", S.Imbalance(S.LanePower(ranged), S.LanePower(melee)) > 0)
+	check("a 100-HP straggler is a small imbalance", S.Imbalance(100, 0) < 0.2, S.Imbalance(100, 0))
+	check("upgraded waves in proportion read alike", math.abs(S.Imbalance(2000, 1000) - S.Imbalance(4000, 2000)) < 0.05)
+	check("forecast clamps at the enemy tower", S.ForecastEq(0.9, 1) == 1)
+	check("forecast moves toward the winner", near(S.ForecastEq(-0.3, 0.5), -0.1))
+end
+
+do
+	local _, bot, S = world()
+	allFronts({ 0.5, 0.5 })
+	creep(2, 0, -5000, "npc_dota_creep_goodguys_ranged")
+	creep(3, 0, -5000)
+	local fogged = creep(3, 0, -5000)
+	fogged.CanBeSeen = function() return false end
+	local s = S.ForBot(bot)
+	check("fogged enemy creep adds no power", near(s.enemyPower, 550) and s.enemy.count == 1, s.enemyPower)
+	check("ally power is HP weighted by type", near(s.allyPower, 550 * 1.6), s.allyPower)
+	check("snapshot imbalance and forecast follow the powers",
+		near(s.imbalance, S.Imbalance(s.allyPower, s.enemyPower)) and s.imbalance > 0 and s.forecastEq > s.eqPos, s.forecastEq)
+end
+
 finish()
