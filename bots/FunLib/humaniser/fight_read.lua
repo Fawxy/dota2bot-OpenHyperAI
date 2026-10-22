@@ -417,6 +417,54 @@ local function gather(bot, snap, now)
     end
     return {inputs = inputs, target = target}
 end
+--- Heroes in `bot`'s lane by the read's rules: allies standing in it, and enemies visible in it or last seen in it
+-- within MISSING_COUNTS seconds.
+function ____exports.LaneCounts(bot, snap)
+    local team = bot:GetTeam()
+    local lane = snap.lane
+    local bounds = laneBounds(team, lane)
+    local allies = 0
+    for ____, h in ipairs(snap.allies) do
+        if h.alive and not h.unit:IsNull() and inLane(
+            team,
+            lane,
+            h.unit:GetLocation(),
+            bounds
+        ) then
+            allies = allies + 1
+        end
+    end
+    local enemies = 0
+    for ____, e in ipairs(LaneState.Enemies(bot, lane)) do
+        do
+            local __continue79
+            repeat
+                if e == nil or e.location == nil then
+                    __continue79 = true
+                    break
+                end
+                local unit = e.visible and usable(e.unit) and e.unit or nil
+                if unit == nil and (e.visible or e.timeSinceSeen > MISSING_COUNTS) then
+                    __continue79 = true
+                    break
+                end
+                if inLane(
+                    team,
+                    lane,
+                    unit ~= nil and unit:GetLocation() or e.location,
+                    bounds
+                ) then
+                    enemies = enemies + 1
+                end
+                __continue79 = true
+            until true
+            if not __continue79 then
+                break
+            end
+        end
+    end
+    return {enemies = enemies, allies = allies}
+end
 local function compute(bot, now)
     if now < 0 or not LaneFightConfig.IsActive() then
         return {noticed = false}

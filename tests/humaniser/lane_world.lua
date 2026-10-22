@@ -226,6 +226,7 @@ function LaneFresh(laneCfg, extra)
 		NextPowerRuneTime = function() return NEXT_RUNE or 1e9 end,
 		IsValidHero = function(u) return u ~= nil and u.alive end,
 		IsSuspiciousIllusion = function(u) return u.illusion == true end,
+		CannotBeKilled = function(_, u) return u.unkillable == true end,
 		IsValidBuilding = function(u) return u ~= nil and u.alive end,
 		GetHP = function(u) return u:GetHealth() / u:GetMaxHealth() end,
 	})

@@ -240,7 +240,8 @@ if Telemetry.GuardsEnabled() then
         LaneFight,
         {
             Tick = none,
-            ReadFor = function() return {noticed = false} end
+            ReadFor = function() return {noticed = false} end,
+            CheckKill = none
         }
     )
     Telemetry.GuardModule(

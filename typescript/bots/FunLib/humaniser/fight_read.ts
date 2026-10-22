@@ -321,6 +321,28 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     return { inputs, target };
 }
 
+/**
+ * Heroes in `bot`'s lane by the read's rules: allies standing in it, and enemies visible in it or last seen in it
+ * within MISSING_COUNTS seconds.
+ */
+export function LaneCounts(bot: Unit, snap: LaneState.LaneSnapshot): { enemies: number; allies: number } {
+    const team = bot.GetTeam();
+    const lane = snap.lane;
+    const bounds = laneBounds(team, lane);
+    let allies = 0;
+    for (const h of snap.allies) {
+        if (h.alive && !h.unit.IsNull() && inLane(team, lane, h.unit.GetLocation(), bounds)) allies++;
+    }
+    let enemies = 0;
+    for (const e of LaneState.Enemies(bot, lane)) {
+        if (e === undefined || e.location === undefined) continue;
+        const unit = e.visible && usable(e.unit) ? e.unit : undefined;
+        if (unit === undefined && (e.visible || e.timeSinceSeen > MISSING_COUNTS)) continue;
+        if (inLane(team, lane, unit !== undefined ? unit.GetLocation() : e.location, bounds)) enemies++;
+    }
+    return { enemies, allies };
+}
+
 function compute(bot: Unit, now: number): Read {
     if (now < 0 || !LaneFightConfig.IsActive()) return { noticed: false };
     const snap = LaneState.ForBot(bot);

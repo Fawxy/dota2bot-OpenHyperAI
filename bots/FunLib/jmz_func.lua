@@ -63,6 +63,7 @@ J.Humaniser.Lane.SetHelpers({
 	NextPowerRuneTime = function() return J.GetNextPowerRuneSpawnTime() end,
 	IsValidHero = function(u) return J.IsValidHero(u) end,
 	IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end,
+	CannotBeKilled = function(bot, u) return J.CannotBeKilled(bot, u) end,
 	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
 	GetHP = function(u) return J.GetHP(u) end,
 })

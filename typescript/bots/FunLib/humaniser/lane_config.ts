@@ -442,6 +442,7 @@ export interface LaneHelpers {
     NextPowerRuneTime?: (this: void) => number;
     IsValidHero?: (this: void, u: Unit) => boolean;
     IsSuspiciousIllusion?: (this: void, u: Unit) => boolean;
+    CannotBeKilled?: (this: void, bot: Unit, target: Unit) => boolean;
     IsValidBuilding?: (this: void, u: Unit) => boolean;
     GetHP?: (this: void, u: Unit) => number;
 }
