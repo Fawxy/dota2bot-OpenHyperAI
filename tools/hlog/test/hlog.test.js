@@ -321,3 +321,21 @@ test('summary reports the forecast fit and pre-contest outcomes', () => {
     assert.match(text, /forecast fit:\n {2}safe n=2 K=0\.30 r2=1\.00/);
     assert.match(text, /pre-contest: started 2 attacked 1 no-pull 1 enemy-in-lane 0 aborted 1/);
 });
+test('summary reports take-pull outcomes and swings', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=80 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=90 ev=lane_job_end pid=0 kind=contest camp=2 reason=no-creeps pre=0 take=1 swings=3',
+            '[HEV] t=100 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=104 ev=lane_job_end pid=0 kind=contest camp=2 reason=outnumbered pre=0 take=1 swings=1',
+            '[HEV] t=110 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=112 ev=lane_job_abort pid=0 kind=contest camp=2 reason=mode-end phase=travel take=1',
+            '[HEV] t=120 ev=lane_job_start pid=4 kind=contest camp=2',
+            '[HEV] t=125 ev=lane_job_end pid=4 kind=contest camp=2 reason=timeout pre=0',
+        ].join('\n')
+    )[0];
+    const text = report.summary(game);
+    assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 aborted 1/);
+    assert.doesNotMatch(text, /pre-contest:/);
+});

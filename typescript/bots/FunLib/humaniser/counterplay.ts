@@ -4,7 +4,7 @@
  * visible heroes plus GetHeroLastSeenInfo), visible creeps and neutrals, and public map data. Each bot notices a
  * signal instance at most once, with a skill-scaled chance; an unnoticed instance is remembered so it is not re-rolled.
  */
-import { Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -564,6 +564,29 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
     return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, preAggroAt: sig.aggroAt });
 }
 
+function towerGuards(team: number, loc: Vector): boolean {
+    const range = settings().Thresholds.EnemyTowerRange;
+    for (let id = Tower.Top1; id <= Tower.Bot3; id++) {
+        const t = GetTower(team, id);
+        if (t !== null && t !== undefined && t.IsAlive() && dist2D(t.GetLocation(), loc) <= range) return true;
+    }
+    return false;
+}
+
+/** A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty. */
+function takePull(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[]): boolean {
+    const cfg = settings();
+    if (sig.campIdx === undefined || !LaneConfig.IsOn("TakePull") || LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull) return false;
+    if (LaneRoles.CampJobOwner(s) === bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return false;
+    if (s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) return false;
+    const spawner = Camps.SpawnerByIdx(sig.campIdx);
+    if (spawner === undefined) return false;
+    const center = Camps.BoxCenter(spawner);
+    if (CampJobs.TravelTime(GetUnitToLocationDistance(bot, center), bot.GetCurrentMovementSpeed()) > cfg.Timing.MaxTravel) return false;
+    if (towerGuards(enemyTeamOf(s.team), center) || !pathSafe(bot, s, center, enemies, sig.enemyPid)) return false;
+    return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, take: true });
+}
+
 function preContested(st: ObserverState, sig: Signal): boolean {
     const pc = st.preContested;
     if (pc === undefined || sig.campIdx !== pc.campIdx) return false;
@@ -590,6 +613,10 @@ function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, 
             if (laner === undefined) continue;
             st.responded[key] = true;
             st.punish = { pid: laner.pid, startAt: now };
+            return;
+        }
+        if (takePull(bot, s, sig, enemies)) {
+            st.responded[key] = true;
             return;
         }
         if (sig.campIdx === undefined || LaneRoles.CampJobOwner(s) !== bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined) continue;

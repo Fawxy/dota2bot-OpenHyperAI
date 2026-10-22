@@ -23,7 +23,8 @@ export type LaneFlag =
     | "Telegraph"
     | "CampBlock"
     | "Forecast"
-    | "PreContest";
+    | "PreContest"
+    | "TakePull";
 export type Technique = "block" | "full_pull" | "half_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
@@ -56,6 +57,7 @@ export const DEFAULTS = {
     CampBlock: false,
     Forecast: true,
     PreContest: true,
+    TakePull: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
@@ -71,6 +73,7 @@ export const DEFAULTS = {
         HarassPosition: 0.6,
         RandomHarass: 0.5,
         PreContest: 0.7,
+        TakePull: 0.5,
     },
     Curves: {
         JitterSigma: [1.5, 0.2],
@@ -129,6 +132,9 @@ export const DEFAULTS = {
         PreContestWait: 4,
         // After a pre-contest the enemy did not pull into (enemy-in-lane, no-pull), the bot waits this long before another in that lane.
         PreContestCooldown: 60,
+        TakePullMax: 15,
+        TakePullWait: 3,
+        TakePullSwing: 1,
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,
@@ -221,6 +227,9 @@ export const DEFAULTS = {
         HarassTowerLevel: 6,
         HarassTowerTargetHP: 0.3,
         EnemyTowerRange: 850,
+        // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
+        TakePullLaneCreeps: 1,
+        TakePullDangerEnemies: 2,
         ShoveMinHP: 0.5,
         ShoveDoneCreeps: 1,
         TowerSwapAllyHP: 0.6,
@@ -287,6 +296,8 @@ export const DEFAULTS = {
         PathSafe: 1500,
         StackedCampSafe: 1500,
         ContestReach: 1200,
+        TakePullCreeps: 800,
+        TakePullDanger: 1200,
         CounterNeutralScan: 1600,
         MidFront: 1200,
         MidHuman: 1500,

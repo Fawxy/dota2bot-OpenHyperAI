@@ -73,6 +73,7 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 - [ ] Pull forecast, hold: with a losing clash and a pushed-out meet point, the 0.9 support holds. Pass: no pull that cycle (`lane_plan` gate `planner` says why).
 - [ ] Pre-contest: against a human support who pulls every time the lane drifts back, a 0.9 bot is often at the camp before the aggro and a 0.4 bot never is. Pass: `lane_job_start ... kind=contest ... pre=1` before the pull for 0.9, none for 0.4.
 - [ ] Pre-contest, carry safety: the carry is never left alone with both enemy laners while the support watches. Pass: `lane_job_end ... kind=contest reason=enemy-in-lane pre=1` when their support stays in lane, and no carry deaths during a lookout.
+- [ ] Take the pull: when both supports pull at once, or the enemy pulls while ours is away, a 0.9 carry walks to their camp and last-hits the pulled wave; a 0.4 carry stays in lane. Pass: `take-pull:` in the hlog summary with `swings` > 0 and few `outnumbered`, and no carry deaths during a take.
 - [ ] Telegraph lines read naturally and stay within 1 per bot per 10 s. Pass: no spam, no wrong lane in `they're pulling <lane>`.
 - [ ] `OwnLaningThink = 'all'`: compare 07-only enemy bots' lane results with `'allies'`. Pass: no obvious laning regression.
 - [ ] `!freeze !shove !pull !nopull !stack [lane]` resolve the lane from the issuer and lane word, acknowledged once. Pass: one ack, correct lane.

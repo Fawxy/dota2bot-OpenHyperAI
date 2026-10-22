@@ -810,4 +810,122 @@ do
 	check("the abort of a pre-contest carries pre=1", aborted ~= nil and aborted:find("pre=1", 1, true) ~= nil, aborted)
 end
 
+do
+	-- Take the pull: their support pulls their small camp at 1:15 and our core (pid 3, not the lane's camp-job owner)
+	-- has no enemy creeps left at its front. Their Dire top T1 stands 1,697 from the camp, outside its 850 range.
+	local function taking(opts)
+		opts = opts or {}
+		local H, support, core, ecore, esup = world(opts.skill or 1, { cfg = opts.cfg, telemetry = { Enable = true } })
+		OBSERVER = 3
+		H.LastHitSkill.SetHelpers({ WillKillTarget = function(c, dmg) return dmg >= c:GetHealth() end })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		esup.loc = THEIR_SMALL
+		for i = 1, (opts.laneCreeps or 0) do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end
+		if opts.setup ~= nil then opts.setup(H, core) end
+		RANDOM_FRACTION = 0
+		tick(H, core, 75)
+		RANDOM_FRACTION = nil
+		check("precondition: the core noticed the pull", #signalsOf(H, core, "pull") == 1)
+		T = 75.5
+		H.Lane.Counter.Think(core, {})
+		return H, core, H.Lane.CampJobs.Current(core), lines, ecore, esup, support
+	end
+	local function frame(H, bot, t)
+		T = t
+		local d = H.Lane.CampJobDesire(bot)
+		H.Lane.CampJobThink(bot)
+		return d
+	end
+	local function ended(lines)
+		for _, l in ipairs(lines) do if l:find(" ev=lane_job_end ", 1, true) then return l end end
+		return nil
+	end
+
+	local H, core, job, lines, _, _, support = taking()
+	check("not the owner, empty lane: the core takes their pull", job ~= nil and job.kind == "contest" and job.take == true and job.campIdx == 1)
+	check("the take is the cycle's commit", H.Lane.LanePlanner.Committed(core) == "contest")
+	local start
+	for _, l in ipairs(lines) do if l:find(" ev=lane_job_start ", 1, true) then start = l end end
+	check("lane_job_start marks the take", start ~= nil and start:find("pid=3", 1, true) ~= nil and start:find("take=1", 1, true) ~= nil, start)
+	OBSERVER = 4
+	tick(H, support, 75)
+	T = 75.5
+	H.Lane.Counter.Think(support, {})
+	local own = H.Lane.CampJobs.Current(support)
+	check("the owner's answer stays a contest of the puller", own ~= nil and own.kind == "contest" and own.take ~= true)
+
+	local asOwner = select(3, taking({ setup = function(_, c) c.pos = 5 end }))
+	check("the owner contests rather than takes", asOwner ~= nil and asOwner.kind == "contest" and asOwner.take ~= true)
+	check("two enemy creeps still at our front: no take", select(3, taking({ laneCreeps = 2 })) == nil)
+	check("one enemy creep at our front: take", select(3, taking({ laneCreeps = 1 })) ~= nil)
+	check("skill 0.4: no take", select(3, taking({ skill = 0.4 })) == nil)
+	check("TakePull off: no take", select(3, taking({ cfg = { Enable = true, TakePull = false } })) == nil)
+	check("their tower beside the camp: no take", select(3, taking({ setup = function()
+		TOWERS_W[3][dota.Tower.Top1].loc = Vector(THEIR_SMALL.x + 300, THEIR_SMALL.y)
+	end })) == nil)
+	check("a third enemy seen near the route: no take", select(3, taking({ setup = function()
+		local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
+		hide(mid, 3)
+		LAST_SEEN[12] = { location = Vector(1800, 6800), time_since_seen = 2 }
+	end })) == nil)
+
+	-- The executor.
+	H, core, job, lines = taking()
+	local d = frame(H, core, 76)
+	local moves = ActionsOf(3, "MoveToLocation")
+	check("take walks to their camp", #moves == 1 and moves[1].args[1].x == THEIR_SMALL.x and moves[1].args[1].y == THEIR_SMALL.y)
+	check("take desire is the contest's", near(d, 0.65), d)
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	local creep = MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	d = frame(H, core, 77)
+	check("a non-owner's take is not aborted as not-owner", near(d, 0.65), d)
+	check("a creep it cannot kill is not hit", attacksOn(3, creep) == 0)
+	check("waits by the pulled creeps", H.Intent.HeldBy(core) == "lane:take_pull", H.Intent.HeldBy(core))
+	creep.hp = 30
+	RANDOM_FRACTION = 0
+	frame(H, core, 77.5)
+	RANDOM_FRACTION = nil
+	check("last-hits the killable pulled creep", attacksOn(3, creep) == 1, attacksOn(3, creep))
+	frame(H, core, 77.8)
+	check("one swing per creep", attacksOn(3, creep) == 1, attacksOn(3, creep))
+	creep.hp = 0
+	frame(H, core, 79)
+	check("no creeps for under 3 s: still there", H.Lane.CampJobs.Active(core))
+	frame(H, core, 81.1)
+	check("no creeps for 3 s: the take ends", not H.Lane.CampJobs.Active(core))
+	local e = ended(lines)
+	check("lane_job_end: no-creeps, take=1, one swing", e ~= nil and e:find("reason=no-creeps", 1, true) ~= nil
+		and e:find("take=1", 1, true) ~= nil and e:find("swings=1", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	frame(H, core, 76)
+	check("precondition: taking with one enemy hero by it", H.Lane.CampJobs.Active(core))
+	local ecore
+	H, core, job, lines, ecore = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	ecore.loc = Vector(THEIR_SMALL.x + 400, THEIR_SMALL.y)
+	frame(H, core, 76)
+	e = ended(lines)
+	check("two enemy heroes by it: the take ends outnumbered", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=outnumbered", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	frame(H, core, 89)
+	check("14.5 s in: still taking", H.Lane.CampJobs.Active(core))
+	frame(H, core, 90.6)
+	e = ended(lines)
+	check("15 s after its start: the take ends on timeout", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=timeout", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	frame(H, core, 76)
+	H.Lane.CampJobs.OnEnd(core)
+	local aborted
+	for _, l in ipairs(lines) do if l:find(" ev=lane_job_abort ", 1, true) then aborted = l end end
+	check("a take's abort carries take=1", aborted ~= nil and aborted:find("take=1", 1, true) ~= nil, aborted)
+end
+
 finish()

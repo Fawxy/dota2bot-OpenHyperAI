@@ -217,6 +217,7 @@ local settings, dist2D, visibleEnemy, isLaner, runStackAttack
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
+local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -1104,6 +1105,60 @@ local function preContest(bot, s, sig, enemies, now)
     end
     return CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid, preAggroAt = sig.aggroAt})
 end
+local function towerGuards(team, loc)
+    local range = settings().Thresholds.EnemyTowerRange
+    do
+        local id = Tower.Top1
+        while id <= Tower.Bot3 do
+            local t = GetTower(team, id)
+            if t ~= nil and t ~= nil and t:IsAlive() and dist2D(
+                t:GetLocation(),
+                loc
+            ) <= range then
+                return true
+            end
+            id = id + 1
+        end
+    end
+    return false
+end
+--- A laner other than the camp-job owner walks to their pulled wave for the last hits, when its own lane is empty.
+local function takePull(bot, s, sig, enemies)
+    local cfg = settings()
+    if sig.campIdx == nil or not LaneConfig.IsOn("TakePull") or LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull then
+        return false
+    end
+    if LaneRoles.CampJobOwner(s) == bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil or CampJobs.Active(bot) then
+        return false
+    end
+    if s.enemy.count > cfg.Thresholds.TakePullLaneCreeps then
+        return false
+    end
+    local spawner = Camps.SpawnerByIdx(sig.campIdx)
+    if spawner == nil then
+        return false
+    end
+    local center = Camps.BoxCenter(spawner)
+    if CampJobs.TravelTime(
+        GetUnitToLocationDistance(bot, center),
+        bot:GetCurrentMovementSpeed()
+    ) > cfg.Timing.MaxTravel then
+        return false
+    end
+    if towerGuards(
+        enemyTeamOf(s.team),
+        center
+    ) or not pathSafe(
+        bot,
+        s,
+        center,
+        enemies,
+        sig.enemyPid
+    ) then
+        return false
+    end
+    return CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid, take = true})
+end
 local function preContested(st, sig)
     local pc = st.preContested
     if pc == nil or sig.campIdx ~= pc.campIdx then
@@ -1117,10 +1172,10 @@ local function respondToPull(bot, st, s, enemies, now)
         local key = ____value[1]
         local sig = ____value[2]
         do
-            local __continue163
+            local __continue173
             repeat
                 if st.responded[key] == true then
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 if sig.kind == "pull_expected" then
@@ -1131,7 +1186,7 @@ local function respondToPull(bot, st, s, enemies, now)
                         enemies,
                         now
                     ) then
-                        __continue163 = true
+                        __continue173 = true
                         break
                     end
                     st.responded[key] = true
@@ -1142,30 +1197,34 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.kind ~= "pull" and sig.kind ~= "half_pull" then
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 if preContested(st, sig) then
                     st.responded[key] = true
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 if stronger(bot) then
                     local laner = remainingLaner(s, enemies, sig.enemyPid)
                     if laner == nil then
-                        __continue163 = true
+                        __continue173 = true
                         break
                     end
                     st.responded[key] = true
                     st.punish = {pid = laner.pid, startAt = now}
                     return
                 end
+                if takePull(bot, s, sig, enemies) then
+                    st.responded[key] = true
+                    return
+                end
                 if sig.campIdx == nil or LaneRoles.CampJobOwner(s) ~= bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil then
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 if CampJobs.Active(bot) then
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(sig.campIdx)
@@ -1176,7 +1235,7 @@ local function respondToPull(bot, st, s, enemies, now)
                     enemies,
                     sig.enemyPid
                 ) then
-                    __continue163 = true
+                    __continue173 = true
                     break
                 end
                 if CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid}) then
@@ -1184,7 +1243,7 @@ local function respondToPull(bot, st, s, enemies, now)
                 end
                 return
             until true
-            if not __continue163 then
+            if not __continue173 then
                 break
             end
         end
@@ -1369,18 +1428,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue220
+            local __continue231
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue220 = true
+                    __continue231 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue220 = true
+                __continue231 = true
             until true
-            if not __continue220 then
+            if not __continue231 then
                 break
             end
         end
@@ -1411,7 +1470,7 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue228
+            local __continue239
             repeat
                 local ____opt_result_15
                 if camp ~= nil then
@@ -1423,19 +1482,19 @@ function ____exports.PreferStackedCamp(bot, camps)
                 end
                 local loc = ____opt_result_16
                 if loc == nil then
-                    __continue228 = true
+                    __continue239 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue228 = true
+                    __continue239 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue228 = true
+                    __continue239 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1443,9 +1502,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue228 = true
+                __continue239 = true
             until true
-            if not __continue228 then
+            if not __continue239 then
                 break
             end
         end
