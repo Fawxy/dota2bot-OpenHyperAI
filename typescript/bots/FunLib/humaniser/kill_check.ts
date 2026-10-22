@@ -157,9 +157,10 @@ function compute(bot: Unit, contributors: Unit[], target: Unit, snap: LaneState.
 
 /**
  * Undefined when there is nothing to check: Kill off, no lane snapshot, or a target that is removed, dead, unseen or
- * has no location. Cached for KillCheckEvery per (bot, target, partners that contribute burst).
+ * has no location. Cached for KillCheckEvery per (bot, target, partners that contribute burst); `fresh` recomputes (an
+ * abort re-check must not reuse a result from before the signal).
  */
-export function Check(bot: Unit, partners: (Unit | undefined)[], target: Unit, now: number): KillResult | undefined {
+export function Check(bot: Unit, partners: (Unit | undefined)[], target: Unit, now: number, fresh?: boolean): KillResult | undefined {
     if (!LaneFightConfig.IsOn("Kill") || !located(bot) || !located(target)) return undefined;
     const snap = LaneState.ForBot(bot);
     if (snap === undefined) return undefined;
@@ -181,7 +182,7 @@ export function Check(bot: Unit, partners: (Unit | undefined)[], target: Unit, n
         cache[pid] = byTarget;
     }
     const cached = byTarget[key];
-    if (cached !== undefined && now >= cached.at && now - cached.at < LaneFightConfig.Settings().KillCheckEvery) return cached.result;
+    if (fresh !== true && cached !== undefined && now >= cached.at && now - cached.at < LaneFightConfig.Settings().KillCheckEvery) return cached.result;
     const result = compute(bot, contributors, target, snap, now);
     byTarget[key] = { at: now, result };
     return result;

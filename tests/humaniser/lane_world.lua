@@ -124,6 +124,7 @@ function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0)
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 function UnitMeta:IsMagicImmune() return self.magicImmune == true end
+function UnitMeta:GetFacing() return self.facing or 0 end
 -- SetTarget(nil) clears it; setTargets keeps every call for assertions.
 function UnitMeta:SetTarget(t)
 	self.setTarget = t
@@ -255,5 +256,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Stacking.RegisterProbes()
 	H.Lane.LaneMid.RegisterProbes()
 	H.Lane.Counter.RegisterProbes()
+	H.LaneFight.RegisterProbes()
 	return H
 end

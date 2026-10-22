@@ -164,8 +164,10 @@ do
 		poll(H, bot, 5)
 		local scans = 0
 		for _, n in pairs(GETUNITLIST_CALLS) do scans = scans + n end
-		check("with " .. case.name .. ", Tick makes no engine calls", scans == 0 and ACTIVE_ABILITY_CALLS == 0 and #records == 0,
-			scans .. " " .. ACTIVE_ABILITY_CALLS)
+		-- With Memory off but Trade and Kill on, Tick still watches the lane partner through the cached lane snapshot
+		-- (the one RoamDesire builds every round), so only the cast reads must stop.
+		check("with " .. case.name .. ", Tick reads no casts", (scans == 0 or case.name == "Memory off") and ACTIVE_ABILITY_CALLS == 0
+			and #records == 0, scans .. " " .. ACTIVE_ABILITY_CALLS)
 	end
 	local H, bot, enemy = world()
 	enemy.casting = enemy.impale

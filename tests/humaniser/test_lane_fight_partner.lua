@@ -1,0 +1,453 @@
+dofile(HARNESS_DIR .. "/lane_world.lua")
+local dota = require("bots/ts_libs/dota/index")
+local Lane, BotMode = dota.Lane, dota.BotMode
+
+local BOT_Y = LANE_Y[Lane.Bot]
+local FRAME = 1 / 30
+-- Dota scores all of a bot's modes in one round every ~0.31 s, in a fixed order (retreat before team_roam).
+local ROUND = 0.31
+local SPEED = 300
+
+local function ability(name, o)
+	o = o or {}
+	return {
+		GetName = function() return name end,
+		GetLevel = function() return o.level or 1 end,
+		IsUltimate = function() return o.ult == true end,
+		IsHidden = function() return false end,
+		IsNull = function() return false end,
+		IsTrained = function() return (o.level or 1) > 0 end,
+		GetCooldown = function() return o.cd or 12 end,
+		IsFullyCastable = function() return o.ready ~= false end,
+		GetCastRange = function() return o.range or 500 end,
+	}
+end
+
+local PINGS = {}
+
+-- Bottom lane. Our bot (pid 1) stands at x = -500, the enemy laner (pid 6) at x = 300, 800 away. A partner (pid 2)
+-- stands next to the bot. `driven` partners run through the lane-fight module like the bot (both are scored and
+-- ticked); other partners are moved by the test. `sign` mirrors x for Dire.
+local function world(o)
+	o = o or {}
+	local team = o.team or 2
+	local other = team == 2 and 3 or 2
+	local sign = team == 2 and 1 or -1
+	local laneFight = o.laneFight or {}
+	if laneFight.Enable == nil then laneFight.Enable = true end
+	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true } })
+	T = 100
+	CURRENT_TEAM = team
+	PINGS = {}
+	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
+	local bot = MakeUnit({ pid = 1, team = team, loc = Vector(sign * (o.botX or -500), BOT_Y), level = o.botLevel or 1, hp = 100,
+		mode = BotMode.Laning })
+	bot.pos, bot.lane, bot.estDamage, bot.facing = o.botPos or 1, Lane.Bot, o.burst or 0, team == 2 and 0 or 180
+	bot.abilities = o.botAbilities
+	OBSERVER = bot
+	getmetatable(bot).__index.ActionImmediate_Ping = function(self, x, y) table.insert(PINGS, { pid = self.pid, x = x, y = y, t = T }) end
+	local W = { H = H, LF = H.LaneFight, bot = bot, sign = sign, lines = {}, times = {}, said = {}, bots = { bot }, d = {},
+		nextRound = T }
+	local p = o.partner
+	if p then
+		local partner = MakeUnit({ pid = 2, team = team, bot = p.human ~= true, loc = Vector(sign * (p.x or -450), BOT_Y), level = 1,
+			hp = 100, mode = BotMode.Laning })
+		partner.pos, partner.lane, partner.estDamage, partner.facing = p.pos or 5, Lane.Bot, p.burst or 0, team == 2 and 0 or 180
+		partner.abilities = p.abilities
+		W.partner = partner
+		if p.driven then table.insert(W.bots, partner) end
+	end
+	local enemy = MakeUnit({ pid = 6, team = other, loc = Vector(sign * (o.enemyX or 300), BOT_Y), level = o.enemyLevel or 1,
+		hp = o.enemyHP or 100 })
+	enemy.lane = Lane.Bot
+	enemy.abilities = o.enemyAbilities or { [0] = ability("lion_impale", { cd = 12 }), [5] = ability("lion_finger_of_death", { ult = true, cd = 100 }) }
+	W.enemy = enemy
+	MakeCreep({ team = other, x = sign * 100, y = BOT_Y })
+	for _, b in ipairs(W.bots) do W.d[b] = { retreat = 0.2, laning = 0.45, roam = 0.2, attack = 0 } end
+	H.Telemetry.SetSink(function(l) table.insert(W.lines, l) table.insert(W.times, T) end)
+	H.Orders.SetAnnouncer(function(b, key, cooldown, args) table.insert(W.said, { pid = b:GetPlayerID(), key = key, cooldown = cooldown, args = args }) end)
+	function W.events(ev, pattern)
+		local n = 0
+		for _, l in ipairs(W.lines) do
+			if l:find("ev=" .. ev .. " ", 1, true) and (pattern == nil or l:find(pattern, 1, true)) then n = n + 1 end
+		end
+		return n
+	end
+	-- Game time of the first matching event.
+	function W.firstAt(ev, pattern)
+		for i, l in ipairs(W.lines) do
+			if l:find("ev=" .. ev .. " ", 1, true) and (pattern == nil or l:find(pattern, 1, true)) then return W.times[i] end
+		end
+		return nil
+	end
+	function W.age(b, phase) return H.Intent.ClaimAge(b, "lanefight:" .. phase, BotMode.TeamRoam) end
+	function W.loc(x) return Vector(sign * x, BOT_Y) end
+	return W
+end
+
+local function dist(a, b) return math.sqrt((a.loc.x - b.loc.x) ^ 2 + (a.loc.y - b.loc.y) ^ 2) end
+
+local function step(u, to)
+	local dx, dy = to.x - u.loc.x, to.y - u.loc.y
+	local len = math.sqrt(dx * dx + dy * dy)
+	if len < 1 then return end
+	local s = math.min(len, SPEED * FRAME)
+	u.loc = Vector(u.loc.x + dx / len * s, u.loc.y + dy / len * s)
+	u.facing = math.deg(math.atan(dy, dx)) % 360
+end
+
+-- One scoring round in engine order for one bot; the engine then picks the highest desire, the active mode's x1.1.
+local function score(W, b)
+	local H, d = W.H, W.d[b]
+	local r = {}
+	r.retreat = H.Intent.Resolve(b, BotMode.Retreat, d.retreat)
+	r.laning = H.Intent.Resolve(b, BotMode.Laning, d.laning)
+	r.roam = H.Intent.Resolve(b, BotMode.TeamRoam, H.LaneFight.RoamDesire(b, d.roam))
+	r.attack = d.attack
+	local best, bestMode = -1, nil
+	for _, m in ipairs({ { BotMode.Retreat, r.retreat }, { BotMode.Laning, r.laning }, { BotMode.TeamRoam, r.roam }, { BotMode.Attack, r.attack } }) do
+		local eff = m[1] == b.mode and m[2] * 1.1 or m[2]
+		if eff > best then best, bestMode = eff, m[1] end
+	end
+	b.mode = bestMode
+end
+
+-- Frames at 30 fps: a scoring round every ROUND, the humaniser tick every frame, and team_roam's Think every frame while
+-- it is active. The engine part: an attack order walks into range with the attack target set, a move order walks.
+local function play(W, seconds)
+	local stop = T + seconds - 1e-9
+	while T < stop do
+		if T >= W.nextRound - 1e-9 then
+			for _, b in ipairs(W.bots) do score(W, b) end
+			W.nextRound = W.nextRound + ROUND
+		end
+		for _, b in ipairs(W.bots) do
+			W.LF.Tick(b)
+			if b.mode == BotMode.TeamRoam then
+				ACTIONS = {}
+				if W.LF.Think(b) then
+					local a = ActionsOf(b.pid)[1]
+					if a and a.kind == "AttackUnit" then
+						b.target = a.args[1]
+						if dist(b, a.args[1]) > b:GetAttackRange() then step(b, a.args[1].loc) end
+					elseif a and a.kind == "MoveToLocation" then
+						b.target = nil
+						step(b, a.args[1])
+					end
+				end
+			end
+		end
+		if W.onFrame then W.onFrame() end
+		T = T + FRAME
+	end
+end
+
+-- The test-driven partner goes in from `at`: attack target set, walking at the target.
+local function charge(W, at, target)
+	W.onFrame = function()
+		if T >= at - 1e-9 then
+			W.partner.target = target or W.enemy
+			if dist(W.partner, W.enemy) > 150 then step(W.partner, W.enemy.loc) end
+		end
+	end
+end
+
+local function playUntil(W, fn, limit)
+	local stop = T + limit
+	while not fn() and T < stop do play(W, FRAME) end
+end
+
+local function stun(ready) return { [0] = ability("lion_impale", { cd = 12, ready = ready, range = 500 }) } end
+
+-- ------------------------------------------------------------------------------- the support initiates
+
+for _, team in ipairs({ 2, 3 }) do
+	local tag = team == 2 and " (radiant)" or " (dire)"
+	local W = world({ team = team, burst = 400, partner = { driven = true, pos = 5, burst = 400, abilities = stun(true) } })
+	local core, support = W.bot, W.partner
+	local waitingHeld, waitingFloor, coreModes, firstHit = false, false, {}, nil
+	W.onFrame = function()
+		if firstHit == nil and support.target == W.enemy then firstHit = T end
+		if W.LF.CurrentPhase(core) == "wait_partner" then
+			if W.H.Intent.HeldBy(core) == "lanefight:wait" then waitingHeld = true end
+			if W.age(core, "wait_partner") ~= nil or W.H.Intent.Explain(core, BotMode.TeamRoam):find("lanefight", 1, true) then waitingFloor = true end
+			coreModes[core.mode] = true
+		end
+	end
+	play(W, 1.5)
+	check("support with a stun initiates" .. tag, W.events("lanefight_start", "pid=2 phase=commit") == 1
+		and W.events("lanefight_start", "pid=2 phase=commit target=6 margin=") == 1 and W.events("lanefight_start", "via=initiate") == 1,
+		table.concat(W.lines, "\n"))
+	check("the core waits for its support" .. tag, W.events("lanefight_start", "pid=1 phase=wait_partner target=6") == 1
+		and W.events("lanefight_start", "with=2 human=0") == 1, table.concat(W.lines, "\n"))
+	check("a waiting core holds still on purpose, posts no floor and keeps laning" .. tag, waitingHeld and not waitingFloor
+		and coreModes[BotMode.Laning] and not coreModes[BotMode.TeamRoam])
+	playUntil(W, function() return W.events("lanefight_start", "pid=1 phase=commit") > 0 end, 4)
+	local coreAt = W.firstAt("lanefight_start", "pid=1 phase=commit")
+	check("the core commits only after the support's visible commit" .. tag, firstHit ~= nil and coreAt ~= nil and coreAt > firstHit
+		and W.events("lanefight_end", "pid=1 phase=wait_partner reason=commit") == 1
+		and W.events("lanefight_start", "pid=1 phase=commit target=6 margin=") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	local W = world({ burst = 400, partner = { driven = true, pos = 5, burst = 400, abilities = stun(false) } })
+	play(W, 1.5)
+	check("a core whose support has no ready stun commits itself", W.events("lanefight_start", "pid=1 phase=commit") == 1
+		and W.events("lanefight_start", "phase=wait_partner") == 0, table.concat(W.lines, "\n"))
+end
+
+do
+	-- The support never goes in: the core gives up after 3 s and keeps that kill pass spent.
+	local W = world({ burst = 400, partner = { pos = 5, burst = 400, abilities = stun(true) } })
+	playUntil(W, function() return W.events("lanefight_start", "phase=wait_partner") > 0 end, 2)
+	local waitAt = T
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 4)
+	check("a wait with no partner commit ends after 3 s", W.events("lanefight_end", "phase=wait_partner reason=partner_timeout") == 1
+		and math.abs(T - waitAt - 3) <= FRAME * 2, string.format("%.3f", T - waitAt))
+	check("lanefight_end says the wait never took over", W.events("lanefight_end", "reason=partner_timeout hits=0 took=0") == 1,
+		table.concat(W.lines, "\n"))
+	play(W, 2)
+	check("no new wait and no commit on the same kill pass", W.events("lanefight_start") == 1, table.concat(W.lines, "\n"))
+end
+
+-- ------------------------------------------------------------------------------------------ sync delay
+
+for _, skill in ipairs({ 0, 1 }) do
+	local W = world({ skill = skill, burst = 400, partner = { pos = 5, burst = 400, abilities = stun(true) } })
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "wait_partner" end, 2)
+	local tp = T + 0.4
+	charge(W, tp)
+	playUntil(W, function() return W.events("lanefight_start", "phase=commit") > 0 end, 3)
+	local react = W.H.Profile.SampleDelay(W.bot, "react")
+	local sync = W.LF.Config.Curve("SyncDelay", skill)
+	local at = W.firstAt("lanefight_start", "phase=commit")
+	-- The partner's first step is visible on the next frame; the follow then lands on the first frame at or after its time.
+	local want = tp + FRAME + react + sync
+	check(string.format("core follows the partner's visible commit after react + SyncDelay at skill %d", skill),
+		at ~= nil and at >= want - 1e-6 and at <= want + FRAME + 1e-6 and W.events("lanefight_start", "via=follow") == 1,
+		string.format("at %s want %.3f (react %.3f sync %.3f)", tostring(at), want, react, sync))
+end
+
+-- ------------------------------------------------------------------------------------------ human partner
+
+do
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	play(W, 1)
+	check("setup: a margin of 0.9 is no kill pass", W.events("lanefight_start") == 0 and #W.said == 0)
+	local tp = T
+	charge(W, tp)
+	playUntil(W, function() return W.events("lanefight_start", "phase=commit") > 0 end, 3)
+	local want = tp + FRAME + W.H.Profile.SampleDelay(W.bot, "react") + W.LF.Config.Curve("SyncDelay", 1)
+	local at = W.firstAt("lanefight_start", "phase=commit")
+	check("follows a human partner's attack on an enemy hero", at ~= nil and at >= want - 1e-6 and at <= want + FRAME + 1e-6
+		and W.events("lanefight_start", "via=follow") == 1, string.format("at %s want %.3f", tostring(at), want))
+end
+
+do
+	-- Attacking a creep while walking at the enemy is no commit on the enemy.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	local creep = MakeCreep({ team = 3, x = 200, y = BOT_Y })
+	charge(W, T, creep)
+	play(W, 2)
+	check("a human attacking a creep is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
+	-- An attack on the enemy from out of range without closing is no commit either.
+	W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -700 } })
+	W.partner.target = W.enemy
+	play(W, 2)
+	check("a human attack order that does not close is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
+	-- Below FollowMargin (0.8) the bot does not follow.
+	W = world({ burst = 30, partner = { human = true, pos = 5, burst = 40 } })
+	charge(W, T)
+	play(W, 3)
+	check("a margin below FollowMargin does not follow, logged once", W.events("lanefight_start") == 0
+		and W.events("lanefight_gate", "gate=follow-margin") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- A human's key-class cast towards the enemy, within its cast range + 200, is a commit.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	local cast = ability("lion_impale", { range = 600 })
+	W.onFrame = function() W.partner.casting = cast end
+	play(W, 2)
+	check("a human's stun cast facing the enemy is followed", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	W.partner.facing = W.partner.facing + 90
+	W.onFrame = function() W.partner.casting = cast end
+	play(W, 2)
+	check("the same cast facing 90 degrees away is not", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
+end
+
+for _, case in ipairs({ { skill = 0.5, burst = 120, what = "a kill" }, { skill = 0.5, burst = 1000, what = "an overwhelming kill" } }) do
+	local W = world({ skill = case.skill, burst = case.burst, partner = { human = true, pos = 5, burst = 500 } })
+	play(W, 6)
+	local s = W.said[1]
+	check("with a human partner " .. case.what .. " at skill 0.5 calls once", #W.said == 1 and s.key == "say_lanefight_go" and s.cooldown == 30
+		and s.args ~= nil and s.args[1] == "6" and W.events("lanefight_call", "pid=1 target=6") == 1, #W.said)
+	check("... and pings the target once", #PINGS == 1 and PINGS[1].pid == 1 and math.abs(PINGS[1].x - W.enemy.loc.x) < 1, #PINGS)
+	check("... and does not dive alone", W.events("lanefight_start", "phase=commit") == 0
+		and W.events("lanefight_end", "phase=wait_partner reason=partner_timeout") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	local W = world({ skill = 0.5, burst = 120, partner = { human = true, pos = 5, burst = 500 } })
+	W.H.Lane.Config.Helpers().HeroDisplayName = function(u) return u:GetPlayerID() == 6 and "Lion" or nil end
+	play(W, 1.5)
+	check("the call names the hero by its display name", W.said[1] ~= nil and W.said[1].args[1] == "Lion")
+	W = world({ skill = 0.5, burst = 120, partner = { human = true, pos = 5, burst = 500 }, laneFight = { CallKills = false } })
+	play(W, 1.5)
+	check("CallKills off: no line and no ping, still waits", #W.said == 0 and #PINGS == 0 and W.events("lanefight_start", "phase=wait_partner") == 1)
+end
+
+do
+	-- A second kill pass 12 s later (past Say's 10 s line limit) waits again but does not call: CallCooldown is 30 s.
+	local W = world({ skill = 0.5, burst = 120, partner = { human = true, pos = 5, burst = 500 } })
+	play(W, 4)
+	W.enemy.hiddenFrom = { [W.bot] = true }
+	play(W, 8)
+	W.enemy.hiddenFrom = nil
+	play(W, 4)
+	check("a second kill pass within CallCooldown waits without a second call", W.events("lanefight_start", "phase=wait_partner") == 2
+		and #W.said == 1 and W.events("lanefight_call") == 1, table.concat(W.lines, "\n"))
+	W.enemy.hiddenFrom = { [W.bot] = true }
+	play(W, 16)
+	W.enemy.hiddenFrom = nil
+	play(W, 2)
+	check("past CallCooldown the next pass calls again", #W.said == 2 and W.events("lanefight_call") == 2, #W.said)
+end
+
+do
+	local W = world({ skill = 0.8, burst = 1000, partner = { human = true, pos = 5, burst = 500 } })
+	play(W, 1.5)
+	check("overwhelming kill at skill 0.8 commits alone", W.events("lanefight_start", "phase=commit") == 1
+		and W.events("lanefight_start", "via=solo") == 1 and W.events("lanefight_start", "phase=wait_partner") == 0, table.concat(W.lines, "\n"))
+	-- The solo check leaves the human out: 120 of burst alone is a margin of 1.2, not overwhelming.
+	W = world({ skill = 0.8, burst = 120, partner = { human = true, pos = 5, burst = 1000 } })
+	play(W, 1.5)
+	check("at skill 0.8 a kill that is overwhelming only with the human waits for the human",
+		W.events("lanefight_start", "phase=commit") == 0 and W.events("lanefight_start", "phase=wait_partner") == 1, table.concat(W.lines, "\n"))
+end
+
+-- ------------------------------------------------------------------------------------------------ aborts
+
+local blinkWorld = function(skill)
+	local W = world({ skill = skill, burst = 1000, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
+		[1] = ability("antimage_blink", { cd = 15 }) } })
+	-- The bot remembers the blink as down, so its kill check passes.
+	W.H.LaneFight.CooldownMemory.Record(1, 6, "antimage_blink", "key", 15, 1, T)
+	return W
+end
+
+for _, skill in ipairs({ 0, 1 }) do
+	local W = blinkWorld(skill)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: committed with the blink believed down at skill " .. skill, W.LF.CurrentPhase(W.bot) == "commit")
+	play(W, 0.3)
+	local blink = W.enemy.abilities[1]
+	W.enemy.casting = blink
+	playUntil(W, function() return W.LF.CastWatch.LastSeenCast(1) ~= nil end, 1)
+	local seenAt = W.LF.CastWatch.LastSeenCast(1).at
+	W.enemy.casting = nil
+	-- The blink lands 1300 from the bot: out of its burst range.
+	W.enemy.loc = Vector(W.bot.loc.x + W.sign * 1300, BOT_Y)
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 2)
+	local notice = W.LF.Config.Curve("AbortNotice", skill)
+	local endAt = W.firstAt("lanefight_end")
+	check(string.format("escape cast triggers a re-check after AbortNotice at skill %d", skill), endAt ~= nil
+		and endAt >= seenAt + notice - 1e-6 and endAt <= seenAt + notice + FRAME + 1e-6
+		and W.events("lanefight_end", "phase=commit reason=escape") == 1 and W.events("lanefight_abort", "reason=escape") == 1
+		and W.events("lanefight_recheck", "pid=1 reason=escape pass=0") == 1,
+		string.format("seen %.3f end %s notice %.2f\n%s", seenAt, tostring(endAt), notice, table.concat(W.lines, "\n")))
+	check("the escape believed down and cast within 2 s is a bad-memory mistake at skill " .. skill,
+		W.events("lanefight_mistake", "pid=1 kind=bad_memory ability=antimage_blink") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	local W = blinkWorld(1)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	W.enemy.casting = W.enemy.abilities[1]
+	play(W, 0.15)
+	W.enemy.casting = nil
+	play(W, 1)
+	check("a re-check that still passes keeps the commit", W.LF.CurrentPhase(W.bot) == "commit" and W.events("lanefight_end") == 0
+		and W.events("lanefight_recheck", "reason=escape pass=1") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- A second enemy walks into the lane mid-commit: two of them against our one.
+	local W = world({ burst = 1000, botPos = 5 })
+	local second = MakeUnit({ pid = 7, team = 3, loc = W.loc(3000), level = 1, hp = 100 })
+	second.lane = Lane.Bot
+	second.alive = false
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	play(W, 0.3)
+	second.alive = true
+	second.loc = W.loc(500)
+	local appeared = T
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 2)
+	check("a rising enemy count re-checks after AbortNotice and aborts", W.events("lanefight_end", "reason=outnumbered") == 1
+		and W.events("lanefight_recheck", "reason=outnumbered pass=0") == 1 and T - appeared >= W.LF.Config.Curve("AbortNotice", 1) - 1e-6,
+		table.concat(W.lines, "\n"))
+end
+
+do
+	-- A commit stays on its target when a nearer killable enemy walks up (2 v 2, so no count abort).
+	local W = world({ burst = 1000, partner = { pos = 5, burst = 0, abilities = stun(false) } })
+	local second = MakeUnit({ pid = 7, team = 3, loc = W.loc(3000), level = 1, hp = 100 })
+	second.lane = Lane.Bot
+	second.alive = false
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	second.alive = true
+	second.loc = Vector(W.bot.loc.x + W.sign * 200, BOT_Y)
+	play(W, 1.5)
+	check("a commit does not switch to a nearer killable enemy", W.LF.Target(W.bot) == W.enemy and W.events("lanefight_start") == 1
+		and W.events("lanefight_end") == 0, table.concat(W.lines, "\n"))
+end
+
+-- ------------------------------------------------------------------------------------------- bad memory
+
+local function spellWorld()
+	local W = world({ burst = 0, botPos = 5 })
+	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
+	return W
+end
+
+do
+	local W = spellWorld()
+	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
+	check("setup: a spell-window trade", W.events("lanefight_start", "phase=trade target=6 window=spell") == 1, table.concat(W.lines, "\n"))
+	play(W, 1)
+	W.enemy.casting = W.enemy.abilities[0]
+	play(W, 0.3)
+	check("bad memory emits the mistake event", W.events("lanefight_mistake", "pid=1 kind=bad_memory ability=lion_impale") == 1,
+		table.concat(W.lines, "\n"))
+	play(W, 1)
+	check("one mistake per start", W.events("lanefight_mistake") == 1)
+
+	W = spellWorld()
+	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
+	play(W, 2.1)
+	W.enemy.casting = W.enemy.abilities[0]
+	play(W, 0.3)
+	check("a cast more than 2 s after the start is no mistake", W.events("lanefight_mistake") == 0)
+
+	W = spellWorld()
+	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
+	W.enemy.casting = W.enemy.abilities[5]
+	play(W, 0.3)
+	check("casting an ability that was not believed down is no mistake", W.events("lanefight_mistake") == 0)
+end
+
+-- --------------------------------------------------------------------------------------- camp-job probe
+
+do
+	local W = world({ burst = 1000, botPos = 5 })
+	local before = W.H.Lane.Hooks.IsFightCommitting(W.bot)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	local during = W.H.Lane.Hooks.IsFightCommitting(W.bot)
+	W.bot.hp = 20
+	play(W, ROUND)
+	check("the lane-fight probe is true only while a commit is live", not before and during
+		and not W.H.Lane.Hooks.IsFightCommitting(W.bot) and W.events("lanefight_end") == 1)
+end
+
+finish()

@@ -175,8 +175,9 @@ local function compute(bot, contributors, target, snap, now)
     })
 end
 --- Undefined when there is nothing to check: Kill off, no lane snapshot, or a target that is removed, dead, unseen or
--- has no location. Cached for KillCheckEvery per (bot, target, partners that contribute burst).
-function ____exports.Check(bot, partners, target, now)
+-- has no location. Cached for KillCheckEvery per (bot, target, partners that contribute burst); `fresh` recomputes (an
+-- abort re-check must not reuse a result from before the signal).
+function ____exports.Check(bot, partners, target, now, fresh)
     if not LaneFightConfig.IsOn("Kill") or not located(bot) or not located(target) then
         return nil
     end
@@ -216,7 +217,7 @@ function ____exports.Check(bot, partners, target, now)
         cache[pid] = byTarget
     end
     local cached = byTarget[key]
-    if cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().KillCheckEvery then
+    if fresh ~= true and cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().KillCheckEvery then
         return cached.result
     end
     local result = compute(

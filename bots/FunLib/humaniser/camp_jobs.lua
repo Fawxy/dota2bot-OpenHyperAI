@@ -241,17 +241,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue230
+            local __continue232
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue230 = true
+                    __continue232 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue230 = true
+                    __continue232 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -262,9 +262,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue230 = true
+                __continue232 = true
             until true
-            if not __continue230 then
+            if not __continue232 then
                 break
             end
         end
@@ -611,6 +611,9 @@ local function startBlocked(bot)
     if retreat ~= nil and retreat >= settings().Timing.JobDesire then
         return "retreat"
     end
+    if LaneHooks.IsFightCommitting(bot) then
+        return "lanefight"
+    end
     return nil
 end
 local function travelTo(bot, loc)
@@ -756,6 +759,9 @@ local function startContest(bot, req)
     return true
 end
 function ____exports.Start(bot, req)
+    if req.forced ~= true and LaneHooks.IsFightCommitting(bot) then
+        return false
+    end
     if req.kind == "stack" then
         return startStack(bot, req)
     end
@@ -1863,10 +1869,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue258
+            local __continue260
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue258 = true
+                    __continue260 = true
                     break
                 end
                 if dist2D(
@@ -1875,9 +1881,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue258 = true
+                __continue260 = true
             until true
-            if not __continue258 then
+            if not __continue260 then
                 break
             end
         end
@@ -1916,10 +1922,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue267
+            local __continue269
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue267 = true
+                    __continue269 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1929,9 +1935,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue267 = true
+                __continue269 = true
             until true
-            if not __continue267 then
+            if not __continue269 then
                 break
             end
         end

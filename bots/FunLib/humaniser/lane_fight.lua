@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local attackingTarget
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, skillOf, castingAt, sampleDistance, partnerCommitTarget, focusCap, claim, believedDown, start, ____end, checkMistake, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, visibleEnemy, coordinate, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, FOCUS_SOURCE, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -16,56 +16,10 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
-function attackingTarget(bot, s)
-    local t = bot:GetAttackTarget()
-    return t ~= nil and not t:IsNull() and t:IsHero() and t:GetPlayerID() == s.targetPid
-end
-____exports.Config = LaneFightConfig
-____exports.AbilityClasses = AbilityClasses
-____exports.CooldownMemory = CooldownMemory
-____exports.CastWatch = CastWatch
-____exports.FightRead = FightRead
-____exports.KillCheck = KillCheck
-function ____exports.IsActive()
-    return LaneFightConfig.IsActive()
-end
-function ____exports.Tick(bot)
-    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
-        return
-    end
-    if LaneFightConfig.IsOn("Memory") and LaneState.ForBot(bot) ~= nil then
-        CastWatch.Tick(bot)
-    end
-end
---- The fight read for `bot`; callers act on it. Guarded in index.ts: an error reads as no window.
-function ____exports.ReadFor(bot, now)
-    return FightRead.ReadFor(bot, now)
-end
---- The kill check on `target` with `partners`; guarded in index.ts: an error reads as no check.
-function ____exports.CheckKill(bot, partners, target, now)
-    return KillCheck.Check(bot, partners, target, now)
-end
-local INSTANCE_GAP = 1
-local END_GRACE = 0.5
-local MODE_GRACE = 1
-local LEASH = 1800
-local RANGE_SLACK = 50
-local TRADE_REACH = 400
-local ACTIVE_BOOST = 1.1
-local FOCUS_SOURCE = "lanefight:commit_focus"
-local FOCUS_MODES = {
-    BotMode.Laning,
-    BotMode.Ward,
-    BotMode.Rune,
-    BotMode.SecretShop,
-    BotMode.SideShop,
-    BotMode.Roam
-}
-local START_MODES = {BotMode.Laning, BotMode.TeamRoam, BotMode.Attack}
-local fights = {}
-local function stateFor(bot)
+function stateFor(bot)
     local pid = bot:GetPlayerID()
     local s = fights[pid]
     if s == nil then
@@ -78,27 +32,31 @@ local function stateFor(bot)
             lastAttack = 0,
             streak = 0,
             killDelay = 0,
-            instances = {}
+            instances = {},
+            partners = {},
+            startEnemies = 0,
+            countUp = false,
+            countAt = -math.huge
         }
         fights[pid] = s
     end
     return s
 end
-local function gatesOpen(bot)
+function gatesOpen(bot)
     if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
         return false
     end
     return LaneFightConfig.IsOn("Trade") or LaneFightConfig.IsOn("Kill")
 end
-local function hpFraction(u)
+function hpFraction(u)
     local max = u:GetMaxHealth()
     return max > 0 and u:GetHealth() / max or 0
 end
-local function floorOf(phase)
+function floorOf(phase)
     local s = LaneFightConfig.Settings()
     return phase == "commit" and s.CommitFloor or s.TradeFloor
 end
-local function touch(s, key, now)
+function touch(s, key, now)
     local inst = s.instances[key]
     if inst == nil or now - inst.seen > INSTANCE_GAP then
         inst = {seen = now, started = false, gates = {}}
@@ -107,7 +65,7 @@ local function touch(s, key, now)
     inst.seen = now
     return inst
 end
-local function gate(bot, inst, reason)
+function gate(bot, inst, reason)
     if inst.gates[reason] == true then
         return
     end
@@ -123,11 +81,10 @@ local function gate(bot, inst, reason)
         }
     )
 end
-local function priorityLive(bot)
+function priorityLive(bot)
     return Intent.PriorityLive(bot) or Orders.GetFor(bot) ~= nil
 end
---- Why a trade or commit must not start now, else undefined.
-local function startBlocked(bot)
+function startBlocked(bot)
     local cfg = LaneFightConfig.Settings()
     local mode = bot:GetActiveMode()
     local modeOk = false
@@ -157,18 +114,144 @@ local function startBlocked(bot)
     end
     return nil
 end
-local function partnerUnits(bot, snap)
-    local partner = LaneRoles.Partner(bot, snap)
-    return partner ~= nil and partner.unit ~= nil and not partner.unit:IsNull() and ({partner.unit}) or ({})
+function usableUnit(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen() and u:GetLocation() ~= nil
 end
-local function focusCap()
+function memberByPid(team, pid)
+    local count = #GetTeamPlayers(team)
+    do
+        local i = 1
+        while i <= count do
+            local u = GetTeamMember(i)
+            if u ~= nil and u ~= nil and not u:IsNull() and u:GetPlayerID() == pid then
+                return u
+            end
+            i = i + 1
+        end
+    end
+    return nil
+end
+function isSupport(u)
+    local pos = LaneConfig.PositionOf(u)
+    return pos == 4 or pos == 5
+end
+function partnerOf(bot, snap)
+    local p = LaneRoles.Partner(bot, snap)
+    if p == nil or not p.alive then
+        return nil
+    end
+    local unit = p.unit ~= nil and p.unit ~= nil and not p.unit:IsNull() and p.unit or memberByPid(
+        bot:GetTeam(),
+        p.pid
+    )
+    if not usableUnit(unit) then
+        return nil
+    end
+    return {
+        unit = unit,
+        pid = p.pid,
+        human = not IsPlayerBot(p.pid),
+        support = isSupport(unit)
+    }
+end
+function skillOf(bot)
+    return Profile.Get(bot).skill
+end
+--- The ally's visible commit on `target`: it attacks the target while closing on it (or from within its attack range,
+-- where it no longer closes), or it is casting a key-class ability or an ultimate at it. The bot API rarely exposes a
+-- cast's target, so "at it" is: facing within 30 degrees of the target and within the ability's cast range + 200.
+-- `prev` is the ally-target distance sampled before this one.
+function ____exports.IsCommitting(ally, target, prev)
+    if not usableUnit(ally) or not usableUnit(target) then
+        return false
+    end
+    local dist = GetUnitToUnitDistance(ally, target)
+    local t = ally:GetAttackTarget()
+    if t ~= nil and t ~= nil and not t:IsNull() and t:IsHero() and t:GetPlayerID() == target:GetPlayerID() then
+        if dist <= ally:GetAttackRange() + RANGE_SLACK then
+            return true
+        end
+        if prev ~= nil and DotaTime() - prev.at <= PREV_MAX_AGE and dist < prev.dist - CLOSE_MIN then
+            return true
+        end
+    end
+    return castingAt(ally, target, dist)
+end
+function castingAt(ally, target, dist)
+    if not ally:IsCastingAbility() then
+        return false
+    end
+    local a = ally:GetCurrentActiveAbility()
+    if a == nil or a == nil or a:IsNull() then
+        return false
+    end
+    if AbilityClasses.Classify(
+        a:GetName(),
+        a:IsUltimate()
+    ) == "other" then
+        return false
+    end
+    if dist > a:GetCastRange() + CAST_SLACK then
+        return false
+    end
+    if dist < 1 then
+        return true
+    end
+    local f = ally:GetFacing() * math.pi / 180
+    local from = ally:GetLocation()
+    local to = target:GetLocation()
+    return ((to.x - from.x) * math.cos(f) + (to.y - from.y) * math.sin(f)) / dist >= FACING_COS
+end
+function sampleDistance(bot, ally, target, now)
+    local key = (((tostring(bot:GetPlayerID()) .. ":") .. tostring(ally:GetPlayerID())) .. ":") .. tostring(target:GetPlayerID())
+    local t = tracks[key]
+    if t == nil then
+        t = {}
+        tracks[key] = t
+    end
+    if t.cur ~= nil and now < t.cur.at then
+        t.cur = nil
+    end
+    if t.cur == nil or now - t.cur.at >= SAMPLE_GAP then
+        t.prev = t.cur
+        t.cur = {
+            dist = GetUnitToUnitDistance(ally, target),
+            at = now
+        }
+    end
+    return t.prev
+end
+function partnerCommitTarget(bot, ally, now)
+    local found
+    for ____, e in ipairs(LaneState.Enemies(
+        bot,
+        bot:GetAssignedLane()
+    )) do
+        do
+            local __continue60
+            repeat
+                if e == nil or not e.visible or not usableUnit(e.unit) then
+                    __continue60 = true
+                    break
+                end
+                local prev = sampleDistance(bot, ally, e.unit, now)
+                if found == nil and ____exports.IsCommitting(ally, e.unit, prev) then
+                    found = e.unit
+                end
+                __continue60 = true
+            until true
+            if not __continue60 then
+                break
+            end
+        end
+    end
+    return found
+end
+function focusCap()
     local cfg = LaneFightConfig.Settings()
     return cfg.CommitFloor / ACTIVE_BOOST - cfg.CommitFocusMargin
 end
---- The phase's floor on team_roam. A commit also caps laning and the errands (as 07's camp jobs do), and retreat while
--- HP is at least CommitHoldHP: retreat's laning-phase creep-damage branch bids 0.8-0.9 at healthy HP. SURVIVAL and
--- HUMAN_ORDER sit on higher tiers, and StopHP ends the phase.
-local function claim(bot, phase)
+function claim(bot, phase)
     local posted = Intent.Claim(
         bot,
         {
@@ -192,7 +275,44 @@ local function claim(bot, phase)
     end
     return posted
 end
-local function start(bot, s, phase, target, inst, now, detail)
+function believedDown(bot, target, spell, escapes, now)
+    local out = {}
+    local pid = bot:GetPlayerID()
+    local tpid = target:GetPlayerID()
+    for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
+        do
+            local __continue72
+            repeat
+                if not a.learned then
+                    __continue72 = true
+                    break
+                end
+                local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
+                if not wanted then
+                    __continue72 = true
+                    break
+                end
+                local ready = CooldownMemory.ProbablyReady(
+                    pid,
+                    tpid,
+                    a.name,
+                    true,
+                    now,
+                    skillOf(bot)
+                )
+                if not ready then
+                    out[a.name] = true
+                end
+                __continue72 = true
+            until true
+            if not __continue72 then
+                break
+            end
+        end
+    end
+    return out
+end
+function start(bot, s, phase, target, inst, now, detail, partners)
     inst.started = true
     s.spent = {inst}
     s.tookOver = false
@@ -207,33 +327,55 @@ local function start(bot, s, phase, target, inst, now, detail)
     s.lastAttack = bot:GetLastAttackTime()
     s.fogSince = nil
     s.farSince = nil
+    s.partners = partners
+    s.abort = nil
+    s.countUp = false
+    s.countAt = -math.huge
+    s.startEnemies = 0
+    local snap = LaneState.ForBot(bot)
+    if phase == "commit" and snap ~= nil then
+        s.startEnemies = FightRead.LaneCounts(bot, snap, COUNT_RADIUS).enemies
+    end
+    if phase ~= "wait_partner" then
+        local abilities = believedDown(
+            bot,
+            target,
+            s.lastWindow == "spell",
+            phase == "commit",
+            now
+        )
+        local first = next(abilities)
+        s.bet = first ~= nil and ({targetPid = s.targetPid, at = now, abilities = abilities, done = false}) or nil
+    end
     s.offModeSince = now
-    claim(bot, phase)
-    Telemetry.Event(
-        "lanefight_start",
+    if phase ~= "wait_partner" then
+        claim(bot, phase)
+    end
+    local fields = {
         {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"phase", phase},
-            {"target", s.targetPid},
-            detail
-        }
-    )
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"phase", phase},
+        {"target", s.targetPid}
+    }
+    for ____, d in ipairs(detail) do
+        fields[#fields + 1] = d
+    end
+    Telemetry.Event("lanefight_start", fields)
     HDebug.Log(
         "lanefight",
         (((("start pid=" .. tostring(bot:GetPlayerID())) .. " phase=") .. phase) .. " target=") .. tostring(s.targetPid)
     )
 end
-local function ____end(bot, s, reason)
+function ____end(bot, s, reason)
     local phase = s.phase
     if phase == "idle" then
         return
     end
     Intent.ReleaseSource(bot, "lanefight:" .. phase)
     Intent.ReleaseSource(bot, FOCUS_SOURCE)
-    if not s.tookOver then
+    if not s.tookOver and phase ~= "wait_partner" then
         for ____, inst in ipairs(s.spent) do
             inst.started = false
         end
@@ -244,7 +386,11 @@ local function ____end(bot, s, reason)
     s.phase = "idle"
     s.target = nil
     s.targetPid = nil
-    bot:SetTarget(nil)
+    s.withPid = nil
+    s.abort = nil
+    if phase ~= "wait_partner" then
+        bot:SetTarget(nil)
+    end
     Telemetry.Event(
         "lanefight_end",
         {
@@ -254,7 +400,8 @@ local function ____end(bot, s, reason)
             },
             {"phase", phase},
             {"reason", reason},
-            {"hits", s.hits}
+            {"hits", s.hits},
+            {"took", s.tookOver and 1 or 0}
         }
     )
     HDebug.Log(
@@ -262,7 +409,121 @@ local function ____end(bot, s, reason)
         (((("end pid=" .. tostring(bot:GetPlayerID())) .. " phase=") .. phase) .. " reason=") .. reason
     )
 end
-local function lastHits(bot, s)
+function checkMistake(bot, s, now)
+    local bet = s.bet
+    if bet == nil or bet.done then
+        return
+    end
+    local seen = CastWatch.LastSeenCast(bot:GetPlayerID())
+    if seen ~= nil and seen.enemyPid == bet.targetPid and seen.at >= bet.at and seen.at - bet.at <= MISTAKE_WINDOW and bet.abilities[seen.ability] == true then
+        bet.done = true
+        Telemetry.Event(
+            "lanefight_mistake",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"kind", "bad_memory"},
+                {"ability", seen.ability},
+                {"target", bet.targetPid},
+                {"after", seen.at - bet.at}
+            }
+        )
+        return
+    end
+    if now - bet.at > MISTAKE_WINDOW + INSTANCE_GAP then
+        s.bet = nil
+    end
+end
+function abortSignal(bot, s, now)
+    local seen = CastWatch.LastSeenCast(bot:GetPlayerID())
+    if seen ~= nil and seen.enemyPid == s.targetPid and seen.at >= s.startedAt and seen.at ~= s.escapeAt and AbilityClasses.IsEscape(seen.ability) then
+        s.escapeAt = seen.at
+        return "escape"
+    end
+    if now - s.countAt < COUNT_EVERY then
+        return nil
+    end
+    s.countAt = now
+    local snap = LaneState.ForBot(bot)
+    if snap == nil then
+        return nil
+    end
+    local c = FightRead.LaneCounts(bot, snap, COUNT_RADIUS)
+    local up = c.enemies > c.allies and c.enemies > s.startEnemies
+    local rose = up and not s.countUp
+    s.countUp = up
+    return rose and "outnumbered" or nil
+end
+function abortReason(bot, s, target, now)
+    if s.abort == nil then
+        local why = abortSignal(bot, s, now)
+        if why == nil then
+            return nil
+        end
+        s.abort = {
+            why = why,
+            signalAt = now,
+            at = now + LaneFightConfig.Curve(
+                "AbortNotice",
+                skillOf(bot)
+            )
+        }
+        HDebug.Log(
+            "lanefight",
+            (("abort-signal pid=" .. tostring(bot:GetPlayerID())) .. " reason=") .. why
+        )
+    end
+    local a = s.abort
+    if now < a.at then
+        return nil
+    end
+    s.abort = nil
+    local ____temp_0
+    if target ~= nil then
+        ____temp_0 = KillCheck.Check(
+            bot,
+            s.partners,
+            target,
+            now,
+            true
+        )
+    else
+        ____temp_0 = nil
+    end
+    local k = ____temp_0
+    local pass = k ~= nil and k.pass
+    Telemetry.Event(
+        "lanefight_recheck",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"reason", a.why},
+            {"pass", pass and 1 or 0},
+            {"margin", k and k.margin or 0},
+            {"after", now - a.signalAt}
+        }
+    )
+    if pass then
+        return nil
+    end
+    Telemetry.Event(
+        "lanefight_abort",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"phase", s.phase},
+            {"reason", a.why}
+        }
+    )
+    return a.why
+end
+function lastHits(bot, s)
     local at = bot:GetLastAttackTime()
     if at <= s.lastAttack then
         return
@@ -272,8 +533,11 @@ local function lastHits(bot, s)
         s.hits = s.hits + 1
     end
 end
---- The lane-enemy entry for the target, from the perception-filtered cached list.
-local function targetEntry(bot, s)
+function attackingTarget(bot, s)
+    local t = bot:GetAttackTarget()
+    return t ~= nil and not t:IsNull() and t:IsHero() and t:GetPlayerID() == s.targetPid
+end
+function targetEntry(bot, s)
     for ____, e in ipairs(LaneState.Enemies(
         bot,
         bot:GetAssignedLane()
@@ -284,22 +548,21 @@ local function targetEntry(bot, s)
     end
     return nil
 end
-local function seenTarget(bot, s)
+function seenTarget(bot, s)
     local e = targetEntry(bot, s)
-    local ____temp_2
+    local ____temp_5
     if (e and e.visible) == true then
-        ____temp_2 = e.unit
+        ____temp_5 = e.unit
     else
-        ____temp_2 = nil
+        ____temp_5 = nil
     end
-    local u = ____temp_2
+    local u = ____temp_5
     if u == nil or u:IsNull() or not u:CanBeSeen() or u:GetLocation() == nil then
         return nil
     end
     return u
 end
---- Why the running phase must end now, else undefined.
-local function endReason(bot, s, now)
+function endReason(bot, s, now)
     local cfg = LaneFightConfig.Settings()
     if not bot:IsAlive() then
         return "dead"
@@ -307,7 +570,7 @@ local function endReason(bot, s, now)
     if hpFraction(bot) < cfg.StopHP then
         return "low-hp"
     end
-    if s.phase == "trade" and not LaneFightConfig.IsOn("Trade") or s.phase == "commit" and not LaneFightConfig.IsOn("Kill") then
+    if s.phase == "trade" and not LaneFightConfig.IsOn("Trade") or s.phase ~= "trade" and not LaneFightConfig.IsOn("Kill") then
         return "flag-off"
     end
     if priorityLive(bot) then
@@ -346,6 +609,18 @@ local function endReason(bot, s, now)
         s.fogSince = s.fogSince or now
         if now - s.fogSince > cfg.FogGrace then
             return "fog"
+        end
+    end
+    if s.phase == "wait_partner" then
+        if s.withPid == nil or not IsHeroAlive(s.withPid) then
+            return "partner_gone"
+        end
+        return now - s.startedAt >= WAIT_TIMEOUT and "partner_timeout" or nil
+    end
+    if s.phase == "commit" then
+        local abort = abortReason(bot, s, target, now)
+        if abort ~= nil then
+            return abort
         end
     end
     if s.phase == "trade" then
@@ -397,7 +672,8 @@ local function endReason(bot, s, now)
     end
     return nil
 end
-local function checkEnd(bot, s, now)
+function checkEnd(bot, s, now)
+    checkMistake(bot, s, now)
     if s.phase == "idle" then
         return
     end
@@ -406,6 +682,301 @@ local function checkEnd(bot, s, now)
     if reason ~= nil then
         ____end(bot, s, reason)
     end
+end
+function visibleEnemy(bot, pid)
+    for ____, e in ipairs(LaneState.Enemies(
+        bot,
+        bot:GetAssignedLane()
+    )) do
+        if e ~= nil and e.pid == pid and e.visible and usableUnit(e.unit) then
+            return e.unit
+        end
+    end
+    return nil
+end
+function coordinate(bot, s, snap, now)
+    if s.phase == "wait_partner" then
+        Intent.Hold(bot, WAIT_HOLD)
+    end
+    checkMistake(bot, s, now)
+    local ____LaneFightConfig_IsOn_result_7
+    if LaneFightConfig.IsOn("Kill") then
+        ____LaneFightConfig_IsOn_result_7 = partnerOf(bot, snap)
+    else
+        ____LaneFightConfig_IsOn_result_7 = nil
+    end
+    local p = ____LaneFightConfig_IsOn_result_7
+    if p == nil then
+        s.follow = nil
+        return
+    end
+    local seen = partnerCommitTarget(bot, p.unit, now)
+    if seen ~= nil then
+        local tpid = seen:GetPlayerID()
+        local inst = touch(
+            s,
+            (("follow:" .. tostring(p.pid)) .. ":") .. tostring(tpid),
+            now
+        )
+        if not inst.started and (s.follow == nil or s.follow.targetPid ~= tpid or s.follow.allyPid ~= p.pid) then
+            local delay = Profile.SampleDelay(bot, "react") + LaneFightConfig.Curve(
+                "SyncDelay",
+                skillOf(bot)
+            )
+            s.follow = {
+                allyPid = p.pid,
+                targetPid = tpid,
+                seenAt = now,
+                at = now + delay,
+                delay = delay,
+                inst = inst
+            }
+            HDebug.Log(
+                "lanefight",
+                (((((("partner-commit pid=" .. tostring(bot:GetPlayerID())) .. " ally=") .. tostring(p.pid)) .. " target=") .. tostring(tpid)) .. " follow-in=") .. tostring(delay)
+            )
+        end
+    end
+    local f = s.follow
+    if f == nil then
+        return
+    end
+    if f.allyPid ~= p.pid or now > f.at + INSTANCE_GAP then
+        s.follow = nil
+        return
+    end
+    if now < f.at then
+        return
+    end
+    if s.phase == "commit" then
+        f.inst.started = true
+        s.follow = nil
+        return
+    end
+    local target = visibleEnemy(bot, f.targetPid)
+    if target == nil then
+        return
+    end
+    local k = KillCheck.Check(bot, {p.unit}, target, now)
+    if k == nil or k.margin < LaneFightConfig.Settings().FollowMargin then
+        gate(bot, f.inst, "follow-margin")
+        return
+    end
+    local blocked = startBlocked(bot)
+    if blocked ~= nil then
+        gate(bot, f.inst, blocked)
+        return
+    end
+    s.follow = nil
+    if s.phase ~= "idle" then
+        ____end(bot, s, "commit")
+    end
+    start(
+        bot,
+        s,
+        "commit",
+        target,
+        f.inst,
+        now,
+        {{"margin", k.margin}, {"via", "follow"}, {"with", p.pid}, {"sync", f.delay}},
+        {p.unit}
+    )
+end
+____exports.Config = LaneFightConfig
+____exports.AbilityClasses = AbilityClasses
+____exports.CooldownMemory = CooldownMemory
+____exports.CastWatch = CastWatch
+____exports.FightRead = FightRead
+____exports.KillCheck = KillCheck
+function ____exports.IsActive()
+    return LaneFightConfig.IsActive()
+end
+function ____exports.Tick(bot)
+    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+        return
+    end
+    local snap = LaneState.ForBot(bot)
+    if snap == nil then
+        return
+    end
+    if LaneFightConfig.IsOn("Memory") then
+        CastWatch.Tick(bot)
+    end
+    local now = DotaTime()
+    if now < 0 or not gatesOpen(bot) then
+        return
+    end
+    local s = stateFor(bot)
+    coordinate(bot, s, snap, now)
+    checkEnd(bot, s, now)
+end
+--- The fight read for `bot`; callers act on it. Guarded in index.ts: an error reads as no window.
+function ____exports.ReadFor(bot, now)
+    return FightRead.ReadFor(bot, now)
+end
+--- The kill check on `target` with `partners`; guarded in index.ts: an error reads as no check.
+function ____exports.CheckKill(bot, partners, target, now)
+    return KillCheck.Check(bot, partners, target, now)
+end
+INSTANCE_GAP = 1
+END_GRACE = 0.5
+MODE_GRACE = 1
+LEASH = 1800
+RANGE_SLACK = 50
+local TRADE_REACH = 400
+ACTIVE_BOOST = 1.1
+WAIT_TIMEOUT = 3
+WAIT_HOLD = "lanefight:wait"
+MISTAKE_WINDOW = 2
+FACING_COS = math.cos(math.pi / 6)
+CAST_SLACK = 200
+CLOSE_MIN = 1
+PREV_MAX_AGE = 0.5
+SAMPLE_GAP = 0.02
+COUNT_EVERY = 0.1
+COUNT_RADIUS = 1200
+FOCUS_SOURCE = "lanefight:commit_focus"
+FOCUS_MODES = {
+    BotMode.Laning,
+    BotMode.Ward,
+    BotMode.Rune,
+    BotMode.SecretShop,
+    BotMode.SideShop,
+    BotMode.Roam
+}
+START_MODES = {BotMode.Laning, BotMode.TeamRoam, BotMode.Attack}
+fights = {}
+tracks = {}
+--- A learned key-class ability (a disable, by the class tables) that is castable now.
+local function holdsReadyKey(u)
+    do
+        local i = 0
+        while i < 6 do
+            do
+                local __continue40
+                repeat
+                    local a = u:GetAbilityInSlot(i)
+                    if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:GetLevel() < 1 then
+                        __continue40 = true
+                        break
+                    end
+                    if AbilityClasses.Classify(
+                        a:GetName(),
+                        a:IsUltimate()
+                    ) == "key" and a:IsFullyCastable() then
+                        return true
+                    end
+                    __continue40 = true
+                until true
+                if not __continue40 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return false
+end
+local function heroName(u)
+    local h = LaneConfig.Helpers().HeroDisplayName
+    local ____temp_6
+    if h ~= nil then
+        ____temp_6 = h(u)
+    else
+        ____temp_6 = nil
+    end
+    local name = ____temp_6
+    return name or (string.gsub(
+        u:GetUnitName(),
+        "npc_dota_hero_",
+        ""
+    ))
+end
+--- "go on <hero>" in team chat plus a ping on the target, at most once per CallCooldown.
+local function callKill(bot, s, target, now)
+    if not LaneFightConfig.IsOn("CallKills") then
+        return
+    end
+    local cd = LaneFightConfig.Settings().CallCooldown
+    if s.lastCallAt ~= nil and now >= s.lastCallAt and now - s.lastCallAt < cd then
+        return
+    end
+    s.lastCallAt = now
+    local said = Orders.Say(
+        bot,
+        "say_lanefight_go",
+        cd,
+        {heroName(target)}
+    )
+    local pinged = Orders.Ping(
+        bot,
+        target:GetLocation()
+    )
+    Telemetry.Event(
+        "lanefight_call",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "target",
+                target:GetPlayerID()
+            },
+            {"said", said and 1 or 0},
+            {"pinged", pinged and 1 or 0}
+        }
+    )
+end
+--- What the bot does on a kill pass against `target`. With a human partner it calls the kill and waits for the human,
+-- or goes alone only when overwhelming without the human's burst above SoloSkill. A support with a ready disable
+-- initiates; a core whose bot support holds one waits for it; a laner with neither commits on a solo check. A solo
+-- pass can lean on a partner who is not attacking (the outnumber rule counts the partner), so "alone" checks pass [].
+local function planKill(bot, p, target, now)
+    if p ~= nil and p.human then
+        local partners = {p.unit}
+        local k = KillCheck.Check(bot, partners, target, now)
+        if k == nil or not k.pass then
+            return {action = "none", k = k, partners = partners, via = "call"}
+        end
+        if skillOf(bot) > LaneFightConfig.Settings().SoloSkill then
+            local solo = KillCheck.Check(bot, {}, target, now)
+            if solo ~= nil and solo.pass and solo.overwhelming then
+                return {action = "commit", k = solo, partners = {}, via = "solo"}
+            end
+        end
+        return {action = "wait", k = k, partners = partners, via = "call"}
+    end
+    local support = isSupport(bot)
+    if support and holdsReadyKey(bot) then
+        local partners = p ~= nil and ({p.unit}) or ({})
+        local k = KillCheck.Check(bot, partners, target, now)
+        return {action = k ~= nil and k.pass and "commit" or "none", k = k, partners = partners, via = "initiate"}
+    end
+    if p ~= nil and p.support and holdsReadyKey(p.unit) then
+        local partners = {p.unit}
+        local k = KillCheck.Check(bot, partners, target, now)
+        return {action = k ~= nil and k.pass and "wait" or "none", k = k, partners = partners, via = "partner"}
+    end
+    if support and p ~= nil then
+        return {
+            action = "none",
+            k = KillCheck.Check(bot, {p.unit}, target, now),
+            partners = {p.unit},
+            via = "follow"
+        }
+    end
+    local k = KillCheck.Check(bot, {}, target, now)
+    return {action = k ~= nil and k.pass and "commit" or "none", k = k, partners = {}, via = "solo"}
+end
+--- Laning's desire this round, with the engine's x1.1 when it is the active mode, at or above the trade floor.
+local function laningOutbids(bot)
+    local laning = Intent.Resolved(bot, BotMode.Laning)
+    if laning == nil then
+        return false
+    end
+    local boost = bot:GetActiveMode() == BotMode.Laning and ACTIVE_BOOST or 1
+    return laning * boost >= LaneFightConfig.Settings().TradeFloor
 end
 --- Reads the fight and starts a trade or commit, or upgrades a trade to a commit, when the gates allow.
 local function considerStart(bot, s, snap, now)
@@ -443,16 +1014,13 @@ local function considerStart(bot, s, snap, now)
         s.streak = windowKey ~= nil and windowKey == s.streakKey and s.streak + 1 or (windowKey ~= nil and 1 or 0)
         s.streakKey = windowKey
     end
-    local commitReady = false
     if LaneFightConfig.IsOn("Kill") then
-        local k = KillCheck.Check(
-            bot,
-            partnerUnits(bot, snap),
-            target,
-            now
-        )
-        s.lastMargin = k and k.margin
-        if k ~= nil and k.pass then
+        local p = partnerOf(bot, snap)
+        local plan = planKill(bot, p, target, now)
+        local ____s_10 = s
+        local ____opt_8 = plan.k
+        ____s_10.lastMargin = ____opt_8 and ____opt_8.margin
+        if plan.action ~= "none" then
             if s.killSince == nil or s.killPid ~= tpid then
                 s.killSince = now
                 s.killPid = tpid
@@ -463,13 +1031,13 @@ local function considerStart(bot, s, snap, now)
                 "kill:" .. tostring(tpid),
                 now
             )
-            commitReady = now - s.killSince >= s.killDelay and not inst.started
-            if commitReady and s.phase ~= "commit" then
+            local ready = now - s.killSince >= s.killDelay and not inst.started and s.phase ~= "commit" and (plan.action == "commit" or s.phase == "idle")
+            if ready then
                 local blocked = startBlocked(bot)
                 if blocked ~= nil then
                     gate(bot, inst, blocked)
-                else
-                    if s.phase == "trade" then
+                elseif plan.action == "commit" then
+                    if s.phase ~= "idle" then
                         ____end(bot, s, "commit")
                     end
                     start(
@@ -479,14 +1047,30 @@ local function considerStart(bot, s, snap, now)
                         target,
                         inst,
                         now,
-                        {"margin", k.margin}
+                        {{"margin", plan.k.margin}, {"via", plan.via}},
+                        plan.partners
                     )
                     if windowKey ~= nil then
                         local w = touch(s, windowKey, now)
                         w.started = true
-                        local ____s_spent_5 = s.spent
-                        ____s_spent_5[#____s_spent_5 + 1] = w
+                        local ____s_spent_11 = s.spent
+                        ____s_spent_11[#____s_spent_11 + 1] = w
                     end
+                elseif p ~= nil then
+                    if p.human then
+                        callKill(bot, s, target, now)
+                    end
+                    s.withPid = p.pid
+                    start(
+                        bot,
+                        s,
+                        "wait_partner",
+                        target,
+                        inst,
+                        now,
+                        {{"margin", plan.k.margin}, {"with", p.pid}, {"human", p.human and 1 or 0}},
+                        plan.partners
+                    )
                 end
             end
         else
@@ -501,6 +1085,9 @@ local function considerStart(bot, s, snap, now)
         return
     end
     local blocked = GetUnitToUnitDistance(bot, target) > bot:GetAttackRange() + TRADE_REACH and "range" or startBlocked(bot)
+    if blocked == nil and laningOutbids(bot) then
+        blocked = "laning"
+    end
     if blocked ~= nil then
         gate(bot, inst, blocked)
     else
@@ -511,7 +1098,8 @@ local function considerStart(bot, s, snap, now)
             target,
             inst,
             now,
-            {"window", read.window}
+            {{"window", read.window}},
+            {}
         )
     end
 end
@@ -545,6 +1133,7 @@ function ____exports.RoamDesire(bot, raw, avoiding)
     local st = s or stateFor(bot)
     local now = DotaTime()
     checkEnd(bot, st, now)
+    coordinate(bot, st, snap, now)
     considerStart(bot, st, snap, now)
     if st.phase ~= "trade" and st.phase ~= "commit" then
         return raw
@@ -600,17 +1189,17 @@ end
 --- The trade or commit target, while one runs.
 function ____exports.Target(bot)
     local s = fights[bot:GetPlayerID()]
-    local ____temp_6
+    local ____temp_12
     if s ~= nil and (s.phase == "trade" or s.phase == "commit") then
-        ____temp_6 = s.target
+        ____temp_12 = s.target
     else
-        ____temp_6 = nil
+        ____temp_12 = nil
     end
-    return ____temp_6
+    return ____temp_12
 end
 function ____exports.CurrentPhase(bot)
-    local ____opt_7 = fights[bot:GetPlayerID()]
-    return ____opt_7 and ____opt_7.phase or "idle"
+    local ____opt_13 = fights[bot:GetPlayerID()]
+    return ____opt_13 and ____opt_13.phase or "idle"
 end
 --- "fight: window=<type|none> kill=<margin|-> mem=<n> phase=<p>" for the overlay.
 function ____exports.Describe(bot)
@@ -621,4 +1210,8 @@ function ____exports.Describe(bot)
         DotaTime()
     ))) .. " phase=") .. (s and s.phase or "idle")
 end
+function ____exports.RegisterProbes()
+    LaneHooks.SetFightProbe(function(bot) return ____exports.CurrentPhase(bot) == "commit" end)
+end
+____exports.RegisterProbes()
 return ____exports

@@ -8,10 +8,12 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 type RotationProbe = (this: void, bot: Unit) => boolean;
 type StackedProbe = (this: void, campIdx: number) => boolean;
 type OverrideProbe = (this: void, bot: Unit) => LaneConfig.Technique | undefined;
+type FightProbe = (this: void, bot: Unit) => boolean;
 
 let rotationProbes: RotationProbe[] = [];
 let stackedProbes: StackedProbe[] = [];
 let override: OverrideProbe | undefined;
+let fightProbes: FightProbe[] = [];
 
 export function SetRotationProbe(fn: RotationProbe): void {
     rotationProbes.push(fn);
@@ -39,8 +41,19 @@ export function TechniqueOverride(bot: Unit): LaneConfig.Technique | undefined {
     return override !== undefined ? override(bot) : undefined;
 }
 
+/** lane_fight registers this: camp jobs must not start while the bot is committed to a lane kill. */
+export function SetFightProbe(fn: FightProbe): void {
+    fightProbes.push(fn);
+}
+
+export function IsFightCommitting(bot: Unit): boolean {
+    for (const probe of fightProbes) if (probe(bot)) return true;
+    return false;
+}
+
 export function ResetHooks(): void {
     rotationProbes = [];
     stackedProbes = [];
     override = undefined;
+    fightProbes = [];
 }

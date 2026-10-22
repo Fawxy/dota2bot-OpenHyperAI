@@ -170,6 +170,7 @@ local Localization = {
         say_lane_their_sup_missing = {"their sup is missing"},
         say_lane_they_freeze = {"they're freezing"},
         say_lane_ss_mid = {"ss mid"},
+        say_lanefight_go = {"go on %s"},
     },
     zh = {
         welcome_msgs = {
@@ -313,6 +314,7 @@ local Localization = {
         say_lane_their_sup_missing = {"对面辅助不见了"},
         say_lane_they_freeze = {"对面在控线"},
         say_lane_ss_mid = {"中路miss"},
+        say_lanefight_go = {"上，打%s"},
     },
     ru = {
         welcome_msgs = {
@@ -449,6 +451,7 @@ local Localization = {
         say_lane_their_sup_missing = {"их саппорта не видно"},
         say_lane_they_freeze = {"они фризят линию"},
         say_lane_ss_mid = {"мид пропал"},
+        say_lanefight_go = {"го на %s"},
     },
     ja = {
         welcome_msgs = {
@@ -585,6 +588,7 @@ local Localization = {
         say_lane_their_sup_missing = {"相手のサポが見えない"},
         say_lane_they_freeze = {"相手がフリーズしてる"},
         say_lane_ss_mid = {"ミッドmiss"},
+        say_lanefight_go = {"%sに行って"},
     },
 }
 

@@ -445,6 +445,8 @@ export interface LaneHelpers {
     CannotBeKilled?: (this: void, bot: Unit, target: Unit) => boolean;
     IsValidBuilding?: (this: void, u: Unit) => boolean;
     GetHP?: (this: void, u: Unit) => number;
+    /** The hero's localised display name, or undefined when unknown. */
+    HeroDisplayName?: (this: void, u: Unit) => string | undefined;
 }
 
 let helpers: LaneHelpers = {};

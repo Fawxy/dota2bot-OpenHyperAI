@@ -130,6 +130,18 @@ do
 
 	H, core, support = jobWorld(0.9, { t = 103, cfg = { Enable = true, FullPull = false } })
 	check("no desire with FullPull off", H.Lane.CampJobDesire(support) == 0 and H.Lane.CampJobs.Current(support) == nil)
+
+	-- A live lane-fight commit (lane_fight's probe) blocks the start, the scheduled pull with gate=lanefight.
+	H, core, support = jobWorld(0.9, { t = 103, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	H.Lane.Hooks.SetFightProbe(function(b) return b == support end)
+	local gated = 0
+	check("no camp job while committed to a lane kill", H.Lane.CampJobDesire(support) == 0 and H.Lane.CampJobs.Current(support) == nil)
+	for _, l in ipairs(lines) do if l:find("ev=lane_plan ", 1, true) and l:find("gate=lanefight", 1, true) then gated = gated + 1 end end
+	check("... logged as lane_plan gate=lanefight", gated == 1, table.concat(lines, "\n"))
+	check("a non-forced Start is refused too", not H.Lane.CampJobs.Start(support, { kind = "full_pull", campIdx = 1 }))
+	check("a forced Start (a human's order) is not", H.Lane.CampJobs.Start(support, { kind = "full_pull", campIdx = 1, forced = true }))
 end
 
 -- Runs a scheduled full pull from 1:12.5 (the window opens at 1:12 from the stand) through aggro and lead to the meet point; returns the job.

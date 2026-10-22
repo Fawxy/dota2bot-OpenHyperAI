@@ -56,6 +56,9 @@ export interface Unit {
 
     GetLocation(): Vector;
 
+    /** World angle in degrees, 0 along +x. */
+    GetFacing(): number;
+
     GetUnitName(): string;
 
     GetAbilityCount(): number;

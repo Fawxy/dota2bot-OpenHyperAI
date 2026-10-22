@@ -205,19 +205,42 @@ for _, case in ipairs({ { field = "unkillable", reason = "unkillable" }, { field
 end
 
 do
+	-- Laning at 0.9 as the active mode (0.99 with the engine's x1.1) would out-bid the trade floor and abort the trade a
+	-- second later, so the trade does not start; the window instance stays unused.
 	local W = world()
 	W.laning = 0.9
+	play(W, 2)
+	check("laning bidding at the trade floor gates the trade start, logged once", not hasStart(W, "trade")
+		and W.events("lanefight_gate", "gate=laning") == 1 and W.bot.mode == BotMode.Laning, table.concat(W.lines, "\n"))
+	W.laning = 0.45
 	play(W, 0.7)
-	check("setup: the trade started while laning outbids team_roam", hasStart(W, "trade") and W.bot.mode == BotMode.Laning)
+	check("the same window starts the trade once laning drops", W.events("lanefight_start", "phase=trade") == 1, table.concat(W.lines, "\n"))
+
+	-- Laning rising after team_roam took over: trades are not protected, and the taken-over trade spends its window.
+	W.laning = 0.9
 	play(W, 0.6)
 	check("a mode other than team_roam or attack does not end it within 1 s", W.events("lanefight_end") == 0)
 	local guard = 0
 	while W.events("lanefight_end") == 0 and guard < 60 do play(W, FRAME) guard = guard + 1 end
 	check("trades are not protected: laning at 0.9 ends a trade after 1 s", W.events("lanefight_abort", "reason=mode:laning") == 1
-		and W.events("lanefight_end", "reason=mode:laning") == 1 and W.age("trade") == nil and T - 100.31 < 1.7, table.concat(W.lines, "\n"))
-	play(W, 1)
-	check("a trade that never took over does not use up its window instance", W.events("lanefight_start", "phase=trade") == 2,
+		and W.events("lanefight_end", "reason=mode:laning hits=0 took=1") == 1 and W.age("trade") == nil, table.concat(W.lines, "\n"))
+	W.laning = 0.45
+	play(W, 1.5)
+	check("a trade that took over uses up its window instance", W.events("lanefight_start", "phase=trade") == 1,
 		W.events("lanefight_start", "phase=trade"))
+
+	-- 0.7 is under the 0.75 floor, but as the active mode it bids 0.77.
+	W = world()
+	W.laning = 0.7
+	play(W, 2)
+	check("laning at 0.7 as the active mode gates the trade", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=laning") == 1,
+		table.concat(W.lines, "\n"))
+	W = world()
+	W.laning, W.attack = 0.7, 0.95
+	W.bot.target = W.enemy
+	play(W, 2)
+	check("laning at 0.7 while Valve's attack mode is active does not", hasStart(W, "trade") and W.events("lanefight_gate", "gate=laning") == 0,
+		table.concat(W.lines, "\n"))
 end
 
 do

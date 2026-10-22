@@ -3,8 +3,10 @@
  * from Humaniser.Tick; ReadFor is the fight read (trade and respect windows); CheckKill is the kill check.
  *
  * The executor runs through mode_team_roam_generic: RoamDesire (its GetDesire) starts and ends trades and commits and
- * posts a FIGHT floor claim on team_roam while one runs; Think (its Think) attacks the target. Partner sync, kill calls
- * and escape aborts are Task 8's; here a bot commits on its own kill check.
+ * posts a FIGHT floor claim on team_roam while one runs; Think (its Think) attacks the target. Tick (every frame)
+ * watches the lane partner: a partner's visible commit is the only coordination channel, for bot partners too, since
+ * modules may not be shared between a team's bots. A core waits (wait_partner) for its support's commit, a bot calls
+ * kills for a human partner, and a commit aborts on a real signal after a skill-scaled re-check.
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
@@ -20,6 +22,7 @@ import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 
@@ -32,7 +35,15 @@ export function IsActive(): boolean {
 export function Tick(bot: Unit): void {
     if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
     // A bot with no assigned lane (no lane snapshot) has no lane enemies to watch.
-    if (LaneFightConfig.IsOn("Memory") && LaneState.ForBot(bot) !== undefined) CastWatch.Tick(bot);
+    const snap = LaneState.ForBot(bot);
+    if (snap === undefined) return;
+    if (LaneFightConfig.IsOn("Memory")) CastWatch.Tick(bot);
+    const now = DotaTime();
+    if (now < 0 || !gatesOpen(bot)) return;
+    const s = stateFor(bot);
+    // Frame precision for the partner's commit, the follow time, the wait timeout and abort re-checks.
+    coordinate(bot, s, snap, now);
+    checkEnd(bot, s, now);
 }
 
 /** The fight read for `bot`; callers act on it. Guarded in index.ts: an error reads as no window. */
@@ -84,6 +95,45 @@ interface FightState {
     lastMargin?: number;
     lastWindow?: string;
     instances: Record<string, Instance>;
+    // Partners the running commit's checks count (a re-check uses the same set); the partner a wait is for.
+    partners: Unit[];
+    withPid?: number;
+    // A partner's visible commit seen at `seenAt`; the bot follows at `at` (react + SyncDelay later).
+    follow?: Follow;
+    lastCallAt?: number;
+    // Abort: a signal seen at `signalAt` is re-checked at `at` (AbortNotice later).
+    abort?: { why: string; signalAt: number; at: number };
+    escapeAt?: number;
+    startEnemies: number;
+    countUp: boolean;
+    countAt: number;
+    // Abilities a start believed down; one cast within MISTAKE_WINDOW of `at` proves the memory wrong.
+    bet?: { targetPid: number; at: number; abilities: Record<string, boolean>; done: boolean };
+}
+
+interface Follow {
+    allyPid: number;
+    targetPid: number;
+    seenAt: number;
+    at: number;
+    delay: number;
+    inst: Instance;
+}
+
+type KillAction = "commit" | "wait" | "none";
+
+interface KillPlan {
+    action: KillAction;
+    k?: KillCheck.KillResult;
+    partners: Unit[];
+    via: string;
+}
+
+interface PartnerInfo {
+    unit: Unit;
+    pid: number;
+    human: boolean;
+    support: boolean;
 }
 
 // A window or kill pass seen again within this gap is the same instance (FightRead's INSTANCE_GAP).
@@ -99,6 +149,22 @@ const RANGE_SLACK = 50;
 const TRADE_REACH = 400;
 // The engine's bonus on the active mode's desire.
 const ACTIVE_BOOST = 1.1;
+// A wait for the partner's commit gives up after this.
+const WAIT_TIMEOUT = 3;
+const WAIT_HOLD = "lanefight:wait";
+// A believed-down ability cast this soon after the start proves the memory wrong.
+const MISTAKE_WINDOW = 2;
+// A key-class cast counts as on the target when the caster faces within 30 degrees of it, within cast range + 200.
+const FACING_COS = math.cos(math.pi / 6);
+const CAST_SLACK = 200;
+// "Closing": the distance shrank by more than this since the previous sample, taken at most PREV_MAX_AGE ago.
+const CLOSE_MIN = 1;
+const PREV_MAX_AGE = 0.5;
+// Samples closer together than this (two calls in one frame) keep the older one as the comparison point.
+const SAMPLE_GAP = 0.02;
+// The enemy-count abort signal is read this often.
+const COUNT_EVERY = 0.1;
+const COUNT_RADIUS = 1200;
 const FOCUS_SOURCE = "lanefight:commit_focus";
 // The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
 const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
@@ -106,12 +172,28 @@ const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Ward, BotMode.Rune, BotM
 const START_MODES: BotMode[] = [BotMode.Laning, BotMode.TeamRoam, BotMode.Attack];
 
 const fights: Record<number, FightState> = {};
+// Per "observer:ally:target" the last two distance samples, for "closing".
+const tracks: Record<string, { prev?: { dist: number; at: number }; cur?: { dist: number; at: number } }> = {};
 
 function stateFor(bot: Unit): FightState {
     const pid = bot.GetPlayerID();
     let s = fights[pid];
     if (s === undefined) {
-        s = { phase: "idle", startedAt: 0, tookOver: false, spent: [], hits: 0, lastAttack: 0, streak: 0, killDelay: 0, instances: {} };
+        s = {
+            phase: "idle",
+            startedAt: 0,
+            tookOver: false,
+            spent: [],
+            hits: 0,
+            lastAttack: 0,
+            streak: 0,
+            killDelay: 0,
+            instances: {},
+            partners: [],
+            startEnemies: 0,
+            countUp: false,
+            countAt: -math.huge,
+        };
         fights[pid] = s;
     }
     return s;
@@ -173,9 +255,101 @@ function startBlocked(bot: Unit): string | undefined {
     return undefined;
 }
 
-function partnerUnits(bot: Unit, snap: LaneState.LaneSnapshot): Unit[] {
-    const partner = LaneRoles.Partner(bot, snap);
-    return partner !== undefined && partner.unit !== undefined && !partner.unit.IsNull() ? [partner.unit] : [];
+function usableUnit(u: Unit | null | undefined): u is Unit {
+    return u !== undefined && u !== null && !u.IsNull() && u.IsAlive() && u.CanBeSeen() && u.GetLocation() !== undefined;
+}
+
+function memberByPid(team: number, pid: number): Unit | undefined {
+    const count = GetTeamPlayers(team).length;
+    for (let i = 1; i <= count; i++) {
+        const u = GetTeamMember(i);
+        if (u !== null && u !== undefined && !u.IsNull() && u.GetPlayerID() === pid) return u;
+    }
+    return undefined;
+}
+
+function isSupport(u: Unit): boolean {
+    const pos = LaneConfig.PositionOf(u);
+    return pos === 4 || pos === 5;
+}
+
+function partnerOf(bot: Unit, snap: LaneState.LaneSnapshot): PartnerInfo | undefined {
+    const p = LaneRoles.Partner(bot, snap);
+    if (p === undefined || !p.alive) return undefined;
+    const unit = p.unit !== undefined && p.unit !== null && !p.unit.IsNull() ? p.unit : memberByPid(bot.GetTeam(), p.pid);
+    if (!usableUnit(unit)) return undefined;
+    return { unit, pid: p.pid, human: !IsPlayerBot(p.pid), support: isSupport(unit) };
+}
+
+/** A learned key-class ability (a disable, by the class tables) that is castable now. */
+function holdsReadyKey(u: Unit): boolean {
+    for (let i = 0; i < 6; i++) {
+        const a = u.GetAbilityInSlot(i);
+        if (a === null || a === undefined || a.IsNull() || a.IsHidden() || a.GetLevel() < 1) continue;
+        if (AbilityClasses.Classify(a.GetName(), a.IsUltimate()) === "key" && a.IsFullyCastable()) return true;
+    }
+    return false;
+}
+
+function skillOf(bot: Unit): number {
+    return Profile.Get(bot).skill;
+}
+
+/**
+ * The ally's visible commit on `target`: it attacks the target while closing on it (or from within its attack range,
+ * where it no longer closes), or it is casting a key-class ability or an ultimate at it. The bot API rarely exposes a
+ * cast's target, so "at it" is: facing within 30 degrees of the target and within the ability's cast range + 200.
+ * `prev` is the ally-target distance sampled before this one.
+ */
+export function IsCommitting(ally: Unit, target: Unit, prev: { dist: number; at: number } | undefined): boolean {
+    if (!usableUnit(ally) || !usableUnit(target)) return false;
+    const dist = GetUnitToUnitDistance(ally, target);
+    const t = ally.GetAttackTarget();
+    if (t !== null && t !== undefined && !t.IsNull() && t.IsHero() && t.GetPlayerID() === target.GetPlayerID()) {
+        if (dist <= ally.GetAttackRange() + RANGE_SLACK) return true;
+        if (prev !== undefined && DotaTime() - prev.at <= PREV_MAX_AGE && dist < prev.dist - CLOSE_MIN) return true;
+    }
+    return castingAt(ally, target, dist);
+}
+
+function castingAt(ally: Unit, target: Unit, dist: number): boolean {
+    if (!ally.IsCastingAbility()) return false;
+    const a = ally.GetCurrentActiveAbility();
+    if (a === null || a === undefined || a.IsNull()) return false;
+    if (AbilityClasses.Classify(a.GetName(), a.IsUltimate()) === "other") return false;
+    if (dist > a.GetCastRange() + CAST_SLACK) return false;
+    if (dist < 1) return true;
+    const f = (ally.GetFacing() * math.pi) / 180;
+    const from = ally.GetLocation();
+    const to = target.GetLocation();
+    return ((to.x - from.x) * math.cos(f) + (to.y - from.y) * math.sin(f)) / dist >= FACING_COS;
+}
+
+/** The previous ally-target distance sample; records the current one. */
+function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): { dist: number; at: number } | undefined {
+    const key = `${bot.GetPlayerID()}:${ally.GetPlayerID()}:${target.GetPlayerID()}`;
+    let t = tracks[key];
+    if (t === undefined) {
+        t = {};
+        tracks[key] = t;
+    }
+    if (t.cur !== undefined && now < t.cur.at) t.cur = undefined;
+    if (t.cur === undefined || now - t.cur.at >= SAMPLE_GAP) {
+        t.prev = t.cur;
+        t.cur = { dist: GetUnitToUnitDistance(ally, target), at: now };
+    }
+    return t.prev;
+}
+
+/** The visible lane enemy the partner is committing on, if any. */
+function partnerCommitTarget(bot: Unit, ally: Unit, now: number): Unit | undefined {
+    let found: Unit | undefined;
+    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
+        if (e === undefined || !e.visible || !usableUnit(e.unit)) continue;
+        const prev = sampleDistance(bot, ally, e.unit, now);
+        if (found === undefined && IsCommitting(ally, e.unit, prev)) found = e.unit;
+    }
+    return found;
 }
 
 function focusCap(): number {
@@ -198,7 +372,25 @@ function claim(bot: Unit, phase: Phase): boolean {
     return posted;
 }
 
-function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: [string, any]): void {
+/**
+ * Abilities of `target` the bot's memory says are down that this start relies on: the key abilities behind a spell
+ * window, and for a commit the escapes too (the kill check passed because they were believed down).
+ */
+function believedDown(bot: Unit, target: Unit, spell: boolean, escapes: boolean, now: number): Record<string, boolean> {
+    const out: Record<string, boolean> = {};
+    const pid = bot.GetPlayerID();
+    const tpid = target.GetPlayerID();
+    for (const a of CastWatch.AbilitiesOf(target)) {
+        if (!a.learned) continue;
+        const wanted = (spell && AbilityClasses.Classify(a.name, a.ult) === "key") || (escapes && AbilityClasses.IsEscape(a.name));
+        if (!wanted) continue;
+        const [ready] = CooldownMemory.ProbablyReady(pid, tpid, a.name, true, now, skillOf(bot));
+        if (!ready) out[a.name] = true;
+    }
+    return out;
+}
+
+function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: [string, any][], partners: Unit[]): void {
     inst.started = true;
     s.spent = [inst];
     s.tookOver = false;
@@ -213,10 +405,24 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     s.lastAttack = bot.GetLastAttackTime();
     s.fogSince = undefined;
     s.farSince = undefined;
+    s.partners = partners;
+    s.abort = undefined;
+    s.countUp = false;
+    s.countAt = -math.huge;
+    s.startEnemies = 0;
+    const snap = LaneState.ForBot(bot);
+    if (phase === "commit" && snap !== undefined) s.startEnemies = FightRead.LaneCounts(bot, snap, COUNT_RADIUS).enemies;
+    if (phase !== "wait_partner") {
+        const abilities = believedDown(bot, target, s.lastWindow === "spell", phase === "commit", now);
+        const [first] = next(abilities);
+        s.bet = first !== undefined ? { targetPid: s.targetPid, at: now, abilities, done: false } : undefined;
+    }
     // The bot is usually in laning when the floor is first posted; team_roam takes over at the next round.
     s.offModeSince = now;
-    claim(bot, phase);
-    Telemetry.Event("lanefight_start", [["pid", bot.GetPlayerID()], ["phase", phase], ["target", s.targetPid], detail]);
+    if (phase !== "wait_partner") claim(bot, phase);
+    const fields: [string, any][] = [["pid", bot.GetPlayerID()], ["phase", phase], ["target", s.targetPid]];
+    for (const d of detail) fields.push(d);
+    Telemetry.Event("lanefight_start", fields);
     HDebug.Log("lanefight", `start pid=${bot.GetPlayerID()} phase=${phase} target=${s.targetPid}`);
 }
 
@@ -225,8 +431,9 @@ function end(bot: Unit, s: FightState, reason: string): void {
     if (phase === "idle") return;
     Intent.ReleaseSource(bot, `lanefight:${phase}`);
     Intent.ReleaseSource(bot, FOCUS_SOURCE);
-    // A claim that never won the takeover did not use the window.
-    if (!s.tookOver) for (const inst of s.spent) inst.started = false;
+    // A claim that never won the takeover did not use the window. A wait never takes over and spends its kill pass:
+    // giving it back would restart the wait at once.
+    if (!s.tookOver && phase !== "wait_partner") for (const inst of s.spent) inst.started = false;
     s.spent = [];
     // A restart needs the window on two fresh reads again.
     s.streak = 0;
@@ -234,14 +441,87 @@ function end(bot: Unit, s: FightState, reason: string): void {
     s.phase = "idle";
     s.target = undefined;
     s.targetPid = undefined;
-    bot.SetTarget(undefined as any);
+    s.withPid = undefined;
+    s.abort = undefined;
+    if (phase !== "wait_partner") bot.SetTarget(undefined as any);
     Telemetry.Event("lanefight_end", [
         ["pid", bot.GetPlayerID()],
         ["phase", phase],
         ["reason", reason],
         ["hits", s.hits],
+        ["took", s.tookOver ? 1 : 0],
     ]);
     HDebug.Log("lanefight", `end pid=${bot.GetPlayerID()} phase=${phase} reason=${reason}`);
+}
+
+/** lanefight_mistake once when an ability the start believed down is cast within MISTAKE_WINDOW of it. */
+function checkMistake(bot: Unit, s: FightState, now: number): void {
+    const bet = s.bet;
+    if (bet === undefined || bet.done) return;
+    const seen = CastWatch.LastSeenCast(bot.GetPlayerID());
+    if (seen !== undefined && seen.enemyPid === bet.targetPid && seen.at >= bet.at && seen.at - bet.at <= MISTAKE_WINDOW && bet.abilities[seen.ability] === true) {
+        bet.done = true;
+        Telemetry.Event("lanefight_mistake", [
+            ["pid", bot.GetPlayerID()],
+            ["kind", "bad_memory"],
+            ["ability", seen.ability],
+            ["target", bet.targetPid],
+            ["after", seen.at - bet.at],
+        ]);
+        return;
+    }
+    // Kept a little past the window: a cast seen late (rounds only, no Tick) is judged by its own time.
+    if (now - bet.at > MISTAKE_WINDOW + INSTANCE_GAP) s.bet = undefined;
+}
+
+/** A real abort signal on a running commit: the target cast an escape, or the enemies in lane now outnumber us. */
+function abortSignal(bot: Unit, s: FightState, now: number): string | undefined {
+    const seen = CastWatch.LastSeenCast(bot.GetPlayerID());
+    if (seen !== undefined && seen.enemyPid === s.targetPid && seen.at >= s.startedAt && seen.at !== s.escapeAt && AbilityClasses.IsEscape(seen.ability)) {
+        s.escapeAt = seen.at;
+        return "escape";
+    }
+    if (now - s.countAt < COUNT_EVERY) return undefined;
+    s.countAt = now;
+    const snap = LaneState.ForBot(bot);
+    if (snap === undefined) return undefined;
+    const c = FightRead.LaneCounts(bot, snap, COUNT_RADIUS);
+    const up = c.enemies > c.allies && c.enemies > s.startEnemies;
+    const rose = up && !s.countUp;
+    s.countUp = up;
+    return rose ? "outnumbered" : undefined;
+}
+
+/**
+ * The commit's abort: a signal is noticed and re-checked AbortNotice later (late at low skill). A re-check that still
+ * passes lets the commit go on.
+ */
+function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: number): string | undefined {
+    if (s.abort === undefined) {
+        const why = abortSignal(bot, s, now);
+        if (why === undefined) return undefined;
+        s.abort = { why, signalAt: now, at: now + LaneFightConfig.Curve("AbortNotice", skillOf(bot)) };
+        HDebug.Log("lanefight", `abort-signal pid=${bot.GetPlayerID()} reason=${why}`);
+    }
+    const a = s.abort;
+    if (now < a.at) return undefined;
+    s.abort = undefined;
+    const k = target !== undefined ? KillCheck.Check(bot, s.partners, target, now, true) : undefined;
+    const pass = k !== undefined && k.pass;
+    Telemetry.Event("lanefight_recheck", [
+        ["pid", bot.GetPlayerID()],
+        ["reason", a.why],
+        ["pass", pass ? 1 : 0],
+        ["margin", k?.margin ?? 0],
+        ["after", now - a.signalAt],
+    ]);
+    if (pass) return undefined;
+    Telemetry.Event("lanefight_abort", [
+        ["pid", bot.GetPlayerID()],
+        ["phase", s.phase],
+        ["reason", a.why],
+    ]);
+    return a.why;
 }
 
 function lastHits(bot: Unit, s: FightState): void {
@@ -274,7 +554,7 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
     const cfg = LaneFightConfig.Settings();
     if (!bot.IsAlive()) return "dead";
     if (hpFraction(bot) < cfg.StopHP) return "low-hp";
-    if ((s.phase === "trade" && !LaneFightConfig.IsOn("Trade")) || (s.phase === "commit" && !LaneFightConfig.IsOn("Kill"))) return "flag-off";
+    if ((s.phase === "trade" && !LaneFightConfig.IsOn("Trade")) || (s.phase !== "trade" && !LaneFightConfig.IsOn("Kill"))) return "flag-off";
     // An order or survival claim outranks the floor within team_roam only; the engine's x1.1 on the active mode can
     // still carry team_roam past an order on another mode, so the phase gives way.
     if (priorityLive(bot)) return "priority";
@@ -297,6 +577,16 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
         if (s.targetPid === undefined || !IsHeroAlive(s.targetPid)) return "target-dead";
         s.fogSince = s.fogSince ?? now;
         if (now - s.fogSince > cfg.FogGrace) return "fog";
+    }
+
+    // A wait posts no floor and keeps laning, so the mode and retreat rules below do not apply to it.
+    if (s.phase === "wait_partner") {
+        if (s.withPid === undefined || !IsHeroAlive(s.withPid)) return "partner_gone";
+        return now - s.startedAt >= WAIT_TIMEOUT ? "partner_timeout" : undefined;
+    }
+    if (s.phase === "commit") {
+        const abort = abortReason(bot, s, target, now);
+        if (abort !== undefined) return abort;
     }
 
     if (s.phase === "trade") {
@@ -334,10 +624,135 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
 }
 
 function checkEnd(bot: Unit, s: FightState, now: number): void {
+    checkMistake(bot, s, now);
     if (s.phase === "idle") return;
     lastHits(bot, s);
     const reason = endReason(bot, s, now);
     if (reason !== undefined) end(bot, s, reason);
+}
+
+function heroName(u: Unit): string {
+    const h = LaneConfig.Helpers().HeroDisplayName;
+    const name = h !== undefined ? h(u) : undefined;
+    return name ?? string.gsub(u.GetUnitName(), "npc_dota_hero_", "")[0];
+}
+
+/** "go on <hero>" in team chat plus a ping on the target, at most once per CallCooldown. */
+function callKill(bot: Unit, s: FightState, target: Unit, now: number): void {
+    if (!LaneFightConfig.IsOn("CallKills")) return;
+    const cd = LaneFightConfig.Settings().CallCooldown;
+    if (s.lastCallAt !== undefined && now >= s.lastCallAt && now - s.lastCallAt < cd) return;
+    s.lastCallAt = now;
+    const said = Orders.Say(bot, "say_lanefight_go", cd, [heroName(target)]);
+    const pinged = Orders.Ping(bot, target.GetLocation());
+    Telemetry.Event("lanefight_call", [
+        ["pid", bot.GetPlayerID()],
+        ["target", target.GetPlayerID()],
+        ["said", said ? 1 : 0],
+        ["pinged", pinged ? 1 : 0],
+    ]);
+}
+
+/**
+ * What the bot does on a kill pass against `target`. With a human partner it calls the kill and waits for the human,
+ * or goes alone only when overwhelming without the human's burst above SoloSkill. A support with a ready disable
+ * initiates; a core whose bot support holds one waits for it; a laner with neither commits on a solo check. A solo
+ * pass can lean on a partner who is not attacking (the outnumber rule counts the partner), so "alone" checks pass [].
+ */
+function planKill(bot: Unit, p: PartnerInfo | undefined, target: Unit, now: number): KillPlan {
+    if (p !== undefined && p.human) {
+        const partners = [p.unit];
+        const k = KillCheck.Check(bot, partners, target, now);
+        if (k === undefined || !k.pass) return { action: "none", k, partners, via: "call" };
+        if (skillOf(bot) > LaneFightConfig.Settings().SoloSkill) {
+            const solo = KillCheck.Check(bot, [], target, now);
+            if (solo !== undefined && solo.pass && solo.overwhelming) return { action: "commit", k: solo, partners: [], via: "solo" };
+        }
+        return { action: "wait", k, partners, via: "call" };
+    }
+    const support = isSupport(bot);
+    if (support && holdsReadyKey(bot)) {
+        const partners = p !== undefined ? [p.unit] : [];
+        const k = KillCheck.Check(bot, partners, target, now);
+        return { action: k !== undefined && k.pass ? "commit" : "none", k, partners, via: "initiate" };
+    }
+    if (p !== undefined && p.support && holdsReadyKey(p.unit)) {
+        const partners = [p.unit];
+        const k = KillCheck.Check(bot, partners, target, now);
+        return { action: k !== undefined && k.pass ? "wait" : "none", k, partners, via: "partner" };
+    }
+    // A support without a ready disable lets its core start and follows the core's commit.
+    if (support && p !== undefined) return { action: "none", k: KillCheck.Check(bot, [p.unit], target, now), partners: [p.unit], via: "follow" };
+    const k = KillCheck.Check(bot, [], target, now);
+    return { action: k !== undefined && k.pass ? "commit" : "none", k, partners: [], via: "solo" };
+}
+
+function visibleEnemy(bot: Unit, pid: number): Unit | undefined {
+    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
+        if (e !== undefined && e.pid === pid && e.visible && usableUnit(e.unit)) return e.unit;
+    }
+    return undefined;
+}
+
+/**
+ * Every frame (Tick) and every round (RoamDesire): the wait's Hold, the bad-memory check, and the follow. The
+ * partner's visible commit, first seen at `seenAt`, is followed at seenAt + react + SyncDelay if the bot's own margin
+ * with the partner is at least FollowMargin; bot and human partners alike.
+ */
+function coordinate(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now: number): void {
+    if (s.phase === "wait_partner") Intent.Hold(bot, WAIT_HOLD);
+    checkMistake(bot, s, now);
+    const p = LaneFightConfig.IsOn("Kill") ? partnerOf(bot, snap) : undefined;
+    if (p === undefined) {
+        s.follow = undefined;
+        return;
+    }
+    const seen = partnerCommitTarget(bot, p.unit, now);
+    if (seen !== undefined) {
+        const tpid = seen.GetPlayerID();
+        const inst = touch(s, `follow:${p.pid}:${tpid}`, now);
+        if (!inst.started && (s.follow === undefined || s.follow.targetPid !== tpid || s.follow.allyPid !== p.pid)) {
+            const delay = Profile.SampleDelay(bot, "react") + LaneFightConfig.Curve("SyncDelay", skillOf(bot));
+            s.follow = { allyPid: p.pid, targetPid: tpid, seenAt: now, at: now + delay, delay, inst };
+            HDebug.Log("lanefight", `partner-commit pid=${bot.GetPlayerID()} ally=${p.pid} target=${tpid} follow-in=${delay}`);
+        }
+    }
+    const f = s.follow;
+    if (f === undefined) return;
+    // A follow that cannot start within INSTANCE_GAP of its time is dropped; a partner still going in is seen again.
+    if (f.allyPid !== p.pid || now > f.at + INSTANCE_GAP) {
+        s.follow = undefined;
+        return;
+    }
+    if (now < f.at) return;
+    if (s.phase === "commit") {
+        f.inst.started = true;
+        s.follow = undefined;
+        return;
+    }
+    const target = visibleEnemy(bot, f.targetPid);
+    if (target === undefined) return;
+    const k = KillCheck.Check(bot, [p.unit], target, now);
+    if (k === undefined || k.margin < LaneFightConfig.Settings().FollowMargin) {
+        gate(bot, f.inst, "follow-margin");
+        return;
+    }
+    const blocked = startBlocked(bot);
+    if (blocked !== undefined) {
+        gate(bot, f.inst, blocked);
+        return;
+    }
+    s.follow = undefined;
+    if (s.phase !== "idle") end(bot, s, "commit");
+    start(bot, s, "commit", target, f.inst, now, [["margin", k.margin], ["via", "follow"], ["with", p.pid], ["sync", f.delay]], [p.unit]);
+}
+
+/** Laning's desire this round, with the engine's x1.1 when it is the active mode, at or above the trade floor. */
+function laningOutbids(bot: Unit): boolean {
+    const laning = Intent.Resolved(bot, BotMode.Laning);
+    if (laning === undefined) return false;
+    const boost = bot.GetActiveMode() === BotMode.Laning ? ACTIVE_BOOST : 1;
+    return laning * boost >= LaneFightConfig.Settings().TradeFloor;
 }
 
 /** Reads the fight and starts a trade or commit, or upgrades a trade to a commit, when the gates allow. */
@@ -368,30 +783,37 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
         s.streakKey = windowKey;
     }
 
-    let commitReady = false;
+    // Planned during a commit too: a pass that holds keeps its kill instance alive, so it is not restarted at the end.
     if (LaneFightConfig.IsOn("Kill")) {
-        const k = KillCheck.Check(bot, partnerUnits(bot, snap), target, now);
-        s.lastMargin = k?.margin;
-        if (k !== undefined && k.pass) {
+        const p = partnerOf(bot, snap);
+        const plan = planKill(bot, p, target, now);
+        s.lastMargin = plan.k?.margin;
+        if (plan.action !== "none") {
             if (s.killSince === undefined || s.killPid !== tpid) {
                 s.killSince = now;
                 s.killPid = tpid;
                 s.killDelay = Profile.SampleDelay(bot, "react");
             }
             const inst = touch(s, `kill:${tpid}`, now);
-            commitReady = now - s.killSince >= s.killDelay && !inst.started;
-            if (commitReady && s.phase !== "commit") {
+            // A trade upgrades to a commit; a wait starts only from idle (a trading bot is already in, and follows).
+            const ready =
+                now - s.killSince >= s.killDelay && !inst.started && s.phase !== "commit" && (plan.action === "commit" || s.phase === "idle");
+            if (ready) {
                 const blocked = startBlocked(bot);
                 if (blocked !== undefined) gate(bot, inst, blocked);
-                else {
-                    if (s.phase === "trade") end(bot, s, "commit");
-                    start(bot, s, "commit", target, inst, now, ["margin", k.margin]);
+                else if (plan.action === "commit") {
+                    if (s.phase !== "idle") end(bot, s, "commit");
+                    start(bot, s, "commit", target, inst, now, [["margin", plan.k!.margin], ["via", plan.via]], plan.partners);
                     // A commit spends the trade window on the same target too.
                     if (windowKey !== undefined) {
                         const w = touch(s, windowKey, now);
                         w.started = true;
                         s.spent.push(w);
                     }
+                } else if (p !== undefined) {
+                    if (p.human) callKill(bot, s, target, now);
+                    s.withPid = p.pid;
+                    start(bot, s, "wait_partner", target, inst, now, [["margin", plan.k!.margin], ["with", p.pid], ["human", p.human ? 1 : 0]], plan.partners);
                 }
             }
         } else s.killSince = undefined;
@@ -400,9 +822,11 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
     if (windowKey === undefined || !LaneFightConfig.IsOn("Trade")) return;
     const inst = touch(s, windowKey, now);
     if (s.phase !== "idle" || inst.started || s.streak < 2) return;
-    const blocked = GetUnitToUnitDistance(bot, target) > bot.GetAttackRange() + TRADE_REACH ? "range" : startBlocked(bot);
+    let blocked = GetUnitToUnitDistance(bot, target) > bot.GetAttackRange() + TRADE_REACH ? "range" : startBlocked(bot);
+    // A trade has no focus caps: laning bidding at the floor would win the next round and abort it.
+    if (blocked === undefined && laningOutbids(bot)) blocked = "laning";
     if (blocked !== undefined) gate(bot, inst, blocked);
-    else start(bot, s, "trade", target, inst, now, ["window", read.window]);
+    else start(bot, s, "trade", target, inst, now, [["window", read.window]], []);
 }
 
 /**
@@ -429,6 +853,7 @@ export function RoamDesire(bot: Unit, raw: number, avoiding?: boolean): number {
     const st = s ?? stateFor(bot);
     const now = DotaTime();
     checkEnd(bot, st, now);
+    coordinate(bot, st, snap, now);
     considerStart(bot, st, snap, now);
     if (st.phase !== "trade" && st.phase !== "commit") return raw;
     if (claim(bot, st.phase)) return raw;
@@ -480,3 +905,9 @@ export function Describe(bot: Unit): string {
     const margin = s?.lastMargin !== undefined ? string.format("%.2f", s.lastMargin) : "-";
     return `fight: window=${s?.lastWindow ?? "none"} kill=${margin} mem=${CooldownMemory.Count(bot.GetPlayerID(), DotaTime())} phase=${s?.phase ?? "idle"}`;
 }
+
+export function RegisterProbes(): void {
+    LaneHooks.SetFightProbe((bot) => CurrentPhase(bot) === "commit");
+}
+
+RegisterProbes();

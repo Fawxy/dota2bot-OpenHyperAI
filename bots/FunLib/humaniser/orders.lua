@@ -227,8 +227,9 @@ end
 function ____exports.CanSay(bot)
     return GameTime() - (lastLineAt[bot:GetPlayerID()] or -MIN_LINE_GAP) >= MIN_LINE_GAP
 end
---- Team-chat line for humaniser features; at most one per bot per MIN_LINE_GAP. Returns false if suppressed.
-function ____exports.Say(bot, key, cooldown)
+--- Team-chat line for humaniser features; at most one per bot per MIN_LINE_GAP. Returns false if suppressed. `args` fill
+-- the line's string.format placeholders.
+function ____exports.Say(bot, key, cooldown, args)
     if announcer == nil or not ____exports.CanSay(bot) then
         return false
     end
@@ -236,7 +237,8 @@ function ____exports.Say(bot, key, cooldown)
     announcer(
         bot,
         key,
-        cooldown or Config.Get().Orders.AckCooldown
+        cooldown or Config.Get().Orders.AckCooldown,
+        args
     )
     return true
 end

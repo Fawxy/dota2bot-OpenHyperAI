@@ -383,7 +383,7 @@ export function Ping(bot: Unit, loc: Vector): boolean {
     return true;
 }
 
-type Announcer = (bot: Unit, key: string, cooldown: number) => void;
+type Announcer = (bot: Unit, key: string, cooldown: number, args?: (string | number)[]) => void;
 let announcer: Announcer | undefined;
 
 /** jmz_func injects J.ModeAnnounce here; requiring jmz_func from this module would be circular. */
@@ -395,11 +395,14 @@ export function CanSay(bot: Unit): boolean {
     return GameTime() - (lastLineAt[bot.GetPlayerID()] ?? -MIN_LINE_GAP) >= MIN_LINE_GAP;
 }
 
-/** Team-chat line for humaniser features; at most one per bot per MIN_LINE_GAP. Returns false if suppressed. */
-export function Say(bot: Unit, key: string, cooldown?: number): boolean {
+/**
+ * Team-chat line for humaniser features; at most one per bot per MIN_LINE_GAP. Returns false if suppressed. `args` fill
+ * the line's string.format placeholders.
+ */
+export function Say(bot: Unit, key: string, cooldown?: number, args?: (string | number)[]): boolean {
     if (announcer === undefined || !CanSay(bot)) return false;
     lastLineAt[bot.GetPlayerID()] = GameTime();
-    announcer(bot, key, cooldown ?? Config.Get().Orders.AckCooldown);
+    announcer(bot, key, cooldown ?? Config.Get().Orders.AckCooldown, args);
     return true;
 }
 
