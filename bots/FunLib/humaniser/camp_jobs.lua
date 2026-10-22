@@ -276,17 +276,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue265
+            local __continue267
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue265 = true
+                    __continue267 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue265 = true
+                    __continue267 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -297,9 +297,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue265 = true
+                __continue267 = true
             until true
-            if not __continue265 then
+            if not __continue267 then
                 break
             end
         end
@@ -684,6 +684,17 @@ local function standFor(spawner, firstWaypoint)
     )
 end
 local leadPath = PullTiming.LeadPath
+--- Where a puller of this camp stands to hit it, whichever team's camp data it is.
+function ____exports.PullerStand(data)
+    local spawner = Camps.SpawnerByIdx(data.campIdx)
+    if spawner == nil or data.pull == nil then
+        return nil
+    end
+    return standFor(
+        spawner,
+        leadPath(data.pull, data.pull.meetPoint)[1]
+    )
+end
 local function timingFor(kind, data, meet)
     return PullTiming.ForCamp(data, kind == "half_pull", meet)
 end
@@ -2140,10 +2151,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue293
+            local __continue295
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue293 = true
+                    __continue295 = true
                     break
                 end
                 if dist2D(
@@ -2152,9 +2163,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue293 = true
+                __continue295 = true
             until true
-            if not __continue293 then
+            if not __continue295 then
                 break
             end
         end
@@ -2193,10 +2204,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue302
+            local __continue304
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue302 = true
+                    __continue304 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2206,9 +2217,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue302 = true
+                __continue304 = true
             until true
-            if not __continue302 then
+            if not __continue304 then
                 break
             end
         end
@@ -2249,19 +2260,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue317
+            local __continue319
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue317 = true
+                    __continue319 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue317 = true
+                __continue319 = true
             until true
-            if not __continue317 then
+            if not __continue319 then
                 break
             end
         end

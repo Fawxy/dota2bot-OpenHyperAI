@@ -270,6 +270,13 @@ function standFor(spawner: Camps.Spawner, firstWaypoint: Vector): Vector {
 
 const leadPath = PullTiming.LeadPath;
 
+/** Where a puller of this camp stands to hit it, whichever team's camp data it is. */
+export function PullerStand(data: Camps.CampJobData): Vector | undefined {
+    const spawner = Camps.SpawnerByIdx(data.campIdx);
+    if (spawner === undefined || data.pull === undefined) return undefined;
+    return standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]);
+}
+
 function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
     return PullTiming.ForCamp(data, kind === "half_pull", meet);
 }

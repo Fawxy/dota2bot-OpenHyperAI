@@ -56,7 +56,9 @@ export const DEFAULTS = {
     Telegraph: true,
     CampBlock: false,
     Forecast: true,
-    PreContest: true,
+    // Off: in console.9057255027 and 9057261947 none of 202 pull_expected signals came within 20 s of that support
+    // pulling; the lane forecast it reads has not predicted the lane in any game so far.
+    PreContest: false,
     TakePull: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
@@ -165,7 +167,7 @@ export const DEFAULTS = {
         CoreYieldStagger: 1.5,
         HumanPullWindow: 6,
         CounterUnseen: 4,
-        CounterPullWindow: 6,
+        CounterPullWindow: 3,
         CounterWaveLate: 5,
         CounterSignalTTL: 20,
         PunishGap: 2,
@@ -299,7 +301,9 @@ export const DEFAULTS = {
         StackCountScan: 1600,
         EnemyNearCamp: 800,
         NeutralOutsideMargin: 200,
-        PullCampLastSeen: 1500,
+        // A support last seen this near where a puller stands; a guess (vision is not logged), check inferred=1 signals.
+        PullCampLastSeen: 800,
+        PullerNear: 300,
         PathSafe: 1500,
         StackedCampSafe: 1500,
         ContestReach: 1200,

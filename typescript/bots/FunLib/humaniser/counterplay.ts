@@ -26,7 +26,9 @@ import { HeroName } from "bots/ts_libs/dota/heroes";
 export interface PullSignalInput {
     now: number;
     enemySupport: LaneState.LaneEnemy;
+    /** The camp's box centre and where a puller of it stands (CampJobs.PullerStand). */
     campLoc: Vector;
+    standLoc: Vector;
     campPullSec: number[];
     campHalfSec?: number[];
 }
@@ -168,8 +170,13 @@ function stateOf(pid: number): ObserverState {
 export function EnemyPullSuspected(i: PullSignalInput): boolean {
     const cfg = settings();
     const e = i.enemySupport;
-    if (e.visible) return dist2D(e.location, i.campLoc) <= cfg.Radii.EnemyNearCamp;
-    if (e.timeSinceSeen <= cfg.Timing.CounterUnseen || dist2D(e.location, i.campLoc) > cfg.Radii.PullCampLastSeen) return false;
+    // A support near its own camp is often just laning by its tower: only one at the camp, as it aggros, is pulling.
+    if (e.visible) {
+        const near = cfg.Radii.PullerNear;
+        if (dist2D(e.location, i.standLoc) > near && dist2D(e.location, i.campLoc) > near) return false;
+    } else if (e.timeSinceSeen <= cfg.Timing.CounterUnseen || dist2D(e.location, i.standLoc) > cfg.Radii.PullCampLastSeen) {
+        return false;
+    }
     const period = cfg.Timing.WaveCycle;
     const sec = i.now % period;
     for (const s of [...i.campPullSec, ...(i.campHalfSec ?? [])]) {
@@ -382,6 +389,7 @@ function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy,
             now,
             enemySupport: support,
             campLoc: Camps.BoxCenter(spawner),
+            standLoc: CampJobs.PullerStand(camp) ?? Camps.BoxCenter(spawner),
             campPullSec: PullTiming.ForCamp(camp, false).seconds,
             campHalfSec: PullTiming.ForCamp(camp, true).seconds,
         };
