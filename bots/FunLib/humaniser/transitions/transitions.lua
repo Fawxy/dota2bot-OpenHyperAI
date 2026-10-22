@@ -14,6 +14,7 @@ end
 local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mid_runes")
 ____exports.Settings = Settings
@@ -25,11 +26,11 @@ local function NEVER()
 end
 local helpers = {}
 local providers = {
-    Busy = function(bot) return (Busy.IsBusy(
+    Busy = function(bot) return LaneState.ForBot(bot) ~= nil and (Busy.IsBusy(
         bot,
         DotaTime()
     )) end,
-    Spare = function(bot) return (Busy.LaneCanSpare(bot, false)) end,
+    Spare = function(bot) return LaneState.ForBot(bot) ~= nil and (Busy.LaneCanSpare(bot, false)) end,
     Alone = NEVER,
     Rotation = function() return nil end
 }

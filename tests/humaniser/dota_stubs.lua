@@ -49,6 +49,9 @@ function Unit:GetActiveMode() return self.mode end
 function Unit:GetActiveModeDesire() return self.desire or 0 end
 function Unit:GetHealth() return self.hp end
 function Unit:GetMaxHealth() return 100 end
+function Unit:GetMana() return self.mana or 100 end
+function Unit:GetMaxMana() return self.maxmana or 100 end
+function Unit:GetRespawnTime() return self.respawn or 0 end
 function Unit:GetItemInSlot() return nil end
 -- Intent arbitration (task 09): action queue, busy states and fountain distance.
 BOT_ACTION_TYPE_NONE, BOT_ACTION_TYPE_IDLE, BOT_ACTION_TYPE_MOVE_TO = 0, 1, 2

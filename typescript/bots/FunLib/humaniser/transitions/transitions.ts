@@ -6,6 +6,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 
@@ -17,7 +18,7 @@ export interface TransitionHelpers {
     IsAllyOfHuman?: (this: void, bot: Unit) => boolean;
 }
 
-/** What the overlay prints; later tasks replace the placeholders with their real state. */
+/** What the overlay prints (the defaults only evaluate where the lane system has a snapshot for the bot); later tasks replace the placeholders with their real state. */
 export interface OverlayProviders {
     Busy: (this: void, bot: Unit) => boolean;
     Spare: (this: void, bot: Unit) => boolean;
@@ -28,8 +29,8 @@ export interface OverlayProviders {
 const NEVER = (): boolean => false;
 let helpers: TransitionHelpers = {};
 let providers: OverlayProviders = {
-    Busy: (bot) => Busy.IsBusy(bot, DotaTime())[0],
-    Spare: (bot) => Busy.LaneCanSpare(bot, false)[0],
+    Busy: (bot) => LaneState.ForBot(bot) !== undefined && Busy.IsBusy(bot, DotaTime())[0],
+    Spare: (bot) => LaneState.ForBot(bot) !== undefined && Busy.LaneCanSpare(bot, false)[0],
     Alone: NEVER,
     Rotation: () => undefined,
 };
