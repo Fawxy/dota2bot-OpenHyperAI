@@ -526,4 +526,40 @@ do
 	check("the next instance is telegraphed again", #said == 2, #said)
 end
 
+do
+	local C = LaneFresh({ Enable = true }).Lane.Counter
+	-- Our top is the enemy's safe lane (desired -0.7); our forecast eq -0.6 is their 0.6.
+	local base = { now = 60, forecastEq = -0.6, enemyDesiredEq = -0.7, pullSec = { 15, 45 }, supportInLane = true }
+	local function with(o) local t = {} for k, v in pairs(base) do t[k] = v end for k, v in pairs(o) do t[k] = v end return t end
+	check("lane drifting to their tower: pull expected at :15", C.EnemyPullExpected(base) == 75)
+	check("lane at their wanted spot: no pull expected", C.EnemyPullExpected(with({ forecastEq = 0.7 })) == nil)
+	check("support not in lane: none", C.EnemyPullExpected(with({ supportInLane = false })) == nil)
+	check("no pull seconds: none", C.EnemyPullExpected(with({ pullSec = {} })) == nil)
+	check("camps not up before 1:00: none", C.EnemyPullExpected(with({ now = 0, pullSec = { 15 } })) == nil)
+end
+
+do
+	-- Our lane drifts toward our tower (forecast about -0.6): the enemy support in lane will want to pull.
+	local said
+	local function expected(skill, cfg, seen)
+		local H, support, _, _, esup = world(skill, { cfg = cfg })
+		said = {}
+		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
+		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62 -- both fronts meet at 0.38 of our lane: eqPos -0.6
+		if seen == false then hide(esup, 4) end
+		RANDOM_FRACTION = 0
+		tick(H, support, 61)
+		RANDOM_FRACTION = nil
+		return H, support, signalsOf(H, support, "pull_expected")
+	end
+	local H, support, sigs = expected(1)
+	local feq = H.Lane.LaneState.ForBot(support).forecastEq
+	check("fixture: our forecast reads about -0.6", feq < -0.5 and feq > -0.7, feq)
+	check("one pull_expected, aggro at :15", #sigs == 1 and sigs[1].aggroAt == 75 and sigs[1].campIdx == 1 and sigs[1].enemyPid == 15, #sigs)
+	check("no pull_expected chat line", #said == 0, #said)
+	check("below the PreContest gate: none", #select(3, expected(0.6)) == 0)
+	check("PreContest off: none", #select(3, expected(1, { Enable = true, PreContest = false })) == 0)
+	check("enemy support never seen: none", #select(3, expected(1, nil, false)) == 0)
+end
+
 finish()
