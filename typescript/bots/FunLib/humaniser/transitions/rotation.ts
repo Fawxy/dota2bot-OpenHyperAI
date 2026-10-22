@@ -14,6 +14,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
@@ -77,13 +78,24 @@ function enemiesNear(bot: Unit, spot: Vector): number {
     return n;
 }
 
-function log(bot: Unit, d: RotationDecision, extra = ""): void {
+function log(bot: Unit, d: RotationDecision, enemies?: number, us?: number): void {
+    const extra = enemies !== undefined ? ` enemies=${enemies} ours=${us}` : "";
     HDebug.Log(
         "transitions",
         `rotate pid=${bot.GetPlayerID()} spawn=${d.spawn} go=${tostring(d.go)} side=${d.side ?? "-"} leaveAt=${
             d.leaveAt !== undefined ? string.format("%.1f", d.leaveAt) : "-"
         } reason=${d.reason}${extra}`
     );
+    Telemetry.Event("tr_rotate", [
+        ["pid", bot.GetPlayerID()],
+        ["spawn", d.spawn],
+        ["go", d.go],
+        ["side", d.side],
+        ["leaveAt", d.leaveAt],
+        ["reason", d.reason],
+        ["enemies", enemies],
+        ["ours", us],
+    ]);
 }
 
 export function Decide(bot: Unit, now: number): RotationDecision {
@@ -236,7 +248,7 @@ export function Tick(bot: Unit): void {
                 d.go = false;
                 d.reason = "contested";
                 Intent.Release(bot, SOURCE, BotMode.Rune);
-                log(bot, d, ` enemies=${enemies} ours=${us}`);
+                log(bot, d, enemies, us);
                 say(bot, "say_rune_lost");
                 return;
             }

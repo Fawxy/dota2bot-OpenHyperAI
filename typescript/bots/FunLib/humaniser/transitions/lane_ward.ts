@@ -8,6 +8,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export const SOURCE = "transitions:ward";
 
@@ -39,6 +40,7 @@ interface WardRead {
 let rolls: Record<string, boolean> = {};
 let reads: Record<number, WardRead> = {};
 let liveAt: Record<number, number> = {};
+let lastWhy: Record<number, string> = {};
 let pending: Record<number, PendingPick | undefined> = {};
 let planted: Record<string, { location: Vector; spot: { plant_time_obs?: number } }> = {};
 
@@ -46,6 +48,7 @@ export function ResetCache(): void {
     rolls = {};
     reads = {};
     liveAt = {};
+    lastWhy = {};
     pending = {};
     planted = {};
 }
@@ -89,6 +92,19 @@ function laneSupport(s: LaneState.LaneSnapshot): number | undefined {
     return expectedPresent ? expected : lowest;
 }
 
+/** tr_ward telemetry: the pick's outcome, once per change for each bot (the ward mode asks every frame). */
+function report(bot: Unit, why: string, lane?: Lane, d?: number): void {
+    const pid = bot.GetPlayerID();
+    if (lastWhy[pid] === why) return;
+    lastWhy[pid] = why;
+    Telemetry.Event("tr_ward", [
+        ["pid", pid],
+        ["lane", lane],
+        ["result", why],
+        ["dist", d !== undefined ? math.floor(d) : undefined],
+    ]);
+}
+
 export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vector } | undefined {
     pending[bot.GetPlayerID()] = undefined;
     if (!Settings.IsOn("LaneWard") || spots.length === 0) return undefined;
@@ -106,14 +122,29 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
         passed = LaneConfig.Roll(Settings.Lerp(cfg.WardChance, LaneConfig.SkillOf(bot)));
         rolls[key] = passed;
     }
-    if (!passed) return undefined;
+    if (!passed) {
+        report(bot, "roll", s.lane);
+        return undefined;
+    }
 
     const anchor = GANK_ANCHORS[s.team]?.[s.lane];
-    if (anchor === undefined) return undefined;
+    if (anchor === undefined) {
+        report(bot, "no-anchor", s.lane);
+        return undefined;
+    }
     // The ward mode stamps plant_time_obs on the spot it plants, which covers the lane before the scan cache catches up.
     const done = planted[key];
-    if (done !== undefined && done.spot.plant_time_obs !== undefined && done.spot.plant_time_obs > 0 && now - done.spot.plant_time_obs < cfg.WardLifetime) return undefined;
-    for (const loc of observers(s.team)) if (dist2D(loc, anchor) <= cfg.WardCoverRadius) return undefined;
+    if (done !== undefined && done.spot.plant_time_obs !== undefined && done.spot.plant_time_obs > 0 && now - done.spot.plant_time_obs < cfg.WardLifetime) {
+        report(bot, "planted", s.lane);
+        return undefined;
+    }
+    for (const loc of observers(s.team)) {
+        const d = dist2D(loc, anchor);
+        if (d <= cfg.WardCoverRadius) {
+            report(bot, "covered", s.lane, d);
+            return undefined;
+        }
+    }
 
     let best: { location: Vector } | undefined;
     let bestD = math.huge;
@@ -124,7 +155,11 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
             best = spot;
         }
     }
-    if (best === undefined || bestD > cfg.WardAnchorRadius) return undefined;
+    if (best === undefined || bestD > cfg.WardAnchorRadius) {
+        report(bot, "far", s.lane, bestD);
+        return undefined;
+    }
+    report(bot, "picked", s.lane, bestD);
     pending[bot.GetPlayerID()] = { spot: best, key };
     return best;
 }
@@ -133,6 +168,9 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
 export function Confirm(bot: Unit, spot: { location: Vector }): void {
     const p = pending[bot.GetPlayerID()];
     if (!Settings.IsOn("LaneWard") || p === undefined || p.spot !== spot) return;
+    if (liveAt[bot.GetPlayerID()] === undefined || DotaTime() - liveAt[bot.GetPlayerID()] > Settings.Get().WardLive) {
+        Telemetry.Event("tr_ward_go", [["pid", bot.GetPlayerID()], ["key", p.key], ["x", math.floor(spot.location.x)], ["y", math.floor(spot.location.y)]]);
+    }
     liveAt[bot.GetPlayerID()] = DotaTime();
     planted[p.key] = { location: spot.location, spot: spot as any };
 }

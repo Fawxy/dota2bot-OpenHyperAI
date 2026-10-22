@@ -8,6 +8,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 ____exports.SOURCE = "transitions:ward"
 ____exports.GANK_ANCHORS = {
     [2] = {
@@ -24,12 +25,14 @@ ____exports.GANK_ANCHORS = {
 local rolls = {}
 local reads = {}
 local liveAt = {}
+local lastWhy = {}
 local pending = {}
 local planted = {}
 function ____exports.ResetCache()
     rolls = {}
     reads = {}
     liveAt = {}
+    lastWhy = {}
     pending = {}
     planted = {}
 end
@@ -94,6 +97,26 @@ local function laneSupport(s)
     end
     return expectedPresent and expected or lowest
 end
+--- tr_ward telemetry: the pick's outcome, once per change for each bot (the ward mode asks every frame).
+local function report(bot, why, lane, d)
+    local pid = bot:GetPlayerID()
+    if lastWhy[pid] == why then
+        return
+    end
+    lastWhy[pid] = why
+    Telemetry.Event(
+        "tr_ward",
+        {
+            {"pid", pid},
+            {"lane", lane},
+            {"result", why},
+            {
+                "dist",
+                d ~= nil and math.floor(d) or nil
+            }
+        }
+    )
+end
 function ____exports.Pick(bot, spots)
     pending[bot:GetPlayerID()] = nil
     if not Settings.IsOn("LaneWard") or #spots == 0 then
@@ -122,19 +145,24 @@ function ____exports.Pick(bot, spots)
         rolls[key] = passed
     end
     if not passed then
+        report(bot, "roll", s.lane)
         return nil
     end
     local ____opt_0 = ____exports.GANK_ANCHORS[s.team]
     local anchor = ____opt_0 and ____opt_0[s.lane]
     if anchor == nil then
+        report(bot, "no-anchor", s.lane)
         return nil
     end
     local done = planted[key]
     if done ~= nil and done.spot.plant_time_obs ~= nil and done.spot.plant_time_obs > 0 and now - done.spot.plant_time_obs < cfg.WardLifetime then
+        report(bot, "planted", s.lane)
         return nil
     end
     for ____, loc in ipairs(observers(s.team)) do
-        if dist2D(loc, anchor) <= cfg.WardCoverRadius then
+        local d = dist2D(loc, anchor)
+        if d <= cfg.WardCoverRadius then
+            report(bot, "covered", s.lane, d)
             return nil
         end
     end
@@ -148,8 +176,10 @@ function ____exports.Pick(bot, spots)
         end
     end
     if best == nil or bestD > cfg.WardAnchorRadius then
+        report(bot, "far", s.lane, bestD)
         return nil
     end
+    report(bot, "picked", s.lane, bestD)
     pending[bot:GetPlayerID()] = {spot = best, key = key}
     return best
 end
@@ -158,6 +188,26 @@ function ____exports.Confirm(bot, spot)
     local p = pending[bot:GetPlayerID()]
     if not Settings.IsOn("LaneWard") or p == nil or p.spot ~= spot then
         return
+    end
+    if liveAt[bot:GetPlayerID()] == nil or DotaTime() - liveAt[bot:GetPlayerID()] > Settings.Get().WardLive then
+        Telemetry.Event(
+            "tr_ward_go",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"key", p.key},
+                {
+                    "x",
+                    math.floor(spot.location.x)
+                },
+                {
+                    "y",
+                    math.floor(spot.location.y)
+                }
+            }
+        )
     end
     liveAt[bot:GetPlayerID()] = DotaTime()
     planted[p.key] = {location = spot.location, spot = spot}

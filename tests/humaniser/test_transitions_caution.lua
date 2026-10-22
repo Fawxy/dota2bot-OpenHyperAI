@@ -29,7 +29,7 @@ end
 -- Radiant bottom lane: a bot carry and a bot pos 5 at the front; a human mid unless `noHuman`.
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = 300
 	CURRENT_TEAM = 2
 	local w = { H = H, C = H.Transitions.Caution, said = {} }
@@ -333,6 +333,39 @@ do
 	w.C.Tick(w.core)
 	check("laning ends: level 0 at once", w.C.Level(w.core) == 0, w.C.Level(w.core))
 	check("laning ends: the claim is released at once", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
+end
+
+
+-- tr_* telemetry: captured lines for one event name.
+local function capture(w)
+	local lines = {}
+	w.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	return function(ev)
+		local out = {}
+		for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(out, l) end end
+		return out
+	end
+end
+local function has(l, ...)
+	for _, s in ipairs({ ... }) do if not (l or ""):find(s, 1, true) then return false end end
+	return true
+end
+
+do
+	-- Caution reports each applied level once, including the drop to 0 when laning ends.
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	w.core.alive = false
+	w.H.Transitions.Tick(w.sup)
+	T = 300.6
+	w.H.Transitions.Tick(w.sup)
+	local l = ev("tr_caution")
+	check("tr_caution: one line when the alone support turns cautious", #l == 1 and has(l[1], "pid=5", "alone=1") and not has(l[1], "level=0 "), l[1])
+	LANING = false
+	T = 301.2
+	w.H.Transitions.Tick(w.sup)
+	l = ev("tr_caution")
+	check("tr_caution: the end of laning reports level 0", #l == 2 and has(l[2], "pid=5", "level=0 "), l[2])
 end
 
 finish()

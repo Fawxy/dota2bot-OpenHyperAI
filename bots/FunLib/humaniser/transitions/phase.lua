@@ -13,6 +13,7 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local stateOf, dist2D, lastHits, pruneRecord, levelGapOf, lostInput, states
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -28,23 +29,8 @@ local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
-____exports.SOURCE_PHASE = "transitions:phase"
-____exports.SOURCE_LOST = "transitions:lostlane"
-____exports.FARM_ITEMS = {
-    "item_maelstrom",
-    "item_battle_fury",
-    "item_radiance",
-    "item_hand_of_midas",
-    "item_mjollnir"
-}
-local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
-local states = {}
-local laningReads = {}
-function ____exports.ResetCache()
-    states = {}
-    laningReads = {}
-end
-local function stateOf(bot)
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function stateOf(bot)
     local pid = bot:GetPlayerID()
     local st = states[pid]
     if st == nil then
@@ -56,6 +42,7 @@ local function stateOf(bot)
             phaseEnded = false,
             lostResp = false,
             lostLatched = false,
+            reportedLost = false,
             capStarted = false,
             jungleSaid = false
         }
@@ -63,13 +50,98 @@ local function stateOf(bot)
     end
     return st
 end
-function ____exports.Record(bot)
-    return stateOf(bot).record
-end
-local function dist2D(a, b)
+function dist2D(a, b)
     local dx = a.x - b.x
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
+end
+function lastHits(bot)
+    return bot:GetLastHits()
+end
+function pruneRecord(r, now)
+    local from = now - Settings.Get().LostWindow
+    r.deaths = __TS__ArrayFilter(
+        r.deaths,
+        function(____, t) return t >= from end
+    )
+    r.lastHits = __TS__ArrayFilter(
+        r.lastHits,
+        function(____, h) return h.at >= from end
+    )
+end
+function levelGapOf(bot, st, s)
+    local pos = LaneConfig.PositionOf(bot)
+    if s == nil or pos == nil or pos > 3 then
+        return 0
+    end
+    local radius = Settings.Get().SpareLaneRadius
+    local top = 0
+    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
+        do
+            local __continue42
+            repeat
+                if dist2D(e.location, s.frontLoc) > radius then
+                    __continue42 = true
+                    break
+                end
+                local level = e.visible and e.unit ~= nil and e.unit:GetLevel() or st.levelSeen[e.pid]
+                if level ~= nil and level > top then
+                    top = level
+                end
+                __continue42 = true
+            until true
+            if not __continue42 then
+                break
+            end
+        end
+    end
+    return top > 0 and top - bot:GetLevel() or 0
+end
+function lostInput(bot)
+    local cfg = Settings.Get()
+    local st = stateOf(bot)
+    local now = DotaTime()
+    pruneRecord(st.record, now)
+    local pos = LaneConfig.PositionOf(bot)
+    local rate = 0
+    local expected = 0
+    local first = st.record.lastHits[1]
+    if pos ~= nil and pos <= 3 and first ~= nil and now - first.at >= cfg.LostMinSpan then
+        expected = Settings.Lerp(
+            cfg.ExpectedLHPerMin,
+            LaneConfig.SkillOf(bot)
+        )
+        rate = (lastHits(bot) - first.total) / (now - first.at) * 60
+    end
+    return {
+        deathsInWindow = #st.record.deaths,
+        lhPerMin = rate,
+        expectedLhPerMin = expected,
+        levelGap = levelGapOf(
+            bot,
+            st,
+            LaneState.ForBot(bot)
+        )
+    }
+end
+____exports.SOURCE_PHASE = "transitions:phase"
+____exports.SOURCE_LOST = "transitions:lostlane"
+____exports.FARM_ITEMS = {
+    "item_maelstrom",
+    "item_battle_fury",
+    "item_radiance",
+    "item_hand_of_midas",
+    "item_mjollnir"
+}
+local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+states = {}
+local laningReads = {}
+function ____exports.ResetCache()
+    states = {}
+    laningReads = {}
+end
+function ____exports.Record(bot)
+    return stateOf(bot).record
 end
 local function towerDown(team, lane)
     local id = T1[lane]
@@ -129,28 +201,32 @@ local function jungleSafe(bot)
     end
     return true
 end
-function ____exports.IsLaningFor(bot)
+--- Why the bot is no longer laning ("phase", "tower", "smoke", "farm"), or undefined while it still is.
+local function notLaningWhy(bot)
     if not LaneConfig.InLaningPhase() then
-        return false
+        return "phase"
     end
     local cfg = Settings.Get()
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     if towerDown(team, lane) or towerDown(team == 2 and 3 or 2, lane) then
-        return false
+        return "tower"
     end
     local pos = LaneConfig.PositionOf(bot)
     local now = DotaTime()
     if pos ~= nil and pos >= 4 then
         if bot:GetLevel() > cfg.SupportLevel and now >= cfg.SupportFrom and now <= cfg.SupportTo then
             if Commands.HasSmoke(bot) or Orders.GetAccepted(bot, "ATTACK") ~= nil or Orders.GetAccepted(bot, "SMOKE") ~= nil then
-                return false
+                return "smoke"
             end
         end
     elseif pos ~= nil and hasFarmItem(bot) and jungleSafe(bot) then
-        return false
+        return "farm"
     end
-    return true
+    return nil
+end
+function ____exports.IsLaningFor(bot)
+    return notLaningWhy(bot) == nil
 end
 --- Whether the laning-phase transitions (caution and its callout, the TP reaction, support rotations) apply to this
 -- bot: IsLaningFor with the Phase flag on, the global laning phase otherwise. Never for the trainer self-test bot.
@@ -189,76 +265,8 @@ function ____exports.LaneLostPure(i)
     end
     return false, ""
 end
-local function lastHits(bot)
-    return bot:GetLastHits()
-end
-local function pruneRecord(r, now)
-    local from = now - Settings.Get().LostWindow
-    r.deaths = __TS__ArrayFilter(
-        r.deaths,
-        function(____, t) return t >= from end
-    )
-    r.lastHits = __TS__ArrayFilter(
-        r.lastHits,
-        function(____, h) return h.at >= from end
-    )
-end
---- Highest lane opponent level minus ours, from visible units or the last level seen; 0 when none is known. Only
--- cores are judged on levels: a support is often two levels under the enemy cores in an even lane.
-local function levelGapOf(bot, st, s)
-    local pos = LaneConfig.PositionOf(bot)
-    if s == nil or pos == nil or pos > 3 then
-        return 0
-    end
-    local radius = Settings.Get().SpareLaneRadius
-    local top = 0
-    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
-        do
-            local __continue41
-            repeat
-                if dist2D(e.location, s.frontLoc) > radius then
-                    __continue41 = true
-                    break
-                end
-                local level = e.visible and e.unit ~= nil and e.unit:GetLevel() or st.levelSeen[e.pid]
-                if level ~= nil and level > top then
-                    top = level
-                end
-                __continue41 = true
-            until true
-            if not __continue41 then
-                break
-            end
-        end
-    end
-    return top > 0 and top - bot:GetLevel() or 0
-end
 function ____exports.LaneLost(bot)
-    local cfg = Settings.Get()
-    local st = stateOf(bot)
-    local now = DotaTime()
-    pruneRecord(st.record, now)
-    local pos = LaneConfig.PositionOf(bot)
-    local rate = 0
-    local expected = 0
-    local first = st.record.lastHits[1]
-    if pos ~= nil and pos <= 3 and first ~= nil and now - first.at >= cfg.LostMinSpan then
-        expected = Settings.Lerp(
-            cfg.ExpectedLHPerMin,
-            LaneConfig.SkillOf(bot)
-        )
-        rate = (lastHits(bot) - first.total) / (now - first.at) * 60
-    end
-    return ____exports.LaneLostPure({
-        deathsInWindow = #st.record.deaths,
-        lhPerMin = rate,
-        expectedLhPerMin = expected,
-        levelGap = levelGapOf(
-            bot,
-            st,
-            LaneState.ForBot(bot)
-        )
-    })
+    return ____exports.LaneLostPure(lostInput(bot))
 end
 local function partnerOf(bot)
     local s = LaneState.ForBot(bot)
@@ -278,7 +286,22 @@ local function sample(bot, st, now)
         ____st_record_deaths_3[#____st_record_deaths_3 + 1] = now
     end
     st.wasAlive = alive
-    st.wasLaning = ____exports.IsLaningFor(bot)
+    local why = notLaningWhy(bot)
+    st.wasLaning = why == nil
+    if why ~= st.laningWhy then
+        st.laningWhy = why
+        Telemetry.Event(
+            "tr_laning",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"laning", why == nil},
+                {"why", why}
+            }
+        )
+    end
     if alive and now >= cfg.LostLHFrom then
         local last = st.record.lastHits[#st.record.lastHits]
         if last == nil or now - last.at >= cfg.LHSampleGap then
@@ -339,6 +362,27 @@ local function humanWaiting(bot, st, now)
     end
     return true
 end
+local function reportLost(bot, st, reason, input)
+    if st.lostResp == st.reportedLost then
+        return
+    end
+    st.reportedLost = st.lostResp
+    Telemetry.Event(
+        "tr_lost",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"lost", st.lostResp},
+            {"reason", reason},
+            {"deaths", input and input.deathsInWindow},
+            {"lhpm", input and input.lhPerMin},
+            {"expected", input and input.expectedLhPerMin},
+            {"levelGap", input and input.levelGap}
+        }
+    )
+end
 local function evaluate(bot, st, now)
     st.phaseEnded = false
     st.lostResp = false
@@ -349,6 +393,7 @@ local function evaluate(bot, st, now)
         st.lostLatched = false
     end
     if not LaneConfig.InLaningPhase() then
+        reportLost(bot, st, "phase")
         return
     end
     if Settings.IsOn("Phase") and not st.wasLaning then
@@ -356,8 +401,13 @@ local function evaluate(bot, st, now)
         st.cap = ____exports.SOURCE_PHASE
     end
     local lost = false
+    local input
+    local reason = ""
     if Settings.IsOn("LostLane") then
-        lost = st.lostLatched or (____exports.LaneLost(bot))
+        input = lostInput(bot)
+        local l, r = ____exports.LaneLostPure(input)
+        lost = st.lostLatched or l
+        reason = l and r or (st.lostLatched and "latched" or "")
     end
     if not lost then
         st.capStarted = false
@@ -367,6 +417,7 @@ local function evaluate(bot, st, now)
         st.lostLatched = true
         st.cap = st.cap or ____exports.SOURCE_LOST
     end
+    reportLost(bot, st, reason, input)
     if not st.phaseEnded and not st.lostResp then
         st.jungleSaid = false
         return

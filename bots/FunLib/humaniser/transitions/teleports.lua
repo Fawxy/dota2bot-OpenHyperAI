@@ -165,6 +165,7 @@ local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local Caution = require(GetScriptDirectory().."/FunLib/humaniser/transitions/caution")
@@ -217,6 +218,22 @@ function ____exports.EnemyTps(team)
                     HDebug.Log(
                         "transitions",
                         (((((("tp pid=" .. tostring(tp.pid)) .. " to=") .. tostring(math.floor(tp.location.x))) .. ",") .. tostring(math.floor(tp.location.y))) .. " remaining=") .. string.format("%.1f", tp.remaining)
+                    )
+                    Telemetry.Event(
+                        "tr_tp",
+                        {
+                            {"team", team},
+                            {"enemy", tp.pid},
+                            {
+                                "x",
+                                math.floor(tp.location.x)
+                            },
+                            {
+                                "y",
+                                math.floor(tp.location.y)
+                            },
+                            {"remaining", tp.remaining}
+                        }
                     )
                 end
                 list[#list + 1] = tp
@@ -359,6 +376,13 @@ function ____exports.Tick(bot)
     local response = ____exports.Response(bot, tp)
     if r.mode == nil or r.mode == "setup" and response == "back" then
         r.mode = response
+        Telemetry.Event("tr_tp_react", {
+            {"pid", pid},
+            {"enemy", tp.pid},
+            {"mode", response},
+            {"lane", s.lane},
+            {"until", ____until}
+        })
     end
     if r.mode == "setup" then
         Caution.ForceLevel(bot, 0, -math.huge)

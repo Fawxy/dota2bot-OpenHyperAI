@@ -17,6 +17,7 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -38,11 +39,13 @@ export function CautionLevel(i: CautionInput): number {
 
 interface State {
     applied: number;
+    reported: number;
     target: number;
     targetAt: number;
     delay: number;
     checkAt: number;
     missing: number;
+    alone: boolean;
     lane?: Lane;
 }
 
@@ -131,7 +134,7 @@ function stateOf(bot: Unit): State {
     const pid = bot.GetPlayerID();
     let st = states[pid];
     if (st === undefined) {
-        st = { applied: 0, target: 0, targetAt: -math.huge, delay: 0, checkAt: -math.huge, missing: 0 };
+        st = { applied: 0, reported: 0, alone: false, target: 0, targetAt: -math.huge, delay: 0, checkAt: -math.huge, missing: 0 };
         states[pid] = st;
     }
     return st;
@@ -145,11 +148,13 @@ function update(bot: Unit, now: number): State {
         const s = laning ? LaneState.ForBot(bot) : undefined;
         let target = 0;
         st.missing = 0;
+        st.alone = false;
         st.lane = s?.lane;
         // The end of laning is not something the bot notices late: the level drops at once.
         if (!laning) st.applied = 0;
         if (s !== undefined) {
             const alone = IsAlone(bot, s);
+            st.alone = alone;
             st.missing = Missing(bot, s, alone);
             // The skill read builds the bot's profile (random draws), so it is skipped when nothing calls for caution.
             if (alone || st.missing > 0) {
@@ -165,6 +170,17 @@ function update(bot: Unit, now: number): State {
     if (st.applied !== st.target && now - st.targetAt >= st.delay) {
         st.applied = st.target;
         HDebug.Log("transitions", `caution pid=${bot.GetPlayerID()} level=${string.format("%.2f", st.applied)} missing=${st.missing}`);
+    }
+    // Reported on change, including the drop to 0 when laning ends.
+    if (st.applied !== st.reported) {
+        st.reported = st.applied;
+        Telemetry.Event("tr_caution", [
+            ["pid", bot.GetPlayerID()],
+            ["level", st.applied],
+            ["alone", st.alone],
+            ["missing", st.missing],
+            ["lane", st.lane],
+        ]);
     }
     return st;
 }

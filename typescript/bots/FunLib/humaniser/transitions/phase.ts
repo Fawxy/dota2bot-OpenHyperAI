@@ -16,6 +16,7 @@ import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export const SOURCE_PHASE = "transitions:phase";
 export const SOURCE_LOST = "transitions:lostlane";
@@ -40,6 +41,9 @@ interface PhaseState {
     // Once the lost-lane response starts it holds for the rest of the bot's laning: jungle last hits and levels
     // would otherwise read as recovery and send the bot back to the lane it lost.
     lostLatched: boolean;
+    // Last reported laning state and lost-lane response, for tr_laning / tr_lost on change.
+    laningWhy?: string;
+    reportedLost: boolean;
     cap?: string;
     suggestedAt?: number;
     orderBase?: number;
@@ -60,7 +64,7 @@ function stateOf(bot: Unit): PhaseState {
     const pid = bot.GetPlayerID();
     let st = states[pid];
     if (st === undefined) {
-        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, lostLatched: false, capStarted: false, jungleSaid: false };
+        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, lostLatched: false, reportedLost: false, capStarted: false, jungleSaid: false };
         states[pid] = st;
     }
     return st;
@@ -114,22 +118,27 @@ function jungleSafe(bot: Unit): boolean {
     return true;
 }
 
-export function IsLaningFor(bot: Unit): boolean {
-    if (!LaneConfig.InLaningPhase()) return false;
+/** Why the bot is no longer laning ("phase", "tower", "smoke", "farm"), or undefined while it still is. */
+function notLaningWhy(bot: Unit): string | undefined {
+    if (!LaneConfig.InLaningPhase()) return "phase";
     const cfg = Settings.Get();
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
-    if (towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) return false;
+    if (towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) return "tower";
     const pos = LaneConfig.PositionOf(bot);
     const now = DotaTime();
     if (pos !== undefined && pos >= 4) {
         if (bot.GetLevel() > cfg.SupportLevel && now >= cfg.SupportFrom && now <= cfg.SupportTo) {
-            if (Commands.HasSmoke(bot) || Orders.GetAccepted(bot, "ATTACK") !== undefined || Orders.GetAccepted(bot, "SMOKE") !== undefined) return false;
+            if (Commands.HasSmoke(bot) || Orders.GetAccepted(bot, "ATTACK") !== undefined || Orders.GetAccepted(bot, "SMOKE") !== undefined) return "smoke";
         }
     } else if (pos !== undefined && hasFarmItem(bot) && jungleSafe(bot)) {
-        return false;
+        return "farm";
     }
-    return true;
+    return undefined;
+}
+
+export function IsLaningFor(bot: Unit): boolean {
+    return notLaningWhy(bot) === undefined;
 }
 
 /**
@@ -190,6 +199,10 @@ function levelGapOf(bot: Unit, st: PhaseState, s: LaneState.LaneSnapshot | undef
 }
 
 export function LaneLost(bot: Unit): LuaMultiReturn<[boolean, string]> {
+    return LaneLostPure(lostInput(bot));
+}
+
+function lostInput(bot: Unit): LostInput {
     const cfg = Settings.Get();
     const st = stateOf(bot);
     const now = DotaTime();
@@ -204,12 +217,12 @@ export function LaneLost(bot: Unit): LuaMultiReturn<[boolean, string]> {
         expected = Settings.Lerp(cfg.ExpectedLHPerMin, LaneConfig.SkillOf(bot));
         rate = ((lastHits(bot) - first.total) / (now - first.at)) * 60;
     }
-    return LaneLostPure({
+    return {
         deathsInWindow: st.record.deaths.length,
         lhPerMin: rate,
         expectedLhPerMin: expected,
         levelGap: levelGapOf(bot, st, LaneState.ForBot(bot)),
-    });
+    };
 }
 
 function partnerOf(bot: Unit): LaneState.LaneHero | undefined {
@@ -223,7 +236,12 @@ function sample(bot: Unit, st: PhaseState, now: number): void {
     // A death while the bot was off-lane (farming, ganking) says nothing about the lane.
     if (st.wasAlive === true && !alive && st.wasLaning) st.record.deaths.push(now);
     st.wasAlive = alive;
-    st.wasLaning = IsLaningFor(bot);
+    const why = notLaningWhy(bot);
+    st.wasLaning = why === undefined;
+    if (why !== st.laningWhy) {
+        st.laningWhy = why;
+        Telemetry.Event("tr_laning", [["pid", bot.GetPlayerID()], ["laning", why === undefined], ["why", why]]);
+    }
     if (alive && now >= cfg.LostLHFrom) {
         const last = st.record.lastHits[st.record.lastHits.length - 1];
         if (last === undefined || now - last.at >= cfg.LHSampleGap) st.record.lastHits.push({ at: now, total: lastHits(bot) });
@@ -267,6 +285,20 @@ function humanWaiting(bot: Unit, st: PhaseState, now: number): boolean {
     return true;
 }
 
+function reportLost(bot: Unit, st: PhaseState, reason: string, input?: LostInput): void {
+    if (st.lostResp === st.reportedLost) return;
+    st.reportedLost = st.lostResp;
+    Telemetry.Event("tr_lost", [
+        ["pid", bot.GetPlayerID()],
+        ["lost", st.lostResp],
+        ["reason", reason],
+        ["deaths", input?.deathsInWindow],
+        ["lhpm", input?.lhPerMin],
+        ["expected", input?.expectedLhPerMin],
+        ["levelGap", input?.levelGap],
+    ]);
+}
+
 function evaluate(bot: Unit, st: PhaseState, now: number): void {
     st.phaseEnded = false;
     st.lostResp = false;
@@ -276,13 +308,23 @@ function evaluate(bot: Unit, st: PhaseState, now: number): void {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
     if (!LaneConfig.InLaningPhase() || towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) st.lostLatched = false;
-    if (!LaneConfig.InLaningPhase()) return;
+    if (!LaneConfig.InLaningPhase()) {
+        reportLost(bot, st, "phase");
+        return;
+    }
     if (Settings.IsOn("Phase") && !st.wasLaning) {
         st.phaseEnded = true;
         st.cap = SOURCE_PHASE;
     }
     let lost = false;
-    if (Settings.IsOn("LostLane")) lost = st.lostLatched || LaneLost(bot)[0];
+    let input: LostInput | undefined;
+    let reason = "";
+    if (Settings.IsOn("LostLane")) {
+        input = lostInput(bot);
+        const [l, r] = LaneLostPure(input);
+        lost = st.lostLatched || l;
+        reason = l ? r : st.lostLatched ? "latched" : "";
+    }
     if (!lost) {
         st.capStarted = false;
         st.absentSince = undefined;
@@ -291,6 +333,7 @@ function evaluate(bot: Unit, st: PhaseState, now: number): void {
         st.lostLatched = true;
         st.cap = st.cap ?? SOURCE_LOST;
     }
+    reportLost(bot, st, reason, input);
     if (!st.phaseEnded && !st.lostResp) {
         st.jungleSaid = false;
         return;

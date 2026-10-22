@@ -167,6 +167,7 @@ local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
@@ -229,13 +230,27 @@ local function enemiesNear(bot, spot)
     end
     return n
 end
-local function log(bot, d, extra)
-    if extra == nil then
-        extra = ""
-    end
+local function log(bot, d, enemies, us)
+    local extra = enemies ~= nil and ((" enemies=" .. tostring(enemies)) .. " ours=") .. tostring(us) or ""
     HDebug.Log(
         "transitions",
         ((((((((((("rotate pid=" .. tostring(bot:GetPlayerID())) .. " spawn=") .. tostring(d.spawn)) .. " go=") .. tostring(d.go)) .. " side=") .. (d.side or "-")) .. " leaveAt=") .. (d.leaveAt ~= nil and string.format("%.1f", d.leaveAt) or "-")) .. " reason=") .. d.reason) .. extra
+    )
+    Telemetry.Event(
+        "tr_rotate",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"spawn", d.spawn},
+            {"go", d.go},
+            {"side", d.side},
+            {"leaveAt", d.leaveAt},
+            {"reason", d.reason},
+            {"enemies", enemies},
+            {"ours", us}
+        }
     )
 end
 function ____exports.Decide(bot, now)
@@ -492,11 +507,7 @@ function ____exports.Tick(bot)
                 d.go = false
                 d.reason = "contested"
                 Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)
-                log(
-                    bot,
-                    d,
-                    ((" enemies=" .. tostring(enemies)) .. " ours=") .. tostring(us)
-                )
+                log(bot, d, enemies, us)
                 say(bot, "say_rune_lost")
                 return
             end

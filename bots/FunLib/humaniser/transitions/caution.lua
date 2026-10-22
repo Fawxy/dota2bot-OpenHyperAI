@@ -173,6 +173,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
@@ -277,6 +278,8 @@ local function stateOf(bot)
     if st == nil then
         st = {
             applied = 0,
+            reported = 0,
+            alone = false,
             target = 0,
             targetAt = -math.huge,
             delay = 0,
@@ -301,12 +304,14 @@ local function update(bot, now)
         local s = ____laning_0
         local target = 0
         st.missing = 0
+        st.alone = false
         st.lane = s and s.lane
         if not laning then
             st.applied = 0
         end
         if s ~= nil then
             local alone = ____exports.IsAlone(bot, s)
+            st.alone = alone
             st.missing = ____exports.Missing(bot, s, alone)
             if alone or st.missing > 0 then
                 target = ____exports.CautionLevel({
@@ -328,6 +333,22 @@ local function update(bot, now)
         HDebug.Log(
             "transitions",
             (((("caution pid=" .. tostring(bot:GetPlayerID())) .. " level=") .. string.format("%.2f", st.applied)) .. " missing=") .. tostring(st.missing)
+        )
+    end
+    if st.applied ~= st.reported then
+        st.reported = st.applied
+        Telemetry.Event(
+            "tr_caution",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"level", st.applied},
+                {"alone", st.alone},
+                {"missing", st.missing},
+                {"lane", st.lane}
+            }
         )
     end
     return st

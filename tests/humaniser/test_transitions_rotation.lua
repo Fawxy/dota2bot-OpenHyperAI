@@ -30,7 +30,7 @@ end
 -- A Radiant team: a human carry and a pos 5 bottom, our mid, the offlaner and a pos 4 top.
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.9, transitions = opts.transitions or { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.9, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = opts.T or 335
 	CURRENT_TEAM = 2
 	local w = { H = H, R = H.Transitions.Rotation, said = {} }
@@ -305,6 +305,40 @@ do
 	w.H.Transitions.Tick(w.p4)
 	check("laning ends: rotation claim released", w.H.Intent.ClaimAge(w.p4, "transitions:rotate", BotMode.Rune) == nil)
 	check("laning ends: no rune target", w.R.RuneTarget(w.p4) == nil)
+end
+
+
+-- tr_* telemetry: captured lines for one event name.
+local function capture(w)
+	local lines = {}
+	w.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	return function(ev)
+		local out = {}
+		for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(out, l) end end
+		return out
+	end
+end
+local function has(l, ...)
+	for _, s in ipairs({ ... }) do if not (l or ""):find(s, 1, true) then return false end end
+	return true
+end
+
+do
+	-- A decision is reported once per spawn with its reason.
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	rolls(PASS)
+	w.R.Decide(w.p4, 335)
+	w.R.Decide(w.p4, 336)
+	local l = ev("tr_rotate")
+	check("tr_rotate: once per spawn", #l == 1, #l)
+	check("tr_rotate: names the outcome and the side", has(l[1], "pid=4", "spawn=360", "go=1", "side=top", "reason=ok"), l[1])
+	w = world({ telemetry = { Enable = true } })
+	ev = capture(w)
+	w.p4.hp = 40
+	rolls(PASS)
+	w.R.Decide(w.p4, 335)
+	check("tr_rotate: a skip says why", has(ev("tr_rotate")[1], "go=0", "reason=hp"), ev("tr_rotate")[1])
 end
 
 finish()

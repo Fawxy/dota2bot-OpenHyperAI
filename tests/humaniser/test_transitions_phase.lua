@@ -20,7 +20,7 @@ local function hide(u) u.hiddenFrom = setmetatable({}, { __index = function() re
 -- opts.humanCore / opts.humanSupport make that laner a human.
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = opts.transitions or { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = opts.T or 100
 	CURRENT_TEAM = 2
 	LANING = true
@@ -518,6 +518,59 @@ do
 	check("the jungle farm lifts the last-hit rate: the lane no longer reads lost", w.P.LaneLost(w.core) == false)
 	check("still released to farm at 4:20", w.P.FarmAllowedInLaning(w.core))
 	check("still one jungle line", count(w.said, "say_going_jungle") == 1, count(w.said, "say_going_jungle"))
+end
+
+
+-- tr_* telemetry: captured lines for one event name.
+local function capture(w)
+	local lines = {}
+	w.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	return function(ev)
+		local out = {}
+		for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(out, l) end end
+		return out
+	end
+end
+local function has(l, ...)
+	for _, s in ipairs({ ... }) do if not (l or ""):find(s, 1, true) then return false end end
+	return true
+end
+
+do
+	-- A core with no last hits: one tr_lost when the response starts, with the numbers that judged it, and
+	-- one more when laning ends; nothing in between while the latch holds.
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	T = -60
+	w.P.Tick(w.core)
+	for t = 0, 240, 10 do
+		T = t
+		w.core.lh = 0
+		w.P.Tick(w.core)
+	end
+	local lost = ev("tr_lost")
+	check("tr_lost: once while the lane stays lost", #lost == 1, #lost)
+	check("tr_lost: names the rule and its inputs", has(lost[1], "pid=1", "lost=1", "reason=lasthits", "lhpm=0", "expected=5", "deaths=0"), lost[1])
+	LANING = false
+	T = 250
+	w.P.Tick(w.core)
+	lost = ev("tr_lost")
+	check("tr_lost: the end of laning reports the response off", #lost == 2 and has(lost[2], "lost=0", "reason=phase"), lost[2])
+	local laning = ev("tr_laning")
+	check("tr_laning: the end of laning says why", has(laning[#laning], "pid=1", "laning=0", "why=phase"), laning[#laning])
+end
+
+do
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	tick(w, w.core, 100)
+	tick(w, w.core, 101)
+	check("tr_laning: nothing while the bot keeps laning", #ev("tr_laning") == 0, #ev("tr_laning"))
+	TOWERS_W[2][Tower.Bot1].alive = false
+	tick(w, w.core, 102)
+	tick(w, w.core, 103)
+	local l = ev("tr_laning")
+	check("tr_laning: a fallen T1 ends laning once, with why=tower", #l == 1 and has(l[1], "laning=0", "why=tower"), l[1])
 end
 
 finish()

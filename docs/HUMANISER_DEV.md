@@ -119,6 +119,15 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 | `lane_job_ping` | A support pings the camp it leaves for, for a human lane partner (first Think of the job) | `pid kind camp partner` |
 | `lane_cover` | A core starts or stops playing safe while its support is on a camp | `pid state` (`start`/`end`) `partner via` (`job`: this module holds the support's job; `camp`: the support is seen at a pull camp) `kind` / `dur` |
 | `lane_stack` | A stack's outcome settled, as the `[H:lane] stack` line | `pid camp type aggro planned before after grade stacked assumed` (`grade` is timing only; `stacked=1` when the count rose, or when assumed; `assumed=1` is the `stack-assumed` case) |
+| `rune_skip` | A mid's rune desire stays under `MidRuneSkipDesire` within `MidRuneSkipWindow` of a power spawn, once per spawn | `pid spawn target status raw desire laning gate` |
+| `tr_rotate` | A support's rotation decision for a power spawn, once per spawn (and again if it is called off) | `pid spawn go side leaveAt reason` (`ok`, `roll`, `late`, `phase`, `contested`, a busy or lane-can't-spare reason, `mistake`, `pos4 going`/`pos4 closer`), `enemies ours` on `contested` |
+| `tr_caution` | The applied caution level changed, including the drop to 0 when laning ends | `pid level alone missing lane` |
+| `tr_tp` | An enemy TP the team can see was cast (team-wide, repeats per module instance) | `team enemy x y remaining` |
+| `tr_tp_react` | A bot's response to an enemy TP to its lane locked in, or was downgraded from `setup` to `back` | `pid enemy mode lane until` |
+| `tr_ward` | The early lane-ward pick's outcome changed for a bot (inside `WardFrom`–`WardTo`, for the lane's support) | `pid lane result dist` (`roll`, `no-anchor`, `planted`, `covered` with the covering ward's distance, `far` with the nearest spot's distance, `picked`) |
+| `tr_ward_go` | The ward mode accepted a lane-ward pick after its own safety checks | `pid key x y` |
+| `tr_laning` | A bot's own laning state changed (not reported at the start, when it is laning) | `pid laning why` (`phase`, `tower`, `smoke`, `farm`) |
+| `tr_lost` | The lost-lane response started or stopped | `pid lost reason deaths lhpm expected levelGap` (`reason` the rule that fired; `latched` once held; `phase` at the end of laning) |
 | `game_end` | An ancient fell or post-game started | |
 | `lua_error` | A guarded humaniser entry point threw (`Telemetry.LuaErrors`) | `pid where n msg tb` (`where` e.g. `Intent.Resolve`, `Perception.FilterNearbyEnemies`, `Tick`; `n` running count; `tb` up to six `file.lua:line(fn)` frames, absent for a stack overflow) |
 

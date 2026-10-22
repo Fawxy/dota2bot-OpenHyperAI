@@ -9,6 +9,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as Caution from "bots/FunLib/humaniser/transitions/caution";
@@ -76,6 +77,13 @@ export function EnemyTps(team: number): EnemyTp[] {
             tp = { pid: t.playerid, location: t.location, remaining: t.time_remaining, seenAt: now };
             known[t.playerid] = tp;
             HDebug.Log("transitions", `tp pid=${tp.pid} to=${math.floor(tp.location.x)},${math.floor(tp.location.y)} remaining=${string.format("%.1f", tp.remaining)}`);
+            Telemetry.Event("tr_tp", [
+                ["team", team],
+                ["enemy", tp.pid],
+                ["x", math.floor(tp.location.x)],
+                ["y", math.floor(tp.location.y)],
+                ["remaining", tp.remaining],
+            ]);
         }
         list.push(tp);
     }
@@ -163,7 +171,16 @@ export function Tick(bot: Unit): void {
 
     const until = tp.seenAt + tp.remaining + Settings.Get().TpLinger;
     const response = Response(bot, tp);
-    if (r.mode === undefined || (r.mode === "setup" && response === "back")) r.mode = response;
+    if (r.mode === undefined || (r.mode === "setup" && response === "back")) {
+        r.mode = response;
+        Telemetry.Event("tr_tp_react", [
+            ["pid", pid],
+            ["enemy", tp.pid],
+            ["mode", response],
+            ["lane", s.lane],
+            ["until", until],
+        ]);
+    }
     if (r.mode === "setup") {
         Caution.ForceLevel(bot, 0, -math.huge);
         Caution.ForceSetup(bot, setupPoint(bot, s, tp), until);

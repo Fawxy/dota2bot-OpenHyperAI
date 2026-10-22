@@ -14,7 +14,7 @@ end
 
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = 300
 	CURRENT_TEAM = 2
 	local w = { H = H, TP = H.Transitions.Teleports, C = H.Transitions.Caution }
@@ -302,6 +302,44 @@ do
 	TELEPORTS = { { playerid = 10, time_remaining = 6 }, { playerid = 10, location = FRONT, time_remaining = 6 } }
 	local ok2, list = pcall(function() return w.TP.EnemyTps(2) end)
 	check("a TP entry without a location is skipped; the rest are read", ok2 and #list == 1, ok2 and #list or list)
+end
+
+
+-- tr_* telemetry: captured lines for one event name.
+local function capture(w)
+	local lines = {}
+	w.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	return function(ev)
+		local out = {}
+		for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(out, l) end end
+		return out
+	end
+end
+local function has(l, ...)
+	for _, s in ipairs({ ... }) do if not (l or ""):find(s, 1, true) then return false end end
+	return true
+end
+
+do
+	-- One tr_tp per enemy cast, one tr_tp_react when the response locks and again on the setup->back downgrade.
+	local w = world({ skill = 0.9, telemetry = { Enable = true } })
+	local ev = capture(w)
+	STRONGER = true
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 8 } }
+	w.TP.Tick(w.core)
+	STRONGER = false
+	T = 300.6
+	TELEPORTS[1].time_remaining = 7.4
+	w.TP.Tick(w.core)
+	STRONGER = true
+	T = 301.2
+	TELEPORTS[1].time_remaining = 6.8
+	w.TP.Tick(w.core)
+	local r = ev("tr_tp_react")
+	check("tr_tp_react: setup, then the downgrade to back, and no upgrade", #r == 2 and has(r[1], "pid=1", "enemy=10", "mode=setup") and has(r[2], "mode=back"), #r)
+	local t = ev("tr_tp")
+	check("tr_tp: one line for the same cast seen three times", #t == 1 and has(t[1], "team=2", "enemy=10", "x=0", "y=-5000"), #t)
+	STRONGER = false
 end
 
 finish()

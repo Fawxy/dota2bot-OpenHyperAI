@@ -16,7 +16,7 @@ end
 -- Radiant: safelane is Bot (carry + pos 5), offlane is Top (pos 3 + pos 4).
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.5, transitions = opts.transitions or { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.5, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = opts.T or 200
 	CURRENT_TEAM = 2
 	local w = { H = H, W = H.Transitions.LaneWard }
@@ -227,6 +227,50 @@ do
 	dice(PASS)
 	local spots = { { location = Vector(-4310, 3639) }, { location = Vector(3810, -4562) }, { location = Vector(-2159, 1987) } }
 	check("Dire offlane support gets the spot nearest Dire's bot-lane anchor", H.Transitions.LaneWard.Pick(off, spots) == spots[2])
+end
+
+
+-- tr_* telemetry: captured lines for one event name.
+local function capture(w)
+	local lines = {}
+	w.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	return function(ev)
+		local out = {}
+		for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(out, l) end end
+		return out
+	end
+end
+local function has(l, ...)
+	for _, s in ipairs({ ... }) do if not (l or ""):find(s, 1, true) then return false end end
+	return true
+end
+
+do
+	-- The ward mode asks every frame: one tr_ward per outcome change, and one tr_ward_go per confirmed pick.
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	dice(PASS)
+	ward(Vector(ANCHOR.x + 1000, ANCHOR.y))
+	for _ = 1, 3 do w.W.Pick(w.p5, SPOTS) end
+	local l = ev("tr_ward")
+	check("tr_ward: covered reported once with the ward's distance", #l == 1 and has(l[1], "pid=5", "result=covered", "dist=1000"), l[1])
+	WARDS[2] = {}
+	T = T + 6
+	local spot = w.W.Pick(w.p5, SPOTS)
+	w.W.Pick(w.p5, SPOTS)
+	l = ev("tr_ward")
+	check("tr_ward: the change to a pick is reported once", #l == 2 and has(l[2], "result=picked"), l[2])
+	w.W.Confirm(w.p5, spot)
+	w.W.Confirm(w.p5, spot)
+	check("tr_ward_go: once per confirmed walk", #ev("tr_ward_go") == 1 and has(ev("tr_ward_go")[1], "pid=5", "x=3000", "y=-4000"), ev("tr_ward_go")[1])
+end
+
+do
+	local w = world({ telemetry = { Enable = true } })
+	local ev = capture(w)
+	dice(FAIL)
+	w.W.Pick(w.p5, SPOTS)
+	check("tr_ward: a failed roll is reported", has(ev("tr_ward")[1], "result=roll"), ev("tr_ward")[1])
 end
 
 finish()
