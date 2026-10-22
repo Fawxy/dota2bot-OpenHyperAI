@@ -157,6 +157,9 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Lane = ____dota.Lane
+local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -165,6 +168,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local Caution = require(GetScriptDirectory().."/FunLib/humaniser/transitions/caution")
+local ENEMY_T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local reads = {}
 local known = {}
 local reactions = {}
@@ -206,7 +210,7 @@ function ____exports.EnemyTps(team)
                 end
                 present[t.playerid] = true
                 local tp = known[t.playerid]
-                if tp == nil or now + t.time_remaining > tp.seenAt + tp.remaining + 1 then
+                if tp == nil or now + t.time_remaining > tp.seenAt + tp.remaining + 1 or dist2D(t.location, tp.location) > 1 then
                     tp = {pid = t.playerid, location = t.location, remaining = t.time_remaining, seenAt = now}
                     known[t.playerid] = tp
                     HDebug.Log(
@@ -236,25 +240,37 @@ local function ourTower(s)
         clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount))
     )
 end
---- The soonest-landing enemy TP aimed at our lane tower or the lane front.
+--- Where the enemy's T1 in this lane stands, if it still does. Towers are always visible.
+local function enemyT1(bot, s)
+    local id = ENEMY_T1[s.lane]
+    if id == nil then
+        return nil
+    end
+    local tower = GetTower(
+        bot:GetTeam() == 2 and 3 or 2,
+        id
+    )
+    return tower ~= nil and tower ~= nil and tower:IsAlive() and tower:GetLocation() or nil
+end
+--- The soonest-landing enemy TP aimed at the enemy's T1 in this lane (a TP lands on its own buildings) or the lane front.
 function ____exports.IncomingToLane(bot, s)
     local radius = Settings.Get().TpRadius
-    local tower = ourTower(s)
+    local tower = enemyT1(bot, s)
     local best
     for ____, tp in ipairs(____exports.EnemyTps(bot:GetTeam())) do
         do
-            local __continue17
+            local __continue19
             repeat
-                if dist2D(tp.location, tower) > radius and dist2D(tp.location, s.frontLoc) > radius then
-                    __continue17 = true
+                if (tower == nil or dist2D(tp.location, tower) > radius) and dist2D(tp.location, s.frontLoc) > radius then
+                    __continue19 = true
                     break
                 end
                 if best == nil or tp.seenAt + tp.remaining < best.seenAt + best.remaining then
                     best = tp
                 end
-                __continue17 = true
+                __continue19 = true
             until true
-            if not __continue17 then
+            if not __continue19 then
                 break
             end
         end
@@ -315,15 +331,18 @@ function ____exports.Tick(bot)
         return
     end
     local ____until = tp.seenAt + tp.remaining + Settings.Get().TpLinger
-    if ____exports.Response(bot, tp) == "setup" then
-        Caution.ForceLevel(bot, 0, 0)
+    local response = ____exports.Response(bot, tp)
+    if r.mode == nil or r.mode == "setup" and response == "back" then
+        r.mode = response
+    end
+    if r.mode == "setup" then
         Caution.ForceSetup(
             bot,
             setupPoint(s, tp),
             ____until
         )
     else
-        Caution.ForceSetup(bot, nil, 0)
+        Caution.ForceSetup(bot, nil, -math.huge)
         Caution.ForceLevel(bot, 1, ____until)
     end
 end

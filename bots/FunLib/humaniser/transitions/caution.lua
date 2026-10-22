@@ -166,13 +166,10 @@ local function update(bot, now)
     return st
 end
 function ____exports.Level(bot)
-    if not Settings.IsOn("Caution") then
-        return 0
-    end
     local now = DotaTime()
-    local applied = update(bot, now).applied
+    local applied = Settings.IsOn("Caution") and update(bot, now).applied or 0
     local f = forced[bot:GetPlayerID()]
-    return f ~= nil and now < f.levelUntil and math.max(applied, f.level) or applied
+    return f ~= nil and Settings.IsOn("Teleports") and now < f.levelUntil and math.max(applied, f.level) or applied
 end
 local function clamp01(v)
     return v < 0 and 0 or (v > 1 and 1 or v)
@@ -196,12 +193,12 @@ local function towardTower(bot, loc, level)
 end
 --- Lane position override (plan call 6); returns `loc` itself when caution does not apply.
 function ____exports.AdjustPosition(bot, loc)
+    local f = forced[bot:GetPlayerID()]
+    if f ~= nil and f.point ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.pointUntil then
+        return LaneMain.OwnsLaning(bot) and f.point or loc
+    end
     if not Settings.IsOn("Caution") then
         return loc
-    end
-    local f = forced[bot:GetPlayerID()]
-    if f ~= nil and f.point ~= nil and DotaTime() < f.pointUntil then
-        return LaneMain.OwnsLaning(bot) and f.point or loc
     end
     local level = ____exports.Level(bot)
     if level <= 0 or not LaneMain.OwnsLaning(bot) then
@@ -210,7 +207,7 @@ function ____exports.AdjustPosition(bot, loc)
     return towardTower(bot, loc, level)
 end
 function ____exports.SuppressTrades(bot)
-    if not Settings.IsOn("Caution") or ____exports.Level(bot) < 0.5 then
+    if ____exports.Level(bot) < 0.5 then
         return false
     end
     local stronger = LaneConfig.Helpers().WeAreStronger
@@ -262,12 +259,17 @@ local function callout(bot, st, now)
     Orders.Say(bot, "say_ss_" .. name, cooldown)
 end
 function ____exports.Tick(bot)
-    if not Settings.IsOn("Caution") then
+    if not Settings.IsOn("Caution") and not Settings.IsOn("Teleports") then
         return
     end
-    local now = DotaTime()
-    local st = update(bot, now)
-    callout(bot, st, now)
+    if Settings.IsOn("Caution") then
+        local now = DotaTime()
+        callout(
+            bot,
+            update(bot, now),
+            now
+        )
+    end
     local level = ____exports.Level(bot)
     if level <= 0 then
         Intent.ReleaseSource(bot, ____exports.SOURCE)

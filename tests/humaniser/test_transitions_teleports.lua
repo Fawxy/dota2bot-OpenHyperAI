@@ -43,11 +43,22 @@ end
 do
 	local w = world()
 	local s = snap(w, w.core)
-	TELEPORTS = { { playerid = 10, location = tower(w), time_remaining = 3 } }
-	check("TP to our T1 is incoming to lane", w.TP.IncomingToLane(w.core, s) ~= nil)
+	local t1 = GetTower(3, dota.Tower.Bot1)
+	check("precondition: their T1 is out of range of the lane front", dist(t1.loc, s.frontLoc) > 1600, dist(t1.loc, s.frontLoc))
+	TELEPORTS = { { playerid = 10, location = t1.loc, time_remaining = 3 } }
+	check("TP to their T1 in our lane is incoming to lane", w.TP.IncomingToLane(w.core, s) ~= nil)
 	w = world()
 	TELEPORTS = { { playerid = 10, location = Vector(3000, 3000), time_remaining = 3 } }
 	check("a TP 3000 away is not", w.TP.IncomingToLane(w.core, snap(w, w.core)) == nil)
+
+	w = world()
+	s = snap(w, w.core)
+	TOWERS_W[3][dota.Tower.Bot1].alive = false
+	TELEPORTS = { { playerid = 10, location = t1.loc, time_remaining = 3 } }
+	check("dead T1: its old spot no longer counts and nothing crashes", w.TP.IncomingToLane(w.core, s) == nil)
+	TELEPORTS = { { playerid = 10, location = s.frontLoc, time_remaining = 3 } }
+	T = 301
+	check("dead T1: the lane front still counts", w.TP.IncomingToLane(w.core, s) ~= nil)
 end
 
 do
@@ -102,14 +113,18 @@ do
 	w.H.Transitions.Tick(w.core)
 	check("setup posts no retreat claim", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	STRONGER = true
-	check("setup does not suppress trades", not w.C.SuppressTrades(w.core))
+	STRONGER = false
+	check("setup does not suppress trades even when not stronger", not w.C.SuppressTrades(w.core))
+	STRONGER = true
+	check("setup keeps the lane trade hook clear", not w.H.Lane.Hooks.TradesSuppressed(w.core))
 
 	STRONGER = false
 	T = 300.6
 	TELEPORTS[1].time_remaining = 4.4
 	w.TP.Tick(w.core)
 	check("no longer stronger: switches to backing off", near(w.C.Level(w.core), 1))
-	check("backing off drops the setup point", w.C.AdjustPosition(w.core, loc) ~= moved)
+	check("backing off drops the setup point", dist(w.C.AdjustPosition(w.core, loc), expect) > 50)
+	check("backing off suppresses trades when not stronger", w.C.SuppressTrades(w.core))
 
 	-- Where OHA does not own laning the position is left alone; the level claims still apply.
 	local other = world({ skill = 0.9 })
@@ -119,6 +134,43 @@ do
 	T = 300
 	other.TP.Tick(other.core)
 	check("setup: position unchanged where OHA does not own laning", other.C.AdjustPosition(other.core, loc) == loc)
+end
+
+do
+	-- A bot that starts on back never switches to setup when it later becomes stronger.
+	local w = world({ skill = 0.9 })
+	STRONGER = false
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 8 } }
+	w.TP.Tick(w.core)
+	check("starts on back", near(w.C.Level(w.core), 1))
+	STRONGER = true
+	T = 300.6
+	TELEPORTS[1].time_remaining = 7.4
+	w.TP.Tick(w.core)
+	check("stays on back when it becomes stronger", near(w.C.Level(w.core), 1) and math.abs(dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), FRONT) - 300) < 1)
+	STRONGER = false
+end
+
+for _, c in ipairs({ { caution = false, tp = true }, { caution = false, tp = false }, { caution = true, tp = true } }) do
+	local w = world({ skill = 0.5, transitions = { Enable = true, Caution = c.caution, Teleports = c.tp } })
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
+	w.H.Transitions.Tick(w.core)
+	T = 300.6
+	TELEPORTS[1].time_remaining = 5.4
+	w.H.Transitions.Tick(w.core)
+	local label = "Caution=" .. tostring(c.caution) .. " Teleports=" .. tostring(c.tp)
+	check(label .. ": level", (w.C.Level(w.core) == 1) == c.tp, w.C.Level(w.core))
+	check(label .. ": retreat claim", (w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil) == c.tp)
+end
+
+do
+	-- Setup with Caution off still moves the position.
+	local w = world({ skill = 0.9, transitions = { Enable = true, Caution = false } })
+	STRONGER = true
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
+	w.TP.Tick(w.core)
+	check("Caution off: setup point still applies", dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), FRONT) > 500)
+	STRONGER = false
 end
 
 do

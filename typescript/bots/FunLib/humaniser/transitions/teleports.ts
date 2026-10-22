@@ -3,7 +3,7 @@
  * A low-skill bot backs off (caution level 1); a skilled bot that is stronger sets up where the TP lands.
  * GetIncomingTeleports only lists TPs the team can see, so what it returns is all a bot may know.
  */
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -29,7 +29,11 @@ interface TeamRead {
 interface Reaction {
     key: string;
     noticeAt: number;
+    /** Locked when the notice delay ends; only ever downgraded from setup to back. */
+    mode?: "back" | "setup";
 }
+
+const ENEMY_T1: Record<number, number> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
 
 let reads: Record<number, TeamRead> = {};
 let known: Record<number, EnemyTp> = {};
@@ -66,8 +70,8 @@ export function EnemyTps(team: number): EnemyTp[] {
         if (!enemyIds.has(t.playerid)) continue;
         present.add(t.playerid);
         let tp = known[t.playerid];
-        // A TP that lands later than the one tracked is a new cast.
-        if (tp === undefined || now + t.time_remaining > tp.seenAt + tp.remaining + 1) {
+        // A TP that lands later than the one tracked, or somewhere else, is a new cast.
+        if (tp === undefined || now + t.time_remaining > tp.seenAt + tp.remaining + 1 || dist2D(t.location, tp.location) > 1) {
             tp = { pid: t.playerid, location: t.location, remaining: t.time_remaining, seenAt: now };
             known[t.playerid] = tp;
             HDebug.Log("transitions", `tp pid=${tp.pid} to=${math.floor(tp.location.x)},${math.floor(tp.location.y)} remaining=${string.format("%.1f", tp.remaining)}`);
@@ -83,13 +87,21 @@ function ourTower(s: LaneState.LaneSnapshot): Vector {
     return GetLocationAlongLane(s.lane, clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount)));
 }
 
-/** The soonest-landing enemy TP aimed at our lane tower or the lane front. */
+/** Where the enemy's T1 in this lane stands, if it still does. Towers are always visible. */
+function enemyT1(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
+    const id = ENEMY_T1[s.lane];
+    if (id === undefined) return undefined;
+    const tower = GetTower(bot.GetTeam() === 2 ? 3 : 2, id);
+    return tower !== null && tower !== undefined && tower.IsAlive() ? tower.GetLocation() : undefined;
+}
+
+/** The soonest-landing enemy TP aimed at the enemy's T1 in this lane (a TP lands on its own buildings) or the lane front. */
 export function IncomingToLane(bot: Unit, s: LaneState.LaneSnapshot): EnemyTp | undefined {
     const radius = Settings.Get().TpRadius;
-    const tower = ourTower(s);
+    const tower = enemyT1(bot, s);
     let best: EnemyTp | undefined;
     for (const tp of EnemyTps(bot.GetTeam())) {
-        if (dist2D(tp.location, tower) > radius && dist2D(tp.location, s.frontLoc) > radius) continue;
+        if ((tower === undefined || dist2D(tp.location, tower) > radius) && dist2D(tp.location, s.frontLoc) > radius) continue;
         if (best === undefined || tp.seenAt + tp.remaining < best.seenAt + best.remaining) best = tp;
     }
     return best;
@@ -129,11 +141,12 @@ export function Tick(bot: Unit): void {
     if (now < r.noticeAt) return;
 
     const until = tp.seenAt + tp.remaining + Settings.Get().TpLinger;
-    if (Response(bot, tp) === "setup") {
-        Caution.ForceLevel(bot, 0, 0);
+    const response = Response(bot, tp);
+    if (r.mode === undefined || (r.mode === "setup" && response === "back")) r.mode = response;
+    if (r.mode === "setup") {
         Caution.ForceSetup(bot, setupPoint(s, tp), until);
     } else {
-        Caution.ForceSetup(bot, undefined, 0);
+        Caution.ForceSetup(bot, undefined, -math.huge);
         Caution.ForceLevel(bot, 1, until);
     }
 }

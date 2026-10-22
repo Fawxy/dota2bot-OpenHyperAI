@@ -67,8 +67,8 @@ function ____exports.Tick(bot)
     end
     MidRunes.Tick(bot)
     Rotation.Tick(bot)
-    Caution.Tick(bot)
     Teleports.Tick(bot)
+    Caution.Tick(bot)
 end
 --- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
 function ____exports.MidRunesOn(bot)

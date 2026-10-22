@@ -64,8 +64,8 @@ export function Tick(bot: Unit): void {
     if (!Settings.IsActive()) return;
     MidRunes.Tick(bot);
     Rotation.Tick(bot);
-    Caution.Tick(bot);
     Teleports.Tick(bot);
+    Caution.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */

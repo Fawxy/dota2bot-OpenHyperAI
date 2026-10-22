@@ -162,11 +162,10 @@ function update(bot: Unit, now: number): State {
 }
 
 export function Level(bot: Unit): number {
-    if (!Settings.IsOn("Caution")) return 0;
     const now = DotaTime();
-    const applied = update(bot, now).applied;
+    const applied = Settings.IsOn("Caution") ? update(bot, now).applied : 0;
     const f = forced[bot.GetPlayerID()];
-    return f !== undefined && now < f.levelUntil ? math.max(applied, f.level) : applied;
+    return f !== undefined && Settings.IsOn("Teleports") && now < f.levelUntil ? math.max(applied, f.level) : applied;
 }
 
 function clamp01(v: number): number {
@@ -186,16 +185,16 @@ function towardTower(bot: Unit, loc: Vector, level: number): Vector {
 
 /** Lane position override (plan call 6); returns `loc` itself when caution does not apply. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    if (!Settings.IsOn("Caution")) return loc;
     const f = forced[bot.GetPlayerID()];
-    if (f !== undefined && f.point !== undefined && DotaTime() < f.pointUntil) return LaneMain.OwnsLaning(bot) ? f.point : loc;
+    if (f !== undefined && f.point !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.pointUntil) return LaneMain.OwnsLaning(bot) ? f.point : loc;
+    if (!Settings.IsOn("Caution")) return loc;
     const level = Level(bot);
     if (level <= 0 || !LaneMain.OwnsLaning(bot)) return loc;
     return towardTower(bot, loc, level);
 }
 
 export function SuppressTrades(bot: Unit): boolean {
-    if (!Settings.IsOn("Caution") || Level(bot) < 0.5) return false;
+    if (Level(bot) < 0.5) return false;
     const stronger = LaneConfig.Helpers().WeAreStronger;
     return stronger === undefined || !stronger(bot, Settings.Get().CautionStrongerRadius);
 }
@@ -233,10 +232,11 @@ function callout(bot: Unit, st: State, now: number): void {
 }
 
 export function Tick(bot: Unit): void {
-    if (!Settings.IsOn("Caution")) return;
-    const now = DotaTime();
-    const st = update(bot, now);
-    callout(bot, st, now);
+    if (!Settings.IsOn("Caution") && !Settings.IsOn("Teleports")) return;
+    if (Settings.IsOn("Caution")) {
+        const now = DotaTime();
+        callout(bot, update(bot, now), now);
+    }
     const level = Level(bot);
     if (level <= 0) {
         Intent.ReleaseSource(bot, SOURCE);
