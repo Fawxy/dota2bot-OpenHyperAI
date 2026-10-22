@@ -16,6 +16,8 @@ function DebugDrawText() end
 function DebugDrawCircle() end
 CHAT_CALLBACKS = {}
 function InstallChatCallback(fn) table.insert(CHAT_CALLBACKS, fn) end
+CAST_CALLBACKS = {}
+function InstallCastCallback(pid, fn) CAST_CALLBACKS[pid] = CAST_CALLBACKS[pid] or {} table.insert(CAST_CALLBACKS[pid], fn) end
 function Vector(x, y, z) return { x = x, y = y, z = z or 0 } end
 
 UNITS = { [2] = {}, [3] = {} }
@@ -50,6 +52,8 @@ function Unit:GetActiveModeDesire() return self.desire or 0 end
 function Unit:GetHealth() return self.hp end
 function Unit:GetMaxHealth() return 100 end
 function Unit:GetItemInSlot() return nil end
+function Unit:GetAbilityInSlot(i) return self.abilities and self.abilities[i] or nil end
+function Unit:GetEstimatedDamageToTarget(current, target, duration, dtype) return self.estDamage or 0 end
 -- Intent arbitration (task 09): action queue, busy states and fountain distance.
 BOT_ACTION_TYPE_NONE, BOT_ACTION_TYPE_IDLE, BOT_ACTION_TYPE_MOVE_TO = 0, 1, 2
 function Unit:GetCurrentActionType() return self.action or BOT_ACTION_TYPE_IDLE end
@@ -72,7 +76,7 @@ function MakeUnit(o)
 	return u
 end
 
-function ResetWorld() UNITS = { [2] = {}, [3] = {} } CHAT_CALLBACKS = {} T = 0 GAME_STATE = 8 end
+function ResetWorld() UNITS = { [2] = {}, [3] = {} } CHAT_CALLBACKS = {} CAST_CALLBACKS = {} T = 0 GAME_STATE = 8 end
 
 FAILS, PASSES = 0, 0
 function check(name, cond, detail)

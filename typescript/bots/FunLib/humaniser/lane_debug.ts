@@ -6,6 +6,7 @@ import { Unit, Vector } from "bots/ts_libs/dota";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Camps from "bots/FunLib/humaniser/camps";
+import * as FightProbe from "bots/FunLib/humaniser/lane_fight_probe";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import { memberByPID } from "bots/FunLib/humaniser/commands";
 
@@ -37,6 +38,11 @@ Register("hcamp", (team, issuer) => {
         "hcamp",
         `idx=${s.idx} team=${s.team} type=${s.type} min=${fmt(s.min)} max=${fmt(s.max)} job=${job?.key ?? "-"} source=${job?.source ?? "-"} derived=${tostring(job?.derived)}`
     );
+});
+
+Register("hfight", (team, issuer) => {
+    FightProbe.InstallCastLogger(team);
+    for (const line of FightProbe.Run(issuer)) HDebug.Log("fight", line);
 });
 
 export function HandleMessage(team: number, msg: Chat.ChatMessage): void {

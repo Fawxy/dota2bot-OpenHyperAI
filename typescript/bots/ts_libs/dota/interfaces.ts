@@ -146,6 +146,7 @@ export interface Unit {
     GetManaRegen(): number;
 
     GetLevel(): number;
+    GetEstimatedDamageToTarget(bCurrentlyAvailable: boolean, hTarget: Unit, fDuration: number, nDamageTypes: number): number;
     IsAncientCreep(): boolean;
     HasModifier(modifierName: string): boolean;
     GetActiveMode(): number;
@@ -186,6 +187,9 @@ export interface Ability {
     GetManaCost(): number;
 
     GetCooldownTimeRemaining(): number;
+    GetLevel(): number;
+    IsUltimate(): boolean;
+    GetBehavior(): number;
 }
 
 export interface Talent {}

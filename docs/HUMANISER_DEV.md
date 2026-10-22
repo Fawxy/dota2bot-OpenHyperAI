@@ -747,3 +747,17 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 - Frame cost with 2 bars and 2 watched creeps (spike item 7).
 
 **Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).
+
+## Lane fight (11)
+
+### In-game probe (task 1)
+`!hfight` (human issuer, `Humaniser.Debug = true`, Lane feature on) logs the nearest visible enemy's ability slots (`[H:fight] hfight <hero> slot=<i> <name> lvl=<n> cd=<n> ult=<bool> behavior=<n>`) and `hfight est=<GetEstimatedDamageToTarget>`, and installs `InstallCastCallback` for every enemy player (once per team). Each cast event logs as `[H:fight] hfight cast pid=<caster> visible=<bool> <key=value ...>`.
+
+To run: Debug on, stand next to an enemy bot, type `!hfight`, then watch an enemy cast once in view and once from fog. Tasks 4 and 4b depend on the answers; if `cd` works, skip 4b.
+
+Results (to fill in):
+- Does `cd` read non-zero for enemy abilities on cooldown? 
+- Does `lvl` read correctly? 
+- Does the cast callback fire for enemy casts in view? 
+- Does it fire for fogged casters? 
+- Callback event keys: 
