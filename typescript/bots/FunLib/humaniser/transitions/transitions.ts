@@ -7,8 +7,9 @@ import { Unit } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
+import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 
-export { Settings, Runes, Busy };
+export { Settings, Runes, Busy, MidRunes };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -53,8 +54,26 @@ export function InLaningPhase(): boolean {
     return helpers.IsInLaningPhase !== undefined ? helpers.IsInLaningPhase() : DotaTime() < 600;
 }
 
-export function Tick(_bot: Unit): void {
+export function Tick(bot: Unit): void {
     if (!Settings.IsActive()) return;
+    MidRunes.Tick(bot);
+}
+
+/** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */
+export function MidRunesOn(bot: Unit): boolean {
+    return MidRunes.IsOn(bot);
+}
+
+export function MidRuneFocus(bot: Unit): LuaMultiReturn<[boolean, boolean]> {
+    return MidRunes.Focus(bot);
+}
+
+export function MidRuneYield(bot: Unit): void {
+    MidRunes.Yield(bot);
+}
+
+export function MidRuneSkip(bot: Unit, raw: number, desire: number, target?: number, status?: number, gate?: string): void {
+    MidRunes.NoteSkip(bot, raw, desire, target, status, gate);
 }
 
 export function Overlay(bot: Unit): string {

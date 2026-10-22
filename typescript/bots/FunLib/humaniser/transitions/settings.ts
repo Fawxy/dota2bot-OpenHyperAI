@@ -22,6 +22,13 @@ export const DEFAULTS = {
     LostLane: true,
     Refresh: 0.5,
     MidRuneFloor: 0.6,
+    // Seconds before a power spawn: only power spots count for the mid / the floor claim starts.
+    MidRuneFocus: 20,
+    MidRuneLead: 15,
+    MidRuneRadius: 3500,
+    // rune_skip telemetry: a mid's rune desire below this within this many seconds of a power spawn.
+    MidRuneSkipDesire: 0.3,
+    MidRuneSkipWindow: 10,
     BusyHP: 0.5,
     BusyMana: 0.3,
     HumanPingWindow: 30,

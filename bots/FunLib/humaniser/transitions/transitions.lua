@@ -15,9 +15,11 @@ local ____exports = {}
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
+local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mid_runes")
 ____exports.Settings = Settings
 ____exports.Runes = Runes
 ____exports.Busy = Busy
+____exports.MidRunes = MidRunes
 local function NEVER()
     return false
 end
@@ -52,10 +54,31 @@ function ____exports.InLaningPhase()
     end
     return ____temp_0
 end
-function ____exports.Tick(_bot)
+function ____exports.Tick(bot)
     if not Settings.IsActive() then
         return
     end
+    MidRunes.Tick(bot)
+end
+--- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
+function ____exports.MidRunesOn(bot)
+    return MidRunes.IsOn(bot)
+end
+function ____exports.MidRuneFocus(bot)
+    return MidRunes.Focus(bot)
+end
+function ____exports.MidRuneYield(bot)
+    MidRunes.Yield(bot)
+end
+function ____exports.MidRuneSkip(bot, raw, desire, target, status, gate)
+    MidRunes.NoteSkip(
+        bot,
+        raw,
+        desire,
+        target,
+        status,
+        gate
+    )
 end
 function ____exports.Overlay(bot)
     return (((((((("phase: " .. (____exports.InLaningPhase() and "laning" or "post")) .. " busy=") .. tostring(providers.Busy(bot))) .. " spare=") .. tostring(providers.Spare(bot))) .. " alone=") .. tostring(providers.Alone(bot))) .. " rot=") .. (providers.Rotation(bot) or "-")

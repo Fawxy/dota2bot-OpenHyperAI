@@ -125,6 +125,9 @@ Setup: Local Host lobby, cheats on, `Debug = true`, then `!trainer on`. Details 
 - [ ] **Attack reads:** `GetLastAttackTime` is the attack start (not projectile release); `ACTIVITY_ATTACK2` counts as an attack; `GetAnimCycle`/`GetAttackPoint`/`GetAttackSpeed` units give a sensible swing start; cached creep handles stay valid and `IsAlive()` doesn't error.
 - [ ] **Regression:** with `Trainer.LastHit.Enable = false`, no `[H:trainer]` lines, no trainer chat and no draws.
 
+## Transitions (12)
+- [ ] **10. Mid takes power runes:** with a bot mid (Telemetry on), watch the 6:00 and 8:00 power runes, once with a bottle and once without. From about 15 s before the spawn the mid walks to its side's power spot, waits there (it does not drift back to lane or flicker between rune and laning), and takes the rune. It still turns away when outnumbered, hurt, or a human ally is at the rune. Read any `rune_skip` lines: `gate` names the first refusal (`idle`, `outnumbered`, `no_rune`, `bounty`, ...), `laning` the competing desires. With `Transitions.MidRunes = false`, the mid behaves as upstream.
+
 ## Known risks to watch
 - **Laning:** every allied bot on a team with a human uses OHA's laning `Think()` for the whole game, never Valve's (task 04). If laning gets worse, fall back to option B in the 04 handoff.
 - **Channel delay:** delaying enemy `IsChanneling` affects every OHA use of it, not just interrupts. `Perception.Channel = false` disables only that part.

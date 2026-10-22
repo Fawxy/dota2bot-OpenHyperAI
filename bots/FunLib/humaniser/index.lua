@@ -240,7 +240,13 @@ if Telemetry.GuardsEnabled() then
         HarassThink = no,
         AdjustPosition = arg2
     })
-    Telemetry.GuardModule("Transitions", Transitions, {Tick = none})
+    Telemetry.GuardModule("Transitions", Transitions, {
+        Tick = none,
+        MidRunesOn = no,
+        MidRuneFocus = no,
+        MidRuneYield = none,
+        MidRuneSkip = none
+    })
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,
