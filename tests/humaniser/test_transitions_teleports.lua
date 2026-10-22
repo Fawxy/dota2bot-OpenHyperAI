@@ -151,6 +151,37 @@ do
 	STRONGER = false
 end
 
+do
+	local w = world({ skill = 0.9 })
+	STRONGER = true
+	local t1 = GetTower(3, dota.Tower.Bot1)
+	TELEPORTS = { { playerid = 10, location = t1.loc, time_remaining = 6 } }
+	w.TP.Tick(w.core)
+	local p = w.C.AdjustPosition(w.core, Vector(0, -5000))
+	local ours = tower(w)
+	check("TP onto their T1: setup point stays 850 from the tower", dist(p, t1.loc) >= 849, dist(p, t1.loc))
+	check("TP onto their T1: setup point is on our side of it", dist(p, ours) < dist(t1.loc, ours), dist(p, ours))
+	STRONGER = false
+end
+
+do
+	-- An open back window must not leave level 1 running beside a later setup.
+	local w = world({ skill = 0.9 })
+	STRONGER = false
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 8 } }
+	w.TP.Tick(w.core)
+	check("precondition: back window open", near(w.C.Level(w.core), 1))
+	STRONGER = true
+	T = 301
+	TELEPORTS = { { playerid = 10, location = Vector(300, -5000), time_remaining = 4 } }
+	w.TP.Tick(w.core)
+	check("new TP resolves to setup: the position moves", dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), Vector(300, -5000)) > 500)
+	check("new TP resolves to setup: level 0", w.C.Level(w.core) == 0, w.C.Level(w.core))
+	w.H.Transitions.Tick(w.core)
+	check("new TP resolves to setup: no retreat claim", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
+	STRONGER = false
+end
+
 for _, c in ipairs({ { caution = false, tp = true }, { caution = false, tp = false }, { caution = true, tp = true } }) do
 	local w = world({ skill = 0.5, transitions = { Enable = true, Caution = c.caution, Teleports = c.tp } })
 	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }

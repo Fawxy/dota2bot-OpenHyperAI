@@ -62,6 +62,7 @@ ____exports.DEFAULTS = {
     TpLinger = 2,
     TpSetupSkill = 0.7,
     TpSetupDistance = 600,
+    TpTowerClear = 850,
     TpStrongerRadius = 1600,
     TpRefresh = 0.25,
     WardFrom = 150,

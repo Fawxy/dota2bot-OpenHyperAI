@@ -92,7 +92,7 @@ function enemyT1(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
     const id = ENEMY_T1[s.lane];
     if (id === undefined) return undefined;
     const tower = GetTower(bot.GetTeam() === 2 ? 3 : 2, id);
-    return tower !== null && tower !== undefined && tower.IsAlive() ? tower.GetLocation() : undefined;
+    return tower !== null && tower.IsAlive() ? tower.GetLocation() : undefined;
 }
 
 /** The soonest-landing enemy TP aimed at the enemy's T1 in this lane (a TP lands on its own buildings) or the lane front. */
@@ -114,12 +114,24 @@ export function Response(bot: Unit, _tp: EnemyTp): "back" | "setup" {
     return stronger !== undefined && stronger(bot, cfg.TpStrongerRadius) ? "setup" : "back";
 }
 
-function setupPoint(s: LaneState.LaneSnapshot, tp: EnemyTp): Vector {
+function setupPoint(bot: Unit, s: LaneState.LaneSnapshot, tp: EnemyTp): Vector {
+    const cfg = Settings.Get();
     const tower = ourTower(s);
     const d = dist2D(tp.location, tower);
     if (d <= 0) return tp.location;
-    const step = math.min(d, Settings.Get().TpSetupDistance);
-    return Vector(tp.location.x + ((tower.x - tp.location.x) / d) * step, tp.location.y + ((tower.y - tp.location.y) / d) * step, tp.location.z);
+    const ux = (tower.x - tp.location.x) / d;
+    const uy = (tower.y - tp.location.y) / d;
+    let step = math.min(d, cfg.TpSetupDistance);
+    const foe = enemyT1(bot, s);
+    if (foe !== undefined) {
+        const wx = tp.location.x - foe.x;
+        const wy = tp.location.y - foe.y;
+        const b = wx * ux + wy * uy;
+        const disc = b * b - (wx * wx + wy * wy) + cfg.TpTowerClear * cfg.TpTowerClear;
+        // The line from the TP toward our tower leaves the tower's clearance circle at the larger root.
+        if (disc >= 0) step = math.max(step, math.min(d, -b + math.sqrt(disc)));
+    }
+    return Vector(tp.location.x + ux * step, tp.location.y + uy * step, tp.location.z);
 }
 
 export function Tick(bot: Unit): void {
@@ -144,7 +156,8 @@ export function Tick(bot: Unit): void {
     const response = Response(bot, tp);
     if (r.mode === undefined || (r.mode === "setup" && response === "back")) r.mode = response;
     if (r.mode === "setup") {
-        Caution.ForceSetup(bot, setupPoint(s, tp), until);
+        Caution.ForceLevel(bot, 0, -math.huge);
+        Caution.ForceSetup(bot, setupPoint(bot, s, tp), until);
     } else {
         Caution.ForceSetup(bot, undefined, -math.huge);
         Caution.ForceLevel(bot, 1, until);

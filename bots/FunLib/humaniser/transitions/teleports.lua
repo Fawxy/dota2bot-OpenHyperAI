@@ -250,7 +250,7 @@ local function enemyT1(bot, s)
         bot:GetTeam() == 2 and 3 or 2,
         id
     )
-    return tower ~= nil and tower ~= nil and tower:IsAlive() and tower:GetLocation() or nil
+    return tower ~= nil and tower:IsAlive() and tower:GetLocation() or nil
 end
 --- The soonest-landing enemy TP aimed at the enemy's T1 in this lane (a TP lands on its own buildings) or the lane front.
 function ____exports.IncomingToLane(bot, s)
@@ -285,17 +285,33 @@ function ____exports.Response(bot, _tp)
     local stronger = LaneConfig.Helpers().WeAreStronger
     return stronger ~= nil and stronger(bot, cfg.TpStrongerRadius) and "setup" or "back"
 end
-local function setupPoint(s, tp)
+local function setupPoint(bot, s, tp)
+    local cfg = Settings.Get()
     local tower = ourTower(s)
     local d = dist2D(tp.location, tower)
     if d <= 0 then
         return tp.location
     end
-    local step = math.min(
-        d,
-        Settings.Get().TpSetupDistance
-    )
-    return Vector(tp.location.x + (tower.x - tp.location.x) / d * step, tp.location.y + (tower.y - tp.location.y) / d * step, tp.location.z)
+    local ux = (tower.x - tp.location.x) / d
+    local uy = (tower.y - tp.location.y) / d
+    local step = math.min(d, cfg.TpSetupDistance)
+    local foe = enemyT1(bot, s)
+    if foe ~= nil then
+        local wx = tp.location.x - foe.x
+        local wy = tp.location.y - foe.y
+        local b = wx * ux + wy * uy
+        local disc = b * b - (wx * wx + wy * wy) + cfg.TpTowerClear * cfg.TpTowerClear
+        if disc >= 0 then
+            step = math.max(
+                step,
+                math.min(
+                    d,
+                    -b + math.sqrt(disc)
+                )
+            )
+        end
+    end
+    return Vector(tp.location.x + ux * step, tp.location.y + uy * step, tp.location.z)
 end
 function ____exports.Tick(bot)
     if not Settings.IsOn("Teleports") then
@@ -336,9 +352,10 @@ function ____exports.Tick(bot)
         r.mode = response
     end
     if r.mode == "setup" then
+        Caution.ForceLevel(bot, 0, -math.huge)
         Caution.ForceSetup(
             bot,
-            setupPoint(s, tp),
+            setupPoint(bot, s, tp),
             ____until
         )
     else
