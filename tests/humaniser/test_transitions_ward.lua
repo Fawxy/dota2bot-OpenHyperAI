@@ -185,6 +185,19 @@ do
 end
 
 do
+	-- A later Pick that declines (outside the window) drops the earlier pending pick, so upstream choosing
+	-- that same spot object for its own reasons does not post the lane-ward floor.
+	local w = world()
+	dice(PASS)
+	check("stale pending: first pick returned", w.W.Pick(w.p5, SPOTS) == NEAR)
+	T = 300
+	check("stale pending: outside the window no pick", w.W.Pick(w.p5, SPOTS) == nil)
+	w.H.Transitions.ConfirmLaneWard(w.p5, NEAR)
+	w.H.Transitions.Tick(w.p5)
+	check("stale pending: no claim", w.H.Intent.ClaimAge(w.p5, SOURCE, BotMode.Ward) == nil)
+end
+
+do
 	local w = world()
 	dice(PASS)
 	check("only far spots: no pick", w.W.Pick(w.p5, { SPOTS[1], SPOTS[3] }) == nil)

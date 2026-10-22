@@ -39,7 +39,7 @@ interface WardRead {
 let rolls: Record<string, boolean> = {};
 let reads: Record<number, WardRead> = {};
 let liveAt: Record<number, number> = {};
-let pending: Record<number, PendingPick> = {};
+let pending: Record<number, PendingPick | undefined> = {};
 let planted: Record<string, { location: Vector; spot: { plant_time_obs?: number } }> = {};
 
 export function ResetCache(): void {
@@ -90,6 +90,7 @@ function laneSupport(s: LaneState.LaneSnapshot): number | undefined {
 }
 
 export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vector } | undefined {
+    pending[bot.GetPlayerID()] = undefined;
     if (!Settings.IsOn("LaneWard") || spots.length === 0) return undefined;
     const cfg = Settings.Get();
     const now = DotaTime();

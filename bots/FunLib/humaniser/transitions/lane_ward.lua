@@ -95,6 +95,7 @@ local function laneSupport(s)
     return expectedPresent and expected or lowest
 end
 function ____exports.Pick(bot, spots)
+    pending[bot:GetPlayerID()] = nil
     if not Settings.IsOn("LaneWard") or #spots == 0 then
         return nil
     end
