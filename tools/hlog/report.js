@@ -227,12 +227,15 @@ function forecastSection(game) {
             return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
         };
         const sec = v => (v === undefined ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}s`);
-        out.push('', 'pull trace (wave vs expected at the meet; camp gone = neutrals last seen there before the wave):');
+        // `wave` is the first creep within MeetWatch (800) of the meet: at 325 speed it reaches the meet ~2.5 s later.
+        const toMeet = 800 / 325;
+        out.push('', 'pull trace (wave at the meet vs expected; camp gone = neutrals left the meet before the wave got there):');
         for (const [key, es] of [...byKey].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
             const seen = es.filter(e => e.wave >= 0);
-            const late = median(seen.filter(e => e.expWave >= 0).map(e => e.wave - e.expWave));
-            const gone = seen.filter(e => e.nLast >= 0 && e.nLast < e.wave).length;
-            const noCamp = es.filter(e => e.nIn < 0).length;
+            const late = median(seen.filter(e => e.expWave >= 0).map(e => e.wave + toMeet - e.expWave));
+            const never = e => e.nIn === -1 && e.nLast === -1;
+            const gone = seen.filter(e => !never(e) && e.nLast < e.wave + toMeet).length;
+            const noCamp = es.filter(never).length;
             const ever = es.reduce((a, e) => a + (e.ever || 0), 0);
             const wave = es.reduce((a, e) => a + (e.waveMax || 0), 0);
             out.push(`  ${key} n=${es.length} wave seen ${seen.length} late ${sec(late)} camp gone ${gone} camp never there ${noCamp} ever ${ever}/${wave} peak ${(median(es.map(e => e.peak)) ?? 0).toFixed(2)}`);

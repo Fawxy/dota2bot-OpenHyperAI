@@ -438,8 +438,8 @@ test('summary reports pull traces per camp', () => {
         ].join('\n')
     )[0];
     const text = report.summary(game);
-    assert.match(text, /radiant_off_large n=3 wave seen 2 late \+2\.0s camp gone 1 camp never there 1 ever 4\/8 peak 0\.00/);
-    assert.match(text, /radiant_safe_small n=1 wave seen 1 late -0\.5s camp gone 0 camp never there 0 ever 4\/4 peak 0\.50/);
+    assert.match(text, /radiant_off_large n=3 wave seen 2 late \+4\.5s camp gone 1 camp never there 1 ever 4\/8 peak 0\.00/);
+    assert.match(text, /radiant_safe_small n=1 wave seen 1 late \+2\.0s camp gone 0 camp never there 0 ever 4\/4 peak 0\.50/);
 });
 test('summary reports take-pull outcomes and swings', () => {
     const game = parseLog(
