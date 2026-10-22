@@ -37,6 +37,9 @@ interface PhaseState {
     levelSeen: Record<number, number>;
     phaseEnded: boolean;
     lostResp: boolean;
+    // Once the lost-lane response starts it holds for the rest of the bot's laning: jungle last hits and levels
+    // would otherwise read as recovery and send the bot back to the lane it lost.
+    lostLatched: boolean;
     cap?: string;
     suggestedAt?: number;
     orderBase?: number;
@@ -57,7 +60,7 @@ function stateOf(bot: Unit): PhaseState {
     const pid = bot.GetPlayerID();
     let st = states[pid];
     if (st === undefined) {
-        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, capStarted: false, jungleSaid: false };
+        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, lostLatched: false, capStarted: false, jungleSaid: false };
         states[pid] = st;
     }
     return st;
@@ -169,9 +172,13 @@ function pruneRecord(r: LaneRecord, now: number): void {
     r.lastHits = r.lastHits.filter(h => h.at >= from);
 }
 
-/** Highest lane opponent level minus ours, from visible units or the last level seen; 0 when none is known. */
+/**
+ * Highest lane opponent level minus ours, from visible units or the last level seen; 0 when none is known. Only
+ * cores are judged on levels: a support is often two levels under the enemy cores in an even lane.
+ */
 function levelGapOf(bot: Unit, st: PhaseState, s: LaneState.LaneSnapshot | undefined): number {
-    if (s === undefined) return 0;
+    const pos = LaneConfig.PositionOf(bot);
+    if (s === undefined || pos === undefined || pos > 3) return 0;
     const radius = Settings.Get().SpareLaneRadius;
     let top = 0;
     for (const e of LaneState.Enemies(bot, s.lane)) {
@@ -264,18 +271,21 @@ function evaluate(bot: Unit, st: PhaseState, now: number): void {
     st.phaseEnded = false;
     st.lostResp = false;
     st.cap = undefined;
+    // sample() has just read IsLaningFor into wasLaning.
+    if (!LaneConfig.InLaningPhase() || !st.wasLaning) st.lostLatched = false;
     if (!LaneConfig.InLaningPhase()) return;
-    if (Settings.IsOn("Phase") && !IsLaningFor(bot)) {
+    if (Settings.IsOn("Phase") && !st.wasLaning) {
         st.phaseEnded = true;
         st.cap = SOURCE_PHASE;
     }
     let lost = false;
-    if (Settings.IsOn("LostLane")) [lost] = LaneLost(bot);
+    if (Settings.IsOn("LostLane")) lost = st.lostLatched || LaneLost(bot)[0];
     if (!lost) {
         st.capStarted = false;
         st.absentSince = undefined;
-    } else if (!humanWaiting(bot, st, now)) {
+    } else if (st.lostLatched || !humanWaiting(bot, st, now)) {
         st.lostResp = true;
+        st.lostLatched = true;
         st.cap = st.cap ?? SOURCE_LOST;
     }
     if (!st.phaseEnded && !st.lostResp) {

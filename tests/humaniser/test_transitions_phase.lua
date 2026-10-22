@@ -236,6 +236,16 @@ do
 end
 
 do
+	-- Supports are judged by deaths only: a pos 5 two levels under the enemy offlaner, beside its level 4 core, at 3:00.
+	local w = world({ T = 180 })
+	hero({ pid = 10, team = 3, level = 4 })
+	w.sup.level, w.core.level = 2, 4
+	check("pos 5 level 2, core level 4, enemy offlaner level 4 at 3:00: not lost", w.P.LaneLost(w.sup) == false, select(2, w.P.LaneLost(w.sup)))
+	w.core.level = 2
+	check("contrast: a level 2 core against the level 4 offlaner is lost by levels", select(2, w.P.LaneLost(w.core)) == "levels")
+end
+
+do
 	-- Deaths while farming away from the lane do not count against the lane.
 	local w = world()
 	w.core.items = { [0] = { name = "item_maelstrom" } }
@@ -463,7 +473,30 @@ do
 	tick(w, w.sup, 111)
 	check("cap started by absence", claim(w, w.sup, LOST) ~= nil)
 	tick(w, w.sup, 400)
-	check("deaths aged out: the cap is gone", claim(w, w.sup, LOST) == nil)
+	check("the lost response is latched for the rest of laning: deaths aged out, the cap stays", claim(w, w.sup, LOST) ~= nil)
+	check("... although the lane no longer reads lost", w.P.LaneLost(w.sup) == false)
+	LANING = false
+	tick(w, w.sup, 401)
+	check("... and goes when laning ends", claim(w, w.sup, LOST) == nil)
+end
+
+do
+	-- A core lost on last hits at 2:40 farms neutrals at 8 a minute: its jungle last hits must not send it back to the lane.
+	local w = world({ T = 60 })
+	for t = 60, 160, 5 do
+		w.core.lh = 0
+		tick(w, w.core, t)
+	end
+	check("precondition: lost by last hits at 2:40, released to farm", w.P.FarmAllowedInLaning(w.core) and select(2, w.P.LaneLost(w.core)) == "lasthits")
+	check("precondition: one jungle line", count(w.said, "say_going_jungle") == 1)
+	w.core.loc = CAMP
+	for t = 165, 260, 5 do
+		w.core.lh = math.floor((t - 160) / 60 * 8)
+		tick(w, w.core, t)
+	end
+	check("the jungle farm lifts the last-hit rate: the lane no longer reads lost", w.P.LaneLost(w.core) == false)
+	check("still released to farm at 4:20", w.P.FarmAllowedInLaning(w.core))
+	check("still one jungle line", count(w.said, "say_going_jungle") == 1, count(w.said, "say_going_jungle"))
 end
 
 finish()

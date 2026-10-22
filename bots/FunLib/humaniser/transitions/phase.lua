@@ -55,6 +55,7 @@ local function stateOf(bot)
             levelSeen = {},
             phaseEnded = false,
             lostResp = false,
+            lostLatched = false,
             capStarted = false,
             jungleSaid = false
         }
@@ -202,9 +203,11 @@ local function pruneRecord(r, now)
         function(____, h) return h.at >= from end
     )
 end
---- Highest lane opponent level minus ours, from visible units or the last level seen; 0 when none is known.
+--- Highest lane opponent level minus ours, from visible units or the last level seen; 0 when none is known. Only
+-- cores are judged on levels: a support is often two levels under the enemy cores in an even lane.
 local function levelGapOf(bot, st, s)
-    if s == nil then
+    local pos = LaneConfig.PositionOf(bot)
+    if s == nil or pos == nil or pos > 3 then
         return 0
     end
     local radius = Settings.Get().SpareLaneRadius
@@ -340,22 +343,26 @@ local function evaluate(bot, st, now)
     st.phaseEnded = false
     st.lostResp = false
     st.cap = nil
+    if not LaneConfig.InLaningPhase() or not st.wasLaning then
+        st.lostLatched = false
+    end
     if not LaneConfig.InLaningPhase() then
         return
     end
-    if Settings.IsOn("Phase") and not ____exports.IsLaningFor(bot) then
+    if Settings.IsOn("Phase") and not st.wasLaning then
         st.phaseEnded = true
         st.cap = ____exports.SOURCE_PHASE
     end
     local lost = false
     if Settings.IsOn("LostLane") then
-        lost = ____exports.LaneLost(bot)
+        lost = st.lostLatched or (____exports.LaneLost(bot))
     end
     if not lost then
         st.capStarted = false
         st.absentSince = nil
-    elseif not humanWaiting(bot, st, now) then
+    elseif st.lostLatched or not humanWaiting(bot, st, now) then
         st.lostResp = true
+        st.lostLatched = true
         st.cap = st.cap or ____exports.SOURCE_LOST
     end
     if not st.phaseEnded and not st.lostResp then
