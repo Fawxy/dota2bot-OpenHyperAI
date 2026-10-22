@@ -7,6 +7,7 @@
 import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export interface CreepSummary {
     count: number;
@@ -97,6 +98,7 @@ interface Track {
     deniesPerCycle: number[];
     eqHistory: number[];
     aggro: Record<number, number>;
+    eqSampledCycle?: number;
 }
 
 const LANES: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
@@ -436,6 +438,20 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
     if (enemy.count > t.maxEnemy) t.maxEnemy = enemy.count;
     if (t.arrivalSec === undefined && enemy.count >= ARRIVAL_CREEPS) t.arrivalSec = cycleSec;
     t.lastEq = eqPos;
+    const forecastEq = ForecastEq(eqPos, imbalance);
+    if (cycleSec >= timing().EqSampleAt && t.eqSampledCycle !== t.cycle) {
+        t.eqSampledCycle = t.cycle;
+        Telemetry.Event("lane_eq", [
+            ["team", team],
+            ["lane", lane],
+            ["kind", kind],
+            ["eq", eqPos],
+            ["imb", imbalance],
+            ["feq", forecastEq],
+            ["a", ally.count],
+            ["e", enemy.count],
+        ]);
+    }
 
     for (const c of enemy.units) {
         const target = c.GetAttackTarget();
@@ -469,7 +485,7 @@ function refresh(team: number, lane: Lane, key: string, observer: Unit | undefin
         allyPower,
         enemyPower,
         imbalance,
-        forecastEq: ForecastEq(eqPos, imbalance),
+        forecastEq,
     };
     snapshots[key] = snapshot;
     for (const fn of refreshCallbacks) fn(snapshot);

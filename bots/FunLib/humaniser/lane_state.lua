@@ -21,6 +21,7 @@ local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function timing()
     return LaneConfig.Settings().Timing
 end
@@ -49,10 +50,10 @@ function ____exports.Enemies(bot, _lane)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue106
+            local __continue107
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue106 = true
+                    __continue107 = true
                     break
                 end
                 local epid = u:GetPlayerID()
@@ -65,30 +66,30 @@ function ____exports.Enemies(bot, _lane)
                     timeSinceSeen = 0,
                     position = LaneConfig.PositionOf(u)
                 }
-                __continue106 = true
+                __continue107 = true
             until true
-            if not __continue106 then
+            if not __continue107 then
                 break
             end
         end
     end
     for ____, epid in ipairs(GetTeamPlayers(enemyTeamOf(bot:GetTeam()))) do
         do
-            local __continue109
+            local __continue110
             repeat
                 if seen[epid] == true or not IsHeroAlive(epid) then
-                    __continue109 = true
+                    __continue110 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(epid)[1]
                 if info == nil then
-                    __continue109 = true
+                    __continue110 = true
                     break
                 end
                 list[#list + 1] = {pid = epid, visible = false, location = info.location, timeSinceSeen = info.time_since_seen}
-                __continue109 = true
+                __continue110 = true
             until true
-            if not __continue109 then
+            if not __continue110 then
                 break
             end
         end
@@ -525,6 +526,20 @@ local function refresh(team, lane, key, observer)
         t.arrivalSec = cycleSec
     end
     t.lastEq = eqPos
+    local forecastEq = ____exports.ForecastEq(eqPos, imbalance)
+    if cycleSec >= timing().EqSampleAt and t.eqSampledCycle ~= t.cycle then
+        t.eqSampledCycle = t.cycle
+        Telemetry.Event("lane_eq", {
+            {"team", team},
+            {"lane", lane},
+            {"kind", kind},
+            {"eq", eqPos},
+            {"imb", imbalance},
+            {"feq", forecastEq},
+            {"a", ally.count},
+            {"e", enemy.count}
+        })
+    end
     for ____, c in ipairs(enemy.units) do
         local target = c:GetAttackTarget()
         if target ~= nil and target ~= nil and target:GetTeam() == team and target:IsHero() then
@@ -563,7 +578,7 @@ local function refresh(team, lane, key, observer)
         allyPower = allyPower,
         enemyPower = enemyPower,
         imbalance = imbalance,
-        forecastEq = ____exports.ForecastEq(eqPos, imbalance)
+        forecastEq = forecastEq
     }
     snapshots[key] = snapshot
     for ____, fn in ipairs(refreshCallbacks) do
@@ -609,18 +624,18 @@ function ____exports.ScoreFor(bot, s)
     local seenWithin = timing().ExposureSeen
     for ____, e in ipairs(____exports.Enemies(bot, s.lane)) do
         do
-            local __continue115
+            local __continue116
             repeat
                 if not e.visible and e.timeSinceSeen > seenWithin then
-                    __continue115 = true
+                    __continue116 = true
                     break
                 end
                 if dist2D(e.location, s.frontLoc) <= radius then
                     near = near + 1
                 end
-                __continue115 = true
+                __continue116 = true
             until true
-            if not __continue115 then
+            if not __continue116 then
                 break
             end
         end
