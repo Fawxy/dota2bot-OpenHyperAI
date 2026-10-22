@@ -62,7 +62,8 @@ local CADENCE_EVERY = 60
 local LAPSE_WINDOW = 0.5
 ____exports.DEFAULTS = {
     Enable = true,
-    ClaimTTL = 0.2,
+    ClaimTTL = 0.5,
+    HoldTTL = 0.2,
     ScaleClamp = 0.3,
     Sticky = {Bonus = 0.06, MinDwell = 1, Decay = 1},
     Thrash = {Window = 5, MaxSwitches = 4, Bonus = 0.12, Duration = 3},
@@ -176,7 +177,7 @@ function ____exports.Claim(bot, claim)
     return true
 end
 --- Marks the bot as standing still on purpose (a timed wait, a hold posture) so the stuck detector does not
--- cap its mode. Lasts ClaimTTL unless `until` is given, so re-post it every frame the hold applies.
+-- cap its mode. Lasts HoldTTL unless `until` is given, so re-post it every frame the hold applies.
 function ____exports.Hold(bot, source, ____until)
     if not ____exports.IsActive() or sharesPlayerID(bot) then
         return
@@ -184,7 +185,7 @@ function ____exports.Hold(bot, source, ____until)
     local s = stateFor(bot)
     s.holdUntil = math.max(
         s.holdUntil,
-        ____until or GameTime() + ____exports.Get().ClaimTTL
+        ____until or GameTime() + ____exports.Get().HoldTTL
     )
     s.holdBy = source
 end
@@ -208,6 +209,20 @@ function ____exports.Release(bot, source, mode)
     s.claims[key] = nil
     s.posted[key] = nil
     s.postedAt[key] = nil
+end
+--- Drops every claim `source` posted, on any mode: for a feature whose reason for its claims has ended.
+function ____exports.ReleaseSource(bot, source)
+    local s = states[bot:GetPlayerID()]
+    if s == nil then
+        return
+    end
+    for key, claim in pairs(s.claims) do
+        if claim.source == source then
+            s.claims[key] = nil
+            s.posted[key] = nil
+            s.postedAt[key] = nil
+        end
+    end
 end
 --- Seconds since this claim was last posted, or undefined when it never was or was released.
 function ____exports.ClaimAge(bot, source, mode)
@@ -246,15 +261,15 @@ end
 local function noteLapses(s, mode, now)
     for key, p in pairs(s.posted) do
         do
-            local __continue30
+            local __continue34
             repeat
                 if not applies(p.claim, mode) then
-                    __continue30 = true
+                    __continue34 = true
                     break
                 end
                 local lateBy = now - p.claim.expires
                 if lateBy > LAPSE_WINDOW then
-                    __continue30 = true
+                    __continue34 = true
                     break
                 end
                 local k = (p.claim.source .. ">") .. HDebug.ModeName(mode)
@@ -269,9 +284,9 @@ local function noteLapses(s, mode, now)
                     l.lapsed = l.lapsed + 1
                     s.posted[key] = nil
                 end
-                __continue30 = true
+                __continue34 = true
             until true
-            if not __continue30 then
+            if not __continue34 then
                 break
             end
         end
@@ -386,11 +401,11 @@ function ____exports.Resolve(bot, mode, raw)
     local unstuck = false
     for key, claim in pairs(s.claims) do
         do
-            local __continue63
+            local __continue67
             repeat
                 if claim.expires < now then
                     s.claims[key] = nil
-                    __continue63 = true
+                    __continue67 = true
                     break
                 end
                 if claim.unsticks == true and claim.mode ~= mode then
@@ -413,9 +428,9 @@ function ____exports.Resolve(bot, mode, raw)
                         ordered[#ordered + 1] = claim
                     end
                 end
-                __continue63 = true
+                __continue67 = true
             until true
-            if not __continue63 then
+            if not __continue67 then
                 break
             end
         end
@@ -437,14 +452,14 @@ function ____exports.Resolve(bot, mode, raw)
         end
         for ____, claim in ipairs(ordered) do
             do
-                local __continue75
+                local __continue79
                 repeat
                     if claim.tier == "SURVIVAL" and riskAllowed then
-                        __continue75 = true
+                        __continue79 = true
                         break
                     end
                     if claim.onlyLifted == true and desire <= scaled then
-                        __continue75 = true
+                        __continue79 = true
                         break
                     end
                     local value = desire
@@ -463,9 +478,9 @@ function ____exports.Resolve(bot, mode, raw)
                         by = claim.source
                         desire = value
                     end
-                    __continue75 = true
+                    __continue79 = true
                 until true
-                if not __continue75 then
+                if not __continue79 then
                     break
                 end
             end
@@ -484,8 +499,8 @@ function ____exports.Resolve(bot, mode, raw)
         end
     end
     desire = math.max(desire, 0)
-    if mode == BotMode.Retreat and cfg.Survival.Enable and desire >= cfg.Survival.MinRetreat then
-        if bot:GetHealth() / bot:GetMaxHealth() < cfg.Survival.HP then
+    if mode == BotMode.Retreat and cfg.Survival.Enable then
+        if desire >= cfg.Survival.MinRetreat and bot:GetHealth() / bot:GetMaxHealth() < cfg.Survival.HP then
             ____exports.Claim(bot, {
                 source = "intent:survival",
                 tier = "SURVIVAL",
@@ -494,6 +509,8 @@ function ____exports.Resolve(bot, mode, raw)
                 cap = desire - cfg.Survival.Margin,
                 onlyLifted = true
             })
+        else
+            ____exports.Release(bot, "intent:survival", "ANY")
         end
     end
     local sample = s.samples[mode]

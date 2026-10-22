@@ -573,6 +573,8 @@ do
 	support.mode = LANING
 	I.Tick(support)
 	T = 70.5
+	-- Back at full HP: retreat's own scoring in this round lifts the survival cap of the last one.
+	I.Resolve(support, RETREAT, 0.3)
 	d = H.Lane.CampJobDesire(support)
 	raw = H.Lane.CampJobRawDesire(support, d)
 	check("no laning dwell bonus against a job", near(I.Resolve(support, LANING, 0.66), 0.66), I.Resolve(support, LANING, 0.66))
@@ -810,8 +812,8 @@ do
 	check("a last-hit team_roam visit waits for the job", I.Resolve(support, M.TeamRoam, 0.72) < farm, I.Resolve(support, M.TeamRoam, 0.72))
 	check("retreat is left alone", near(I.Resolve(support, M.Retreat, 0.8), 0.8), I.Resolve(support, M.Retreat, 0.8))
 	check("defend is left alone", near(I.Resolve(support, M.DefendTowerBot, 0.8), 0.8))
-	T = 70.5
-	check("no job: ward is not capped", near(I.Resolve(support, M.Ward, 0.81), 0.81), I.Resolve(support, M.Ward, 0.81))
+	H.Lane.CampJobs.Abort(support, "test")
+	check("job over: ward is not capped", near(I.Resolve(support, M.Ward, 0.81), 0.81), I.Resolve(support, M.Ward, 0.81))
 end
 
 -- console.9055921786: 8 of 25 aborts were mode-end in lead or watch at 49-80% HP. Retreat's laning-phase creep-damage
@@ -1028,6 +1030,37 @@ do
 	check("mode-end names the winner", a ~= nil and field(a, "reason") == "mode-end" and field(a, "to") == "retreat", a)
 	check("the hold was on but last posted 0.25 s earlier", field(a, "hold") == "on" and near(tonumber(field(a, "holdAge")), 0.25), a)
 	check("retreat's resolve was this frame", near(tonumber(field(a, "toAge")), 0), a)
+end
+
+do
+	-- console.9055963380: retreat is scored a round (~0.31 s) after farm posted the hold. It must still be held then.
+	local H, support = leadingWorld()
+	support.hp = 70
+	T = T + 0.05
+	local farm = H.Intent.Resolve(support, dota.BotMode.Farm, H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support)))
+	T = T + 0.31
+	local retreat = H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82)
+	check("retreat scored a round after farm is still held", retreat < farm, retreat .. " " .. farm)
+	check("so is a team_roam visit scored in that round", H.Intent.Resolve(support, dota.BotMode.TeamRoam, 0.72) < farm)
+end
+
+do
+	-- The longer lifetime must not outlast the job: its claims go the moment it ends or its hold drops.
+	local H, support = leadingWorld()
+	support.hp = 70
+	retreatAgainstJob(H, support, 0.82)
+	support.heroHitAt = T
+	T = T + 0.05
+	H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support))
+	check("a dropped hold frees retreat in the same round", near(H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82), 0.82))
+
+	H, support = leadingWorld()
+	support.hp = 70
+	retreatAgainstJob(H, support, 0.82)
+	support.mode = dota.BotMode.Retreat
+	H.Lane.CampJobOnEnd(support)
+	check("an ended job leaves retreat alone at once", near(H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82), 0.82))
+	check("and its errand caps", near(H.Intent.Resolve(support, dota.BotMode.Ward, 0.81), 0.81))
 end
 
 finish()

@@ -506,6 +506,7 @@ export function CoverTick(bot: Unit): void {
     if (via === undefined) {
         if (cur !== undefined) {
             delete covering[pid];
+            Intent.Release(bot, "lane:cover", BotMode.Retreat);
             Telemetry.Event("lane_cover", [
                 ["pid", pid],
                 ["state", "end"],
@@ -565,9 +566,17 @@ function logJob(bot: Unit, job: Job, grade: string): void {
     );
 }
 
+// Posted by Lane.CampJobRawDesire while a job runs. They outlive a scoring round, so they go when the job does.
+const JOB_CLAIM_SOURCES = ["lane:camp_job", "lane:job_focus", "lane:job_hold"];
+
+function releaseClaims(bot: Unit): void {
+    for (const source of JOB_CLAIM_SOURCES) Intent.ReleaseSource(bot, source);
+}
+
 /** Completed pull: the graded `job` line that parse_condebug.js counts as an attempt. */
 function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): void {
     job.phase = phase;
+    releaseClaims(bot);
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
     if (job.kind === "stack_pull") Stacking.ClearStack(job.campIdx);
     logJob(bot, job, grade);
@@ -580,6 +589,7 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
 function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = []): void {
     const phase = job.phase;
     job.phase = "return";
+    releaseClaims(bot);
     const pid = bot.GetPlayerID();
     if (job.acted !== true) {
         // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
@@ -623,6 +633,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
  */
 function endStack(bot: Unit, job: Job): void {
     job.phase = "done";
+    releaseClaims(bot);
     Telemetry.Event("lane_job_end", [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],
@@ -633,6 +644,7 @@ function endStack(bot: Unit, job: Job): void {
 /** A contest is no pull attempt, so it ends on its own line, which the console parser does not read. */
 function endContest(bot: Unit, job: Job, reason: string): void {
     job.phase = "return";
+    releaseClaims(bot);
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
     HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s", bot.GetPlayerID(), job.campIdx, reason));
 }
@@ -748,6 +760,7 @@ export function HoldsRetreat(bot: Unit): boolean {
         return true;
     }
     job.retreatHold = "off";
+    Intent.ReleaseSource(bot, "lane:job_hold");
     logRetreatHold(bot, job, "off", why);
     return false;
 }

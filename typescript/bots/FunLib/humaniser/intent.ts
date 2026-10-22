@@ -127,9 +127,12 @@ interface ActorBot {
 
 export const DEFAULTS = {
     Enable: true,
-    // Claims posted without `until` stay valid this long. The engine evaluates modes in its own order and
-    // Tick runs from ItemUsageThink, so a claim must outlive the frame it was posted in to reach every mode.
-    ClaimTTL: 0.2,
+    // Claims posted without `until` stay valid this long. The engine scores all of a bot's modes in one round
+    // every ~0.31 s (0.4 s at most, console.9055963380), in a fixed order, so a claim posted from farm's
+    // GetDesire reaches retreat, laning and the errands, which come before farm, only in the next round.
+    ClaimTTL: 0.5,
+    // Hold is posted from Think and read by Tick, both every frame, so it needs to outlive a frame only.
+    HoldTTL: 0.2,
     // Combined effect of all scale claims (mood, mistakes) is clamped to 1 ± ScaleClamp.
     ScaleClamp: 0.3,
     Sticky: { Bonus: 0.06, MinDwell: 1.0, Decay: 1.0 },
@@ -235,12 +238,12 @@ export function Claim(bot: Unit, claim: Claim): boolean {
 
 /**
  * Marks the bot as standing still on purpose (a timed wait, a hold posture) so the stuck detector does not
- * cap its mode. Lasts ClaimTTL unless `until` is given, so re-post it every frame the hold applies.
+ * cap its mode. Lasts HoldTTL unless `until` is given, so re-post it every frame the hold applies.
  */
 export function Hold(bot: Unit, source: string, until?: number): void {
     if (!IsActive() || sharesPlayerID(bot)) return;
     const s = stateFor(bot);
-    s.holdUntil = math.max(s.holdUntil, until ?? GameTime() + Get().ClaimTTL);
+    s.holdUntil = math.max(s.holdUntil, until ?? GameTime() + Get().HoldTTL);
     s.holdBy = source;
 }
 
@@ -257,6 +260,19 @@ export function Release(bot: Unit, source: string, mode: BotMode | "ANY"): void 
     s.claims[key] = undefined as any;
     s.posted[key] = undefined as any;
     s.postedAt[key] = undefined as any;
+}
+
+/** Drops every claim `source` posted, on any mode: for a feature whose reason for its claims has ended. */
+export function ReleaseSource(bot: Unit, source: string): void {
+    const s = states[bot.GetPlayerID()];
+    if (s === undefined) return;
+    for (const [key, claim] of pairs(s.claims)) {
+        if (claim.source === source) {
+            s.claims[key] = undefined as any;
+            s.posted[key] = undefined as any;
+            s.postedAt[key] = undefined as any;
+        }
+    }
 }
 
 /** Seconds since this claim was last posted, or undefined when it never was or was released. */
@@ -450,8 +466,9 @@ export function Resolve(bot: Unit, mode: number, raw: any): any {
     }
     desire = math.max(desire, 0);
 
-    if (mode === BotMode.Retreat && cfg.Survival.Enable && desire >= cfg.Survival.MinRetreat) {
-        if (bot.GetHealth() / bot.GetMaxHealth() < cfg.Survival.HP) {
+    if (mode === BotMode.Retreat && cfg.Survival.Enable) {
+        // Retreat's own scoring decides each round; a cap from a round it no longer wants out must not linger.
+        if (desire >= cfg.Survival.MinRetreat && bot.GetHealth() / bot.GetMaxHealth() < cfg.Survival.HP) {
             Claim(bot, {
                 source: "intent:survival",
                 tier: "SURVIVAL",
@@ -460,7 +477,7 @@ export function Resolve(bot: Unit, mode: number, raw: any): any {
                 cap: desire - cfg.Survival.Margin,
                 onlyLifted: true,
             });
-        }
+        } else Release(bot, "intent:survival", "ANY");
     }
 
     const sample = s.samples[mode];

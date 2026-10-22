@@ -859,6 +859,7 @@ function ____exports.CoverTick(bot)
     if via == nil then
         if cur ~= nil then
             __TS__Delete(covering, pid)
+            Intent.Release(bot, "lane:cover", BotMode.Retreat)
             Telemetry.Event("lane_cover", {
                 {"pid", pid},
                 {"state", "end"},
@@ -929,9 +930,16 @@ local function logJob(bot, job, grade)
         )
     )
 end
+local JOB_CLAIM_SOURCES = {"lane:camp_job", "lane:job_focus", "lane:job_hold"}
+local function releaseClaims(bot)
+    for ____, source in ipairs(JOB_CLAIM_SOURCES) do
+        Intent.ReleaseSource(bot, source)
+    end
+end
 --- Completed pull: the graded `job` line that parse_condebug.js counts as an attempt.
 local function close(bot, job, phase, grade)
     job.phase = phase
+    releaseClaims(bot)
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     if job.kind == "stack_pull" then
         Stacking.ClearStack(job.campIdx)
@@ -949,6 +957,7 @@ local function abort(bot, job, reason, keepStack, extra)
     end
     local phase = job.phase
     job.phase = "return"
+    releaseClaims(bot)
     local pid = bot:GetPlayerID()
     if job.acted ~= true then
         LanePlanner.Release(
@@ -1007,6 +1016,7 @@ end
 -- stack ending at :01 and a pull starting 10 s later read as two jobs at once (ogre, console.9055921786, 8:01 / 8:11).
 local function endStack(bot, job)
     job.phase = "done"
+    releaseClaims(bot)
     Telemetry.Event(
         "lane_job_end",
         {
@@ -1022,6 +1032,7 @@ end
 --- A contest is no pull attempt, so it ends on its own line, which the console parser does not read.
 local function endContest(bot, job, reason)
     job.phase = "return"
+    releaseClaims(bot)
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     HDebug.Log(
         "lane",
@@ -1217,6 +1228,7 @@ function ____exports.HoldsRetreat(bot)
         return true
     end
     job.retreatHold = "off"
+    Intent.ReleaseSource(bot, "lane:job_hold")
     logRetreatHold(bot, job, "off", why)
     return false
 end
@@ -1724,17 +1736,17 @@ local function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue216
+            local __continue219
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue216 = true
+                    __continue219 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue216 = true
+                    __continue219 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -1745,9 +1757,9 @@ local function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue216 = true
+                __continue219 = true
             until true
-            if not __continue216 then
+            if not __continue219 then
                 break
             end
         end
@@ -1796,10 +1808,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue244
+            local __continue247
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue244 = true
+                    __continue247 = true
                     break
                 end
                 if dist2D(
@@ -1808,9 +1820,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue244 = true
+                __continue247 = true
             until true
-            if not __continue244 then
+            if not __continue247 then
                 break
             end
         end
@@ -1849,10 +1861,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue253
+            local __continue256
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue253 = true
+                    __continue256 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1862,9 +1874,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue253 = true
+                __continue256 = true
             until true
-            if not __continue253 then
+            if not __continue256 then
                 break
             end
         end
