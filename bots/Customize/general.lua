@@ -165,6 +165,9 @@ Customize.Humaniser = {
     -- Only acts where OHA owns laning Think(); enemy bots need Lane.OwnLaningThink = 'all' for an effect.
     -- RequireOwnedLaning = false also applies it to team roam's last-hit grab for bots on Valve laning.
     LastHitSkill = { Enable = true, RequireOwnedLaning = true },
+    -- Core farm pattern: pos 1-3 take a camp between waves (or stack one), back for the next wave; 5:00-20:00.
+    -- Tuning in FunLib/humaniser/farm_pattern.lua. Stacks also need Lane.Enable and Lane.Stack.
+    FarmPattern = { Enable = true },
     -- Last-hit trainer (task 14): practice feedback for the human. Nothing runs in game until "!trainer on".
     Trainer = {
         LastHit = {

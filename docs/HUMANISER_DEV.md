@@ -747,3 +747,68 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 - Frame cost with 2 bars and 2 watched creeps (spike item 7).
 
 **Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).
+
+## Core farm pattern (FarmPattern)
+`farm_pattern.ts`: between waves a core (pos 1-3) takes a camp of its own jungle and is back at the lane front for the next enemy wave. `Customize.Humaniser.FarmPattern = { Enable = true }`; tuning in `farm_pattern.lua` `DEFAULTS`. With `Enable = false` every hook returns its no-op value (Desire 0, Think false), so farm behaves as before.
+
+### Wiring
+- `mode_farm_generic.lua` calls `FarmPattern.Desire` after the camp-job hook, so before farm's laning-phase early exit.
+- `Think` runs after `CampJobThink` and before the ThinkLess throttle.
+- `OnEnd` ends the trip, and so does `Abort` when farm's run starts.
+- All four are under the telemetry xpcall guard.
+- Desire is 0.62 while on a trip. That beats laning (0.446 + 0.06 stickiness) and farm's own lane-front desire, but not a laning last hit (0.9) or a camp job (0.7).
+
+### Start
+- Any bot except illusions, non-heroes (the Lone Druid bear), Meepo and Arc's tempest double. Intent skips shared player IDs too.
+- Time: from `StartTime[pos]` (5:00 / 6:00 / 5:30) to `EndTime` (20:00).
+- `MinLevel[pos]`, and HP ≥ 0.65 (camp jobs' start gate).
+- Active mode is laning, farm or none, with no order and no camp job.
+- Retreat's resolved desire is below 0.62. A trip that could only win in retreat's dip would end as `mode-end` the next round, which camp jobs hit at mirana 4:49.
+- The bot is within 1,800 of its lane front: the assigned lane while laning, then the nearest front.
+- No enemy lane creep within 1,000 and no visible enemy hero within 1,400.
+
+### Timing
+- The next enemy wave reaches the front at `k·30 + along/325`, where `along` is the front's distance along the enemy's 7.41 lane path (`PullTiming.LanePath`).
+- A camp is taken if walk + clear + walk back fits before that + `LateTolerance` (5 s).
+- The camp with the most value per second wins.
+- A cleared camp chains to the next one that still fits; otherwise the trip walks back.
+- Past `leaveBy` an unfinished camp is left.
+
+### Clear time
+- The prior is a per-type figure at level 8, scaled by 8/level within [0.6, 1.6].
+- Each bot then learns a pace factor: an EMA (0.3) of measured clear time over prior, from its first hit to the camp being empty.
+- A camp left unfinished at `leaveBy` grows the factor by 15%.
+- The factor stays within [0.4, 2.5] and shows on the overlay and in `farm_trip_start`.
+
+### Stacks
+- Triggered when the bot would reach a camp's stand point 0.5–10 s before its stack second.
+- Allowed if walk-off (next :00 + 1 s) plus walk back fits within `StackLateExtra` (8 s) of the deadline.
+- The minute's roll uses `StackAttempt`.
+- The trip starts camp_jobs' stack job with `core = true`; `stackAllowed` then checks only `Stacking.SafeAway`. The trip waits in `stack` while the job runs.
+- A stacked camp counts double on later trips.
+- Camps an ally's stack job reserves, or another core's trip is on, are skipped. The trip claim only works if modules are shared per team; the ally-in-box check covers the rest.
+
+### Claims
+Posted from the trip's start, because a claim from farm's GetDesire reaches retreat and the errands only in the next round:
+- Retreat is capped below the trip (`farm:hold`) until HP < 0.4, a hero or tower hits the bot within 2 s, or a hero targets it (camp jobs' `retreatThreat`).
+- Ward and shop walks are capped below the trip (`farm:focus`). Rune, roam and team roam are left alone.
+- Both are released on the walk back and at the end.
+
+### Stops
+- Dead, HP < 0.3, or an order.
+- A visible enemy hero within 1,400 for the bot's reaction time (`Profile.reactBase`, on top of perception's delay). Ignored on the walk back, where laning and retreat decide.
+- Another mode active with no farm Think for 1 s.
+- The walk back ends at 900 from the front, when the wave arrives, or after 25 s.
+
+### Logs
+- `farm_trip_start` / `next` / `return` / `end` as `[HEV]` events and `[H:farm]` lines.
+- On `preempted` / `mode-end`, `farm_trip_end` names the winning mode (`to`, `toBy`).
+- Overlay key: `farm`.
+
+### TODO (in-game)
+- Wave ETA against real arrivals: safe-lane speed-up and off-lane slow-down (patch notes give no figure).
+- Whether the pace factor settles. The priors only need to be close for the first camp.
+- Whether spells cast on camps by upstream's farm branches (`J.IsFarming`) leave cores short of mana for the next wave. Camp jobs hold casts, trips don't.
+- Valve's C++ attack mode (0.95) still outranks a trip. A core that auto-engages an enemy hero leaves the camp, which is the intent.
+- Whether the support's `CoverAbsentCore` engages while the core is away.
+- A core in the box at :00 blocks the respawn of a camp it has just cleared.

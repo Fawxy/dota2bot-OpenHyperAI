@@ -15,12 +15,13 @@ import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
+import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, LastHitSkill, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -157,6 +158,7 @@ if (Telemetry.GuardsEnabled()) {
         HarassThink: no,
         AdjustPosition: arg2,
     });
+    Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

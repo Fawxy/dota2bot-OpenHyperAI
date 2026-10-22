@@ -48,6 +48,7 @@ function CreepMeta:CanBeSeen() return true end
 function CreepMeta:GetLocation() return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
+function CreepMeta:IsNull() return self.removed == true end
 
 function MakeCreep(o)
 	local c = setmetatable({
@@ -211,7 +212,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry })
+		Telemetry = extra.telemetry, FarmPattern = extra.farm })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

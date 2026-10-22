@@ -14,6 +14,7 @@ local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
+local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
@@ -30,6 +31,7 @@ ____exports.Commands = Commands
 ____exports.Lane = Lane
 ____exports.Intent = Intent
 ____exports.LastHitSkill = LastHitSkill
+____exports.FarmPattern = FarmPattern
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 local OVERLAY_REFRESH = 0.25
@@ -232,6 +234,7 @@ if Telemetry.GuardsEnabled() then
         HarassThink = no,
         AdjustPosition = arg2
     })
+    Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

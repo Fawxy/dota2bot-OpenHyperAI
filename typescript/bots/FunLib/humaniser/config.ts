@@ -57,6 +57,7 @@ export const DEFAULTS = {
     Lane: { Enable: true } as Record<string, any>,
     Intent: { Enable: true } as Record<string, any>,
     LastHitSkill: { Enable: true } as Record<string, any>,
+    FarmPattern: { Enable: true } as Record<string, any>,
     Trainer: { LastHit: { Enable: true } } as Record<string, any>,
     /**
      * [HEV] event lines for tools/hlog. Off unless Customize turns it on; never changes behaviour.
@@ -98,7 +99,7 @@ export function IsEnabled(): boolean {
 }
 
 /** True when the humaniser and the named sub-feature are both enabled. */
-export function IsFeatureEnabled(feature: "Perception" | "AllyLastHit" | "Pings" | "Commands" | "Lane" | "Intent" | "LastHitSkill"): boolean {
+export function IsFeatureEnabled(feature: "Perception" | "AllyLastHit" | "Pings" | "Commands" | "Lane" | "Intent" | "LastHitSkill" | "FarmPattern"): boolean {
     const cfg = Get();
     return cfg.Enable === true && cfg[feature] !== undefined && cfg[feature].Enable === true;
 }

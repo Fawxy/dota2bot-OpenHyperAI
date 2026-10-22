@@ -169,7 +169,7 @@ local function __TS__ArraySort(self, compareFn)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local currentMinute, records
+local settings, dist2D, currentMinute, records
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -184,8 +184,31 @@ local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
 local ____camps_data = require(GetScriptDirectory().."/FunLib/humaniser/camps_data")
 local DEFAULT_STACK_SEC = ____camps_data.DEFAULT_STACK_SEC
+function settings()
+    return LaneConfig.Settings()
+end
+function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
 function currentMinute()
     return math.floor(DotaTime() / 60)
+end
+--- Safety off a laning snapshot: HP and no visible enemy close. After laning, and a core's stack (FarmPattern).
+function ____exports.SafeAway(bot, enemies)
+    local t = settings().Thresholds
+    local maxHP = bot:GetMaxHealth()
+    if maxHP <= 0 or bot:GetHealth() / maxHP <= t.StableMinHP then
+        return false, "low-hp"
+    end
+    local loc = bot:GetLocation()
+    for ____, e in ipairs(enemies) do
+        if e.visible and dist2D(e.location, loc) <= t.StableEnemyRadius then
+            return false, "enemy-near"
+        end
+    end
+    return true, "ok"
 end
 function ____exports.IsStacked(campIdx)
     local rec = records[campIdx]
@@ -210,14 +233,6 @@ function ____exports.ResetCache()
     records = {}
     telegraphedAt = {}
     reservations = {}
-end
-local function settings()
-    return LaneConfig.Settings()
-end
-local function dist2D(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
 end
 --- 7.41 stack windows (seconds to land the hit) from scripts/creep_pull_timings.txt in pak01_dir.vpk (read 22/10/2026,
 -- what the `dota_hud_show_creep_spawn_camp_names` overlay shows), by the camp's spawner origin from maps/dota.vpk:
@@ -310,16 +325,7 @@ function ____exports.Safe(bot, s, enemies, committed)
         end
         return true, "ok"
     end
-    if maxHP <= 0 or bot:GetHealth() / maxHP <= t.StableMinHP then
-        return false, "low-hp"
-    end
-    local loc = bot:GetLocation()
-    for ____, e in ipairs(enemies) do
-        if e.visible and dist2D(e.location, loc) <= t.StableEnemyRadius then
-            return false, "enemy-near"
-        end
-    end
-    return true, "ok"
+    return ____exports.SafeAway(bot, enemies)
 end
 function ____exports.Eligible(bot, s, enemies, committed)
     if committed == nil then
@@ -364,6 +370,15 @@ function ____exports.Release(campIdx, pid)
         __TS__Delete(reservations[campIdx], pid)
     end
 end
+--- Another bot's stack job has claimed the camp (its walk-off has not ended).
+function ____exports.ReservedByAlly(campIdx, pid)
+    for other, ____until in pairs(reservations[campIdx] or ({})) do
+        if other ~= pid and DotaTime() < ____until then
+            return true
+        end
+    end
+    return false
+end
 local function contested(bot, idx, enemies, allies)
     local margin = settings().Radii.BoxMargin
     for ____, e in ipairs(enemies) do
@@ -375,10 +390,10 @@ local function contested(bot, idx, enemies, allies)
     local claims = reservations[idx] or ({})
     for ____, a in ipairs(allies) do
         do
-            local __continue40
+            local __continue44
             repeat
                 if a:GetPlayerID() == pid then
-                    __continue40 = true
+                    __continue44 = true
                     break
                 end
                 local ____until = claims[a:GetPlayerID()]
@@ -392,9 +407,9 @@ local function contested(bot, idx, enemies, allies)
                 ) then
                     return true
                 end
-                __continue40 = true
+                __continue44 = true
             until true
-            if not __continue40 then
+            if not __continue44 then
                 break
             end
         end
@@ -458,15 +473,15 @@ function ____exports.ChooseCamp(bot, s, minute)
         local bestDist = math.huge
         for ____, data in ipairs(camps) do
             do
-                local __continue60
+                local __continue64
                 repeat
                     if data.team ~= team or data.type == "ancient" then
-                        __continue60 = true
+                        __continue64 = true
                         break
                     end
                     local spawner = Camps.SpawnerByIdx(data.campIdx)
                     if spawner == nil or spawner.team ~= team then
-                        __continue60 = true
+                        __continue64 = true
                         break
                     end
                     local d = dist2D(
@@ -477,9 +492,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                         best = data
                         bestDist = d
                     end
-                    __continue60 = true
+                    __continue64 = true
                 until true
-                if not __continue60 then
+                if not __continue64 then
                     break
                 end
             end
@@ -492,15 +507,15 @@ function ____exports.ChooseCamp(bot, s, minute)
     local bestDist = math.huge
     for ____, data in ipairs(camps) do
         do
-            local __continue67
+            local __continue71
             repeat
                 if data.team ~= team or data.type ~= "ancient" then
-                    __continue67 = true
+                    __continue71 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(data.campIdx)
                 if spawner == nil then
-                    __continue67 = true
+                    __continue71 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -511,9 +526,9 @@ function ____exports.ChooseCamp(bot, s, minute)
                     best = data
                     bestDist = d
                 end
-                __continue67 = true
+                __continue71 = true
             until true
-            if not __continue67 then
+            if not __continue71 then
                 break
             end
         end

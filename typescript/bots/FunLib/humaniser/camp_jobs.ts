@@ -28,6 +28,8 @@ export interface JobRequest {
     campIdx: number;
     secondCampIdx?: number;
     forced?: boolean;
+    /** Stack for a core on a FarmPattern trip: only SafeAway's checks, no support or lane-plan gates. */
+    core?: boolean;
     minute?: number;
     /** Contest: the enemy seen pulling, attacked while visible. */
     targetPid?: number;
@@ -683,6 +685,7 @@ function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaM
 /** Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety. */
 function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
     const s = LaneState.ForBot(bot);
+    if (job.core === true) return Stacking.SafeAway(bot, LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane()));
     const laning = LaneConfig.InLaningPhase();
     if (laning && s === undefined) return $multi(false, "no-lane");
     const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
@@ -1106,7 +1109,8 @@ function arrived(bot: Unit, loc: Vector): boolean {
  * heads-up. A bot core reads the same thing from CoverFor.
  */
 function pingPartner(bot: Unit, job: Job): void {
-    if (job.pinged === true || job.kind === "contest") return;
+    // A core's own stack (FarmPattern) is no "support away, play safe" heads-up for its lane partner.
+    if (job.pinged === true || job.kind === "contest" || job.core === true) return;
     job.pinged = true;
     if (!LaneConfig.IsOn("Telegraph") || !LaneConfig.InLaningPhase()) return;
     const s = LaneState.ForBot(bot);
