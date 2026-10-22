@@ -229,6 +229,24 @@ do
 	H.FarmPattern.Think(core)
 	H.FarmPattern.Desire(core)
 	check("enemy: ends after the reaction time", H.FarmPattern.Current(core) == nil)
+	-- The enemy steps back out of range: no new trip until the cooldown has passed.
+	UNITS[3][1].loc = Vector(6000, 6000)
+	core.mode = BotMode.Laning
+	T = T + 2
+	check("enemy: no restart right after", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+	-- Past the cooldown, at a point in the wave cycle where the camp fits again.
+	T = 465
+	check("enemy: restarts after the cooldown", H.FarmPattern.Desire(core) > 0 and H.FarmPattern.Current(core) ~= nil)
+end
+
+-- A trip does not start with an enemy hero just outside the radius that would end it.
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	UNITS[3][1].loc = Vector(-1700, -5000)
+	check("gate: enemy near the abort radius", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+	UNITS[3][1].loc = Vector(-2500, -5000)
+	T = T + 1
+	check("gate: enemy well clear", H.FarmPattern.Desire(core) > 0)
 end
 
 -- The core keeps hitting its target as other neutrals' HP drops, so re-targeting does not cancel its attacks.

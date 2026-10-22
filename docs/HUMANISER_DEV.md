@@ -766,7 +766,7 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 - Active mode is laning, farm or none, with no order and no camp job.
 - Retreat's resolved desire is below 0.62. A trip that could only win in retreat's dip would end as `mode-end` the next round, which camp jobs hit at mirana 4:49.
 - The bot is within 1,800 of its lane front: the assigned lane while laning, then the nearest front. Camps count within 3,800 of that front.
-- No enemy lane creep within 1,000 and no visible enemy hero within 1,400.
+- No enemy lane creep within 1,000 and no visible enemy hero within 2,000 (`StartEnemyRadius`, wider than the 1,400 that ends a trip), and no trip ended by an enemy in the last 10 s (`EnemyCooldown`). With one radius, Bloodseeker in console.9057083956 started and ended three trips 1-3 s apart as the enemy offlaner hovered at its edge.
 
 ### Timing
 - The next enemy wave reaches the front at `k·30 + along/325`, where `along` is the front's distance along the enemy's 7.41 lane path (`PullTiming.LanePath`).
@@ -804,7 +804,7 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 ### Logs
 - `farm_trip_start` / `next` / `return` / `end` as `[HEV]` events and `[H:farm]` lines.
 - On `preempted`, `farm_trip_end` names the winning mode (`to`, `toBy`).
-- `farm_gate` logs why a core isn't starting a trip (`time`, `level`, `low-hp`, `busy-mode`, `retreat`, `far`, `wave`, `enemy`, `no-camp`, `no-fit` with `window`/`best`/`open`/`pace`). It's logged when the reason changes, and every 15 s while it holds.
+- `farm_gate` logs why a core isn't starting a trip (`time`, `level`, `low-hp`, `busy-mode`, `retreat`, `far`, `wave`, `enemy`, `enemy-cooldown`, `no-camp`, `no-fit` with `window`/`best`/`open`/`pace`). It's logged when the reason changes, and every 15 s while it holds.
 - Overlay key: `farm`.
 
 ### Reading a game

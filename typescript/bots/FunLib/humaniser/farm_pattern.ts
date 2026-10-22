@@ -49,6 +49,10 @@ export const DEFAULTS = {
     // Visible enemy heroes this close to the bot (or to a camp) end a trip after the bot's reaction time (or rule the
     // camp out). The walk back ignores them: laning and retreat decide there.
     EnemyRadius: 1400,
+    // A trip only starts with no enemy hero this close, and not for EnemyCooldown after one ended a trip: with one
+    // radius an enemy laner hovering at its edge started and ended a trip every second or two.
+    StartEnemyRadius: 2000,
+    EnemyCooldown: 10,
     // From the lane front. A mid front near the river has its nearest own camps at ~2,800 (Dire evil_5) and ~3,650
     // (Radiant good_5); the walk is priced into the fit, so a far camp is only taken when the wave gap allows it.
     MaxCampDist: 3800,
@@ -149,6 +153,7 @@ function merge(defaults: any, overrides: any): any {
 let cached: FarmSettings | undefined;
 let trips: Record<number, Trip> = {};
 let nextPlanAt: Record<number, number> = {};
+let enemyEndAt: Record<number, number> = {};
 /** Camps a trip found empty or cleared, by team then camp, as the minute it happened (they respawn on the next). */
 let cleared: Record<number, Record<number, number>> = {};
 let stackRolls: Record<number, { minute: number; ok: boolean }> = {};
@@ -164,6 +169,7 @@ export function ResetCache(): void {
     cached = undefined;
     trips = {};
     nextPlanAt = {};
+    enemyEndAt = {};
     cleared = {};
     stackRolls = {};
     paceFactor = {};
@@ -460,7 +466,9 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, [
     const fromFront = GetUnitToLocationDistance(bot, front);
     if (fromFront > s.FrontRadius) return $multi("far", [["lane", lane], ["dist", math.floor(fromFront)]]);
     if (enemyCreepsNear(bot, s.WaveClearRadius) || waveAlive(front, s.WaveClearRadius)) return $multi("wave", [["lane", lane]]);
-    if (anyNear(aliveUnits(UnitType.EnemyHeroes), bot.GetLocation(), s.EnemyRadius)) return $multi("enemy", [["lane", lane]]);
+    if (anyNear(aliveUnits(UnitType.EnemyHeroes), bot.GetLocation(), s.StartEnemyRadius)) return $multi("enemy", [["lane", lane]]);
+    const since = now - (enemyEndAt[bot.GetPlayerID()] ?? -math.huge);
+    if (since < s.EnemyCooldown) return $multi("enemy-cooldown", [["lane", lane], ["left", fmt(s.EnemyCooldown - since)]]);
     const waveAt = NextWaveAt(team, lane, front, now);
     if (waveAt === undefined) return $multi("no-path", [["lane", lane]]);
     const deadline = waveAt + s.LateTolerance;
@@ -496,6 +504,7 @@ function releaseClaims(bot: Unit): void {
 
 function end(bot: Unit, trip: Trip, why: string): void {
     delete trips[bot.GetPlayerID()];
+    if (why === "enemy") enemyEndAt[bot.GetPlayerID()] = DotaTime();
     releaseClaims(bot);
     const extra: [string, any][] = [["why", why], ["camps", trip.camps], ["secs", fmt(DotaTime() - trip.startedAt)]];
     if (why === "preempted") {

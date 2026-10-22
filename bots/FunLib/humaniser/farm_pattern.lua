@@ -684,6 +684,8 @@ ____exports.DEFAULTS = {
     FrontRadius = 1800,
     WaveClearRadius = 1000,
     EnemyRadius = 1400,
+    StartEnemyRadius = 2000,
+    EnemyCooldown = 10,
     MaxCampDist = 3800,
     LateTolerance = 5,
     StackLateExtra = 8,
@@ -712,6 +714,7 @@ ____exports.DEFAULTS = {
 }
 trips = {}
 local nextPlanAt = {}
+local enemyEndAt = {}
 cleared = {}
 stackRolls = {}
 paceFactor = {}
@@ -719,6 +722,7 @@ function ____exports.ResetCache()
     cached = nil
     trips = {}
     nextPlanAt = {}
+    enemyEndAt = {}
     cleared = {}
     stackRolls = {}
     paceFactor = {}
@@ -880,9 +884,19 @@ local function schedule(bot, now)
     if anyNear(
         aliveUnits(UnitType.EnemyHeroes),
         bot:GetLocation(),
-        s.EnemyRadius
+        s.StartEnemyRadius
     ) then
         return "enemy", {{"lane", lane}}
+    end
+    local since = now - (enemyEndAt[bot:GetPlayerID()] or -math.huge)
+    if since < s.EnemyCooldown then
+        return "enemy-cooldown", {
+            {"lane", lane},
+            {
+                "left",
+                fmt(s.EnemyCooldown - since)
+            }
+        }
     end
     local waveAt = ____exports.NextWaveAt(team, lane, front, now)
     if waveAt == nil then
@@ -989,6 +1003,9 @@ local function ____end(bot, trip, why)
         trips,
         bot:GetPlayerID()
     )
+    if why == "enemy" then
+        enemyEndAt[bot:GetPlayerID()] = DotaTime()
+    end
     releaseClaims(bot)
     local extra = {
         {"why", why},
