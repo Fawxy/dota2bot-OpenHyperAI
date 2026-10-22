@@ -180,6 +180,26 @@ do
 	check("stack: the trip runs the job's frame, never upstream farm", H.FarmPattern.Think(core) == true and #ACTIONS > before)
 end
 
+-- The core's stack walk-off drags the camp after it; retreat's creep-damage branch is held below the job, as for a
+-- pull's lead, until a real threat shows up.
+do
+	local H, core = world({ travel = 30, t = 466, level = 5, camps = { { "small", SMALL } } })
+	H.FarmPattern.Desire(core)
+	core.mode = BotMode.Farm
+	local job = H.Lane.CampJobs.Current(core)
+	-- farm's own GetDesire returns the job's desire first, so the trip's farm:hold lapses; only the job's hold is left.
+	T = T + 0.6
+	job.phase, job.exitUntil = "exit", T + 10
+	core.hp = 70
+	local farm = H.Intent.Resolve(core, BotMode.Farm, H.Lane.CampJobRawDesire(core, H.Lane.CampJobDesire(core)))
+	local retreat = H.Intent.Resolve(core, BotMode.Retreat, 0.81)
+	check("stack walk-off: retreat held below the job", retreat < farm, retreat .. " " .. farm)
+	core.heroHitAt = T
+	T = T + 0.05
+	H.Lane.CampJobRawDesire(core, H.Lane.CampJobDesire(core))
+	check("stack walk-off: a hero's hit releases it", near(H.Intent.Resolve(core, BotMode.Retreat, 0.81), 0.81))
+end
+
 -- Another mode taking over ends the trip once farm has not thought for PreemptAfter.
 do
 	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })

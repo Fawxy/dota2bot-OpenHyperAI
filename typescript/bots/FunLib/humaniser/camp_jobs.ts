@@ -732,6 +732,14 @@ function drawingCamp(job: Job): boolean {
     return job.phase === "lead" || job.phase === "watch" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined);
 }
 
+/**
+ * A core's stack once its hit is ordered: the walk-off drags the camp after the bot like a pull's lead. Without the hold,
+ * retreat's creep-damage branch (0.81 at 73% HP) cut both core stacks' walk-offs in console.9057148714/9057153685.
+ */
+function coreStackDrawn(job: Job): boolean {
+    return job.kind === "stack" && job.core === true && (job.phase === "exit" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined));
+}
+
 /** What should still send a pulling bot home; the neutrals' own hits (the point of a pull) are not on the list. */
 function retreatThreat(bot: Unit): string | undefined {
     const cfg = settings();
@@ -769,7 +777,7 @@ function logRetreatHold(bot: Unit, job: Job, state: "on" | "off", reason?: strin
  */
 export function HoldsRetreat(bot: Unit): boolean {
     const job = jobs[bot.GetPlayerID()];
-    if (!isLive(job) || job.retreatHold === "off" || !drawingCamp(job)) return false;
+    if (!isLive(job) || job.retreatHold === "off" || !(drawingCamp(job) || coreStackDrawn(job))) return false;
     const why = retreatThreat(bot);
     if (why === undefined) {
         if (job.retreatHold !== "on") {

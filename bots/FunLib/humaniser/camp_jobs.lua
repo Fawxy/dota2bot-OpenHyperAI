@@ -241,17 +241,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue231
+            local __continue232
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue231 = true
+                    __continue232 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue231 = true
+                    __continue232 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -262,9 +262,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue231 = true
+                __continue232 = true
             until true
-            if not __continue231 then
+            if not __continue232 then
                 break
             end
         end
@@ -1233,6 +1233,11 @@ local function drawingCamp(job)
     end
     return job.phase == "lead" or job.phase == "watch" or job.phase == "aggro" and job.aggroOrderedAt ~= nil
 end
+--- A core's stack once its hit is ordered: the walk-off drags the camp after the bot like a pull's lead. Without the hold,
+-- retreat's creep-damage branch (0.81 at 73% HP) cut both core stacks' walk-offs in console.9057148714/9057153685.
+local function coreStackDrawn(job)
+    return job.kind == "stack" and job.core == true and (job.phase == "exit" or job.phase == "aggro" and job.aggroOrderedAt ~= nil)
+end
 --- What should still send a pulling bot home; the neutrals' own hits (the point of a pull) are not on the list.
 local function retreatThreat(bot)
     local cfg = settings()
@@ -1291,7 +1296,7 @@ end
 -- The first real threat releases the hold for the rest of the job. lane_job_hold logs the hold and its release once each.
 function ____exports.HoldsRetreat(bot)
     local job = jobs[bot:GetPlayerID()]
-    if not isLive(job) or job.retreatHold == "off" or not drawingCamp(job) then
+    if not isLive(job) or job.retreatHold == "off" or not (drawingCamp(job) or coreStackDrawn(job)) then
         return false
     end
     local why = retreatThreat(bot)
@@ -1873,10 +1878,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue259
+            local __continue260
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue259 = true
+                    __continue260 = true
                     break
                 end
                 if dist2D(
@@ -1885,9 +1890,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue259 = true
+                __continue260 = true
             until true
-            if not __continue259 then
+            if not __continue260 then
                 break
             end
         end
@@ -1926,10 +1931,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue268
+            local __continue269
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue268 = true
+                    __continue269 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1939,9 +1944,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue268 = true
+                __continue269 = true
             until true
-            if not __continue268 then
+            if not __continue269 then
                 break
             end
         end
