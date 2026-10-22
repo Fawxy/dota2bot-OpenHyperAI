@@ -13,7 +13,7 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local stateOf, dist2D, lastHits, pruneRecord, gainOf, opponentOf, levelGapOf, lostInput, states
+local stateOf, dist2D, pruneRecord, levelGapOf, lostInput, states
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -35,7 +35,7 @@ function stateOf(bot)
     local st = states[pid]
     if st == nil then
         st = {
-            record = {deaths = {}, lastHits = {}, enemyLastHits = {}},
+            record = {deaths = {}},
             checkAt = -math.huge,
             wasLaning = false,
             levelSeen = {},
@@ -55,64 +55,12 @@ function dist2D(a, b)
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
 end
-function lastHits(bot)
-    return bot:GetLastHits()
-end
 function pruneRecord(r, now)
     local from = now - Settings.Get().LostWindow
     r.deaths = __TS__ArrayFilter(
         r.deaths,
         function(____, t) return t >= from end
     )
-    r.lastHits = __TS__ArrayFilter(
-        r.lastHits,
-        function(____, h) return h.at >= from end
-    )
-    for pid, samples in pairs(r.enemyLastHits) do
-        r.enemyLastHits[pid] = __TS__ArrayFilter(
-            samples,
-            function(____, h) return h.at >= from end
-        )
-    end
-end
-function gainOf(samples, now, current)
-    local first = samples and samples[1]
-    if samples == nil or first == nil then
-        return nil
-    end
-    local last = current ~= nil and ({at = now, total = current}) or samples[#samples]
-    local span = last.at - first.at
-    if span < Settings.Get().LostMinSpan then
-        return nil
-    end
-    return {gain = last.total - first.total, span = span}
-end
-function opponentOf(bot, st, s, now)
-    if s == nil then
-        return nil
-    end
-    local radius = Settings.Get().SpareLaneRadius
-    local best
-    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
-        do
-            local __continue49
-            repeat
-                if dist2D(e.location, s.frontLoc) > radius then
-                    __continue49 = true
-                    break
-                end
-                local g = gainOf(st.record.enemyLastHits[e.pid], now)
-                if g ~= nil and (best == nil or g.gain > best.gain) then
-                    best = {pid = e.pid, gain = g.gain, span = g.span}
-                end
-                __continue49 = true
-            until true
-            if not __continue49 then
-                break
-            end
-        end
-    end
-    return best
 end
 function levelGapOf(bot, st, s)
     local pos = LaneConfig.PositionOf(bot)
@@ -123,19 +71,19 @@ function levelGapOf(bot, st, s)
     local top = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue55
+            local __continue39
             repeat
                 if dist2D(e.location, s.frontLoc) > radius then
-                    __continue55 = true
+                    __continue39 = true
                     break
                 end
                 local level = e.visible and e.unit ~= nil and e.unit:GetLevel() or st.levelSeen[e.pid]
                 if level ~= nil and level > top then
                     top = level
                 end
-                __continue55 = true
+                __continue39 = true
             until true
-            if not __continue55 then
+            if not __continue39 then
                 break
             end
         end
@@ -144,34 +92,17 @@ function levelGapOf(bot, st, s)
 end
 function lostInput(bot)
     local st = stateOf(bot)
-    local now = DotaTime()
-    pruneRecord(st.record, now)
-    local pos = LaneConfig.PositionOf(bot)
-    local s = LaneState.ForBot(bot)
-    local rate = 0
-    local opp
-    local ____temp_4
-    if pos ~= nil and pos <= 3 then
-        ____temp_4 = gainOf(
-            st.record.lastHits,
-            now,
-            lastHits(bot)
-        )
-    else
-        ____temp_4 = nil
-    end
-    local mine = ____temp_4
-    if mine ~= nil then
-        rate = mine.gain / mine.span * 60
-        opp = opponentOf(bot, st, s, now)
-    end
+    pruneRecord(
+        st.record,
+        DotaTime()
+    )
     return {
         deathsInWindow = #st.record.deaths,
-        lhPerMin = rate,
-        oppLhPerMin = opp ~= nil and opp.gain / opp.span * 60 or 0,
-        oppLastHits = opp and opp.gain or 0,
-        levelGap = levelGapOf(bot, st, s),
-        oppPid = opp and opp.pid
+        levelGap = levelGapOf(
+            bot,
+            st,
+            LaneState.ForBot(bot)
+        )
     }
 end
 ____exports.SOURCE_PHASE = "transitions:phase"
@@ -307,39 +238,29 @@ function ____exports.LaneLostPure(i)
     if i.deathsInWindow >= cfg.LostDeaths then
         return true, "deaths"
     end
-    if i.oppLastHits >= cfg.LostLHMinOpp and i.lhPerMin < cfg.LostLHRatio * i.oppLhPerMin then
-        return true, "lasthits"
-    end
     if i.levelGap >= cfg.LostLevelGap then
         return true, "levels"
     end
     return false, ""
-end
-local function pushSample(samples, now, total)
-    local last = samples[#samples]
-    if last == nil or now - last.at >= Settings.Get().LHSampleGap then
-        samples[#samples + 1] = {at = now, total = total}
-    end
 end
 function ____exports.LaneLost(bot)
     return ____exports.LaneLostPure(lostInput(bot))
 end
 local function partnerOf(bot)
     local s = LaneState.ForBot(bot)
-    local ____temp_9
+    local ____temp_2
     if s ~= nil then
-        ____temp_9 = LaneRoles.Partner(bot, s)
+        ____temp_2 = LaneRoles.Partner(bot, s)
     else
-        ____temp_9 = nil
+        ____temp_2 = nil
     end
-    return ____temp_9
+    return ____temp_2
 end
 local function sample(bot, st, now)
-    local cfg = Settings.Get()
     local alive = bot:IsAlive()
     if st.wasAlive == true and not alive and st.wasLaning then
-        local ____st_record_deaths_10 = st.record.deaths
-        ____st_record_deaths_10[#____st_record_deaths_10 + 1] = now
+        local ____st_record_deaths_3 = st.record.deaths
+        ____st_record_deaths_3[#____st_record_deaths_3 + 1] = now
     end
     st.wasAlive = alive
     local why = notLaningWhy(bot)
@@ -358,35 +279,12 @@ local function sample(bot, st, now)
             }
         )
     end
-    if alive and now >= cfg.LostLHFrom then
-        pushSample(
-            st.record.lastHits,
-            now,
-            lastHits(bot)
-        )
+    if alive then
         local s = LaneState.ForBot(bot)
         if s ~= nil then
             for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
-                do
-                    local __continue68
-                    repeat
-                        if not e.visible or e.unit == nil then
-                            __continue68 = true
-                            break
-                        end
-                        st.levelSeen[e.pid] = e.unit:GetLevel()
-                        local samples = st.record.enemyLastHits[e.pid] or ({})
-                        st.record.enemyLastHits[e.pid] = samples
-                        pushSample(
-                            samples,
-                            now,
-                            lastHits(e.unit)
-                        )
-                        __continue68 = true
-                    until true
-                    if not __continue68 then
-                        break
-                    end
+                if e.visible and e.unit ~= nil then
+                    st.levelSeen[e.pid] = e.unit:GetLevel()
                 end
             end
         end
@@ -426,9 +324,9 @@ local function humanWaiting(bot, st, now)
     end
     if (st.suggestedAt == nil or now - st.suggestedAt >= cfg.SuggestCooldown) and Orders.Say(bot, "say_lane_lost_roam", cfg.SuggestCooldown) then
         st.suggestedAt = now
-        local ____st_13 = st
-        local ____opt_11 = Orders.GetFor(bot)
-        ____st_13.orderBase = ____opt_11 and ____opt_11.id
+        local ____st_6 = st
+        local ____opt_4 = Orders.GetFor(bot)
+        ____st_6.orderBase = ____opt_4 and ____opt_4.id
         st.absentSince = nil
     end
     return true
@@ -448,10 +346,6 @@ local function reportLost(bot, st, reason, input)
             {"lost", st.lostResp},
             {"reason", reason},
             {"deaths", input and input.deathsInWindow},
-            {"lhpm", input and input.lhPerMin},
-            {"opp", input and input.oppPid},
-            {"opplhpm", input and input.oppLhPerMin},
-            {"oppgain", input and input.oppLastHits},
             {"levelGap", input and input.levelGap}
         }
     )

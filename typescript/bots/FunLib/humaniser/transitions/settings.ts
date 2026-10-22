@@ -133,19 +133,8 @@ export const DEFAULTS = {
     SupportTo: 480,
     LostWindow: 240,
     LostDeaths: 2,
-    // Lost on last hits: our rate under this share of the lane opponent's over the same window.
-    LostLHRatio: 0.4,
-    // ...and only once that opponent took this many last hits in the window. Bot cores take about 2 a minute in a
-    // contested lane (29 bot games, skill 1.0), so a handful of last hits early on is noise, not a lost lane.
-    LostLHMinOpp: 15,
     LostLevelGap: 2,
     SuggestCooldown: 60,
-    // Our rate and the opponent's are each judged only once their samples span this many seconds.
-    LostMinSpan: 120,
-    // Last-hit samples start here: before the creeps meet there is nothing to last hit.
-    LostLHFrom: 60,
-    // GetLastHits is sampled at most this often.
-    LHSampleGap: 5,
     // Enemy hero seen within this long counts as present near our jungle camp.
     JungleSeenWindow: 3,
     JungleCampRadius: 2500,
