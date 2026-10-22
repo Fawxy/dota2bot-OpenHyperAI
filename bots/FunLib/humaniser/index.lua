@@ -224,6 +224,7 @@ if Telemetry.GuardsEnabled() then
         CampJobOnEnd = none,
         CampJobAbort = none,
         CampJobHoldsRetreat = no,
+        CampJobHoldsCasts = no,
         RuneContestDesire = zero,
         PreferStackedCamp = none,
         PreThink = no,

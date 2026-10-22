@@ -158,6 +158,11 @@ export function CampJobHoldsRetreat(bot: Unit): boolean {
     return CampJobs.HoldsRetreat(bot);
 }
 
+/** ability_item_usage_generic: no spells or items on the camp a job is working. */
+export function CampJobHoldsCasts(bot: Unit): boolean {
+    return CampJobs.HoldsCasts(bot);
+}
+
 /** mode_farm_generic Think: true when the camp job owns this frame. */
 export function CampJobThink(bot: Unit): boolean {
     return CampJobs.Think(bot);

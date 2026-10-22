@@ -132,6 +132,15 @@ function UnitMeta:GetNearbyTowers(r, enemy)
 	end
 	return out
 end
+function UnitMeta:GetNearbyHeroes(r, enemy)
+	local team = enemy and (self.team == 2 and 3 or 2) or self.team
+	local out = {}
+	for _, u in ipairs(UNITS[team]) do
+		local dx, dy = u.loc.x - self.loc.x, u.loc.y - self.loc.y
+		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, u) end
+	end
+	return out
+end
 function GetUnitToUnitDistance(a, b)
 	local dx, dy = a:GetLocation().x - b:GetLocation().x, a:GetLocation().y - b:GetLocation().y
 	return math.sqrt(dx * dx + dy * dy)

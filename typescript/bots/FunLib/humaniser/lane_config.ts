@@ -233,6 +233,8 @@ export const DEFAULTS = {
         StepBackCreeps: 700,
         StepBackEps: 50,
         NeutralSearch: 700,
+        // An enemy hero this close lets a camp job's bot cast again (camp_jobs HoldsCasts).
+        CastHoldEnemy: 1200,
         StandOffset: 150,
         // Stand at most this far from the spawner origin: inside NeutralSearch with room for the camp's spread.
         StandReach: 450,

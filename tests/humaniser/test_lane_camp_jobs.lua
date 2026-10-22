@@ -959,6 +959,38 @@ do
 	check("the run gate is held for neutrals at 68%", H.Lane.CampJobHoldsRetreat(support))
 end
 
+do
+	-- WD cast Cask on the camp it was pulling (console.9055970181 1:48): upstream's farm branches fire inside a job.
+	local src = io.open(HARNESS_DIR .. "/../../bots/ability_item_usage_generic.lua", "r"):read("a")
+	for _, f in ipairs({ { "ItemUsageThink", "ItemUsageComplement()" }, { "AbilityUsageThink", "BotBuild.SkillsComplement()" } }) do
+		local at = src:find("function " .. f[1] .. "()", 1, true)
+		local gate = at and src:find("if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end", at, true)
+		local call = at and src:find(f[2], at, true)
+		check(f[1] .. " returns on a held camp job before casting", gate ~= nil and call ~= nil and gate < call)
+	end
+	local H, support, job = leadingWorld()
+	clearEnemies()
+	check("leading the camp: casts held", H.Lane.CampJobHoldsCasts(support))
+	enemyAt(11, support.loc.x + 1000, support.loc.y)
+	check("an enemy hero at 1000: casts free", not H.Lane.CampJobHoldsCasts(support))
+	clearEnemies()
+	enemyAt(11, support.loc.x + 1500, support.loc.y)
+	check("an enemy hero at 1500: still held", H.Lane.CampJobHoldsCasts(support))
+	H.Lane.CampJobs.Abort(support, "test")
+	check("job over: casts free", not H.Lane.CampJobHoldsCasts(support))
+end
+
+do
+	-- On the walk in, only once the camp is in sight (its neutrals would be the farm branches' targets).
+	local H, _, support = jobWorld(1, { away = 900 })
+	frame(H, support, 70)
+	check("precondition: travelling", H.Lane.CampJobs.Current(support).phase == "travel")
+	clearEnemies()
+	check("travelling, camp not in sight: casts free", not H.Lane.CampJobHoldsCasts(support))
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	check("travelling, camp in sight: casts held", H.Lane.CampJobHoldsCasts(support))
+end
+
 -- The core's side: while its support is out on a camp, it backs off sooner.
 do
 	-- The support starts at the front, so only its job (not its position) says it is away.

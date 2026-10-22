@@ -201,7 +201,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, neutralsInBox, boxInSight, settleStack, round3, modeEndFields, pendingStacks
+local settings, campNeutral, neutralsInBox, boxInSight, settleStack, round3, modeEndFields, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -221,6 +221,44 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 function settings()
     return LaneConfig.Settings()
+end
+function campNeutral(bot, job)
+    local best
+    local bestDist = math.huge
+    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
+        settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        do
+            local __continue222
+            repeat
+                if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
+                    __continue222 = true
+                    break
+                end
+                if not Camps.InBox(
+                    job.activeCamp,
+                    n:GetLocation()
+                ) then
+                    __continue222 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(
+                    bot,
+                    n:GetLocation()
+                )
+                if d < bestDist then
+                    best = n
+                    bestDist = d
+                end
+                __continue222 = true
+            until true
+            if not __continue222 then
+                break
+            end
+        end
+    end
+    return best
 end
 function neutralsInBox(bot, campIdx)
     local margin = settings().Radii.BoxMargin
@@ -1232,6 +1270,23 @@ function ____exports.HoldsRetreat(bot)
     logRetreatHold(bot, job, "off", why)
     return false
 end
+--- Spells and items wait while a job works a camp: upstream's farm branches (J.IsFarming is true in farm mode or on a
+-- neutral target) cast stuns and nukes on the camp it is drawing. From the camp coming into sight, or being drawn,
+-- until the job ends; an enemy hero in range lifts it so the bot can still fight or save itself.
+function ____exports.HoldsCasts(bot)
+    local job = jobs[bot:GetPlayerID()]
+    if not isLive(job) or job.kind == "contest" then
+        return false
+    end
+    if job.phase == "travel" and not drawingCamp(job) and campNeutral(bot, job) == nil then
+        return false
+    end
+    return #(bot:GetNearbyHeroes(
+        settings().Radii.CastHoldEnemy,
+        true,
+        BotMode.None
+    ) or ({})) == 0
+end
 --- Abort checks for a running job; true when it may continue.
 local function keepGoing(bot, job)
     if not LaneConfig.IsOn(FLAG_OF[job.kind]) then
@@ -1728,44 +1783,6 @@ local function telegraph(bot, job, now)
         settings().Timing.PullTelegraphCooldown
     )
 end
-local function campNeutral(bot, job)
-    local best
-    local bestDist = math.huge
-    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
-        settings().Radii.NeutralSearch,
-        false
-    ) or ({})) do
-        do
-            local __continue219
-            repeat
-                if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue219 = true
-                    break
-                end
-                if not Camps.InBox(
-                    job.activeCamp,
-                    n:GetLocation()
-                ) then
-                    __continue219 = true
-                    break
-                end
-                local d = GetUnitToLocationDistance(
-                    bot,
-                    n:GetLocation()
-                )
-                if d < bestDist then
-                    best = n
-                    bestDist = d
-                end
-                __continue219 = true
-            until true
-            if not __continue219 then
-                break
-            end
-        end
-    end
-    return best
-end
 local function aggroConfirmed(bot, job)
     if job.aggroOrderedAt ~= nil and bot:GetLastAttackTime() >= job.aggroOrderedAt then
         return true
@@ -1808,10 +1825,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue247
+            local __continue250
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue247 = true
+                    __continue250 = true
                     break
                 end
                 if dist2D(
@@ -1820,9 +1837,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue247 = true
+                __continue250 = true
             until true
-            if not __continue247 then
+            if not __continue250 then
                 break
             end
         end
@@ -1861,10 +1878,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue256
+            local __continue259
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue256 = true
+                    __continue259 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1874,9 +1891,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue256 = true
+                __continue259 = true
             until true
-            if not __continue256 then
+            if not __continue259 then
                 break
             end
         end

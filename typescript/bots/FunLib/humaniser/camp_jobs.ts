@@ -765,6 +765,18 @@ export function HoldsRetreat(bot: Unit): boolean {
     return false;
 }
 
+/**
+ * Spells and items wait while a job works a camp: upstream's farm branches (J.IsFarming is true in farm mode or on a
+ * neutral target) cast stuns and nukes on the camp it is drawing. From the camp coming into sight, or being drawn,
+ * until the job ends; an enemy hero in range lifts it so the bot can still fight or save itself.
+ */
+export function HoldsCasts(bot: Unit): boolean {
+    const job = jobs[bot.GetPlayerID()];
+    if (!isLive(job) || job.kind === "contest") return false;
+    if (job.phase === "travel" && !drawingCamp(job) && campNeutral(bot, job) === undefined) return false;
+    return (bot.GetNearbyHeroes(settings().Radii.CastHoldEnemy, true, BotMode.None) ?? []).length === 0;
+}
+
 /** Abort checks for a running job; true when it may continue. */
 function keepGoing(bot: Unit, job: Job): boolean {
     if (!LaneConfig.IsOn(FLAG_OF[job.kind])) {

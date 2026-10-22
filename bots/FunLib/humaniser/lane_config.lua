@@ -207,6 +207,7 @@ ____exports.DEFAULTS = {
         StepBackCreeps = 700,
         StepBackEps = 50,
         NeutralSearch = 700,
+        CastHoldEnemy = 1200,
         StandOffset = 150,
         StandReach = 450,
         StandApproach = 150,

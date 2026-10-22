@@ -216,6 +216,10 @@ end
 function ____exports.CampJobHoldsRetreat(bot)
     return CampJobs.HoldsRetreat(bot)
 end
+--- ability_item_usage_generic: no spells or items on the camp a job is working.
+function ____exports.CampJobHoldsCasts(bot)
+    return CampJobs.HoldsCasts(bot)
+end
 --- mode_farm_generic Think: true when the camp job owns this frame.
 function ____exports.CampJobThink(bot)
     return CampJobs.Think(bot)
@@ -244,10 +248,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue52
+            local __continue53
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue52 = true
+                    __continue53 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -258,9 +262,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue52 = true
+                __continue53 = true
             until true
-            if not __continue52 then
+            if not __continue53 then
                 break
             end
         end
