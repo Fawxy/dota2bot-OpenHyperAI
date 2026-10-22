@@ -16,6 +16,7 @@ local BURST_SECONDS = 5
 local TOWER_RANGE = 900
 local COUNTER_ENEMIES = 2
 local COUNTER_HP = 0.5
+local COUNTER_RANGE = 1200
 local TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
@@ -50,7 +51,7 @@ function ____exports.Evaluate(i)
         reason = "tower"
     elseif i.enemiesNear > i.alliesNear then
         reason = "outnumbered"
-    elseif i.botHP ~= nil and i.enemiesNear >= COUNTER_ENEMIES and i.botHP < COUNTER_HP then
+    elseif i.botHP ~= nil and (i.enemiesNearBot or 0) >= COUNTER_ENEMIES and i.botHP < COUNTER_HP then
         reason = "counter"
     end
     return {pass = reason == nil, margin = margin, overwhelming = overwhelming, reason = reason}
@@ -62,26 +63,16 @@ end
 local function located(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen() and u:GetLocation() ~= nil
 end
-local function burstOn(units, target, targetLoc)
+local function contributes(u, targetLoc)
+    return located(u) and not u:IsIllusion() and dist2D(
+        u:GetLocation(),
+        targetLoc
+    ) <= BURST_RANGE
+end
+local function burstOn(units, target)
     local total = 0
     for ____, u in ipairs(units) do
-        do
-            local __continue13
-            repeat
-                if not located(u) or u:IsIllusion() or dist2D(
-                    u:GetLocation(),
-                    targetLoc
-                ) > BURST_RANGE then
-                    __continue13 = true
-                    break
-                end
-                total = total + u:GetEstimatedDamageToTarget(true, target, BURST_SECONDS, DamageType.All)
-                __continue13 = true
-            until true
-            if not __continue13 then
-                break
-            end
-        end
+        total = total + u:GetEstimatedDamageToTarget(true, target, BURST_SECONDS, DamageType.All)
     end
     return total
 end
@@ -157,7 +148,7 @@ local function skipReason(bot, target)
     end
     return nil
 end
-local function compute(bot, partners, target, snap, now)
+local function compute(bot, contributors, target, snap, now)
     local skip = skipReason(bot, target)
     if skip ~= nil then
         return {pass = false, margin = 0, overwhelming = false, reason = skip}
@@ -165,15 +156,9 @@ local function compute(bot, partners, target, snap, now)
     local pid = bot:GetPlayerID()
     local skill = Profile.Get(bot).skill
     local loc = target:GetLocation()
-    local units = {bot}
-    for ____, p in ipairs(partners) do
-        if p ~= bot then
-            units[#units + 1] = p
-        end
-    end
-    local counts = FightRead.LaneCounts(bot, snap)
+    local counts = FightRead.LaneCounts(bot, snap, COUNTER_RANGE)
     return ____exports.Evaluate({
-        burst = burstOn(units, target, loc),
+        burst = burstOn(contributors, target),
         hp = target:GetHealth(),
         regen = target.GetHealthRegen ~= nil and target:GetHealthRegen() or 0,
         escapeReady = escapeReady(pid, target, now, skill),
@@ -185,11 +170,12 @@ local function compute(bot, partners, target, snap, now)
         alliesNear = counts.allies,
         skill = skill,
         errRoll = RandomFloat(0, 1),
-        botHP = hpFraction(bot)
+        botHP = hpFraction(bot),
+        enemiesNearBot = counts.enemiesNearBot
     })
 end
 --- Undefined when there is nothing to check: Kill off, no lane snapshot, or a target that is removed, dead, unseen or
--- has no location. Cached per (bot, target) for KillCheckEvery.
+-- has no location. Cached for KillCheckEvery per (bot, target, partners that contribute burst).
 function ____exports.Check(bot, partners, target, now)
     if not LaneFightConfig.IsOn("Kill") or not located(bot) or not located(target) then
         return nil
@@ -199,24 +185,51 @@ function ____exports.Check(bot, partners, target, now)
         return nil
     end
     local pid = bot:GetPlayerID()
-    local targetPid = target:GetPlayerID()
+    local loc = target:GetLocation()
+    local contributors = {}
+    local partnerPids = {}
+    if contributes(bot, loc) then
+        contributors[#contributors + 1] = bot
+    end
+    for ____, p in ipairs(partners) do
+        do
+            local __continue37
+            repeat
+                if p == bot or not contributes(p, loc) then
+                    __continue37 = true
+                    break
+                end
+                contributors[#contributors + 1] = p
+                partnerPids[#partnerPids + 1] = p:GetPlayerID()
+                __continue37 = true
+            until true
+            if not __continue37 then
+                break
+            end
+        end
+    end
+    table.sort(partnerPids)
+    local key = (tostring(target:GetPlayerID()) .. ":") .. (#partnerPids > 0 and table.concat(partnerPids, ",") or "solo")
     local byTarget = cache[pid]
     if byTarget == nil then
         byTarget = {}
         cache[pid] = byTarget
     end
-    local cached = byTarget[targetPid]
+    local cached = byTarget[key]
     if cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().KillCheckEvery then
         return cached.result
     end
     local result = compute(
         bot,
-        partners,
+        contributors,
         target,
         snap,
         now
     )
-    byTarget[targetPid] = {at = now, result = result}
+    byTarget[key] = {at = now, result = result}
     return result
+end
+function ____exports.ResetCache()
+    cache = {}
 end
 return ____exports

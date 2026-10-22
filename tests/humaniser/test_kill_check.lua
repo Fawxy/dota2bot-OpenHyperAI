@@ -78,12 +78,12 @@ do
 	check("1.4x is not overwhelming", e.pass == true and e.overwhelming == false and e.reason == nil)
 	e = KC.Evaluate(with({ burst = 1500, hp = 1000, regen = 0 }))
 	check("1.5x is overwhelming", e.pass == true and e.overwhelming == true)
-	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 2, alliesNear = 2, botHP = 0.4 }))
+	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 2, alliesNear = 2, botHP = 0.4, enemiesNearBot = 2 }))
 	check("two enemies near and bot under half HP fails on counter-burst", e.pass == false and e.reason == "counter", tostring(e.reason))
-	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 2, alliesNear = 2, botHP = 0.6 }))
+	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 2, alliesNear = 2, botHP = 0.6, enemiesNearBot = 2 }))
 	check("two enemies near and bot over half HP passes", e.pass == true, tostring(e.reason))
-	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 1, alliesNear = 1, botHP = 0.4 }))
-	check("one enemy near does not trip counter-burst", e.pass == true, tostring(e.reason))
+	e = KC.Evaluate(with({ burst = 2000, hp = 1000, regen = 0, enemiesNear = 2, alliesNear = 2, botHP = 0.4, enemiesNearBot = 1 }))
+	check("one enemy near the bot does not trip counter-burst", e.pass == true, tostring(e.reason))
 end
 
 for _, team in ipairs({ 2, 3 }) do
@@ -183,11 +183,11 @@ do
 end
 
 do
-	-- Two enemies in lane against our bot and its partner: not outnumbered, but the bot is low.
+	-- Two enemies within 1,200 of our bot, against it and its partner: not outnumbered, but the bot is low.
 	local W = world({ burst = 1000, botHP = 40 })
 	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
 	partner.lane = Lane.Bot
-	local second = MakeUnit({ pid = 7, team = 3, loc = Vector(600, BOT_Y) })
+	local second = MakeUnit({ pid = 7, team = 3, loc = Vector(200, BOT_Y) })
 	second.lane = Lane.Bot
 	local r = W.check({ partner })
 	check("low bot facing two enemies fails on counter-burst", r ~= nil and r.pass == false and r.reason == "counter", r and r.reason)
@@ -199,6 +199,44 @@ do
 	T = T + 1
 	r = W.check({ partner })
 	check("two enemies against the bot alone is outnumbered", r ~= nil and r.pass == false and r.reason == "outnumbered", r and r.reason)
+	-- Still two enemies in lane, but one 2,000 from the bot: only one threatens it.
+	partner.alive = true
+	second.loc = Vector(1200, BOT_Y)
+	W.bot.hp = 40
+	T = T + 1
+	r = W.check({ partner })
+	check("an enemy in lane but 2,000 from the bot does not count towards counter-burst", r ~= nil and r.pass == true, r and r.reason)
+	-- Last seen 5 s ago beside the bot counts like a visible one.
+	second.CanBeSeen = function() return false end
+	second.loc = Vector(200, BOT_Y)
+	LAST_SEEN[7] = { location = Vector(200, BOT_Y), time_since_seen = 5 }
+	W.H.Lane.LaneState.ResetCache()
+	T = T + 1
+	r = W.check({ partner })
+	check("an enemy last seen beside the bot counts towards counter-burst", r ~= nil and r.reason == "counter", r and r.reason)
+end
+
+do
+	-- The cache key includes the contributing partners.
+	local W = world({ burst = 300, hp = 500 })
+	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
+	partner.lane = Lane.Bot
+	partner.estDamage = 300
+	local solo = W.check({})
+	local duo = W.check({ partner })
+	check("solo and with a partner at the same time give different margins", solo ~= nil and duo ~= nil
+		and near(solo.margin, 300 / 500) and near(duo.margin, 600 / 500), duo and duo.margin)
+	W.bot.estDamage = 100
+	partner.estDamage = 100
+	T = T + 0.2
+	local solo2, duo2 = W.check({}), W.check({ partner })
+	check("each partner set stays cached on repeat", near(solo2.margin, solo.margin) and near(duo2.margin, duo.margin), duo2.margin)
+	partner.loc = Vector(-6500, BOT_Y)
+	local far = W.check({ partner })
+	check("a partner that contributes nothing shares the solo entry", near(far.margin, solo.margin), far.margin)
+	W.KC.ResetCache()
+	local fresh = W.check({})
+	check("ResetCache drops cached results", near(fresh.margin, 100 / 500), fresh.margin)
 end
 
 do

@@ -250,6 +250,20 @@ function instanceFor(pid: number, key: string, now: number): Instance {
     return inst;
 }
 
+function allyInLane(team: number, lane: Lane, h: LaneState.LaneHero, bounds: [number, number]): boolean {
+    return h.alive && !h.unit.IsNull() && inLane(team, lane, h.unit.GetLocation(), bounds);
+}
+
+/**
+ * Where a lane enemy counts: a visible, usable hero at its location (with the unit), or one out of sight at its
+ * last-seen location within MISSING_COUNTS seconds. Undefined when it does not count.
+ */
+function countedEnemy(e: LaneState.LaneEnemy | undefined): { unit?: Unit; loc: Vector } | undefined {
+    if (e === undefined || e.location === undefined) return undefined;
+    if (e.visible) return usable(e.unit) ? { unit: e.unit, loc: e.unit.GetLocation() } : undefined;
+    return e.timeSinceSeen <= MISSING_COUNTS ? { loc: e.location } : undefined;
+}
+
 function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs: Inputs; target?: Unit } {
     const pid = bot.GetPlayerID();
     const team = bot.GetTeam();
@@ -263,7 +277,7 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     for (const h of snap.allies) {
         // Allies includes unassigned heroes near our front: count whoever stands in the lane (a laner defending its
         // tower while the wave is pushed out counts; one away at a camp does not), take levels from the assigned laners.
-        if (h.alive && !h.unit.IsNull() && inLane(team, lane, h.unit.GetLocation(), bounds)) ourLaners++;
+        if (allyInLane(team, lane, h, bounds)) ourLaners++;
         if (h.assigned) ourMax = math.max(ourMax, GetHeroLevel(h.pid));
     }
 
@@ -273,19 +287,13 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     let theirMax = 0;
     let theirUltReady = false;
     for (const e of LaneState.Enemies(bot, lane)) {
-        if (e === undefined || e.location === undefined) continue;
-        const unit = e.visible && usable(e.unit) ? e.unit : undefined;
-        const loc = unit !== undefined ? unit.GetLocation() : e.location;
-        if (!inLane(team, lane, loc, bounds)) continue;
-        if (unit === undefined) {
-            if (!e.visible && e.timeSinceSeen <= MISSING_COUNTS) {
-                enemiesNear++;
-                theirMax = math.max(theirMax, GetHeroLevel(e.pid));
-            }
-            continue;
-        }
+        const counted = countedEnemy(e);
+        if (counted === undefined || !inLane(team, lane, counted.loc, bounds)) continue;
         enemiesNear++;
         theirMax = math.max(theirMax, GetHeroLevel(e.pid));
+        const unit = counted.unit;
+        if (unit === undefined) continue;
+        const loc = counted.loc;
         if (!theirUltReady && ultReady(pid, unit, e.pid, now, skill)) theirUltReady = true;
         const d = dist2D(botLoc, loc);
         if (d <= TARGET_RANGE && d < targetDist) {
@@ -321,26 +329,23 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     return { inputs, target };
 }
 
-/**
- * Heroes in `bot`'s lane by the read's rules: allies standing in it, and enemies visible in it or last seen in it
- * within MISSING_COUNTS seconds.
- */
-export function LaneCounts(bot: Unit, snap: LaneState.LaneSnapshot): { enemies: number; allies: number } {
+/** Heroes in `bot`'s lane by the read's rules (allies standing in it, enemies counted in it), and enemies counted within `radius` of the bot. */
+export function LaneCounts(bot: Unit, snap: LaneState.LaneSnapshot, radius: number): { enemies: number; allies: number; enemiesNearBot: number } {
     const team = bot.GetTeam();
     const lane = snap.lane;
     const bounds = laneBounds(team, lane);
+    const botLoc = bot.GetLocation();
     let allies = 0;
-    for (const h of snap.allies) {
-        if (h.alive && !h.unit.IsNull() && inLane(team, lane, h.unit.GetLocation(), bounds)) allies++;
-    }
+    for (const h of snap.allies) if (allyInLane(team, lane, h, bounds)) allies++;
     let enemies = 0;
+    let enemiesNearBot = 0;
     for (const e of LaneState.Enemies(bot, lane)) {
-        if (e === undefined || e.location === undefined) continue;
-        const unit = e.visible && usable(e.unit) ? e.unit : undefined;
-        if (unit === undefined && (e.visible || e.timeSinceSeen > MISSING_COUNTS)) continue;
-        if (inLane(team, lane, unit !== undefined ? unit.GetLocation() : e.location, bounds)) enemies++;
+        const counted = countedEnemy(e);
+        if (counted === undefined) continue;
+        if (inLane(team, lane, counted.loc, bounds)) enemies++;
+        if (dist2D(botLoc, counted.loc) <= radius) enemiesNearBot++;
     }
-    return { enemies, allies };
+    return { enemies, allies, enemiesNearBot };
 }
 
 function compute(bot: Unit, now: number): Read {

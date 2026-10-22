@@ -289,6 +289,28 @@ local function instanceFor(pid, key, now)
     inst.lastApplied = now
     return inst
 end
+local function allyInLane(team, lane, h, bounds)
+    return h.alive and not h.unit:IsNull() and inLane(
+        team,
+        lane,
+        h.unit:GetLocation(),
+        bounds
+    )
+end
+--- Where a lane enemy counts: a visible, usable hero at its location (with the unit), or one out of sight at its
+-- last-seen location within MISSING_COUNTS seconds. Undefined when it does not count.
+local function countedEnemy(e)
+    if e == nil or e.location == nil then
+        return nil
+    end
+    if e.visible then
+        return usable(e.unit) and ({
+            unit = e.unit,
+            loc = e.unit:GetLocation()
+        }) or nil
+    end
+    return e.timeSinceSeen <= MISSING_COUNTS and ({loc = e.location}) or nil
+end
 local function gather(bot, snap, now)
     local pid = bot:GetPlayerID()
     local team = bot:GetTeam()
@@ -299,12 +321,7 @@ local function gather(bot, snap, now)
     local ourLaners = 0
     local ourMax = 0
     for ____, h in ipairs(snap.allies) do
-        if h.alive and not h.unit:IsNull() and inLane(
-            team,
-            lane,
-            h.unit:GetLocation(),
-            bounds
-        ) then
+        if allyInLane(team, lane, h, bounds) then
             ourLaners = ourLaners + 1
         end
         if h.assigned then
@@ -321,27 +338,11 @@ local function gather(bot, snap, now)
     local theirUltReady = false
     for ____, e in ipairs(LaneState.Enemies(bot, lane)) do
         do
-            local __continue66
+            local __continue70
             repeat
-                if e == nil or e.location == nil then
-                    __continue66 = true
-                    break
-                end
-                local unit = e.visible and usable(e.unit) and e.unit or nil
-                local loc = unit ~= nil and unit:GetLocation() or e.location
-                if not inLane(team, lane, loc, bounds) then
-                    __continue66 = true
-                    break
-                end
-                if unit == nil then
-                    if not e.visible and e.timeSinceSeen <= MISSING_COUNTS then
-                        enemiesNear = enemiesNear + 1
-                        theirMax = math.max(
-                            theirMax,
-                            GetHeroLevel(e.pid)
-                        )
-                    end
-                    __continue66 = true
+                local counted = countedEnemy(e)
+                if counted == nil or not inLane(team, lane, counted.loc, bounds) then
+                    __continue70 = true
                     break
                 end
                 enemiesNear = enemiesNear + 1
@@ -349,6 +350,12 @@ local function gather(bot, snap, now)
                     theirMax,
                     GetHeroLevel(e.pid)
                 )
+                local unit = counted.unit
+                if unit == nil then
+                    __continue70 = true
+                    break
+                end
+                local loc = counted.loc
                 if not theirUltReady and ultReady(
                     pid,
                     unit,
@@ -363,9 +370,9 @@ local function gather(bot, snap, now)
                     target = unit
                     targetDist = d
                 end
-                __continue66 = true
+                __continue70 = true
             until true
-            if not __continue66 then
+            if not __continue70 then
                 break
             end
         end
@@ -417,53 +424,43 @@ local function gather(bot, snap, now)
     end
     return {inputs = inputs, target = target}
 end
---- Heroes in `bot`'s lane by the read's rules: allies standing in it, and enemies visible in it or last seen in it
--- within MISSING_COUNTS seconds.
-function ____exports.LaneCounts(bot, snap)
+--- Heroes in `bot`'s lane by the read's rules (allies standing in it, enemies counted in it), and enemies counted within `radius` of the bot.
+function ____exports.LaneCounts(bot, snap, radius)
     local team = bot:GetTeam()
     local lane = snap.lane
     local bounds = laneBounds(team, lane)
+    local botLoc = bot:GetLocation()
     local allies = 0
     for ____, h in ipairs(snap.allies) do
-        if h.alive and not h.unit:IsNull() and inLane(
-            team,
-            lane,
-            h.unit:GetLocation(),
-            bounds
-        ) then
+        if allyInLane(team, lane, h, bounds) then
             allies = allies + 1
         end
     end
     local enemies = 0
+    local enemiesNearBot = 0
     for ____, e in ipairs(LaneState.Enemies(bot, lane)) do
         do
-            local __continue79
+            local __continue81
             repeat
-                if e == nil or e.location == nil then
-                    __continue79 = true
+                local counted = countedEnemy(e)
+                if counted == nil then
+                    __continue81 = true
                     break
                 end
-                local unit = e.visible and usable(e.unit) and e.unit or nil
-                if unit == nil and (e.visible or e.timeSinceSeen > MISSING_COUNTS) then
-                    __continue79 = true
-                    break
-                end
-                if inLane(
-                    team,
-                    lane,
-                    unit ~= nil and unit:GetLocation() or e.location,
-                    bounds
-                ) then
+                if inLane(team, lane, counted.loc, bounds) then
                     enemies = enemies + 1
                 end
-                __continue79 = true
+                if dist2D(botLoc, counted.loc) <= radius then
+                    enemiesNearBot = enemiesNearBot + 1
+                end
+                __continue81 = true
             until true
-            if not __continue79 then
+            if not __continue81 then
                 break
             end
         end
     end
-    return {enemies = enemies, allies = allies}
+    return {enemies = enemies, allies = allies, enemiesNearBot = enemiesNearBot}
 end
 local function compute(bot, now)
     if now < 0 or not LaneFightConfig.IsActive() then
