@@ -25,7 +25,9 @@ local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) en
 -- `camps` is a list of { type, location }; spawner idx follows list order.
 local function world(skill, opts)
 	opts = opts or {}
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry })
+	-- A support at a camp leaves its core alone to the transitions caution, whose notice delay draws randoms (and whose
+	-- level changes the core's plan); these tests queue exact stacking rolls, so caution stays off.
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry, transitions = { Caution = false } })
 	T = opts.t or 100
 	CURRENT_TEAM = 2
 	OBSERVER = 5

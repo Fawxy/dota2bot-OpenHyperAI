@@ -501,7 +501,7 @@ end
 do
 	local function read(path) return io.open(HARNESS_DIR .. "/../../" .. path, "r"):read("a") end
 	check("farm mode prefers a marked stacked camp", read("bots/mode_farm_generic.lua"):find("preferedCamp = J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp", 1, true) ~= nil)
-	check("rune mode takes the lane's rune contest desire", read("bots/mode_rune_generic.lua"):find("math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot))", 1, true) ~= nil)
+	check("rune mode takes the lane's rune contest desire", read("bots/mode_rune_generic.lua"):find("math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot),", 1, true) ~= nil)
 	local loc = read("bots/FunLib/localization.lua")
 	for _, key in ipairs({ "say_lane_they_pull_top", "say_lane_they_pull_mid", "say_lane_they_pull_bot", "say_lane_their_sup_missing", "say_lane_they_freeze", "say_lane_ss_mid" }) do
 		local _, n = loc:gsub(key .. " = ", "")

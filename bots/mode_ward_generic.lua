@@ -56,7 +56,11 @@ function GetDesireHelper()
     -- Observer
     if J.CanCastAbility(ObserverWard) then
         local hAvailabeObserverWardSpots = W.GetAvailabeObserverWardSpots(bot)
-        hTargetSpot = W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots)
+		-- The humaniser's lane pick goes first; if the checks below reject it, the upstream closest spot is tried.
+		local hLaneSpot = J.Humaniser.Transitions.PickLaneWard(bot, hAvailabeObserverWardSpots)
+		local tSpots = { hLaneSpot, W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots) }
+		for i = 1, 2 do
+			hTargetSpot = tSpots[i]
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or J.IsRealInvisible(bot)) then
 			if DotaTime() < 0 and DotaTime() > (J.IsModeTurbo() and -45 or -60) then
 				return BOT_MODE_DESIRE_ABSOLUTE
@@ -64,9 +68,11 @@ function GetDesireHelper()
 
 			if DotaTime() > fLastWardPlantTime + 1.0 then
 				if GetUnitToLocationDistance(bot, hTargetSpot.location) <= 3200 then
+					if hTargetSpot == hLaneSpot then J.Humaniser.Transitions.ConfirmLaneWard(bot, hTargetSpot) end
 					return BOT_MODE_DESIRE_VERYHIGH
 				end
 			end
+		end
 		end
     end
 

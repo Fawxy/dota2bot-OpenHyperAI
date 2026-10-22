@@ -80,6 +80,8 @@ export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemie
 
 /** Lane position override for the final move; returns `loc` itself when nothing applies. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
+    const override = LaneHooks.PositionOverride(bot, loc);
+    if (override !== loc) return override;
     let adjusted = LaneTech.AdjustPosition(bot, loc);
     if (adjusted === loc) adjusted = Counter.AdjustPosition(bot, loc);
     if (adjusted !== loc || !LaneConfig.IsOn("Harass") || CampJobs.Covering(bot)) return adjusted;
@@ -115,8 +117,8 @@ export function SupersedesHarass(_bot: Unit): boolean {
 
 /** 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human). */
 export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], etiquette: boolean): boolean {
-    // No trades while the support is away on a camp (CampJobs.CoverTick).
-    if (CampJobs.Covering(bot)) return false;
+    // No trades while the support is away on a camp (CampJobs.CoverTick) or while caution suppresses them (task 12).
+    if (CampJobs.Covering(bot) || LaneHooks.TradesSuppressed(bot)) return false;
     return Harass.Think(bot, allyCreeps, enemyCreeps, enemies, etiquette);
 }
 

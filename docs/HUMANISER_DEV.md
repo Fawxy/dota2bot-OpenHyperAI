@@ -120,6 +120,16 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 | `lane_cover` | A core starts or stops playing safe while its support is on a camp | `pid state` (`start`/`end`) `partner via` (`job`: this module holds the support's job; `camp`: the support is seen at a pull camp) `kind` / `dur` |
 | `lane_stack` | A stack's outcome settled, as the `[H:lane] stack` line | `pid camp type aggro planned before after grade stacked assumed` (`grade` is timing only; `stacked=1` when the count rose, or when assumed; `assumed=1` is the `stack-assumed` case) |
 | `lane_eq` | Once per team and lane per wave cycle, at the first snapshot refresh at or after `Timing.EqSampleAt` (10 s) into the cycle. The sample for fitting `ForecastModel.K` | `team lane kind eq imb feq a e` (`kind` safe, off or mid; `a`/`e` ally and enemy creep counts) |
+| `rune_skip` | A mid's rune desire stays under `MidRuneSkipDesire` within `MidRuneSkipWindow` of a power spawn, once per spawn | `pid spawn target status raw desire laning gate` |
+| `tr_rotate` | A support's rotation decision for a power spawn, once per spawn (and again if it is called off) | `pid spawn go side leaveAt reason` (`ok`, `roll`, `late`, `phase`, `contested`, a busy or lane-can't-spare reason, `mistake`, `pos4 going`/`pos4 closer`), `enemies ours` on `contested` |
+| `tr_rune_hold` | A rotating support at its spawned rune starts holding it for our mid, or takes it | `pid spawn state` (`hold`/`take`) `reason` (`enemy`, `late`, `max`) `mid` (our mid's distance to the spot) |
+| `tr_caution` | The applied caution level changed, including the drop to 0 when laning ends | `pid level alone missing lane` |
+| `tr_tp` | An enemy TP the team can see was cast (team-wide, repeats per module instance) | `team enemy x y remaining` |
+| `tr_tp_react` | A bot's response to an enemy TP to its lane locked in, or was downgraded from `setup` to `back` | `pid enemy mode lane until` |
+| `tr_ward` | The early lane-ward pick's outcome changed for a bot (inside `WardFrom`–`WardTo`, for the lane's support) | `pid lane result dist` (`roll`, `no-anchor`, `planted`, `covered` with the covering ward's distance, `far` with the nearest spot's distance, `picked`) |
+| `tr_ward_go` | The ward mode accepted a lane-ward pick after its own safety checks | `pid key x y` |
+| `tr_laning` | A bot's own laning state changed (not reported at the start, when it is laning) | `pid laning why` (`phase`, `tower`, `smoke`, `farm`) |
+| `tr_lost` | The lost-lane response started or stopped | `pid lost reason deaths lhpm expected levelGap` (`reason` the rule that fired; `latched` once held; `phase` at the end of laning) |
 | `game_end` | An ancient fell or post-game started | |
 | `lua_error` | A guarded humaniser entry point threw (`Telemetry.LuaErrors`) | `pid where n msg tb` (`where` e.g. `Intent.Resolve`, `Perception.FilterNearbyEnemies`, `Tick`; `n` running count; `tb` up to six `file.lua:line(fn)` frames, absent for a stack overflow) |
 
@@ -758,3 +768,92 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 - Frame cost with 2 bars and 2 watched creeps (spike item 7).
 
 **Manual test checklist:** see the "Last-hit trainer (14)" block in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md).
+
+## Transitions (12)
+
+Lane safety and laning-phase transitions. Spec: `handoffs/12-lane-safety-and-phase-transitions.md`. Code lives in `typescript/bots/FunLib/humaniser/transitions/` (generated Lua beside the TS). Kill switch: `Customize.Humaniser.Transitions.Enable = false` (or `Humaniser.Enable = false`) restores upstream behaviour for every hook below: rune target `nil`, mid-rune desire 0, ward pick `nil`, farm gate unchanged, `AdjustPosition` returns `loc`, trades not suppressed, no claims, no chat, and no `GetUnitList` or `GetIncomingTeleports` calls. Offline, `tests/humaniser/test_transitions_core.lua` ("Regression pin") runs each hook's scenario enabled first (so the hook fires) and then disabled, and each sub-flag off on its own. The rune and ward modes' `GetDesire` paths run offline against stubbed worlds (`test_lane_rune_mode.lua`, `test_lane_ward_mode.lua`); the farm and laning mode files cannot be loaded offline, so their call sites are covered by the in-game checklist ("Transitions (12)" in [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md)).
+
+### Module map
+| Module | Role |
+|---|---|
+| `settings` | `DEFAULTS` for every number (`settings.ts:14`), `Get()` deep merge of `Customize.Humaniser.Transitions`, `IsActive()`, `IsOn(flag)` (`settings.ts:180`), `Lerp(pair, skill)` |
+| `runes` | One rule table for the power, water, bounty and wisdom spawns (`RUNE_RULES`, 7.41f), `NextSpawn`, power-spot lookup named by position, not by `RUNE_POWERUP` index |
+| `busy` | `IsBusy(bot, windowEnd)` (`busy.ts:112`) and `LaneCanSpare(bot, strict)` (`busy.ts:133`), with pure truth-table versions `IsBusyPure` / `LaneCanSparePure` |
+| `mid_runes` | Our pos 2 takes power runes: focus window, spot choice, floor claim (`transitions:mid_rune`), `rune_skip` telemetry |
+| `rotation` | Pos 4 / pos 5 rotate to the power rune beside our mid (`Decide` `rotation.ts:89`, `Tick` `rotation.ts:212`): `transitions:rotate` floor claim, rune-target override, mid contest floor |
+| `caution` | Alone-core and missing-enemy caution level, `AdjustPosition`, `SuppressTrades`, `ss <lane>` callout, retreat/attack scale claims (`transitions:caution`) |
+| `teleports` | Reads `GetIncomingTeleports` once per team per 0.25 s; backs off or sets up through `Caution.ForceLevel` / `ForceSetup` |
+| `lane_ward` | Early lane ward: `GANK_ANCHORS` (`lane_ward.ts:16`), `Pick`, `Confirm`, ward floor claim (`transitions:ward`) |
+| `phase` | Per-bot laning end (`IsLaningFor` `phase.ts:117`), the laning gate for caution, TPs and rotations (`LaningTransitions` `phase.ts:140`), lost-lane detector (`LaneLost` `phase.ts:192`), `FarmAllowedInLaning` (`phase.ts:322`), Laning caps (`transitions:phase`, `transitions:lostlane`), chat |
+| `transitions` | Facade the hand-written Lua calls (`transitions.ts`; skips the trainer self-test bot), overlay |
+
+Imports point down this table. A lane module that needs an answer from a transitions module reads it through a probe registered in `lane_hooks.ts`; each module registers its probes at load (`RegisterProbes`: `caution.ts:265`, `rotation.ts:257`, `teleports.ts:176`), so a test that calls `Hooks.ResetHooks()` must re-register them (`LaneFresh` does).
+
+`Transitions.Tick(bot)` runs every frame from `index.ts:128` (inside `Humaniser.Tick`, called from `ItemUsageThink`). Each module does its scans at most every `Refresh = 0.5` s per bot (`TpRefresh = 0.25` s per team for enemy TPs) and reuses `LaneState.Enemies` / `LaneState.ForBot`, so 12 adds no scan of its own except the ward check (an `AlliedWards` read, at most once per 5 s per team, `WardScanPeriod`). Enemy positions come only from `LaneState.Enemies` (visible or `GetHeroLastSeenInfo`); an unseen hero's handle is never read. `index.ts:163` wraps the facade in `Telemetry.GuardModule` with the upstream fallbacks, so a crash inside a hook falls back to upstream for that call.
+
+### Flags
+`Customize.Humaniser.Transitions.<Flag>` in `bots/Customize/general.lua:162`. Every other number lives in `settings.ts` `DEFAULTS` and can be overridden by a table of the same name under `Transitions` (a lerp pair merges per side).
+
+| Flag | Default | Turning it off disables |
+|---|---|---|
+| `Enable` | true | Everything |
+| `MidRunes` | true | Our mid walks to and waits for power runes (`mid_runes`, the rune-mode focus) |
+| `Rotation` | true | Pos 4 / pos 5 power-rune rotations, the rune-target override, the mid contest floor, `rune lost` / `coming mid` chat |
+| `Caution` | true | Alone-core and missing-enemy caution: position offset, retreat/attack scale, trade suppression, plan `FREEZE`/`HOLD`, `ss <lane>` callout |
+| `Teleports` | true | Enemy-TP reaction (back off or set up on the TP) and the `GetIncomingTeleports` read. Independent of `Caution`: a TP still raises the level with `Caution = false`, and caution still works with `Teleports = false` |
+| `LaneWard` | true | The early lane ward pick and its floor |
+| `Phase` | true | Per-bot laning end (a core with a farm item farms, a support past level 6 leaves) and its Laning cap |
+| `LostLane` | true | Lost-lane detection and response (core to the jungle, support roams/suggests) |
+
+### Hooks
+| Hook (facade, `transitions.ts`) | Called from | Upstream value | Implementation |
+|---|---|---|---|
+| `Tick` (`:48`) | `index.ts:128` | none | calls each module's `Tick` (not for the trainer self-test bot) |
+| `MidRuneFocus` (`:63`), `MidRunesOn` (`:59`), `MidRuneYield` (`:68`), `MidRuneSkip` (`:72`) | `mode_rune_generic.lua:71`, `:529`, `:226-227`, `:235` | `false`, `false`, none, none | `mid_runes.ts:149`, `:60`, `:164`, `:169` |
+| `RuneTarget` (`:77`) | `mode_rune_generic.lua:72`, `:534` (yields once the rune is up with an allied core within 1,200 of the spot) | `nil` | `rotation.ts:153` |
+| `MidRuneDesire` (`:82`) | `mode_rune_generic.lua:212` (inside the power-rune `math.max`) | `0` | `rotation.ts:163` |
+| `RotationYield` (`:87`) | `mode_rune_generic.lua:231` | none | `rotation.ts:253` |
+| `PickLaneWard` (`:98`) | `mode_ward_generic.lua:60` (tried first; upstream's closest spot is tried when the ward mode rejects it) | `nil` | `lane_ward.ts:92` |
+| `ConfirmLaneWard` (`:103`) | `mode_ward_generic.lua:71` | none | `lane_ward.ts:133` |
+| `FarmAllowedInLaning` (`:108`) | `mode_farm_generic.lua:135` | `false` | `phase.ts:322` |
+| position probe | `Lane.AdjustPosition` (`lane.ts:81`), called from `mode_laning_generic.lua:292` | `loc` itself | `caution.ts:196`, registered `:267` |
+| trade probe | `Lane.HarassThink` (`lane.ts:120`) | `false` | `caution.ts:205`, registered `:268` |
+| caution probe | `LanePlan` core pick (`lane_plan.ts:297`): a cautious core never picks `SHOVE` | `false` | `caution.ts:266` |
+| rotation probe | `LanePlan` core pick (`lane_plan.ts:297`), `lane_planner.ts:167` (shove before rotating) | `false` | `rotation.ts:258` |
+| TP busy probe | `Busy.LaneCanSpare` (`enemyTpIncoming`, `busy.ts:177`) | `false` | `teleports.ts:177` |
+| busy probe (11) | `Busy.IsBusy` (`busy.ts:120`) | `false` | `lane_hooks.ts:34`; nothing registers yet |
+
+Claims (all `tier: "TRANSITION"`, re-posted each `Tick` while they apply): `transitions:mid_rune` and `transitions:rotate` (Rune floors), `transitions:ward` (Ward floor), `transitions:caution` (Retreat scale up to 1.3, Attack scale down to 0.7), `transitions:phase` and `transitions:lostlane` (Laning caps at `LaningCap` 0.3). Chat goes through `Orders.Say` and only for allies of humans; the four localization blocks carry `say_rune_coming_mid`, `say_rune_lost`, `say_ss_<lane>`, `say_going_jungle`, `say_lane_lost_roam`.
+
+### Plan calls (see `.superpowers/sdd/.../plan-calls.md`)
+1. **Rotation route:** a Rune-mode floor claim plus a rune-target override in `mode_rune_generic.lua`, not an internal GATHER order, so the support keeps the rune mode's pickup logic. The power-rune gate (`J.IsCore(bot) or not J.IsThereCoreNearby(1200)`) already gives our mid priority.
+2. **No TP for rotations:** reachability is walking time only (`PathFactor` 1.2).
+3. **Lane swap is out of scope:** OHA has no assigned-lane setter. A lost-lane core goes to the jungle and says `going jungle`, never `swapping`.
+4. **Dependencies not yet merged** are reached through probes or placeholders: 11's fights and commits through `SetBusyProbe`; 11's trade windows by suppressing the shared harass tool; 10's expected last-hit rate by a local lerp (`ExpectedLHPerMin`, `settings.ts:133`); 08's rotation mistakes by a local skill roll (`MistakeChance`, `rotation.ts:114`).
+5. **Ward anchors are new data:** six hand-placed points (team x lane) in `GANK_ANCHORS`; the lane ward picks the available early-game observer spot nearest the anchor. Calibrated in game.
+6. **The alone-core position offset only applies where OHA owns laning** (`Lane.OwnsLaning`); Valve's C++ laning cannot be moved. The claim-based parts apply to every bot.
+
+### Rulings made during implementation that differ from the spec or plan
+- **Mids take power runes (Task 3b):** `MidRunes` applies to every pos 2 bot, enemy bots included, and fixes four upstream causes of mids leaving power runes. Rotations depend on it.
+- **Rotation probe:** true only once the support has left, so the lane plan (keyed on the core) does not see "rotating" for the support's lane; the spec's shove-before-rune (07 B3) already covers the mid.
+- **"Spare" scope:** `SpareLaneRadius 3500` limits "spare" to the lane's opponents; `LaneState.Enemies` skips a hero never seen (no `GetHeroLastSeenInfo`), so an enemy unseen all game does not block a rotation. "Seen within 5 s" means visible, or unseen for at most 5 s.
+- **Missing duration cap:** an enemy unseen longer than `MissingMaxAge` 60 s no longer counts as missing (the spec gives no cap), so an enemy support farming elsewhere does not pin a core at caution 1 for the rest of laning.
+- **Laning-only transitions:** caution (level, claims, `ss <lane>` callout), the TP reaction and support rotations apply only while `Phase.LaningTransitions` holds: `IsLaningFor` with the `Phase` flag on, the global laning phase otherwise. Laning ending releases `transitions:caution` / `transitions:rotate` and the forced TP state at once. The mid-rune floor is deliberately all game.
+- **Rotation and the mid's rune:** the forced rotation target yields once the rune is up and an allied core stands within 1,200 of the spot; the normal pick's closest-ally and core gates then give the core the rune. Before that, a support on its spawned rune holds it for our mid (`Rotation.HoldsRune`, called from the rune mode's `Think`: it stands on the spot without picking up) while the mid is within `ContestMidRadius` (2,500) of the spot. It takes the rune with an enemy hero within `RuneHoldEnemyRadius` (1,200, visible or seen within 5 s), with the mid still not coming `RuneHoldGrace` (3 s) after the spawn, or at `RuneHoldMax` (15 s). The rotation, its floor and the mid's contest desire stay active up to `RuneHoldMax` while the rune lies there (`Rotation.Active`). A rotating partner only leaves the core "alone" once it is more than `CoreAbsentDist` from it.
+- **Lost lane:** the level-gap rule judges cores only (supports by deaths only), and the lost-lane response is latched for the rest of the bot's laning, so jungle last hits and levels do not send it back; `say_going_jungle` is said once per latch.
+- **Spawn-instant rune reads:** a `MISSING` read within `MidRuneSpawnGrace` 1 s of a power spawn is ignored, and `AVAILABLE` clears a spot's empty mark, so a MISSING frame at the spawn instant no longer ends the mid's spawn.
+- **Bounty runes** spawn every 240 s (since 7.38; `RUNE_RULES` in `runes.ts`).
+- **Trainer self-test bot:** skipped by `Transitions.Tick` and every mode hook, as `Lane.PreThink` is (2bf9a81).
+- **Setup is position-only:** TP setup posts no caution claim and no trade suppression, and is gated by `OwnsLaning` like the offset. The setup point is clamped to at least `TpTowerClear` 850 from a live enemy T1 (the spec's 600 would put the bot under the tower). "Our lane T1" in the brief means the enemy T1 of this lane, the only TP target that matters. The TP response is locked when the notice delay ends and only moves one way, setup to back.
+- **Lane ward:** the claim goes live only after the ward mode accepts the spot, and the spot must be within `WardAnchorRadius` 1500 of the anchor, else upstream's choice stands. Dire anchors come from `DIRE_LANE_PHASE` spots, not a mirror of Radiant's.
+- **Last hits and deaths:** the last-hit span starts at the first sample at or after `LostLHFrom` 60 s; deaths count only while the bot was laning. `say_going_jungle` is said once whenever `FarmAllowedInLaning` first turns true, by either the phase end or a lost lane.
+- **Caution flags in 07 fixtures:** `Caution = false` in `test_lane_harass` / `test_lane_stacking` fixtures, whose geometry legitimately trips `IsAlone`.
+
+### Placeholders for later tasks
+- **08 (believable mistakes):** `MistakeChance` in `rotation.ts` is a local skill roll; it skips `LaneCanSpare` but never `IsBusy`. Replace with 08's mistake source.
+- **10 (last-hit accuracy):** `ExpectedLHPerMin` lerp(3, 7) in `settings.ts:133` stands in for 10's expected rate; read by `phase.ts:204`.
+- **11 (lane trading and kill setups):** register `LaneHooks.SetBusyProbe` for fights and kill-setup commits (`lane_hooks.ts:34`); 11's trade windows should replace the harass-tool suppression in `caution.ts:205`.
+- **13 (regen-aware sharing):** `carrying: false` in `busy.ts:128` ("carrying an item to deliver") is a placeholder until 13.
+
+### TODO (in-game)
+Spelled out in the "Transitions (12)" checklist of [HUMANISER_TEST_PLAN.md](HUMANISER_TEST_PLAN.md): the spec's seven scenarios, `GetIncomingTeleports` listing a TP to a fogged tower (8), walking each `GANK_ANCHORS` point (9), mid-rune behaviour and `GetRuneStatus` semantics (10), that `ItemUsageThink` runs while the bot is dead so the death edge is seen (11), and the 850-unit TP setup clamp plus the 60 s missing cap (12), and post-laning behaviour (13).
