@@ -127,6 +127,8 @@ export const DEFAULTS = {
         MaxTravel: 12,
         PreContestLead: 2,
         PreContestWait: 4,
+        // After a pre-contest the enemy did not pull into (enemy-in-lane, no-pull), the bot waits this long before another in that lane.
+        PreContestCooldown: 60,
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,

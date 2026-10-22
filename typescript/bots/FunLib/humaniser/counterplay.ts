@@ -69,6 +69,8 @@ interface ObserverState {
     counterUntil?: number;
     runeContestUntil?: number;
     campBlockAt?: number;
+    /** The latest pre-contest: its camp's pull signals in the aggro's wave cycle and the next count as answered. */
+    preContested?: { campIdx: number; cycle: number };
     said: Record<string, number>;
 }
 
@@ -191,7 +193,7 @@ export function FreezeSuspected(eqHistory: number[], enemyDeniesPerCycle: number
 export function EnemyPullExpected(i: PullExpectedInput): number | undefined {
     if (!i.supportInLane || i.pullSec.length === 0) return undefined;
     const cfg = settings();
-    if (LaneState.LaneScore(i.enemyDesiredEq, -i.forecastEq, 0) > cfg.Planner.SmallDriftBelow) return undefined;
+    if (LaneState.LaneScore(i.enemyDesiredEq, -i.forecastEq, 0) > cfg.Planner.FullPullBelow) return undefined;
     const aggroAt = CampJobs.NextAggroTime(i.now, i.pullSec, cfg.Timing.PullPeriod);
     return CampJobs.CampsUp(aggroAt) ? aggroAt : undefined;
 }
@@ -323,16 +325,20 @@ function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy,
     return undefined;
 }
 
-/** Gate and skill are checked before observe so no notice roll is spent below the gate. */
-function pullExpectedSignal(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], camp: Camps.CampJobData, support: LaneState.LaneEnemy | undefined, now: number): void {
-    if (!LaneConfig.IsOn("PreContest") || LaneConfig.SkillOf(bot) < settings().Gates.PreContest || camp.pull === undefined) return;
-    const aggroAt = EnemyPullExpected({
+function expectedAggro(s: LaneState.LaneSnapshot, camp: Camps.CampJobData, support: LaneState.LaneEnemy | undefined, now: number): number | undefined {
+    return EnemyPullExpected({
         now,
         forecastEq: s.forecastEq,
         enemyDesiredEq: LaneState.DesiredEq(LaneState.LaneKindOf(enemyTeamOf(s.team), s.lane), false),
         pullSec: PullTiming.ForCamp(camp, false).seconds,
         supportInLane: support !== undefined && isLaner(support, s),
     });
+}
+
+/** Gate and skill are checked before observe so no notice roll is spent below the gate. */
+function pullExpectedSignal(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], camp: Camps.CampJobData, support: LaneState.LaneEnemy | undefined, now: number): void {
+    if (!LaneConfig.IsOn("PreContest") || LaneConfig.SkillOf(bot) < settings().Gates.PreContest || camp.pull === undefined) return;
+    const aggroAt = expectedAggro(s, camp, support, now);
     if (aggroAt === undefined) return;
     const key = `pexp:${camp.campIdx}:${math.floor(aggroAt / settings().Timing.WaveCycle)}`;
     observe(bot, st, key, { kind: "pull_expected", lane: s.lane, at: now, campIdx: camp.campIdx, enemyPid: support?.pid, aggroAt }, s, enemies);
@@ -449,10 +455,15 @@ export function Tick(bot: Unit): void {
     stackSignals(bot, st, s, enemies, now);
 }
 
+/** A pull_expected is first seen about a cycle before its aggro, so it lives until that aggro rather than CounterSignalTTL. */
 function live(st: ObserverState, now: number): [string, Signal][] {
     const ttl = settings().Timing.CounterSignalTTL;
     const result: [string, Signal][] = [];
-    for (const [key, sig] of pairs(st.instances)) if (sig.noticed && now - sig.at <= ttl) result.push([key, sig]);
+    for (const [key, sig] of pairs(st.instances)) {
+        if (!sig.noticed) continue;
+        const alive = sig.kind === "pull_expected" && sig.aggroAt !== undefined ? now <= sig.aggroAt : now - sig.at <= ttl;
+        if (alive) result.push([key, sig]);
+    }
     return result;
 }
 
@@ -536,7 +547,7 @@ function runPunish(bot: Unit, st: ObserverState, enemies: LaneState.LaneEnemy[],
 function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[], now: number): boolean {
     if (sig.campIdx === undefined || sig.aggroAt === undefined) return false;
     if (LaneRoles.CampJobOwner(s) !== bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return false;
-    if (!LaneRoles.PartnerSafe(bot, s, enemies)) return false;
+    if (CampJobs.PreContestResting(bot, s.lane) || !LaneRoles.PartnerSafe(bot, s, enemies)) return false;
     const data = Camps.ByIdx(sig.campIdx);
     const spawner = Camps.SpawnerByIdx(sig.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;
@@ -546,18 +557,34 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
     const leaveBy = sig.aggroAt - cfg.Timing.PreContestLead - travel;
     if (travel > cfg.Timing.MaxTravel || now > leaveBy || now < leaveBy - 1) return false;
     if (!pathSafe(bot, s, lookout, enemies, sig.enemyPid)) return false;
+    // The signal can be a cycle old by now: the lane must still be drifting and their support still in it.
+    const theirs = Camps.ByIdx(sig.campIdx, enemyTeamOf(s.team));
+    const support = enemyAt(enemies, s.lane, (pos) => pos >= 4);
+    if (theirs === undefined || expectedAggro(s, theirs, support, now) !== sig.aggroAt) return false;
     return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, preAggroAt: sig.aggroAt });
+}
+
+function preContested(st: ObserverState, sig: Signal): boolean {
+    const pc = st.preContested;
+    if (pc === undefined || sig.campIdx !== pc.campIdx) return false;
+    const cycle = cycleOf(sig.at);
+    return cycle === pc.cycle || cycle === pc.cycle + 1;
 }
 
 function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
     for (const [key, sig] of live(st, now)) {
         if (st.responded[key] === true) continue;
         if (sig.kind === "pull_expected") {
-            if (!preContest(bot, s, sig, enemies, now)) continue;
+            if (sig.campIdx === undefined || sig.aggroAt === undefined || !preContest(bot, s, sig, enemies, now)) continue;
             st.responded[key] = true;
+            st.preContested = { campIdx: sig.campIdx, cycle: cycleOf(sig.aggroAt) };
             return;
         }
         if (sig.kind !== "pull" && sig.kind !== "half_pull") continue;
+        if (preContested(st, sig)) {
+            st.responded[key] = true;
+            continue;
+        }
         if (stronger(bot)) {
             const laner = remainingLaner(s, enemies, sig.enemyPid);
             if (laner === undefined) continue;

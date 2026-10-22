@@ -99,6 +99,7 @@ ____exports.DEFAULTS = {
         MaxTravel = 12,
         PreContestLead = 2,
         PreContestWait = 4,
+        PreContestCooldown = 60,
         EqSampleAt = 10,
         WatchSec = 8,
         WatchEvery = 0.25,
