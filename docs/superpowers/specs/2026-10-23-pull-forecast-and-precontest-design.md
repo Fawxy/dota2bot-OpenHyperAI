@@ -88,7 +88,7 @@ EnemyPullExpected(s, enemyLanePullCamp, now): { campIdx, aggroAt } | undefined
 
 - **The enemy's view:** `enemyEq = −s.forecastEq`. Their `desiredEq` is `DesiredEq` for the lane kind on their side: our off lane is their safe lane, and the reverse. `enemyScore = LaneScore(desired_e, enemyEq, 0)`.
 - **Expected if:**
-  - `enemyScore ≤ Planner.SmallDriftBelow` (they'd half or full pull),
+  - `enemyScore ≤ Planner.FullPullBelow` (they'd full pull; `forecastEq ≤ 0.2` at default config),
   - the enemy has a camp for this lane (`Camps.PullCampsFor(enemyTeam, s.lane)`, the list `campBlock` already uses),
   - the enemy has a support-position laner in this lane (`LaneState.Enemies` with position 4 or 5, seen within `ExposureSeen`),
   - and the camp is up (`CampsUp`).
@@ -106,7 +106,9 @@ The bot reads the enemy's lane at full forecast weight, with no `Foresight` blen
   - nothing committed this cycle (`LanePlanner.Committed`) and no live camp job,
   - `pathSafe` to the watch point,
   - `PartnerSafe`.
+  - not within `Timing.PreContestCooldown` (60 s) of this bot's last pre-contest in the lane ending `enemy-in-lane` or `no-pull`, so a lane the enemy keeps not pulling doesn't take the support out every cycle.
 - **Start time:** early enough to reach the watch point `Timing.PreContestLead` (2 s) before the predicted aggro second, at most `MaxTravel` away.
+- **Signal lifetime and departure re-check:** the `pull_expected` signal stays live until its own `aggroAt` (other signals keep `CounterSignalTTL`), since it is first seen about a slot ahead. At departure `EnemyPullExpected` is run again on the current snapshot with a fresh support-in-lane check, and the job starts only if it still gives the same `aggroAt`.
 
 **The job.** It's the existing `contest` job, started early with a new `lookout` phase ahead of its attack phase. It commits `"contest"` for the cycle, so our own pull and the pre-contest can't both run.
 
@@ -116,16 +118,16 @@ The bot reads the enemy's lane at full forecast weight, with no `Foresight` blen
   - **Enemy support seen near our front** (`Radii.Exposure`) after `aggroAt − PreContestLead`: they aren't pulling, so end the job with reason `enemy-in-lane` and walk back.
   - **Nothing by `aggroAt + Timing.PreContestWait`** (starting value 4 s): end with reason `no-pull`.
   - **Usual safety aborts** (partner low HP or dived, own HP, enemy hero near), with the existing reasons.
-- **Same instance seen by `respondToPull` later:** if the pull happens anyway, the instance is marked responded, so it doesn't start a second contest.
+- **Same pull seen by `respondToPull` later:** if the pull happens anyway, the camp's reactive `pull` / `half_pull` instances in the aggro's wave cycle and the next count as responded, whether observed before or after the pre-contest started, so it doesn't start a second contest.
 
-**Why there's rarely a conflict with our own pull:** the enemy wants to pull when the lane drifts towards *their* tower, which is when ours looks fine to us. The per-cycle commit settles the rare overlap: whichever starts first owns the cycle.
+**Overlap with our own pull:** the enemy wants to pull when the lane drifts towards *our* tower. The two bands overlap: at default config we full-pull from `eqPos ≥ −0.2` (half pull from `−0.5`), and we expect their pull at `forecastEq ≤ 0.2`, so a lane near the middle can read both ways. The per-cycle commit settles it: whichever of our pull and the pre-contest starts first owns the cycle, and the other doesn't start.
 
 ### 4. Telemetry
 
 - **`lane_plan`:** add `imb`, `feq` (forecast eq), `w` (foresight weight), `fscore` and `apow`/`epow` to the `planner` gate fields, in `camp_jobs.ts` `notePlan`.
 - **New `lane_eq` event:** one per team and lane per wave cycle, at a fixed cycle second (`Timing.EqSampleAt`, starting value 10), with `team lane eq imb feq a e`. Emitted from the snapshot refresh when it first passes that second in a cycle. Fitting `K` needs the forecast at time t against the measured `eq` at t + 30 s, which is the next row for the same team and lane.
-- **`lane_job_start`:** a pre-contest gets `pre=1`. **`lane_job_end`:** every contest end is logged with `kind=contest camp reason pre`; `reason` is `no-target`, `timeout`, `enemy-in-lane` or `no-pull`. A contest end is not an abort, so `lane_job_abort` is unchanged.
-- **`tools/hlog` analyser:** add a fit of `Δeq` (next cycle − this cycle) against `imb` per lane kind, printing a suggested `K` and the fit quality. Also add a pre-contest summary: started, converted to an attack, `no-pull`, `enemy-in-lane`.
+- **`lane_job_start`:** a pre-contest gets `pre=1`. **`lane_job_end`:** every contest end is logged with `kind=contest camp reason pre`; `reason` is `no-target`, `timeout`, `enemy-in-lane` or `no-pull`. A contest end is not an abort; a safety abort of a pre-contest goes to `lane_job_abort`, which also gets `pre=1`.
+- **`tools/hlog` analyser:** add a fit of `Δeq` (next cycle − this cycle) against `imb` per lane kind, printing a suggested `K` and the fit quality. Also add a pre-contest summary: started, converted to an attack, `no-pull`, `enemy-in-lane`, aborted.
 - Document the new and changed events in the `HUMANISER_DEV.md` telemetry table.
 
 ### 5. Config summary (`lane_config.ts`)
@@ -141,6 +143,7 @@ The bot reads the enemy's lane at full forecast weight, with no `Foresight` blen
 | `Gates.PreContest` | 0.7 | Minimum skill for pre-contest |
 | `Timing.PreContestLead` | 2 | Seconds early at the watch point |
 | `Timing.PreContestWait` | 4 | Seconds past the aggro second before giving up |
+| `Timing.PreContestCooldown` | 60 | Seconds without another pre-contest in the lane after one ends `enemy-in-lane` or `no-pull` |
 | `Timing.EqSampleAt` | 10 | Cycle second of the `lane_eq` sample |
 | `Radii.PreContestStand` | 400 | Watch point distance from the spawner |
 
