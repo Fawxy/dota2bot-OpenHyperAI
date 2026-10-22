@@ -70,8 +70,9 @@ function ____exports.Choose(i)
     if i.isMid and i.eqPos >= cfg.Thresholds.MidTowerEq and knows("aggro_pull") then
         return pick("aggro_pull", "mid: out of tower range")
     end
+    local score = i.forecastScore or i.laneScore
     if not i.isMid or i.pullCamp then
-        if (i.laneScore <= bands.FullPullBelow or plan.pullForced) and campOk then
+        if (score <= bands.FullPullBelow or plan.pullForced) and campOk then
             if i.stackedPullCamp and knows("stack_pull") and i.enemyLaners > 0 then
                 return pick("stack_pull", "deny: stacked camp")
             end
@@ -79,11 +80,11 @@ function ____exports.Choose(i)
                 return pick("full_pull", plan.pullForced and "pull ordered" or "wave pushed out")
             end
         end
-        if i.laneScore <= bands.SmallDriftBelow and campOk and knows("half_pull") then
+        if score <= bands.SmallDriftBelow and campOk and knows("half_pull") then
             return pick("half_pull", "small drift")
         end
     end
-    if i.laneScore <= bands.AggroCorrectBelow and knows("aggro_pull") then
+    if score <= bands.AggroCorrectBelow and knows("aggro_pull") then
         return pick("aggro_pull", "small correction")
     end
     return pick("none", "lane fine")
@@ -142,6 +143,7 @@ local function buildInput(bot, s, now)
         end
     end
     local plan = role == "support" and LanePlan.ForSupport(bot, s) or LanePlan.View(bot, s)
+    local view = LaneState.ScoreFor(bot, s)
     return {
         skill = LaneConfig.SkillOf(bot),
         role = role,
@@ -149,7 +151,8 @@ local function buildInput(bot, s, now)
         now = now,
         dotaTime = now,
         plan = plan,
-        laneScore = LaneState.ScoreFor(bot, s).laneScore,
+        laneScore = view.laneScore,
+        forecastScore = view.forecastScore,
         eqPos = s.eqPos,
         allyCreeps = s.ally.count,
         enemyCreeps = s.enemy.count,

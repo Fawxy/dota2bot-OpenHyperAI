@@ -82,7 +82,7 @@ function churnSection(game) {
     ];
 }
 
-function counts(m) {
+function mapCounts(m) {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
 }
 
@@ -92,7 +92,7 @@ function laneFightSection(game) {
     if (stats.length === 0) return [];
     const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes', 'mem']];
     for (const b of stats)
-        rows.push([who(game, b.pid), counts(b.windows), counts(b.starts), `${b.took}/${b.fights} took`, counts(b.ends), counts(b.gates), counts(b.aborts), counts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
+        rows.push([who(game, b.pid), mapCounts(b.windows), mapCounts(b.starts), `${b.took}/${b.fights} took`, mapCounts(b.ends), mapCounts(b.gates), mapCounts(b.aborts), mapCounts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
     const out = ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
     const abandons = game.events.filter(e => e.ev === 'lanefight_abandon');
     if (abandons.length > 0) {
@@ -100,6 +100,141 @@ function laneFightSection(game) {
         for (const e of abandons)
             arows.push([fmtT(e.t), who(game, e.pid), e.why, f1(e.since), e.mode, e.ally === undefined ? '-' : who(game, e.ally), e.amode ?? '-', e.atk ?? '-', e.dist === undefined ? '-' : Math.round(e.dist), e.range ?? '-', e.lastatk === undefined ? '-' : f1(e.lastatk)]);
         out.push('', 'partner abandons (what the partner was doing when the commit gave up on it):', table(arows));
+    }
+    return out;
+}
+
+function counts(items) {
+    const m = new Map();
+    for (const x of items) m.set(x, (m.get(x) || 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
+}
+
+// FarmPattern re-logs an unchanged farm_gate reason every GateLogEvery (15 s), so a gap longer than that is time the
+// reason was not holding (a trip, death, another mode) and only counts up to it.
+const FARM_GATE_SPAN = 16;
+
+/** Seconds each farm_gate reason held for `pid`: from its line to the next farm event, capped at FARM_GATE_SPAN. */
+function gateTime(farm, pid) {
+    const mine = farm.filter(e => e.pid === pid);
+    const secs = new Map();
+    mine.forEach((e, i) => {
+        if (e.ev !== 'farm_gate') return;
+        const next = mine[i + 1];
+        const span = Math.min(next ? next.t - e.t : FARM_GATE_SPAN, FARM_GATE_SPAN);
+        secs.set(e.why, (secs.get(e.why) || 0) + span);
+    });
+    return [...secs.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * FarmPattern per core: trips, camps, stacks and whether they landed (lane_stack), how trips ended, pace, and what
+ * kept the core from starting trips (farm_gate time by reason).
+ */
+function farmSection(game) {
+    const farm = game.events.filter(e => e.ev.startsWith('farm_'));
+    if (farm.length === 0) return [];
+    const rows = [['player', 'trips', 'camps', 'stacks ok/tried', 'avg s', 'returns', 'ends', 'pace', 'no trip because (s)']];
+    for (const pid of [...new Set(farm.map(e => e.pid))].sort((a, b) => a - b)) {
+        const of = ev => farm.filter(e => e.pid === pid && e.ev === ev);
+        const starts = of('farm_trip_start');
+        const ends = of('farm_trip_end');
+        const stacks = [...starts, ...of('farm_trip_next')].filter(e => e.phase === 'stack');
+        const outcomes = game.events.filter(e => e.ev === 'lane_stack' && e.pid === pid && stacks.some(s => s.camp === e.camp && e.t >= s.t));
+        const pace = starts.length > 0 ? starts[starts.length - 1].pace : undefined;
+        const gates = gateTime(farm, pid).slice(0, 4).map(([why, t]) => `${why} ${Math.round(t)}`).join(', ');
+        rows.push([
+            who(game, pid),
+            starts.length,
+            ends.reduce((a, e) => a + (e.camps || 0), 0),
+            `${outcomes.filter(e => e.stacked === 1).length}/${stacks.length}`,
+            f2(mean(ends.map(e => e.secs).filter(x => typeof x === 'number'))),
+            counts(of('farm_trip_return').map(e => e.why)),
+            counts(ends.map(e => e.why)),
+            pace === undefined ? '-' : String(pace),
+            gates || '-',
+        ]);
+    }
+    return [
+        '',
+        'farm trips (FarmPattern; pace is the latest learned clear-time factor, 1 = prior; no-fit = no camp fits before the next wave):',
+        table(rows),
+    ];
+}
+
+const EQ_PAIR_MIN = 25;
+const EQ_PAIR_MAX = 35;
+
+/** Least squares through the origin of the next wave's eq change on this wave's imbalance, per lane kind. */
+function fitForecast(events) {
+    const byLane = new Map();
+    for (const e of events) {
+        if (e.ev !== 'lane_eq') continue;
+        const key = `${e.team}:${e.lane}`;
+        if (!byLane.has(key)) byLane.set(key, []);
+        byLane.get(key).push(e);
+    }
+    const pairs = new Map();
+    for (const list of byLane.values()) {
+        list.sort((a, b) => a.t - b.t);
+        for (let i = 0; i + 1 < list.length; i++) {
+            const dt = list[i + 1].t - list[i].t;
+            if (dt < EQ_PAIR_MIN || dt > EQ_PAIR_MAX) continue;
+            if (!pairs.has(list[i].kind)) pairs.set(list[i].kind, []);
+            pairs.get(list[i].kind).push({ imb: list[i].imb, d: list[i + 1].eq - list[i].eq });
+        }
+    }
+    const rows = [];
+    for (const [kind, ps] of pairs) {
+        if (ps.length < 2) continue;
+        const sxx = ps.reduce((a, p) => a + p.imb * p.imb, 0);
+        if (sxx === 0) continue;
+        const k = ps.reduce((a, p) => a + p.imb * p.d, 0) / sxx;
+        const m = mean(ps.map(p => p.d));
+        const resid = ps.reduce((a, p) => a + (p.d - k * p.imb) ** 2, 0);
+        const total = ps.reduce((a, p) => a + (p.d - m) ** 2, 0);
+        rows.push({ kind, n: ps.length, k, r2: total === 0 ? 0 : 1 - resid / total });
+    }
+    return rows.sort((a, b) => a.kind.localeCompare(b.kind));
+}
+
+function forecastSection(game) {
+    const out = [];
+    const rows = fitForecast(game.events);
+    if (rows.length > 0) {
+        out.push('', 'forecast fit:');
+        for (const r of rows) out.push(`  ${r.kind} n=${r.n} K=${r.k.toFixed(2)} r2=${r.r2.toFixed(2)}`);
+    }
+    const take = game.events.filter(e => e.kind === 'contest' && e.take === 1);
+    const takeEnds = take.filter(e => e.ev === 'lane_job_end');
+    if (take.length > 0) {
+        const n = reason => takeEnds.filter(e => e.reason === reason).length;
+        const swings = takeEnds.reduce((a, e) => a + (e.swings || 0), 0);
+        const started = take.filter(e => e.ev === 'lane_job_start').length;
+        const aborted = take.filter(e => e.ev === 'lane_job_abort').length;
+        out.push(
+            '',
+            `take-pull: started ${started} swings ${swings} no-creeps ${n('no-creeps')} timeout ${n('timeout')} outnumbered ${n('outnumbered')} low-hp ${n('low-hp')} lane-wave ${n('lane-wave')} aborted ${aborted}`
+        );
+    }
+    const pullSignals = game.events.filter(e => e.ev === 'lane_signal' && (e.kind === 'pull' || e.kind === 'half_pull'));
+    const skips = game.events.filter(e => e.ev === 'lane_take_skip');
+    if (pullSignals.length > 0 || skips.length > 0) {
+        const byReason = new Map();
+        for (const e of skips) byReason.set(e.reason, (byReason.get(e.reason) || 0) + 1);
+        const reasons = [...byReason].map(([r, c]) => `${r} ${c}`).join(' ') || 'none';
+        out.push('', `pull signals: ${pullSignals.length} noticed ${pullSignals.filter(e => e.noticed === 1).length}; take skipped: ${reasons}`);
+    }
+    const pre = game.events.filter(e => e.kind === 'contest' && e.pre === 1);
+    const started = pre.filter(e => e.ev === 'lane_job_start').length;
+    const ends = pre.filter(e => e.ev === 'lane_job_end');
+    const aborted = pre.filter(e => e.ev === 'lane_job_abort').length;
+    if (started > 0 || ends.length > 0 || aborted > 0) {
+        const n = (...reasons) => ends.filter(e => reasons.includes(e.reason)).length;
+        out.push(
+            '',
+            `pre-contest: started ${started} attacked ${n('no-target', 'timeout')} no-pull ${n('no-pull')} enemy-in-lane ${n('enemy-in-lane')} aborted ${aborted}`
+        );
     }
     return out;
 }
@@ -132,6 +267,8 @@ function summary(game) {
     out.push(table(rows));
     out.push(...churnSection(game));
     out.push(...laneFightSection(game));
+    out.push(...farmSection(game));
+    out.push(...forecastSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');
     const cmds = game.events.filter(e => e.ev === 'cmd');
     const pings = game.events.filter(e => e.ev === 'ping');
@@ -193,4 +330,4 @@ function markView(game, n, window, opts = {}) {
     return out.join('\n');
 }
 
-module.exports = { summary, checksText, timeline, markView, gameLine };
+module.exports = { summary, fitForecast, checksText, timeline, markView, gameLine };

@@ -28,6 +28,13 @@ for (const file of files) {
     if (lauxlib.luaL_dofile(L, to_luastring(path.resolve(file))) !== 0) {
         console.error(lua.lua_tojsstring(L, -1));
         failed = true;
+    } else {
+        // A file that never calls finish() would print FAIL lines yet exit clean.
+        lua.lua_getglobal(L, to_luastring('FINISHED'));
+        if (!lua.lua_toboolean(L, -1)) {
+            console.error(`${path.basename(file)}: never called finish()`);
+            failed = true;
+        }
     }
 }
 process.exit(failed ? 1 : 0);

@@ -43,12 +43,26 @@ function CreepMeta:GetAttackTarget() return self.target end
 function CreepMeta:GetHealth() return self.hp end
 function CreepMeta:GetMaxHealth() return self.maxhp end
 function CreepMeta:GetUnitName() return self.name end
-function CreepMeta:IsAlive() return self.hp > 0 end
-function CreepMeta:CanBeSeen() return true end
-function CreepMeta:GetLocation() return self.loc end
+-- `removed`: the engine deleted the creep but a list still holds its handle, as after a death in game.
+function CreepMeta:IsNull() return self.removed == true end
+function CreepMeta:IsAlive()
+	if self.removed then error("Invalid object passed to IsAlive.") end
+	return self.hp > 0
+end
+function CreepMeta:CanBeSeen() return not self.unseen end
+-- `unseen`: a live handle the team cannot see; the engine gives it no location.
+function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
-function CreepMeta:IsNull() return false end
+function CreepMeta:IsNull() return self.removed == true end
+
+-- The engine deletes the creep: fresh queries no longer return it, handles already in a list stay behind.
+function RemoveCreep(c)
+	c.removed = true
+	for _, list in pairs(CREEPS) do
+		for i = #list, 1, -1 do if list[i] == c then table.remove(list, i) end end
+	end
+end
 
 function MakeCreep(o)
 	local c = setmetatable({
@@ -86,11 +100,16 @@ function GetUnitList(t)
 		return r
 	end
 	if t == UnitType.AlliedHeroes then return UNITS[CURRENT_TEAM] end
+	if t == UnitType.AlliedWards then return (WARDS or {})[CURRENT_TEAM] or {} end
 	return {}
 end
 function GetNeutralSpawners() return SPAWNERS end
 -- IMPASSABLE(v) true marks a blocked location (e.g. beyond a map edge); nil means everything is passable.
 function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
+-- Rune API (task 12, 3b: Transitions.Tick reads the power spots). Tests that need runes override these.
+RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = RUNE_STATUS_UNKNOWN or 0, RUNE_STATUS_AVAILABLE or 1, RUNE_STATUS_MISSING or 2
+function GetRuneSpawnLocation(r) return Vector(-9000 + 1000 * (r or 0), 9000) end
+function GetRuneStatus(r) return RUNE_STATUS_MISSING end
 -- FOGGED(v) true marks a location the team cannot see; nil means everything is visible.
 function IsLocationVisible(v) return FOGGED == nil or not FOGGED(v) end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
@@ -121,6 +140,9 @@ function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end
 -- Heroes are 24 in the engine; attack range is measured from the hulls' edges.
 function UnitMeta:GetBoundingRadius() return self.hull or 24 end
+function UnitMeta:GetMana() return self.mana or 100 end
+function UnitMeta:GetMaxMana() return self.maxmana or 100 end
+function UnitMeta:GetRespawnTime() return self.respawn or 0 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
@@ -182,6 +204,7 @@ function UnitMeta:GetItemInSlot(slot)
 end
 function UnitMeta:GetMana() return self.mana or 100 end
 function UnitMeta:GetMaxMana() return self.maxMana or 100 end
+function UnitMeta:GetLastHits() return self.lh or 0 end
 function UnitMeta:GetNearbyTrees(r)
 	local ids = {}
 	for id, loc in pairs(TREES or {}) do if GetUnitToLocationDistance(self, loc) <= r then table.insert(ids, id) end end
@@ -228,7 +251,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent })
+		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
@@ -260,5 +283,14 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.LaneMid.RegisterProbes()
 	H.Lane.Counter.RegisterProbes()
 	H.LaneFight.RegisterProbes()
+	H.Transitions.Rotation.RegisterProbes()
+	H.Transitions.Caution.ResetCache()
+	H.Transitions.Caution.RegisterProbes()
+	TELEPORTS, TELEPORT_READS = {}, 0
+	WARDS = { [2] = {}, [3] = {} }
+	H.Transitions.LaneWard.ResetCache()
+	H.Transitions.Teleports.ResetCache()
+	H.Transitions.Phase.ResetCache()
+	H.Transitions.MidRunes.ResetCache()
 	return H
 end

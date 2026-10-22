@@ -14,14 +14,16 @@ import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
 import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
+import * as Transitions from "bots/FunLib/humaniser/transitions/transitions";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
+import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Intent, LastHitSkill, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -97,6 +99,7 @@ function drawOverlay(bot: Unit): void {
         HDebug.Text(bot, "order", order !== undefined ? Orders.Describe(order) : "-");
         const avoid = Orders.GetAccepted(bot, "AVOID");
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
+        if (Transitions.IsActive()) HDebug.Text(bot, "phase", Transitions.Overlay(bot));
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
         if (LaneFight.IsActive() && LaneFight.Config.AppliesTo(bot)) HDebug.Text(bot, "fight", LaneFight.Describe(bot));
         if (LastHitSkill.IsActiveFor(bot)) {
@@ -126,6 +129,7 @@ function tick(this: void, bot: Unit): void {
     Commands.Tick(bot);
     Lane.Tick(bot);
     LaneFight.Tick(bot);
+    Transitions.Tick(bot);
     Trainer.Tick(bot);
     LastHitSkill.Tick(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
@@ -168,6 +172,8 @@ if (Telemetry.GuardsEnabled()) {
         Think: no,
         Target: none,
     });
+    Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none, FarmAllowedInLaning: no });
+    Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

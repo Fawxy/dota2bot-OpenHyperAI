@@ -286,4 +286,49 @@ do
 	check("control: and scan the world", (GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0) > 0)
 end
 
+do
+	local _, bot, S = world()
+	allFronts({ 0.6, 0.45 })
+	local empty = S.ForBot(bot)
+	check("no creeps: no imbalance and forecast stays at eq", empty.imbalance == 0 and empty.forecastEq == empty.eqPos, empty.imbalance)
+
+	local ranged = { MakeCreep({ team = 2, x = 0, y = 0, hp = 300, name = "npc_dota_creep_goodguys_ranged" }),
+		MakeCreep({ team = 2, x = 0, y = 0, hp = 300, name = "npc_dota_creep_goodguys_ranged" }) }
+	local melee = { MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }), MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }),
+		MakeCreep({ team = 3, x = 0, y = 0, hp = 200 }) }
+	check("ranged outweigh melee of equal HP", S.Imbalance(S.LanePower(ranged), S.LanePower(melee)) > 0)
+	check("a 100-HP straggler is a small imbalance", S.Imbalance(100, 0) < 0.2, S.Imbalance(100, 0))
+	check("upgraded waves in proportion read alike", math.abs(S.Imbalance(2000, 1000) - S.Imbalance(4000, 2000)) < 0.05)
+	check("forecast clamps at the enemy tower", S.ForecastEq(0.9, 1) == 1)
+	check("forecast moves toward the winner", near(S.ForecastEq(-0.3, 0.5), -0.1))
+end
+
+do
+	local _, bot, S = world()
+	allFronts({ 0.5, 0.5 })
+	creep(2, 0, -5000, "npc_dota_creep_goodguys_ranged")
+	creep(3, 0, -5000)
+	local fogged = creep(3, 0, -5000)
+	fogged.CanBeSeen = function() return false end
+	local s = S.ForBot(bot)
+	check("fogged enemy creep adds no power", near(s.enemyPower, 550) and s.enemy.count == 1, s.enemyPower)
+	check("ally power is HP weighted by type", near(s.allyPower, 550 * 1.6), s.allyPower)
+	check("snapshot imbalance and forecast follow the powers",
+		near(s.imbalance, S.Imbalance(s.allyPower, s.enemyPower)) and s.imbalance > 0 and s.forecastEq > s.eqPos, s.forecastEq)
+end
+
+do
+	local _, _, S = world()
+	local function fscore(eq, imb, skill) return S.ForecastScore(-0.7, eq, S.ForecastEq(eq, imb), S.ForesightOf(skill), 0) end
+	check("skill 0 reads the lane as today", near(fscore(-0.3, 0.6, 0), S.LaneScore(-0.7, -0.3, 0)))
+	check("skill 0.9, winning clash: full-pull score", fscore(-0.3, 0.6, 0.9) <= -0.5, fscore(-0.3, 0.6, 0.9))
+	check("skill 0.3, same lane: still half-pull score", fscore(-0.3, 0.6, 0.3) > -0.5, fscore(-0.3, 0.6, 0.3))
+	check("skill 0.9, losing clash: no longer a full-pull score", fscore(-0.1, -0.6, 0.9) > -0.5, fscore(-0.1, -0.6, 0.9))
+end
+
+do
+	local _, _, S = world({ Enable = true, Forecast = false })
+	check("Forecast off: no foresight at any skill", S.ForesightOf(1) == 0, S.ForesightOf(1))
+end
+
 finish()

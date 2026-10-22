@@ -22,6 +22,38 @@ local nAllyHeroes, nEnemyHeroes
 
 local nHumanClaimedRuneTime = {}
 
+-- The first return GetDesire hit this frame ("power" when it scored a power rune); for the mid-rune
+-- claim (task 12, 3b), which only applies on "power" frames, and rune_skip telemetry.
+local sGate = nil
+local function Gate(sName, nDesire)
+	sGate = sName
+	return nDesire
+end
+
+-- A rune still on the ground after this bot's pickup order ended is ignored until the next river spawn. The 0:00 bounty
+-- at the top river spot (RUNE_POWERUP_1) never leaves the ground for Action_PickUpRune (upstream too), and without this
+-- the bot retries it for minutes. Ignoring it until the next spawn keeps that spot's water and power runes.
+local nUnpickableUntil = {}
+local tPendingPickup = nil
+
+local function CheckPendingPickup()
+	if tPendingPickup == nil
+	or DotaTime() < tPendingPickup.time + 0.5
+	or bot:GetCurrentActionType() == BOT_ACTION_TYPE_PICK_UP_RUNE
+	then
+		return
+	end
+	local nRune = tPendingPickup.rune
+	tPendingPickup = nil
+	if GetRuneStatus(nRune) == RUNE_STATUS_AVAILABLE then
+		nUnpickableUntil[nRune] = J.GetNextPowerRuneSpawnTime()
+	end
+end
+
+local function IsUnpickable(nRune)
+	return nUnpickableUntil[nRune] ~= nil and DotaTime() < nUnpickableUntil[nRune]
+end
+
 local function IsHumanClaimingRune(nRune)
 	local vRuneLoc = GetRuneSpawnLocation(nRune)
 	if nHumanClaimedRuneTime[nRune] and GameTime() - nHumanClaimedRuneTime[nRune] < 5 then
@@ -59,8 +91,14 @@ local nShrineOfWisdomTeam = TEAM_RADIANT
 function GetDesire()
 	X.InitRune()
 
-	if (DotaTime() > 2 * 60 and DotaTime() < 6 * 60 and GetUnitToLocationDistance(bot, GetRuneSpawnLocation(RUNE_POWERUP_2)) < 80) then
-		return BOT_MODE_DESIRE_NONE
+	-- A mid waiting on the spot for a power spawn keeps its desire (3b), as does a support rotating to it (task 12, Task 4).
+	local bMidRuneFocus = J.Humaniser.Transitions.MidRuneFocus(bot)
+	local bRotating = J.Humaniser.Transitions.RuneTarget(bot) ~= nil
+
+	if (DotaTime() > 2 * 60 and DotaTime() < 6 * 60 and GetUnitToLocationDistance(bot, GetRuneSpawnLocation(RUNE_POWERUP_2)) < 80)
+	and not bMidRuneFocus and not bRotating
+	then
+		return Gate('power2_spot', BOT_MODE_DESIRE_NONE)
 	end
 
 	bBottle = bot:FindItemSlot('item_bottle') >= 0
@@ -74,17 +112,17 @@ function GetDesire()
 	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
 
 	if bot:IsInvulnerable() and botHP > 0.9 and bot:DistanceFromFountain() < 500 then
-		return BOT_MODE_DESIRE_ABSOLUTE
+		return Gate('fountain', BOT_MODE_DESIRE_ABSOLUTE)
 	end
 
 	-- Drop rune desire when outnumbered or taking damage so attack/retreat can take over.
 	-- This prevents bots from walking into 5-man ambushes at rune spots.
 	if #nEnemyHeroes > 0 then
 		if #nEnemyHeroes > #nAllyHeroes then
-			return BOT_MODE_DESIRE_NONE
+			return Gate('outnumbered', BOT_MODE_DESIRE_NONE)
 		end
 		if bot:WasRecentlyDamagedByAnyHero(2.0) and botHP < 0.7 then
-			return BOT_MODE_DESIRE_NONE
+			return Gate('damaged', BOT_MODE_DESIRE_NONE)
 		end
 	end
 
@@ -102,7 +140,7 @@ function GetDesire()
 
 			if DotaTime() < wisdom.time + 3.5 then
 				if not bot:WasRecentlyDamagedByAnyHero(3.0) then
-					return BOT_MODE_DESIRE_ABSOLUTE
+					return Gate('wisdom', BOT_MODE_DESIRE_ABSOLUTE)
 				end
 			end
 
@@ -111,7 +149,7 @@ function GetDesire()
 			if (#nEnemyTowers > 0 and bot:WasRecentlyDamagedByTower(1.0) and botHP < 0.3)
 			or (#nInRangeEnemy > 0 and not J.IsRealInvisible(bot))
 			then
-				return 0
+				return Gate('wisdom_danger', 0)
 			end
 
 			nShrineOfWisdomTeam = X.GetShrineOfWisdomTeam()
@@ -120,24 +158,24 @@ function GetDesire()
 				local vLocation = wisdom.spot[nShrineOfWisdomTeam].location
 				if bChecked == false then
 					if bot == X.GetWisdomAlly(vLocation) then
-						return X.GetWisdomDesire(vLocation)
+						return Gate('wisdom', X.GetWisdomDesire(vLocation))
 					end
 				end
 			end
 		end
 	end
 
-	if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) then
-		return BOT_MODE_DESIRE_NONE
+	if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) and not bMidRuneFocus and not bRotating then
+		return Gate('idle', BOT_MODE_DESIRE_NONE)
 	end
 
 	-- Don't leave high ground push or ancient defense for runes (local addition)
 	if J.Utils.IsTeamPushingSecondTierOrHighGround(bot) then
-		return BOT_MODE_DESIRE_NONE
+		return Gate('push', BOT_MODE_DESIRE_NONE)
 	end
 	local enemiesAtAncient = J.Utils.CountEnemyHeroesNear(GetAncient(GetTeam()):GetLocation(), 3200)
 	if enemiesAtAncient >= 1 then
-		return BOT_MODE_DESIRE_NONE
+		return Gate('ancient', BOT_MODE_DESIRE_NONE)
 	end
 
 	-- Core rune logic using bot.rune state (reference pattern)
@@ -149,7 +187,7 @@ function GetDesire()
 
 		-- Pre-game: move toward rune with moderate desire
 		if DotaTime() < 0 and not bot:WasRecentlyDamagedByAnyHero(10.0) then
-			return BOT_MODE_DESIRE_MODERATE
+			return Gate('pregame', BOT_MODE_DESIRE_MODERATE)
 		end
 
 		if rune.location ~= -1 then
@@ -162,7 +200,7 @@ function GetDesire()
 			if rune.distance < 1200 then
 				for _, ally in pairs(nAllyHeroes) do
 					if ally ~= nil and not ally:IsBot() and GetUnitToLocationDistance(ally, vRuneLocation) < 2000 then
-						return BOT_MODE_DESIRE_NONE
+						return Gate('human', BOT_MODE_DESIRE_NONE)
 					end
 				end
 			end
@@ -171,40 +209,57 @@ function GetDesire()
 				if rune.status == RUNE_STATUS_AVAILABLE
 				and (X.IsTeamMustSaveRune(rune.location) or not J.IsInLaningPhase() or GetUnitToLocationDistance(bot, vRuneLocation) <= 500)
 				then
-					if X.IsEnemyPickRune(rune.location) then return BOT_MODE_DESIRE_NONE end
+					if X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
 
 					if bBottle or (botPos >= 4 and not X.IsThereAllyWithBottle(vRuneLocation, 1600)) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3500)
+						return Gate('bounty', X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3500))
 					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, 3500)
+						return Gate('bounty', X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, 3500))
 					end
 				elseif rune.status == RUNE_STATUS_UNKNOWN
 					and rune.distance <= nProximityRadius * 1.5
 					and DotaTime() > 3 * 60 + 50
 					and ((minute % 4 == 0) or (minute % 4 == 3) and second > 45)
 				then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+					return Gate('bounty', X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius))
 				elseif rune.status == RUNE_STATUS_MISSING
 					and rune.distance <= nProximityRadius * 1.5
 					and DotaTime() > 3 * 60 + 50
 					and ((minute % 4 == 3) or second > 52)
 				then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
+					return Gate('bounty', X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5))
 				end
+				return Gate('bounty', BOT_MODE_DESIRE_NONE)
 			else
 				-- Power rune / water rune
-				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return BOT_MODE_DESIRE_NONE end
-				return math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot))
+				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
+				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end
 		end
 	end
 
-	return BOT_MODE_DESIRE_NONE
+	return Gate('no_rune', BOT_MODE_DESIRE_NONE)
 end
 
 -- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
 local GetDesireRaw = GetDesire
-function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_RUNE, GetDesireRaw()) end
+function GetDesire()
+	sGate = nil
+	CheckPendingPickup()
+	local nRaw = GetDesireRaw()
+	-- The mid-rune floor claim (3b) only lifts a frame that scored a power rune, never past a gate above.
+	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
+		J.Humaniser.Transitions.MidRuneYield(bot)
+	end
+	-- Likewise the rotating support's floor (Task 4), on every such frame so a claim outliving its rotation never lifts a gate.
+	if sGate ~= 'power' then
+		J.Humaniser.Transitions.RotationYield(bot)
+	end
+	local nDesire = J.Humaniser.Intent.Resolve(bot, BOT_MODE_RUNE, nRaw)
+	local rune = bot.rune and bot.rune.normal
+	J.Humaniser.Transitions.MidRuneSkip(bot, nRaw, nDesire, rune and rune.location, rune and rune.status, sGate)
+	return nDesire
+end
 
 --------------------------------------------------------------------
 -- PowerRuneDesire  (power/water rune branch of GetDesire)
@@ -373,6 +428,16 @@ function Think()
 		local vRuneLocation = GetRuneSpawnLocation(rune.location)
 
 		if rune.status == RUNE_STATUS_AVAILABLE then
+			-- A rotating support leaves the rune for our mid (task 12): it stands on the spot without picking it up.
+			if J.Humaniser.Transitions.HoldsRune(bot, rune.location) then
+				if rune.distance > 150 then
+					bot:Action_MoveToLocation(vRuneLocation)
+				else
+					bot:Action_ClearActions(false)
+				end
+				return
+			end
+
 			if Bottle and J.CanCastAbility(Bottle) and rune.distance < 1200 then
 				local nCharges = Bottle:GetCurrentCharges()
 				if nCharges > 0 and (botHP ~= 1 or botMP ~= 1) then
@@ -404,6 +469,9 @@ function Think()
 				bot:Action_MoveToLocation(vRuneLocation)
 				return
 			else
+				if tPendingPickup == nil then
+					tPendingPickup = { rune = rune.location, time = DotaTime() }
+				end
 				bot:Action_PickUpRune(rune.location)
 				return
 			end
@@ -493,15 +561,42 @@ function X.GetBestRune()
 	minute = math.floor(DotaTime() / 60)
 	second = DotaTime() % 60
 
+	-- Our mid around a power spawn (3b): a nearer bounty must not shadow the power rune, a power rune
+	-- that has not spawned yet (MISSING until the spawn) still counts, and after the spawn only the spot
+	-- holding (or maybe holding) the rune does.
+	local bPowerOnly, bPowerDue, nPowerTarget = J.Humaniser.Transitions.MidRuneFocus(bot)
+
+	-- A support rotating to a power spawn (task 12, Task 4) heads for that spot, spawned or not,
+	-- whoever is nearer; a human claiming or pinging it still wins. Once the rune is up with an allied
+	-- core within 1200 of the spot, the pick falls to the loop below, whose gates give the core the rune.
+	local hForced = J.Humaniser.Transitions.RuneTarget(bot)
+	local hYielded = nil
+	if hForced and not IsUnpickable(hForced) then
+		local vForced = GetRuneSpawnLocation(hForced)
+		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced) then
+			if GetRuneStatus(hForced) == RUNE_STATUS_AVAILABLE and X.IsAllyCoreNear(vForced, 1200) then
+				-- The loop's core gate measures from this bot, not the spot, so it could still hand the rune back.
+				hYielded = hForced
+			else
+				return hForced, GetUnitToLocationDistance(bot, vForced)
+			end
+		end
+	end
+
 	local targetRune = -1
 	local targetRuneDistance = math.huge
 	for _, rune in pairs(nRuneList) do
 		local vRuneLocation = GetRuneSpawnLocation(rune)
+		local bPower = rune == RUNE_POWERUP_1 or rune == RUNE_POWERUP_2
 
-		if X.IsTheClosestAlly(bot, vRuneLocation)
+		if (bPower or not bPowerOnly)
+		and (nPowerTarget == nil or rune == nPowerTarget)
+		and rune ~= hYielded
+		and not IsUnpickable(rune)
+		and X.IsTheClosestAlly(bot, vRuneLocation)
 		and not X.IsPingedByHumanPlayer(vRuneLocation, math.huge)
 		and not IsHumanClaimingRune(rune)
-		and not X.IsMissing(rune)
+		and (not X.IsMissing(rune) or (bPower and bPowerDue))
 		then
 			if (rune == RUNE_BOUNTY_1 or rune == RUNE_BOUNTY_2)
 			or (J.IsCore(bot) or not J.IsThereCoreNearby(1200))
@@ -516,6 +611,18 @@ function X.GetBestRune()
 	end
 
 	return targetRune, targetRuneDistance
+end
+
+function X.IsAllyCoreNear(vLocation, nRadius)
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= bot and J.IsValidHero(member) and J.IsCore(member)
+		and GetUnitToLocationDistance(member, vLocation) <= nRadius
+		then
+			return true
+		end
+	end
+	return false
 end
 
 --------------------------------------------------------------------

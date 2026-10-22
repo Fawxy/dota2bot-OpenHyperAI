@@ -141,16 +141,21 @@ test('times accept seconds or m:ss', () => {
     assert.strictEqual(parseTime('42.5'), 42.5);
 });
 
-test('real Lua telemetry from a scripted session analyses cleanly', () => {
+/** Runs a scripted Lua session from the offline harness and returns the [HEV] lines it left in HLOG_LINES. */
+function luaSession(file) {
     const { lua, lauxlib, lualib, to_luastring } = require(path.join(HARNESS, 'node_modules/fengari'));
     const L = lauxlib.luaL_newstate();
     lualib.luaL_openlibs(L);
     const prelude = `package.path = "${ROOT}/?.lua;" .. package.path\nunpack = unpack or table.unpack\nHARNESS_DIR = "${HARNESS}"\n`;
     lauxlib.luaL_dostring(L, to_luastring(prelude));
-    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, 'hlog_session.lua')));
+    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, file)));
     assert.strictEqual(status, 0, status !== 0 ? lua.lua_tojsstring(L, -1) : '');
     lauxlib.luaL_dostring(L, to_luastring('return table.concat(HLOG_LINES, "\\n")'));
-    const text = lua.lua_tojsstring(L, -1);
+    return lua.lua_tojsstring(L, -1);
+}
+
+test('real Lua telemetry from a scripted session analyses cleanly', () => {
+    const text = luaSession('hlog_session.lua');
 
     const games = parseLog(text);
     assert.strictEqual(games.length, 1);
@@ -356,4 +361,96 @@ test('lane_fight warns when no start ever took over, and when GetCooldown reads 
     const one = [...header(0), ...snaps(1, 0, 60), ...fight(1, 10, { reason: 'mode:laning', took: 0 })];
     assert.strictEqual(levels(parseLog(ordered(one).join('\n'))[0]).lane_fight.level, 'pass', 'one start that never took over is too few to warn');
     assert.strictEqual(levels(parseLog(ordered([...header(0), ...snaps(1, 0, 20)]).join('\n'))[0]).lane_fight.level, 'skip');
+});
+
+test('farm_trips: a trip handed to a fight by Valve attack mode is a planned end, one taken by rune is not', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=340 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=354 ev=farm_trip_end pid=1 camp=7 type=small phase=stack why=preempted camps=1 secs=14 to=attack',
+            '[HEV] t=400 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=410 ev=farm_trip_end pid=1 camp=7 type=small phase=go why=preempted camps=1 secs=10 to=rune',
+        ].join('\n')
+    )[0];
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x/);
+});
+test('real FarmPattern telemetry: trips summarised per core, a trip lost to another mode is flagged with the winner', () => {
+    const games = parseLog(luaSession('hlog_farm_session.lua'));
+    assert.strictEqual(games.length, 1);
+    const game = games[0];
+    const ends = game.events.filter(e => e.ev === 'farm_trip_end');
+    assert.deepStrictEqual(ends.map(e => e.why), ['back', 'preempted']);
+    assert.strictEqual(ends[1].to, 'rune');
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.level, 'warn', r.summary);
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x, first at 8:27/);
+    // Trip 1 left its camp unfinished, so trip 2 starts with the pace grown by LateGrowth (1.15).
+    const row = report.summary(game).split('\n').find(l => /^pid1 /.test(l));
+    assert.ok(row, report.summary(game));
+    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15\s+wave 16$/);
+    const gate = game.events.find(e => e.ev === 'farm_gate');
+    assert.strictEqual(gate.why, 'wave', 'the 9:05 check logs the live wave');
+});
+test('forecast fit recovers K from lane_eq pairs', () => {
+    const ev = (t, eq, imb) => ({ ev: 'lane_eq', t, team: 2, lane: 1, kind: 'safe', eq, imb });
+    const rows = report.fitForecast([ev(70, -0.5, 0.5), ev(100, -0.35, -0.25), ev(130, -0.425, 0.0), ev(160, -0.425, 0.4)]);
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].n, 3);
+    assert.ok(Math.abs(rows[0].k - 0.3) < 1e-9);
+});
+test('forecast fit skips pairs more than one cycle apart', () => {
+    const ev = (t, eq, imb) => ({ ev: 'lane_eq', t, team: 2, lane: 1, kind: 'safe', eq, imb });
+    assert.strictEqual(report.fitForecast([ev(70, -0.5, 0.5), ev(160, 0, 0)]).length, 0);
+});
+test('summary reports the forecast fit and pre-contest outcomes', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=70 ev=lane_eq team=2 lane=1 kind=safe eq=-0.500 imb=0.500 feq=-0.300 a=3 e=3',
+            '[HEV] t=80 ev=lane_job_start pid=2 kind=contest camp=3 pre=1',
+            '[HEV] t=81 ev=lane_job_start pid=2 kind=contest camp=3',
+            '[HEV] t=85 ev=lane_job_end pid=2 kind=contest camp=3 reason=timeout pre=1',
+            '[HEV] t=95 ev=lane_job_end pid=2 kind=contest camp=3 reason=no-pull pre=1',
+            '[HEV] t=96 ev=lane_job_end pid=2 kind=contest camp=3 reason=no-target pre=0',
+            '[HEV] t=110 ev=lane_job_start pid=2 kind=contest camp=3 pre=1',
+            '[HEV] t=112 ev=lane_job_abort pid=2 kind=contest camp=3 reason=partner-low-hp phase=lookout pre=1',
+            '[HEV] t=113 ev=lane_job_abort pid=2 kind=contest camp=3 reason=dead phase=travel',
+            '[HEV] t=100 ev=lane_eq team=2 lane=1 kind=safe eq=-0.350 imb=-0.250 feq=-0.400 a=3 e=3',
+            '[HEV] t=130 ev=lane_eq team=2 lane=1 kind=safe eq=-0.425 imb=0.000 feq=-0.425 a=3 e=3',
+        ].join('\n')
+    )[0];
+    const text = report.summary(game);
+    assert.match(text, /forecast fit:\n {2}safe n=2 K=0\.30 r2=1\.00/);
+    assert.match(text, /pre-contest: started 2 attacked 1 no-pull 1 enemy-in-lane 0 aborted 1/);
+});
+test('summary reports take-pull outcomes and swings', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=80 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=90 ev=lane_job_end pid=0 kind=contest camp=2 reason=no-creeps pre=0 take=1 swings=3',
+            '[HEV] t=100 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=104 ev=lane_job_end pid=0 kind=contest camp=2 reason=outnumbered pre=0 take=1 swings=1',
+            '[HEV] t=110 ev=lane_job_start pid=0 kind=contest camp=2 take=1',
+            '[HEV] t=112 ev=lane_job_abort pid=0 kind=contest camp=2 reason=mode-end phase=travel take=1',
+            '[HEV] t=114 ev=lane_job_end pid=0 kind=contest camp=2 reason=low-hp pre=0 take=1 swings=0',
+            '[HEV] t=115 ev=lane_job_end pid=0 kind=contest camp=2 reason=lane-wave pre=0 take=1 swings=0',
+            '[HEV] t=116 ev=lane_signal pid=0 kind=pull lane=3 camp=2 enemy=8 noticed=1 inferred=0',
+            '[HEV] t=116.5 ev=lane_signal pid=0 kind=half_pull lane=3 camp=2 enemy=-1 noticed=0 inferred=0',
+            '[HEV] t=117 ev=lane_signal pid=4 kind=stack lane=3 camp=5 enemy=8 noticed=1 inferred=0',
+            '[HEV] t=117.5 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
+            '[HEV] t=118 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
+            '[HEV] t=118.5 ev=lane_take_skip pid=1 kind=pull camp=2 reason=owner',
+            '[HEV] t=120 ev=lane_job_start pid=4 kind=contest camp=2',
+            '[HEV] t=125 ev=lane_job_end pid=4 kind=contest camp=2 reason=timeout pre=0',
+        ].join('\n')
+    )[0];
+    const text = report.summary(game);
+    assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 low-hp 1 lane-wave 1 aborted 1/);
+    assert.match(text, /pull signals: 2 noticed 1; take skipped: lane-creeps 2 owner 1/);
+    assert.doesNotMatch(text, /pre-contest:/);
 });

@@ -38,7 +38,7 @@
   - `bots/mode_farm_generic.lua`
 - **Build:** run `PUPPETEER_SKIP_DOWNLOAD=1 npx --yes yarn@1 install --frozen-lockfile` once, then `npm run build`.
 - **Offline checks:** `cd tests/humaniser && npm install && npm run check`. Run one file with `node tests/humaniser/run.js tests/humaniser/<file>.lua`.
-- **Kill switch:** `Customize.Humaniser.Transitions.Enable`. Each sub-feature also has its own flag: `Rotation`, `Caution`, `Teleports`, `LaneWard`, `Phase`, `LostLane`. With `Enable = false`:
+- **Kill switch:** `Customize.Humaniser.Transitions.Enable`. Each sub-feature also has its own flag: `MidRunes`, `Rotation`, `Caution`, `Teleports`, `LaneWard`, `Phase`, `LostLane`. With `Enable = false`:
   - every hook returns its upstream value (rune target `nil`, ward pick `nil`, farm gate unchanged, `AdjustPosition` returns `loc`, harass not suppressed)
   - no claims are posted
   - no `GetUnitList`/`GetIncomingTeleports` calls are made
@@ -111,16 +111,16 @@ These are inputs the spec implies but doesn't spell out, most likely first. Each
 - Modify:
   - `typescript/bots/FunLib/humaniser/config.ts`: add `Transitions: { Enable: true } as Record<string, any>` to `DEFAULTS`, and `"Transitions"` to the `IsFeatureEnabled` union
   - `typescript/bots/FunLib/humaniser/index.ts`: import, export, call `Transitions.Tick(bot)` after `Lane.Tick`, add `GuardModule("Transitions", …)` fallbacks
-  - `bots/Customize/general.lua`: a `Transitions = {...}` block next to `Lane`, listing `Enable` and the six sub-flags with one-line comments
+  - `bots/Customize/general.lua`: a `Transitions = {...}` block next to `Lane`, listing `Enable` and the seven sub-flags with one-line comments
   - `bots/FunLib/jmz_func.lua`: `J.Humaniser.Transitions.SetHelpers({...})` after the `Lane.SetHelpers` call
 - Test: `tests/humaniser/test_transitions_core.lua`
 
 **Interfaces:**
 - Produces, in `settings.ts`:
-  - `DEFAULTS`, holding the `Enable` flag, the six sub-flags and every Global Constraints value. Store each lerp pair as `{ Low, High }`.
+  - `DEFAULTS`, holding the `Enable` flag, the seven sub-flags and every Global Constraints value. Store each lerp pair as `{ Low, High }`.
   - `function Get(): TransitionSettings`, which merges over `Config.Get().Transitions`. Copy `intent.ts`'s `merge`.
   - `function IsActive(): boolean`, true when `Config.IsFeatureEnabled("Transitions")`.
-  - `function IsOn(flag: "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase" | "LostLane"): boolean`
+  - `function IsOn(flag: "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase" | "LostLane"): boolean`
   - `function Lerp(pair: { Low: number; High: number }, skill: number): number`
   - `function ResetSettings(): void`, for tests.
 - Produces, in `transitions.ts`:
@@ -229,6 +229,39 @@ These are inputs the spec implies but doesn't spell out, most likely first. Each
 - [ ] **Step 3:** Implement `busy.ts`, the `pings.ts` record and the `lane_hooks.ts` probe.
 - [ ] **Step 4:** Run the tests. Expected: PASS. Also run `test_pings.lua` to confirm it still passes.
 - [ ] **Step 5:** Commit: `Transitions (12): IsBusy and LaneCanSpare`.
+
+### Task 3b: Our mid actually takes power runes
+
+**Why:** in playtests, mid bots often leave power runes alone. Rotations (Task 4) assume our mid takes the rune, so this has to work first. Use superpowers:systematic-debugging: **state the root cause and show it in a failing test before changing behaviour.**
+
+Two hypotheses, read from `bots/mode_rune_generic.lua`. Both are unconfirmed.
+1. **A bounty rune shadows the power rune.** `X.GetBestRune` (:492) returns the nearest rune of all four that passes its gates, bounties included. Bounties also spawn at 6:00, 9:00 and so on. If the nearest is a bounty, the bounty branch (:170-193) returns NONE during laning unless the bot is within 500, so the power rune is never scored.
+2. **The desire is too weak without a bottle.** A mid without a bottle in the early game gets `MODERATE` (0.5 in the stubs) scaled down to as low as half by distance (`X.GetScaledDesire`, :649). Before the spawn it only gets that inside 1,600 units, and only in the last 7 s (`PowerRuneDesire`, :233). That loses to laning's desire, plus the active mode's stickiness bonus.
+
+**Files:**
+- Modify: `bots/mode_rune_generic.lua`, the smallest change that fixes the confirmed cause, behind `J.Humaniser.Transitions.MidRunesOn(bot)`. That hook is true when `IsActive() && IsOn("MidRunes")` and the bot is pos 2.
+  - If hypothesis 1 is confirmed: for a pos 2 bot, `X.GetBestRune` considers only power-rune spots while a power rune is due within 20 s or is up.
+  - If hypothesis 2 is confirmed: from 15 s before a power spawn until the rune is taken, a pos 2 bot within 3,500 posts a `TRANSITION` claim on `BotMode.Rune` with `floor: MidRuneFloor`. Add `MidRuneFloor 0.6` to settings.
+  - If something else is the cause: fix that instead, and record it in the task report.
+- Modify: `typescript/bots/FunLib/humaniser/transitions/transitions.ts`. Export `MidRunesOn`, with a guard fallback of `no`.
+- Modify: `bots/mode_rune_generic.lua`. When telemetry is enabled and a pos 2 bot's rune desire is below 0.3 within 10 s of a power spawn, emit `Telemetry.Event("rune_skip", …)` with these fields:
+  - `pid`
+  - `target`, which `GetBestRune` returned
+  - `status`
+  - `raw`, the rune desire
+  - `laning`, the laning desire sample (`Intent.Competing`)
+  - `gate`, the first early return hit
+  At most one event per spawn per bot.
+- Test: `tests/humaniser/test_lane_rune_mode.lua`. Extend its stub world.
+
+- [ ] **Step 1: Reproduce.** Add tests to `test_lane_rune_mode.lua`. Both should FAIL on current code if their hypothesis holds:
+  - `mid picks the power rune over a nearer bounty at 6:00`: a pos 2 bot sits 900 from a bounty spot and 1,400 from a power spot, `T = 357`, the bounty is UNKNOWN and the power rune is MISSING. `GetBestRune` must return the power rune, and the desire must be above 0.
+  - `bottle-less mid wants the rune over laning`: a pos 2 bot with no bottle, 1,800 from the spot, at `T = 357`. The rune desire must reach at least 0.6.
+- [ ] **Step 2:** Run `node tests/humaniser/run.js tests/humaniser/test_lane_rune_mode.lua`. Record which tests fail. That's the confirmed cause. If neither fails, write a test for the cause you find instead, and don't change behaviour without one.
+- [ ] **Step 3:** Implement the fix for the confirmed cause only, plus the `rune_skip` telemetry.
+- [ ] **Step 4:** Run the tests. Expected: PASS. Add `MidRunes flag off keeps upstream`: with `MidRunes = false`, `GetBestRune` and the desire match current behaviour for the same worlds.
+- [ ] **Step 5:** Add in-game check 10 to the Task 9 list: watch the 6:00 and 8:00 runes with a bot mid, with and without a bottle, and read any `rune_skip` lines.
+- [ ] **Step 6:** Commit: `Transitions (12): our mid takes power runes (<cause>)`.
 
 ### Task 4: Support rune rotations
 

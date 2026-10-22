@@ -1057,11 +1057,17 @@ end
 
 -- Start gate (console.9055994510: 4 of 8 retreat-ended jobs started at 51-59%, one with retreat already at 0.86).
 do
-	local function startAt(hp, retreatRaw)
+	local function startAt(hp, retreatRaw, fight)
 		local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
 		local lines = {}
 		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 		support.hp = hp
+		if fight then
+			clearEnemies()
+			local enemy = enemyAt(11, support.loc.x + fight.dist, support.loc.y)
+			if fight.hit then support.heroHitAt = 70 end
+			if fight.attacking then support.target = enemy end
+		end
 		T = 70
 		if retreatRaw then H.Intent.Resolve(support, dota.BotMode.Retreat, retreatRaw) end
 		local gate
@@ -1078,11 +1084,24 @@ do
 	check("retreat already at 0.75: no pull", d == 0 and gate == "retreat", tostring(d) .. " " .. tostring(gate))
 	d = startAt(90, 0.5)
 	check("retreat at 0.5: the pull starts", near(d, 0.7), d)
+	-- console.9057032878, shadow_demon 2:08: started with beastmaster 335 away, walked to the camp under its hits.
+	d, gate = startAt(90, nil, { dist = 500, hit = true })
+	check("hit by an enemy hero 500 away: no pull, logged as fight", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
+	d, gate = startAt(90, nil, { dist = 500, attacking = true })
+	check("attacking an enemy hero 500 away: no pull", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
+	d = startAt(90, nil, { dist = 500 })
+	check("an enemy laner 500 away, no trade: the pull starts", near(d, 0.7), d)
+	d = startAt(90, nil, { dist = 1000, hit = true })
+	check("hit, but the hero is 1,000 away: the pull starts", near(d, 0.7), d)
 end
 
 -- Tango and clarity on the way to a pull, while there is time to spare.
 local function supplyWorld(o)
-	local H, _, support = jobWorld(1, { away = o.away or 900 })
+	local H, _, support = jobWorld(1, { away = o.away or 900, telemetry = o.telemetry and { Enable = true } or nil })
+	if o.telemetry then
+		support.lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(support.lines, l) end)
+	end
 	-- jobWorld's enemy stands on the front, 1,190 from this support: inside JobEnemyHero.
 	UNITS[3][1].loc = Vector(FRONT.x + 1000, FRONT.y)
 	support.GetMaxHealth = function() return 600 end
@@ -1113,6 +1132,37 @@ do
 end
 
 do
+	-- lane_job_supply says what was used and whether its modifier showed, and why a needed item was not.
+	local H, support = supplyWorld({ telemetry = true })
+	local lines = support.lines
+	frame(H, support, 70)
+	support.modifiers["modifier_tango_heal"] = 1
+	frame(H, support, 70.2)
+	local ev = hev(lines, "lane_job_supply")
+	check("tango used then taken", #ev == 2 and field(ev[1], "state") == "use" and field(ev[2], "state") == "taken"
+		and field(ev[1], "item") == "tango" and near(tonumber(field(ev[1], "hp")), 0.75), table.concat(ev, " | "))
+
+	H, support = supplyWorld({ telemetry = true })
+	frame(H, support, 70)
+	for t = 70.2, 72, 0.2 do frame(H, support, t) end
+	ev = hev(support.lines, "lane_job_supply")
+	check("no heal within SupplyWait: logged as missed", #ev == 2 and field(ev[2], "state") == "missed", table.concat(ev, " | "))
+
+	H, support = supplyWorld({ telemetry = true, items = {} })
+	for t = 70, 71, 0.2 do frame(H, support, t) end
+	ev = hev(support.lines, "lane_job_supply")
+	check("no tango in the inventory: one skip, no-item", #ev == 1 and field(ev[1], "state") == "skip" and field(ev[1], "reason") == "no-item", table.concat(ev, " | "))
+
+	H, support = supplyWorld({ telemetry = true, hp = 600, away = 600 })
+	frame(H, support, 70)
+	support.hp = 450
+	enemyAt(11, support.loc.x + 900, support.loc.y)
+	frame(H, support, 70.2)
+	ev = hev(support.lines, "lane_job_supply")
+	check("hit on the way with an enemy near: skip, enemy", H.Lane.CampJobs.Active(support) and #ev == 1 and field(ev[1], "reason") == "enemy", table.concat(ev, " | "))
+end
+
+do
 	local H, support = supplyWorld({ hp = 550 })
 	frame(H, support, 70)
 	check("50 HP down: no tango", used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 1)
@@ -1121,10 +1171,13 @@ do
 	frame(H, support, 70)
 	check("tango not castable: walks on", used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 1)
 
-	H, support = supplyWorld({})
-	enemyAt(11, support.loc.x + 900, support.loc.y)
+	-- The job starts first: an enemy this close at the start leaves the partner unsafe and nothing would start.
+	H, support = supplyWorld({ hp = 600, away = 600 })
 	frame(H, support, 70)
-	check("an enemy hero near: no tango", used(support.pid, "UseAbilityOnTree") == 0)
+	support.hp = 450
+	enemyAt(11, support.loc.x + 900, support.loc.y)
+	frame(H, support, 70.2)
+	check("an enemy hero near: no tango", H.Lane.CampJobs.Active(support) and used(support.pid, "UseAbilityOnTree") == 0)
 
 	H, support = supplyWorld({})
 	frame(H, support, 70)
@@ -1209,17 +1262,36 @@ end
 
 do
 	-- A mode-end abort says which mode took over and how old the job's retreat hold was when it did.
+	-- farm's OnEnd runs while farm is still the active mode (console.9057032878: all mode-end aborts read to=farm).
 	local H, support, job, lines = leadingWorld()
 	support.hp = 70
 	retreatAgainstJob(H, support, 0.82)
 	T = T + 0.25
-	support.mode = dota.BotMode.Retreat
 	H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82)
+	support.mode = dota.BotMode.Farm
 	H.Lane.CampJobOnEnd(support)
+	check("the job ends at once", H.Lane.CampJobs.Active(support) == false)
+	check("but its line waits for the mode that took over", #hev(lines, "lane_job_abort") == 0)
+	H.Lane.Tick(support)
+	check("still farm on the next tick: still waiting", #hev(lines, "lane_job_abort") == 0)
+	T = T + 0.1
+	support.mode = dota.BotMode.Retreat
+	H.Lane.Tick(support)
 	local a = hev(lines, "lane_job_abort")[1]
 	check("mode-end names the winner", a ~= nil and field(a, "reason") == "mode-end" and field(a, "to") == "retreat", a)
-	check("the hold was on but last posted 0.25 s earlier", field(a, "hold") == "on" and near(tonumber(field(a, "holdAge")), 0.25), a)
-	check("retreat's resolve was this frame", near(tonumber(field(a, "toAge")), 0), a)
+	check("the hold was on but last posted 0.25 s before farm ended", field(a, "hold") == "on" and near(tonumber(field(a, "holdAge")), 0.25), a)
+	check("retreat's resolve was 0.1 s before the line", near(tonumber(field(a, "toAge")), 0.1) and near(tonumber(field(a, "logLag")), 0.1), a)
+end
+
+do
+	-- Farm ended and came straight back: after a second the line goes out naming farm.
+	local H, support, job, lines = leadingWorld()
+	support.mode = dota.BotMode.Farm
+	H.Lane.CampJobOnEnd(support)
+	T = T + 1.1
+	H.Lane.Tick(support)
+	local a = hev(lines, "lane_job_abort")[1]
+	check("farm again a second later: logged with to=farm", a ~= nil and field(a, "to") == "farm", a)
 end
 
 do

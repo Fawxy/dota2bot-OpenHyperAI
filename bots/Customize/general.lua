@@ -169,6 +169,17 @@ Customize.Humaniser = {
         CallKills = true, -- ping a kill setup for human allies
         Teams = 'all', -- 'all' | 'allies' (bots whose team has a human) | 'enemies'
     },
+    -- Lane safety and laning-phase transitions (task 12). Enable = false restores upstream behaviour for all of it.
+    Transitions = {
+        Enable = true,
+        MidRunes = true,  -- the mid laner walks to and takes power runes
+        Rotation = true,  -- a spare pos 4/5 rotates to the power rune beside our mid
+        Caution = true,   -- an alone core or a lane with a missing enemy plays safer (independent of Teleports)
+        Teleports = true, -- bots back off from, or set up on, an enemy TP into their lane (independent of Caution)
+        LaneWard = true,  -- the lane support wards the gank path between about 2:30 and 4:30
+        Phase = true,     -- per-bot end of laning: cores with a farm item and a safe jungle farm; supports above level 6 leave between 6:00 and 8:00 with a smoke or an attack order
+        LostLane = true,  -- a lost lane: the core goes to the jungle, a support roams or suggests it to a human
+    },
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
     Intent = { Enable = true },
@@ -176,6 +187,9 @@ Customize.Humaniser = {
     -- Only acts where OHA owns laning Think(); enemy bots need Lane.OwnLaningThink = 'all' for an effect.
     -- RequireOwnedLaning = false also applies it to team roam's last-hit grab for bots on Valve laning.
     LastHitSkill = { Enable = true, RequireOwnedLaning = true },
+    -- Core farm pattern: pos 1-3 take a camp between waves (or stack one), back for the next wave; 5:00-20:00.
+    -- Tuning in FunLib/humaniser/farm_pattern.lua. Stacks also need Lane.Enable and Lane.Stack.
+    FarmPattern = { Enable = true },
     -- Last-hit trainer (task 14): practice feedback for the human. Nothing runs in game until "!trainer on".
     Trainer = {
         LastHit = {

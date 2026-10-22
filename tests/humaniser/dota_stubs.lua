@@ -23,6 +23,8 @@ function Vector(x, y, z) return { x = x, y = y, z = z or 0 } end
 UNITS = { [2] = {}, [3] = {} }
 CURRENT_TEAM = 2
 function GetTeam() return CURRENT_TEAM end
+TELEPORTS, TELEPORT_READS = {}, 0
+function GetIncomingTeleports() TELEPORT_READS = TELEPORT_READS + 1 return TELEPORTS end
 function GetTeamPlayers(team) local r = {} for _, u in ipairs(UNITS[team]) do table.insert(r, u.pid) end return r end
 function GetTeamMember(i) return UNITS[CURRENT_TEAM][i] end
 function GetHeroLevel(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.level end end end return 0 end
@@ -52,9 +54,13 @@ function Unit:GetActiveMode() return self.mode end
 function Unit:GetActiveModeDesire() return self.desire or 0 end
 function Unit:GetHealth() return self.hp end
 function Unit:GetMaxHealth() return 100 end
+function Unit:GetMana() return self.mana or 100 end
+function Unit:GetMaxMana() return self.maxmana or 100 end
+function Unit:GetRespawnTime() return self.respawn or 0 end
 function Unit:GetItemInSlot() return nil end
 function Unit:GetAbilityInSlot(i) return self.abilities and self.abilities[i] or nil end
 function Unit:GetEstimatedDamageToTarget(current, target, duration, dtype) return self.estDamage or 0 end
+function Unit:GetLastHits() return self.lh or 0 end
 -- Intent arbitration (task 09): action queue, busy states and fountain distance.
 BOT_ACTION_TYPE_NONE, BOT_ACTION_TYPE_IDLE, BOT_ACTION_TYPE_MOVE_TO = 0, 1, 2
 function Unit:GetCurrentActionType() return self.action or BOT_ACTION_TYPE_IDLE end
@@ -84,7 +90,7 @@ function check(name, cond, detail)
 	if cond then PASSES = PASSES + 1 else FAILS = FAILS + 1 print("FAIL: " .. name .. (detail and (" -- " .. tostring(detail)) or "")) end
 end
 function near(a, b) return math.abs(a - b) < 1e-6 end
-function finish() print(string.format("%d passed, %d failed", PASSES, FAILS)) if FAILS > 0 then error("tests failed") end end
+function finish() FINISHED = true print(string.format("%d passed, %d failed", PASSES, FAILS)) if FAILS > 0 then error("tests failed") end end
 
 -- Each fresh require of the humaniser gives a new module instance (as if modules were per-bot).
 function FreshHumaniser(customHumaniser)

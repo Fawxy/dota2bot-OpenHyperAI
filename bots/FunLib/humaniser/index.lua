@@ -13,8 +13,10 @@ local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
+local Transitions = require(GetScriptDirectory().."/FunLib/humaniser/transitions/transitions")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
+local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
@@ -30,8 +32,10 @@ ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Lane = Lane
 ____exports.LaneFight = LaneFight
+____exports.Transitions = Transitions
 ____exports.Intent = Intent
 ____exports.LastHitSkill = LastHitSkill
+____exports.FarmPattern = FarmPattern
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 local OVERLAY_REFRESH = 0.25
@@ -140,6 +144,13 @@ local function drawOverlay(bot)
             "avoid",
             avoid ~= nil and Orders.Describe(avoid) or "-"
         )
+        if Transitions.IsActive() then
+            HDebug.Text(
+                bot,
+                "phase",
+                Transitions.Overlay(bot)
+            )
+        end
         if Intent.IsActive() then
             HDebug.Text(
                 bot,
@@ -198,6 +209,7 @@ local function tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
     LaneFight.Tick(bot)
+    Transitions.Tick(bot)
     Trainer.Tick(bot)
     LastHitSkill.Tick(bot)
     Orders.GetFor(bot)
@@ -254,6 +266,25 @@ if Telemetry.GuardsEnabled() then
             Target = none
         }
     )
+    Telemetry.GuardModule(
+        "Transitions",
+        Transitions,
+        {
+            Tick = none,
+            MidRunesOn = no,
+            MidRuneFocus = function() return false, false, nil end,
+            MidRuneYield = none,
+            MidRuneSkip = none,
+            RuneTarget = none,
+            HoldsRune = no,
+            MidRuneDesire = zero,
+            RotationYield = none,
+            PickLaneWard = none,
+            ConfirmLaneWard = none,
+            FarmAllowedInLaning = no
+        }
+    )
+    Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

@@ -106,6 +106,7 @@ function GetDesireHelper()
 				runTime = DotaTime(); 
 				runMode = true;
 				J.Humaniser.Lane.CampJobAbort(bot, "run")
+				J.Humaniser.FarmPattern.Abort(bot, "run")
 				preferedCamp = nil;
 				bot:Action_ClearActions(true);
 			end
@@ -115,6 +116,8 @@ function GetDesireHelper()
 
 	local nLaneJobDesire = J.Humaniser.Lane.CampJobDesire(bot)
 	if nLaneJobDesire > 0 then return J.Humaniser.Lane.CampJobRawDesire(bot, nLaneJobDesire) end
+	local nFarmPatternDesire = J.Humaniser.FarmPattern.Desire(bot)
+	if nFarmPatternDesire > 0 then return nFarmPatternDesire end
 
 	if not bInitDone
 	then
@@ -132,7 +135,7 @@ function GetDesireHelper()
 
 	-- Early exits first (cheap checks before expensive queries)
     if not bAlive
-	or J.IsInLaningPhase()
+	or (J.IsInLaningPhase() and not J.Humaniser.Transitions.FarmAllowedInLaning(bot))
 	or (J.IsDoingRoshan(bot) and bNotClone)
 	or (J.IsDoingTormentor(bot) and bNotClone)
     or DotaTime() < 50
@@ -484,6 +487,7 @@ end
 
 function OnEnd()
 	J.Humaniser.Lane.CampJobOnEnd(bot)
+	J.Humaniser.FarmPattern.OnEnd(bot)
 	preferedCamp = nil;
 	farmState = FARM_STATE_NONE;
 	hLaneCreepList  = {};
@@ -495,6 +499,7 @@ end
 function Think()
 	if J.CanNotUseAction(bot) then return end
 	if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end
+	if not runMode and J.Humaniser.FarmPattern.Think(bot) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end
 	sec = math.floor(DotaTime()) % 60
 	if runMode
