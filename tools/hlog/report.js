@@ -128,9 +128,13 @@ function forecastSection(game) {
     const pre = game.events.filter(e => e.kind === 'contest' && e.pre === 1);
     const started = pre.filter(e => e.ev === 'lane_job_start').length;
     const ends = pre.filter(e => e.ev === 'lane_job_end');
-    if (started > 0 || ends.length > 0) {
+    const aborted = pre.filter(e => e.ev === 'lane_job_abort').length;
+    if (started > 0 || ends.length > 0 || aborted > 0) {
         const n = (...reasons) => ends.filter(e => reasons.includes(e.reason)).length;
-        out.push('', `pre-contest: started ${started} attacked ${n('no-target', 'timeout')} no-pull ${n('no-pull')} enemy-in-lane ${n('enemy-in-lane')}`);
+        out.push(
+            '',
+            `pre-contest: started ${started} attacked ${n('no-target', 'timeout')} no-pull ${n('no-pull')} enemy-in-lane ${n('enemy-in-lane')} aborted ${aborted}`
+        );
     }
     return out;
 }

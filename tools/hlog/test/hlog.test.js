@@ -310,11 +310,14 @@ test('summary reports the forecast fit and pre-contest outcomes', () => {
             '[HEV] t=85 ev=lane_job_end pid=2 kind=contest camp=3 reason=timeout pre=1',
             '[HEV] t=95 ev=lane_job_end pid=2 kind=contest camp=3 reason=no-pull pre=1',
             '[HEV] t=96 ev=lane_job_end pid=2 kind=contest camp=3 reason=no-target pre=0',
+            '[HEV] t=110 ev=lane_job_start pid=2 kind=contest camp=3 pre=1',
+            '[HEV] t=112 ev=lane_job_abort pid=2 kind=contest camp=3 reason=partner-low-hp phase=lookout pre=1',
+            '[HEV] t=113 ev=lane_job_abort pid=2 kind=contest camp=3 reason=dead phase=travel',
             '[HEV] t=100 ev=lane_eq team=2 lane=1 kind=safe eq=-0.350 imb=-0.250 feq=-0.400 a=3 e=3',
             '[HEV] t=130 ev=lane_eq team=2 lane=1 kind=safe eq=-0.425 imb=0.000 feq=-0.425 a=3 e=3',
         ].join('\n')
     )[0];
     const text = report.summary(game);
     assert.match(text, /forecast fit:\n {2}safe n=2 K=0\.30 r2=1\.00/);
-    assert.match(text, /pre-contest: started 1 attacked 1 no-pull 1 enemy-in-lane 0/);
+    assert.match(text, /pre-contest: started 2 attacked 1 no-pull 1 enemy-in-lane 0 aborted 1/);
 });
