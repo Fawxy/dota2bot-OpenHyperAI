@@ -1455,7 +1455,10 @@ function pulledCreeps(bot: Unit, job: Job): Unit[] {
     const radii = settings().Radii;
     const out: Unit[] = [];
     for (const c of bot.GetNearbyLaneCreeps(radii.LaneCreepScan, true) ?? []) {
-        if (c !== null && c !== undefined && c.IsAlive() && dist2D(c.GetLocation(), job.stand) <= radii.TakePullCreeps) out.push(c);
+        if (c === null || c === undefined || c.IsNull() || !c.IsAlive()) continue;
+        // A creep out of sight can be listed with no location (console.9057255027).
+        const loc = c.GetLocation();
+        if (loc !== undefined && dist2D(loc, job.stand) <= radii.TakePullCreeps) out.push(c);
     }
     return out;
 }

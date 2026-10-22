@@ -1019,11 +1019,13 @@ do
 	frame(H, core, 77.6)
 	RANDOM_FRACTION = nil
 	check("a creep that survives the swing window is swung at again", attacksOn(3, creep) == 2, attacksOn(3, creep))
+	local ghost = MakeCreep({ team = 3, x = THEIR_SMALL.x + 100, y = THEIR_SMALL.y })
+	ghost.unseen, ghost.listedUnseen = true, true
 	RemoveCreep(creep)
 	local okFrame, err = pcall(frame, H, core, 77.9)
 	local guarded
 	for _, l in ipairs(lines) do if l:find(" ev=lua_error ", 1, true) then guarded = l end end
-	check("a swing target removed by the engine does not throw", okFrame and guarded == nil and H.Lane.CampJobs.Active(core), tostring(guarded) .. " active=" .. tostring(H.Lane.CampJobs.Active(core)))
+	check("a swing target removed, and a creep listed with no location, do not throw", okFrame and guarded == nil and H.Lane.CampJobs.Active(core), tostring(guarded) .. " active=" .. tostring(H.Lane.CampJobs.Active(core)))
 
 	-- Their wave was only late: it reaches our front before any pulled creep is seen, so the core goes back.
 	H, core, job, lines = taking()

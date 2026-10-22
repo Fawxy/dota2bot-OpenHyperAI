@@ -2248,11 +2248,22 @@ local function pulledCreeps(bot, job)
     local radii = settings().Radii
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
-        if c ~= nil and c ~= nil and c:IsAlive() and dist2D(
-            c:GetLocation(),
-            job.stand
-        ) <= radii.TakePullCreeps then
-            out[#out + 1] = c
+        do
+            local __continue317
+            repeat
+                if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
+                    __continue317 = true
+                    break
+                end
+                local loc = c:GetLocation()
+                if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
+                    out[#out + 1] = c
+                end
+                __continue317 = true
+            until true
+            if not __continue317 then
+                break
+            end
         end
     end
     return out
