@@ -1,7 +1,7 @@
 /**
  * Lane safety and laning-phase transitions (task 12, Task 8): per-bot end of laning and the lost-lane response.
  * IsLaningFor says whether a bot is still laning (its tower fell, a support left for a smoke gank, a core with a
- * farm item has a quiet jungle). A bot whose lane is lost (deaths, last hits, levels) farms or roams instead; with a
+ * farm item has a quiet jungle). A bot whose lane is lost (deaths, levels) farms or roams instead; with a
  * human partner the bot suggests it and only leaves once the human answers or stays away.
  */
 import { BotMode, Lane, Tower, Unit, Vector } from "bots/ts_libs/dota";
@@ -27,7 +27,6 @@ const T1: Record<number, number> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.M
 
 export interface LaneRecord {
     deaths: number[];
-    lastHits: { at: number; total: number }[];
 }
 
 interface PhaseState {
@@ -64,7 +63,7 @@ function stateOf(bot: Unit): PhaseState {
     const pid = bot.GetPlayerID();
     let st = states[pid];
     if (st === undefined) {
-        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, lostLatched: false, reportedLost: false, capStarted: false, jungleSaid: false };
+        st = { record: { deaths: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, lostLatched: false, reportedLost: false, capStarted: false, jungleSaid: false };
         states[pid] = st;
     }
     return st;
@@ -158,27 +157,19 @@ export function LaningTransitions(bot: Unit): boolean {
 
 export interface LostInput {
     deathsInWindow: number;
-    lhPerMin: number;
-    expectedLhPerMin: number;
     levelGap: number;
 }
 
 export function LaneLostPure(i: LostInput): LuaMultiReturn<[boolean, string]> {
     const cfg = Settings.Get();
     if (i.deathsInWindow >= cfg.LostDeaths) return $multi(true, "deaths");
-    if (i.expectedLhPerMin > 0 && i.lhPerMin / i.expectedLhPerMin < cfg.LostLHRatio) return $multi(true, "lasthits");
     if (i.levelGap >= cfg.LostLevelGap) return $multi(true, "levels");
     return $multi(false, "");
-}
-
-function lastHits(bot: Unit): number {
-    return (bot as Unit & { GetLastHits(): number }).GetLastHits();
 }
 
 function pruneRecord(r: LaneRecord, now: number): void {
     const from = now - Settings.Get().LostWindow;
     r.deaths = r.deaths.filter(t => t >= from);
-    r.lastHits = r.lastHits.filter(h => h.at >= from);
 }
 
 /**
@@ -203,26 +194,9 @@ export function LaneLost(bot: Unit): LuaMultiReturn<[boolean, string]> {
 }
 
 function lostInput(bot: Unit): LostInput {
-    const cfg = Settings.Get();
     const st = stateOf(bot);
-    const now = DotaTime();
-    pruneRecord(st.record, now);
-    const pos = LaneConfig.PositionOf(bot);
-    // Only cores are judged on last hits (a support is not expected to take them), and only once the samples span
-    // LostMinSpan; with no expected rate the pure check skips the rule.
-    let rate = 0;
-    let expected = 0;
-    const first = st.record.lastHits[0];
-    if (pos !== undefined && pos <= 3 && first !== undefined && now - first.at >= cfg.LostMinSpan) {
-        expected = Settings.Lerp(cfg.ExpectedLHPerMin, LaneConfig.SkillOf(bot));
-        rate = ((lastHits(bot) - first.total) / (now - first.at)) * 60;
-    }
-    return {
-        deathsInWindow: st.record.deaths.length,
-        lhPerMin: rate,
-        expectedLhPerMin: expected,
-        levelGap: levelGapOf(bot, st, LaneState.ForBot(bot)),
-    };
+    pruneRecord(st.record, DotaTime());
+    return { deathsInWindow: st.record.deaths.length, levelGap: levelGapOf(bot, st, LaneState.ForBot(bot)) };
 }
 
 function partnerOf(bot: Unit): LaneState.LaneHero | undefined {
@@ -231,7 +205,6 @@ function partnerOf(bot: Unit): LaneState.LaneHero | undefined {
 }
 
 function sample(bot: Unit, st: PhaseState, now: number): void {
-    const cfg = Settings.Get();
     const alive = bot.IsAlive();
     // A death while the bot was off-lane (farming, ganking) says nothing about the lane.
     if (st.wasAlive === true && !alive && st.wasLaning) st.record.deaths.push(now);
@@ -242,9 +215,7 @@ function sample(bot: Unit, st: PhaseState, now: number): void {
         st.laningWhy = why;
         Telemetry.Event("tr_laning", [["pid", bot.GetPlayerID()], ["laning", why === undefined], ["why", why]]);
     }
-    if (alive && now >= cfg.LostLHFrom) {
-        const last = st.record.lastHits[st.record.lastHits.length - 1];
-        if (last === undefined || now - last.at >= cfg.LHSampleGap) st.record.lastHits.push({ at: now, total: lastHits(bot) });
+    if (alive) {
         const s = LaneState.ForBot(bot);
         if (s !== undefined) {
             for (const e of LaneState.Enemies(bot, s.lane)) if (e.visible && e.unit !== undefined) st.levelSeen[e.pid] = e.unit.GetLevel();
@@ -293,8 +264,6 @@ function reportLost(bot: Unit, st: PhaseState, reason: string, input?: LostInput
         ["lost", st.lostResp],
         ["reason", reason],
         ["deaths", input?.deathsInWindow],
-        ["lhpm", input?.lhPerMin],
-        ["expected", input?.expectedLhPerMin],
         ["levelGap", input?.levelGap],
     ]);
 }

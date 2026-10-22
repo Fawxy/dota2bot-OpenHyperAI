@@ -133,17 +133,8 @@ export const DEFAULTS = {
     SupportTo: 480,
     LostWindow: 240,
     LostDeaths: 2,
-    LostLHRatio: 0.4,
     LostLevelGap: 2,
-    // Placeholder until minute 10.
-    ExpectedLHPerMin: { Low: 3, High: 7 } as LerpPair,
     SuggestCooldown: 60,
-    // The last-hit rate is only judged once this many seconds of samples exist (early in the game the window is short).
-    LostMinSpan: 90,
-    // Last-hit samples start here: before the creeps meet there is nothing to last hit.
-    LostLHFrom: 60,
-    // GetLastHits is sampled at most this often.
-    LHSampleGap: 5,
     // Enemy hero seen within this long counts as present near our jungle camp.
     JungleSeenWindow: 3,
     JungleCampRadius: 2500,
