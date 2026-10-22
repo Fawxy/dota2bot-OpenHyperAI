@@ -20,6 +20,8 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import { HeroRolesMap } from "bots/FunLib/aba_hero_roles_map";
+import { HeroName } from "bots/ts_libs/dota/heroes";
 
 export interface PullSignalInput {
     now: number;
@@ -82,10 +84,15 @@ const WARDS: Record<string, boolean> = { item_ward_sentry: true, item_ward_obser
 const INVENTORY_SLOTS = 6;
 
 let observers: Record<number, ObserverState> = {};
-// Hero positions are fixed for the game; read while visible, since PositionOf needs a unit handle.
-let positions: Record<number, number> = {};
-// The latest position read per enemy, so lane_enemy_pos reports a read that differs from the kept one once.
-let positionReads: Record<number, number> = {};
+/**
+ * Seconds each enemy hero was seen at our front, per "<team>:<lane>", and its hero name. J.GetPosition is no use for
+ * enemies: enemy_role_estimation ranks only the enemies in sight, and reads 3 before it has run (console.9057240733:
+ * 19 of 20 first reads were 3). Who lanes where, and what their hero is, is what a player reads instead.
+ */
+let laneSeen: Record<string, Record<number, { secs: number; lastAt: number }>> = {};
+let heroNames: Record<number, string> = {};
+/** The lane support / mid last reported on lane_enemy_role, per "<team>:<lane>:<role>". */
+let rolesSaid: Record<string, number> = {};
 let marked: Record<number, Record<number, number>> = {};
 let dropDenyUntil: Record<number, number> = {};
 // "<team>:<lane>:<instance key>" of instances already telegraphed: two laners noticing one instance say it once.
@@ -93,8 +100,9 @@ let teamSaid: Record<string, boolean> = {};
 
 export function ResetCache(): void {
     observers = {};
-    positions = {};
-    positionReads = {};
+    laneSeen = {};
+    heroNames = {};
+    rolesSaid = {};
     marked = {};
     dropDenyUntil = {};
     teamSaid = {};
@@ -300,40 +308,69 @@ function prune(st: ObserverState, now: number): void {
     }
 }
 
-function notePositions(s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): void {
+/** Counts the seconds each visible enemy stands at our front; two observers in the same lane add the time once. */
+function noteLaners(s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
+    const key = `${s.team}:${s.lane}`;
+    let seen = laneSeen[key];
+    if (seen === undefined) {
+        seen = {};
+        laneSeen[key] = seen;
+    }
+    const gap = settings().Timing.LanerSeenGap;
     for (const e of enemies) {
-        if (!e.visible || e.unit === undefined) continue;
-        const kept = positions[e.pid];
-        if (kept !== undefined && !Telemetry.IsEnabled()) continue;
-        const pos = e.position ?? LaneConfig.PositionOf(e.unit);
-        if (pos === undefined || pos === positionReads[e.pid]) continue;
-        positionReads[e.pid] = pos;
-        if (kept === undefined) positions[e.pid] = pos;
-        Telemetry.Event("lane_enemy_pos", [
-            ["team", s.team],
-            ["enemy", e.pid],
-            ["hero", e.unit.GetUnitName()],
-            ["pos", pos],
-            ["kept", positions[e.pid]],
-            ["lane", s.lane],
-        ]);
+        if (!e.visible || e.unit === undefined || dist2D(e.location, s.frontLoc) > settings().Radii.Exposure) continue;
+        heroNames[e.pid] = e.unit.GetUnitName();
+        const r = seen[e.pid];
+        if (r === undefined) seen[e.pid] = { secs: 0, lastAt: now };
+        else {
+            if (now - r.lastAt <= gap) r.secs += now - r.lastAt;
+            r.lastAt = now;
+        }
     }
 }
 
-/** Known enemy of that position whose (last-seen) location is nearest the lane; never-seen enemies are unknown. */
-function enemyAt(enemies: LaneState.LaneEnemy[], lane: Lane, wanted: (pos: number) => boolean): LaneState.LaneEnemy | undefined {
-    let best: LaneState.LaneEnemy | undefined;
-    let bestDist = math.huge;
-    for (const e of enemies) {
-        const pos = positions[e.pid];
-        if (pos === undefined || !wanted(pos)) continue;
-        const d = GetAmountAlongLane(lane, e.location).distance;
-        if (d < bestDist) {
-            best = e;
-            bestDist = d;
-        }
+/** This lane's enemy laners, most seen first: those seen at our front for Timing.LanerSeenMin or more. */
+function laneMembers(s: LaneState.LaneSnapshot): number[] {
+    const seen = laneSeen[`${s.team}:${s.lane}`];
+    if (seen === undefined) return [];
+    const min = settings().Timing.LanerSeenMin;
+    const members: number[] = [];
+    for (const [pid, r] of pairs(seen)) if (r.secs >= min) members.push(pid);
+    members.sort((a, b) => (seen[a].secs !== seen[b].secs ? seen[b].secs - seen[a].secs : a - b));
+    return members;
+}
+
+function supportScore(pid: number): number {
+    const roles = HeroRolesMap[heroNames[pid] as HeroName];
+    return roles !== undefined ? roles.support - roles.carry : 0;
+}
+
+/**
+ * The lane's enemy support: of two or more laners, the most support hero (HeroRolesMap support minus carry, ties to
+ * the less seen); none in a solo lane. Mid: its most seen laner. Reported on lane_enemy_role when it changes.
+ */
+function laneRoleOf(s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], role: "support" | "mid"): LaneState.LaneEnemy | undefined {
+    const members = laneMembers(s);
+    let pid: number | undefined;
+    if (role === "mid") pid = members[0];
+    else if (members.length >= 2) {
+        for (const m of members) if (pid === undefined || supportScore(m) >= supportScore(pid)) pid = m;
     }
-    return best;
+    if (pid === undefined) return undefined;
+    const key = `${s.team}:${s.lane}:${role}`;
+    if (rolesSaid[key] !== pid) {
+        rolesSaid[key] = pid;
+        Telemetry.Event("lane_enemy_role", [
+            ["team", s.team],
+            ["lane", s.lane],
+            ["role", role],
+            ["enemy", pid],
+            ["hero", heroNames[pid]],
+            ["members", members.join(",")],
+        ]);
+    }
+    for (const e of enemies) if (e.pid === pid) return e;
+    return undefined;
 }
 
 function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy, now: number): number | undefined {
@@ -376,7 +413,7 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
     const camps = Camps.PullCampsFor(enemyTeamOf(s.team), s.lane);
     if (camps.length === 0) return;
     const cycle = cycleOf(now);
-    const support = enemyAt(enemies, s.lane, (pos) => pos >= 4);
+    const support = laneRoleOf(s, enemies, "support");
     const suspected = support !== undefined ? suspectedCamp(camps, support, now) : undefined;
     if (support !== undefined && suspected !== undefined) {
         const sig = { kind: "pull" as const, lane: s.lane, at: now, campIdx: suspected, enemyPid: support.pid };
@@ -415,7 +452,7 @@ function midSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, ene
     if (s.lane !== Lane.Mid) return;
     const cfg = settings();
     const shoveEq = cfg.Thresholds.MidMissingEq;
-    const enemyMid = enemyAt(enemies, s.lane, (pos) => pos === 2);
+    const enemyMid = laneRoleOf(s, enemies, "mid");
     const last = s.eqHistory[s.eqHistory.length - 1];
     if (enemyMid !== undefined && !enemyMid.visible && enemyMid.timeSinceSeen > cfg.Timing.CounterUnseen && last !== undefined && last <= shoveEq) {
         observe(bot, st, `mid_missing:${cycleOf(now)}`, { kind: "mid_missing", lane: s.lane, at: now, enemyPid: enemyMid.pid }, s, enemies);
@@ -476,7 +513,7 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     prune(st, now);
     const enemies = LaneState.Enemies(bot, s.lane);
-    notePositions(s, enemies);
+    noteLaners(s, enemies, now);
     if (LaneConfig.InLaningPhase()) {
         pullSignals(bot, st, s, enemies, now);
         freezeSignal(bot, st, s, enemies, now);
@@ -589,7 +626,7 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
     if (!pathSafe(bot, s, lookout, enemies, sig.enemyPid)) return false;
     // The signal can be a cycle old by now: the lane must still be drifting and their support still in it.
     const theirs = Camps.ByIdx(sig.campIdx, enemyTeamOf(s.team));
-    const support = enemyAt(enemies, s.lane, (pos) => pos >= 4);
+    const support = laneRoleOf(s, enemies, "support");
     if (theirs === undefined || expectedAggro(s, theirs, support, now) !== sig.aggroAt) return false;
     return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, preAggroAt: sig.aggroAt });
 }

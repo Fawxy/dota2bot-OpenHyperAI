@@ -13,29 +13,39 @@ end
 
 local function unit(o)
 	local u = MakeUnit({ pid = o.pid, team = o.team or 2, bot = o.bot, loc = o.loc or FRONT })
-	u.lane, u.pos, u.dmg = o.lane or Lane.Top, o.pos, o.dmg
+	u.lane, u.pos, u.dmg, u.name = o.lane or Lane.Top, o.pos, o.dmg, o.name
 	return u
 end
 
 local function hide(u, ...) u.hiddenFrom = {} for _, pid in ipairs({ ... }) do u.hiddenFrom[pid] = true end end
 local function show(u) u.hiddenFrom = nil end
 
--- Radiant top (our offlane): core pid 3 (pos 3) and support pid 4 (pos 4); Dire laners: core pid 11 (pos 1) and
--- support pid 15 (pos 5). The support observes. Only the Dire small camp exists.
+-- Radiant top (our offlane): core pid 3 (pos 3) and support pid 4 (pos 4); Dire laners: Anti-Mage pid 11 and
+-- Crystal Maiden pid 15, the support. The support observes. Only the Dire small camp exists. Both Dire heroes have
+-- laned at our front for the 11 s before `t` (opts.unlaned skips that), so counter-play knows CM as their support.
 local function world(skill, opts)
 	opts = opts or {}
 	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, telemetry = opts.telemetry })
-	T = opts.t or 60
+	local start = opts.t or 60
 	CURRENT_TEAM = 2
 	OBSERVER = 4
 	SPAWNERS = { spawner(3, "small", THEIR_SMALL) }
 	H.Lane.Camps.ResetCache()
 	local core = unit({ pid = 3, pos = 3, loc = opts.coreAt })
 	local support = unit({ pid = 4, pos = 4, loc = opts.at or Vector(0, 5300) })
-	local ecore = unit({ pid = 11, team = 3, pos = 1, loc = opts.enemyCoreAt or Vector(300, 5000) })
-	local esup = unit({ pid = 15, team = 3, pos = 5, loc = opts.enemySupAt or Vector(-300, 5000) })
+	local ecore = unit({ pid = 11, team = 3, pos = 1, loc = Vector(300, 5000), name = "npc_dota_hero_antimage" })
+	local esup = unit({ pid = 15, team = 3, pos = 5, loc = Vector(-300, 5000), name = "npc_dota_hero_crystal_maiden" })
 	H.Lane.Config.SkillOf(support)
 	H.Lane.Config.SkillOf(core)
+	if not opts.unlaned then
+		for t = start - 12, start - 1, 1 do
+			T = t
+			H.Lane.Counter.Tick(support)
+		end
+	end
+	T = start
+	ecore.loc = opts.enemyCoreAt or ecore.loc
+	esup.loc = opts.enemySupAt or esup.loc
 	return H, support, core, ecore, esup
 end
 
@@ -139,24 +149,37 @@ do
 end
 
 do
-	-- lane_enemy_pos: the first read of each enemy's position is kept for the game; a later, different read is logged once.
-	local H, support, _, _, esup = world(1, { telemetry = { Enable = true } })
-	local lines = {}
-	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
-	local function posLines()
+	-- Their support is read from who lanes at our front and what hero each is, not from J.GetPosition (console.9057240733:
+	-- 19 of 20 first reads were pos 3, so no enemy was ever their support).
+	local function roles(lines)
 		local r = {}
-		for _, l in ipairs(lines) do if l:find(" ev=lane_enemy_pos ", 1, true) and l:find("enemy=15", 1, true) then table.insert(r, l) end end
+		for _, l in ipairs(lines) do if l:find(" ev=lane_enemy_role ", 1, true) then table.insert(r, l) end end
 		return r
 	end
-	tick(H, support, 60)
-	tick(H, support, 61)
-	local first = posLines()
-	check("first read logged once with the kept position", #first == 1 and first[1]:find("pos=5 kept=5", 1, true) ~= nil, first[1])
-	esup.pos = 2
-	tick(H, support, 62)
-	tick(H, support, 63)
-	local later = posLines()
-	check("a different later read is logged once; the kept position stays", #later == 2 and later[2]:find("pos=2 kept=5", 1, true) ~= nil, later[2])
+	local function laned(opts)
+		local H, support, core, ecore, esup = world(1, { telemetry = { Enable = true }, unlaned = true })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		if opts.swap then ecore.name, esup.name = esup.name, ecore.name end
+		if opts.solo then hide(ecore, 4) ecore.loc = Vector(-6000, -6000) end
+		-- Seen at our front from 0:45; their support then pulls at 1:15, in sight at the camp.
+		for t = 45, 45 + (opts.secs or 15), 0.5 do tick(H, support, t) end
+		local pullAt = opts.supportAt or THEIR_SMALL
+		esup.loc = pullAt
+		if opts.swap then ecore.loc = pullAt end
+		tick(H, support, 75)
+		return H, support, lines, signalsOf(H, support, "pull")
+	end
+	local _, _, lines, pulls = laned({})
+	check("their support at its camp, after 15 s laning: pull names it", #pulls == 1 and pulls[1].enemyPid == 15, pulls[1] and pulls[1].enemyPid)
+	local r = roles(lines)
+	check("lane_enemy_role reports CM as their support", #r == 1 and r[1]:find("role=support enemy=15 hero=npc_dota_hero_crystal_maiden", 1, true) ~= nil, r[1])
+	_, _, _, pulls = laned({ swap = true })
+	check("the hero decides, not the player id: with the names swapped, pid 11 is CM and their support", #pulls == 1 and pulls[1].enemyPid == 11, pulls[1] and pulls[1].enemyPid)
+	_, _, _, pulls = laned({ secs = 8 })
+	check("laned only 8 s: no support known yet, no sighting", #pulls == 0)
+	_, _, _, pulls = laned({ solo = true })
+	check("a solo laner is nobody's support", #pulls == 0)
 end
 
 do
@@ -485,7 +508,8 @@ do
 		local said = {}
 		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
 		LANE_FRONT[2][Lane.Mid], LANE_FRONT[3][Lane.Mid] = 0.3, 0.65
-		tick(H, mid, 61)
+		-- Their mid has laned against ours since 0:46, so it is known as their mid.
+		for t = 46, 61, 0.5 do tick(H, mid, t) end
 		if not enemyVisible then
 			hide(emid, 2)
 			LAST_SEEN[7] = { location = Vector(-2500, 0), time_since_seen = 5 }
@@ -615,7 +639,7 @@ do
 	-- Our lane drifts toward our tower (forecast about -0.6): the enemy support in lane will want to pull.
 	local said
 	local function expected(skill, cfg, seen)
-		local H, support, _, _, esup = world(skill, { cfg = cfg })
+		local H, support, _, _, esup = world(skill, { cfg = cfg, unlaned = seen == false })
 		said = {}
 		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
 		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62 -- both fronts meet at 0.38 of our lane: eqPos -0.6

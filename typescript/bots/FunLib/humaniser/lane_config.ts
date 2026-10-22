@@ -133,6 +133,9 @@ export const DEFAULTS = {
         PreContestWait: 4,
         // After a pre-contest the enemy did not pull into (enemy-in-lane, no-pull), the bot waits this long before another in that lane.
         PreContestCooldown: 60,
+        // An enemy seen at our front this long is one of the lane's laners; sightings further apart than the gap add nothing.
+        LanerSeenMin: 10,
+        LanerSeenGap: 1,
         TakePullMax: 15,
         TakePullWait: 3,
         TakePullSwing: 1,
