@@ -98,6 +98,13 @@ export const DEFAULTS = {
         StackFromValve: true,
         StackWindowAt: 0.5,
         JobDesire: 0.7,
+        // Valve's attack mode (0.95, C++ for most heroes, so no claim can lower it) cut 9 of 34 jobs in
+        // console.9055994510, most in lane skirmishes the puller was not part of. The job's farm sits just above it.
+        JobCommitDesire: 0.96,
+        // Tango and clarity on the way to a pull only with this much time to spare before the walk to the stand.
+        SupplySlack: 1.5,
+        // Longest the job waits, giving no other order, for an ordered tango or clarity to take effect.
+        SupplyWait: 1.5,
         PartnerHPWindow: 2,
         PartnerBailConfirm: 0.4,
         ContestDesire: 0.65,
@@ -175,6 +182,13 @@ export const DEFAULTS = {
         PartnerMinHP: 0.4,
         JobMinHP: 0.4,
         JobHoldMinHP: 0.5,
+        // Starting needs room above JobHoldMinHP for the camp's hits (console.9055994510: 4 of 8 jobs that ended in
+        // retreat started at 51-59%).
+        JobStartHP: 0.65,
+        // Before a pull: a tango from this much lost HP and a clarity from this much lost mana, as the camp's hits and
+        // the pull's casts will use the rest (upstream waits for 200 HP or 60% mana).
+        TangoMinLost: 80,
+        ClarityMinLost: 150,
         PartnerDangerEnemies: 2,
         PartnerDangerRadius: 1200,
         PartnerBailHP: 0.35,
@@ -233,8 +247,10 @@ export const DEFAULTS = {
         StepBackCreeps: 700,
         StepBackEps: 50,
         NeutralSearch: 700,
-        // An enemy hero this close lets a camp job's bot cast again (camp_jobs HoldsCasts).
-        CastHoldEnemy: 1200,
+        // An enemy hero this close lets a camp job's bot cast again and ends its commitment over Valve's attack mode.
+        JobEnemyHero: 1200,
+        // Tango's tree, near enough not to cost the pull its timing.
+        TangoTree: 300,
         StandOffset: 150,
         // Stand at most this far from the spawner origin: inside NeutralSearch with room for the camp's spread.
         StandReach: 450,

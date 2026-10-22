@@ -135,7 +135,8 @@ const JOB_FOCUS_MODES: BotMode[] = [BotMode.Ward, BotMode.TeamRoam, BotMode.Roam
 export function CampJobRawDesire(bot: Unit, desire: number): number {
     const job = CampJobs.Current(bot);
     const kind = job?.kind ?? "job";
-    if (!Intent.Claim(bot, { source: `lane:${kind}`, tier: "CAMP_JOB", mode: BotMode.Farm, floor: desire, until: GameTime() })) return desire;
+    const floor = CampJobs.Commits(bot) ? LaneConfig.Settings().Timing.JobCommitDesire : desire;
+    if (!Intent.Claim(bot, { source: `lane:${kind}`, tier: "CAMP_JOB", mode: BotMode.Farm, floor, until: GameTime() })) return desire;
     // Travel, wait and the wait for the hit to be confirmed are timed against the pull; after that other modes' stickiness is no concern.
     if (job !== undefined && (job.phase === "travel" || job.phase === "wait" || job.phase === "aggro")) {
         Intent.Claim(bot, { source: "lane:camp_job", tier: "CAMP_JOB", mode: BotMode.Farm, unsticks: true });

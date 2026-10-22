@@ -613,4 +613,18 @@ do
 	check("one lane_job_end at the walk-off's end", #ends == 1 and ends[1]:find("kind=stack camp=1", 1, true) ~= nil, ends[1])
 end
 
+do
+	-- The start gate stacks share with pulls (console.9055994510: stacks started at 51-53% HP ended in retreat).
+	local function startAt(hp, retreatRaw)
+		local H, support = world(1, { camps = { { "medium", MEDIUM } }, at = Vector(MEDIUM.x, MEDIUM.y + 1500) })
+		support.hp = hp
+		T = 105
+		if retreatRaw then H.Intent.Resolve(support, dota.BotMode.Retreat, retreatRaw) end
+		return H.Lane.CampJobDesire(support)
+	end
+	check("70% HP: the stack starts", near(startAt(70), 0.7))
+	check("60% HP: no stack", startAt(60) == 0)
+	check("retreat already at 0.75: no stack", startAt(90, 0.75) == 0)
+end
+
 finish()

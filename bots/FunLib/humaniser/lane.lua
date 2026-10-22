@@ -184,13 +184,14 @@ local JOB_FOCUS_MODES = {
 function ____exports.CampJobRawDesire(bot, desire)
     local job = CampJobs.Current(bot)
     local kind = job and job.kind or "job"
+    local floor = CampJobs.Commits(bot) and LaneConfig.Settings().Timing.JobCommitDesire or desire
     if not Intent.Claim(
         bot,
         {
             source = "lane:" .. kind,
             tier = "CAMP_JOB",
             mode = BotMode.Farm,
-            floor = desire,
+            floor = floor,
             ["until"] = GameTime()
         }
     ) then
