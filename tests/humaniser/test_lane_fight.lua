@@ -78,7 +78,8 @@ local function score(W)
 	return d
 end
 
--- Frames at 30 fps: a scoring round every ROUND, and team_roam's Think every frame while it is the active mode.
+-- Frames at 30 fps in engine order: a scoring round every ROUND, team_roam's Think every frame while it is the active
+-- mode, then the humaniser tick (ItemUsageThink): LaneFight.Tick, then Intent.Tick (mode switches, stickiness).
 local function play(W, seconds)
 	local stop = T + seconds - 1e-9
 	while T < stop do
@@ -89,6 +90,8 @@ local function play(W, seconds)
 		if W.bot.mode == BotMode.TeamRoam then
 			if W.LF.Think(W.bot) then W.acted = (W.acted or 0) + 1 end
 		end
+		W.LF.Tick(W.bot)
+		W.H.Intent.Tick(W.bot)
 		if W.onFrame then W.onFrame() end
 		T = T + FRAME
 	end
@@ -192,6 +195,15 @@ do
 	check("trade ends after TradeDuration", W2.events("lanefight_end", "reason=duration") == 1, table.concat(W2.lines, "\n"))
 	play(W2, 3)
 	check("one trade per window instance", W2.events("lanefight_start") == 1, W2.events("lanefight_start"))
+end
+
+do
+	-- Hits on an illusion of the target (same player ID) are not hits on the target.
+	local W = hitWorld(false)
+	local illusion = setmetatable({ IsIllusion = function() return true end }, { __index = W.enemy })
+	W.bot.target = illusion
+	play(W, 1.7)
+	check("attacks on an illusion of the target are not landed hits", W.events("lanefight_end", "reason=hits") == 0, table.concat(W.lines, "\n"))
 end
 
 for _, case in ipairs({ { field = "unkillable", reason = "unkillable" }, { field = "magicImmune", reason = "magic_immune" } }) do
@@ -353,9 +365,93 @@ do
 	end)
 	check("no start with a live HUMAN_ORDER claim", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=priority") == 1)
 
+	-- Their level spike on our level-2 bot: a "level" window of ours is gone, but lasthit/position would still read.
+	W = gateWorld({ botLevel = 1, enemyLevel = 2 })
+	check("respect blocks a trade and logs once", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=respect:their_spike") == 1,
+		table.concat(W.lines, "\n"))
 	W = gateWorld({ botLevel = 1, enemyLevel = 2, burst = 1000 })
-	check("respect blocks trades and commits and logs once", not hasStart(W, "trade") and not hasStart(W, "commit")
-		and W.events("lanefight_gate", "gate=respect:their_spike") == 1, table.concat(W.lines, "\n"))
+	check("respect does not block a kill that passes the kill check", hasStart(W, "commit"), table.concat(W.lines, "\n"))
+end
+
+do
+	-- From level 6 an ult never seen cast is assumed ready (their_ult respect on every read); the kill check decides kills.
+	local W = world({ botLevel = 6, enemyLevel = 6, burst = 1000 })
+	W.enemy.bot = false
+	play(W, 1)
+	check("setup: the unseen ult of a level-6 human reads as their_ult", W.LF.ReadFor(W.bot, T).respect == "their_ult")
+	check("a level-6 human with an unseen ult and a passing kill check is committed on", hasStart(W, "commit"), table.concat(W.lines, "\n"))
+end
+
+do
+	-- Their level-6 spike (and unseen ult) for 2 s during a commit, then gone: the kill pass stayed one instance, so
+	-- CommitMax ends the commit for good rather than a lapsed instance restarting it.
+	local W = world({ burst = 1000 })
+	play(W, 1)
+	check("setup: committing", W.LF.CurrentPhase(W.bot) == "commit")
+	W.enemy.level = 6
+	play(W, 2)
+	check("setup: respect read during the commit", W.LF.ReadFor(W.bot, T).respect ~= nil and W.LF.CurrentPhase(W.bot) == "commit")
+	W.bot.level = 6
+	W.LF.CooldownMemory.Record(1, 6, "lion_finger_of_death", "ult", 100, 1, T)
+	play(W, 7)
+	check("a respect during a commit does not lapse its kill instance", W.events("lanefight_end", "reason=commit-max") == 1
+		and W.events("lanefight_start", "phase=commit") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- CommitStartHP (0.65) gates commits; trades keep StartHP (0.5).
+	local W = world({ burst = 1000, botHP = 60 })
+	play(W, 2)
+	check("at 0.6 HP a kill pass does not commit (gate=low-hp once) and a trade still starts", not hasStart(W, "commit")
+		and hasStart(W, "trade") and W.events("lanefight_gate", "gate=low-hp") == 1, table.concat(W.lines, "\n"))
+	W = world({ burst = 1000, botHP = 70 })
+	play(W, 1)
+	check("at 0.7 HP the same kill pass commits", hasStart(W, "commit"), table.concat(W.lines, "\n"))
+end
+
+do
+	-- A near miss (margin 0.9) logs why it failed, once per target instance; a margin under 0.8 logs nothing.
+	local W = world({ botLevel = 1, burst = 90 })
+	play(W, 3)
+	check("a kill check failing with margin >= 0.8 logs gate=kill:<reason> once", W.events("lanefight_gate", "gate=kill:burst target=6") == 1
+		and W.events("lanefight_gate", "gate=kill:") == 1, table.concat(W.lines, "\n"))
+	W = world({ botLevel = 1, burst = 1000 })
+	W.enemy.abilities[1] = ability("antimage_blink", { cd = 15 })
+	play(W, 3)
+	check("an unseen escape on a killable target logs gate=kill:escape", W.events("lanefight_gate", "gate=kill:escape target=6") == 1
+		and not hasStart(W, "commit"), table.concat(W.lines, "\n"))
+	W = world({ botLevel = 1, burst = 70 })
+	play(W, 3)
+	check("a kill check under margin 0.8 logs no kill gate", W.events("lanefight_gate", "gate=kill:") == 0, table.concat(W.lines, "\n"))
+end
+
+do
+	-- Out of range and in another mode: the mode gate is reported, not the range.
+	local W = world({ botX = -800 })
+	W.bot.mode = BotMode.Farm
+	for _ = 1, 6 do
+		T = T + ROUND
+		W.H.Intent.Resolve(W.bot, BotMode.Retreat, 0.2)
+		W.LF.RoamDesire(W.bot, 0.2)
+	end
+	check("the mode gate is checked before the range gate", W.events("lanefight_gate", "gate=mode:farm") == 1
+		and W.events("lanefight_gate", "gate=range") == 0, table.concat(W.lines, "\n"))
+
+	-- A cached read (WindowReadEvery 0.6) still names a target that has since gone into fog: no trade on it.
+	W = world({ laneFight = { WindowReadEvery = 0.6 } })
+	W.laning = 0.9
+	play(W, 0.7)
+	check("setup: the window was read twice and laning gated it", W.events("lanefight_gate", "gate=laning") == 1 and not hasStart(W, "trade"),
+		table.concat(W.lines, "\n"))
+	-- As in the engine: the handle answers CanBeSeen false at once; lane_state's snapshot catches up on its refresh.
+	W.enemy.hiddenFrom = { [W.bot] = true }
+	W.enemy.CanBeSeen = function() return false end
+	LAST_SEEN[6] = { location = W.enemy.loc, time_since_seen = 0 }
+	W.laning = 0.45
+	play(W, 0.3)
+	check("a trade does not start on a target the cached read saw but the bot no longer does", not hasStart(W, "trade")
+		and W.events("lanefight_gate", "gate=unseen") == 1,
+		table.concat(W.lines, "\n"))
 end
 
 -- ---------------------------------------------------------------------------------------------- kill switches
@@ -498,7 +594,6 @@ for _, case in ipairs({ { phase = "trade", laning = 0.45 }, { phase = "commit", 
 	local switches, i = 0, 0
 	local prev = W.bot.mode
 	W.onFrame = function()
-		W.H.Intent.Tick(W.bot)
 		if W.bot.mode ~= prev then switches, prev = switches + 1, W.bot.mode end
 	end
 	-- team_roam's raw desire alternates above and below laning's every round.

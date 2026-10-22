@@ -2,7 +2,8 @@
  * Ability classes for lane fight memory (task 11). An ability is an ultimate (the engine flag), a key ability or other.
  * Key abilities are hard disables (stun, root, hex, silence, sleep, fear, taunt, cyclone or banish), things that matter
  * to a kill (spell immunity), and the listed items. Escapes are the subset where the target breaks contact or becomes
- * untargetable to us: blinks, leaps, invisibility, teleports. Slows, knockbacks, disarms and damage reduction count for neither.
+ * untargetable to us: blinks, leaps, invisibility, teleports. Spell immunity (BKB, Glimmer, Blade Fury) is key only.
+ * Slows, knockbacks, disarms and damage reduction count for neither.
  * One line per hero with a BotLib file, built from its ability names ("hero: key names|escape names", every escape is
  * also key); the names come from the hero_*.lua files and FunLib/spell_list.lua.
  */
@@ -136,7 +137,7 @@ const HEROES: string[] = [
     "wisp: |wisp_relocate",
     "witch_doctor: witch_doctor_paralyzing_cask|",
     "zuus: |zuus_heavenly_jump",
-    "items: item_force_staff item_hurricane_pike item_cyclone item_wind_waker item_sheepstick item_abyssal_blade item_orchid item_bloodthorn item_rod_of_atos item_gungir item_black_king_bar|item_blink item_swift_blink item_arcane_blink item_overwhelming_blink item_force_staff item_hurricane_pike item_cyclone item_wind_waker item_glimmer_cape item_black_king_bar item_shadow_blade item_silver_edge",
+    "items: item_force_staff item_hurricane_pike item_cyclone item_wind_waker item_sheepstick item_abyssal_blade item_orchid item_bloodthorn item_rod_of_atos item_gungir item_black_king_bar item_glimmer_cape|item_blink item_swift_blink item_arcane_blink item_overwhelming_blink item_force_staff item_hurricane_pike item_cyclone item_wind_waker item_shadow_blade item_silver_edge",
 ];
 
 const KEY: Record<string, true> = {};

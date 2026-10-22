@@ -112,8 +112,9 @@ local function score(W, b)
 	b.mode = bestMode
 end
 
--- Frames at 30 fps: a scoring round every ROUND, the humaniser tick every frame, and team_roam's Think every frame while
--- it is active. The engine part: an attack order walks into range with the attack target set, a move order walks.
+-- Frames at 30 fps in engine order: a scoring round every ROUND, team_roam's Think every frame while it is active, then
+-- the humaniser tick (ItemUsageThink): LaneFight.Tick, then Intent.Tick. The engine part: an attack order walks into
+-- range with the attack target set, a move order walks.
 local function play(W, seconds)
 	local stop = T + seconds - 1e-9
 	while T < stop do
@@ -122,7 +123,6 @@ local function play(W, seconds)
 			W.nextRound = W.nextRound + ROUND
 		end
 		for _, b in ipairs(W.bots) do
-			W.LF.Tick(b)
 			if b.mode == BotMode.TeamRoam then
 				ACTIONS = {}
 				if W.LF.Think(b) then
@@ -137,6 +137,8 @@ local function play(W, seconds)
 					end
 				end
 			end
+			W.LF.Tick(b)
+			W.H.Intent.Tick(b)
 		end
 		if W.onFrame then W.onFrame() end
 		T = T + FRAME
@@ -198,6 +200,14 @@ do
 	local W = world({ burst = 400, partner = { driven = true, pos = 5, burst = 400, abilities = stun(false) } })
 	play(W, 1.5)
 	check("a core whose support has no ready stun commits itself", W.events("lanefight_start", "pid=1 phase=commit") == 1
+		and W.events("lanefight_start", "phase=wait_partner") == 0, table.concat(W.lines, "\n"))
+end
+
+do
+	-- A ready blink is a key-class escape, not a disable: the core does not wait on it.
+	local W = world({ burst = 400, partner = { pos = 5, burst = 400, abilities = { [0] = ability("antimage_blink", { cd = 15 }) } } })
+	play(W, 1.5)
+	check("a support holding only a ready escape does not make its core wait", W.events("lanefight_start", "pid=1 phase=commit") == 1
 		and W.events("lanefight_start", "phase=wait_partner") == 0, table.concat(W.lines, "\n"))
 end
 
@@ -268,6 +278,14 @@ do
 	play(W, 3)
 	check("a margin below FollowMargin does not follow, logged once", W.events("lanefight_start") == 0
 		and W.events("lanefight_gate", "gate=follow-margin") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- An illusion of the enemy carries its player ID; attacking it while closing is no commit on the enemy.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	charge(W, T, setmetatable({ IsIllusion = function() return true end }, { __index = W.enemy }))
+	play(W, 2)
+	check("a human attacking an illusion of the enemy is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
 end
 
 do
@@ -432,6 +450,53 @@ do
 	play(W, 0.5)
 	check("a follow commit's re-check passes on FollowMargin", W.LF.CurrentPhase(W.bot) == "commit"
 		and W.events("lanefight_recheck", "reason=escape pass=1") == 1, table.concat(W.lines, "\n"))
+end
+
+-- A partner whose commit the kill check counted stops going in: after AbortNotice the commit re-checks solo.
+do
+	-- The support initiates on a check that counts its core (60 + 60 of burst); the core never follows.
+	local W = world({ botPos = 5, burst = 60, botAbilities = stun(true), partner = { pos = 1, burst = 60 } })
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: the support initiates counting its core", W.events("lanefight_start", "pid=1 phase=commit") == 1
+		and W.events("lanefight_start", "via=initiate") == 1, table.concat(W.lines, "\n"))
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 5)
+	check("an initiator whose partner never follows re-checks solo and ends", W.events("lanefight_end", "phase=commit reason=partner_abandon") == 1
+		and W.events("lanefight_recheck", "reason=partner_abandon pass=0") == 1, table.concat(W.lines, "\n"))
+end
+
+-- A bot partner trading the enemy (attack target set, walking in, then attacking every 0.5 s in range) for `trade` s.
+local function trading(W, from, trade)
+	W.onFrame = function()
+		if T < from - 1e-9 then return end
+		if trade ~= nil and T >= from + trade - 1e-9 then
+			W.partner.target = nil
+			return
+		end
+		W.partner.target = W.enemy
+		if dist(W.partner, W.enemy) > W.partner:GetAttackRange() - 50 then step(W.partner, W.enemy.loc)
+		elseif (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then W.partner.lastAttack = T end
+	end
+end
+
+do
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	local from = T
+	trading(W, from, 2.5)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: the core follows its trading partner", W.events("lanefight_start", "pid=1 phase=commit") == 1
+		and W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	playUntil(W, function() return W.events("lanefight_end") > 0 end, 5)
+	local endAt = W.firstAt("lanefight_end")
+	check("a follower whose partner's trade ends re-checks solo and ends", endAt ~= nil and endAt >= from + 2.5
+		and W.events("lanefight_end", "phase=commit reason=partner_abandon") == 1
+		and W.events("lanefight_recheck", "reason=partner_abandon pass=0") == 1, table.concat(W.lines, "\n"))
+
+	W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	play(W, 4)
+	check("a partner that keeps committing raises no partner abort", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_recheck") == 0 and W.events("lanefight_abort") == 0, table.concat(W.lines, "\n"))
 end
 
 local blinkWorld = function(skill)

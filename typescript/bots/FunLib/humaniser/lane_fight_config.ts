@@ -46,6 +46,8 @@ export const DEFAULTS = {
     TradeHits: 3,
     CommitMax: 8,
     StartHP: 0.5,
+    // Commits (and waits for a partner's commit) start only at this HP or above; a running commit holds to CommitHoldHP.
+    CommitStartHP: 0.65,
     StartMaxRetreat: 0.7,
     StopHP: 0.3,
     FogGrace: 1.0,

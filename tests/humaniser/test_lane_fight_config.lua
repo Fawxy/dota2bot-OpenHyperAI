@@ -65,7 +65,9 @@ do
 	check("unknown is other", A.Classify("not_an_ability", false) == "other")
 	check("blink is an escape", A.IsEscape("antimage_blink"))
 	check("a stun is not an escape", not A.IsEscape("lion_impale"))
-	check("escape items", A.IsEscape("item_blink") and A.IsEscape("item_black_king_bar"))
+	check("escape items", A.IsEscape("item_blink") and A.IsEscape("item_force_staff"))
+	check("spell-immunity items are key, not escapes", not A.IsEscape("item_black_king_bar") and not A.IsEscape("item_glimmer_cape")
+		and A.Classify("item_black_king_bar", false) == "key" and A.Classify("item_glimmer_cape", false) == "key")
 	for _, n in ipairs({ "dazzle_shallow_grave", "winter_wyvern_cold_embrace", "shadow_demon_disruption",
 		"juggernaut_blade_fury", "life_stealer_rage" }) do
 		check("not an escape: " .. n, not A.IsEscape(n))

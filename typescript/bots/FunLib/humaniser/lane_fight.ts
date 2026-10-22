@@ -100,6 +100,9 @@ interface FightState {
     partners: Unit[];
     // A follow commit went in on margin >= FollowMargin, so its re-check holds it to that, not to a full pass.
     recheckMargin?: number;
+    // When each counted partner was last seen going in on the target; none counts as seen before `partnerSince`.
+    partnerSeen: Record<number, number>;
+    partnerSince: number;
     withPid?: number;
     // A partner's visible commit seen at `seenAt`; the bot follows at `at` (react + SyncDelay later).
     follow?: Follow;
@@ -173,7 +176,15 @@ const COUNT_RADIUS = 1200;
 const IN_RANGE_ATTACKS = 2;
 // At follow time the partner must have been seen committing this recently.
 const FOLLOW_FRESH = 0.3;
+// A counted partner farther than this from the target has left the commit.
+const PARTNER_RANGE = 1200;
+// An initiator's partner gets this long to be seen following (its react + SyncDelay, then closing) before AbortNotice
+// starts to run.
+const INITIATE_GRACE = 1.5;
+// A kill check failing with at least this margin logs its reason (lanefight_gate gate=kill:<reason>).
+const NEAR_MISS = 0.8;
 const FOCUS_SOURCE = "lanefight:commit_focus";
+const PARTNER_ABANDON = "partner_abandon";
 // lanefight_commit role per start `via`.
 const COMMIT_ROLES: Record<string, string> = { initiate: "initiator", follow: "follower", solo: "solo" };
 // The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
@@ -200,6 +211,8 @@ function stateFor(bot: Unit): FightState {
             killDelay: 0,
             instances: {},
             partners: [],
+            partnerSeen: {},
+            partnerSince: 0,
             startEnemies: 0,
             countUp: false,
             countAt: -math.huge,
@@ -234,27 +247,29 @@ function touch(s: FightState, key: string, now: number): Instance {
     return inst;
 }
 
-function gate(bot: Unit, inst: Instance, reason: string): void {
+function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number): void {
     if (inst.gates[reason] === true) return;
     inst.gates[reason] = true;
-    Telemetry.Event("lanefight_gate", [
+    const fields: [string, any][] = [
         ["pid", bot.GetPlayerID()],
         ["gate", reason],
-    ]);
+    ];
+    if (targetPid !== undefined) fields.push(["target", targetPid]);
+    Telemetry.Event("lanefight_gate", fields);
 }
 
 function priorityLive(bot: Unit): boolean {
     return Intent.PriorityLive(bot) || Orders.GetFor(bot) !== undefined;
 }
 
-/** Why a trade or commit must not start now, else undefined. */
-function startBlocked(bot: Unit): string | undefined {
+/** Why a trade (or, with `commit`, a commit or a wait for one) must not start now, else undefined. */
+function startBlocked(bot: Unit, commit: boolean): string | undefined {
     const cfg = LaneFightConfig.Settings();
     const mode = bot.GetActiveMode();
     let modeOk = false;
     for (const m of START_MODES) if (m === mode) modeOk = true;
     if (!modeOk) return `mode:${HDebug.ModeName(mode)}`;
-    if (hpFraction(bot) < cfg.StartHP) return "low-hp";
+    if (hpFraction(bot) < (commit ? cfg.CommitStartHP : cfg.StartHP)) return "low-hp";
     // Retreat is scored before team_roam in each round, so this is this round's retreat desire. With intent off there
     // is no resolved retreat desire to read, so the StartMaxRetreat gate is not enforced.
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
@@ -291,14 +306,22 @@ function partnerOf(bot: Unit, snap: LaneState.LaneSnapshot): PartnerInfo | undef
     return { unit, pid: p.pid, human: !IsPlayerBot(p.pid), support: isSupport(unit) };
 }
 
-/** A learned key-class ability (a disable, by the class tables) that is castable now. */
+/** A learned disable that is castable now: a key-class ability that is not an escape. */
 function holdsReadyKey(u: Unit): boolean {
     for (let i = 0; i < 6; i++) {
         const a = u.GetAbilityInSlot(i);
         if (a === null || a === undefined || a.IsNull() || a.IsHidden() || a.GetLevel() < 1) continue;
-        if (AbilityClasses.Classify(a.GetName(), a.IsUltimate()) === "key" && a.IsFullyCastable()) return true;
+        const name = a.GetName();
+        if (AbilityClasses.Classify(name, a.IsUltimate()) === "key" && !AbilityClasses.IsEscape(name) && a.IsFullyCastable()) return true;
     }
     return false;
+}
+
+/** `t` is the hero `target`, not an illusion of it (an illusion carries its player ID). */
+function isHeroTarget(t: Unit | null | undefined, target: Unit | undefined, targetPid: number | undefined): boolean {
+    if (t === null || t === undefined || t.IsNull() || !t.IsHero()) return false;
+    if (target !== undefined && t === target) return true;
+    return t.GetPlayerID() === targetPid && !t.IsIllusion();
 }
 
 function skillOf(bot: Unit): number {
@@ -321,8 +344,7 @@ export interface Sample {
 export function IsCommitting(ally: Unit, target: Unit, prev: Sample | undefined): boolean {
     if (!usableUnit(ally) || !usableUnit(target)) return false;
     const dist = GetUnitToUnitDistance(ally, target);
-    const t = ally.GetAttackTarget();
-    if (t !== null && t !== undefined && !t.IsNull() && t.IsHero() && t.GetPlayerID() === target.GetPlayerID()) {
+    if (isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID())) {
         if (dist <= ally.GetAttackRange() + RANGE_SLACK && (prev?.attacks ?? 0) >= IN_RANGE_ATTACKS) return true;
         if (prev !== undefined && DotaTime() - prev.at <= PREV_MAX_AGE && dist < prev.dist - CLOSE_MIN) return true;
     }
@@ -361,8 +383,7 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
     if (t.lastAttack === undefined || last < t.lastAttack) t.lastAttack = last;
     else if (last > t.lastAttack) {
         t.lastAttack = last;
-        const at = ally.GetAttackTarget();
-        if (at !== null && at !== undefined && !at.IsNull() && at.GetPlayerID() === target.GetPlayerID()) t.attackTimes.push(now);
+        if (isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID())) t.attackTimes.push(now);
     }
     const recent: number[] = [];
     const window = LaneFightConfig.Settings().InRangeWindow;
@@ -377,15 +398,31 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
     return t.prev;
 }
 
-/** The visible lane enemy the partner is committing on, if any. */
-function partnerCommitTarget(bot: Unit, ally: Unit, now: number): Unit | undefined {
+/**
+ * The visible lane enemy the partner is committing on, if any. While the bot commits, a partner its checks count is
+ * marked seen when it commits on the target or keeps attacking it from within range (a commit under way, past the
+ * second-attack test that tells a start from a harass hit).
+ */
+function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number): Unit | undefined {
     let found: Unit | undefined;
+    const counted = s.phase === "commit" && countsPartner(s, ally.GetPlayerID());
     for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
         if (e === undefined || !e.visible || !usableUnit(e.unit)) continue;
         const prev = sampleDistance(bot, ally, e.unit, now);
-        if (found === undefined && IsCommitting(ally, e.unit, prev)) found = e.unit;
+        const committing = IsCommitting(ally, e.unit, prev);
+        if (found === undefined && committing) found = e.unit;
+        if (counted && e.pid === s.targetPid && (committing || attackingInRange(ally, e.unit))) s.partnerSeen[ally.GetPlayerID()] = now;
     }
     return found;
+}
+
+function countsPartner(s: FightState, pid: number): boolean {
+    for (const u of s.partners) if (!u.IsNull() && u.GetPlayerID() === pid) return true;
+    return false;
+}
+
+function attackingInRange(ally: Unit, target: Unit): boolean {
+    return isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID()) && GetUnitToUnitDistance(ally, target) <= ally.GetAttackRange() + RANGE_SLACK;
 }
 
 function focusCap(): number {
@@ -431,6 +468,8 @@ interface StartOpts {
     // The start relied on a spell window on this target (this round's read).
     spell: boolean;
     recheckMargin?: number;
+    // The partners are not in yet (an initiator): INITIATE_GRACE before their absence counts.
+    initiating?: boolean;
 }
 
 function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: [string, any][], opts: StartOpts): void {
@@ -449,6 +488,8 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     s.fogSince = undefined;
     s.farSince = undefined;
     s.partners = opts.partners;
+    s.partnerSeen = {};
+    s.partnerSince = opts.initiating === true ? now + INITIATE_GRACE : now;
     s.recheckMargin = opts.recheckMargin;
     s.abort = undefined;
     s.countUp = false;
@@ -538,13 +579,29 @@ function checkMistake(bot: Unit, s: FightState, now: number): void {
     if (now - bet.at > MISTAKE_WINDOW + INSTANCE_GAP) s.bet = undefined;
 }
 
-/** A real abort signal on a running commit: the target cast an escape, or the enemies in lane now outnumber us. */
-function abortSignal(bot: Unit, s: FightState, now: number): string | undefined {
+/** A partner the commit's checks count is dead, farther than PARTNER_RANGE from the target, or not seen going in. */
+function partnerAbandoned(bot: Unit, s: FightState, target: Unit | undefined, now: number): boolean {
+    const notice = LaneFightConfig.Curve("AbortNotice", skillOf(bot));
+    for (const u of s.partners) {
+        if (!usableUnit(u)) return true;
+        if (target !== undefined && GetUnitToUnitDistance(u, target) > PARTNER_RANGE) return true;
+        const last = math.max(s.partnerSince, s.partnerSeen[u.GetPlayerID()] ?? -math.huge);
+        if (now - last >= notice) return true;
+    }
+    return false;
+}
+
+/**
+ * A real abort signal on a running commit: the target cast an escape, a counted partner abandoned it, or the enemies
+ * in lane now outnumber us.
+ */
+function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: number): string | undefined {
     const seen = CastWatch.LastSeenCast(bot.GetPlayerID());
     if (seen !== undefined && seen.enemyPid === s.targetPid && seen.at >= s.startedAt && seen.at !== s.escapeAt && AbilityClasses.IsEscape(seen.ability)) {
         s.escapeAt = seen.at;
         return "escape";
     }
+    if (s.partners.length > 0 && partnerAbandoned(bot, s, target, now)) return PARTNER_ABANDON;
     if (now - s.countAt < COUNT_EVERY) return undefined;
     s.countAt = now;
     const snap = LaneState.ForBot(bot);
@@ -558,11 +615,12 @@ function abortSignal(bot: Unit, s: FightState, now: number): string | undefined 
 
 /**
  * The commit's abort: a signal is noticed and re-checked AbortNotice later (late at low skill). A re-check that still
- * passes lets the commit go on.
+ * passes lets the commit go on. A partner abandon re-checks solo, and a commit that goes on is solo from then on; a
+ * partner back in by the re-check cancels it.
  */
 function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: number): string | undefined {
     if (s.abort === undefined) {
-        const why = abortSignal(bot, s, now);
+        const why = abortSignal(bot, s, target, now);
         if (why === undefined) return undefined;
         s.abort = { why, signalAt: now, at: now + LaneFightConfig.Curve("AbortNotice", skillOf(bot)) };
         HDebug.Log("lanefight", `abort-signal pid=${bot.GetPlayerID()} reason=${why}`);
@@ -570,8 +628,15 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     const a = s.abort;
     if (now < a.at) return undefined;
     s.abort = undefined;
-    const k = target !== undefined ? KillCheck.Check(bot, s.partners, target, now, true) : undefined;
-    const pass = k !== undefined && (s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);
+    const abandon = a.why === PARTNER_ABANDON;
+    if (abandon && !partnerAbandoned(bot, s, target, now)) return undefined;
+    const partners = abandon ? [] : s.partners;
+    const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
+    const pass = k !== undefined && (!abandon && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);
+    if (pass && abandon) {
+        s.partners = [];
+        s.recheckMargin = undefined;
+    }
     Telemetry.Event("lanefight_recheck", [
         ["pid", bot.GetPlayerID()],
         ["reason", a.why],
@@ -596,8 +661,7 @@ function lastHits(bot: Unit, s: FightState): void {
 }
 
 function attackingTarget(bot: Unit, s: FightState): boolean {
-    const t = bot.GetAttackTarget() as Unit | undefined;
-    return t !== undefined && !t.IsNull() && t.IsHero() && t.GetPlayerID() === s.targetPid;
+    return isHeroTarget(bot.GetAttackTarget(), s.target, s.targetPid);
 }
 
 /** The lane-enemy entry for the target, from the perception-filtered cached list. */
@@ -772,7 +836,7 @@ function coordinate(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now:
         s.follow = undefined;
         return;
     }
-    const seen = partnerCommitTarget(bot, p.unit, now);
+    const seen = partnerCommitTarget(bot, s, p.unit, now);
     if (seen !== undefined) {
         const tpid = seen.GetPlayerID();
         const inst = touch(s, `follow:${p.pid}:${tpid}`, now);
@@ -810,7 +874,7 @@ function coordinate(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now:
         gate(bot, f.inst, "follow-margin");
         return;
     }
-    const blocked = startBlocked(bot);
+    const blocked = startBlocked(bot, true);
     if (blocked !== undefined) {
         gate(bot, f.inst, blocked);
         return;
@@ -834,7 +898,11 @@ function laningOutbids(bot: Unit): boolean {
     return laning * boost >= LaneFightConfig.Settings().TradeFloor;
 }
 
-/** Reads the fight and starts a trade or commit, or upgrades a trade to a commit, when the gates allow. */
+/**
+ * Reads the fight and starts a trade or commit, or upgrades a trade to a commit, when the gates allow. Respect blocks
+ * trades only: from level 6 an ult never seen cast reads as ready, so it would block every kill; the kill check's own
+ * escape, tower, outnumbered and counter rules decide kills.
+ */
 function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now: number): void {
     const read = FightRead.ReadFor(bot, now);
     const fresh = read !== s.lastRead;
@@ -848,70 +916,89 @@ function considerStart(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, n
         return;
     }
     const tpid = target.GetPlayerID();
-    if (read.respect !== undefined) {
-        s.streak = 0;
-        s.streakKey = undefined;
-        s.killSince = undefined;
-        if (s.phase === "idle") gate(bot, touch(s, `respect:${read.respect}:${tpid}`, now), `respect:${read.respect}`);
-        return;
-    }
 
-    const windowKey = read.window !== undefined && read.noticed ? `trade:${read.window}:${tpid}` : undefined;
+    const windowKey = read.respect === undefined && read.window !== undefined && read.noticed ? `trade:${read.window}:${tpid}` : undefined;
     if (fresh) {
         s.streak = windowKey !== undefined && windowKey === s.streakKey ? s.streak + 1 : windowKey !== undefined ? 1 : 0;
         s.streakKey = windowKey;
     }
 
     // Planned during a commit too: a pass that holds keeps its kill instance alive, so it is not restarted at the end.
-    if (LaneFightConfig.IsOn("Kill")) {
-        const p = partnerOf(bot, snap);
-        const plan = planKill(bot, p, target, now);
-        s.lastMargin = plan.k?.margin;
-        if (plan.action !== "none") {
-            if (s.killSince === undefined || s.killPid !== tpid) {
-                s.killSince = now;
-                s.killPid = tpid;
-                s.killDelay = Profile.SampleDelay(bot, "react");
-            }
-            const inst = touch(s, `kill:${tpid}`, now);
-            // A trade upgrades to a commit; a wait starts only from idle (a trading bot is already in, and follows).
-            const ready =
-                now - s.killSince >= s.killDelay && !inst.started && s.phase !== "commit" && (plan.action === "commit" || s.phase === "idle");
-            if (ready) {
-                const blocked = startBlocked(bot);
-                if (blocked !== undefined) gate(bot, inst, blocked);
-                else if (plan.action === "commit") {
-                    if (s.phase !== "idle") end(bot, s, "commit");
-                    start(bot, s, "commit", target, inst, now, [["margin", plan.k!.margin], ["via", plan.via]], {
-                        partners: plan.partners,
-                        spell: read.window === "spell",
-                    });
-                    // A commit spends the trade window on the same target too.
-                    if (windowKey !== undefined) {
-                        const w = touch(s, windowKey, now);
-                        w.started = true;
-                        s.spent.push(w);
-                    }
-                } else if (p !== undefined) {
-                    if (p.human) callKill(bot, s, target, now);
-                    s.withPid = p.pid;
-                    start(bot, s, "wait_partner", target, inst, now, [["margin", plan.k!.margin], ["with", p.pid], ["human", p.human ? 1 : 0]], {
-                        partners: plan.partners,
-                        spell: false,
-                    });
-                }
-            }
-        } else s.killSince = undefined;
-    }
+    if (LaneFightConfig.IsOn("Kill")) considerKill(bot, s, snap, read, target, windowKey, now);
 
+    if (read.respect !== undefined) {
+        if (s.phase === "idle") gate(bot, touch(s, `respect:${read.respect}:${tpid}`, now), `respect:${read.respect}`);
+        return;
+    }
     if (windowKey === undefined || !LaneFightConfig.IsOn("Trade")) return;
     const inst = touch(s, windowKey, now);
     if (s.phase !== "idle" || inst.started || s.streak < 2) return;
-    let blocked = GetUnitToUnitDistance(bot, target) > bot.GetAttackRange() + TRADE_REACH ? "range" : startBlocked(bot);
+    // The read is cached for WindowReadEvery: range is measured on the target as the bot sees it now.
+    let blocked = startBlocked(bot, false);
+    const seen = blocked === undefined ? visibleEnemy(bot, tpid) : undefined;
+    if (blocked === undefined && seen === undefined) blocked = "unseen";
+    if (blocked === undefined && GetUnitToUnitDistance(bot, seen!) > bot.GetAttackRange() + TRADE_REACH) blocked = "range";
     // A trade has no focus caps: laning bidding at the floor would win the next round and abort it.
     if (blocked === undefined && laningOutbids(bot)) blocked = "laning";
     if (blocked !== undefined) gate(bot, inst, blocked);
-    else start(bot, s, "trade", target, inst, now, [["window", read.window]], { partners: [], spell: read.window === "spell" });
+    else start(bot, s, "trade", seen!, inst, now, [["window", read.window]], { partners: [], spell: read.window === "spell" });
+}
+
+function considerKill(
+    bot: Unit,
+    s: FightState,
+    snap: LaneState.LaneSnapshot,
+    read: FightRead.Read,
+    target: Unit,
+    windowKey: string | undefined,
+    now: number,
+): void {
+    const tpid = target.GetPlayerID();
+    const p = partnerOf(bot, snap);
+    const plan = planKill(bot, p, target, now);
+    s.lastMargin = plan.k?.margin;
+    if (plan.action === "none") {
+        s.killSince = undefined;
+        const k = plan.k;
+        if (k !== undefined && !k.pass && k.margin >= NEAR_MISS && k.reason !== undefined && s.phase !== "commit") {
+            const miss = touch(s, `killfail:${tpid}`, now);
+            const [logged] = next(miss.gates);
+            if (logged === undefined) gate(bot, miss, `kill:${k.reason}`, tpid);
+        }
+        return;
+    }
+    if (s.killSince === undefined || s.killPid !== tpid) {
+        s.killSince = now;
+        s.killPid = tpid;
+        s.killDelay = Profile.SampleDelay(bot, "react");
+    }
+    const inst = touch(s, `kill:${tpid}`, now);
+    // A trade upgrades to a commit; a wait starts only from idle (a trading bot is already in, and follows).
+    const ready = now - s.killSince >= s.killDelay && !inst.started && s.phase !== "commit" && (plan.action === "commit" || s.phase === "idle");
+    if (!ready) return;
+    const blocked = startBlocked(bot, true);
+    if (blocked !== undefined) gate(bot, inst, blocked);
+    else if (plan.action === "commit") {
+        if (s.phase !== "idle") end(bot, s, "commit");
+        start(bot, s, "commit", target, inst, now, [["margin", plan.k!.margin], ["via", plan.via]], {
+            partners: plan.partners,
+            spell: read.window === "spell",
+            initiating: plan.via === "initiate",
+        });
+        // A commit spends the trade window on the same target too.
+        if (windowKey !== undefined) {
+            const w = touch(s, windowKey, now);
+            w.started = true;
+            s.spent.push(w);
+        }
+    } else if (p !== undefined) {
+        if (p.human) callKill(bot, s, target, now);
+        s.withPid = p.pid;
+        start(bot, s, "wait_partner", target, inst, now, [["margin", plan.k!.margin], ["with", p.pid], ["human", p.human ? 1 : 0]], {
+            partners: plan.partners,
+            spell: false,
+        });
+    }
 }
 
 /**

@@ -795,8 +795,9 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `FrontsMeetDistance` | 1500 | Fronts closer than this have met (needed for "ahead of their creeps") |
 | `TradeDuration` / `TradeHits` | 2.5 s / 3 | A trade ends after this long from the first in-range attack, or this many hits |
 | `CommitMax` | 8 s | A commit ends after this |
-| `StartHP` | 0.5 | No start below this HP |
-| `StartMaxRetreat` | 0.7 | No start while retreat desire is at least this |
+| `StartHP` | 0.5 | No trade starts below this HP |
+| `CommitStartHP` | 0.65 | No commit (or wait for a partner's commit) starts below this HP (`gate=low-hp`, once per kill instance) |
+| `StartMaxRetreat` | 0.7 | No start while retreat desire is at least this (not enforced with Intent off) |
 | `StopHP` | 0.3 | A phase ends below this HP |
 | `FogGrace` | 1 s | Target in fog this long ends a phase |
 | `TradeFloor` / `CommitFloor` | 0.75 / 0.82 | FIGHT floor on `team_roam` |
@@ -831,8 +832,15 @@ Controller rulings:
 - Tasks 1–9 ran without the in-game probe; `UseCastCallback` defaults false and Task 4b is skipped until the probe says otherwise.
 - Partner lookup is `LaneRoles.Partner(bot, LaneState.ForBot(bot))` resolved to its unit.
 - The kill call is a localization key taking the hero name; `Orders.Say` gained a format argument and keeps its 10 s per-bot limit.
-- Starts need HP ≥ `StartHP`, retreat < `StartMaxRetreat`, no camp job or cover, no live HUMAN_ORDER/SURVIVAL claim; each blocked start logs `lanefight_gate` once per window instance.
-- Claims post from `RoamDesire` and `Think`, TTL from intent, released on end; tests score in engine order at 0.31 s.
+- Starts need HP ≥ `StartHP` (trades) or `CommitStartHP` (commits and waits), retreat < `StartMaxRetreat`, no camp job or cover, no live HUMAN_ORDER/SURVIVAL claim; each blocked start logs `lanefight_gate` once per window instance. The mode gate is checked first, then (trades) the range, measured on the target as the bot sees it at that moment rather than the cached read's handle (`gate=unseen` when it is no longer visible).
+- With Intent off there is no resolved retreat desire: the `StartMaxRetreat` start gate and the commit's `retreat` end are not enforced, and only `StopHP` ends a phase on HP.
+- With Memory off nothing is remembered, so every target with a learned escape fails the kill check (`escape`: unseen means ready).
+- Respect blocks trades only (R1). Kill planning runs before the respect check, and the kill check's own escape, tower, outnumbered and counter rules decide kills: from level 6 an ult never seen cast reads as ready, so respect would otherwise block every kill. A respect read during a commit does not lapse the commit's kill instance (the plan keeps touching it), so the commit is not restarted when it ends.
+- Partner-abandon abort: a commit whose kill check counted a partner (follower or initiator) raises `partner_abandon` when a counted partner is dead, farther than 1200 from the target, or has not been seen going in for `AbortNotice` (going in: `IsCommitting` on the target, or still attacking it from within its attack range). An initiator's partner gets 1.5 s from the start before its absence counts (its react + `SyncDelay` and the walk in). At the re-check `AbortNotice` later the check runs solo (`[]`) and must pass outright; if it does the commit goes on as a solo commit (no partners, no `FollowMargin` re-check); a partner seen going in again by then cancels the signal.
+- A kill check failing with margin ≥ 0.8 logs `lanefight_gate gate=kill:<reason> target=<pid>` once per target instance (not while committing).
+- A support's "ready disable" (initiate, or the core waits on it) is a key-class ability that is not an escape; BKB and Glimmer Cape are key, not escapes (spell immunity, like Blade Fury and Rage).
+- Target matching (own hit count, a partner's attack target, its in-range attack count) rejects illusions, which carry the hero's player ID.
+- Claims post from `RoamDesire` and `Think`, TTL from intent, released on end; tests score in engine order at 0.31 s, then run the mode's `Think`, then the humaniser tick (`LaneFight.Tick`, `Intent.Tick`) every frame. Intent's stickiness (+0.06 on the active mode for `MinDwell` 1 s, decaying over the next 1 s) stacks on the FIGHT floors: for about 2 s after team_roam takes over it bids `TradeFloor`/`CommitFloor` + 0.06 (before the engine's ×1.1).
 - Valve's attack mode (0.95) taking over mid-fight is accepted: it is "going on someone"; any other mode active > 1 s ends the phase (`mode:<m>`).
 - Perception and handle hygiene on every enemy read; team-frame lane reads; pre-horn guards; Hold while waiting; GuardModule registration.
 - Spell immunity (Blade Fury, Rage) is KEY but not ESCAPE.
@@ -860,11 +868,11 @@ Telemetry (`[HEV] ... ev=<name>`; `tools/hlog/analyse.js` lists a per-bot lane-f
 | Event | Fields |
 |---|---|
 | `lanefight_window` | `pid window target noticed` (once per window instance) |
-| `lanefight_gate` | `pid gate` (`low-hp`, `retreat`, `camp`, `cover`, `priority`, `mode:<m>`, `range`, `laning`, `follow-margin`, `partner_backed_off`, `respect:<reason>`; once per instance) |
+| `lanefight_gate` | `pid gate` (`low-hp`, `retreat`, `camp`, `cover`, `priority`, `mode:<m>`, `range`, `unseen`, `laning`, `follow-margin`, `partner_backed_off`, `respect:<reason>`; once per instance), and `pid gate=kill:<reason> target` for a near-miss kill check |
 | `lanefight_start` | `pid phase target`, then `window` (trade), `margin via=<initiate|solo|follow>` (commit; a follow adds `with sync`), `margin with human` (wait_partner) |
 | `lanefight_commit` | `pid target margin role=<initiator|follower|solo>` (with every commit start) |
-| `lanefight_end` | `pid phase reason hits took=<0|1>` (every start has one; `took=1` when team_roam or attack took over) |
-| `lanefight_abort` | `pid phase reason` (`escape`, `outnumbered`, `mode:<m>`) |
+| `lanefight_end` | `pid phase reason hits took=<0|1>` (every start has one; `took=1` when team_roam or attack took over). Reasons: `dead`, `low-hp` (StopHP), `flag-off`, `priority`, `target-dead`, `illusion`, `unkillable`, `magic_immune`, `far`, `fog`, `partner_gone` and `partner_timeout` (wait), `escape`, `outnumbered`, `partner_abandon` (commit aborts), `hits`, `duration`, `reach` (trade), `commit-max`, `retreat`, `mode:<m>`, `commit` (replaced by a commit), `off`, `avoid` |
+| `lanefight_abort` | `pid phase reason` (`escape`, `outnumbered`, `partner_abandon`, `mode:<m>`) |
 | `lanefight_recheck` | `pid reason pass margin after` (the abort re-check) |
 | `lanefight_call` | `pid target said pinged` |
 | `lanefight_mistake` | `pid kind=bad_memory ability target after` |

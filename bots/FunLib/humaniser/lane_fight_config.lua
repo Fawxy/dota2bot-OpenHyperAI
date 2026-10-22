@@ -25,6 +25,7 @@ ____exports.DEFAULTS = {
     TradeHits = 3,
     CommitMax = 8,
     StartHP = 0.5,
+    CommitStartHP = 0.65,
     StartMaxRetreat = 0.7,
     StopHP = 0.3,
     FogGrace = 1,
