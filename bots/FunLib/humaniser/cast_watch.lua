@@ -12,10 +12,21 @@ local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local SLOTS = 6
+local SUMMARY_EVERY = 30
 local ABILITY_CACHE = 5
 local JUMP_POLLS = 2.5
 local watches = {}
 local abilityCache = {}
+local function freshStats(now)
+    return {
+        since = now,
+        polls = 0,
+        visible = 0,
+        casts = 0,
+        recorded = 0,
+        jumps = 0
+    }
+end
 local function watchFor(pid)
     local w = watches[pid]
     if w == nil then
@@ -24,7 +35,8 @@ local function watchFor(pid)
             seen = {},
             lastLoc = {},
             noCdLogged = {},
-            callbacks = {}
+            callbacks = {},
+            stats = freshStats(DotaTime())
         }
         watches[pid] = w
     end
@@ -57,17 +69,15 @@ function ____exports.LevelEstimate(heroLevel, isUlt)
         )
     )
 end
---- The one cooldown source. Reads `GetCooldown(level)`, falling back to `GetCooldown()` if the level form raises;
--- 0 means unknown. Task 4b adds a generated-table fallback here, keyed by name and level.
-function ____exports.CooldownOf(h, _name, level)
+--- The one cooldown source: the handle's current-level `GetCooldown()`. The bot API takes no level (the level form is
+-- server VScript, 0-based), so `level` is only for Task 4b's generated-table fallback, keyed by name and level.
+-- 0 means unknown.
+function ____exports.CooldownOf(h, _name, _level)
     if isNullHandle(h) or h.GetCooldown == nil then
         return 0
     end
     local handle = h
-    local ok, cd = pcall(function() return handle:GetCooldown(level) end)
-    if not ok then
-        ok, cd = pcall(function() return handle:GetCooldown() end)
-    end
+    local ok, cd = pcall(function() return handle:GetCooldown() end)
     return ok and type(cd) == "number" and cd > 0 and cd or 0
 end
 local function handleLevel(h)
@@ -130,12 +140,12 @@ function ____exports.AbilitiesOf(enemy)
         local i = 0
         while i < SLOTS do
             do
-                local __continue28
+                local __continue27
                 repeat
                     local a = enemy:GetAbilityInSlot(i)
                     local name = nameOf(a)
                     if name == nil or name == "generic_hidden" or a.IsHidden ~= nil and a:IsHidden() == true then
-                        __continue28 = true
+                        __continue27 = true
                         break
                     end
                     list[#list + 1] = describe(
@@ -146,9 +156,9 @@ function ____exports.AbilitiesOf(enemy)
                         false,
                         false
                     )
-                    __continue28 = true
+                    __continue27 = true
                 until true
-                if not __continue28 then
+                if not __continue27 then
                     break
                 end
             end
@@ -205,6 +215,17 @@ function ____exports.LastRecorded(observerPid)
     end
     return ____temp_0
 end
+--- The last visible cast this observer saw, remembered or not (a human sees an escape even if its cooldown slips).
+function ____exports.LastSeenCast(observerPid)
+    local w = watches[observerPid]
+    local ____temp_1
+    if w == nil then
+        ____temp_1 = nil
+    else
+        ____temp_1 = w.lastSeen
+    end
+    return ____temp_1
+end
 local function shareToPartner(bot, enemyPid, ability)
     local s = LaneState.ForBot(bot)
     if s == nil then
@@ -230,6 +251,9 @@ local function noteCast(bot, w, enemyPid, info, now, src)
         return
     end
     local pid = bot:GetPlayerID()
+    local ____w_stats_2, ____casts_3 = w.stats, "casts"
+    ____w_stats_2[____casts_3] = ____w_stats_2[____casts_3] + 1
+    w.lastSeen = {enemyPid = enemyPid, ability = info.name, at = now}
     if info.cooldown <= 0 then
         if w.noCdLogged[key] == true then
             return
@@ -266,6 +290,8 @@ local function noteCast(bot, w, enemyPid, info, now, src)
     if not remembered then
         return
     end
+    local ____w_stats_4, ____recorded_5 = w.stats, "recorded"
+    ____w_stats_4[____recorded_5] = ____w_stats_4[____recorded_5] + 1
     w.last = {enemyPid = enemyPid, ability = info.name, at = now}
     if LaneFightConfig.Settings().ShareMemory == true then
         shareToPartner(bot, enemyPid, info.name)
@@ -311,6 +337,8 @@ local function checkJump(bot, w, enemy, enemyPid, now)
     if math.sqrt(dx * dx + dy * dy) <= LaneFightConfig.Settings().BlinkJump then
         return
     end
+    local ____w_stats_6, ____jumps_7 = w.stats, "jumps"
+    ____w_stats_6[____jumps_7] = ____w_stats_6[____jumps_7] + 1
     local blink = blinkAbility(enemy)
     if blink ~= nil then
         noteCast(
@@ -346,6 +374,9 @@ local function onCastEvent(bot, enemyPid, event)
     if caster == nil or type(event) ~= "table" then
         return
     end
+    if event.unit ~= nil and event.unit ~= nil and event.unit ~= caster then
+        return
+    end
     local a = event.ability
     local name = type(a) == "string" and a or nameOf(a)
     if name == nil then
@@ -376,10 +407,10 @@ local function installCallbacks(bot, w)
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     for ____, enemyPid in ipairs(GetTeamPlayers(enemyTeam)) do
         do
-            local __continue75
+            local __continue76
             repeat
                 if w.callbacks[enemyPid] == true then
-                    __continue75 = true
+                    __continue76 = true
                     break
                 end
                 w.callbacks[enemyPid] = true
@@ -390,13 +421,34 @@ local function installCallbacks(bot, w)
                     enemyPid,
                     Telemetry.GuardsEnabled() and Telemetry.Guard("CastWatch.OnCast", handler) or handler
                 )
-                __continue75 = true
+                __continue76 = true
             until true
-            if not __continue75 then
+            if not __continue76 then
                 break
             end
         end
     end
+end
+local function summarise(bot, w, now)
+    local st = w.stats
+    if now - st.since < SUMMARY_EVERY then
+        return
+    end
+    Telemetry.Event(
+        "lanefight_watch",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"polls", st.polls},
+            {"visible", st.visible},
+            {"casts", st.casts},
+            {"recorded", st.recorded},
+            {"jumps", st.jumps}
+        }
+    )
+    w.stats = freshStats(now)
 end
 function ____exports.Tick(bot)
     local now = DotaTime()
@@ -418,13 +470,15 @@ function ____exports.Tick(bot)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue83
+            local __continue86
             repeat
                 if e == nil or not e.visible or not usable(e.unit) then
-                    __continue83 = true
+                    __continue86 = true
                     break
                 end
                 visible[e.pid] = true
+                local ____w_stats_8, ____visible_9 = w.stats, "visible"
+                ____w_stats_8[____visible_9] = ____w_stats_8[____visible_9] + 1
                 pollCast(
                     bot,
                     w,
@@ -439,13 +493,16 @@ function ____exports.Tick(bot)
                     e.pid,
                     now
                 )
-                __continue83 = true
+                __continue86 = true
             until true
-            if not __continue83 then
+            if not __continue86 then
                 break
             end
         end
     end
+    local ____w_stats_10, ____polls_11 = w.stats, "polls"
+    ____w_stats_10[____polls_11] = ____w_stats_10[____polls_11] + 1
+    summarise(bot, w, now)
     for pid in pairs(w.lastLoc) do
         if visible[pid] ~= true then
             w.lastLoc[pid] = nil

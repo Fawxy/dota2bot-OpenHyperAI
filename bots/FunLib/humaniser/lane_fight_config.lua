@@ -88,7 +88,7 @@ local function isEnabled()
     return Config.IsFeatureEnabled("LaneFight")
 end
 function ____exports.IsOn(flag)
-    return isEnabled() and ____exports.Settings()[flag] == true
+    return isEnabled() and LaneConfig.IsActive() and ____exports.Settings()[flag] == true
 end
 --- Lane fights read the Lane feature's perception-filtered enemy list, so they need it active.
 function ____exports.IsActive()

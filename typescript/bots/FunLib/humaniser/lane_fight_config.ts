@@ -101,7 +101,7 @@ function isEnabled(): boolean {
 }
 
 export function IsOn(flag: LaneFightFlag): boolean {
-    return isEnabled() && Settings()[flag] === true;
+    return isEnabled() && LaneConfig.IsActive() && Settings()[flag] === true;
 }
 
 /** Lane fights read the Lane feature's perception-filtered enemy list, so they need it active. */

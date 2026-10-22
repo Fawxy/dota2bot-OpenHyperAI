@@ -39,6 +39,18 @@ interface Watch {
     noCdLogged: Record<string, boolean>;
     callbacks: Record<number, boolean>;
     last?: Recorded;
+    lastSeen?: Recorded;
+    stats: Stats;
+}
+
+// Counts since the last lanefight_watch summary; tells "saw nothing" apart from "the API answers nothing" in game.
+interface Stats {
+    since: number;
+    polls: number;
+    visible: number;
+    casts: number;
+    recorded: number;
+    jumps: number;
 }
 
 // Ability and item handles from the engine; methods are optional because items lack some of them.
@@ -46,12 +58,13 @@ interface Handle {
     IsNull?(): boolean;
     GetName?(): string;
     GetLevel?(): number;
-    GetCooldown?(level?: number): number;
+    GetCooldown?(): number;
     IsUltimate?(): boolean;
     IsHidden?(): boolean;
 }
 
 const SLOTS = 6;
+const SUMMARY_EVERY = 30;
 const ABILITY_CACHE = 5;
 // Two polls count as consecutive up to this many poll intervals apart (bot frames do not land exactly on 0.1 s).
 const JUMP_POLLS = 2.5;
@@ -59,10 +72,14 @@ const JUMP_POLLS = 2.5;
 const watches: Record<number, Watch> = {};
 const abilityCache: Record<number, { at: number; list: AbilityInfo[] }> = {};
 
+function freshStats(now: number): Stats {
+    return { since: now, polls: 0, visible: 0, casts: 0, recorded: 0, jumps: 0 };
+}
+
 function watchFor(pid: number): Watch {
     let w = watches[pid];
     if (w === undefined) {
-        w = { nextPoll: -math.huge, seen: {}, lastLoc: {}, noCdLogged: {}, callbacks: {} };
+        w = { nextPoll: -math.huge, seen: {}, lastLoc: {}, noCdLogged: {}, callbacks: {}, stats: freshStats(DotaTime()) };
         watches[pid] = w;
     }
     return w;
@@ -87,14 +104,14 @@ export function LevelEstimate(heroLevel: number, isUlt: boolean): number {
 }
 
 /**
- * The one cooldown source. Reads `GetCooldown(level)`, falling back to `GetCooldown()` if the level form raises;
- * 0 means unknown. Task 4b adds a generated-table fallback here, keyed by name and level.
+ * The one cooldown source: the handle's current-level `GetCooldown()`. The bot API takes no level (the level form is
+ * server VScript, 0-based), so `level` is only for Task 4b's generated-table fallback, keyed by name and level.
+ * 0 means unknown.
  */
-export function CooldownOf(h: Handle | null | undefined, _name: string, level: number): number {
+export function CooldownOf(h: Handle | null | undefined, _name: string, _level: number): number {
     if (isNullHandle(h) || h!.GetCooldown === undefined) return 0;
-    const handle = h as Handle & { GetCooldown(level?: number): number };
-    let [ok, cd] = pcall(() => handle.GetCooldown(level));
-    if (!ok) [ok, cd] = pcall(() => handle.GetCooldown());
+    const handle = h as Handle & { GetCooldown(): number };
+    const [ok, cd] = pcall(() => handle.GetCooldown());
     return ok && type(cd) === "number" && (cd as number) > 0 ? (cd as number) : 0;
 }
 
@@ -176,6 +193,12 @@ export function LastRecorded(observerPid: number): Recorded | undefined {
     return w === undefined ? undefined : w.last;
 }
 
+/** The last visible cast this observer saw, remembered or not (a human sees an escape even if its cooldown slips). */
+export function LastSeenCast(observerPid: number): Recorded | undefined {
+    const w = watches[observerPid];
+    return w === undefined ? undefined : w.lastSeen;
+}
+
 function shareToPartner(bot: Unit, enemyPid: number, ability: string): void {
     const s = LaneState.ForBot(bot);
     if (s === undefined) return;
@@ -190,6 +213,8 @@ function noteCast(bot: Unit, w: Watch, enemyPid: number, info: AbilityInfo, now:
     w.seen[key] = now;
     if (prev !== undefined && now - prev <= Perception.Settings().EventGap) return;
     const pid = bot.GetPlayerID();
+    w.stats.casts++;
+    w.lastSeen = { enemyPid, ability: info.name, at: now };
     if (info.cooldown <= 0) {
         if (w.noCdLogged[key] === true) return;
         w.noCdLogged[key] = true;
@@ -214,6 +239,7 @@ function noteCast(bot: Unit, w: Watch, enemyPid: number, info: AbilityInfo, now:
         ["src", src],
     ]);
     if (!remembered) return;
+    w.stats.recorded++;
     w.last = { enemyPid, ability: info.name, at: now };
     if (LaneFightConfig.Settings().ShareMemory === true) shareToPartner(bot, enemyPid, info.name);
 }
@@ -238,6 +264,7 @@ function checkJump(bot: Unit, w: Watch, enemy: Unit, enemyPid: number, now: numb
     const dx = loc.x - prev.x;
     const dy = loc.y - prev.y;
     if (math.sqrt(dx * dx + dy * dy) <= LaneFightConfig.Settings().BlinkJump) return;
+    w.stats.jumps++;
     const blink = blinkAbility(enemy);
     if (blink !== undefined) noteCast(bot, w, enemyPid, blink, now, "jump");
 }
@@ -255,6 +282,8 @@ function onCastEvent(bot: Unit, enemyPid: number, event: any): void {
     if (now < 0 || !LaneConfig.InLaningPhase() || isNullHandle(bot)) return;
     const caster = visibleEnemy(bot, enemyPid);
     if (caster === undefined || type(event) !== "table") return;
+    // The player's summons and controlled units cast under the same player ID; only the hero's own casts count.
+    if (event.unit !== undefined && event.unit !== null && event.unit !== caster) return;
     const a = event.ability;
     const name = type(a) === "string" ? (a as string) : nameOf(a as Handle);
     if (name === undefined) return;
@@ -277,6 +306,20 @@ function installCallbacks(bot: Unit, w: Watch): void {
     }
 }
 
+function summarise(bot: Unit, w: Watch, now: number): void {
+    const st = w.stats;
+    if (now - st.since < SUMMARY_EVERY) return;
+    Telemetry.Event("lanefight_watch", [
+        ["pid", bot.GetPlayerID()],
+        ["polls", st.polls],
+        ["visible", st.visible],
+        ["casts", st.casts],
+        ["recorded", st.recorded],
+        ["jumps", st.jumps],
+    ]);
+    w.stats = freshStats(now);
+}
+
 export function Tick(bot: Unit): void {
     const now = DotaTime();
     if (now < 0) return;
@@ -289,9 +332,12 @@ export function Tick(bot: Unit): void {
     for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
         if (e === undefined || !e.visible || !usable(e.unit)) continue;
         visible[e.pid] = true;
+        w.stats.visible++;
         pollCast(bot, w, e.unit, e.pid, now);
         checkJump(bot, w, e.unit, e.pid, now);
     }
+    w.stats.polls++;
+    summarise(bot, w, now);
     // A hero out of sight for a poll may come back anywhere; that is not a jump.
     for (const [pid] of pairs(w.lastLoc)) if (visible[pid as number] !== true) w.lastLoc[pid as number] = undefined as any;
 }

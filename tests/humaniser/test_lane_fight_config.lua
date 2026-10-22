@@ -24,6 +24,8 @@ do
 	check("inactive when humaniser off", not fresh({}, { Enable = false }).IsActive())
 	check("inactive when LaneFight off", not fresh({ Enable = false }).IsActive())
 	check("inactive when the Lane feature is off", not fresh({}, { Enable = true, Lane = { Enable = false } }).IsActive())
+	check("flags are off when the Lane feature is off", fresh({}).IsOn("Memory")
+		and not fresh({}, { Enable = true, Lane = { Enable = false } }).IsOn("Memory"))
 	check("inactive when Memory, Trade and Kill all off",
 		not fresh({ Memory = false, Trade = false, Kill = false }).IsActive())
 	check("one of the three keeps it active", fresh({ Memory = false, Trade = false, Kill = true }).IsActive())

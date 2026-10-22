@@ -192,7 +192,7 @@ export interface Ability {
 
     GetCooldownTimeRemaining(): number;
     GetLevel(): number;
-    GetCooldown(level?: number): number;
+    GetCooldown(): number;
     IsUltimate(): boolean;
     GetBehavior(): number;
 }

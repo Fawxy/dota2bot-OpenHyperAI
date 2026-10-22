@@ -12,7 +12,8 @@ local function ability(name, o)
 		IsUltimate = function() return o.ult == true end,
 		IsHidden = function() return false end,
 		IsNull = function() return false end,
-		GetCooldown = function(_, level) return o.cd or 12 end,
+		-- The bot API's GetCooldown takes no level; an argument here reads a different (wrong) number.
+		GetCooldown = function(_, level) if level ~= nil then return 999 end return o.cd or 12 end,
 	}
 end
 
@@ -58,6 +59,8 @@ do
 	check("a visible cast is recorded once", recordsOf(records, "lion_impale") == 1, #records)
 	check("the record is the observer's, about the caster", records[1] and records[1].obs == 1 and records[1].enemy == 6)
 	check("the cast is remembered as on cooldown", not M.ProbablyReady(1, 6, "lion_impale", true, T, 1))
+	check("the cooldown is GetCooldown() with no level (12 s, not the level form's 999)",
+		M.ProbablyReady(1, 6, "lion_impale", true, 100 + 12.1, 1) and not M.ProbablyReady(1, 6, "lion_impale", true, 100 + 11.9, 1))
 	local last = H.LaneFight.CastWatch.LastRecorded(1)
 	check("LastRecorded names the cast", last ~= nil and last.enemyPid == 6 and last.ability == "lion_impale" and near(last.at, 100))
 	enemy.casting = nil
@@ -197,6 +200,7 @@ do
 	check("level estimate: an unreadable basic ability at hero level 5 is level 3", basic ~= nil and basic.learned and basic.level == 3,
 		basic and basic.level)
 	check("AbilitiesOf reports the slot", basic ~= nil and basic.slot == 0 and ult.slot == 5)
+	check("AbilitiesOf reads the no-argument cooldown", basic ~= nil and basic.cooldown == 12, basic and basic.cooldown)
 	enemy.level = 12
 	enemy.abilities[5] = ability("lion_finger_of_death", { level = 0, ult = true })
 	T = T + 1
@@ -262,6 +266,11 @@ do
 	check("the callback is installed once", #CAST_CALLBACKS[6] == 1)
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
 	check("a callback cast by a visible enemy is recorded", recordsOf(records, "lion_impale") == 1, #records)
+	T = T + 1
+	-- A summon of the same player: its own handle, not the hero's (kept out of the world so the hero stays the caster).
+	local summon = setmetatable({ pid = 6, team = 3, alive = true, loc = Vector(-2400, BOT_Y), modifiers = {} }, getmetatable(enemy))
+	CAST_CALLBACKS[6][1]({ player_id = 6, ability = ability("lion_mana_drain"), unit = summon })
+	check("a callback cast by another unit of the enemy player is not the hero's", recordsOf(records, "lion_mana_drain") == 0, #records)
 	-- Still in the cached lane list, but in fog by the time the event fires.
 	enemy.CanBeSeen = function() return false end
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = ability("lion_mana_drain"), unit = enemy })
@@ -270,6 +279,38 @@ do
 	T = T + 1
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = "lion_impale", unit = enemy })
 	check("a callback naming the ability by string is read from the ability list", recordsOf(records, "lion_impale") == 2, #records)
+end
+
+do
+	-- Skill 0: an "other" ability is remembered at 0.1, so the 0.5 roll fails.
+	local H, bot, enemy, records = world({ skill = 0 })
+	enemy.casting = ability("lion_mana_drain", { cd = 16 })
+	poll(H, bot, 2)
+	local seen = H.LaneFight.CastWatch.LastSeenCast(1)
+	check("a failed remember roll records nothing", #records == 1 and H.LaneFight.CastWatch.LastRecorded(1) == nil, #records)
+	check("a failed remember roll still updates LastSeenCast", seen ~= nil and seen.enemyPid == 6 and seen.ability == "lion_mana_drain"
+		and near(seen.at, 100))
+end
+
+do
+	local lines = {}
+	local blink = ability("item_blink", { cd = 15 })
+	local H, bot, enemy = world({ telemetry = { Enable = true } })
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	enemy.GetItemInSlot = function(_, slot) if slot == 0 then return blink end return nil end
+	enemy.casting = enemy.impale
+	poll(H, bot, 1)
+	enemy.casting = nil
+	enemy.loc = Vector(-1800, BOT_Y)
+	poll(H, bot, 1)
+	for _ = 1, 300 do poll(H, bot, 1) end
+	local summaries = {}
+	for _, l in ipairs(lines) do if l:find("lanefight_watch", 1, true) then table.insert(summaries, l) end end
+	local first = summaries[1] or ""
+	check("a watch summary is logged once per 30 s", #summaries == 1, #summaries)
+	check("the summary counts polls, visible enemies, casts, records and jumps",
+		first:find("pid=1", 1, true) and first:find("polls=302", 1, true) and first:find("visible=302", 1, true)
+		and first:find("casts=2", 1, true) and first:find("recorded=2", 1, true) and first:find("jumps=1", 1, true), first)
 end
 
 finish()
