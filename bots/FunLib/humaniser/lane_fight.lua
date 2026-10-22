@@ -11,7 +11,7 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, inAttackRange, lastAttackOn, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, PARTNER_RECENT_ATTACK, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, inAttackRange, lastAttackOn, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, fitToCommit, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, PARTNER_RECENT_ATTACK, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -81,7 +81,7 @@ function touch(s, key, now)
     inst.seen = now
     return inst
 end
-function gate(bot, inst, reason, targetPid)
+function gate(bot, inst, reason, targetPid, extra)
     if inst.gates[reason] == true then
         return
     end
@@ -95,6 +95,11 @@ function gate(bot, inst, reason, targetPid)
     }
     if targetPid ~= nil then
         fields[#fields + 1] = {"target", targetPid}
+    end
+    if extra ~= nil then
+        for ____, f in ipairs(extra) do
+            fields[#fields + 1] = f
+        end
     end
     Telemetry.Event("lanefight_gate", fields)
 end
@@ -176,11 +181,11 @@ function holdsReadyKey(u)
         local i = 0
         while i < 6 do
             do
-                local __continue43
+                local __continue46
                 repeat
                     local a = u:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:GetLevel() < 1 then
-                        __continue43 = true
+                        __continue46 = true
                         break
                     end
                     local name = a:GetName()
@@ -190,9 +195,9 @@ function holdsReadyKey(u)
                     ) == "key" and not AbilityClasses.IsEscape(name) and a:IsFullyCastable() then
                         return true
                     end
-                    __continue43 = true
+                    __continue46 = true
                 until true
-                if not __continue43 then
+                if not __continue46 then
                     break
                 end
             end
@@ -307,8 +312,8 @@ function sampleDistance(bot, ally, target, now)
     end
     return t.prev
 end
-function followable(s, ally, target, targetPid, prev)
-    if s.phase == "wait_partner" and s.withPid == ally:GetPlayerID() and s.targetPid == targetPid then
+function followable(s, ally, target, prev)
+    if s.phase == "wait_partner" and s.withPid == ally:GetPlayerID() then
         return true
     end
     if (prev and prev.attacks or 0) >= IN_RANGE_ATTACKS then
@@ -331,21 +336,15 @@ function partnerCommitTarget(bot, s, ally, now)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue76
+            local __continue79
             repeat
                 if e == nil or not e.visible or not usableUnit(e.unit) then
-                    __continue76 = true
+                    __continue79 = true
                     break
                 end
                 local prev = sampleDistance(bot, ally, e.unit, now)
                 local committing = ____exports.IsCommitting(ally, e.unit, prev)
-                if found == nil and committing and followable(
-                    s,
-                    ally,
-                    e.unit,
-                    e.pid,
-                    prev
-                ) then
+                if found == nil and committing and followable(s, ally, e.unit, prev) then
                     found = e.unit
                 end
                 if counted and e.pid == s.targetPid then
@@ -354,9 +353,9 @@ function partnerCommitTarget(bot, s, ally, now)
                         s.partnerSeen[ally:GetPlayerID()] = now
                     end
                 end
-                __continue76 = true
+                __continue79 = true
             until true
-            if not __continue76 then
+            if not __continue79 then
                 break
             end
         end
@@ -423,15 +422,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue97
+            local __continue100
             repeat
                 if not a.learned then
-                    __continue97 = true
+                    __continue100 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue97 = true
+                    __continue100 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -445,9 +444,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue97 = true
+                __continue100 = true
             until true
-            if not __continue97 then
+            if not __continue100 then
                 break
             end
         end
@@ -1026,11 +1025,11 @@ function planKill(bot, p, target, now)
     end
     local support = isSupport(bot)
     if support and holdsReadyKey(bot) then
-        local partners = p ~= nil and ({p.unit}) or ({})
+        local partners = p ~= nil and fitToCommit(p.unit) and ({p.unit}) or ({})
         local k = KillCheck.Check(bot, partners, target, now)
         return {action = k ~= nil and k.pass and "commit" or "none", k = k, partners = partners, via = "initiate"}
     end
-    if p ~= nil and p.support and holdsReadyKey(p.unit) then
+    if p ~= nil and p.support and holdsReadyKey(p.unit) and fitToCommit(p.unit) then
         local partners = {p.unit}
         local k = KillCheck.Check(bot, partners, target, now)
         return {action = k ~= nil and k.pass and "wait" or "none", k = k, partners = partners, via = "partner"}
@@ -1045,6 +1044,9 @@ function planKill(bot, p, target, now)
     end
     local k = KillCheck.Check(bot, {}, target, now)
     return {action = k ~= nil and k.pass and "commit" or "none", k = k, partners = {}, via = "solo"}
+end
+function fitToCommit(u)
+    return hpFraction(u) >= LaneFightConfig.Settings().CommitStartHP
 end
 function visibleEnemy(bot, pid)
     for ____, e in ipairs(LaneState.Enemies(
@@ -1136,7 +1138,17 @@ function coordinate(bot, s, snap, now)
     end
     local k = KillCheck.Check(bot, {p.unit}, target, now)
     if k == nil or k.margin < LaneFightConfig.Settings().FollowMargin then
-        gate(bot, f.inst, "follow-margin")
+        local extra = {{"margin", k and k.margin or 0}}
+        if (k and k.reason) ~= nil and k.reason ~= "burst" then
+            extra[#extra + 1] = {"why", k.reason}
+        end
+        gate(
+            bot,
+            f.inst,
+            "follow-margin",
+            f.targetPid,
+            extra
+        )
         return
     end
     local blocked = startBlocked(bot, true)
@@ -1169,9 +1181,9 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
     local tpid = target:GetPlayerID()
     local p = partnerOf(bot, snap)
     local plan = planKill(bot, p, target, now)
-    local ____s_20 = s
-    local ____opt_18 = plan.k
-    ____s_20.lastMargin = ____opt_18 and ____opt_18.margin
+    local ____s_24 = s
+    local ____opt_22 = plan.k
+    ____s_24.lastMargin = ____opt_22 and ____opt_22.margin
     if plan.action == "none" then
         s.killSince = nil
         local k = plan.k
@@ -1222,8 +1234,8 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
         if windowKey ~= nil then
             local w = touch(s, windowKey, now)
             w.started = true
-            local ____s_spent_21 = s.spent
-            ____s_spent_21[#____s_spent_21 + 1] = w
+            local ____s_spent_25 = s.spent
+            ____s_spent_25[#____s_spent_25 + 1] = w
         end
     elseif p ~= nil then
         if p.human then
@@ -1383,13 +1395,13 @@ local function considerStart(bot, s, snap, now)
         return
     end
     local blocked = startBlocked(bot, false)
-    local ____temp_17
+    local ____temp_21
     if blocked == nil then
-        ____temp_17 = visibleEnemy(bot, tpid)
+        ____temp_21 = visibleEnemy(bot, tpid)
     else
-        ____temp_17 = nil
+        ____temp_21 = nil
     end
-    local seen = ____temp_17
+    local seen = ____temp_21
     if blocked == nil and seen == nil then
         blocked = "unseen"
     end
@@ -1502,17 +1514,17 @@ end
 --- The trade or commit target, while one runs.
 function ____exports.Target(bot)
     local s = fights[bot:GetPlayerID()]
-    local ____temp_22
+    local ____temp_26
     if s ~= nil and (s.phase == "trade" or s.phase == "commit") then
-        ____temp_22 = s.target
+        ____temp_26 = s.target
     else
-        ____temp_22 = nil
+        ____temp_26 = nil
     end
-    return ____temp_22
+    return ____temp_26
 end
 function ____exports.CurrentPhase(bot)
-    local ____opt_23 = fights[bot:GetPlayerID()]
-    return ____opt_23 and ____opt_23.phase or "idle"
+    local ____opt_27 = fights[bot:GetPlayerID()]
+    return ____opt_27 and ____opt_27.phase or "idle"
 end
 --- "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line.
 function ____exports.Describe(bot)

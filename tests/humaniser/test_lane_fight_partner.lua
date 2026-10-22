@@ -502,6 +502,48 @@ do
 	playUntil(W, function() return W.events("lanefight_end") > 0 end, 5)
 	check("an initiator whose partner never follows re-checks solo and ends", W.events("lanefight_end", "phase=commit reason=partner_abandon") == 1
 		and W.events("lanefight_recheck", "reason=partner_abandon pass=0") == 1, table.concat(W.lines, "\n"))
+
+	-- In game (earthshaker at 1:29) the support initiated counting a core at 46% HP, below CommitStartHP, which the core
+	-- itself needs to commit: it never followed.
+	W = world({ botPos = 5, burst = 60, botAbilities = stun(true), partner = { pos = 1, burst = 60 } })
+	W.partner.hp = 46
+	play(W, 2)
+	check("a support does not initiate counting a core below CommitStartHP", W.events("lanefight_start", "phase=commit") == 0,
+		table.concat(W.lines, "\n"))
+	W = world({ botPos = 5, burst = 60, botAbilities = stun(true), partner = { pos = 1, burst = 60 } })
+	W.partner.hp = 66
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("a core at CommitStartHP still counts", W.events("lanefight_start", "via=initiate") == 1, table.concat(W.lines, "\n"))
+	W = world({ botPos = 5, burst = 120, botAbilities = stun(true), partner = { pos = 1, burst = 60 } })
+	W.partner.hp = 46
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("a support that kills alone still initiates with a hurt core, counting none", W.events("lanefight_start", "via=initiate") == 1
+		and W.events("lanefight_commit", "role=solo") + W.events("lanefight_commit", "role=initiator") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- In game (6:05) the core waited on one target while its support went in on another; it followed only "its" target.
+	local W = world({ burst = 400, partner = { pos = 5, burst = 400, abilities = stun(true) } })
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "wait_partner" end, 2)
+	check("setup: the core waits on target 6", W.events("lanefight_start", "pid=1 phase=wait_partner target=6") == 1, table.concat(W.lines, "\n"))
+	local other = MakeUnit({ pid = 7, team = 3, loc = W.loc(250), level = 1, hp = 100 })
+	other.lane = Lane.Bot
+	other.abilities = W.enemy.abilities
+	W.onFrame = function()
+		W.partner.target = other
+		if dist(W.partner, other) > 150 then step(W.partner, other.loc) end
+	end
+	playUntil(W, function() return W.events("lanefight_start", "phase=commit") > 0 end, 3)
+	check("a waiting core follows its partner going in on another lane enemy", W.events("lanefight_start", "pid=1 phase=commit target=7") == 1
+		and W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- The follow-margin gate names the margin and, on a veto, the kill check's reason.
+	local W = world({ burst = 30, partner = { human = true, pos = 5, burst = 40 } })
+	trading(W, T)
+	play(W, 3)
+	check("the follow-margin gate logs its margin", W.events("lanefight_gate", "gate=follow-margin target=6 margin=0.700") == 1, table.concat(W.lines, "\n"))
 end
 
 

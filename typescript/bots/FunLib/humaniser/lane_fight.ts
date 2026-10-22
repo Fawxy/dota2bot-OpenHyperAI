@@ -252,7 +252,7 @@ function touch(s: FightState, key: string, now: number): Instance {
     return inst;
 }
 
-function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number): void {
+function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number, extra?: [string, any][]): void {
     if (inst.gates[reason] === true) return;
     inst.gates[reason] = true;
     const fields: [string, any][] = [
@@ -260,6 +260,7 @@ function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number): vo
         ["gate", reason],
     ];
     if (targetPid !== undefined) fields.push(["target", targetPid]);
+    if (extra !== undefined) for (const f of extra) fields.push(f);
     Telemetry.Event("lanefight_gate", fields);
 }
 
@@ -406,10 +407,10 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
 /**
  * A partner's commit worth following: IN_RANGE_ATTACKS landed, or a key or ultimate cast at the target. Walking in on
  * the target while attacking is how a harass hit looks too, so it is followed only by a bot already waiting for this
- * partner on this target.
+ * partner, on whichever lane enemy the partner picked (the follow's margin check still decides).
  */
-function followable(s: FightState, ally: Unit, target: Unit, targetPid: number, prev: Sample | undefined): boolean {
-    if (s.phase === "wait_partner" && s.withPid === ally.GetPlayerID() && s.targetPid === targetPid) return true;
+function followable(s: FightState, ally: Unit, target: Unit, prev: Sample | undefined): boolean {
+    if (s.phase === "wait_partner" && s.withPid === ally.GetPlayerID()) return true;
     if ((prev?.attacks ?? 0) >= IN_RANGE_ATTACKS) return true;
     return castingAt(ally, target, GetUnitToUnitDistance(ally, target));
 }
@@ -426,7 +427,7 @@ function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number):
         if (e === undefined || !e.visible || !usableUnit(e.unit)) continue;
         const prev = sampleDistance(bot, ally, e.unit, now);
         const committing = IsCommitting(ally, e.unit, prev);
-        if (found === undefined && committing && followable(s, ally, e.unit, e.pid, prev)) found = e.unit;
+        if (found === undefined && committing && followable(s, ally, e.unit, prev)) found = e.unit;
         if (counted && e.pid === s.targetPid) {
             const hit = lastAttackOn(bot, ally, e.unit);
             if (committing || attackingInRange(ally, e.unit) || (hit !== undefined && now - hit <= PARTNER_RECENT_ATTACK))
@@ -870,11 +871,11 @@ function planKill(bot: Unit, p: PartnerInfo | undefined, target: Unit, now: numb
     }
     const support = isSupport(bot);
     if (support && holdsReadyKey(bot)) {
-        const partners = p !== undefined ? [p.unit] : [];
+        const partners = p !== undefined && fitToCommit(p.unit) ? [p.unit] : [];
         const k = KillCheck.Check(bot, partners, target, now);
         return { action: k !== undefined && k.pass ? "commit" : "none", k, partners, via: "initiate" };
     }
-    if (p !== undefined && p.support && holdsReadyKey(p.unit)) {
+    if (p !== undefined && p.support && holdsReadyKey(p.unit) && fitToCommit(p.unit)) {
         const partners = [p.unit];
         const k = KillCheck.Check(bot, partners, target, now);
         return { action: k !== undefined && k.pass ? "wait" : "none", k, partners, via: "partner" };
@@ -884,6 +885,14 @@ function planKill(bot: Unit, p: PartnerInfo | undefined, target: Unit, now: numb
     if (support && p !== undefined && !p.support) return { action: "none", k: KillCheck.Check(bot, [p.unit], target, now), partners: [p.unit], via: "follow" };
     const k = KillCheck.Check(bot, [], target, now);
     return { action: k !== undefined && k.pass ? "commit" : "none", k, partners: [], via: "solo" };
+}
+
+/**
+ * A partner whose HP lets it commit (CommitStartHP, the gate it applies to itself). A partner below it will not go in,
+ * so a plan that counts it commits alone.
+ */
+function fitToCommit(u: Unit): boolean {
+    return hpFraction(u) >= LaneFightConfig.Settings().CommitStartHP;
 }
 
 function visibleEnemy(bot: Unit, pid: number): Unit | undefined {
@@ -941,7 +950,9 @@ function coordinate(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now:
     if (target === undefined) return;
     const k = KillCheck.Check(bot, [p.unit], target, now);
     if (k === undefined || k.margin < LaneFightConfig.Settings().FollowMargin) {
-        gate(bot, f.inst, "follow-margin");
+        const extra: [string, any][] = [["margin", k?.margin ?? 0]];
+        if (k?.reason !== undefined && k.reason !== "burst") extra.push(["why", k.reason]);
+        gate(bot, f.inst, "follow-margin", f.targetPid, extra);
         return;
     }
     const blocked = startBlocked(bot, true);
