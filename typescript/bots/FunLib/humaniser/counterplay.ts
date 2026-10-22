@@ -52,6 +52,8 @@ export interface Signal {
     enemyPid?: number;
     /** pull_expected: when the predicted pull aggros the camp. */
     aggroAt?: number;
+    /** pull / half_pull: their support seen at its camp, last seen there, or our wave's arrival (late or thin). */
+    source?: "seen" | "lastseen" | "wave";
     noticed: boolean;
 }
 
@@ -424,7 +426,8 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
     const support = laneRoleOf(s, enemies, "support");
     const suspected = support !== undefined ? suspectedCamp(camps, support, now) : undefined;
     if (support !== undefined && suspected !== undefined) {
-        const sig = { kind: "pull" as const, lane: s.lane, at: now, campIdx: suspected, enemyPid: support.pid };
+        const source = support.visible ? ("seen" as const) : ("lastseen" as const);
+        const sig = { kind: "pull" as const, lane: s.lane, at: now, campIdx: suspected, enemyPid: support.pid, source };
         observe(bot, st, `pull:${suspected}:${cycle}`, sig, s, enemies, !support.visible);
     }
     pullExpectedSignal(bot, st, s, enemies, camps[0], support, now);
@@ -442,7 +445,7 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
     // Their support standing in our lane is not pulling: the wave is only late or partly in sight.
     if (support !== undefined && support.visible && isLaner(support, s)) return;
     const kind = anomaly === "late" ? "pull" : "half_pull";
-    const sig = { kind, lane: s.lane, at: now, campIdx: camps[0].campIdx, enemyPid: support?.pid } as Omit<Signal, "noticed">;
+    const sig = { kind, lane: s.lane, at: now, campIdx: camps[0].campIdx, enemyPid: support?.pid, source: "wave" } as Omit<Signal, "noticed">;
     observe(bot, st, `${kind}:${camps[0].campIdx}:${cycle}`, sig, s, enemies);
 }
 
@@ -704,6 +707,13 @@ function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, 
         if (sig.kind !== "pull" && sig.kind !== "half_pull") continue;
         if (preContested(st, sig)) {
             st.responded[key] = true;
+            continue;
+        }
+        // Only their support seen at its camp as it aggros is acted on, and only while that is fresh: the other signals
+        // were 17% real in console.9057295358, and a thin wave shows ~18 s after the aggro, too late to reach the camp.
+        const late = now - sig.at > settings().Timing.CounterRespondFresh;
+        if (sig.source !== "seen" || late) {
+            if (LaneConfig.IsOn("TakePull") && sig.campIdx !== undefined) noteTakeSkip(bot, st, key, sig, late && sig.source === "seen" ? "stale" : sig.source ?? "wave");
             continue;
         }
         // WeAreStronger reads no enemy in range as stronger, so with no laner to punish the pull is still answered below.

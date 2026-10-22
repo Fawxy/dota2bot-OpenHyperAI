@@ -746,12 +746,14 @@ local function pullSignals(bot, st, s, enemies, now)
     end
     local suspected = ____temp_3
     if support ~= nil and suspected ~= nil then
+        local source = support.visible and "seen" or "lastseen"
         local sig = {
             kind = "pull",
             lane = s.lane,
             at = now,
             campIdx = suspected,
-            enemyPid = support.pid
+            enemyPid = support.pid,
+            source = source
         }
         observe(
             bot,
@@ -798,7 +800,8 @@ local function pullSignals(bot, st, s, enemies, now)
         lane = s.lane,
         at = now,
         campIdx = camps[1].campIdx,
-        enemyPid = support and support.pid
+        enemyPid = support and support.pid,
+        source = "wave"
     }
     observe(
         bot,
@@ -1331,6 +1334,20 @@ local function respondToPull(bot, st, s, enemies, now)
                     __continue194 = true
                     break
                 end
+                local late = now - sig.at > settings().Timing.CounterRespondFresh
+                if sig.source ~= "seen" or late then
+                    if LaneConfig.IsOn("TakePull") and sig.campIdx ~= nil then
+                        noteTakeSkip(
+                            bot,
+                            st,
+                            key,
+                            sig,
+                            late and sig.source == "seen" and "stale" or (sig.source or "wave")
+                        )
+                    end
+                    __continue194 = true
+                    break
+                end
                 local ____stronger_result_12
                 if stronger(bot) then
                     ____stronger_result_12 = remainingLaner(s, enemies, sig.enemyPid)
@@ -1572,18 +1589,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue252
+            local __continue254
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue252 = true
+                    __continue254 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue252 = true
+                __continue254 = true
             until true
-            if not __continue252 then
+            if not __continue254 then
                 break
             end
         end
@@ -1614,7 +1631,7 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue260
+            local __continue262
             repeat
                 local ____opt_result_17
                 if camp ~= nil then
@@ -1626,19 +1643,19 @@ function ____exports.PreferStackedCamp(bot, camps)
                 end
                 local loc = ____opt_result_18
                 if loc == nil then
-                    __continue260 = true
+                    __continue262 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue260 = true
+                    __continue262 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue260 = true
+                    __continue262 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1646,9 +1663,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue260 = true
+                __continue262 = true
             until true
-            if not __continue260 then
+            if not __continue262 then
                 break
             end
         end

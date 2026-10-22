@@ -294,6 +294,53 @@ do
 end
 
 do
+	-- Only a sighting of their support at its camp, while fresh, is acted on (console.9057295358: none of 6 takes and few
+	-- of 12 contests followed a real pull; thin-wave and unseen-support signals were 17% real, and a thin wave shows ~18 s
+	-- after the aggro, too late to reach the camp).
+	local function seen(thinkAt)
+		local H, support, _, _, esup = world(1)
+		esup.loc = THEIR_SMALL
+		tick(H, support, 75)
+		check("precondition: a seen pull", #signalsOf(H, support, "pull") == 1)
+		T = thinkAt
+		H.Lane.Counter.Think(support, {})
+		return H.Lane.CampJobs.Current(support)
+	end
+	check("a seen pull 3.5 s ago: contested", seen(78.5) ~= nil)
+	check("a seen pull 4.5 s ago: too late, not contested", seen(79.5) == nil)
+
+	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
+	local H, support, _, _, esup = world(1, { cfg = WAVE })
+	tick(H, support, 81)
+	hide(esup, 4)
+	LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
+	tick(H, support, 82)
+	LAST_SEEN[15] = nil
+	check("precondition: an unseen-support pull", #signalsOf(H, support, "pull") == 1)
+	H.Lane.Counter.Think(support, {})
+	check("an unseen-support pull starts no contest", H.Lane.CampJobs.Current(support) == nil)
+
+	-- A thin wave: 2 of a 4-creep wave reach our front at 2:05, their support unseen.
+	H, support, _, _, esup = world(1)
+	hide(esup, 4)
+	esup.loc = Vector(-6000, -6000)
+	RANDOM_FRACTION = 0
+	for k, n in ipairs({ 4, 4, 2 }) do
+		local c0 = 60 + 30 * (k - 1)
+		for i = #CREEPS[3], 1, -1 do table.remove(CREEPS[3], i) end
+		for t = c0, c0 + 29.5, 0.5 do
+			if t == c0 + 5 then for i = 1, n do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end end
+			tick(H, support, t)
+			if #signalsOf(H, support, "half_pull") > 0 then break end
+		end
+	end
+	RANDOM_FRACTION = nil
+	check("precondition: a thin-wave signal", #signalsOf(H, support, "half_pull") == 1)
+	H.Lane.Counter.Think(support, {})
+	check("a thin wave starts no contest", H.Lane.CampJobs.Current(support) == nil)
+end
+
+do
 	-- The contest executor: walk to the camp, hit the visible puller every 2.5 s, give up after 10 s.
 	local H, support, _, _, esup = world(1)
 	esup.loc = THEIR_SMALL

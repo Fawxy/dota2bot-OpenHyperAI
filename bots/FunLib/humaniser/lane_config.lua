@@ -130,6 +130,7 @@ ____exports.DEFAULTS = {
         HumanPullWindow = 6,
         CounterUnseen = 4,
         CounterPullWindow = 3,
+        CounterRespondFresh = 4,
         CounterWaveLate = 5,
         CounterSignalTTL = 20,
         PunishGap = 2,
