@@ -991,6 +991,152 @@ do
 	check("travelling, camp in sight: casts held", H.Lane.CampJobHoldsCasts(support))
 end
 
+-- console.9055994510: Valve's attack mode (0.95, not resolvable) cut 9 of 34 jobs, 6 of them with no enemy within 1,400.
+-- A round as the engine scores it: retreat before farm, so farm's GetDesire reads this round's retreat.
+local function round(H, support, retreatRaw)
+	T = T + 0.3
+	local retreat = H.Intent.Resolve(support, dota.BotMode.Retreat, retreatRaw)
+	local farm = H.Intent.Resolve(support, dota.BotMode.Farm, H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support)))
+	return retreat, farm
+end
+local ATTACK = 0.95
+
+do
+	local H, support = leadingWorld()
+	clearEnemies()
+	support.hp, support.mode = 80, dota.BotMode.Farm
+	local _, farm = round(H, support, 0.3)
+	check("leading, nothing near: the job outbids attack mode", farm > ATTACK, farm)
+	enemyAt(11, support.loc.x + 1000, support.loc.y)
+	_, farm = round(H, support, 0.3)
+	check("an enemy hero at 1000: back to the job's desire, attack mode may take over", near(farm, 0.7), farm)
+	clearEnemies()
+	enemyAt(11, support.loc.x + 1500, support.loc.y)
+	_, farm = round(H, support, 0.3)
+	check("an enemy hero at 1500: still committed", farm > ATTACK, farm)
+
+	-- The hold keeps neutral-driven retreat under the job; once it releases, the commitment must not stand in for it.
+	clearEnemies()
+	support.hp = 70
+	local retreat
+	retreat, farm = round(H, support, 0.85)
+	check("neutrals only at 70%: held retreat, committed farm", retreat < 0.7 and farm > ATTACK, retreat .. " " .. farm)
+	support.hp = 45
+	round(H, support, 0.89)
+	retreat, farm = round(H, support, 0.89)
+	check("hold released at 45%: retreat wins and farm is not committed", retreat > farm and near(farm, 0.7), retreat .. " " .. farm)
+end
+
+do
+	-- Travelling there is no retreat hold, so a retreat that wants out keeps the job at its own desire.
+	local H, _, support = jobWorld(1, { away = 900 })
+	frame(H, support, 70)
+	check("precondition: travelling", H.Lane.CampJobs.Current(support).phase == "travel")
+	clearEnemies()
+	support.mode = dota.BotMode.Farm
+	local _, farm = round(H, support, 0.2)
+	check("travelling, retreat quiet: committed", farm > ATTACK, farm)
+	local retreat
+	retreat, farm = round(H, support, 0.8)
+	check("travelling, retreat at 0.8: retreat wins", retreat > farm, retreat .. " " .. farm)
+	H.Config.Get().Intent.Enable = false
+	check("intent off: no commitment", near(H.Lane.CampJobRawDesire(support, H.Lane.CampJobDesire(support)), 0.7))
+end
+
+-- Start gate (console.9055994510: 4 of 8 retreat-ended jobs started at 51-59%, one with retreat already at 0.86).
+do
+	local function startAt(hp, retreatRaw)
+		local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		support.hp = hp
+		T = 70
+		if retreatRaw then H.Intent.Resolve(support, dota.BotMode.Retreat, retreatRaw) end
+		local gate
+		for _, l in ipairs(hev(lines, "lane_plan")) do gate = field(l, "gate") end
+		local d = H.Lane.CampJobDesire(support)
+		for _, l in ipairs(hev(lines, "lane_plan")) do gate = field(l, "gate") end
+		return d, gate
+	end
+	local d, gate = startAt(70)
+	check("70% HP: the pull starts", near(d, 0.7), d)
+	d, gate = startAt(60)
+	check("60% HP: no pull, logged as low-hp", d == 0 and gate == "low-hp", tostring(d) .. " " .. tostring(gate))
+	d, gate = startAt(90, 0.75)
+	check("retreat already at 0.75: no pull", d == 0 and gate == "retreat", tostring(d) .. " " .. tostring(gate))
+	d = startAt(90, 0.5)
+	check("retreat at 0.5: the pull starts", near(d, 0.7), d)
+end
+
+-- Tango and clarity on the way to a pull, while there is time to spare.
+local function supplyWorld(o)
+	local H, _, support = jobWorld(1, { away = o.away or 900 })
+	-- jobWorld's enemy stands on the front, 1,190 from this support: inside JobEnemyHero.
+	UNITS[3][1].loc = Vector(FRONT.x + 1000, FRONT.y)
+	support.GetMaxHealth = function() return 600 end
+	support.hp = o.hp or 450
+	support.maxMana, support.mana = 300, o.mana or 300
+	support.items = o.items or { [0] = { name = "item_tango" } }
+	TREES = { [7] = Vector(support.loc.x + 150, support.loc.y) }
+	return H, support
+end
+local function used(pid, kind) return #ActionsOf(pid, kind) end
+
+do
+	local H, support = supplyWorld({})
+	frame(H, support, 70)
+	local job = H.Lane.CampJobs.Current(support)
+	check("precondition: time to spare", job.aggroAt - 70 - 3 > 1.5, job.aggroAt)
+	local trees = ActionsOf(support.pid, "UseAbilityOnTree")
+	check("150 HP down on the way to a pull: eats the nearby tree", #trees == 1 and trees[1].args[2] == 7, #trees)
+	check("and no move that frame", used(support.pid, "MoveToLocation") == 0)
+	frame(H, support, 70.5)
+	check("the tango is left to land", used(support.pid, "MoveToLocation") == 0)
+	support.modifiers["modifier_tango_heal"] = 1
+	frame(H, support, 70.6)
+	check("healing: the walk resumes", used(support.pid, "MoveToLocation") == 1)
+	support.modifiers["modifier_tango_heal"] = nil
+	for t = 71, 72, 0.5 do frame(H, support, t) end
+	check("one tango per pull", used(support.pid, "UseAbilityOnTree") == 1)
+end
+
+do
+	local H, support = supplyWorld({ hp = 550 })
+	frame(H, support, 70)
+	check("50 HP down: no tango", used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 1)
+
+	H, support = supplyWorld({ items = { [0] = { name = "item_tango", ready = false } } })
+	frame(H, support, 70)
+	check("tango not castable: walks on", used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 1)
+
+	H, support = supplyWorld({})
+	enemyAt(11, support.loc.x + 900, support.loc.y)
+	frame(H, support, 70)
+	check("an enemy hero near: no tango", used(support.pid, "UseAbilityOnTree") == 0)
+
+	H, support = supplyWorld({})
+	frame(H, support, 70)
+	ACTIONS = {}
+	local job = H.Lane.CampJobs.Current(support)
+	job.tangoUsed = nil
+	frame(H, support, job.aggroAt - 1.2)
+	check("too close to the hit: no tango", used(support.pid, "UseAbilityOnTree") == 0)
+end
+
+do
+	local H, support = supplyWorld({ hp = 600, mana = 100, items = { [0] = { name = "item_clarity" } } })
+	frame(H, support, 70)
+	local uses = ActionsOf(support.pid, "UseAbilityOnEntity")
+	check("200 mana down: drinks the clarity on itself", #uses == 1 and uses[1].args[2] == support, #uses)
+	support.modifiers["modifier_clarity_potion"] = 1
+	frame(H, support, 70.1)
+	check("regenerating: the walk resumes", used(support.pid, "MoveToLocation") == 1)
+
+	H, support = supplyWorld({ hp = 600, mana = 200, items = { [0] = { name = "item_clarity" } } })
+	frame(H, support, 70)
+	check("100 mana down: no clarity", used(support.pid, "UseAbilityOnEntity") == 0)
+end
+
 -- The core's side: while its support is out on a camp, it backs off sooner.
 do
 	-- The support starts at the front, so only its job (not its position) says it is away.

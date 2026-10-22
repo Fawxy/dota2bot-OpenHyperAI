@@ -201,7 +201,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, campNeutral, neutralsInBox, boxInSight, settleStack, round3, modeEndFields, pendingStacks
+local settings, enemyHeroNear, desireOf, campNeutral, neutralsInBox, boxInSight, settleStack, awaitSupply, round3, modeEndFields, pendingStacks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -222,6 +222,17 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 function settings()
     return LaneConfig.Settings()
 end
+function enemyHeroNear(bot)
+    return #(bot:GetNearbyHeroes(
+        settings().Radii.JobEnemyHero,
+        true,
+        BotMode.None
+    ) or ({})) > 0
+end
+function desireOf(kind)
+    local t = settings().Timing
+    return kind == "contest" and t.ContestDesire or t.JobDesire
+end
 function campNeutral(bot, job)
     local best
     local bestDist = math.huge
@@ -230,17 +241,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue222
+            local __continue230
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue222 = true
+                    __continue230 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue222 = true
+                    __continue230 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -251,9 +262,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue222 = true
+                __continue230 = true
             until true
-            if not __continue222 then
+            if not __continue230 then
                 break
             end
         end
@@ -365,6 +376,10 @@ function settleStack(bot, now)
     if grade == "ok" and stacked and after ~= nil then
         Stacking.Telegraph(bot, p.type)
     end
+end
+function awaitSupply(job, now, modifier)
+    job.supplyUntil = now + settings().Timing.SupplyWait
+    job.supplyModifier = modifier
 end
 function round3(v)
     return v == nil and -1 or math.floor(v * 1000 + 0.5) / 1000
@@ -585,6 +600,18 @@ end
 local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
     return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
+end
+--- Why a pull or stack should not start now, else undefined. Forced (debug) jobs skip it.
+local function startBlocked(bot)
+    local maxHP = bot:GetMaxHealth()
+    if maxHP <= 0 or bot:GetHealth() / maxHP < settings().Thresholds.JobStartHP then
+        return "low-hp"
+    end
+    local retreat = Intent.Resolved(bot, BotMode.Retreat)
+    if retreat ~= nil and retreat >= settings().Timing.JobDesire then
+        return "retreat"
+    end
+    return nil
 end
 local function travelTo(bot, loc)
     return ____exports.TravelTime(
@@ -1281,11 +1308,18 @@ function ____exports.HoldsCasts(bot)
     if job.phase == "travel" and not drawingCamp(job) and campNeutral(bot, job) == nil then
         return false
     end
-    return #(bot:GetNearbyHeroes(
-        settings().Radii.CastHoldEnemy,
-        true,
-        BotMode.None
-    ) or ({})) == 0
+    return not enemyHeroNear(bot)
+end
+--- The job's farm desire goes above Valve's attack mode (JobCommitDesire) unless the bot has a reason to leave: an
+-- enemy hero near, a human's order or survival claim, or retreat already scoring at the job's own desire. Retreat is
+-- scored before farm in each round, so its sample is this round's; with no fresh sample (intent off) nothing commits.
+function ____exports.Commits(bot)
+    local job = jobs[bot:GetPlayerID()]
+    if not isLive(job) or job.kind == "contest" or Orders.GetFor(bot) ~= nil or Intent.PriorityLive(bot) or enemyHeroNear(bot) then
+        return false
+    end
+    local retreat = Intent.Resolved(bot, BotMode.Retreat)
+    return retreat ~= nil and retreat < desireOf(job.kind)
 end
 --- Abort checks for a running job; true when it may continue.
 local function keepGoing(bot, job)
@@ -1347,10 +1381,6 @@ local function keepGoing(bot, job)
     end
     noteHeld(bot, job, s)
     return true
-end
-local function desireOf(kind)
-    local t = settings().Timing
-    return kind == "contest" and t.ContestDesire or t.JobDesire
 end
 local function anyJobFlag()
     for ____, flag in ipairs(JOB_FLAGS) do
@@ -1563,6 +1593,11 @@ local function schedule(bot)
     if kind == nil then
         return false
     end
+    local blocked = startBlocked(bot)
+    if blocked ~= nil then
+        notePlan(bot, s, now, {{"gate", blocked}, {"camp", camps[1].campIdx}})
+        return false
+    end
     local camp = pullCampFor(kind, camps)
     local asDouble = kind == "full_pull" and doubleOpen
     if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
@@ -1640,6 +1675,9 @@ local function scheduleStack(bot, now)
         return false
     end
     if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {aggroSec}, t.PullPeriod) then
+        return false
+    end
+    if startBlocked(bot) ~= nil then
         return false
     end
     return ____exports.Start(bot, {kind = "stack", campIdx = data.campIdx, minute = minute})
@@ -1825,10 +1863,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue250
+            local __continue258
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue250 = true
+                    __continue258 = true
                     break
                 end
                 if dist2D(
@@ -1837,9 +1875,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue250 = true
+                __continue258 = true
             until true
-            if not __continue250 then
+            if not __continue258 then
                 break
             end
         end
@@ -1878,10 +1916,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue259
+            local __continue267
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue259 = true
+                    __continue267 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1891,9 +1929,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue259 = true
+                __continue267 = true
             until true
-            if not __continue259 then
+            if not __continue267 then
                 break
             end
         end
@@ -1973,6 +2011,65 @@ local function aggroLanded(bot, job, now)
         now - (GameTime() - last)
     ) + flight
 end
+local function usableItem(bot, name)
+    local slot = bot:FindItemSlot(name)
+    if slot == nil or slot < 0 or slot > 5 then
+        return nil
+    end
+    local item = bot:GetItemInSlot(slot)
+    return item ~= nil and item ~= nil and item:IsFullyCastable() and item or nil
+end
+local function tangoTree(bot)
+    for ____, tree in ipairs(bot:GetNearbyTrees(settings().Radii.TangoTree) or ({})) do
+        local loc = GetTreeLocation(tree)
+        if IsLocationVisible(loc) and IsLocationPassable(loc) then
+            return tree
+        end
+    end
+    return nil
+end
+--- A support about to take a camp's hits eats a tango and drinks a clarity on the way, with time to spare: upstream
+-- waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
+-- True while the job leaves the frame to the use.
+local function supply(bot, job, now)
+    local slack = job.aggroAt - now - travelTo(bot, job.stand)
+    if job.supplyUntil ~= nil then
+        if now < job.supplyUntil and slack > 0 and not bot:HasModifier(job.supplyModifier or "") then
+            return true
+        end
+        job.supplyUntil = nil
+    end
+    local cfg = settings()
+    if job.tangoUsed == true and job.clarityUsed == true or slack < cfg.Timing.SupplySlack or enemyHeroNear(bot) then
+        return false
+    end
+    if job.clarityUsed ~= true and bot:GetMaxMana() - bot:GetMana() >= cfg.Thresholds.ClarityMinLost and not bot:HasModifier("modifier_clarity_potion") then
+        local clarity = usableItem(bot, "item_clarity")
+        if clarity ~= nil then
+            job.clarityUsed = true
+            awaitSupply(job, now, "modifier_clarity_potion")
+            bot:Action_UseAbilityOnEntity(clarity, bot)
+            return true
+        end
+    end
+    if job.tangoUsed ~= true and bot:GetMaxHealth() - bot:GetHealth() >= cfg.Thresholds.TangoMinLost and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing") then
+        local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
+        local ____temp_40
+        if tango ~= nil then
+            ____temp_40 = tangoTree(bot)
+        else
+            ____temp_40 = nil
+        end
+        local tree = ____temp_40
+        if tango ~= nil and tree ~= nil then
+            job.tangoUsed = true
+            awaitSupply(job, now, "modifier_tango_heal")
+            bot:Action_UseAbilityOnTree(tango, tree)
+            return true
+        end
+    end
+    return false
+end
 local function step(bot, job)
     local now = DotaTime()
     local cfg = settings()
@@ -1981,6 +2078,9 @@ local function step(bot, job)
     end
     if job.phase == "travel" or job.phase == "wait" then
         telegraph(bot, job, now)
+        if job.kind ~= "stack" and supply(bot, job, now) then
+            return true
+        end
         local creep = campNeutral(bot, job)
         if creep ~= nil and now >= job.aggroAt - aggroLead(bot, creep) then
             return orderAggro(bot, job, creep)

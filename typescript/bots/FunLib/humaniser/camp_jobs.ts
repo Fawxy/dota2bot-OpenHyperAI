@@ -5,7 +5,7 @@
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
  * the minute, and both are logged for tools/replay-mining.
  */
-import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Item, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -79,6 +79,11 @@ export interface Job extends JobRequest {
     heldNoted?: boolean;
     /** Retreat held below the job while the camp chases the bot ("on"); "off" once a real threat released it for good. */
     retreatHold?: "on" | "off";
+    /** Tango and clarity each used at most once per pull; until supplyUntil, or the item's modifier shows, the job gives no order. */
+    tangoUsed?: boolean;
+    clarityUsed?: boolean;
+    supplyUntil?: number;
+    supplyModifier?: string;
 }
 
 /**
@@ -269,6 +274,16 @@ export function DoubleGeometry(small: Camps.CampJobData, hard: Camps.CampJobData
 function hpOk(bot: Unit): boolean {
     const maxHP = bot.GetMaxHealth();
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
+}
+
+/** Why a pull or stack should not start now, else undefined. Forced (debug) jobs skip it. */
+function startBlocked(bot: Unit): string | undefined {
+    const maxHP = bot.GetMaxHealth();
+    if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
+    // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
+    const retreat = Intent.Resolved(bot, BotMode.Retreat);
+    if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
+    return undefined;
 }
 
 function travelTo(bot: Unit, loc: Vector): number {
@@ -774,7 +789,23 @@ export function HoldsCasts(bot: Unit): boolean {
     const job = jobs[bot.GetPlayerID()];
     if (!isLive(job) || job.kind === "contest") return false;
     if (job.phase === "travel" && !drawingCamp(job) && campNeutral(bot, job) === undefined) return false;
-    return (bot.GetNearbyHeroes(settings().Radii.CastHoldEnemy, true, BotMode.None) ?? []).length === 0;
+    return !enemyHeroNear(bot);
+}
+
+function enemyHeroNear(bot: Unit): boolean {
+    return (bot.GetNearbyHeroes(settings().Radii.JobEnemyHero, true, BotMode.None) ?? []).length > 0;
+}
+
+/**
+ * The job's farm desire goes above Valve's attack mode (JobCommitDesire) unless the bot has a reason to leave: an
+ * enemy hero near, a human's order or survival claim, or retreat already scoring at the job's own desire. Retreat is
+ * scored before farm in each round, so its sample is this round's; with no fresh sample (intent off) nothing commits.
+ */
+export function Commits(bot: Unit): boolean {
+    const job = jobs[bot.GetPlayerID()];
+    if (!isLive(job) || job.kind === "contest" || Orders.GetFor(bot) !== undefined || Intent.PriorityLive(bot) || enemyHeroNear(bot)) return false;
+    const retreat = Intent.Resolved(bot, BotMode.Retreat);
+    return retreat !== undefined && retreat < desireOf(job.kind);
 }
 
 /** Abort checks for a running job; true when it may continue. */
@@ -952,6 +983,11 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
+    const blocked = startBlocked(bot);
+    if (blocked !== undefined) {
+        notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
+        return false;
+    }
     const camp = pullCampFor(kind, camps);
     const asDouble = kind === "full_pull" && doubleOpen;
     // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
@@ -1001,6 +1037,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > aggroSec) return false;
     if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
+    if (startBlocked(bot) !== undefined) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 
@@ -1305,12 +1342,77 @@ function aggroLanded(bot: Unit, job: Job, now: number): number {
     return math.min(now, now - (GameTime() - last)) + flight;
 }
 
+/** Bot API methods for item use that ts_libs does not declare yet (its Action_UseAbilityOnEntity takes abilities only). */
+interface SupplyBot {
+    GetNearbyTrees(radius: number): number[];
+    Action_UseAbilityOnTree(item: Item, tree: number): void;
+    Action_UseAbilityOnEntity(item: Item, target: Unit): void;
+}
+declare function GetTreeLocation(tree: number): Vector;
+
+function usableItem(bot: Unit, name: string): Item | undefined {
+    const slot = bot.FindItemSlot(name);
+    if (slot === undefined || slot < 0 || slot > 5) return undefined;
+    const item = bot.GetItemInSlot(slot);
+    return item !== null && item !== undefined && item.IsFullyCastable() ? item : undefined;
+}
+
+function tangoTree(bot: Unit): number | undefined {
+    for (const tree of (bot as unknown as SupplyBot).GetNearbyTrees(settings().Radii.TangoTree) ?? []) {
+        const loc = GetTreeLocation(tree);
+        if (IsLocationVisible(loc) && IsLocationPassable(loc)) return tree;
+    }
+    return undefined;
+}
+
+/**
+ * A support about to take a camp's hits eats a tango and drinks a clarity on the way, with time to spare: upstream
+ * waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
+ * True while the job leaves the frame to the use.
+ */
+function supply(bot: Unit, job: Job, now: number): boolean {
+    const slack = job.aggroAt - now - travelTo(bot, job.stand);
+    if (job.supplyUntil !== undefined) {
+        if (now < job.supplyUntil && slack > 0 && !bot.HasModifier(job.supplyModifier ?? "")) return true;
+        job.supplyUntil = undefined;
+    }
+    const cfg = settings();
+    if ((job.tangoUsed === true && job.clarityUsed === true) || slack < cfg.Timing.SupplySlack || enemyHeroNear(bot)) return false;
+    if (job.clarityUsed !== true && bot.GetMaxMana() - bot.GetMana() >= cfg.Thresholds.ClarityMinLost && !bot.HasModifier("modifier_clarity_potion")) {
+        const clarity = usableItem(bot, "item_clarity");
+        if (clarity !== undefined) {
+            job.clarityUsed = true;
+            awaitSupply(job, now, "modifier_clarity_potion");
+            (bot as unknown as SupplyBot).Action_UseAbilityOnEntity(clarity, bot);
+            return true;
+        }
+    }
+    if (job.tangoUsed !== true && bot.GetMaxHealth() - bot.GetHealth() >= cfg.Thresholds.TangoMinLost
+        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing")) {
+        const tango = usableItem(bot, "item_tango_single") ?? usableItem(bot, "item_tango");
+        const tree = tango !== undefined ? tangoTree(bot) : undefined;
+        if (tango !== undefined && tree !== undefined) {
+            job.tangoUsed = true;
+            awaitSupply(job, now, "modifier_tango_heal");
+            (bot as unknown as SupplyBot).Action_UseAbilityOnTree(tango, tree);
+            return true;
+        }
+    }
+    return false;
+}
+
+function awaitSupply(job: Job, now: number, modifier: string): void {
+    job.supplyUntil = now + settings().Timing.SupplyWait;
+    job.supplyModifier = modifier;
+}
+
 function step(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     const cfg = settings();
     if (job.kind === "contest") return stepContest(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
+        if (job.kind !== "stack" && supply(bot, job, now)) return true;
         // aggroAt is when the hit should land, so the order goes out its walk, wind-up and flight early; a camp
         // already in sight on the way is attacked from there rather than after reaching the stand point.
         const creep = campNeutral(bot, job);

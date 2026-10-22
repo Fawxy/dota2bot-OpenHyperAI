@@ -230,10 +230,21 @@ function ____exports.ClaimAge(bot, source, mode)
     local at = ____opt_3 and ____opt_3.postedAt[(source .. "|") .. tostring(mode)]
     return at ~= nil and GameTime() - at or nil
 end
+--- A SURVIVAL or HUMAN_ORDER claim was posted within ClaimTTL (also what turns stickiness off).
+function ____exports.PriorityLive(bot)
+    local s = states[bot:GetPlayerID()]
+    return s ~= nil and GameTime() - s.priorityAt <= ____exports.Get().ClaimTTL
+end
+--- This mode's last resolved desire, while fresh; undefined for a mode intent does not see (Valve's own).
+function ____exports.Resolved(bot, mode)
+    local ____opt_5 = states[bot:GetPlayerID()]
+    local sample = ____opt_5 and ____opt_5.samples[mode]
+    return sample ~= nil and GameTime() - sample.time <= SAMPLE_FRESH and sample.resolved or nil
+end
 --- Seconds since this mode's GetDesire was last resolved.
 function ____exports.SampleAge(bot, mode)
-    local ____opt_5 = states[bot:GetPlayerID()]
-    local c = ____opt_5 and ____opt_5.cadence[mode]
+    local ____opt_7 = states[bot:GetPlayerID()]
+    local c = ____opt_7 and ____opt_7.cadence[mode]
     return (c and c.last) ~= nil and GameTime() - c.last or nil
 end
 local function addGap(c, gap)
@@ -261,15 +272,15 @@ end
 local function noteLapses(s, mode, now)
     for key, p in pairs(s.posted) do
         do
-            local __continue34
+            local __continue36
             repeat
                 if not applies(p.claim, mode) then
-                    __continue34 = true
+                    __continue36 = true
                     break
                 end
                 local lateBy = now - p.claim.expires
                 if lateBy > LAPSE_WINDOW then
-                    __continue34 = true
+                    __continue36 = true
                     break
                 end
                 local k = (p.claim.source .. ">") .. HDebug.ModeName(mode)
@@ -284,9 +295,9 @@ local function noteLapses(s, mode, now)
                     l.lapsed = l.lapsed + 1
                     s.posted[key] = nil
                 end
-                __continue34 = true
+                __continue36 = true
             until true
-            if not __continue34 then
+            if not __continue36 then
                 break
             end
         end
@@ -401,11 +412,11 @@ function ____exports.Resolve(bot, mode, raw)
     local unstuck = false
     for key, claim in pairs(s.claims) do
         do
-            local __continue67
+            local __continue69
             repeat
                 if claim.expires < now then
                     s.claims[key] = nil
-                    __continue67 = true
+                    __continue69 = true
                     break
                 end
                 if claim.unsticks == true and claim.mode ~= mode then
@@ -428,9 +439,9 @@ function ____exports.Resolve(bot, mode, raw)
                         ordered[#ordered + 1] = claim
                     end
                 end
-                __continue67 = true
+                __continue69 = true
             until true
-            if not __continue67 then
+            if not __continue69 then
                 break
             end
         end
@@ -452,14 +463,14 @@ function ____exports.Resolve(bot, mode, raw)
         end
         for ____, claim in ipairs(ordered) do
             do
-                local __continue79
+                local __continue81
                 repeat
                     if claim.tier == "SURVIVAL" and riskAllowed then
-                        __continue79 = true
+                        __continue81 = true
                         break
                     end
                     if claim.onlyLifted == true and desire <= scaled then
-                        __continue79 = true
+                        __continue81 = true
                         break
                     end
                     local value = desire
@@ -478,9 +489,9 @@ function ____exports.Resolve(bot, mode, raw)
                         by = claim.source
                         desire = value
                     end
-                    __continue79 = true
+                    __continue81 = true
                 until true
-                if not __continue79 then
+                if not __continue81 then
                     break
                 end
             end
@@ -573,8 +584,8 @@ local function onModeSwitch(bot, s, mode, now)
     end
     local cfg = ____exports.Get().Thrash
     s.switchCount = s.switchCount + 1
-    local ____s_switchTimes_13 = s.switchTimes
-    ____s_switchTimes_13[#____s_switchTimes_13 + 1] = now
+    local ____s_switchTimes_15 = s.switchTimes
+    ____s_switchTimes_15[#____s_switchTimes_15 + 1] = now
     while #s.switchTimes > 0 and s.switchTimes[1] < now - cfg.Window do
         table.remove(s.switchTimes, 1)
     end
@@ -662,13 +673,13 @@ local function checkStuck(bot, s, mode, now)
     end
     local idle = s.idleSince ~= nil and now - s.idleSince >= cfg.After
     local still = now - s.stillSince >= cfg.After
-    local ____temp_14
+    local ____temp_16
     if cfg.Match == "idle_or_still" then
-        ____temp_14 = idle or still
+        ____temp_16 = idle or still
     else
-        ____temp_14 = idle and still
+        ____temp_16 = idle and still
     end
-    local frozen = ____temp_14
+    local frozen = ____temp_16
     local desire = bot:GetActiveModeDesire()
     local sample = s.samples[mode]
     local raw = sample ~= nil and now - sample.time <= SAMPLE_FRESH and sample.raw or desire

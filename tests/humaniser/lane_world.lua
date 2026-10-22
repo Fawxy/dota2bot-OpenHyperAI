@@ -161,7 +161,26 @@ function UnitMeta:GetNearbyLaneCreeps(r, enemy)
 	end
 	return out
 end
-for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation" }) do
+-- Items: u.items = { [slot] = { name = ..., ready = bool } }; trees: TREES = { [id] = Vector }.
+function UnitMeta:FindItemSlot(name)
+	for slot, it in pairs(self.items or {}) do if it.name == name then return slot end end
+	return -1
+end
+function UnitMeta:GetItemInSlot(slot)
+	local it = (self.items or {})[slot]
+	if it == nil then return nil end
+	return { GetName = function() return it.name end, IsFullyCastable = function() return it.ready ~= false end, name = it.name }
+end
+function UnitMeta:GetMana() return self.mana or 100 end
+function UnitMeta:GetMaxMana() return self.maxMana or 100 end
+function UnitMeta:GetNearbyTrees(r)
+	local ids = {}
+	for id, loc in pairs(TREES or {}) do if GetUnitToLocationDistance(self, loc) <= r then table.insert(ids, id) end end
+	table.sort(ids, function(a, b) return GetUnitToLocationDistance(self, TREES[a]) < GetUnitToLocationDistance(self, TREES[b]) end)
+	return ids
+end
+function GetTreeLocation(id) return TREES[id] end
+for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation", "UseAbilityOnTree", "UseAbilityOnEntity" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
 		table.insert(ACTIONS, { pid = self.pid, kind = kind, args = { ... } })
 	end
@@ -196,7 +215,7 @@ function LaneFresh(laneCfg, extra)
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
-	IMPASSABLE = nil
+	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
 		Telemetry = extra.telemetry, Transitions = extra.transitions })

@@ -281,6 +281,18 @@ export function ClaimAge(bot: Unit, source: string, mode: BotMode | "ANY"): numb
     return at !== undefined ? GameTime() - at : undefined;
 }
 
+/** A SURVIVAL or HUMAN_ORDER claim was posted within ClaimTTL (also what turns stickiness off). */
+export function PriorityLive(bot: Unit): boolean {
+    const s = states[bot.GetPlayerID()];
+    return s !== undefined && GameTime() - s.priorityAt <= Get().ClaimTTL;
+}
+
+/** This mode's last resolved desire, while fresh; undefined for a mode intent does not see (Valve's own). */
+export function Resolved(bot: Unit, mode: number): number | undefined {
+    const sample = states[bot.GetPlayerID()]?.samples[mode];
+    return sample !== undefined && GameTime() - sample.time <= SAMPLE_FRESH ? sample.resolved : undefined;
+}
+
 /** Seconds since this mode's GetDesire was last resolved. */
 export function SampleAge(bot: Unit, mode: number): number | undefined {
     const c = states[bot.GetPlayerID()]?.cadence[mode];
