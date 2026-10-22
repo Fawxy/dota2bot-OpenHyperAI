@@ -831,7 +831,7 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 
 ### Reading a game
 - `node tools/hlog/analyse.js` shows a `farm trips` table per core: trips, camps, stacks landed/tried (from `lane_stack`), average trip length, why trips walked back, how they ended, the latest pace factor, and the seconds each `farm_gate` reason kept the core from starting.
-- `--check` adds `farm_trips`. It warns on trips that ended under another mode (with the winning mode), walk-backs that timed out, and a core leaving more than 40% of its camps unfinished.
+- `--check` adds `farm_trips`. It warns on trips that ended under another mode (with the winning mode; Valve's `attack` taking the core into a fight is not warned on), walk-backs that timed out, and a core leaving more than 40% of its camps unfinished.
 - `--from 5:00 --to 8:00 --ev farm_trip_start,farm_trip_next,farm_trip_return,farm_trip_end,lane_job_start,lane_stack` gives the trip timeline. A core's stack jobs have `core=1` on `lane_job_start`.
 
 ### TODO (in-game)

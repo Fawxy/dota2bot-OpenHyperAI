@@ -294,6 +294,20 @@ test('errors caught by humaniser guards fail the check once per hook and message
     assert.match(r.script_errors.details[0], /^guarded 37x from 0:08: Intent\.Resolve: intent\.lua:40/);
 });
 
+test('farm_trips: a trip handed to a fight by Valve attack mode is a planned end, one taken by rune is not', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=340 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=354 ev=farm_trip_end pid=1 camp=7 type=small phase=stack why=preempted camps=1 secs=14 to=attack',
+            '[HEV] t=400 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=410 ev=farm_trip_end pid=1 camp=7 type=small phase=go why=preempted camps=1 secs=10 to=rune',
+        ].join('\n')
+    )[0];
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x/);
+});
 test('real FarmPattern telemetry: trips summarised per core, a trip lost to another mode is flagged with the winner', () => {
     const games = parseLog(luaSession('hlog_farm_session.lua'));
     assert.strictEqual(games.length, 1);

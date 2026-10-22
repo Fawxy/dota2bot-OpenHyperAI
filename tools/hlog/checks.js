@@ -405,6 +405,8 @@ function trainerSelfTest(game) {
 // death, order, run) are fine; pre-emption by another mode (named in `to`), or the walk back timing out, means
 // something out-bid or stalled it. Leaving many camps unfinished means the clear-time estimate runs short.
 const FARM_OK_ENDS = new Set(['back', 'wave', 'enemy', 'low-hp', 'dead', 'order', 'run', 'retreat']);
+// Valve's C++ attack mode (0.95) taking the core into a fight is the intended way out of a trip.
+const FARM_OK_PREEMPT = new Set(['attack']);
 const FARM_LATE_SHARE = 0.4;
 const FARM_LATE_MIN = 3;
 
@@ -415,7 +417,7 @@ function farmTrips(game) {
     const returns = game.events.filter(e => e.ev === 'farm_trip_return');
     const odd = new Map();
     for (const e of ends) {
-        if (FARM_OK_ENDS.has(e.why)) continue;
+        if (FARM_OK_ENDS.has(e.why) || (e.why === 'preempted' && FARM_OK_PREEMPT.has(e.to))) continue;
         const key = `${name(game, e.pid)} ${e.why}${e.to ? ` -> ${e.to}` : ''}`;
         tally(odd, key, e.t);
     }
