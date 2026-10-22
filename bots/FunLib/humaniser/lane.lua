@@ -27,10 +27,10 @@ function nearestVisibleEnemy(bot, s)
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue27
+            local __continue28
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue27 = true
+                    __continue28 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, e.location)
@@ -38,9 +38,9 @@ function nearestVisibleEnemy(bot, s)
                     best = e.unit
                     bestDist = d
                 end
-                __continue27 = true
+                __continue28 = true
             until true
-            if not __continue27 then
+            if not __continue28 then
                 break
             end
         end
@@ -69,6 +69,7 @@ function ____exports.SetHelpers(h)
 end
 function ____exports.Tick(bot)
     LaneDebug.Tick(bot)
+    CampJobs.FlushModeEnd(bot)
     local snapshot = LaneState.ForBot(bot)
     if snapshot == nil then
         return
@@ -128,6 +129,10 @@ function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
 end
 --- Lane position override for the final move; returns `loc` itself when nothing applies.
 function ____exports.AdjustPosition(bot, loc)
+    local override = LaneHooks.PositionOverride(bot, loc)
+    if override ~= loc then
+        return override
+    end
     local adjusted = LaneTech.AdjustPosition(bot, loc)
     if adjusted == loc then
         adjusted = Counter.AdjustPosition(bot, loc)
@@ -154,7 +159,7 @@ function ____exports.SupersedesHarass(_bot)
 end
 --- 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human).
 function ____exports.HarassThink(bot, allyCreeps, enemyCreeps, enemies, etiquette)
-    if CampJobs.Covering(bot) then
+    if CampJobs.Covering(bot) or LaneHooks.TradesSuppressed(bot) then
         return false
     end
     return Harass.Think(
@@ -249,10 +254,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue53
+            local __continue54
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue53 = true
+                    __continue54 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -263,9 +268,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue53 = true
+                __continue54 = true
             until true
-            if not __continue53 then
+            if not __continue54 then
                 break
             end
         end

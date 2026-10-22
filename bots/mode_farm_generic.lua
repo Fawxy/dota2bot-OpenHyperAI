@@ -135,7 +135,7 @@ function GetDesireHelper()
 
 	-- Early exits first (cheap checks before expensive queries)
     if not bAlive
-	or J.IsInLaningPhase()
+	or (J.IsInLaningPhase() and not J.Humaniser.Transitions.FarmAllowedInLaning(bot))
 	or (J.IsDoingRoshan(bot) and bNotClone)
 	or (J.IsDoingTormentor(bot) and bNotClone)
     or DotaTime() < 50

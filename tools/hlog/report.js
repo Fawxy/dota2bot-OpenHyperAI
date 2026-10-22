@@ -140,6 +140,63 @@ function farmSection(game) {
     ];
 }
 
+const EQ_PAIR_MIN = 25;
+const EQ_PAIR_MAX = 35;
+
+/** Least squares through the origin of the next wave's eq change on this wave's imbalance, per lane kind. */
+function fitForecast(events) {
+    const byLane = new Map();
+    for (const e of events) {
+        if (e.ev !== 'lane_eq') continue;
+        const key = `${e.team}:${e.lane}`;
+        if (!byLane.has(key)) byLane.set(key, []);
+        byLane.get(key).push(e);
+    }
+    const pairs = new Map();
+    for (const list of byLane.values()) {
+        list.sort((a, b) => a.t - b.t);
+        for (let i = 0; i + 1 < list.length; i++) {
+            const dt = list[i + 1].t - list[i].t;
+            if (dt < EQ_PAIR_MIN || dt > EQ_PAIR_MAX) continue;
+            if (!pairs.has(list[i].kind)) pairs.set(list[i].kind, []);
+            pairs.get(list[i].kind).push({ imb: list[i].imb, d: list[i + 1].eq - list[i].eq });
+        }
+    }
+    const rows = [];
+    for (const [kind, ps] of pairs) {
+        if (ps.length < 2) continue;
+        const sxx = ps.reduce((a, p) => a + p.imb * p.imb, 0);
+        if (sxx === 0) continue;
+        const k = ps.reduce((a, p) => a + p.imb * p.d, 0) / sxx;
+        const m = mean(ps.map(p => p.d));
+        const resid = ps.reduce((a, p) => a + (p.d - k * p.imb) ** 2, 0);
+        const total = ps.reduce((a, p) => a + (p.d - m) ** 2, 0);
+        rows.push({ kind, n: ps.length, k, r2: total === 0 ? 0 : 1 - resid / total });
+    }
+    return rows.sort((a, b) => a.kind.localeCompare(b.kind));
+}
+
+function forecastSection(game) {
+    const out = [];
+    const rows = fitForecast(game.events);
+    if (rows.length > 0) {
+        out.push('', 'forecast fit:');
+        for (const r of rows) out.push(`  ${r.kind} n=${r.n} K=${r.k.toFixed(2)} r2=${r.r2.toFixed(2)}`);
+    }
+    const pre = game.events.filter(e => e.kind === 'contest' && e.pre === 1);
+    const started = pre.filter(e => e.ev === 'lane_job_start').length;
+    const ends = pre.filter(e => e.ev === 'lane_job_end');
+    const aborted = pre.filter(e => e.ev === 'lane_job_abort').length;
+    if (started > 0 || ends.length > 0 || aborted > 0) {
+        const n = (...reasons) => ends.filter(e => reasons.includes(e.reason)).length;
+        out.push(
+            '',
+            `pre-contest: started ${started} attacked ${n('no-target', 'timeout')} no-pull ${n('no-pull')} enemy-in-lane ${n('enemy-in-lane')} aborted ${aborted}`
+        );
+    }
+    return out;
+}
+
 function summary(game) {
     const out = [gameLine(game), ''];
     const rows = [['player', 'team', 'skill', 'ally', 'lh/dn', 'switches', 'notice n/avg', 'react n/avg', 'orders acc/dec', 'stuck', 'thrash', 'time in mode']];
@@ -168,6 +225,7 @@ function summary(game) {
     out.push(table(rows));
     out.push(...churnSection(game));
     out.push(...farmSection(game));
+    out.push(...forecastSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');
     const cmds = game.events.filter(e => e.ev === 'cmd');
     const pings = game.events.filter(e => e.ev === 'ping');
@@ -229,4 +287,4 @@ function markView(game, n, window, opts = {}) {
     return out.join('\n');
 }
 
-module.exports = { summary, checksText, timeline, markView, gameLine };
+module.exports = { summary, fitForecast, checksText, timeline, markView, gameLine };

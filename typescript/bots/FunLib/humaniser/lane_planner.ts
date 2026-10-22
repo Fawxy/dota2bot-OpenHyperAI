@@ -20,6 +20,7 @@ export interface PlannerInput {
     dotaTime: number;
     plan: LanePlan.PlanView;
     laneScore: number;
+    forecastScore?: number;
     eqPos: number;
     allyCreeps: number;
     enemyCreeps: number;
@@ -97,15 +98,16 @@ export function Choose(i: PlannerInput): Choice {
 
     if (i.isMid && i.eqPos >= cfg.Thresholds.MidTowerEq && knows("aggro_pull")) return pick("aggro_pull", "mid: out of tower range");
 
+    const score = i.forecastScore ?? i.laneScore;
     if (!i.isMid || i.pullCamp) {
-        if ((i.laneScore <= bands.FullPullBelow || plan.pullForced) && campOk) {
+        if ((score <= bands.FullPullBelow || plan.pullForced) && campOk) {
             if (i.stackedPullCamp && knows("stack_pull") && i.enemyLaners > 0) return pick("stack_pull", "deny: stacked camp");
             if (knows("full_pull")) return pick("full_pull", plan.pullForced ? "pull ordered" : "wave pushed out");
         }
-        if (i.laneScore <= bands.SmallDriftBelow && campOk && knows("half_pull")) return pick("half_pull", "small drift");
+        if (score <= bands.SmallDriftBelow && campOk && knows("half_pull")) return pick("half_pull", "small drift");
     }
 
-    if (i.laneScore <= bands.AggroCorrectBelow && knows("aggro_pull")) return pick("aggro_pull", "small correction");
+    if (score <= bands.AggroCorrectBelow && knows("aggro_pull")) return pick("aggro_pull", "small correction");
     return pick("none", "lane fine");
 }
 
@@ -147,6 +149,7 @@ function buildInput(bot: Unit, s: LaneState.LaneSnapshot, now: number): PlannerI
     let stacked = false;
     for (const job of camps) if (LaneHooks.IsStacked(job.campIdx)) stacked = true;
     const plan = role === "support" ? LanePlan.ForSupport(bot, s) : LanePlan.View(bot, s);
+    const view = LaneState.ScoreFor(bot, s);
     return {
         skill: LaneConfig.SkillOf(bot),
         role,
@@ -154,7 +157,8 @@ function buildInput(bot: Unit, s: LaneState.LaneSnapshot, now: number): PlannerI
         now,
         dotaTime: now,
         plan,
-        laneScore: LaneState.ScoreFor(bot, s).laneScore,
+        laneScore: view.laneScore,
+        forecastScore: view.forecastScore,
         eqPos: s.eqPos,
         allyCreeps: s.ally.count,
         enemyCreeps: s.enemy.count,

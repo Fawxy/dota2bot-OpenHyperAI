@@ -33,10 +33,12 @@ export interface JobRequest {
     minute?: number;
     /** Contest: the enemy seen pulling, attacked while visible. */
     targetPid?: number;
+    /** Pre-contest: the expected enemy aggro, awaited at a lookout on their pull path. */
+    preAggroAt?: number;
 }
 
 export interface Job extends JobRequest {
-    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "return" | "done";
+    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "lookout" | "return" | "done";
     aggroAt: number;
     plannedSec: number;
     path: Vector[];
@@ -55,6 +57,8 @@ export interface Job extends JobRequest {
     baseAggro: number;
     actualAggro?: number;
     aggroTarget?: Unit;
+    /** Pre-contest: when the puller was first seen from the lookout; ContestMax counts from here. */
+    attackFrom?: number;
     /** GameTime() of the attack order, the clock GetLastAttackTime() uses. */
     aggroOrderedAt?: number;
     /** The camp whose stand point was moved in toward its spawner origin because no neutral was seen from it. */
@@ -86,7 +90,12 @@ export interface Job extends JobRequest {
     clarityUsed?: boolean;
     supplyUntil?: number;
     supplyModifier?: string;
+    supplyItem?: SupplyItem;
+    /** lane_job_supply events already logged, once per item and outcome. */
+    supplyNoted?: Record<string, boolean>;
 }
+
+type SupplyItem = "tango" | "clarity";
 
 /**
  * A stack whose aggro landed; its outcome is read from the next :00 + StackOutcomeAt to :00 + StackOutcomeUntil,
@@ -136,6 +145,10 @@ let skipped: Record<number, number> = {};
 let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
 /** The core's view of its support leaving for a camp: when it started, and how it was known. */
 let covering: Record<number, { since: number; via: string; partner: number; kind: string }> = {};
+/** Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling. */
+let preContestRest: Record<number, { lane: number; until: number }> = {};
+/** A mode-end abort waiting to be logged: farm's OnEnd runs while farm is still the active mode, so the mode that took over is read on a later tick. */
+let pendingModeEnd: Record<number, { fields: [string, any][]; at: number }> = {};
 
 export function ResetCache(): void {
     jobs = {};
@@ -144,6 +157,8 @@ export function ResetCache(): void {
     skipped = {};
     planNoted = {};
     covering = {};
+    preContestRest = {};
+    pendingModeEnd = {};
 }
 
 function settings(): LaneConfig.LaneSettings {
@@ -184,6 +199,22 @@ export function NextAggroTime(dotaTime: number, seconds: number[], period: numbe
 
 export function TravelTime(dist: number, speed: number): number {
     return dist / math.max(speed, 1);
+}
+
+/** The point `dist` along the polyline from `origin` through `path`; the last point when the polyline is shorter. */
+export function LookoutPoint(origin: Vector, path: Vector[], dist: number): Vector {
+    let from = origin;
+    let left = dist;
+    for (const to of path) {
+        const seg = dist2D(from, to);
+        if (seg >= left && seg > 0) {
+            const f = left / seg;
+            return Vector(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f, from.z);
+        }
+        left -= seg;
+        from = to;
+    }
+    return from;
 }
 
 export function WindowOpen(now: number, aggroAt: number, travel: number): boolean {
@@ -285,7 +316,21 @@ function startBlocked(bot: Unit): string | undefined {
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
+    if (inFight(bot)) return "fight";
     return undefined;
+}
+
+/**
+ * Retreat dips mid-fight, and a start then walks the support to the camp under the enemy (console.9057032878,
+ * shadow_demon 2:08). An enemy laner merely in range is the usual lane and not a fight.
+ */
+function inFight(bot: Unit): boolean {
+    const cfg = settings();
+    const enemies = bot.GetNearbyHeroes(cfg.Radii.JobStartEnemy, true, BotMode.None) ?? [];
+    if (enemies.length === 0) return false;
+    if (bot.WasRecentlyDamagedByAnyHero(cfg.Timing.JobStartHeroHit)) return true;
+    const target = bot.GetAttackTarget();
+    return target !== undefined && target !== null && target.IsHero() && target.GetTeam() !== bot.GetTeam();
 }
 
 function travelTo(bot: Unit, loc: Vector): number {
@@ -299,7 +344,7 @@ function dataLabel(data: Camps.CampJobData): string {
 function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     jobs[bot.GetPlayerID()] = job;
     LanePlanner.Commit(bot, commitTech(job.kind));
-    Telemetry.Event("lane_job_start", [
+    const fields: [string, any][] = [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -309,7 +354,9 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["forced", job.forced === true],
         ["core", job.core === true],
         ["timing", job.timing ?? "seed"],
-    ]);
+    ];
+    if (job.preAggroAt !== undefined) fields.push(["pre", 1]);
+    Telemetry.Event("lane_job_start", fields);
     HDebug.Log(
         "lane",
         string.format(
@@ -373,26 +420,33 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     return true;
 }
 
-/** Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. */
+/**
+ * Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. A pre-contest
+ * (preAggroAt) first waits at a lookout on their pull path for the expected puller.
+ */
 function startContest(bot: Unit, req: JobRequest): boolean {
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || spawner === undefined) return false;
     const now = DotaTime();
-    const center = Camps.BoxCenter(spawner);
+    let stand = Camps.BoxCenter(spawner);
+    if (req.preAggroAt !== undefined) {
+        if (data.pull === undefined) return false;
+        stand = LookoutPoint(spawner.location, PullTiming.LeadPath(data.pull, data.pull.meetPoint), settings().Radii.PreContestStand);
+    }
     register(
         bot,
         {
             ...req,
-            phase: "travel",
-            aggroAt: now,
+            phase: req.preAggroAt !== undefined ? "lookout" : "travel",
+            aggroAt: req.preAggroAt ?? now,
             plannedSec: 0,
-            path: [center],
+            path: [stand],
             startedAt: now,
             peakDivert: 0,
             waveSize: 0,
             activeCamp: req.campIdx,
-            stand: center,
+            stand,
             waypoint: 0,
             stage: 1,
             telegraphed: true,
@@ -474,6 +528,11 @@ function isLive(job: Job | undefined): job is Job {
 }
 
 /** Cheap: a config read, then a table lookup; false before any engine call when the lane system is off. */
+export function PreContestResting(bot: Unit, lane: number): boolean {
+    const r = preContestRest[bot.GetPlayerID()];
+    return r !== undefined && r.lane === lane && DotaTime() < r.until;
+}
+
 export function Active(bot: Unit): boolean {
     if (!LaneConfig.IsActive()) return false;
     return isLive(jobs[bot.GetPlayerID()]);
@@ -604,7 +663,8 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing.
  */
-function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = []): void {
+function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = [], deferLog = false): void {
+    FlushModeEnd(bot, true);
     const phase = job.phase;
     job.phase = "return";
     releaseClaims(bot);
@@ -620,7 +680,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
-    Telemetry.Event("lane_job_abort", [
+    const fields: [string, any][] = [
         ["pid", pid],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -629,8 +689,11 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         ["phase", phase],
         ["acted", job.acted === true],
         ["divert", job.peakDivert],
+        ...(job.preAggroAt !== undefined ? ([["pre", 1]] as [string, any][]) : []),
         ...extra,
-    ]);
+    ];
+    if (deferLog && Telemetry.IsEnabled()) pendingModeEnd[pid] = { fields, at: GameTime() };
+    else Telemetry.Event("lane_job_abort", fields);
     HDebug.Log(
         "lane",
         string.format(
@@ -664,7 +727,18 @@ function endContest(bot: Unit, job: Job, reason: string): void {
     job.phase = "return";
     releaseClaims(bot);
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
-    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s", bot.GetPlayerID(), job.campIdx, reason));
+    const pre = job.preAggroAt !== undefined ? 1 : 0;
+    if (pre === 1 && (reason === "enemy-in-lane" || reason === "no-pull")) {
+        preContestRest[bot.GetPlayerID()] = { lane: bot.GetAssignedLane(), until: DotaTime() + settings().Timing.PreContestCooldown };
+    }
+    Telemetry.Event("lane_job_end", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["reason", reason],
+        ["pre", pre],
+    ]);
+    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s pre=%d", bot.GetPlayerID(), job.campIdx, reason, pre));
 }
 
 // ---------------------------------------------------------------------------------------------- desire
@@ -831,9 +905,13 @@ function keepGoing(bot: Unit, job: Job): boolean {
         return false;
     }
     const now = DotaTime();
-    if (job.kind === "contest" && now - job.startedAt >= settings().Timing.ContestMax) {
-        endContest(bot, job, "timeout");
-        return false;
+    if (job.kind === "contest") {
+        // The lookout waits out the aggro, so a pre-contest's ContestMax counts from the first sight of the puller.
+        const from = job.preAggroAt !== undefined ? job.attackFrom : job.startedAt;
+        if (from !== undefined && now - from >= settings().Timing.ContestMax) {
+            endContest(bot, job, "timeout");
+            return false;
+        }
     }
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
@@ -981,6 +1059,7 @@ function schedule(bot: Unit): boolean {
     }
     const choice = LanePlanner.Plan(bot, s);
     const input = LanePlanner.LastInput(bot);
+    const view = LaneState.ScoreFor(bot, s);
     notePlan(bot, s, now, [
         ["gate", "planner"],
         ["camp", camps[0].campIdx],
@@ -988,6 +1067,12 @@ function schedule(bot: Unit): boolean {
         ["tech", choice.tech],
         ["reason", choice.reason],
         ["score", input?.laneScore],
+        ["fscore", input?.forecastScore],
+        ["w", view.foresight],
+        ["imb", s.imbalance],
+        ["feq", s.forecastEq],
+        ["apow", s.allyPower],
+        ["epow", s.enemyPower],
         ["plan", input?.plan.plan],
         ["pullOk", input?.plan.pullAllowed],
         ["partner", input?.partnerSafe],
@@ -1292,8 +1377,38 @@ function contestTarget(bot: Unit, job: Job): Unit | undefined {
     return best;
 }
 
+function enemyInLane(bot: Unit, job: Job): boolean {
+    const s = LaneState.ForBot(bot);
+    if (s === undefined) return false;
+    for (const e of LaneState.Enemies(bot, s.lane)) {
+        if (e.pid === job.targetPid && e.visible && dist2D(e.location, s.frontLoc) <= settings().Radii.Exposure) return true;
+    }
+    return false;
+}
+
+/** Waiting at the lookout for the expected puller; true while the job keeps the frame. */
+function stepLookout(bot: Unit, job: Job, now: number): boolean {
+    const t = settings().Timing;
+    if (now >= job.aggroAt - t.PreContestLead && enemyInLane(bot, job)) {
+        endContest(bot, job, "enemy-in-lane");
+        return false;
+    }
+    if (now > job.aggroAt + t.PreContestWait) {
+        endContest(bot, job, "no-pull");
+        return false;
+    }
+    if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
+    Intent.Hold(bot, "lane:precontest");
+    return true;
+}
+
 function stepContest(bot: Unit, job: Job, now: number): boolean {
     const target = contestTarget(bot, job);
+    if (job.phase === "lookout") {
+        if (target === undefined) return stepLookout(bot, job, now);
+        job.attackFrom = now;
+        job.phase = "travel";
+    }
     if (target !== undefined) {
         if (job.lastAttackAt === undefined || now - job.lastAttackAt >= settings().Timing.ContestAttackGap) {
             bot.Action_AttackUnit(target, true);
@@ -1386,27 +1501,36 @@ function tangoTree(bot: Unit): number | undefined {
 function supply(bot: Unit, job: Job, now: number): boolean {
     const slack = job.aggroAt - now - travelTo(bot, job.stand);
     if (job.supplyUntil !== undefined) {
-        if (now < job.supplyUntil && slack > 0 && !bot.HasModifier(job.supplyModifier ?? "")) return true;
+        const taken = bot.HasModifier(job.supplyModifier ?? "");
+        if (now < job.supplyUntil && slack > 0 && !taken) return true;
+        noteSupply(bot, job, job.supplyItem, taken ? "taken" : "missed");
         job.supplyUntil = undefined;
     }
     const cfg = settings();
-    if ((job.tangoUsed === true && job.clarityUsed === true) || slack < cfg.Timing.SupplySlack || enemyHeroNear(bot)) return false;
-    if (job.clarityUsed !== true && bot.GetMaxMana() - bot.GetMana() >= cfg.Thresholds.ClarityMinLost && !bot.HasModifier("modifier_clarity_potion")) {
+    if (job.tangoUsed === true && job.clarityUsed === true) return false;
+    const needClarity = job.clarityUsed !== true && bot.GetMaxMana() - bot.GetMana() >= cfg.Thresholds.ClarityMinLost
+        && !bot.HasModifier("modifier_clarity_potion");
+    const needTango = job.tangoUsed !== true && bot.GetMaxHealth() - bot.GetHealth() >= cfg.Thresholds.TangoMinLost
+        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing");
+    if (!needClarity && !needTango) return false;
+    const blocked = slack < cfg.Timing.SupplySlack ? "slack" : enemyHeroNear(bot) ? "enemy" : undefined;
+    if (needClarity) {
         const clarity = usableItem(bot, "item_clarity");
-        if (clarity !== undefined) {
+        if (blocked !== undefined || clarity === undefined) noteSupply(bot, job, "clarity", "skip", blocked ?? "no-item");
+        else {
             job.clarityUsed = true;
-            awaitSupply(job, now, "modifier_clarity_potion");
+            awaitSupply(bot, job, now, "clarity", "modifier_clarity_potion");
             (bot as unknown as SupplyBot).Action_UseAbilityOnEntity(clarity, bot);
             return true;
         }
     }
-    if (job.tangoUsed !== true && bot.GetMaxHealth() - bot.GetHealth() >= cfg.Thresholds.TangoMinLost
-        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing")) {
+    if (needTango) {
         const tango = usableItem(bot, "item_tango_single") ?? usableItem(bot, "item_tango");
-        const tree = tango !== undefined ? tangoTree(bot) : undefined;
-        if (tango !== undefined && tree !== undefined) {
+        const tree = tango !== undefined && blocked === undefined ? tangoTree(bot) : undefined;
+        if (tango === undefined || tree === undefined) noteSupply(bot, job, "tango", "skip", blocked ?? (tango === undefined ? "no-item" : "no-tree"));
+        else {
             job.tangoUsed = true;
-            awaitSupply(job, now, "modifier_tango_heal");
+            awaitSupply(bot, job, now, "tango", "modifier_tango_heal");
             (bot as unknown as SupplyBot).Action_UseAbilityOnTree(tango, tree);
             return true;
         }
@@ -1414,9 +1538,30 @@ function supply(bot: Unit, job: Job, now: number): boolean {
     return false;
 }
 
-function awaitSupply(job: Job, now: number, modifier: string): void {
+function awaitSupply(bot: Unit, job: Job, now: number, item: SupplyItem, modifier: string): void {
     job.supplyUntil = now + settings().Timing.SupplyWait;
     job.supplyModifier = modifier;
+    job.supplyItem = item;
+    noteSupply(bot, job, item, "use");
+}
+
+function noteSupply(bot: Unit, job: Job, item: SupplyItem | undefined, state: string, reason?: string): void {
+    if (item === undefined || !Telemetry.IsEnabled()) return;
+    const key = `${item}:${state}`;
+    job.supplyNoted ??= {};
+    if (job.supplyNoted[key] === true) return;
+    job.supplyNoted[key] = true;
+    const maxHP = bot.GetMaxHealth(), maxMP = bot.GetMaxMana();
+    Telemetry.Event("lane_job_supply", [
+        ["pid", bot.GetPlayerID()],
+        ["item", item],
+        ["state", state],
+        ...(reason !== undefined ? ([["reason", reason]] as [string, any][]) : []),
+        ["kind", LOG_KIND[job.kind]],
+        ["phase", job.phase],
+        ["hp", maxHP > 0 ? round3(bot.GetHealth() / maxHP) : -1],
+        ["mp", maxMP > 0 ? round3(bot.GetMana() / maxMP) : -1],
+    ]);
 }
 
 function step(bot: Unit, job: Job): boolean {
@@ -1546,26 +1691,39 @@ export function Think(bot: Unit): boolean {
 export function OnEnd(bot: Unit): void {
     if (!LaneConfig.IsActive()) return;
     const job = jobs[bot.GetPlayerID()];
-    if (isLive(job)) abort(bot, job, "mode-end", false, modeEndFields(bot, job));
+    if (isLive(job)) abort(bot, job, "mode-end", false, modeEndFields(bot, job), true);
+}
+
+/** Logs a pending mode-end abort once farm has given way, or at once when forced; it waits at most a second. */
+export function FlushModeEnd(bot: Unit, force = false): void {
+    const pid = bot.GetPlayerID();
+    const pending = pendingModeEnd[pid];
+    if (pending === undefined) return;
+    const to = bot.GetActiveMode();
+    if (!force && to === BotMode.Farm && GameTime() - pending.at < 1) return;
+    delete pendingModeEnd[pid];
+    Telemetry.Event("lane_job_abort", [
+        ...pending.fields,
+        ["to", HDebug.ModeName(to)],
+        ["toBy", Intent.Explain(bot, to)],
+        ["toAge", round3(Intent.SampleAge(bot, to))],
+        ["logLag", round3(GameTime() - pending.at)],
+    ]);
 }
 
 function round3(v: number | undefined): number {
     return v === undefined ? -1 : math.floor(v * 1000 + 0.5) / 1000;
 }
 
-/** Which mode took farm's place and whether the job's claims on other modes were still live when it did. */
+/** Whether the job's claims on other modes were still live when farm ended; FlushModeEnd adds the mode that took over. */
 function modeEndFields(bot: Unit, job: Job): [string, any][] {
     if (!Telemetry.IsEnabled()) return [];
-    const to = bot.GetActiveMode();
     return [
-        ["to", HDebug.ModeName(to)],
-        ["toBy", Intent.Explain(bot, to)],
         ["competing", Intent.Competing(bot)],
         ["hold", job.retreatHold ?? "-"],
         ["holdAge", round3(Intent.ClaimAge(bot, "lane:job_hold", BotMode.Retreat))],
         ["focusAge", round3(Intent.ClaimAge(bot, "lane:job_focus", BotMode.Ward))],
         ["farmAge", round3(Intent.SampleAge(bot, BotMode.Farm))],
-        ["toAge", round3(Intent.SampleAge(bot, to))],
     ];
 }
 

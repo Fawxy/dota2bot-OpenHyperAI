@@ -20,6 +20,8 @@ export interface CorePlanInput {
     eqPos: number;
     stronger: boolean;
     rotating: boolean;
+    /** Transitions caution: the rotating and empty-lane shoves fall through to FREEZE / HOLD. */
+    cautious?: boolean;
     enemyLaners: number;
 }
 
@@ -57,9 +59,10 @@ const NEUTRAL_SCORE = 0.25;
 
 export function PickCorePlan(i: CorePlanInput): LanePlan {
     const cfg = LaneConfig.Settings();
-    if (i.rotating) return "SHOVE";
+    const cautious = i.cautious === true;
+    if (i.rotating && !cautious) return "SHOVE";
     if (i.skill >= cfg.Gates.Freeze && i.stronger && i.enemyLaners > 0 && i.eqPos <= cfg.Thresholds.FreezeCoreEqMax) return "FREEZE";
-    if (i.enemyLaners === 0 && i.laneScore < 0) return "SHOVE";
+    if (!cautious && i.enemyLaners === 0 && i.laneScore < 0) return "SHOVE";
     return "HOLD";
 }
 
@@ -290,8 +293,8 @@ function pickFor(picker: Unit, s: LaneState.LaneSnapshot): LanePlan {
         };
         pickCache[key] = inputs;
     }
-    // Rotation probes are registered by higher modules and change within a snapshot window, so never cached.
-    return PickCorePlan({ ...inputs, rotating: LaneHooks.IsRotationPlanned(picker) });
+    // Rotation and caution probes are registered by higher modules and change within a snapshot window, so never cached.
+    return PickCorePlan({ ...inputs, rotating: LaneHooks.IsRotationPlanned(picker), cautious: LaneHooks.IsCautious(picker) });
 }
 
 export function View(bot: Unit, s: LaneState.LaneSnapshot): PlanView {

@@ -247,4 +247,30 @@ do
 	check("no humaniser start line", #events("notice") == 0)
 end
 
+-- lane_eq: one sample per team and lane per wave cycle, once the cycle is EqSampleAt seconds old.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Lane = dota.Lane
+	dofile(HARNESS_DIR .. "/lane_world.lua")
+	local H = LaneFresh({ Enable = true }, { telemetry = { Enable = true } })
+	lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	CURRENT_TEAM = 2
+	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.55, 0.55
+	local S = H.Lane.LaneState
+	for _, t in ipairs({ 65, 71, 72 }) do
+		T = t
+		S.Get(2, Lane.Bot)
+		S.Get(3, Lane.Bot)
+	end
+	local e = events("lane_eq")
+	check("lane_eq once per team and lane in the cycle", #e == 2, #e)
+	check("lane_eq at or after cycle second 10", e[1] and field(e[1], "t") == "71", e[1])
+	check("lane_eq carries the forecast inputs", e[1] and field(e[1], "team") == "2" and field(e[1], "lane") == tostring(Lane.Bot)
+		and field(e[1], "kind") and field(e[1], "eq") and field(e[1], "imb") and field(e[1], "feq") and field(e[1], "a") and field(e[1], "e"), e[1])
+	T = 101
+	S.Get(2, Lane.Bot)
+	check("lane_eq again in the next cycle", #events("lane_eq") == 3, #events("lane_eq"))
+end
+
 finish()

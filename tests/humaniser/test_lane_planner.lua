@@ -284,6 +284,32 @@ do
 end
 
 do
+	check("forecast score drives the full pull", choose({ laneScore = -0.4, forecastScore = -0.62 }).tech == "full_pull")
+	check("forecast score can hold back a full pull", choose({ laneScore = -0.6, forecastScore = -0.38 }).tech == "half_pull")
+	local c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -1.0, forecastScore = -0.1 })
+	check("freeze branch ignores the forecast", c.tech == "freeze", desc(c))
+end
+
+do
+	-- Plan through buildInput and ScoreFor: eight enemy creeps (two ranged) against none of ours at the front give
+	-- imbalance about -0.9, so the forecast eq is about -0.36. At skill 0.9 the forecast score is then about -0.48
+	-- (half pull) where laneScore alone, -0.8, is a full pull.
+	local H, _, support, P = planWorld(0.9)
+	for i = 1, 8 do
+		MakeCreep({ team = 3, x = 50 * i, y = -5000, name = i <= 2 and "npc_dota_creep_badguys_ranged" or nil })
+	end
+	SetRandomSequence({ 0.0 })
+	local c = plan(H, P, support)
+	local i = P.LastInput(support)
+	check("fixture: enemy wave stronger, forecast toward our tower", H.Lane.LaneState.ForBot(support).imbalance < -0.85, H.Lane.LaneState.ForBot(support).imbalance)
+	local raw = {}
+	for k, v in pairs(i) do raw[k] = v end
+	raw.forecastScore = nil
+	check("control: laneScore alone would full-pull", P.Choose(raw).tech == "full_pull", desc(P.Choose(raw)))
+	check("Plan reads the forecast: half pull", c.tech == "half_pull", desc(c) .. " fscore=" .. tostring(i.forecastScore))
+end
+
+do
 	local H = LaneFresh({ Enable = false }, { skill = 0.9 })
 	T = 95
 	CURRENT_TEAM = 2

@@ -169,7 +169,14 @@ local Localization = {
         say_lane_they_pull_bot = {"they're pulling bot"},
         say_lane_their_sup_missing = {"their sup is missing"},
         say_lane_they_freeze = {"they're freezing"},
+        say_lane_lost_roam = {"lane lost, i'll roam?"},
+        say_going_jungle = {"going jungle"},
         say_lane_ss_mid = {"ss mid"},
+        say_rune_coming_mid = {"coming mid for rune"},
+        say_rune_lost = {"rune lost"},
+        say_ss_top = {"ss top"},
+        say_ss_mid = {"ss mid"},
+        say_ss_bot = {"ss bot"},
     },
     zh = {
         welcome_msgs = {
@@ -312,7 +319,14 @@ local Localization = {
         say_lane_they_pull_bot = {"对面在下路拉野"},
         say_lane_their_sup_missing = {"对面辅助不见了"},
         say_lane_they_freeze = {"对面在控线"},
+        say_lane_lost_roam = {"线丢了，我去游走？"},
+        say_going_jungle = {"去打野"},
         say_lane_ss_mid = {"中路miss"},
+        say_rune_coming_mid = {"来中路抢符"},
+        say_rune_lost = {"符丢了"},
+        say_ss_top = {"上路miss"},
+        say_ss_mid = {"中路miss"},
+        say_ss_bot = {"下路miss"},
     },
     ru = {
         welcome_msgs = {
@@ -448,7 +462,14 @@ local Localization = {
         say_lane_they_pull_bot = {"они отводят на боте"},
         say_lane_their_sup_missing = {"их саппорта не видно"},
         say_lane_they_freeze = {"они фризят линию"},
+        say_lane_lost_roam = {"линия проиграна, пойду гулять?"},
+        say_going_jungle = {"иду в лес"},
         say_lane_ss_mid = {"мид пропал"},
+        say_rune_coming_mid = {"иду на мид за руной"},
+        say_rune_lost = {"руну потеряли"},
+        say_ss_top = {"топ пропал"},
+        say_ss_mid = {"мид пропал"},
+        say_ss_bot = {"бот пропал"},
     },
     ja = {
         welcome_msgs = {
@@ -584,7 +605,14 @@ local Localization = {
         say_lane_they_pull_bot = {"相手がボットでプルしてる"},
         say_lane_their_sup_missing = {"相手のサポが見えない"},
         say_lane_they_freeze = {"相手がフリーズしてる"},
+        say_lane_lost_roam = {"レーン負けた、ローム行く？"},
+        say_going_jungle = {"ジャングル行く"},
         say_lane_ss_mid = {"ミッドmiss"},
+        say_rune_coming_mid = {"ルーンのためにミッドへ行く"},
+        say_rune_lost = {"ルーン取られた"},
+        say_ss_top = {"トップmiss"},
+        say_ss_mid = {"ミッドmiss"},
+        say_ss_bot = {"ボットmiss"},
     },
 }
 

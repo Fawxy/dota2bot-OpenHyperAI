@@ -308,7 +308,12 @@ do
 		} })
 	end
 	local PASSTHROUGH = { Resolve = function(_, _, d) return d end }
-	local function runeDesire(laneFacade, intent)
+	local NO_TRANSITIONS = {
+		MidRunesOn = function() return false end, MidRuneFocus = function() return false, false end,
+		MidRuneYield = function() end, MidRuneSkip = function() end,
+		RuneTarget = function() return nil end, MidRuneDesire = function() return 0 end, RotationYield = function() end,
+	}
+	local function runeDesire(laneFacade, intent, transitions)
 		T = 1000
 		local bot = hero({ loc = Vector(-300, 300) })
 		bot.GetNearbyHeroes = function() return {} end
@@ -329,7 +334,7 @@ do
 			IsCore = function() return true end, IsEarlyGame = function() return true end,
 			IsValidHero = function(u) return u ~= nil end, GetDistanceFromEnemyFountain = function() return 9000 end,
 			Utils = { IsTeamPushingSecondTierOrHighGround = function() return false end, CountEnemyHeroesNear = function() return 0 end },
-			Humaniser = { Lane = laneFacade, Intent = intent or PASSTHROUGH },
+			Humaniser = { Lane = laneFacade, Intent = intent or PASSTHROUGH, Transitions = transitions or NO_TRANSITIONS },
 		}, { __index = function() return function() return false end end })
 		package.loaded["bots/FunLib/jmz_func"] = J
 		package.loaded["bots/Customize/general"] = { Enable = false }
@@ -343,7 +348,7 @@ do
 		local H = fresh(entry)
 		T = 1000
 		GETUNITLIST_CALLS = {}
-		local d = runeDesire(H.Lane, H.Intent)
+		local d = runeDesire(H.Lane, H.Intent, H.Transitions)
 		check(entry.name .. ": rune desire is the unmodified one", near(d, base) and scans() == 0, d)
 	end
 	check("rune control: a contest desire changes the mode's desire",
