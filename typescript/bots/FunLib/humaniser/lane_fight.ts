@@ -188,7 +188,7 @@ const PARTNER_ABANDON = "partner_abandon";
 // lanefight_commit role per start `via`.
 const COMMIT_ROLES: Record<string, string> = { initiate: "initiator", follow: "follower", solo: "solo" };
 // The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
-const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
+const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Farm, BotMode.Attack, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
 // Modes a lane fight may start from.
 const START_MODES: BotMode[] = [BotMode.Laning, BotMode.TeamRoam, BotMode.Attack];
 
@@ -232,9 +232,10 @@ function hpFraction(u: Unit): number {
     return max > 0 ? u.GetHealth() / max : 0;
 }
 
-function floorOf(phase: Phase): number {
+function floorOf(bot: Unit, phase: Phase): number {
     const s = LaneFightConfig.Settings();
-    return phase === "commit" ? s.CommitFloor : s.TradeFloor;
+    if (phase !== "commit") return s.TradeFloor;
+    return hpFraction(bot) >= s.CommitHoldHP ? s.CommitFloor : s.CommitLowFloor;
 }
 
 function touch(s: FightState, key: string, now: number): Instance {
@@ -399,9 +400,20 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
 }
 
 /**
- * The visible lane enemy the partner is committing on, if any. While the bot commits, a partner its checks count is
- * marked seen when it commits on the target or keeps attacking it from within range (a commit under way, past the
- * second-attack test that tells a start from a harass hit).
+ * A partner's commit worth following: IN_RANGE_ATTACKS landed, or a key or ultimate cast at the target. Walking in on
+ * the target while attacking is how a harass hit looks too, so it is followed only by a bot already waiting for this
+ * partner on this target.
+ */
+function followable(s: FightState, ally: Unit, target: Unit, targetPid: number, prev: Sample | undefined): boolean {
+    if (s.phase === "wait_partner" && s.withPid === ally.GetPlayerID() && s.targetPid === targetPid) return true;
+    if ((prev?.attacks ?? 0) >= IN_RANGE_ATTACKS) return true;
+    return castingAt(ally, target, GetUnitToUnitDistance(ally, target));
+}
+
+/**
+ * The visible lane enemy the partner is committing on in a way worth following (`followable`), if any. While the bot
+ * commits, a partner its checks count is marked seen when it commits on the target or keeps attacking it from within
+ * range (a commit under way, past the second-attack test that tells a start from a harass hit).
  */
 function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number): Unit | undefined {
     let found: Unit | undefined;
@@ -410,7 +422,7 @@ function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number):
         if (e === undefined || !e.visible || !usableUnit(e.unit)) continue;
         const prev = sampleDistance(bot, ally, e.unit, now);
         const committing = IsCommitting(ally, e.unit, prev);
-        if (found === undefined && committing) found = e.unit;
+        if (found === undefined && committing && followable(s, ally, e.unit, e.pid, prev)) found = e.unit;
         if (counted && e.pid === s.targetPid && (committing || attackingInRange(ally, e.unit))) s.partnerSeen[ally.GetPlayerID()] = now;
     }
     return found;
@@ -425,9 +437,8 @@ function attackingInRange(ally: Unit, target: Unit): boolean {
     return isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID()) && GetUnitToUnitDistance(ally, target) <= ally.GetAttackRange() + RANGE_SLACK;
 }
 
-function focusCap(): number {
-    const cfg = LaneFightConfig.Settings();
-    return cfg.CommitFloor / ACTIVE_BOOST - cfg.CommitFocusMargin;
+function focusCap(bot: Unit): number {
+    return floorOf(bot, "commit") / ACTIVE_BOOST - LaneFightConfig.Settings().CommitFocusMargin;
 }
 
 /**
@@ -436,9 +447,9 @@ function focusCap(): number {
  * HUMAN_ORDER sit on higher tiers, and StopHP ends the phase.
  */
 function claim(bot: Unit, phase: Phase): boolean {
-    const posted = Intent.Claim(bot, { source: `lanefight:${phase}`, tier: "FIGHT", mode: BotMode.TeamRoam, floor: floorOf(phase) });
+    const posted = Intent.Claim(bot, { source: `lanefight:${phase}`, tier: "FIGHT", mode: BotMode.TeamRoam, floor: floorOf(bot, phase) });
     if (!posted || phase !== "commit") return posted;
-    const cap = focusCap();
+    const cap = focusCap(bot);
     for (const mode of FOCUS_MODES) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode, cap });
     if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode: BotMode.Retreat, cap });
     else Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat);
@@ -765,7 +776,7 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
 
     // Below CommitHoldHP a retreat bidding at the floor wants out; the engine's x1.1 on team_roam would keep it in.
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
-    if (hpFraction(bot) < cfg.CommitHoldHP && retreat !== undefined && retreat >= floorOf(s.phase)) {
+    if (hpFraction(bot) < cfg.CommitHoldHP && retreat !== undefined && retreat >= floorOf(bot, s.phase)) {
         s.retreatSince = s.retreatSince ?? now;
         if (now - s.retreatSince > END_GRACE) return "retreat";
     } else s.retreatSince = undefined;
@@ -1067,7 +1078,7 @@ export function RoamDesire(bot: Unit, raw: number, avoiding?: boolean): number {
     considerStart(bot, st, snap, now);
     if (st.phase !== "trade" && st.phase !== "commit") return raw;
     if (claim(bot, st.phase)) return raw;
-    return math.max(raw, floorOf(st.phase));
+    return math.max(raw, floorOf(bot, st.phase));
 }
 
 /**

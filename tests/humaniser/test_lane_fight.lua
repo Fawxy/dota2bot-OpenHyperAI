@@ -67,9 +67,12 @@ local function score(W)
 	d.retreat = H.Intent.Resolve(bot, BotMode.Retreat, W.retreat)
 	d.laning = H.Intent.Resolve(bot, BotMode.Laning, W.laning)
 	d.roam = H.Intent.Resolve(bot, BotMode.TeamRoam, H.LaneFight.RoamDesire(bot, W.roam))
-	d.attack = W.attack
+	-- W.luaAttack: OHA's Lua attack mode (some heroes), which goes through Intent; W.attack: Valve's, which does not.
+	d.attack = W.luaAttack ~= nil and H.Intent.Resolve(bot, BotMode.Attack, W.luaAttack) or W.attack
+	d.farm = W.farm ~= nil and H.Intent.Resolve(bot, BotMode.Farm, W.farm) or 0
 	local best, bestMode = -1, nil
-	for _, m in ipairs({ { BotMode.Retreat, d.retreat }, { BotMode.Laning, d.laning }, { BotMode.TeamRoam, d.roam }, { BotMode.Attack, d.attack } }) do
+	for _, m in ipairs({ { BotMode.Retreat, d.retreat }, { BotMode.Laning, d.laning }, { BotMode.TeamRoam, d.roam }, { BotMode.Attack, d.attack },
+		{ BotMode.Farm, d.farm } }) do
 		local eff = m[1] == bot.mode and m[2] * 1.1 or m[2]
 		if eff > best then best, bestMode = eff, m[1] end
 	end
@@ -274,7 +277,7 @@ for _, team in ipairs({ 2, 3 }) do
 	T = T + ROUND
 	W.nextRound = T
 	play(W, FRAME)
-	check("a kill pass commits with the CommitFloor" .. tag, W.age("commit") ~= nil and near(W.last.roam, 0.82), W.last.roam)
+	check("a kill pass commits with the CommitFloor" .. tag, W.age("commit") ~= nil and near(W.last.roam, 1.06), W.last.roam)
 	check("the commit is logged with its margin" .. tag, W.events("lanefight_start", "phase=commit target=6 margin=") == 1,
 		table.concat(W.lines, "\n"))
 	check("a commit is not also a trade" .. tag, W.age("trade") == nil and not hasStart(W, "trade"))
@@ -515,6 +518,28 @@ end
 -- ------------------------------------------------------------------------------------------- commit focus
 
 local function focusAge(mode, W) return W.H.Intent.ClaimAge(W.bot, "lanefight:commit_focus", mode) end
+
+do
+	-- In game every commit stayed in Valve's attack mode (0.92-1.0, active so x1.1) and lane fight's Think never ran.
+	local W = world({ burst = 1000 })
+	W.attack = 0.95
+	W.bot.mode = BotMode.Attack
+	play(W, 1.5)
+	check("a commit takes over from Valve's attack mode at 0.95 as the active mode", W.age("commit") ~= nil
+		and W.bot.mode == BotMode.TeamRoam and W.events("lanefight_end") == 0, string.format("mode %s roam %.3f", tostring(W.bot.mode), W.last.roam))
+
+	-- OHA's farm bids 1.10 in lane and ended a commit as mode:farm; its Lua attack mode bids 1.0 for some heroes.
+	W = world({ burst = 1000 })
+	play(W, 1.0)
+	check("setup: a commit from laning", W.age("commit") ~= nil and W.bot.mode == BotMode.TeamRoam, tostring(W.bot.mode))
+	W.farm, W.luaAttack = 1.1, 1.0
+	play(W, 1.5)
+	check("a commit takes over from farm at 1.10 and a Lua attack mode at 1.0", W.age("commit") ~= nil and W.bot.mode == BotMode.TeamRoam
+		and W.events("lanefight_end") == 0, string.format("mode %s farm %.3f attack %.3f roam %.3f", tostring(W.bot.mode), W.last.farm,
+		W.last.attack, W.last.roam))
+	check("the commit caps farm and the Lua attack mode below its floor even with the x1.1", W.last.farm * 1.1 < W.last.roam
+		and W.last.attack * 1.1 < W.last.roam, string.format("farm %.3f attack %.3f", W.last.farm, W.last.attack))
+end
 
 do
 	local W = world({ burst = 1000 })

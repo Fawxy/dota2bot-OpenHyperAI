@@ -155,6 +155,25 @@ local function charge(W, at, target)
 	end
 end
 
+-- A partner trading the enemy (attack target set, walking in, then attacking every 0.5 s in range) for `trade` s.
+-- W.hits lists its attack times: a follow needs the second (one walk-in hit is how a harass looks).
+local function trading(W, from, trade)
+	W.hits = {}
+	W.onFrame = function()
+		if T < from - 1e-9 then return end
+		if trade ~= nil and T >= from + trade - 1e-9 then
+			W.partner.target = nil
+			return
+		end
+		W.partner.target = W.enemy
+		if dist(W.partner, W.enemy) > W.partner:GetAttackRange() - 50 then step(W.partner, W.enemy.loc)
+		elseif (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then
+			W.partner.lastAttack = T
+			table.insert(W.hits, T)
+		end
+	end
+end
+
 local function playUntil(W, fn, limit)
 	local stop = T + limit
 	while not fn() and T < stop do play(W, FRAME) end
@@ -251,13 +270,14 @@ do
 	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
 	play(W, 1)
 	check("setup: a margin of 0.9 is no kill pass", W.events("lanefight_start") == 0 and #W.said == 0)
-	local tp = T
-	charge(W, tp)
-	playUntil(W, function() return W.events("lanefight_start", "phase=commit") > 0 end, 3)
-	local want = tp + FRAME + W.H.Profile.SampleDelay(W.bot, "react") + W.LF.Config.Curve("SyncDelay", 1)
+	trading(W, T)
+	playUntil(W, function() return W.events("lanefight_start", "phase=commit") > 0 end, 4)
+	local second = W.hits[2]
+	local want = second ~= nil and second + W.H.Profile.SampleDelay(W.bot, "react") + W.LF.Config.Curve("SyncDelay", 1) or math.huge
 	local at = W.firstAt("lanefight_start", "phase=commit")
-	check("follows a human partner's attack on an enemy hero", at ~= nil and at >= want - 1e-6 and at <= want + FRAME + 1e-6
-		and W.events("lanefight_start", "via=follow") == 1, string.format("at %s want %.3f", tostring(at), want))
+	check("follows a human partner's attacks on an enemy hero after the second hit", at ~= nil and at >= want - 1e-6
+		and at <= want + 2 * FRAME + 1e-6 and W.events("lanefight_start", "via=follow") == 1,
+		string.format("at %s want %.3f", tostring(at), want))
 end
 
 do
@@ -274,7 +294,7 @@ do
 	check("a human attack order that does not close is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
 	-- Below FollowMargin (0.8) the bot does not follow.
 	W = world({ burst = 30, partner = { human = true, pos = 5, burst = 40 } })
-	charge(W, T)
+	trading(W, T)
 	play(W, 3)
 	check("a margin below FollowMargin does not follow, logged once", W.events("lanefight_start") == 0
 		and W.events("lanefight_gate", "gate=follow-margin") == 1, table.concat(W.lines, "\n"))
@@ -298,6 +318,26 @@ do
 	end
 	play(W, 3)
 	check("one in-range hit then walking away is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
+
+	-- In game (snapfire at 1:05): a harass walks in on the target, lands one hit and goes back to the wave. The walk-in
+	-- alone must not be followed.
+	W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -700 } })
+	local walkFrom = T + 0.3
+	local hit
+	W.onFrame = function()
+		if T < walkFrom - 1e-9 then return end
+		if hit == nil then
+			W.partner.target = W.enemy
+			if dist(W.partner, W.enemy) > W.partner:GetAttackRange() - 50 then step(W.partner, W.enemy.loc)
+			else hit = T W.partner.lastAttack = T end
+		elseif T > hit + 0.2 then
+			W.partner.target = nil
+			step(W.partner, W.loc(-1500))
+		end
+	end
+	play(W, 4)
+	check("setup: the harass walked in and landed its hit", hit ~= nil and hit > walkFrom + 0.5, tostring(hit))
+	check("a walk-in harass with one hit is not followed", W.events("lanefight_start") == 0, table.concat(W.lines, "\n"))
 
 	-- Sustained attacks from range: two within 1.5 s make a commit.
 	W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40, x = -200 } })
@@ -332,14 +372,14 @@ do
 	check("InRangeWindow is read from config: at 1.5 s, attacks 2 s apart are not a commit", slow.events("lanefight_start") == 0,
 		table.concat(slow.lines, "\n"))
 
-	-- The partner starts in, then stops before the follow time (skill 0: 1.1 s): no follow, logged once.
-	W = world({ skill = 0, burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	-- The partner lands two hits from range, then stops before the follow time (skill 0: over 1 s): no follow, logged once.
+	W = world({ skill = 0, burst = 50, partner = { human = true, pos = 5, burst = 40, x = -200 } })
 	local tp = T + 0.3
 	W.onFrame = function()
-		if T >= tp - 1e-9 and T < tp + 0.2 then
+		if T >= tp - 1e-9 and T < tp + 0.6 then
 			W.partner.target = W.enemy
-			step(W.partner, W.enemy.loc)
-		elseif T >= tp + 0.2 then
+			if (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then W.partner.lastAttack = T end
+		elseif T >= tp + 0.6 then
 			W.partner.target = nil
 		end
 	end
@@ -441,7 +481,7 @@ do
 	-- A follow went in on margin 0.9 (no full pass): its re-check after an escape holds it to FollowMargin, not a pass.
 	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 }, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
 		[1] = ability("antimage_blink", { cd = 15 }) } })
-	charge(W, T)
+	trading(W, T)
 	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 3)
 	check("setup: a follow commit", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
 	W.enemy.casting = W.enemy.abilities[1]
@@ -464,19 +504,6 @@ do
 		and W.events("lanefight_recheck", "reason=partner_abandon pass=0") == 1, table.concat(W.lines, "\n"))
 end
 
--- A bot partner trading the enemy (attack target set, walking in, then attacking every 0.5 s in range) for `trade` s.
-local function trading(W, from, trade)
-	W.onFrame = function()
-		if T < from - 1e-9 then return end
-		if trade ~= nil and T >= from + trade - 1e-9 then
-			W.partner.target = nil
-			return
-		end
-		W.partner.target = W.enemy
-		if dist(W.partner, W.enemy) > W.partner:GetAttackRange() - 50 then step(W.partner, W.enemy.loc)
-		elseif (W.partner.lastAttack or -1000) < T - 0.5 + 1e-9 then W.partner.lastAttack = T end
-	end
-end
 
 do
 	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })

@@ -800,8 +800,8 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `StartMaxRetreat` | 0.7 | No start while retreat desire is at least this (not enforced with Intent off) |
 | `StopHP` | 0.3 | A phase ends below this HP |
 | `FogGrace` | 1 s | Target in fog this long ends a phase |
-| `TradeFloor` / `CommitFloor` | 0.75 / 0.82 | FIGHT floor on `team_roam` |
-| `CommitFocusMargin` | 0.01 | Commit caps laning, errands and retreat at `CommitFloor / 1.1 - margin` |
+| `TradeFloor` / `CommitFloor` / `CommitLowFloor` | 0.75 / 1.06 / 0.82 | FIGHT floor on `team_roam`. A commit bids `CommitFloor`, above Valve's attack mode even as the active mode (0.95 × 1.1), so its own Think runs; below `CommitHoldHP` it drops to `CommitLowFloor` so an uncapped retreat can win. A trade's floor stays below attack: Valve attack on the target counts as the trade |
+| `CommitFocusMargin` | 0.01 | Commit caps laning, farm, the Lua attack mode (OHA's override heroes), errands and retreat at the commit's current floor `/ 1.1 - margin` |
 | `CommitHoldHP` | 0.5 | Retreat is held only at or above this HP |
 | `TowerOverride` | 1.3 | Margin needed under their tower |
 | `FollowMargin` | 0.8 | Margin a follow commit needs (and its re-check holds to) |
@@ -858,7 +858,7 @@ Controller rulings:
 - A key cast "on the target" is inferred from facing within 30° and range + 200.
 - A solo commit beside a human partner uses a solo check that must be overwhelming; a bot stun support beside a human core calls the kill and waits unless overwhelming above `SoloSkill`.
 - Escape aborts and `bad_memory` need Memory on.
-- A partner commit needs closing while attacking, or 2 in-range attacks within `InRangeWindow`, re-verified at follow time; committing bots attack-order while closing so partners can see it.
+- A partner is seen going in (for the abandon check) on closing while attacking, or 2 in-range attacks within `InRangeWindow`. Following one needs more: 2 in-range attacks or a key/ult cast at the target, because a laning harass also walks in and hits once; only a bot already in `wait_partner` for that partner and target follows on the walk-in. Re-verified at follow time; committing bots attack-order while closing so partners can see it.
 
 ### Overlay and log formats
 Overlay (Debug on, bots lane fights apply to): `fight: window=<spell|lasthit|level|position|none> kill=<margin|-> mem=<remembered> phase=<idle|trade|commit|wait_partner>`, for example `fight: window=spell kill=1.12 mem=2 phase=trade`. `kill` is the last kill check's margin (burst / HP), shown whether or not it passed.

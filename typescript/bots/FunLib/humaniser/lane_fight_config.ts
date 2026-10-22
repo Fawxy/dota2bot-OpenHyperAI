@@ -52,9 +52,13 @@ export const DEFAULTS = {
     StopHP: 0.3,
     FogGrace: 1.0,
     TradeFloor: 0.75,
-    CommitFloor: 0.82,
-    // While committing, laning, the errands and retreat are capped at CommitFloor / 1.1 - CommitFocusMargin: the capped
-    // mode may be the active one and get the engine's x1.1. Retreat is held only while HP is at least CommitHoldHP.
+    // Above Valve's attack mode (0.95, x1.1 when active, which this cannot cap), so the commit runs through team_roam's
+    // Think. Below CommitHoldHP the floor drops to CommitLowFloor so an uncapped retreat can win.
+    CommitFloor: 1.06,
+    CommitLowFloor: 0.82,
+    // While committing, laning, farm, the Lua attack mode, the errands and retreat are capped at the commit's floor / 1.1
+    // - CommitFocusMargin: the capped mode may be the active one and get the engine's x1.1. Retreat is held only while
+    // HP is at least CommitHoldHP.
     CommitFocusMargin: 0.01,
     CommitHoldHP: 0.5,
     TowerOverride: 1.3,
