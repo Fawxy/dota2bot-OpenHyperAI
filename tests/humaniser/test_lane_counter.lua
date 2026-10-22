@@ -13,29 +13,39 @@ end
 
 local function unit(o)
 	local u = MakeUnit({ pid = o.pid, team = o.team or 2, bot = o.bot, loc = o.loc or FRONT })
-	u.lane, u.pos, u.dmg = o.lane or Lane.Top, o.pos, o.dmg
+	u.lane, u.pos, u.dmg, u.name = o.lane or Lane.Top, o.pos, o.dmg, o.name
 	return u
 end
 
 local function hide(u, ...) u.hiddenFrom = {} for _, pid in ipairs({ ... }) do u.hiddenFrom[pid] = true end end
 local function show(u) u.hiddenFrom = nil end
 
--- Radiant top (our offlane): core pid 3 (pos 3) and support pid 4 (pos 4); Dire laners: core pid 11 (pos 1) and
--- support pid 15 (pos 5). The support observes. Only the Dire small camp exists.
+-- Radiant top (our offlane): core pid 3 (pos 3) and support pid 4 (pos 4); Dire laners: Anti-Mage pid 11 and
+-- Crystal Maiden pid 15, the support. The support observes. Only the Dire small camp exists. Both Dire heroes have
+-- laned at our front for the 11 s before `t` (opts.unlaned skips that), so counter-play knows CM as their support.
 local function world(skill, opts)
 	opts = opts or {}
 	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, telemetry = opts.telemetry })
-	T = opts.t or 60
+	local start = opts.t or 60
 	CURRENT_TEAM = 2
 	OBSERVER = 4
 	SPAWNERS = { spawner(3, "small", THEIR_SMALL) }
 	H.Lane.Camps.ResetCache()
 	local core = unit({ pid = 3, pos = 3, loc = opts.coreAt })
 	local support = unit({ pid = 4, pos = 4, loc = opts.at or Vector(0, 5300) })
-	local ecore = unit({ pid = 11, team = 3, pos = 1, loc = opts.enemyCoreAt or Vector(300, 5000) })
-	local esup = unit({ pid = 15, team = 3, pos = 5, loc = opts.enemySupAt or Vector(-300, 5000) })
+	local ecore = unit({ pid = 11, team = 3, pos = 1, loc = Vector(300, 5000), name = "npc_dota_hero_antimage" })
+	local esup = unit({ pid = 15, team = 3, pos = 5, loc = Vector(-300, 5000), name = "npc_dota_hero_crystal_maiden" })
 	H.Lane.Config.SkillOf(support)
 	H.Lane.Config.SkillOf(core)
+	if not opts.unlaned then
+		for t = start - 12, start - 1, 1 do
+			T = t
+			H.Lane.Counter.Tick(support)
+		end
+	end
+	T = start
+	ecore.loc = opts.enemyCoreAt or ecore.loc
+	esup.loc = opts.enemySupAt or esup.loc
 	return H, support, core, ecore, esup
 end
 
@@ -83,17 +93,23 @@ end
 do
 	local H = world(0.5)
 	local C = H.Lane.Counter
+	-- The puller's stand is 400 below the box centre. console.9057255027 / 9057261947 and four earlier games
+	-- (scratch replay of 29 real pulls): within 300 of where a puller stands, within 3 s of the aggro second, caught 20
+	-- with 14 false; the old rule (800 of the box, any time if visible, 6 s if not) caught 29 with 81 false.
+	local STAND = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 400)
 	local function input(now, unseen, loc, visible)
-		return { now = now, campLoc = THEIR_SMALL, campPullSec = { 15, 45 }, campHalfSec = { 17, 47 },
+		return { now = now, campLoc = THEIR_SMALL, standLoc = STAND, campPullSec = { 15, 45 }, campHalfSec = { 17, 47 },
 			enemySupport = { pid = 15, visible = visible == true, location = loc, timeSinceSeen = unseen } }
 	end
-	local away = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 1000)
-	check("unseen 5 s, last seen 1,000 from camp, :14 -> suspected", C.EnemyPullSuspected(input(74, 5, away)))
-	check("unseen only 3 s -> not suspected", not C.EnemyPullSuspected(input(74, 3, away)))
-	check(":25 is outside the pull window -> not suspected", not C.EnemyPullSuspected(input(85, 5, away)))
-	check("last seen 2,000 from camp -> not suspected", not C.EnemyPullSuspected(input(74, 5, Vector(THEIR_SMALL.x, THEIR_SMALL.y - 2000))))
-	check("visible at the camp -> suspected", C.EnemyPullSuspected(input(85, 0, THEIR_SMALL, true)))
-	check("visible far from the camp -> not suspected", not C.EnemyPullSuspected(input(74, 0, away, true)))
+	local lastSeen = Vector(STAND.x, STAND.y - 700)
+	check("unseen 5 s, last seen 700 from the stand, :14 -> suspected", C.EnemyPullSuspected(input(74, 5, lastSeen)))
+	check("unseen only 3 s -> not suspected", not C.EnemyPullSuspected(input(74, 3, lastSeen)))
+	check(":21 is outside the 3 s window -> not suspected", not C.EnemyPullSuspected(input(81, 5, lastSeen)))
+	check("last seen 1,000 from the stand -> not suspected", not C.EnemyPullSuspected(input(74, 5, Vector(STAND.x, STAND.y - 1000))))
+	check("visible at its stand at :16 -> suspected", C.EnemyPullSuspected(input(76, 0, Vector(STAND.x + 200, STAND.y), true)))
+	check("visible in the box (a human's spot) at :16 -> suspected", C.EnemyPullSuspected(input(76, 0, THEIR_SMALL, true)))
+	check("visible at its stand at :25, outside the window -> not suspected", not C.EnemyPullSuspected(input(85, 0, STAND, true)))
+	check("visible 500 from both stand and box at :15 -> not suspected", not C.EnemyPullSuspected(input(75, 0, Vector(STAND.x, STAND.y - 500), true)))
 end
 
 do
@@ -139,6 +155,40 @@ do
 end
 
 do
+	-- Their support is read from who lanes at our front and what hero each is, not from J.GetPosition (console.9057240733:
+	-- 19 of 20 first reads were pos 3, so no enemy was ever their support).
+	local function roles(lines)
+		local r = {}
+		for _, l in ipairs(lines) do if l:find(" ev=lane_enemy_role ", 1, true) then table.insert(r, l) end end
+		return r
+	end
+	local function laned(opts)
+		local H, support, core, ecore, esup = world(1, { telemetry = { Enable = true }, unlaned = true })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		if opts.swap then ecore.name, esup.name = esup.name, ecore.name end
+		if opts.solo then hide(ecore, 4) ecore.loc = Vector(-6000, -6000) end
+		-- Seen at our front from 0:45; their support then pulls at 1:15, in sight at the camp.
+		for t = 45, 45 + (opts.secs or 15), 0.5 do tick(H, support, t) end
+		local pullAt = opts.supportAt or THEIR_SMALL
+		esup.loc = pullAt
+		if opts.swap then ecore.loc = pullAt end
+		tick(H, support, 75)
+		return H, support, lines, signalsOf(H, support, "pull")
+	end
+	local _, _, lines, pulls = laned({})
+	check("their support at its camp, after 15 s laning: pull names it", #pulls == 1 and pulls[1].enemyPid == 15, pulls[1] and pulls[1].enemyPid)
+	local r = roles(lines)
+	check("lane_enemy_role reports CM as their support", #r == 1 and r[1]:find("role=support enemy=15 hero=npc_dota_hero_crystal_maiden", 1, true) ~= nil, r[1])
+	_, _, _, pulls = laned({ swap = true })
+	check("the hero decides, not the player id: with the names swapped, pid 11 is CM and their support", #pulls == 1 and pulls[1].enemyPid == 11, pulls[1] and pulls[1].enemyPid)
+	_, _, _, pulls = laned({ secs = 8 })
+	check("laned only 8 s: no support known yet, no sighting", #pulls == 0)
+	_, _, _, pulls = laned({ solo = true })
+	check("a solo laner is nobody's support", #pulls == 0)
+end
+
+do
 	local H = world(0.5)
 	local C = H.Lane.Counter
 	check("two cycles near their tower with denies -> freeze", C.FreezeSuspected({ 0.7, 0.65 }, { 3, 2 }))
@@ -176,21 +226,20 @@ end
 
 do
 	-- The enemy's pull seconds come from their wave (pull_timing) when their camp is wave-timed, as ours do: with a Dire
-	-- creep path along the stub top lane their small camp pulls at :18.3 (half :21.4), so a support unseen by it at :25
-	-- reads as pulling; on the :15/:17 seeds it did not (8 s off, CounterPullWindow 6).
+	-- creep path along the stub top lane their small camp pulls at :18.3 (half :21.4), so a support unseen by it at :22
+	-- reads as pulling; on the :15/:17 seeds it does not (5 s off, CounterPullWindow 3).
 	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
-	local function at25(cfg)
+	local function at22(cfg)
 		local H, support, _, _, esup = world(1, { cfg = cfg })
-		-- Seen in lane first, so its position is known.
-		tick(H, support, 80)
+		tick(H, support, 81)
 		hide(esup, 4)
 		LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
-		tick(H, support, 85)
+		tick(H, support, 82)
 		LAST_SEEN[15] = nil
 		return #signalsOf(H, support, "pull")
 	end
-	check("seed seconds: unseen support at :25 not suspected", at25(nil) == 0)
-	check("wave-timed seconds: unseen support at :25 suspected", at25(WAVE) == 1)
+	check("seed seconds: unseen support at :22 not suspected", at22(nil) == 0)
+	check("wave-timed seconds: unseen support at :22 suspected", at22(WAVE) == 1)
 end
 
 do
@@ -242,6 +291,53 @@ do
 	T = 76
 	H.Lane.Counter.Think(support, {})
 	check("third enemy seen 8 s ago: contest goes ahead", H.Lane.CampJobs.Current(support) ~= nil)
+end
+
+do
+	-- Only a sighting of their support at its camp, while fresh, is acted on (console.9057295358: none of 6 takes and few
+	-- of 12 contests followed a real pull; thin-wave and unseen-support signals were 17% real, and a thin wave shows ~18 s
+	-- after the aggro, too late to reach the camp).
+	local function seen(thinkAt)
+		local H, support, _, _, esup = world(1)
+		esup.loc = THEIR_SMALL
+		tick(H, support, 75)
+		check("precondition: a seen pull", #signalsOf(H, support, "pull") == 1)
+		T = thinkAt
+		H.Lane.Counter.Think(support, {})
+		return H.Lane.CampJobs.Current(support)
+	end
+	check("a seen pull 3.5 s ago: contested", seen(78.5) ~= nil)
+	check("a seen pull 4.5 s ago: too late, not contested", seen(79.5) == nil)
+
+	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
+	local H, support, _, _, esup = world(1, { cfg = WAVE })
+	tick(H, support, 81)
+	hide(esup, 4)
+	LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
+	tick(H, support, 82)
+	LAST_SEEN[15] = nil
+	check("precondition: an unseen-support pull", #signalsOf(H, support, "pull") == 1)
+	H.Lane.Counter.Think(support, {})
+	check("an unseen-support pull starts no contest", H.Lane.CampJobs.Current(support) == nil)
+
+	-- A thin wave: 2 of a 4-creep wave reach our front at 2:05, their support unseen.
+	H, support, _, _, esup = world(1)
+	hide(esup, 4)
+	esup.loc = Vector(-6000, -6000)
+	RANDOM_FRACTION = 0
+	for k, n in ipairs({ 4, 4, 2 }) do
+		local c0 = 60 + 30 * (k - 1)
+		for i = #CREEPS[3], 1, -1 do table.remove(CREEPS[3], i) end
+		for t = c0, c0 + 29.5, 0.5 do
+			if t == c0 + 5 then for i = 1, n do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end end
+			tick(H, support, t)
+			if #signalsOf(H, support, "half_pull") > 0 then break end
+		end
+	end
+	RANDOM_FRACTION = nil
+	check("precondition: a thin-wave signal", #signalsOf(H, support, "half_pull") == 1)
+	H.Lane.Counter.Think(support, {})
+	check("a thin wave starts no contest", H.Lane.CampJobs.Current(support) == nil)
 end
 
 do
@@ -424,8 +520,8 @@ do
 	check("frame held until the hit lands", held == true and #ActionsOf(4) == 1)
 	support.lastAttack = GameTime()
 	T = 115.2
-	H.Lane.Counter.Think(support, {})
-	check("hit landed: frame released (the pull punish follows)", attacksOn(4, esup) == 1 and attacksOn(4, ecore) == 1)
+	local after = H.Lane.Counter.Think(support, {})
+	check("hit landed: frame released, and a stacker at :54 is no puller (no pull punish)", after == false and attacksOn(4, esup) == 1 and attacksOn(4, ecore) == 0)
 	check("stronger: camp not marked", #H.Lane.Counter.MarkedStacked(2) == 0)
 
 	local core
@@ -464,7 +560,8 @@ do
 		local said = {}
 		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
 		LANE_FRONT[2][Lane.Mid], LANE_FRONT[3][Lane.Mid] = 0.3, 0.65
-		tick(H, mid, 61)
+		-- Their mid has laned against ours since 0:46, so it is known as their mid.
+		for t = 46, 61, 0.5 do tick(H, mid, t) end
 		if not enemyVisible then
 			hide(emid, 2)
 			LAST_SEEN[7] = { location = Vector(-2500, 0), time_since_seen = 5 }
@@ -576,7 +673,7 @@ end
 do
 	-- Mirroring: our top is the enemy's safe lane, so their wanted eq is Eq.Safe, whatever ours (Eq.Off) is.
 	local function expectedWith(eq)
-		local H, support = world(1, { cfg = { Enable = true, Eq = eq } })
+		local H, support = world(1, { cfg = { Enable = true, PreContest = true, Eq = eq } })
 		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.5, 0.5
 		RANDOM_FRACTION = 0
 		tick(H, support, 61)
@@ -594,7 +691,7 @@ do
 	-- Our lane drifts toward our tower (forecast about -0.6): the enemy support in lane will want to pull.
 	local said
 	local function expected(skill, cfg, seen)
-		local H, support, _, _, esup = world(skill, { cfg = cfg })
+		local H, support, _, _, esup = world(skill, { cfg = cfg or { Enable = true, PreContest = true }, unlaned = seen == false })
 		said = {}
 		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
 		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62 -- both fronts meet at 0.38 of our lane: eqPos -0.6
@@ -611,6 +708,7 @@ do
 	check("no pull_expected chat line", #said == 0, #said)
 	check("below the PreContest gate: none", #select(3, expected(0.6)) == 0)
 	check("PreContest off: none", #select(3, expected(1, { Enable = true, PreContest = false })) == 0)
+	check("PreContest is off by default", #select(3, expected(1, { Enable = true })) == 0)
 	check("enemy support never seen: none", #select(3, expected(1, nil, false)) == 0)
 end
 
@@ -627,7 +725,8 @@ do
 	local function expecting(opts)
 		opts = opts or {}
 		-- Their core at the fronts' meeting point (x -1680), a laner, so not a threat on the route.
-		local H, support, core, _, esup = world(1, { at = opts.at, enemyCoreAt = Vector(-1500, 5000), telemetry = { Enable = true } })
+		local H, support, core, _, esup = world(1, { at = opts.at, enemyCoreAt = Vector(-1500, 5000), telemetry = { Enable = true },
+			cfg = { Enable = true, PreContest = true } })
 		local lines = {}
 		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62
@@ -799,8 +898,10 @@ do
 	started = run(H, support, lines, 76.5, 91)
 	check("the next wave cycle starts no second contest for that pull", started == nil and starts(lines) == 1, started)
 	show(esup)
-	started = run(H, support, lines, 91.5, 94)
-	check("precondition: the next cycle's pull at their camp is noticed", #signalsOf(H, support, "pull") == 2, #signalsOf(H, support, "pull"))
+	started = run(H, support, lines, 103.5, 106)
+	local nextPull = 0
+	for _, sig in ipairs(signalsOf(H, support, "pull")) do if sig.at >= 103.5 then nextPull = nextPull + 1 end end
+	check("precondition: the next cycle's pull at their camp is noticed", nextPull == 1, nextPull)
 	check("nor for the next cycle's pull signal of that camp", started == nil and starts(lines) == 1, started)
 
 	-- After a no-pull, no pre-contest in that lane for Timing.PreContestCooldown (60 s).
@@ -897,6 +998,9 @@ do
 	check("their tower beside the camp: no take", select(3, taking({ setup = function()
 		TOWERS_W[3][dota.Tower.Top1].loc = Vector(THEIR_SMALL.x + 300, THEIR_SMALL.y)
 	end })) == nil)
+	-- The camp jobs' own start gate: a take is no start at 60% HP, nor in a fight.
+	check("60% HP (under JobStartHP): no take", select(3, taking({ setup = function(_, c) c.hp = 60 end })) == nil)
+	check("hit by a hero next to it: no take", select(3, taking({ enemyCoreAt = true, setup = function(_, c) c.heroHitAt = 75 end })) == nil)
 	check("a third enemy seen near the route: no take", select(3, taking({ setup = function()
 		local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
 		hide(mid, 3)
@@ -974,11 +1078,13 @@ do
 	frame(H, core, 77.6)
 	RANDOM_FRACTION = nil
 	check("a creep that survives the swing window is swung at again", attacksOn(3, creep) == 2, attacksOn(3, creep))
+	local ghost = MakeCreep({ team = 3, x = THEIR_SMALL.x + 100, y = THEIR_SMALL.y })
+	ghost.unseen, ghost.listedUnseen = true, true
 	RemoveCreep(creep)
 	local okFrame, err = pcall(frame, H, core, 77.9)
 	local guarded
 	for _, l in ipairs(lines) do if l:find(" ev=lua_error ", 1, true) then guarded = l end end
-	check("a swing target removed by the engine does not throw", okFrame and guarded == nil and H.Lane.CampJobs.Active(core), tostring(guarded) .. " active=" .. tostring(H.Lane.CampJobs.Active(core)))
+	check("a swing target removed, and a creep listed with no location, do not throw", okFrame and guarded == nil and H.Lane.CampJobs.Active(core), tostring(guarded) .. " active=" .. tostring(H.Lane.CampJobs.Active(core)))
 
 	-- Their wave was only late: it reaches our front before any pulled creep is seen, so the core goes back.
 	H, core, job, lines = taking()

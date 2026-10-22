@@ -56,7 +56,9 @@ export const DEFAULTS = {
     Telegraph: true,
     CampBlock: false,
     Forecast: true,
-    PreContest: true,
+    // Off: in console.9057255027 and 9057261947 none of 202 pull_expected signals came within 20 s of that support
+    // pulling; the lane forecast it reads has not predicted the lane in any game so far.
+    PreContest: false,
     TakePull: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
@@ -133,6 +135,9 @@ export const DEFAULTS = {
         PreContestWait: 4,
         // After a pre-contest the enemy did not pull into (enemy-in-lane, no-pull), the bot waits this long before another in that lane.
         PreContestCooldown: 60,
+        // An enemy seen at our front this long is one of the lane's laners; sightings further apart than the gap add nothing.
+        LanerSeenMin: 10,
+        LanerSeenGap: 1,
         TakePullMax: 15,
         TakePullWait: 3,
         TakePullSwing: 1,
@@ -162,7 +167,8 @@ export const DEFAULTS = {
         CoreYieldStagger: 1.5,
         HumanPullWindow: 6,
         CounterUnseen: 4,
-        CounterPullWindow: 6,
+        CounterPullWindow: 3,
+        CounterRespondFresh: 4,
         CounterWaveLate: 5,
         CounterSignalTTL: 20,
         PunishGap: 2,
@@ -296,7 +302,9 @@ export const DEFAULTS = {
         StackCountScan: 1600,
         EnemyNearCamp: 800,
         NeutralOutsideMargin: 200,
-        PullCampLastSeen: 1500,
+        // A support last seen this near where a puller stands; a guess (vision is not logged), check inferred=1 signals.
+        PullCampLastSeen: 800,
+        PullerNear: 300,
         PathSafe: 1500,
         StackedCampSafe: 1500,
         ContestReach: 1200,

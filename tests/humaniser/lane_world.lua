@@ -183,12 +183,13 @@ function GetUnitToUnitDistance(a, b)
 	local dx, dy = a:GetLocation().x - b:GetLocation().x, a:GetLocation().y - b:GetLocation().y
 	return math.sqrt(dx * dx + dy * dy)
 end
+-- `listedUnseen`: a creep out of sight the engine still lists, with no location.
 function UnitMeta:GetNearbyLaneCreeps(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}
 	for _, c in ipairs(CREEPS[team]) do
 		local dx, dy = c.loc.x - self.loc.x, c.loc.y - self.loc.y
-		if math.sqrt(dx * dx + dy * dy) <= r then table.insert(out, c) end
+		if math.sqrt(dx * dx + dy * dy) <= r or c.listedUnseen then table.insert(out, c) end
 	end
 	return out
 end

@@ -217,6 +217,20 @@ function forecastSection(game) {
             `take-pull: started ${started} swings ${swings} no-creeps ${n('no-creeps')} timeout ${n('timeout')} outnumbered ${n('outnumbered')} low-hp ${n('low-hp')} lane-wave ${n('lane-wave')} aborted ${aborted}`
         );
     }
+    const roleReads = game.events.filter(e => e.ev === 'lane_enemy_role');
+    const LANES = { 1: 'top', 2: 'mid', 3: 'bot' };
+    for (const team of [2, 3]) {
+        const reads = roleReads.filter(e => e.team === team);
+        if (reads.length === 0) continue;
+        const byLane = new Map();
+        for (const e of reads) byLane.set(e.lane, [...(byLane.get(e.lane) || []), e]);
+        const list = [...byLane].sort((a, b) => a[0] - b[0]).map(([lane, es]) => {
+            const last = es[es.length - 1];
+            const name = `${String(last.hero).replace('npc_dota_hero_', '')}[${last.enemy}]`;
+            return `${LANES[lane] || lane} ${last.role}=${name}${es.length > 1 ? ` (${es.length - 1} changes)` : ''}`;
+        });
+        out.push('', `enemy roles read by ${team === 2 ? 'rad' : 'dire'}: ${list.join(', ')}`);
+    }
     const pullSignals = game.events.filter(e => e.ev === 'lane_signal' && (e.kind === 'pull' || e.kind === 'half_pull'));
     const skips = game.events.filter(e => e.ev === 'lane_take_skip');
     if (pullSignals.length > 0 || skips.length > 0) {

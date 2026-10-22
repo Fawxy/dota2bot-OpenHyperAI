@@ -270,6 +270,13 @@ function standFor(spawner: Camps.Spawner, firstWaypoint: Vector): Vector {
 
 const leadPath = PullTiming.LeadPath;
 
+/** Where a puller of this camp stands to hit it, whichever team's camp data it is. */
+export function PullerStand(data: Camps.CampJobData): Vector | undefined {
+    const spawner = Camps.SpawnerByIdx(data.campIdx);
+    if (spawner === undefined || data.pull === undefined) return undefined;
+    return standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]);
+}
+
 function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
     return PullTiming.ForCamp(data, kind === "half_pull", meet);
 }
@@ -317,8 +324,8 @@ function hpOk(bot: Unit): boolean {
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
 }
 
-/** Why a pull or stack should not start now, else undefined. Forced (debug) jobs skip it. */
-function startBlocked(bot: Unit): string | undefined {
+/** Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. */
+export function StartBlocked(bot: Unit): string | undefined {
     const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
@@ -1132,7 +1139,7 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
-    const blocked = startBlocked(bot);
+    const blocked = StartBlocked(bot);
     if (blocked !== undefined) {
         notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
         return false;
@@ -1186,7 +1193,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > aggroSec) return false;
     if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
-    if (startBlocked(bot) !== undefined) return false;
+    if (StartBlocked(bot) !== undefined) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 
@@ -1458,7 +1465,10 @@ function pulledCreeps(bot: Unit, job: Job): Unit[] {
     const radii = settings().Radii;
     const out: Unit[] = [];
     for (const c of bot.GetNearbyLaneCreeps(radii.LaneCreepScan, true) ?? []) {
-        if (c !== null && c !== undefined && c.IsAlive() && dist2D(c.GetLocation(), job.stand) <= radii.TakePullCreeps) out.push(c);
+        if (c === null || c === undefined || c.IsNull() || !c.IsAlive()) continue;
+        // A creep out of sight can be listed with no location (console.9057255027).
+        const loc = c.GetLocation();
+        if (loc !== undefined && dist2D(loc, job.stand) <= radii.TakePullCreeps) out.push(c);
     }
     return out;
 }

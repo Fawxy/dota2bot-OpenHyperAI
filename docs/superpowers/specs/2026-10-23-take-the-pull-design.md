@@ -44,7 +44,9 @@ that is **not** `LaneRoles.CampJobOwner(s)` starts a take when all hold:
 3. The lane has nothing to stay for: `s.enemy.count <= Thresholds.TakePullLaneCreeps` (1).
 4. The signal names a camp whose box centre is reachable within `Timing.MaxTravel` (12 s) and `pathSafe` (as the contest).
 5. No enemy tower within `Thresholds.EnemyTowerRange` of the camp's box centre.
-6. HP at or above `Thresholds.JobMinHP` (`CampJobs.Start`'s existing gate).
+6. The camp jobs' start gate (`CampJobs.StartBlocked`): HP at or above `Thresholds.JobStartHP`, retreat not already
+   at the job's desire, not in a fight.
+7. Only a fresh sighting of their support at its camp (`source` `seen`, within `Timing.CounterRespondFresh`).
 
 It then calls `CampJobs.Start(bot, { kind: "contest", campIdx, targetPid, take: true })` and marks the signal answered. A failed
 check leaves the signal for later frames while it stays live, as the owner's contest does.
@@ -96,6 +98,10 @@ desire (`ContestDesire` 0.65).
 - The wave-anomaly `pull` signal names the first pull camp; with two enemy pull camps it can name the wrong one, and the take then
   ends `no-creeps`. Accepted rather than adding camp disambiguation.
 - Last hits only. No hitting the creeps down and no attacking the puller.
+
+- Transitions' caution (an alone carry plays safe) wins over a take: with our support away the carry is alone, so a
+  take that starts is usually called back by retreat. Decided 23/10/2026 after console.9057305866: safety first, the
+  take is rare.
 
 ## Tests (offline)
 
