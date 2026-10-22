@@ -331,6 +331,11 @@ function teamAmountAt(team: number, lane: Lane, loc: Vector): number {
     return Camps.ToTeamAmount(team, GetAmountAlongLane(lane, loc).amount);
 }
 
+/** `loc`'s amount along `lane` in `team`'s frame (0 = team's base), the frame of the snapshot's fronts and towers. */
+export function TeamAmountAt(team: number, lane: Lane, loc: Vector): number {
+    return teamAmountAt(team, lane, loc);
+}
+
 function heroesFor(team: number, lane: Lane, front: Vector): LaneHero[] {
     const result: LaneHero[] = [];
     const near = radii().AllyNearFront;

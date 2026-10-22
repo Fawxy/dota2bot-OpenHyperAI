@@ -13,6 +13,7 @@ import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
+import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
 import * as Transitions from "bots/FunLib/humaniser/transitions/transitions";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
@@ -22,7 +23,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -100,6 +101,7 @@ function drawOverlay(bot: Unit): void {
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Transitions.IsActive()) HDebug.Text(bot, "phase", Transitions.Overlay(bot));
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
+        if (LaneFight.IsActive() && LaneFight.Config.AppliesTo(bot)) HDebug.Text(bot, "fight", LaneFight.Describe(bot));
         if (LastHitSkill.IsActiveFor(bot)) {
             const cs = LastHitSkill.Counts(bot);
             HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));
@@ -126,6 +128,7 @@ function tick(this: void, bot: Unit): void {
     Pings.Tick(bot);
     Commands.Tick(bot);
     Lane.Tick(bot);
+    LaneFight.Tick(bot);
     Transitions.Tick(bot);
     Trainer.Tick(bot);
     LastHitSkill.Tick(bot);
@@ -160,6 +163,14 @@ if (Telemetry.GuardsEnabled()) {
         Think: no,
         HarassThink: no,
         AdjustPosition: arg2,
+    });
+    Telemetry.GuardModule("LaneFight", LaneFight, {
+        Tick: none,
+        ReadFor: () => ({ noticed: false }),
+        CheckKill: none,
+        RoamDesire: arg2,
+        Think: no,
+        Target: none,
     });
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none, FarmAllowedInLaning: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });

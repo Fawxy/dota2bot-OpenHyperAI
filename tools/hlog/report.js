@@ -1,7 +1,7 @@
 // Human-readable views over a parsed game: summary, marks and timelines.
 'use strict';
 
-const { fmtT, modeChurn, BLIP_DWELL, LANING_ROAM_CAP } = require('./checks');
+const { fmtT, modeChurn, laneFightStats, BLIP_DWELL, LANING_ROAM_CAP } = require('./checks');
 
 const MARK_STATE_KEYS = ['mode', 'd', 'by', 'order', 'hp', 'mp', 'tgt', 'x', 'y', 'competing'];
 const NOISY = new Set(['snap', 'bot', 'player']);
@@ -80,6 +80,28 @@ function churnSection(game) {
         table(rows),
         `all bots: ${blips} blips (${f1(blips / minutes)}/min per bot), ${other} other switches (${f1(other / minutes)}/min per bot)`,
     ];
+}
+
+function mapCounts(m) {
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
+}
+
+/** Lane fights (task 11) per bot, from the lanefight_* events. */
+function laneFightSection(game) {
+    const stats = Object.values(laneFightStats(game)).sort((a, b) => a.pid - b.pid);
+    if (stats.length === 0) return [];
+    const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes', 'mem']];
+    for (const b of stats)
+        rows.push([who(game, b.pid), mapCounts(b.windows), mapCounts(b.starts), `${b.took}/${b.fights} took`, mapCounts(b.ends), mapCounts(b.gates), mapCounts(b.aborts), mapCounts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
+    const out = ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
+    const abandons = game.events.filter(e => e.ev === 'lanefight_abandon');
+    if (abandons.length > 0) {
+        const arows = [['t', 'player', 'why', 'since', 'mode', 'ally', 'ally mode', 'ally atk', 'dist', 'range', 'last atk']];
+        for (const e of abandons)
+            arows.push([fmtT(e.t), who(game, e.pid), e.why, f1(e.since), e.mode, e.ally === undefined ? '-' : who(game, e.ally), e.amode ?? '-', e.atk ?? '-', e.dist === undefined ? '-' : Math.round(e.dist), e.range ?? '-', e.lastatk === undefined ? '-' : f1(e.lastatk)]);
+        out.push('', 'partner abandons (what the partner was doing when the commit gave up on it):', table(arows));
+    }
+    return out;
 }
 
 function counts(items) {
@@ -244,6 +266,7 @@ function summary(game) {
     }
     out.push(table(rows));
     out.push(...churnSection(game));
+    out.push(...laneFightSection(game));
     out.push(...farmSection(game));
     out.push(...forecastSection(game));
     const orders = game.events.filter(e => e.ev === 'order_post');

@@ -36,7 +36,7 @@ J.Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 J.Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
 -- Orders cannot require jmz_func (circular), so ModeAnnounce is injected; resolved at call time.
-J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown) J.ModeAnnounce(bot, key, cooldown) end)
+J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown, args) J.ModeAnnounce(bot, key, cooldown, args) end)
 J.Humaniser.AllyLastHit.SetHelpers({ GetPosition = function(unit) return J.GetPosition(unit) end, IsInLaningPhase = function() return J.IsInLaningPhase() end })
 J.Humaniser.LastHitSkill.SetHelpers({ WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end })
 J.Humaniser.Trainer.SetHelpers({ GetAttackProDelayTime = function(subject, creep) return J.GetAttackProDelayTime(subject, creep) end, IsInLaningPhase = function() return J.IsInLaningPhase() end })
@@ -63,8 +63,16 @@ J.Humaniser.Lane.SetHelpers({
 	NextPowerRuneTime = function() return J.GetNextPowerRuneSpawnTime() end,
 	IsValidHero = function(u) return J.IsValidHero(u) end,
 	IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end,
+	CannotBeKilled = function(bot, u) return J.CannotBeKilled(bot, u) end,
 	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
 	GetHP = function(u) return J.GetHP(u) end,
+	HeroDisplayName = function(u)
+		local names = J.Chat['tHeroNameList'][u:GetUnitName()]
+		if names == nil then return nil end
+		local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
+		if Localization.GetLocale() == 'zh' then return names.sCnName end
+		return names.sEnName
+	end,
 })
 
 
@@ -5997,7 +6005,8 @@ end
 -- Push safety and defend priority logic moved to TS sources:
 -- aba_push.ts (GetPushDesireHelper) and aba_defend.ts (GetDefendDesireHelper)
 
-function J.ModeAnnounce(bot, locKey, cooldown)
+-- args: values for the line's string.format placeholders (optional).
+function J.ModeAnnounce(bot, locKey, cooldown, args)
 	local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
 	if bot.lastModeChatTime == nil then bot.lastModeChatTime = {} end
 	local lastTime = bot.lastModeChatTime[locKey] or -999
@@ -6005,7 +6014,9 @@ function J.ModeAnnounce(bot, locKey, cooldown)
 	bot.lastModeChatTime[locKey] = GameTime()
 	local msgs = Localization.Get(locKey)
 	if msgs ~= nil and #msgs > 0 then
-		bot:ActionImmediate_Chat(msgs[RandomInt(1, #msgs)], false)
+		local msg = msgs[RandomInt(1, #msgs)]
+		if args ~= nil then msg = string.format(msg, (unpack or table.unpack)(args)) end
+		bot:ActionImmediate_Chat(msg, false)
 	end
 end
 

@@ -113,6 +113,7 @@ declare global {
     function GetGameState(): number;
     function GetGameMode(): number;
 
+    function InstallCastCallback(nPlayerID: number, callback: (this: void, event: any) => void): void;
     function InstallChatCallback(callback: (this: void, chat: ChatEvent) => void): void;
 
     /** vLocAndRadius: x, y = centre, z = radius. Returns a handle for RemoveAvoidanceZone. */

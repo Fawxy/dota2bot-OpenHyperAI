@@ -158,6 +158,17 @@ Customize.Humaniser = {
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
     },
+    -- Lane fights (task 11): lane trades and kill setups with imperfect memory of enemy cooldowns.
+    -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
+    -- Needs the Lane feature: with Lane.Enable = false (or every Lane flag off) lane fights are off too.
+    LaneFight = {
+        Enable = true,
+        Memory = true, -- remember which enemy abilities were cast, with skill-dependent accuracy
+        Trade = true, -- trade hits when the enemy's cooldowns are down
+        Kill = true, -- commit to kill setups
+        CallKills = true, -- ping a kill setup for human allies
+        Teams = 'all', -- 'all' | 'allies' (bots whose team has a human) | 'enemies'
+    },
     -- Lane safety and laning-phase transitions (task 12). Enable = false restores upstream behaviour for all of it.
     Transitions = {
         Enable = true,

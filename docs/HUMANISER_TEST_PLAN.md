@@ -109,6 +109,12 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 - [ ] No `[H:intent] stuck mode=farm` or `mode=laning` lines while a bot waits at a stand point, holds the stack exit until :01, waits for its aggro hit, holds a freeze posture or waits out a tower swap.
 - [ ] The self-test bot (`Trainer.LastHit.SelfTest = true`) still times its last hits on a team whose bots run 07's laning techniques.
 
+## Session 6: lane fights (11)
+Setup, flags and the full checklist are in the "Lane fight (11)" section of HUMANISER_DEV.md. Launch with `-condebug`, `Debug = true` and `Telemetry.Enable = true`.
+- [ ] Run `!hfight` first and record the probe results (they decide whether Task 4b is needed).
+- [ ] Work through the six spec scenarios and the TODO (in-game) list there, at `SkillOverride = 0.9` and `0.2`.
+- [ ] After the session, `node tools/hlog/analyse.js`: read the lane-fight table and the `lane_fight` check (no-acting fights, `no_cd`).
+
 ## Last-hit trainer (14)
 Setup: Local Host lobby, cheats on, `Debug = true`, then `!trainer on`. Details are in the "Last-hit trainer (task 14)" section of HUMANISER_DEV.md.
 - [ ] **Spike results recorded** in `HUMANISER_DEV.md` (`!trainer spike`), and the `OutcomeOnly` and `ScreenText` defaults decided. Also check:

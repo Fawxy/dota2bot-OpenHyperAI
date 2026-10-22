@@ -3,6 +3,7 @@ local ____exports = {}
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local FightProbe = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_probe")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local memberByPID = ____commands.memberByPID
@@ -37,6 +38,15 @@ ____exports.Register(
             "hcamp",
             (((((((((((((("idx=" .. tostring(s.idx)) .. " team=") .. tostring(s.team)) .. " type=") .. s.type) .. " min=") .. fmt(s.min)) .. " max=") .. fmt(s.max)) .. " job=") .. (job and job.key or "-")) .. " source=") .. (job and job.source or "-")) .. " derived=") .. tostring(job and job.derived)
         )
+    end
+)
+____exports.Register(
+    "hfight",
+    function(team, issuer)
+        FightProbe.InstallCastLogger(team)
+        for ____, line in ipairs(FightProbe.Run(issuer)) do
+            HDebug.Log("fight", line)
+        end
     end
 )
 function ____exports.HandleMessage(team, msg)

@@ -324,6 +324,7 @@ function startBlocked(bot: Unit): string | undefined {
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
+    if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
     if (inFight(bot)) return "fight";
     return undefined;
 }
@@ -467,6 +468,8 @@ function startContest(bot: Unit, req: JobRequest): boolean {
 }
 
 export function Start(bot: Unit, req: JobRequest): boolean {
+    // Contest starts skip startBlocked. A forced start is a human's order, which also ends the lane fight (priority).
+    if (req.forced !== true && LaneHooks.IsFightCommitting(bot)) return false;
     if (req.kind === "stack") return startStack(bot, req);
     if (!hpOk(bot)) return false;
     if (req.kind === "contest") return startContest(bot, req);

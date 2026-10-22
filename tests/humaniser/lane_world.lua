@@ -132,15 +132,30 @@ function MakeLaneTowers()
 end
 TOWERS_W = MakeLaneTowers()
 function UnitMeta:GetAttackTarget() return self.target end
+-- Casting: u.casting is the ability handle being cast; ACTIVE_ABILITY_CALLS counts reads for kill-switch tests.
+ACTIVE_ABILITY_CALLS = 0
+function UnitMeta:IsCastingAbility() return self.casting ~= nil end
+function UnitMeta:GetCurrentActiveAbility() ACTIVE_ABILITY_CALLS = ACTIVE_ABILITY_CALLS + 1 return self.casting end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end
+-- Heroes are 24 in the engine; attack range is measured from the hulls' edges.
+function UnitMeta:GetBoundingRadius() return self.hull or 24 end
 function UnitMeta:GetMana() return self.mana or 100 end
 function UnitMeta:GetMaxMana() return self.maxmana or 100 end
 function UnitMeta:GetRespawnTime() return self.respawn or 0 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
 function UnitMeta:GetMostRecentPing() return { time = 0, location = Vector(0, 0), normal_ping = true } end
 function UnitMeta:GetNearbyNeutralCreeps() return NEUTRALS end
+-- On GameTime()'s clock, as in the engine (DotaTime() + the pre-horn time).
 function UnitMeta:GetLastAttackTime() return self.lastAttack or -1000 end
+function UnitMeta:IsMagicImmune() return self.magicImmune == true end
+function UnitMeta:GetFacing() return self.facing or 0 end
+-- SetTarget(nil) clears it; setTargets keeps every call for assertions.
+function UnitMeta:SetTarget(t)
+	self.setTarget = t
+	self.setTargets = self.setTargets or {}
+	table.insert(self.setTargets, t == nil and "nil" or t)
+end
 function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
@@ -231,11 +246,12 @@ function LaneFresh(laneCfg, extra)
 	ResetWorld()
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
+	ACTIVE_ABILITY_CALLS = 0
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry, Transitions = extra.transitions, FarmPattern = extra.farm })
+		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
@@ -245,6 +261,7 @@ function LaneFresh(laneCfg, extra)
 		NextPowerRuneTime = function() return NEXT_RUNE or 1e9 end,
 		IsValidHero = function(u) return u ~= nil and u.alive end,
 		IsSuspiciousIllusion = function(u) return u.illusion == true end,
+		CannotBeKilled = function(_, u) return u.unkillable == true end,
 		IsValidBuilding = function(u) return u ~= nil and u.alive end,
 		GetHP = function(u) return u:GetHealth() / u:GetMaxHealth() end,
 	})
@@ -265,6 +282,7 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Stacking.RegisterProbes()
 	H.Lane.LaneMid.RegisterProbes()
 	H.Lane.Counter.RegisterProbes()
+	H.LaneFight.RegisterProbes()
 	H.Transitions.Rotation.RegisterProbes()
 	H.Transitions.Caution.ResetCache()
 	H.Transitions.Caution.RegisterProbes()

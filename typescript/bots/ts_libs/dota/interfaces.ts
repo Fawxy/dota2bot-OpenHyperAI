@@ -56,12 +56,19 @@ export interface Unit {
 
     GetLocation(): Vector;
 
+    /** World angle in degrees, 0 along +x. */
+    GetFacing(): number;
+
     GetUnitName(): string;
 
     GetAbilityCount(): number;
 
     GetAbilityByIndex(index: number): Ability | null;
     GetAbilityInSlot(index: number): Ability | null;
+
+    IsUsingAbility(): boolean;
+    IsCastingAbility(): boolean;
+    GetCurrentActiveAbility(): Ability | null;
 
     IsInvisible(): boolean;
 
@@ -146,11 +153,13 @@ export interface Unit {
     GetManaRegen(): number;
 
     GetLevel(): number;
+    GetEstimatedDamageToTarget(bCurrentlyAvailable: boolean, hTarget: Unit, fDuration: number, nDamageTypes: number): number;
     IsAncientCreep(): boolean;
     HasModifier(modifierName: string): boolean;
     GetActiveMode(): number;
     GetAbilityByName(abilityName: string): Ability;
     GetAttackRange(): number;
+    GetBoundingRadius(): number;
     GetCurrentVisionRange(): number;
     GetNetWorth(): number;
     FindItemSlot(itemName: string): number;
@@ -186,6 +195,10 @@ export interface Ability {
     GetManaCost(): number;
 
     GetCooldownTimeRemaining(): number;
+    GetLevel(): number;
+    GetCooldown(): number;
+    IsUltimate(): boolean;
+    GetBehavior(): number;
 }
 
 export interface Talent {}
