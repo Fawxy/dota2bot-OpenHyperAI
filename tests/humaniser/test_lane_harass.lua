@@ -15,9 +15,7 @@ local J = {
 }
 
 local function world(skill, laneCfg)
-	-- The default lane front (x = 0) puts the core 3,100 from it, which the transitions caution reads as an absent
-	-- partner; these tests isolate the harass tool, so caution (covered by test_transitions_caution) stays off.
-	local H = LaneFresh(laneCfg or { Enable = true }, { skill = skill, transitions = { Caution = false } })
+	local H = LaneFresh(laneCfg or { Enable = true }, { skill = skill })
 	H.AllyLastHit.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return true end })
 	T = 100
 	CURRENT_TEAM = 2

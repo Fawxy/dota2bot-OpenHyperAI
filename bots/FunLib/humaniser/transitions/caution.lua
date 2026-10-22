@@ -55,7 +55,14 @@ function ____exports.IsAlone(bot, s)
         return false
     end
     local p = others[1]
-    if not p.alive or p.distToFront > LaneConfig.Settings().Thresholds.CoreAbsentDist then
+    if not p.alive then
+        return true
+    end
+    local absent = LaneConfig.Settings().Thresholds.CoreAbsentDist
+    if p.distToFront > absent and dist2D(
+        p.unit:GetLocation(),
+        bot:GetLocation()
+    ) > absent then
         return true
     end
     return Rotation.Active(p.unit) ~= nil or CampJobs.Active(p.unit)
@@ -66,18 +73,18 @@ function ____exports.Missing(bot, s, alone)
     local n = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue13
+            local __continue14
             repeat
                 if e.visible or e.timeSinceSeen <= after or not IsHeroAlive(e.pid) then
-                    __continue13 = true
+                    __continue14 = true
                     break
                 end
                 if dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius then
                     n = n + 1
                 end
-                __continue13 = true
+                __continue14 = true
             until true
-            if not __continue13 then
+            if not __continue14 then
                 break
             end
         end

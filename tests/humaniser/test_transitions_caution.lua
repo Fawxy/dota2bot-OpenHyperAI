@@ -106,10 +106,30 @@ do
 	check("alone support: nothing before the notice delay", w.C.Level(w.sup) == 0)
 	T = 301.1
 	check("alone support gets caution", w.C.Level(w.sup) > 0, w.C.Level(w.sup))
-	w = world({ delay = 1.0 })
-	w.C.Level(w.sup)
-	T = 301.1
-	check("support with a live core gets no caution", w.C.Level(w.sup) == 0, w.C.Level(w.sup))
+end
+
+do
+	-- The same support and the same elapsed time; only whether the core is alive differs.
+	local level = {}
+	for _, dead in ipairs({ true, false }) do
+		local w = world({ delay = 1.0 })
+		w.core.alive = not dead
+		w.C.Level(w.sup)
+		T = 301.1
+		level[dead] = w.C.Level(w.sup)
+	end
+	check("core dead: the support is cautious", level[true] > 0, level[true])
+	check("core alive: the support is not", level[false] == 0, level[false])
+end
+
+do
+	-- A duo backing off together, both 2,000 from the front: neither is alone.
+	local w = world()
+	w.core.loc, w.sup.loc = Vector(-2000, -5000), Vector(-2100, -5000)
+	check("partner beside the bot, both far from the front: not alone", not w.C.IsAlone(w.core, snap(w, w.core)))
+	w = world()
+	w.sup.loc = Vector(-2000, -5000)
+	check("partner far from the front and from the bot: alone", w.C.IsAlone(w.core, snap(w, w.core)))
 end
 
 do

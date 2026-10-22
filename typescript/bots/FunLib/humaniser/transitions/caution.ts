@@ -71,7 +71,10 @@ export function IsAlone(bot: Unit, s: LaneState.LaneSnapshot): boolean {
     if (others.length === 0) return LanePlan.EnemyLaners(bot, s) >= 2;
     if (others.length > 1) return false;
     const p = others[0];
-    if (!p.alive || p.distToFront > LaneConfig.Settings().Thresholds.CoreAbsentDist) return true;
+    if (!p.alive) return true;
+    const absent = LaneConfig.Settings().Thresholds.CoreAbsentDist;
+    // A duo walking or backing off together is far from the front but not apart.
+    if (p.distToFront > absent && dist2D(p.unit.GetLocation(), bot.GetLocation()) > absent) return true;
     return Rotation.Active(p.unit) !== undefined || CampJobs.Active(p.unit);
 }
 
