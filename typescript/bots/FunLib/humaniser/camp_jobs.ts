@@ -29,6 +29,8 @@ export interface JobRequest {
     campIdx: number;
     secondCampIdx?: number;
     forced?: boolean;
+    /** Stack for a core on a FarmPattern trip: only SafeAway's checks, no support or lane-plan gates. */
+    core?: boolean;
     minute?: number;
     /** Contest: the enemy seen pulling, attacked while visible. */
     targetPid?: number;
@@ -358,6 +360,7 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["data", dataLabel(data)],
         ["aggroAt", job.aggroAt],
         ["forced", job.forced === true],
+        ["core", job.core === true],
         ["timing", job.timing ?? "seed"],
     ];
     if (job.preAggroAt !== undefined) fields.push(["pre", 1]);
@@ -772,6 +775,7 @@ function jobAllowed(bot: Unit, s: LaneState.LaneSnapshot, forced: boolean): LuaM
 /** Stacks need no camp-job ownership (any eligible support may stack, after laning too); forced ones only safety. */
 function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
     const s = LaneState.ForBot(bot);
+    if (job.core === true) return Stacking.SafeAway(bot, LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane()));
     const laning = LaneConfig.InLaningPhase();
     if (laning && s === undefined) return $multi(false, "no-lane");
     const enemies = LaneState.Enemies(bot, s?.lane ?? bot.GetAssignedLane());
@@ -817,6 +821,14 @@ function drawingCamp(job: Job): boolean {
     return job.phase === "lead" || job.phase === "watch" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined);
 }
 
+/**
+ * A core's stack once its hit is ordered: the walk-off drags the camp after the bot like a pull's lead. Without the hold,
+ * retreat's creep-damage branch (0.81 at 73% HP) cut both core stacks' walk-offs in console.9057148714/9057153685.
+ */
+function coreStackDrawn(job: Job): boolean {
+    return job.kind === "stack" && job.core === true && (job.phase === "exit" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined));
+}
+
 /** What should still send a pulling bot home; the neutrals' own hits (the point of a pull) are not on the list. */
 function retreatThreat(bot: Unit): string | undefined {
     const cfg = settings();
@@ -854,7 +866,7 @@ function logRetreatHold(bot: Unit, job: Job, state: "on" | "off", reason?: strin
  */
 export function HoldsRetreat(bot: Unit): boolean {
     const job = jobs[bot.GetPlayerID()];
-    if (!isLive(job) || job.retreatHold === "off" || !drawingCamp(job)) return false;
+    if (!isLive(job) || job.retreatHold === "off" || !(drawingCamp(job) || coreStackDrawn(job))) return false;
     const why = retreatThreat(bot);
     if (why === undefined) {
         if (job.retreatHold !== "on") {
@@ -1240,7 +1252,8 @@ function arrived(bot: Unit, loc: Vector): boolean {
  * heads-up. A bot core reads the same thing from CoverFor.
  */
 function pingPartner(bot: Unit, job: Job): void {
-    if (job.pinged === true || job.kind === "contest") return;
+    // A core's own stack (FarmPattern) is no "support away, play safe" heads-up for its lane partner.
+    if (job.pinged === true || job.kind === "contest" || job.core === true) return;
     job.pinged = true;
     if (!LaneConfig.IsOn("Telegraph") || !LaneConfig.InLaningPhase()) return;
     const s = LaneState.ForBot(bot);

@@ -38,6 +38,7 @@ ____exports.DEFAULTS = {
     Transitions = {Enable = true},
     Intent = {Enable = true},
     LastHitSkill = {Enable = true},
+    FarmPattern = {Enable = true},
     Trainer = {LastHit = {Enable = true}},
     Telemetry = {Enable = false}
 }

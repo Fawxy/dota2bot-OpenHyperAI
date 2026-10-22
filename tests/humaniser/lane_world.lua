@@ -54,6 +54,7 @@ function CreepMeta:CanBeSeen() return not self.unseen end
 function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
+function CreepMeta:IsNull() return self.removed == true end
 
 -- The engine deletes the creep: fresh queries no longer return it, handles already in a list stay behind.
 function RemoveCreep(c)
@@ -234,7 +235,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry, Transitions = extra.transitions })
+		Telemetry = extra.telemetry, Transitions = extra.transitions, FarmPattern = extra.farm })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

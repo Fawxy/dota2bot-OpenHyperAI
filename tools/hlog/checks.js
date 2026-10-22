@@ -401,7 +401,39 @@ function trainerSelfTest(game) {
     return result('trainer_selftest', fails, [], line, line);
 }
 
-const ALL = [scriptErrors, snapshotGaps, noticeDelay, reactDelay, orderReadDelay, orderFollowed, lastHitEtiquette, intentHealth, frozenBots, trainerSelfTest];
+// FarmPattern trips: how each one ended. Ends a trip is meant to have (back at the front, wave arrived, enemy, low HP,
+// death, order, run) are fine; pre-emption by another mode (named in `to`), or the walk back timing out, means
+// something out-bid or stalled it. Leaving many camps unfinished means the clear-time estimate runs short.
+const FARM_OK_ENDS = new Set(['back', 'wave', 'enemy', 'low-hp', 'dead', 'order', 'run', 'retreat']);
+// Valve's C++ attack mode (0.95) taking the core into a fight is the intended way out of a trip.
+const FARM_OK_PREEMPT = new Set(['attack']);
+const FARM_LATE_SHARE = 0.4;
+const FARM_LATE_MIN = 3;
+
+function farmTrips(game) {
+    const starts = game.events.filter(e => e.ev === 'farm_trip_start');
+    if (starts.length === 0) return skip('farm_trips', 'no farm trips');
+    const ends = game.events.filter(e => e.ev === 'farm_trip_end');
+    const returns = game.events.filter(e => e.ev === 'farm_trip_return');
+    const odd = new Map();
+    for (const e of ends) {
+        if (FARM_OK_ENDS.has(e.why) || (e.why === 'preempted' && FARM_OK_PREEMPT.has(e.to))) continue;
+        const key = `${name(game, e.pid)} ${e.why}${e.to ? ` -> ${e.to}` : ''}`;
+        tally(odd, key, e.t);
+    }
+    const warns = byCount(odd).map(([k, g]) => `${k} ${g.n}x, first at ${fmtT(g.t)}`);
+    const pids = [...new Set(returns.map(e => e.pid))];
+    for (const pid of pids) {
+        const mine = returns.filter(e => e.pid === pid);
+        const late = mine.filter(e => e.why === 'late').length;
+        if (late >= FARM_LATE_MIN && late / mine.length > FARM_LATE_SHARE)
+            warns.push(`${name(game, pid)} left ${late}/${mine.length} camps unfinished: the clear estimate runs short`);
+    }
+    const okLine = `${starts.length} trips by ${new Set(starts.map(e => e.pid)).size} cores, all ended as planned`;
+    return result('farm_trips', [], warns, okLine);
+}
+
+const ALL = [scriptErrors, snapshotGaps, noticeDelay, reactDelay, orderReadDelay, orderFollowed, lastHitEtiquette, intentHealth, frozenBots, farmTrips, trainerSelfTest];
 
 function runChecks(game) {
     return ALL.map(check => check(game));

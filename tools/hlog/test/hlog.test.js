@@ -141,16 +141,21 @@ test('times accept seconds or m:ss', () => {
     assert.strictEqual(parseTime('42.5'), 42.5);
 });
 
-test('real Lua telemetry from a scripted session analyses cleanly', () => {
+/** Runs a scripted Lua session from the offline harness and returns the [HEV] lines it left in HLOG_LINES. */
+function luaSession(file) {
     const { lua, lauxlib, lualib, to_luastring } = require(path.join(HARNESS, 'node_modules/fengari'));
     const L = lauxlib.luaL_newstate();
     lualib.luaL_openlibs(L);
     const prelude = `package.path = "${ROOT}/?.lua;" .. package.path\nunpack = unpack or table.unpack\nHARNESS_DIR = "${HARNESS}"\n`;
     lauxlib.luaL_dostring(L, to_luastring(prelude));
-    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, 'hlog_session.lua')));
+    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, file)));
     assert.strictEqual(status, 0, status !== 0 ? lua.lua_tojsstring(L, -1) : '');
     lauxlib.luaL_dostring(L, to_luastring('return table.concat(HLOG_LINES, "\\n")'));
-    const text = lua.lua_tojsstring(L, -1);
+    return lua.lua_tojsstring(L, -1);
+}
+
+test('real Lua telemetry from a scripted session analyses cleanly', () => {
+    const text = luaSession('hlog_session.lua');
 
     const games = parseLog(text);
     assert.strictEqual(games.length, 1);
@@ -289,6 +294,38 @@ test('errors caught by humaniser guards fail the check once per hook and message
     assert.match(r.script_errors.details[0], /^guarded 37x from 0:08: Intent\.Resolve: intent\.lua:40/);
 });
 
+test('farm_trips: a trip handed to a fight by Valve attack mode is a planned end, one taken by rune is not', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=340 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=354 ev=farm_trip_end pid=1 camp=7 type=small phase=stack why=preempted camps=1 secs=14 to=attack',
+            '[HEV] t=400 ev=farm_trip_start pid=1 camp=7 type=small phase=go',
+            '[HEV] t=410 ev=farm_trip_end pid=1 camp=7 type=small phase=go why=preempted camps=1 secs=10 to=rune',
+        ].join('\n')
+    )[0];
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x/);
+});
+test('real FarmPattern telemetry: trips summarised per core, a trip lost to another mode is flagged with the winner', () => {
+    const games = parseLog(luaSession('hlog_farm_session.lua'));
+    assert.strictEqual(games.length, 1);
+    const game = games[0];
+    const ends = game.events.filter(e => e.ev === 'farm_trip_end');
+    assert.deepStrictEqual(ends.map(e => e.why), ['back', 'preempted']);
+    assert.strictEqual(ends[1].to, 'rune');
+    const r = levels(game).farm_trips;
+    assert.strictEqual(r.level, 'warn', r.summary);
+    assert.strictEqual(r.details.length, 1, r.details.join('; '));
+    assert.match(r.details[0], /preempted -> rune 1x, first at 8:27/);
+    // Trip 1 left its camp unfinished, so trip 2 starts with the pace grown by LateGrowth (1.15).
+    const row = report.summary(game).split('\n').find(l => /^pid1 /.test(l));
+    assert.ok(row, report.summary(game));
+    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15\s+wave 16$/);
+    const gate = game.events.find(e => e.ev === 'farm_gate');
+    assert.strictEqual(gate.why, 'wave', 'the 9:05 check logs the live wave');
+});
 test('forecast fit recovers K from lane_eq pairs', () => {
     const ev = (t, eq, imb) => ({ ev: 'lane_eq', t, team: 2, lane: 1, kind: 'safe', eq, imb });
     const rows = report.fitForecast([ev(70, -0.5, 0.5), ev(100, -0.35, -0.25), ev(130, -0.425, 0.0), ev(160, -0.425, 0.4)]);

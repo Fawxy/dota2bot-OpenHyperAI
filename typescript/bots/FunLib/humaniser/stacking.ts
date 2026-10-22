@@ -136,6 +136,13 @@ export function Safe(bot: Unit, s: LaneState.LaneSnapshot | undefined, enemies: 
         if (s !== undefined && !LaneRoles.PartnerSafe(bot, s, enemies)) return $multi(false, "partner-unsafe");
         return $multi(true, "ok");
     }
+    return SafeAway(bot, enemies);
+}
+
+/** Safety off a laning snapshot: HP and no visible enemy close. After laning, and a core's stack (FarmPattern). */
+export function SafeAway(bot: Unit, enemies: LaneState.LaneEnemy[]): LuaMultiReturn<[boolean, string]> {
+    const t = settings().Thresholds;
+    const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP <= t.StableMinHP) return $multi(false, "low-hp");
     const loc = bot.GetLocation();
     for (const e of enemies) {
@@ -172,6 +179,14 @@ export function Reserve(campIdx: number, pid: number, until: number): void {
 
 export function Release(campIdx: number, pid: number): void {
     if (reservations[campIdx] !== undefined) delete reservations[campIdx][pid];
+}
+
+/** Another bot's stack job has claimed the camp (its walk-off has not ended). */
+export function ReservedByAlly(campIdx: number, pid: number): boolean {
+    for (const [other, until] of pairs(reservations[campIdx] ?? {})) {
+        if (other !== pid && DotaTime() < until) return true;
+    }
+    return false;
 }
 
 function contested(bot: Unit, idx: number, enemies: LaneState.LaneEnemy[], allies: Unit[]): boolean {
