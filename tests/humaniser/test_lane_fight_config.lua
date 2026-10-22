@@ -28,6 +28,8 @@ do
 	check("one of the three keeps it active", fresh({ Memory = false, Trade = false, Kill = true }).IsActive())
 	local C = fresh({ Trade = false })
 	check("IsOn reads the flag", not C.IsOn("Trade") and C.IsOn("Kill"))
+	check("CallKills on by default", fresh({}).IsOn("CallKills"))
+	check("CallKills respects its flag", not fresh({ CallKills = false }).IsOn("CallKills"))
 	check("IsOn is false with the humaniser off", not fresh({}, { Enable = false }).IsOn("Kill"))
 end
 
@@ -61,6 +63,15 @@ do
 	check("blink is an escape", A.IsEscape("antimage_blink"))
 	check("a stun is not an escape", not A.IsEscape("lion_impale"))
 	check("escape items", A.IsEscape("item_blink") and A.IsEscape("item_black_king_bar"))
+	for _, n in ipairs({ "dazzle_shallow_grave", "winter_wyvern_cold_embrace", "shadow_demon_disruption",
+		"juggernaut_blade_fury", "life_stealer_rage" }) do
+		check("not an escape: " .. n, not A.IsEscape(n))
+	end
+	check("disruption stays key", A.Classify("shadow_demon_disruption", false) == "key")
+	check("spell immunity stays key", A.Classify("juggernaut_blade_fury", false) == "key")
+	check("shallow grave is not key", A.Classify("dazzle_shallow_grave", false) == "other")
+	check("slows and non-hard disables are other", A.Classify("treant_natures_grasp", false) == "other"
+		and A.Classify("tinker_warp_grenade", false) == "other" and A.Classify("tidehunter_gush", false) == "other")
 	check("escapes classify as key", A.Classify("antimage_blink", false) == "key")
 end
 
