@@ -235,7 +235,14 @@ if Telemetry.GuardsEnabled() then
         HarassThink = no,
         AdjustPosition = arg2
     })
-    Telemetry.GuardModule("LaneFight", LaneFight, {Tick = none})
+    Telemetry.GuardModule(
+        "LaneFight",
+        LaneFight,
+        {
+            Tick = none,
+            ReadFor = function() return {noticed = false} end
+        }
+    )
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

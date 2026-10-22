@@ -25,6 +25,7 @@ CURRENT_TEAM = 2
 function GetTeam() return CURRENT_TEAM end
 function GetTeamPlayers(team) local r = {} for _, u in ipairs(UNITS[team]) do table.insert(r, u.pid) end return r end
 function GetTeamMember(i) return UNITS[CURRENT_TEAM][i] end
+function GetHeroLevel(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.level end end end return 0 end
 function IsPlayerBot(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.bot end end end return true end
 function GetUnitToLocationDistance(u, loc) local dx, dy = u.loc.x - loc.x, u.loc.y - loc.y return math.sqrt(dx * dx + dy * dy) end
 

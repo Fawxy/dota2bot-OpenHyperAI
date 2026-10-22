@@ -159,7 +159,7 @@ if (Telemetry.GuardsEnabled()) {
         HarassThink: no,
         AdjustPosition: arg2,
     });
-    Telemetry.GuardModule("LaneFight", LaneFight, { Tick: none });
+    Telemetry.GuardModule("LaneFight", LaneFight, { Tick: none, ReadFor: () => ({ noticed: false }) });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,
