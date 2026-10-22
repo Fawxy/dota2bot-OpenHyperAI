@@ -6,6 +6,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 
 export type LaneFightFlag = "Memory" | "Trade" | "Kill" | "CallKills";
 export type CurveName =
@@ -103,8 +104,9 @@ export function IsOn(flag: LaneFightFlag): boolean {
     return isEnabled() && Settings()[flag] === true;
 }
 
+/** Lane fights read the Lane feature's perception-filtered enemy list, so they need it active. */
 export function IsActive(): boolean {
-    if (!isEnabled()) return false;
+    if (!isEnabled() || !LaneConfig.IsActive()) return false;
     const s = Settings();
     return s.Memory === true || s.Trade === true || s.Kill === true;
 }

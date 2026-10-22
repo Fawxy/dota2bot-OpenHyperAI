@@ -2,6 +2,7 @@
 local ____exports = {}
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 ____exports.DEFAULTS = {
     Enable = true,
     Memory = true,
@@ -89,8 +90,9 @@ end
 function ____exports.IsOn(flag)
     return isEnabled() and ____exports.Settings()[flag] == true
 end
+--- Lane fights read the Lane feature's perception-filtered enemy list, so they need it active.
 function ____exports.IsActive()
-    if not isEnabled() then
+    if not isEnabled() or not LaneConfig.IsActive() then
         return false
     end
     local s = ____exports.Settings()

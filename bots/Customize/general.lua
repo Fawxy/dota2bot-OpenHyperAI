@@ -160,6 +160,7 @@ Customize.Humaniser = {
     },
     -- Lane fights (task 11): lane trades and kill setups with imperfect memory of enemy cooldowns.
     -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
+    -- Needs the Lane feature: with Lane.Enable = false (or every Lane flag off) lane fights are off too.
     LaneFight = {
         Enable = true,
         Memory = true, -- remember which enemy abilities were cast, with skill-dependent accuracy

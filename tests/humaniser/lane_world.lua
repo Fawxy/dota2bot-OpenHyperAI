@@ -112,6 +112,10 @@ function MakeLaneTowers()
 end
 TOWERS_W = MakeLaneTowers()
 function UnitMeta:GetAttackTarget() return self.target end
+-- Casting: u.casting is the ability handle being cast; ACTIVE_ABILITY_CALLS counts reads for kill-switch tests.
+ACTIVE_ABILITY_CALLS = 0
+function UnitMeta:IsCastingAbility() return self.casting ~= nil end
+function UnitMeta:GetCurrentActiveAbility() ACTIVE_ABILITY_CALLS = ACTIVE_ABILITY_CALLS + 1 return self.casting end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end
 function UnitMeta:GetExtrapolatedLocation(t) return self.extrap or self.loc end
@@ -207,11 +211,12 @@ function LaneFresh(laneCfg, extra)
 	ResetWorld()
 	CREEPS, NEUTRALS, SPAWNERS, LAST_SEEN, ACTIONS = { [2] = {}, [3] = {} }, {}, {}, {}, {}
 	LANE_FRONT, TOWERS_W, GETUNITLIST_CALLS = { [2] = {}, [3] = {} }, MakeLaneTowers(), {}
+	ACTIVE_ABILITY_CALLS = 0
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry })
+		Telemetry = extra.telemetry, LaneFight = extra.laneFight })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

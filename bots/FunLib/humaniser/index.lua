@@ -12,6 +12,7 @@ local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_h
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
+local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
@@ -28,6 +29,7 @@ ____exports.AllyLastHit = AllyLastHit
 ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Lane = Lane
+____exports.LaneFight = LaneFight
 ____exports.Intent = Intent
 ____exports.LastHitSkill = LastHitSkill
 ____exports.Trainer = Trainer
@@ -188,6 +190,7 @@ local function tick(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
+    LaneFight.Tick(bot)
     Trainer.Tick(bot)
     LastHitSkill.Tick(bot)
     Orders.GetFor(bot)
@@ -232,6 +235,7 @@ if Telemetry.GuardsEnabled() then
         HarassThink = no,
         AdjustPosition = arg2
     })
+    Telemetry.GuardModule("LaneFight", LaneFight, {Tick = none})
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

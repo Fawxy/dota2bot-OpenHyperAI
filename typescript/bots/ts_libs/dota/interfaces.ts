@@ -63,6 +63,10 @@ export interface Unit {
     GetAbilityByIndex(index: number): Ability | null;
     GetAbilityInSlot(index: number): Ability | null;
 
+    IsUsingAbility(): boolean;
+    IsCastingAbility(): boolean;
+    GetCurrentActiveAbility(): Ability | null;
+
     IsInvisible(): boolean;
 
     IsAlive(): boolean;
@@ -188,6 +192,7 @@ export interface Ability {
 
     GetCooldownTimeRemaining(): number;
     GetLevel(): number;
+    GetCooldown(level?: number): number;
     IsUltimate(): boolean;
     GetBehavior(): number;
 }
