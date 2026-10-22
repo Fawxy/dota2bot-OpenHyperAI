@@ -24,7 +24,7 @@ local function show(u) u.hiddenFrom = nil end
 -- support pid 15 (pos 5). The support observes. Only the Dire small camp exists.
 local function world(skill, opts)
 	opts = opts or {}
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill })
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, telemetry = opts.telemetry })
 	T = opts.t or 60
 	CURRENT_TEAM = 2
 	OBSERVER = 4
@@ -560,6 +560,134 @@ do
 	check("below the PreContest gate: none", #select(3, expected(0.6)) == 0)
 	check("PreContest off: none", #select(3, expected(1, { Enable = true, PreContest = false })) == 0)
 	check("enemy support never seen: none", #select(3, expected(1, nil, false)) == 0)
+end
+
+do
+	local p = LaneFresh({ Enable = true }).Lane.CampJobs.LookoutPoint(Vector(0, 0), { Vector(0, 300), Vector(1000, 300) }, 400)
+	check("lookout point is 400 along the polyline", near(p.x, 100) and near(p.y, 300), p.x .. "," .. p.y)
+	p = LaneFresh({ Enable = true }).Lane.CampJobs.LookoutPoint(Vector(0, 0), { Vector(200, 0) }, 400)
+	check("short path: lookout at its end", near(p.x, 200) and near(p.y, 0))
+end
+
+do
+	-- Pre-contest: our lane drifts toward our tower, so the enemy support is expected to pull their small camp at
+	-- 1:15. It then walks off into the fog, leaving our core 1v1.
+	local function expecting(opts)
+		opts = opts or {}
+		-- Their core at the fronts' meeting point (x -1680), a laner, so not a threat on the route.
+		local H, support, _, _, esup = world(1, { at = opts.at, enemyCoreAt = Vector(-1500, 5000), telemetry = { Enable = true } })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62
+		RANDOM_FRACTION = 0
+		tick(H, support, opts.signalAt or 61)
+		RANDOM_FRACTION = nil
+		hide(esup, 4)
+		local data = H.Lane.Camps.ByIdx(1)
+		local origin = H.Lane.Camps.SpawnerByIdx(1).location
+		local look = H.Lane.CampJobs.LookoutPoint(origin, H.Lane.PullTiming.LeadPath(data.pull, data.pull.meetPoint), 400)
+		local travel = H.Lane.CampJobs.TravelTime(GetUnitToLocationDistance(support, look), 300)
+		return H, support, esup, lines, look, travel
+	end
+	local function endsWith(lines, reason)
+		for _, l in ipairs(lines) do
+			if l:find(" ev=lane_job_end ", 1, true) and l:find("kind=contest camp=1 reason=" .. reason .. " pre=1", 1, true) then return true end
+		end
+		return false
+	end
+	local function startedPre(lines)
+		for _, l in ipairs(lines) do if l:find(" ev=lane_job_start ", 1, true) and l:find("pre=1", 1, true) then return true end end
+		return false
+	end
+	-- One executor frame as farm mode runs it: the desire query, then Think.
+	local function frame(H, support, t)
+		T = t
+		H.Lane.CampJobDesire(support)
+		H.Lane.CampJobThink(support)
+		local job = H.Lane.CampJobs.Current(support)
+		return job ~= nil and job.phase or "none"
+	end
+	-- Leaves just inside its last second: aggro 75, 2 s early, minus the walk.
+	local function begin(H, support, look, travel)
+		T = 73 - travel - 0.05
+		H.Lane.Counter.Think(support, {})
+		H.Lane.CampJobThink(support)
+		support.loc = look
+	end
+
+	local H, support, esup, lines, look, travel = expecting()
+	check("fixture: lookout walk under MaxTravel", travel > 4 and travel < 7, travel)
+	T = 73 - travel - 1.2
+	H.Lane.Counter.Think(support, {})
+	check("more than a second early: no job yet", H.Lane.CampJobs.Current(support) == nil)
+	T = 73 - travel - 0.05
+	H.Lane.Counter.Think(support, {})
+	local job = H.Lane.CampJobs.Current(support)
+	check("pull expected: a contest job in its lookout", job ~= nil and job.kind == "contest" and job.phase == "lookout", job and job.phase)
+	check("the contest is this cycle's commit", H.Lane.LanePlanner.Committed(support) == "contest")
+	check("lane_job_start marks the pre-contest", startedPre(lines))
+	H.Lane.CampJobThink(support)
+	local moves = ActionsOf(4, "MoveToLocation")
+	check("walks to the lookout point", #moves == 1 and near(moves[1].args[1].x, look.x) and near(moves[1].args[1].y, look.y),
+		#moves > 0 and (moves[1].args[1].x .. "," .. moves[1].args[1].y) or "no move")
+	support.loc = look
+	T = 72
+	check("at the lookout: keeps the frame", H.Lane.CampJobThink(support) == true)
+	frame(H, support, 74)
+	check("waits there without a new order", #ActionsOf(4, "MoveToLocation") == 1 and #ActionsOf(4, "AttackUnit") == 0)
+	check("the wait is a hold", H.Intent.HeldBy(support) == "lane:precontest", H.Intent.HeldBy(support))
+	show(esup)
+	esup.loc = THEIR_SMALL
+	T = 75
+	H.Lane.CampJobThink(support)
+	check("the support shows up at their camp: hit it", attacksOn(4, esup) == 1)
+	check("out of the lookout once it is fighting", H.Lane.CampJobs.Current(support).phase ~= "lookout")
+
+	H, support, esup, lines, look, travel = expecting()
+	begin(H, support, look, travel)
+	local front = H.Lane.LaneState.ForBot(support).frontLoc
+	show(esup)
+	esup.loc = front
+	check("their support still in lane before aggro - 2: keeps waiting", frame(H, support, 72.5) == "lookout")
+	frame(H, support, 73.5)
+	check("their support stays in lane: walk back", H.Lane.CampJobDesire(support) == 0 and endsWith(lines, "enemy-in-lane"))
+
+	H, support, esup, lines, look, travel = expecting()
+	begin(H, support, look, travel)
+	frame(H, support, 74)
+	frame(H, support, 76)
+	-- Started about 7.5 s before the aggro: 10 s from the start would already be over.
+	check("no pull yet at 1:18: still waiting", frame(H, support, 78) == "lookout")
+	frame(H, support, 79.1)
+	check("nothing by aggro + 4: walk back, no-pull", H.Lane.CampJobDesire(support) == 0 and endsWith(lines, "no-pull"))
+
+	H, support, esup, lines, look, travel = expecting()
+	begin(H, support, look, travel)
+	show(esup)
+	esup.loc = THEIR_SMALL
+	local phase
+	for _, t in ipairs({ 76, 78.5, 81, 83.5, 85 }) do phase = frame(H, support, t) end
+	check("ContestMax counts from the first hit: live at 85", phase == "travel" and attacksOn(4, esup) == 4, phase .. " " .. attacksOn(4, esup))
+	T = 86.1
+	check("over 10 s after the first hit", H.Lane.CampJobDesire(support) == 0 and endsWith(lines, "timeout"))
+
+	H, support, esup, lines, look, travel = expecting()
+	H.Lane.LanePlanner.Commit(support, "full_pull")
+	T = 73 - travel - 0.05
+	H.Lane.Counter.Think(support, {})
+	check("another technique committed this cycle: no pre-contest", H.Lane.CampJobs.Current(support) == nil)
+
+	H, support, esup, lines, look, travel = expecting()
+	T = 74
+	H.Lane.Counter.Think(support, {})
+	check("too late to reach the lookout by aggro - 2: no pre-contest", H.Lane.CampJobs.Current(support) == nil)
+
+	-- 5,000 from the lookout is a 16.7 s walk; the 1:45 pull (seen at 1:16) leaves time to set out, MaxTravel forbids it.
+	H, support, esup, lines, look, travel = expecting({ at = Vector(-3400, 5800), signalAt = 76 })
+	check("fixture: far support's walk over MaxTravel", travel > 12, travel)
+	T = 103 - travel - 0.05
+	H.Lane.Counter.Think(support, {})
+	check("lookout over 12 s away: no pre-contest", H.Lane.CampJobs.Current(support) == nil)
 end
 
 finish()

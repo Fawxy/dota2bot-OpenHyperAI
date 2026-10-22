@@ -31,10 +31,12 @@ export interface JobRequest {
     minute?: number;
     /** Contest: the enemy seen pulling, attacked while visible. */
     targetPid?: number;
+    /** Pre-contest: the expected enemy aggro, awaited at a lookout on their pull path. */
+    preAggroAt?: number;
 }
 
 export interface Job extends JobRequest {
-    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "return" | "done";
+    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "lookout" | "return" | "done";
     aggroAt: number;
     plannedSec: number;
     path: Vector[];
@@ -53,6 +55,8 @@ export interface Job extends JobRequest {
     baseAggro: number;
     actualAggro?: number;
     aggroTarget?: Unit;
+    /** Pre-contest: when the puller was first seen from the lookout; ContestMax counts from here. */
+    attackFrom?: number;
     /** GameTime() of the attack order, the clock GetLastAttackTime() uses. */
     aggroOrderedAt?: number;
     /** The camp whose stand point was moved in toward its spawner origin because no neutral was seen from it. */
@@ -184,6 +188,22 @@ export function TravelTime(dist: number, speed: number): number {
     return dist / math.max(speed, 1);
 }
 
+/** The point `dist` along the polyline from `origin` through `path`; the last point when the polyline is shorter. */
+export function LookoutPoint(origin: Vector, path: Vector[], dist: number): Vector {
+    let from = origin;
+    let left = dist;
+    for (const to of path) {
+        const seg = dist2D(from, to);
+        if (seg >= left && seg > 0) {
+            const f = left / seg;
+            return Vector(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f, from.z);
+        }
+        left -= seg;
+        from = to;
+    }
+    return from;
+}
+
 export function WindowOpen(now: number, aggroAt: number, travel: number): boolean {
     const t = settings().Timing;
     return now >= aggroAt - travel - t.JobStartSlack && now <= aggroAt + t.JobStartLate;
@@ -297,7 +317,7 @@ function dataLabel(data: Camps.CampJobData): string {
 function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     jobs[bot.GetPlayerID()] = job;
     LanePlanner.Commit(bot, commitTech(job.kind));
-    Telemetry.Event("lane_job_start", [
+    const fields: [string, any][] = [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -306,7 +326,9 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["aggroAt", job.aggroAt],
         ["forced", job.forced === true],
         ["timing", job.timing ?? "seed"],
-    ]);
+    ];
+    if (job.preAggroAt !== undefined) fields.push(["pre", 1]);
+    Telemetry.Event("lane_job_start", fields);
     HDebug.Log(
         "lane",
         string.format(
@@ -370,26 +392,33 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     return true;
 }
 
-/** Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. */
+/**
+ * Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. A pre-contest
+ * (preAggroAt) first waits at a lookout on their pull path for the expected puller.
+ */
 function startContest(bot: Unit, req: JobRequest): boolean {
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || spawner === undefined) return false;
     const now = DotaTime();
-    const center = Camps.BoxCenter(spawner);
+    let stand = Camps.BoxCenter(spawner);
+    if (req.preAggroAt !== undefined) {
+        if (data.pull === undefined) return false;
+        stand = LookoutPoint(spawner.location, PullTiming.LeadPath(data.pull, data.pull.meetPoint), settings().Radii.PreContestStand);
+    }
     register(
         bot,
         {
             ...req,
-            phase: "travel",
-            aggroAt: now,
+            phase: req.preAggroAt !== undefined ? "lookout" : "travel",
+            aggroAt: req.preAggroAt ?? now,
             plannedSec: 0,
-            path: [center],
+            path: [stand],
             startedAt: now,
             peakDivert: 0,
             waveSize: 0,
             activeCamp: req.campIdx,
-            stand: center,
+            stand,
             waypoint: 0,
             stage: 1,
             telegraphed: true,
@@ -661,7 +690,15 @@ function endContest(bot: Unit, job: Job, reason: string): void {
     job.phase = "return";
     releaseClaims(bot);
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
-    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s", bot.GetPlayerID(), job.campIdx, reason));
+    const pre = job.preAggroAt !== undefined ? 1 : 0;
+    Telemetry.Event("lane_job_end", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", LOG_KIND[job.kind]],
+        ["camp", job.campIdx],
+        ["reason", reason],
+        ["pre", pre],
+    ]);
+    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s pre=%d", bot.GetPlayerID(), job.campIdx, reason, pre));
 }
 
 // ---------------------------------------------------------------------------------------------- desire
@@ -819,9 +856,13 @@ function keepGoing(bot: Unit, job: Job): boolean {
         return false;
     }
     const now = DotaTime();
-    if (job.kind === "contest" && now - job.startedAt >= settings().Timing.ContestMax) {
-        endContest(bot, job, "timeout");
-        return false;
+    if (job.kind === "contest") {
+        // The lookout waits out the aggro, so a pre-contest's ContestMax counts from the first sight of the puller.
+        const from = job.preAggroAt !== undefined ? job.attackFrom : job.startedAt;
+        if (from !== undefined && now - from >= settings().Timing.ContestMax) {
+            endContest(bot, job, "timeout");
+            return false;
+        }
     }
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
@@ -1286,8 +1327,38 @@ function contestTarget(bot: Unit, job: Job): Unit | undefined {
     return best;
 }
 
+function enemyInLane(bot: Unit, job: Job): boolean {
+    const s = LaneState.ForBot(bot);
+    if (s === undefined) return false;
+    for (const e of LaneState.Enemies(bot, s.lane)) {
+        if (e.pid === job.targetPid && e.visible && dist2D(e.location, s.frontLoc) <= settings().Radii.Exposure) return true;
+    }
+    return false;
+}
+
+/** Waiting at the lookout for the expected puller; true while the job keeps the frame. */
+function stepLookout(bot: Unit, job: Job, now: number): boolean {
+    const t = settings().Timing;
+    if (now >= job.aggroAt - t.PreContestLead && enemyInLane(bot, job)) {
+        endContest(bot, job, "enemy-in-lane");
+        return false;
+    }
+    if (now > job.aggroAt + t.PreContestWait) {
+        endContest(bot, job, "no-pull");
+        return false;
+    }
+    if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
+    Intent.Hold(bot, "lane:precontest");
+    return true;
+}
+
 function stepContest(bot: Unit, job: Job, now: number): boolean {
     const target = contestTarget(bot, job);
+    if (job.phase === "lookout") {
+        if (target === undefined) return stepLookout(bot, job, now);
+        job.attackFrom = now;
+        job.phase = "travel";
+    }
     if (target !== undefined) {
         if (job.lastAttackAt === undefined || now - job.lastAttackAt >= settings().Timing.ContestAttackGap) {
             bot.Action_AttackUnit(target, true);

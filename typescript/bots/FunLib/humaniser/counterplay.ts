@@ -532,9 +532,32 @@ function runPunish(bot: Unit, st: ObserverState, enemies: LaneState.LaneEnemy[],
     return true;
 }
 
+/** Sets out for the lookout on their pull path to arrive PreContestLead before the expected aggro, leaving at most a second before it must. */
+function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: LaneState.LaneEnemy[], now: number): boolean {
+    if (sig.campIdx === undefined || sig.aggroAt === undefined) return false;
+    if (LaneRoles.CampJobOwner(s) !== bot.GetPlayerID() || LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return false;
+    if (!LaneRoles.PartnerSafe(bot, s, enemies)) return false;
+    const data = Camps.ByIdx(sig.campIdx);
+    const spawner = Camps.SpawnerByIdx(sig.campIdx);
+    if (data === undefined || data.pull === undefined || spawner === undefined) return false;
+    const cfg = settings();
+    const lookout = CampJobs.LookoutPoint(spawner.location, PullTiming.LeadPath(data.pull, data.pull.meetPoint), cfg.Radii.PreContestStand);
+    const travel = CampJobs.TravelTime(GetUnitToLocationDistance(bot, lookout), bot.GetCurrentMovementSpeed());
+    const leaveBy = sig.aggroAt - cfg.Timing.PreContestLead - travel;
+    if (travel > cfg.Timing.MaxTravel || now > leaveBy || now < leaveBy - 1) return false;
+    if (!pathSafe(bot, s, lookout, enemies, sig.enemyPid)) return false;
+    return CampJobs.Start(bot, { kind: "contest", campIdx: sig.campIdx, targetPid: sig.enemyPid, preAggroAt: sig.aggroAt });
+}
+
 function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
     for (const [key, sig] of live(st, now)) {
-        if ((sig.kind !== "pull" && sig.kind !== "half_pull") || st.responded[key] === true) continue;
+        if (st.responded[key] === true) continue;
+        if (sig.kind === "pull_expected") {
+            if (!preContest(bot, s, sig, enemies, now)) continue;
+            st.responded[key] = true;
+            return;
+        }
+        if (sig.kind !== "pull" && sig.kind !== "half_pull") continue;
         if (stronger(bot)) {
             const laner = remainingLaner(s, enemies, sig.enemyPid);
             if (laner === undefined) continue;

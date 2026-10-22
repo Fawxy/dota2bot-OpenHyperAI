@@ -241,17 +241,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue230
+            local __continue238
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue230 = true
+                    __continue238 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue230 = true
+                    __continue238 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -262,9 +262,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue230 = true
+                __continue238 = true
             until true
-            if not __continue230 then
+            if not __continue238 then
                 break
             end
         end
@@ -496,6 +496,21 @@ end
 function ____exports.TravelTime(dist, speed)
     return dist / math.max(speed, 1)
 end
+--- The point `dist` along the polyline from `origin` through `path`; the last point when the polyline is shorter.
+function ____exports.LookoutPoint(origin, path, dist)
+    local from = origin
+    local left = dist
+    for ____, to in ipairs(path) do
+        local seg = dist2D(from, to)
+        if seg >= left and seg > 0 then
+            local f = left / seg
+            return Vector(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f, from.z)
+        end
+        left = left - seg
+        from = to
+    end
+    return from
+end
 function ____exports.WindowOpen(now, aggroAt, travel)
     local t = settings().Timing
     return now >= aggroAt - travel - t.JobStartSlack and now <= aggroAt + t.JobStartLate
@@ -628,25 +643,26 @@ local function register(bot, job, data)
         bot,
         commitTech(job.kind)
     )
-    Telemetry.Event(
-        "lane_job_start",
+    local fields = {
         {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"kind", LOG_KIND[job.kind]},
-            {"camp", job.campIdx},
-            {"key", data.key},
-            {
-                "data",
-                dataLabel(data)
-            },
-            {"aggroAt", job.aggroAt},
-            {"forced", job.forced == true},
-            {"timing", job.timing or "seed"}
-        }
-    )
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"kind", LOG_KIND[job.kind]},
+        {"camp", job.campIdx},
+        {"key", data.key},
+        {
+            "data",
+            dataLabel(data)
+        },
+        {"aggroAt", job.aggroAt},
+        {"forced", job.forced == true},
+        {"timing", job.timing or "seed"}
+    }
+    if job.preAggroAt ~= nil then
+        fields[#fields + 1] = {"pre", 1}
+    end
+    Telemetry.Event("lane_job_start", fields)
     HDebug.Log(
         "lane",
         string.format(
@@ -725,7 +741,8 @@ local function startStack(bot, req)
     )
     return true
 end
---- Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible.
+--- Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. A pre-contest
+-- (preAggroAt) first waits at a lookout on their pull path for the expected puller.
 local function startContest(bot, req)
     local data = Camps.ByIdx(req.campIdx)
     local spawner = Camps.SpawnerByIdx(req.campIdx)
@@ -733,19 +750,29 @@ local function startContest(bot, req)
         return false
     end
     local now = DotaTime()
-    local center = Camps.BoxCenter(spawner)
+    local stand = Camps.BoxCenter(spawner)
+    if req.preAggroAt ~= nil then
+        if data.pull == nil then
+            return false
+        end
+        stand = ____exports.LookoutPoint(
+            spawner.location,
+            PullTiming.LeadPath(data.pull, data.pull.meetPoint),
+            settings().Radii.PreContestStand
+        )
+    end
     register(
         bot,
         __TS__ObjectAssign({}, req, {
-            phase = "travel",
-            aggroAt = now,
+            phase = req.preAggroAt ~= nil and "lookout" or "travel",
+            aggroAt = req.preAggroAt or now,
             plannedSec = 0,
-            path = {center},
+            path = {stand},
             startedAt = now,
             peakDivert = 0,
             waveSize = 0,
             activeCamp = req.campIdx,
-            stand = center,
+            stand = stand,
             waypoint = 0,
             stage = 1,
             telegraphed = true,
@@ -1099,13 +1126,28 @@ local function endContest(bot, job, reason)
     job.phase = "return"
     releaseClaims(bot)
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
+    local pre = job.preAggroAt ~= nil and 1 or 0
+    Telemetry.Event(
+        "lane_job_end",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", LOG_KIND[job.kind]},
+            {"camp", job.campIdx},
+            {"reason", reason},
+            {"pre", pre}
+        }
+    )
     HDebug.Log(
         "lane",
         string.format(
-            "contest-end pid=%d camp=%d reason=%s",
+            "contest-end pid=%d camp=%d reason=%s pre=%d",
             bot:GetPlayerID(),
             job.campIdx,
-            reason
+            reason,
+            pre
         )
     )
 end
@@ -1332,9 +1374,18 @@ local function keepGoing(bot, job)
         return false
     end
     local now = DotaTime()
-    if job.kind == "contest" and now - job.startedAt >= settings().Timing.ContestMax then
-        endContest(bot, job, "timeout")
-        return false
+    if job.kind == "contest" then
+        local ____temp_23
+        if job.preAggroAt ~= nil then
+            ____temp_23 = job.attackFrom
+        else
+            ____temp_23 = job.startedAt
+        end
+        local from = ____temp_23
+        if from ~= nil and now - from >= settings().Timing.ContestMax then
+            endContest(bot, job, "timeout")
+            return false
+        end
     end
     if now > job.aggroAt + settings().Timing.JobMaxAfterAggro then
         if job.phase == "watch" then
@@ -1351,13 +1402,13 @@ local function keepGoing(bot, job)
     end
     if job.kind == "stack" then
         local ok, why = stackAllowed(bot, job)
-        local ____LaneConfig_InLaningPhase_result_23
+        local ____LaneConfig_InLaningPhase_result_24
         if LaneConfig.InLaningPhase() then
-            ____LaneConfig_InLaningPhase_result_23 = LaneState.ForBot(bot)
+            ____LaneConfig_InLaningPhase_result_24 = LaneState.ForBot(bot)
         else
-            ____LaneConfig_InLaningPhase_result_23 = nil
+            ____LaneConfig_InLaningPhase_result_24 = nil
         end
-        local ls = ____LaneConfig_InLaningPhase_result_23
+        local ls = ____LaneConfig_InLaningPhase_result_24
         if not ok then
             abortUnsafe(bot, job, why, ls)
         else
@@ -1465,13 +1516,13 @@ local function notePlan(bot, s, now, fields)
         s,
         LaneState.Enemies(bot, s.lane)
     )
-    local ____Telemetry_Event_25 = Telemetry.Event
-    local ____array_24 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_26 = Telemetry.Event
+    local ____array_25 = __TS__SparseArrayNew(
         {"pid", pid},
         unpack(fields)
     )
     __TS__SparseArrayPush(
-        ____array_24,
+        ____array_25,
         {"owner", mayRun and "ok" or why},
         {"eq", s.eqPos},
         {"meet", s.meetAmount},
@@ -1481,9 +1532,9 @@ local function notePlan(bot, s, now, fields)
         {"tower", s.ourTowerAmount},
         {"etower", s.theirTowerAmount}
     )
-    ____Telemetry_Event_25(
+    ____Telemetry_Event_26(
         "lane_plan",
-        {__TS__SparseArraySpread(____array_24)}
+        {__TS__SparseArraySpread(____array_25)}
     )
 end
 --- Whether this bot may double pull its lane's first two camps (skill, a second camp), and if so whether its start
@@ -1662,13 +1713,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_38
+    local ____temp_39
     if data ~= nil then
-        ____temp_38 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_39 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_38 = nil
+        ____temp_39 = nil
     end
-    local spawner = ____temp_38
+    local spawner = ____temp_39
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -1787,13 +1838,13 @@ local function pingPartner(bot, job)
         return
     end
     local s = LaneState.ForBot(bot)
-    local ____temp_39
+    local ____temp_40
     if s ~= nil then
-        ____temp_39 = LaneRoles.Partner(bot, s)
+        ____temp_40 = LaneRoles.Partner(bot, s)
     else
-        ____temp_39 = nil
+        ____temp_40 = nil
     end
-    local partner = ____temp_39
+    local partner = ____temp_40
     if partner == nil or partner.isBot or not Orders.Ping(bot, job.stand) then
         return
     end
@@ -1870,10 +1921,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue258
+            local __continue266
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue258 = true
+                    __continue266 = true
                     break
                 end
                 if dist2D(
@@ -1882,9 +1933,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue258 = true
+                __continue266 = true
             until true
-            if not __continue258 then
+            if not __continue266 then
                 break
             end
         end
@@ -1923,10 +1974,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue267
+            local __continue275
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue267 = true
+                    __continue275 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1936,17 +1987,53 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue267 = true
+                __continue275 = true
             until true
-            if not __continue267 then
+            if not __continue275 then
                 break
             end
         end
     end
     return best
 end
+local function enemyInLane(bot, job)
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
+        if e.pid == job.targetPid and e.visible and dist2D(e.location, s.frontLoc) <= settings().Radii.Exposure then
+            return true
+        end
+    end
+    return false
+end
+--- Waiting at the lookout for the expected puller; true while the job keeps the frame.
+local function stepLookout(bot, job, now)
+    local t = settings().Timing
+    if now >= job.aggroAt - t.PreContestLead and enemyInLane(bot, job) then
+        endContest(bot, job, "enemy-in-lane")
+        return false
+    end
+    if now > job.aggroAt + t.PreContestWait then
+        endContest(bot, job, "no-pull")
+        return false
+    end
+    if not arrived(bot, job.stand) then
+        return moveTo(bot, job.stand)
+    end
+    Intent.Hold(bot, "lane:precontest")
+    return true
+end
 local function stepContest(bot, job, now)
     local target = contestTarget(bot, job)
+    if job.phase == "lookout" then
+        if target == nil then
+            return stepLookout(bot, job, now)
+        end
+        job.attackFrom = now
+        job.phase = "travel"
+    end
     if target ~= nil then
         if job.lastAttackAt == nil or now - job.lastAttackAt >= settings().Timing.ContestAttackGap then
             bot:Action_AttackUnit(target, true)
@@ -2061,13 +2148,13 @@ local function supply(bot, job, now)
     end
     if job.tangoUsed ~= true and bot:GetMaxHealth() - bot:GetHealth() >= cfg.Thresholds.TangoMinLost and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing") then
         local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
-        local ____temp_42
+        local ____temp_43
         if tango ~= nil then
-            ____temp_42 = tangoTree(bot)
+            ____temp_43 = tangoTree(bot)
         else
-            ____temp_42 = nil
+            ____temp_43 = nil
         end
-        local tree = ____temp_42
+        local tree = ____temp_43
         if tango ~= nil and tree ~= nil then
             job.tangoUsed = true
             awaitSupply(job, now, "modifier_tango_heal")
