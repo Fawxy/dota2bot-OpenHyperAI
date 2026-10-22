@@ -107,6 +107,38 @@ do
 end
 
 do
+	-- The wave anomaly against real waves: `sizes` enemy creeps reach our front at :05 of successive cycles from 1:00.
+	-- console.9057072982: one stacked cycle (8) made the next normal waves (4) read as thin, 73 half_pulls and no pull.
+	local function anomalies(sizes, supportInLane)
+		local H, support, _, _, esup = world(1, { telemetry = { Enable = true } })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		if not supportInLane then
+			hide(esup, 4)
+			esup.loc = Vector(-6000, -6000)
+		end
+		RANDOM_FRACTION = 0
+		for k, n in ipairs(sizes) do
+			local c0 = 60 + 30 * (k - 1)
+			for i = #CREEPS[3], 1, -1 do table.remove(CREEPS[3], i) end
+			for t = c0, c0 + 29.5, 0.5 do
+				if t == c0 + 5 then for i = 1, n do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end end
+				tick(H, support, t)
+			end
+		end
+		RANDOM_FRACTION = nil
+		local n = 0
+		for _, l in ipairs(lines) do
+			if l:find(" ev=lane_signal ", 1, true) and (l:find("kind=half_pull", 1, true) or l:find("kind=pull ", 1, true)) then n = n + 1 end
+		end
+		return n
+	end
+	check("a stacked cycle does not make the next normal waves thin", anomalies({ 8, 4, 4, 4 }) == 0, anomalies({ 8, 4, 4, 4 }))
+	check("positive control: 2 of a 4-creep wave with their support unseen -> thin", anomalies({ 4, 4, 2 }) == 1, anomalies({ 4, 4, 2 }))
+	check("their support seen in our lane: a thin wave is no pull", anomalies({ 4, 4, 2 }, true) == 0, anomalies({ 4, 4, 2 }, true))
+end
+
+do
 	local H = world(0.5)
 	local C = H.Lane.Counter
 	check("two cycles near their tower with denies -> freeze", C.FreezeSuspected({ 0.7, 0.65 }, { 3, 2 }))

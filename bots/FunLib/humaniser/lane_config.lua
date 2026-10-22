@@ -200,6 +200,7 @@ ____exports.DEFAULTS = {
         MidMissingEq = -0.6,
         FreezeSuspectEq = 0.6,
         ThinWaveMargin = 2,
+        WaveCreeps = 4,
         StackMaxCampCount = 1,
         ApproachEpsilon = 25,
         ExposureEnemies = 2

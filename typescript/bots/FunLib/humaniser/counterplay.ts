@@ -375,10 +375,12 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
     }
     st.waveMax = math.max(st.waveMax, s.enemy.count);
     if (s.enemyWaveSizes.length === 0) return;
-    let typical = 0;
-    for (const n of s.enemyWaveSizes) typical = math.max(typical, n);
-    const anomaly = WaveAnomaly(s.cycleSec, s.enemyArrivalSec, st.waveMax, typical);
+    // A wave's size is public (3 melee, 1 ranged in the laning phase). The front's past counts are not a baseline:
+    // they include the previous wave's survivors, so one stacked cycle made the next normal waves read as thin.
+    const anomaly = WaveAnomaly(s.cycleSec, s.enemyArrivalSec, st.waveMax, settings().Thresholds.WaveCreeps);
     if (anomaly === undefined) return;
+    // Their support standing in our lane is not pulling: the wave is only late or partly in sight.
+    if (support !== undefined && support.visible && isLaner(support, s)) return;
     const kind = anomaly === "late" ? "pull" : "half_pull";
     const sig = { kind, lane: s.lane, at: now, campIdx: camps[0].campIdx, enemyPid: support?.pid } as Omit<Signal, "noticed">;
     observe(bot, st, `${kind}:${camps[0].campIdx}:${cycle}`, sig, s, enemies);

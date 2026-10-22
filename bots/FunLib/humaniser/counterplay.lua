@@ -719,12 +719,16 @@ local function pullSignals(bot, st, s, enemies, now)
     if #s.enemyWaveSizes == 0 then
         return
     end
-    local typical = 0
-    for ____, n in ipairs(s.enemyWaveSizes) do
-        typical = math.max(typical, n)
-    end
-    local anomaly = ____exports.WaveAnomaly(s.cycleSec, s.enemyArrivalSec, st.waveMax, typical)
+    local anomaly = ____exports.WaveAnomaly(
+        s.cycleSec,
+        s.enemyArrivalSec,
+        st.waveMax,
+        settings().Thresholds.WaveCreeps
+    )
     if anomaly == nil then
+        return
+    end
+    if support ~= nil and support.visible and isLaner(support, s) then
         return
     end
     local kind = anomaly == "late" and "pull" or "half_pull"
@@ -815,15 +819,15 @@ local function stackSignals(bot, st, s, enemies, now)
     if after then
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(cfg.Radii.CounterNeutralScan, false) or ({})) do
             do
-                local __continue104
+                local __continue103
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                        __continue104 = true
+                        __continue103 = true
                         break
                     end
                     local spawner = Camps.NearestSpawner(n:GetLocation())
                     if spawner == nil or spawner.team == s.team then
-                        __continue104 = true
+                        __continue103 = true
                         break
                     end
                     if not Camps.InBox(
@@ -833,9 +837,9 @@ local function stackSignals(bot, st, s, enemies, now)
                     ) then
                         outside[spawner.idx] = true
                     end
-                    __continue104 = true
+                    __continue103 = true
                 until true
-                if not __continue104 then
+                if not __continue103 then
                     break
                 end
             end
@@ -843,7 +847,7 @@ local function stackSignals(bot, st, s, enemies, now)
     end
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue109
+            local __continue108
             repeat
                 local center = Camps.BoxCenter(spawner)
                 local near
@@ -856,7 +860,7 @@ local function stackSignals(bot, st, s, enemies, now)
                     end
                 end
                 if not ____exports.StackSuspected(sec, near ~= nil, outside[spawner.idx] == true) then
-                    __continue109 = true
+                    __continue108 = true
                     break
                 end
                 local sig = {
@@ -874,9 +878,9 @@ local function stackSignals(bot, st, s, enemies, now)
                     s,
                     enemies
                 )
-                __continue109 = true
+                __continue108 = true
             until true
-            if not __continue109 then
+            if not __continue108 then
                 break
             end
         end
@@ -937,10 +941,10 @@ local function live(st, now)
     local result = {}
     for key, sig in pairs(st.instances) do
         do
-            local __continue122
+            local __continue121
             repeat
                 if not sig.noticed then
-                    __continue122 = true
+                    __continue121 = true
                     break
                 end
                 local ____temp_10
@@ -953,9 +957,9 @@ local function live(st, now)
                 if alive then
                     result[#result + 1] = {key, sig}
                 end
-                __continue122 = true
+                __continue121 = true
             until true
-            if not __continue122 then
+            if not __continue121 then
                 break
             end
         end
@@ -1004,10 +1008,10 @@ local function remainingLaner(s, enemies, pullerPid)
     local bestDist = settings().Radii.LaneCreep
     for ____, e in ipairs(enemies) do
         do
-            local __continue135
+            local __continue134
             repeat
                 if not e.visible or e.unit == nil or e.pid == pullerPid then
-                    __continue135 = true
+                    __continue134 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -1015,9 +1019,9 @@ local function remainingLaner(s, enemies, pullerPid)
                     best = e
                     bestDist = d
                 end
-                __continue135 = true
+                __continue134 = true
             until true
-            if not __continue135 then
+            if not __continue134 then
                 break
             end
         end
@@ -1031,18 +1035,18 @@ local function pathSafe(bot, s, to, enemies, pullerPid)
     local from = bot:GetLocation()
     for ____, e in ipairs(enemies) do
         do
-            local __continue142
+            local __continue141
             repeat
                 if e.pid == pullerPid or isLaner(e, s) or not e.visible and e.timeSinceSeen > cfg.Timing.PathSafeSeen then
-                    __continue142 = true
+                    __continue141 = true
                     break
                 end
                 if distToSegment(e.location, from, to) <= cfg.Radii.PathSafe then
                     return false
                 end
-                __continue142 = true
+                __continue141 = true
             until true
-            if not __continue142 then
+            if not __continue141 then
                 break
             end
         end
@@ -1241,10 +1245,10 @@ local function respondToPull(bot, st, s, enemies, now)
         local key = ____value[1]
         local sig = ____value[2]
         do
-            local __continue182
+            local __continue181
             repeat
                 if st.responded[key] == true then
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 if sig.kind == "pull_expected" then
@@ -1255,7 +1259,7 @@ local function respondToPull(bot, st, s, enemies, now)
                         enemies,
                         now
                     ) then
-                        __continue182 = true
+                        __continue181 = true
                         break
                     end
                     st.responded[key] = true
@@ -1266,12 +1270,12 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.kind ~= "pull" and sig.kind ~= "half_pull" then
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 if preContested(st, sig) then
                     st.responded[key] = true
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 local ____stronger_result_12
@@ -1307,11 +1311,11 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.campIdx == nil or LaneRoles.CampJobOwner(s) ~= bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil then
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 if CampJobs.Active(bot) then
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(sig.campIdx)
@@ -1322,7 +1326,7 @@ local function respondToPull(bot, st, s, enemies, now)
                     enemies,
                     sig.enemyPid
                 ) then
-                    __continue182 = true
+                    __continue181 = true
                     break
                 end
                 if CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid}) then
@@ -1330,7 +1334,7 @@ local function respondToPull(bot, st, s, enemies, now)
                 end
                 return
             until true
-            if not __continue182 then
+            if not __continue181 then
                 break
             end
         end
@@ -1515,18 +1519,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue240
+            local __continue239
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue240 = true
+                    __continue239 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue240 = true
+                __continue239 = true
             until true
-            if not __continue240 then
+            if not __continue239 then
                 break
             end
         end
@@ -1557,7 +1561,7 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue248
+            local __continue247
             repeat
                 local ____opt_result_17
                 if camp ~= nil then
@@ -1569,19 +1573,19 @@ function ____exports.PreferStackedCamp(bot, camps)
                 end
                 local loc = ____opt_result_18
                 if loc == nil then
-                    __continue248 = true
+                    __continue247 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue248 = true
+                    __continue247 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue248 = true
+                    __continue247 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1589,9 +1593,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue248 = true
+                __continue247 = true
             until true
-            if not __continue248 then
+            if not __continue247 then
                 break
             end
         end
