@@ -87,7 +87,6 @@ end
 local function isFightMode(mode)
     return mode == BotMode.Attack or mode == BotMode.Roam or mode == BotMode.TeamRoam or mode == BotMode.DefendTowerTop or mode == BotMode.DefendTowerMid or mode == BotMode.DefendTowerBot or mode == BotMode.DefendAlly
 end
-local LANE_PING_RADIUS = 2000
 function ____exports.IsBusy(bot, windowEnd)
     local cfg = Settings.Get()
     local alive = bot:IsAlive()
@@ -95,7 +94,7 @@ function ____exports.IsBusy(bot, windowEnd)
     local team = bot:GetTeam()
     local ____exports_IsBusyPure_8 = ____exports.IsBusyPure
     local ____temp_1 = Orders.GetFor(bot) ~= nil
-    local ____temp_2 = CampJobs.Active(bot) or CampJobs.UpcomingWithin(bot, 30)
+    local ____temp_2 = CampJobs.Active(bot) or CampJobs.UpcomingWithin(bot, cfg.BusyJobLead)
     local ____temp_3 = isFightMode(mode) or LaneHooks.IsBusyByProbe(bot)
     local ____temp_4 = mode == BotMode.Retreat
     local ____temp_5 = alive and frac(
@@ -131,7 +130,7 @@ function ____exports.IsBusy(bot, windowEnd)
                 bot:GetAssignedLane(),
                 0
             ),
-            LANE_PING_RADIUS,
+            cfg.LanePingRadius,
             cfg.HumanPingWindow
         )
     })
@@ -152,7 +151,7 @@ function ____exports.LaneCanSpare(bot, strict)
         return false, "solo"
     end
     local partnerLoc = partner.unit:GetLocation()
-    local partnerLow = reading.hp < 0.5
+    local partnerLow = reading.hp < cfg.SpareKillHP
     local spareEnemies = {}
     local near = false
     for ____, e in ipairs(enemies) do
@@ -166,7 +165,7 @@ function ____exports.LaneCanSpare(bot, strict)
                 local kill = false
                 if e.visible and e.unit ~= nil then
                     local d = dist2D(e.location, partnerLoc)
-                    kill = partnerLow and d <= e.unit:GetAttackRange() + 300
+                    kill = partnerLow and d <= e.unit:GetAttackRange() + cfg.SpareKillMargin
                     if d <= cfg.Pos5EnemyRadius then
                         near = true
                     end
@@ -190,7 +189,7 @@ function ____exports.LaneCanSpare(bot, strict)
         bot:GetHealth(),
         bot:GetMaxHealth()
     )
-    local asked = Orders.GetAcceptedForLane(bot, "LANE_NOPULL", s.lane) ~= nil or Orders.GetAcceptedForLane(bot, "LANE_HANDSOFF", s.lane) ~= nil or Pings.HumanPingNear(s.team, s.frontLoc, LANE_PING_RADIUS, cfg.HumanPingWindow)
+    local asked = Orders.GetAcceptedForLane(bot, "LANE_NOPULL", s.lane) ~= nil or Orders.GetAcceptedForLane(bot, "LANE_HANDSOFF", s.lane) ~= nil or Pings.HumanPingNear(s.team, s.frontLoc, cfg.LanePingRadius, cfg.HumanPingWindow)
     return ____exports.LaneCanSparePure({
         eqPos = s.eqPos,
         plan = LanePlan.View(bot, s).plan,

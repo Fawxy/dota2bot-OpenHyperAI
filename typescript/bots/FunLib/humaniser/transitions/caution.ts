@@ -31,8 +31,9 @@ export interface CautionInput {
 }
 
 export function CautionLevel(i: CautionInput): number {
-    const base = i.missing > 0 ? 1 : i.alone ? math.min(1, 0.5 + 0.25 * math.max(0, i.laneEnemies - 1)) : 0;
-    return base * Settings.Lerp(Settings.Get().SkillAmount, i.skill);
+    const cfg = Settings.Get();
+    const base = i.missing > 0 ? 1 : i.alone ? math.min(1, cfg.AloneLevel + cfg.AloneLevelPerEnemy * math.max(0, i.laneEnemies - 1)) : 0;
+    return base * Settings.Lerp(cfg.SkillAmount, i.skill);
 }
 
 interface State {
@@ -202,7 +203,7 @@ export function AdjustPosition(bot: Unit, loc: Vector): Vector {
 }
 
 export function SuppressTrades(bot: Unit): boolean {
-    if (Level(bot) < 0.5) return false;
+    if (Level(bot) < Settings.Get().SuppressLevel) return false;
     const stronger = LaneConfig.Helpers().WeAreStronger;
     return stronger === undefined || !stronger(bot, Settings.Get().CautionStrongerRadius);
 }

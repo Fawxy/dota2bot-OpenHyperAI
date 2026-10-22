@@ -130,7 +130,7 @@ function ____exports.Pick(bot, spots)
         return nil
     end
     local done = planted[key]
-    if done ~= nil and done.spot.plant_time_obs ~= nil and done.spot.plant_time_obs > 0 and now - done.spot.plant_time_obs < 360 then
+    if done ~= nil and done.spot.plant_time_obs ~= nil and done.spot.plant_time_obs > 0 and now - done.spot.plant_time_obs < cfg.WardLifetime then
         return nil
     end
     for ____, loc in ipairs(observers(s.team)) do

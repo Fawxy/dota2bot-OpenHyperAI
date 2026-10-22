@@ -109,9 +109,6 @@ function isFightMode(mode: number): boolean {
     );
 }
 
-// Pings this close to the lane front count as being on the lane.
-const LANE_PING_RADIUS = 2000;
-
 export function IsBusy(bot: Unit, windowEnd: number): LuaMultiReturn<[boolean, string]> {
     const cfg = Settings.Get();
     const alive = bot.IsAlive();
@@ -119,7 +116,7 @@ export function IsBusy(bot: Unit, windowEnd: number): LuaMultiReturn<[boolean, s
     const team = bot.GetTeam();
     return IsBusyPure({
         order: Orders.GetFor(bot) !== undefined,
-        campJob: CampJobs.Active(bot) || CampJobs.UpcomingWithin(bot, 30),
+        campJob: CampJobs.Active(bot) || CampJobs.UpcomingWithin(bot, cfg.BusyJobLead),
         fighting: isFightMode(mode) || LaneHooks.IsBusyByProbe(bot),
         retreating: mode === BotMode.Retreat,
         hp: alive ? frac(bot.GetHealth(), bot.GetMaxHealth()) : 0,
@@ -129,7 +126,7 @@ export function IsBusy(bot: Unit, windowEnd: number): LuaMultiReturn<[boolean, s
         windowEnd,
         // Placeholder until task 13.
         carrying: false,
-        humanPingOnLane: Pings.HumanPingNear(team, GetLaneFrontLocation(team, bot.GetAssignedLane(), 0), LANE_PING_RADIUS, cfg.HumanPingWindow),
+        humanPingOnLane: Pings.HumanPingNear(team, GetLaneFrontLocation(team, bot.GetAssignedLane(), 0), cfg.LanePingRadius, cfg.HumanPingWindow),
     });
 }
 
@@ -144,7 +141,7 @@ export function LaneCanSpare(bot: Unit, strict: boolean): LuaMultiReturn<[boolea
     if (reading === undefined) return $multi(false, "solo");
 
     const partnerLoc = partner.unit.GetLocation();
-    const partnerLow = reading.hp < 0.5;
+    const partnerLow = reading.hp < cfg.SpareKillHP;
     const spareEnemies: SpareEnemy[] = [];
     let near = false;
     for (const e of enemies) {
@@ -152,7 +149,7 @@ export function LaneCanSpare(bot: Unit, strict: boolean): LuaMultiReturn<[boolea
         let kill = false;
         if (e.visible && e.unit !== undefined) {
             const d = dist2D(e.location, partnerLoc);
-            kill = partnerLow && d <= e.unit.GetAttackRange() + 300;
+            kill = partnerLow && d <= e.unit.GetAttackRange() + cfg.SpareKillMargin;
             if (d <= cfg.Pos5EnemyRadius) near = true;
         }
         spareEnemies.push({ visible: e.visible, sinceSeen: e.timeSinceSeen, inKillPosition: kill });
@@ -168,7 +165,7 @@ export function LaneCanSpare(bot: Unit, strict: boolean): LuaMultiReturn<[boolea
     const asked =
         Orders.GetAcceptedForLane(bot, "LANE_NOPULL", s.lane) !== undefined ||
         Orders.GetAcceptedForLane(bot, "LANE_HANDSOFF", s.lane) !== undefined ||
-        Pings.HumanPingNear(s.team, s.frontLoc, LANE_PING_RADIUS, cfg.HumanPingWindow);
+        Pings.HumanPingNear(s.team, s.frontLoc, cfg.LanePingRadius, cfg.HumanPingWindow);
 
     return LaneCanSparePure({
         eqPos: s.eqPos,

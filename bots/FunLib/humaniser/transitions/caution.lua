@@ -178,14 +178,12 @@ local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/ro
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 ____exports.SOURCE = "transitions:caution"
 function ____exports.CautionLevel(i)
+    local cfg = Settings.Get()
     local base = i.missing > 0 and 1 or (i.alone and math.min(
         1,
-        0.5 + 0.25 * math.max(0, i.laneEnemies - 1)
+        cfg.AloneLevel + cfg.AloneLevelPerEnemy * math.max(0, i.laneEnemies - 1)
     ) or 0)
-    return base * Settings.Lerp(
-        Settings.Get().SkillAmount,
-        i.skill
-    )
+    return base * Settings.Lerp(cfg.SkillAmount, i.skill)
 end
 local states = {}
 local episodes = {}
@@ -379,7 +377,7 @@ function ____exports.AdjustPosition(bot, loc)
     return towardTower(bot, loc, level)
 end
 function ____exports.SuppressTrades(bot)
-    if ____exports.Level(bot) < 0.5 then
+    if ____exports.Level(bot) < Settings.Get().SuppressLevel then
         return false
     end
     local stronger = LaneConfig.Helpers().WeAreStronger

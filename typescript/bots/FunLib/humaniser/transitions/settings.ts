@@ -36,12 +36,19 @@ export const DEFAULTS = {
     BusyHP: 0.5,
     BusyMana: 0.3,
     HumanPingWindow: 30,
+    // Pings this close to the lane front count as being on the lane.
+    LanePingRadius: 2000,
+    // A camp job due within this many seconds makes the bot busy.
+    BusyJobLead: 30,
     SpareEq: -0.2,
     SparePartnerHP: 0.6,
     SpareCreepAggro: 3,
     SpareSeenWithin: 5,
     Pos5PartnerHP: 0.75,
     Pos5EnemyRadius: 1200,
+    // A partner under this HP fraction with a visible enemy within attack range plus SpareKillMargin is in kill position.
+    SpareKillHP: 0.5,
+    SpareKillMargin: 300,
     // Enemies last seen farther than this from the lane front are not counted as missing laners.
     SpareLaneRadius: 3500,
     DecideFrom: 25,
@@ -80,6 +87,11 @@ export const DEFAULTS = {
     AttackScaleMin: 0.7,
     SkillAmount: { Low: 0.5, High: 1.0 } as LerpPair,
     MissingCooldown: 30,
+    // An alone laner's caution: AloneLevel against one enemy laner, plus AloneLevelPerEnemy per extra one (capped at 1).
+    AloneLevel: 0.5,
+    AloneLevelPerEnemy: 0.25,
+    // Trades are suppressed from this caution level up.
+    SuppressLevel: 0.5,
     // An enemy unseen longer than this is no longer counted as missing (it has left the lane, not hidden near it).
     MissingMaxAge: 60,
     // SuppressTrades lets trades through when WeAreStronger within this radius.
@@ -108,6 +120,8 @@ export const DEFAULTS = {
     WardFloor: 0.6,
     // A lane-ward pick counts as live (the claim keeps posting) this long after the ward mode last asked.
     WardLive: 1,
+    // A planted lane ward covers the lane this long (the observer ward's lifetime).
+    WardLifetime: 360,
     SupportLevel: 6,
     SupportFrom: 360,
     SupportTo: 480,

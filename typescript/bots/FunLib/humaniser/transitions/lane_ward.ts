@@ -112,7 +112,7 @@ export function Pick(bot: Unit, spots: { location: Vector }[]): { location: Vect
     if (anchor === undefined) return undefined;
     // The ward mode stamps plant_time_obs on the spot it plants, which covers the lane before the scan cache catches up.
     const done = planted[key];
-    if (done !== undefined && done.spot.plant_time_obs !== undefined && done.spot.plant_time_obs > 0 && now - done.spot.plant_time_obs < 360) return undefined;
+    if (done !== undefined && done.spot.plant_time_obs !== undefined && done.spot.plant_time_obs > 0 && now - done.spot.plant_time_obs < cfg.WardLifetime) return undefined;
     for (const loc of observers(s.team)) if (dist2D(loc, anchor) <= cfg.WardCoverRadius) return undefined;
 
     let best: { location: Vector } | undefined;
