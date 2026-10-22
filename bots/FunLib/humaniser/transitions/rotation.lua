@@ -182,17 +182,18 @@ local function dist2D(a, b)
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
 end
+--- Only bot supports decide or rotate; a human support's plans are unknown, so they are never guessed.
 local function isSupport(bot)
     local pos = LaneConfig.PositionOf(bot)
-    return pos == 4 or pos == 5
+    return (pos == 4 or pos == 5) and bot:IsBot()
 end
-local function teammate(bot, pos)
+local function teammate(bot, pos, botsOnly)
     local n = #GetTeamPlayers(bot:GetTeam())
     do
         local i = 1
         while i <= n do
             local m = GetTeamMember(i)
-            if m ~= nil and m ~= nil and m:IsAlive() and LaneConfig.PositionOf(m) == pos then
+            if m ~= nil and m ~= nil and m:IsAlive() and LaneConfig.PositionOf(m) == pos and (not botsOnly or m:IsBot()) then
                 return m
             end
             i = i + 1
@@ -255,7 +256,7 @@ function ____exports.Decide(bot, now)
     end
     local ____temp_0
     if LaneConfig.PositionOf(bot) == 5 then
-        ____temp_0 = teammate(bot, 4)
+        ____temp_0 = teammate(bot, 4, true)
     else
         ____temp_0 = nil
     end
@@ -315,7 +316,7 @@ function ____exports.Decide(bot, now)
     return d
 end
 function ____exports.Active(bot)
-    if not Settings.IsOn("Rotation") then
+    if not Settings.IsOn("Rotation") or not bot:IsBot() then
         return nil
     end
     local e = entries[bot:GetPlayerID()]
@@ -350,7 +351,7 @@ function ____exports.MidRuneDesire(bot)
         do
             local __continue40
             repeat
-                local support = teammate(bot, pos)
+                local support = teammate(bot, pos, true)
                 local ____temp_1
                 if support ~= nil then
                     ____temp_1 = ____exports.Active(support)
@@ -402,12 +403,16 @@ local function say(bot, key)
         )
     end
 end
---- Our heroes at or heading for the spot: the support, our mid within ContestMidRadius, and another support rotating there.
+--- Our heroes at or heading for the spot: the support, our mid within ContestMidRadius, another bot support
+-- rotating there, and any other human ally standing within ContestRadius of it now (by position only).
 local function ours(bot, d)
     local cfg = Settings.Get()
+    if d.spot == nil then
+        return 1
+    end
     local n = 1
-    local mid = teammate(bot, 2)
-    if mid ~= nil and d.spot ~= nil and dist2D(
+    local mid = teammate(bot, 2, false)
+    if mid ~= nil and dist2D(
         mid:GetLocation(),
         d.spot
     ) <= cfg.ContestMidRadius then
@@ -415,11 +420,39 @@ local function ours(bot, d)
     end
     local other = teammate(
         bot,
-        LaneConfig.PositionOf(bot) == 4 and 5 or 4
+        LaneConfig.PositionOf(bot) == 4 and 5 or 4,
+        true
     )
     local od = other ~= nil and entries[other:GetPlayerID()] or nil
     if od ~= nil and od.decision.go and od.decision.spawn == d.spawn and od.decision.side == d.side then
         n = n + 1
+    end
+    local count = #GetTeamPlayers(bot:GetTeam())
+    do
+        local i = 1
+        while i <= count do
+            do
+                local __continue54
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m == mid or m == bot or m:IsBot() or not m:IsAlive() then
+                        __continue54 = true
+                        break
+                    end
+                    if dist2D(
+                        m:GetLocation(),
+                        d.spot
+                    ) <= cfg.ContestRadius then
+                        n = n + 1
+                    end
+                    __continue54 = true
+                until true
+                if not __continue54 then
+                    break
+                end
+            end
+            i = i + 1
+        end
     end
     return n
 end

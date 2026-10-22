@@ -193,6 +193,34 @@ do
 	check("mistake never skips IsBusy", d.go == false and d.reason == "hp", d.reason)
 end
 
+do
+	-- A human pos 4 neither decides nor rotates: the bot pos 5 decides as if there were no pos 4.
+	local w = world()
+	w.p4.bot = false
+	rolls(PASS, PASS)
+	local d = w.R.Decide(w.p5, 335)
+	check("human pos 4: bot pos 5 decides as if pos 4 is absent", d.go == true and d.reason == "ok", d.reason)
+	check("human pos 4: only the bot drew rolls", RandomUnread() == 4, RandomUnread())
+	check("human pos 4 gets no decision", w.R.Decide(w.p4, 335).go == false)
+	T = 355
+	w.p4.loc = Vector(-1000, 0)
+	check("human pos 4 near the mid: no phantom mid floor", w.R.MidRuneDesire(w.mid) == 0, w.R.MidRuneDesire(w.mid))
+	check("human pos 4: the lane plan sees no rotation", not w.H.Lane.Hooks.IsRotationPlanned(w.p4))
+end
+
+do
+	-- A human ally standing at the spot counts for the contest by position.
+	local w = world()
+	w.off.bot = false
+	rolls(PASS)
+	w.H.Transitions.Tick(w.p4)
+	for i = 0, 2 do MakeUnit({ pid = 10 + i, team = 3, loc = Vector(-1500 + 100 * i, 1500) }) end
+	w.off.loc = Vector(-1400, 1400)
+	T = 350
+	w.H.Transitions.Tick(w.p4)
+	check("a human ally at the spot evens the contest", w.R.Active(w.p4) ~= nil)
+end
+
 -- Kill switch contrast: the same world posts the claim only with Transitions enabled.
 for _, enabled in ipairs({ true, false }) do
 	local w = world({ transitions = { Enable = enabled } })

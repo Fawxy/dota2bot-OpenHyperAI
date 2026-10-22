@@ -50,16 +50,17 @@ function dist2D(a: Vector, b: Vector): number {
     return math.sqrt(dx * dx + dy * dy);
 }
 
+/** Only bot supports decide or rotate; a human support's plans are unknown, so they are never guessed. */
 function isSupport(bot: Unit): boolean {
     const pos = LaneConfig.PositionOf(bot);
-    return pos === 4 || pos === 5;
+    return (pos === 4 || pos === 5) && bot.IsBot();
 }
 
-function teammate(bot: Unit, pos: number): Unit | undefined {
+function teammate(bot: Unit, pos: number, botsOnly: boolean): Unit | undefined {
     const n = GetTeamPlayers(bot.GetTeam()).length;
     for (let i = 1; i <= n; i++) {
         const m = GetTeamMember(i);
-        if (m !== undefined && m !== null && m.IsAlive() && LaneConfig.PositionOf(m) === pos) return m;
+        if (m !== undefined && m !== null && m.IsAlive() && LaneConfig.PositionOf(m) === pos && (!botsOnly || m.IsBot())) return m;
     }
     return undefined;
 }
@@ -96,8 +97,8 @@ export function Decide(bot: Unit, now: number): RotationDecision {
         return { spawn, go: false, reason: "window" };
     }
 
-    // The pos 5 reads the pos 4's decision, so the pos 4 decides (and draws its rolls) first.
-    const p4 = LaneConfig.PositionOf(bot) === 5 ? teammate(bot, 4) : undefined;
+    // The pos 5 reads the pos 4's decision, so the pos 4 decides (and draws its rolls) first. A human pos 4 counts as absent.
+    const p4 = LaneConfig.PositionOf(bot) === 5 ? teammate(bot, 4, true) : undefined;
     const d4 = p4 !== undefined ? Decide(p4, now) : undefined;
 
     const skill = LaneConfig.SkillOf(bot);
@@ -133,7 +134,7 @@ export function Decide(bot: Unit, now: number): RotationDecision {
 }
 
 export function Active(bot: Unit): RotationDecision | undefined {
-    if (!Settings.IsOn("Rotation")) return undefined;
+    if (!Settings.IsOn("Rotation") || !bot.IsBot()) return undefined;
     const e = entries[bot.GetPlayerID()];
     if (e === undefined || !e.decision.go) return undefined;
     const now = DotaTime();
@@ -157,7 +158,7 @@ export function MidRuneDesire(bot: Unit): number {
     const cfg = Settings.Get();
     const now = DotaTime();
     for (const pos of [4, 5]) {
-        const support = teammate(bot, pos);
+        const support = teammate(bot, pos, true);
         const d = support !== undefined ? Active(support) : undefined;
         if (support === undefined || d === undefined || d.spot === undefined) continue;
         if (now < d.spawn - cfg.MidContestFrom || now > d.spawn + cfg.RotateLinger) continue;
@@ -179,15 +180,25 @@ function say(bot: Unit, key: string): void {
     if (Difficulty.IsAllyOfHuman(bot)) Orders.Say(bot, key, Settings.Get().ChatCooldown);
 }
 
-/** Our heroes at or heading for the spot: the support, our mid within ContestMidRadius, and another support rotating there. */
+/**
+ * Our heroes at or heading for the spot: the support, our mid within ContestMidRadius, another bot support
+ * rotating there, and any other human ally standing within ContestRadius of it now (by position only).
+ */
 function ours(bot: Unit, d: RotationDecision): number {
     const cfg = Settings.Get();
+    if (d.spot === undefined) return 1;
     let n = 1;
-    const mid = teammate(bot, 2);
-    if (mid !== undefined && d.spot !== undefined && dist2D(mid.GetLocation(), d.spot) <= cfg.ContestMidRadius) n++;
-    const other = teammate(bot, LaneConfig.PositionOf(bot) === 4 ? 5 : 4);
+    const mid = teammate(bot, 2, false);
+    if (mid !== undefined && dist2D(mid.GetLocation(), d.spot) <= cfg.ContestMidRadius) n++;
+    const other = teammate(bot, LaneConfig.PositionOf(bot) === 4 ? 5 : 4, true);
     const od = other !== undefined ? entries[other.GetPlayerID()] : undefined;
     if (od !== undefined && od.decision.go && od.decision.spawn === d.spawn && od.decision.side === d.side) n++;
+    const count = GetTeamPlayers(bot.GetTeam()).length;
+    for (let i = 1; i <= count; i++) {
+        const m = GetTeamMember(i);
+        if (m === undefined || m === null || m === mid || m === bot || m.IsBot() || !m.IsAlive()) continue;
+        if (dist2D(m.GetLocation(), d.spot) <= cfg.ContestRadius) n++;
+    }
     return n;
 }
 

@@ -226,8 +226,8 @@ function GetDesire()
 	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
 		J.Humaniser.Transitions.MidRuneYield(bot)
 	end
-	-- Likewise the rotating support's floor (Task 4).
-	if sGate ~= 'power' and J.Humaniser.Transitions.RuneTarget(bot) then
+	-- Likewise the rotating support's floor (Task 4), on every such frame so a claim outliving its rotation never lifts a gate.
+	if sGate ~= 'power' then
 		J.Humaniser.Transitions.RotationYield(bot)
 	end
 	local nDesire = J.Humaniser.Intent.Resolve(bot, BOT_MODE_RUNE, nRaw)
