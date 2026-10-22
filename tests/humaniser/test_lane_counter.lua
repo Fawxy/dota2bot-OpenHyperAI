@@ -998,6 +998,9 @@ do
 	check("their tower beside the camp: no take", select(3, taking({ setup = function()
 		TOWERS_W[3][dota.Tower.Top1].loc = Vector(THEIR_SMALL.x + 300, THEIR_SMALL.y)
 	end })) == nil)
+	-- The camp jobs' own start gate: a take is no start at 60% HP, nor in a fight.
+	check("60% HP (under JobStartHP): no take", select(3, taking({ setup = function(_, c) c.hp = 60 end })) == nil)
+	check("hit by a hero next to it: no take", select(3, taking({ enemyCoreAt = true, setup = function(_, c) c.heroHitAt = 75 end })) == nil)
 	check("a third enemy seen near the route: no take", select(3, taking({ setup = function()
 		local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
 		hide(mid, 3)

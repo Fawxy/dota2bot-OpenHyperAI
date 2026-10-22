@@ -1212,6 +1212,10 @@ local function takeBlock(bot, s, sig, enemies)
     if LanePlanner.Committed(bot) ~= nil or CampJobs.Active(bot) then
         return "committed"
     end
+    local blocked = CampJobs.StartBlocked(bot)
+    if blocked ~= nil then
+        return blocked
+    end
     if LanePlan.View(bot, s).handsOff then
         return "handsoff"
     end
@@ -1301,10 +1305,10 @@ local function respondToPull(bot, st, s, enemies, now)
         local key = ____value[1]
         local sig = ____value[2]
         do
-            local __continue194
+            local __continue195
             repeat
                 if st.responded[key] == true then
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 if sig.kind == "pull_expected" then
@@ -1315,7 +1319,7 @@ local function respondToPull(bot, st, s, enemies, now)
                         enemies,
                         now
                     ) then
-                        __continue194 = true
+                        __continue195 = true
                         break
                     end
                     st.responded[key] = true
@@ -1326,12 +1330,12 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.kind ~= "pull" and sig.kind ~= "half_pull" then
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 if preContested(st, sig) then
                     st.responded[key] = true
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 local late = now - sig.at > settings().Timing.CounterRespondFresh
@@ -1345,7 +1349,7 @@ local function respondToPull(bot, st, s, enemies, now)
                             late and sig.source == "seen" and "stale" or (sig.source or "wave")
                         )
                     end
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 local ____stronger_result_12
@@ -1381,11 +1385,11 @@ local function respondToPull(bot, st, s, enemies, now)
                     return
                 end
                 if sig.campIdx == nil or LaneRoles.CampJobOwner(s) ~= bot:GetPlayerID() or LanePlanner.Committed(bot) ~= nil then
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 if CampJobs.Active(bot) then
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 local spawner = Camps.SpawnerByIdx(sig.campIdx)
@@ -1396,7 +1400,7 @@ local function respondToPull(bot, st, s, enemies, now)
                     enemies,
                     sig.enemyPid
                 ) then
-                    __continue194 = true
+                    __continue195 = true
                     break
                 end
                 if CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid}) then
@@ -1404,7 +1408,7 @@ local function respondToPull(bot, st, s, enemies, now)
                 end
                 return
             until true
-            if not __continue194 then
+            if not __continue195 then
                 break
             end
         end
@@ -1589,18 +1593,18 @@ local function campSafe(center, enemies)
     local cfg = settings()
     for ____, e in ipairs(enemies) do
         do
-            local __continue254
+            local __continue255
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.Timing.StackedCampSeen then
-                    __continue254 = true
+                    __continue255 = true
                     break
                 end
                 if dist2D(e.location, center) <= cfg.Radii.StackedCampSafe then
                     return false
                 end
-                __continue254 = true
+                __continue255 = true
             until true
-            if not __continue254 then
+            if not __continue255 then
                 break
             end
         end
@@ -1631,7 +1635,7 @@ function ____exports.PreferStackedCamp(bot, camps)
     local bestDist = math.huge
     for ____, camp in ipairs(camps or ({})) do
         do
-            local __continue262
+            local __continue263
             repeat
                 local ____opt_result_17
                 if camp ~= nil then
@@ -1643,19 +1647,19 @@ function ____exports.PreferStackedCamp(bot, camps)
                 end
                 local loc = ____opt_result_18
                 if loc == nil then
-                    __continue262 = true
+                    __continue263 = true
                     break
                 end
                 local spawner, d = Camps.NearestSpawner(loc)
                 if spawner == nil or d > matchRadius or (marks[spawner.idx] or 0) <= now then
-                    __continue262 = true
+                    __continue263 = true
                     break
                 end
                 if spawner.team ~= team and not campSafe(
                     Camps.BoxCenter(spawner),
                     enemies
                 ) then
-                    __continue262 = true
+                    __continue263 = true
                     break
                 end
                 local dist = GetUnitToLocationDistance(bot, loc)
@@ -1663,9 +1667,9 @@ function ____exports.PreferStackedCamp(bot, camps)
                     best = camp
                     bestDist = dist
                 end
-                __continue262 = true
+                __continue263 = true
             until true
-            if not __continue262 then
+            if not __continue263 then
                 break
             end
         end

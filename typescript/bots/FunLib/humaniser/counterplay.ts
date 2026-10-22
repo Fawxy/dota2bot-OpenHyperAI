@@ -657,6 +657,8 @@ function takeBlock(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: L
     if (LaneRoles.CampJobOwner(s) === bot.GetPlayerID()) return "owner";
     if (LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull) return "skill";
     if (LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return "committed";
+    const blocked = CampJobs.StartBlocked(bot);
+    if (blocked !== undefined) return blocked;
     if (LanePlan.View(bot, s).handsOff) return "handsoff";
     if (s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) return "lane-creeps";
     const spawner = sig.campIdx !== undefined ? Camps.SpawnerByIdx(sig.campIdx) : undefined;

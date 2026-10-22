@@ -324,8 +324,8 @@ function hpOk(bot: Unit): boolean {
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
 }
 
-/** Why a pull or stack should not start now, else undefined. Forced (debug) jobs skip it. */
-function startBlocked(bot: Unit): string | undefined {
+/** Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. */
+export function StartBlocked(bot: Unit): string | undefined {
     const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
@@ -1136,7 +1136,7 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
-    const blocked = startBlocked(bot);
+    const blocked = StartBlocked(bot);
     if (blocked !== undefined) {
         notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
         return false;
@@ -1190,7 +1190,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > aggroSec) return false;
     if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
-    if (startBlocked(bot) !== undefined) return false;
+    if (StartBlocked(bot) !== undefined) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 

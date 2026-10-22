@@ -748,8 +748,8 @@ local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
     return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
 end
---- Why a pull or stack should not start now, else undefined. Forced (debug) jobs skip it.
-local function startBlocked(bot)
+--- Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it.
+function ____exports.StartBlocked(bot)
     local maxHP = bot:GetMaxHealth()
     if maxHP <= 0 or bot:GetHealth() / maxHP < settings().Thresholds.JobStartHP then
         return "low-hp"
@@ -1881,7 +1881,7 @@ local function schedule(bot)
     if kind == nil then
         return false
     end
-    local blocked = startBlocked(bot)
+    local blocked = ____exports.StartBlocked(bot)
     if blocked ~= nil then
         notePlan(bot, s, now, {{"gate", blocked}, {"camp", camps[1].campIdx}})
         return false
@@ -1965,7 +1965,7 @@ local function scheduleStack(bot, now)
     if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {aggroSec}, t.PullPeriod) then
         return false
     end
-    if startBlocked(bot) ~= nil then
+    if ____exports.StartBlocked(bot) ~= nil then
         return false
     end
     return ____exports.Start(bot, {kind = "stack", campIdx = data.campIdx, minute = minute})
