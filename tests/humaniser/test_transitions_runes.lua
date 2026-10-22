@@ -12,7 +12,9 @@ check("power: just after a spawn", R.NextSpawn("power", 361) == 480)
 check("water: before the first", R.NextSpawn("water", 0) == 120)
 check("water: second and last", R.NextSpawn("water", 121) == 240)
 check("water: none left", R.NextSpawn("water", 250) == math.huge)
-check("bounty: next after 181", R.NextSpawn("bounty", 181) == 360)
+-- Every 4 minutes since 7.38 (Valve datafeed 7.38: "Spawn interval increased from 3 minutes to 4 minutes").
+check("bounty: next after 181 is 240", R.NextSpawn("bounty", 181) == 240)
+check("bounty: next after 241 is 480", R.NextSpawn("bounty", 241) == 480)
 check("bounty: at game start", R.NextSpawn("bounty", 0) == 0)
 check("wisdom: first at 420", R.NextSpawn("wisdom", 100) == 420 and R.NextSpawn("wisdom", 421) == 840)
 
