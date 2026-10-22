@@ -255,4 +255,53 @@ do
 	check("an incoming enemy TP stops the lane sparing a bot", spare == false and why == "enemy tp", why)
 end
 
+-- The TP reaction is a laning-phase transition: none after laning (11:40, LANING = false) or with our T1 down.
+do
+	local function run(o)
+		local w = world({ skill = o.skill or 0.5 })
+		STRONGER = o.stronger == true
+		T = o.T or 700
+		if o.notLaning then LANING = false end
+		if o.t1Dead then TOWERS_W[2][dota.Tower.Bot1].alive = false end
+		TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
+		w.H.Transitions.Tick(w.core)
+		local r = { level = w.C.Level(w.core), claim = w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil,
+			moved = dist(w.C.AdjustPosition(w.core, FRONT), FRONT) }
+		STRONGER = false
+		return r
+	end
+	local back, setup = run({}), run({ skill = 0.9, stronger = true })
+	check("in laning at 11:40 (contrast): backs off with a claim", near(back.level, 1) and back.claim, back.level)
+	check("in laning at 11:40 (contrast): sets up", setup.moved > 500, setup.moved)
+	local b2, s2 = run({ notLaning = true }), run({ notLaning = true, skill = 0.9, stronger = true })
+	check("after laning: no forced back-off", b2.level == 0 and not b2.claim, b2.level)
+	check("after laning: no setup point", s2.moved == 0, s2.moved)
+	local b3 = run({ T = 300, t1Dead = true })
+	check("our T1 down before 10:00: no forced back-off", b3.level == 0 and not b3.claim, b3.level)
+end
+
+do
+	-- A back-off running when laning ends is cleared, not left to its window end.
+	local w = world({ skill = 0.5 })
+	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
+	w.H.Transitions.Tick(w.core)
+	check("precondition: backing off", near(w.C.Level(w.core), 1))
+	LANING = false
+	T = 300.6
+	w.H.Transitions.Tick(w.core)
+	check("laning ends: the caution claim is released", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
+	-- Only the cleared forced state can tell here: the window would still be open had it been left.
+	LANING = nil
+	T = 301.2
+	check("laning ends: the forced level is cleared", w.C.Level(w.core) == 0, w.C.Level(w.core))
+end
+
+do
+	-- A malformed entry in the engine's TP list must not throw.
+	local w = world({ skill = 0.5 })
+	TELEPORTS = { { playerid = 10, time_remaining = 6 }, { playerid = 10, location = FRONT, time_remaining = 6 } }
+	local ok2, list = pcall(function() return w.TP.EnemyTps(2) end)
+	check("a TP entry without a location is skipped; the rest are read", ok2 and #list == 1, ok2 and #list or list)
+end
+
 finish()

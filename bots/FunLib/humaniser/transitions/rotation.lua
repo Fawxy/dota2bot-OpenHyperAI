@@ -170,6 +170,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 ____exports.SOURCE = "transitions:rotate"
 local entries = {}
 function ____exports.ResetCache()
@@ -253,6 +254,12 @@ function ____exports.Decide(bot, now)
     end
     if spawn < Runes.RUNE_RULES.power.first or now < spawn - cfg.DecideFrom or now > spawn - cfg.DecideTo then
         return {spawn = spawn, go = false, reason = "window"}
+    end
+    if not Phase.LaningTransitions(bot) then
+        local off = {spawn = spawn, go = false, reason = "phase"}
+        entries[pid] = {decision = off, arriveAt = -math.huge, announced = true, checkAt = math.huge}
+        log(bot, off)
+        return off
     end
     local ____temp_0
     if LaneConfig.PositionOf(bot) == 5 then
@@ -349,7 +356,7 @@ function ____exports.MidRuneDesire(bot)
     local now = DotaTime()
     for ____, pos in ipairs({4, 5}) do
         do
-            local __continue40
+            local __continue41
             repeat
                 local support = teammate(bot, pos, true)
                 local ____temp_1
@@ -360,11 +367,11 @@ function ____exports.MidRuneDesire(bot)
                 end
                 local d = ____temp_1
                 if support == nil or d == nil or d.spot == nil then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 if now < d.spawn - cfg.MidContestFrom or now > d.spawn + cfg.RotateLinger then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 local sLoc = support:GetLocation()
@@ -374,9 +381,9 @@ function ____exports.MidRuneDesire(bot)
                 ) <= cfg.MidSupportRadius or dist2D(sLoc, d.spot) <= cfg.MidSupportRadius then
                     return cfg.MidContestDesire
                 end
-                __continue40 = true
+                __continue41 = true
             until true
-            if not __continue40 then
+            if not __continue41 then
                 break
             end
         end
@@ -432,11 +439,11 @@ local function ours(bot, d)
         local i = 1
         while i <= count do
             do
-                local __continue54
+                local __continue55
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == mid or m == bot or m:IsBot() or not m:IsAlive() then
-                        __continue54 = true
+                        __continue55 = true
                         break
                     end
                     if dist2D(
@@ -445,9 +452,9 @@ local function ours(bot, d)
                     ) <= cfg.ContestRadius then
                         n = n + 1
                     end
-                    __continue54 = true
+                    __continue55 = true
                 until true
-                if not __continue54 then
+                if not __continue55 then
                     break
                 end
             end
@@ -464,6 +471,13 @@ function ____exports.Tick(bot)
     local now = DotaTime()
     ____exports.Decide(bot, now)
     local e = entries[bot:GetPlayerID()]
+    if e ~= nil and e.decision.go and not Phase.LaningTransitions(bot) then
+        e.decision.go = false
+        e.decision.reason = "phase"
+        Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)
+        log(bot, e.decision)
+        return
+    end
     if e ~= nil and e.decision.go and now <= e.decision.spawn + cfg.RotateLinger then
         local d = e.decision
         if not e.announced then

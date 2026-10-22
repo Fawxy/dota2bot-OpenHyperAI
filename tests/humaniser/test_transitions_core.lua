@@ -71,11 +71,15 @@ local function unit(o)
 end
 
 local function scans() return next(GETUNITLIST_CALLS) ~= nil end
+-- SELF_TEST names the scenario's subject as the trainer self-test bot, which the transitions leave alone.
+local SELF_TEST = nil
+local function selfTest(H) if SELF_TEST ~= nil then H.Trainer.IsSelfTestBot = function(u) return u:GetPlayerID() == SELF_TEST end end end
 local function claimed(H, u, source, mode) return H.Intent.ClaimAge(u, source, mode) ~= nil end
 
 -- A bot pos 4 rotating to the power rune beside our mid at 5:55.
 local function rotationScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM = 335, 2
 	local p4 = unit({ pid = 4, pos = 4, lane = Lane.Top, loc = Vector(0, 5000) })
 	local mid = unit({ pid = 2, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
@@ -98,6 +102,7 @@ end
 -- Our mid 15 s before the 6:00 spawn.
 local function midRuneScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM = 345, 2
 	local mid = unit({ pid = 2, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
 	H.Transitions.Tick(mid)
@@ -108,6 +113,7 @@ end
 -- The pos 5 on the safe lane at 3:20, asked for an observer spot.
 local function wardScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM = 200, 2
 	unit({ pid = 1, pos = 1, lane = Lane.Bot, loc = Vector(0, -5000) })
 	unit({ pid = 2, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
@@ -126,6 +132,7 @@ end
 -- The bot core on the bottom lane after its support left (a lane opponent unseen 7 s), then an enemy TP into the lane.
 local function cautionScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 1, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM = 300, 2
 	local FRONT = Vector(0, -5000)
 	unit({ pid = 2, bot = false, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
@@ -154,6 +161,7 @@ end
 
 local function teleportScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM = 300, 2
 	local FRONT = Vector(0, -5000)
 	unit({ pid = 2, bot = false, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
@@ -180,6 +188,7 @@ end
 -- A core that died twice in lane, and another with a Maelstrom and a clear jungle.
 local function phaseScenario(tcfg, lost)
 	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = tcfg })
+	selfTest(H)
 	T, CURRENT_TEAM, LANING = 100, 2, true
 	local CAMP = Vector(-1600, -6200)
 	SPAWNERS = { { team = 2, type = "small", location = CAMP, min = Vector(CAMP.x - 150, CAMP.y - 150, 0), max = Vector(CAMP.x + 150, CAMP.y + 150, 0), speed = 0 } }
@@ -278,6 +287,26 @@ do
 	check("phase: a Maelstrom core does not farm (disabled)", phaseScenario({ Enable = false }, false).allowed == false)
 	check("Phase off: a Maelstrom core does not farm", phaseScenario({ Enable = true, Phase = false }, false).allowed == false)
 	check("LostLane off leaves the phase end alone", phaseScenario({ Enable = true, LostLane = false }, false).allowed == true)
+end
+
+-- The trainer self-test bot (2bf9a81 skips Lane.PreThink for it) gets none of the transitions: every hook upstream,
+-- no claims, no forced levels. The enabled scenarios above are the contrast.
+do
+	SELF_TEST = 4
+	local rot = rotationScenario({ Enable = true })
+	check("self-test pos 4: no rune target, no claim, no rotation probe", rot.target == nil and not rot.rotateClaim and not rot.planned, tostring(rot.target))
+	SELF_TEST = 2
+	local mid = midRuneScenario({ Enable = true })
+	check("self-test mid: mid runes off, no focus, no floor", not mid.on and not mid.focus and not mid.claim)
+	SELF_TEST = 5
+	check("self-test pos 5: no lane ward pick or claim", not wardScenario({ Enable = true }).picked)
+	SELF_TEST = 1
+	local c = cautionScenario({ Enable = true })
+	check("self-test core: no caution offset, trade suppression or claim", not c.override and not c.moved and not c.suppressed and not c.cautious and not c.claim)
+	local tp = teleportScenario({ Enable = true })
+	check("self-test core: no TP back-off", tp.level == 0 and not tp.claim, tp.level)
+	check("self-test core: the phase does not release it to farm", phaseScenario({ Enable = true }, true).allowed == false)
+	SELF_TEST = nil
 end
 
 finish()

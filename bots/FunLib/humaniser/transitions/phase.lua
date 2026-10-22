@@ -26,6 +26,7 @@ local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 ____exports.SOURCE_PHASE = "transitions:phase"
 ____exports.SOURCE_LOST = "transitions:lostlane"
@@ -38,8 +39,10 @@ ____exports.FARM_ITEMS = {
 }
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local states = {}
+local laningReads = {}
 function ____exports.ResetCache()
     states = {}
+    laningReads = {}
 end
 local function stateOf(bot)
     local pid = bot:GetPlayerID()
@@ -148,6 +151,30 @@ function ____exports.IsLaningFor(bot)
     end
     return true
 end
+--- Whether the laning-phase transitions (caution and its callout, the TP reaction, support rotations) apply to this
+-- bot: IsLaningFor with the Phase flag on, the global laning phase otherwise. Never for the trainer self-test bot.
+-- Read at most once per Refresh, since the caution probes ask every frame.
+function ____exports.LaningTransitions(bot)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local r = laningReads[pid]
+    if r ~= nil and now >= r.at and now - r.at < Settings.Get().Refresh then
+        return r.value
+    end
+    local ____temp_1 = not Trainer.IsSelfTestBot(bot)
+    if ____temp_1 then
+        local ____Settings_IsOn_result_0
+        if Settings.IsOn("Phase") then
+            ____Settings_IsOn_result_0 = ____exports.IsLaningFor(bot)
+        else
+            ____Settings_IsOn_result_0 = LaneConfig.InLaningPhase()
+        end
+        ____temp_1 = ____Settings_IsOn_result_0
+    end
+    local value = ____temp_1
+    laningReads[pid] = {at = now, value = value}
+    return value
+end
 function ____exports.LaneLostPure(i)
     local cfg = Settings.Get()
     if i.deathsInWindow >= cfg.LostDeaths then
@@ -184,19 +211,19 @@ local function levelGapOf(bot, st, s)
     local top = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue39
+            local __continue41
             repeat
                 if dist2D(e.location, s.frontLoc) > radius then
-                    __continue39 = true
+                    __continue41 = true
                     break
                 end
                 local level = e.visible and e.unit ~= nil and e.unit:GetLevel() or st.levelSeen[e.pid]
                 if level ~= nil and level > top then
                     top = level
                 end
-                __continue39 = true
+                __continue41 = true
             until true
-            if not __continue39 then
+            if not __continue41 then
                 break
             end
         end
@@ -232,28 +259,28 @@ function ____exports.LaneLost(bot)
 end
 local function partnerOf(bot)
     local s = LaneState.ForBot(bot)
-    local ____temp_0
+    local ____temp_2
     if s ~= nil then
-        ____temp_0 = LaneRoles.Partner(bot, s)
+        ____temp_2 = LaneRoles.Partner(bot, s)
     else
-        ____temp_0 = nil
+        ____temp_2 = nil
     end
-    return ____temp_0
+    return ____temp_2
 end
 local function sample(bot, st, now)
     local cfg = Settings.Get()
     local alive = bot:IsAlive()
     if st.wasAlive == true and not alive and st.wasLaning then
-        local ____st_record_deaths_1 = st.record.deaths
-        ____st_record_deaths_1[#____st_record_deaths_1 + 1] = now
+        local ____st_record_deaths_3 = st.record.deaths
+        ____st_record_deaths_3[#____st_record_deaths_3 + 1] = now
     end
     st.wasAlive = alive
     st.wasLaning = ____exports.IsLaningFor(bot)
     if alive and now >= cfg.LostLHFrom then
         local last = st.record.lastHits[#st.record.lastHits]
         if last == nil or now - last.at >= cfg.LHSampleGap then
-            local ____st_record_lastHits_2 = st.record.lastHits
-            ____st_record_lastHits_2[#____st_record_lastHits_2 + 1] = {
+            local ____st_record_lastHits_4 = st.record.lastHits
+            ____st_record_lastHits_4[#____st_record_lastHits_4 + 1] = {
                 at = now,
                 total = lastHits(bot)
             }
@@ -302,9 +329,9 @@ local function humanWaiting(bot, st, now)
     end
     if (st.suggestedAt == nil or now - st.suggestedAt >= cfg.SuggestCooldown) and Orders.Say(bot, "say_lane_lost_roam", cfg.SuggestCooldown) then
         st.suggestedAt = now
-        local ____st_5 = st
-        local ____opt_3 = Orders.GetFor(bot)
-        ____st_5.orderBase = ____opt_3 and ____opt_3.id
+        local ____st_7 = st
+        local ____opt_5 = Orders.GetFor(bot)
+        ____st_7.orderBase = ____opt_5 and ____opt_5.id
         st.absentSince = nil
     end
     return true

@@ -19,6 +19,7 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 export const SOURCE = "transitions:caution";
 
@@ -106,9 +107,12 @@ export function IsAlone(bot: Unit, s: LaneState.LaneSnapshot): boolean {
     const p = others[0];
     if (!p.alive) return true;
     const absent = LaneConfig.Settings().Thresholds.CoreAbsentDist;
+    const apart = dist2D(p.unit.GetLocation(), bot.GetLocation()) > absent;
     // A duo walking or backing off together is far from the front but not apart.
-    if (p.distToFront > absent && dist2D(p.unit.GetLocation(), bot.GetLocation()) > absent) return true;
-    return Rotation.Active(p.unit) !== undefined || CampJobs.Active(p.unit);
+    if (p.distToFront > absent && apart) return true;
+    // A rotation counts once the partner has actually left: from leaveAt it may still be standing in lane on frames
+    // the rune mode refused.
+    return (apart && Rotation.Active(p.unit) !== undefined) || CampJobs.Active(p.unit);
 }
 
 export function Missing(bot: Unit, s: LaneState.LaneSnapshot, alone: boolean): number {
@@ -116,7 +120,7 @@ export function Missing(bot: Unit, s: LaneState.LaneSnapshot, alone: boolean): n
     const after = alone ? cfg.AloneMissing : cfg.LaneMissing;
     let n = 0;
     for (const e of LaneState.Enemies(bot, s.lane)) {
-        if (e.visible || e.timeSinceSeen <= after || !IsHeroAlive(e.pid)) continue;
+        if (e.visible || e.timeSinceSeen <= after || e.timeSinceSeen > cfg.MissingMaxAge || !IsHeroAlive(e.pid)) continue;
         if (dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius) n++;
     }
     return n;
@@ -136,10 +140,13 @@ function update(bot: Unit, now: number): State {
     const st = stateOf(bot);
     if (now >= st.checkAt) {
         st.checkAt = now + Settings.Get().Refresh;
-        const s = LaneState.ForBot(bot);
+        const laning = Phase.LaningTransitions(bot);
+        const s = laning ? LaneState.ForBot(bot) : undefined;
         let target = 0;
         st.missing = 0;
         st.lane = s?.lane;
+        // The end of laning is not something the bot notices late: the level drops at once.
+        if (!laning) st.applied = 0;
         if (s !== undefined) {
             const alone = IsAlone(bot, s);
             st.missing = Missing(bot, s, alone);
@@ -162,6 +169,7 @@ function update(bot: Unit, now: number): State {
 }
 
 export function Level(bot: Unit): number {
+    if (!Phase.LaningTransitions(bot)) return 0;
     const now = DotaTime();
     const applied = Settings.IsOn("Caution") ? update(bot, now).applied : 0;
     const f = forced[bot.GetPlayerID()];
@@ -186,7 +194,7 @@ function towardTower(bot: Unit, loc: Vector, level: number): Vector {
 /** Lane position override (plan call 6); returns `loc` itself when caution does not apply. */
 export function AdjustPosition(bot: Unit, loc: Vector): Vector {
     const f = forced[bot.GetPlayerID()];
-    if (f !== undefined && f.point !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.pointUntil) return LaneMain.OwnsLaning(bot) ? f.point : loc;
+    if (f !== undefined && f.point !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.pointUntil && Phase.LaningTransitions(bot)) return LaneMain.OwnsLaning(bot) ? f.point : loc;
     if (!Settings.IsOn("Caution")) return loc;
     const level = Level(bot);
     if (level <= 0 || !LaneMain.OwnsLaning(bot)) return loc;
@@ -233,6 +241,12 @@ function callout(bot: Unit, st: State, now: number): void {
 
 export function Tick(bot: Unit): void {
     if (!Settings.IsOn("Caution") && !Settings.IsOn("Teleports")) return;
+    if (!Phase.LaningTransitions(bot)) {
+        if (Settings.IsOn("Caution")) update(bot, DotaTime());
+        delete forced[bot.GetPlayerID()];
+        Intent.ReleaseSource(bot, SOURCE);
+        return;
+    }
     if (Settings.IsOn("Caution")) {
         const now = DotaTime();
         callout(bot, update(bot, now), now);

@@ -17,6 +17,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
@@ -95,6 +96,12 @@ export function Decide(bot: Unit, now: number): RotationDecision {
     if (!isSupport(bot)) return { spawn, go: false, reason: "role" };
     if (spawn < Runes.RUNE_RULES.power.first || now < spawn - cfg.DecideFrom || now > spawn - cfg.DecideTo) {
         return { spawn, go: false, reason: "window" };
+    }
+    if (!Phase.LaningTransitions(bot)) {
+        const off: RotationDecision = { spawn, go: false, reason: "phase" };
+        entries[pid] = { decision: off, arriveAt: -math.huge, announced: true, checkAt: math.huge };
+        log(bot, off);
+        return off;
     }
 
     // The pos 5 reads the pos 4's decision, so the pos 4 decides (and draws its rolls) first. A human pos 4 counts as absent.
@@ -208,6 +215,13 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     Decide(bot, now);
     const e = entries[bot.GetPlayerID()];
+    if (e !== undefined && e.decision.go && !Phase.LaningTransitions(bot)) {
+        e.decision.go = false;
+        e.decision.reason = "phase";
+        Intent.Release(bot, SOURCE, BotMode.Rune);
+        log(bot, e.decision);
+        return;
+    }
     if (e !== undefined && e.decision.go && now <= e.decision.spawn + cfg.RotateLinger) {
         const d = e.decision;
         if (!e.announced) {

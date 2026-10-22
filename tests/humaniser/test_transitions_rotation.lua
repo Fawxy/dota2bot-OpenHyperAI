@@ -271,4 +271,40 @@ do
 	end
 end
 
+-- Rotations are a laning-phase transition: no decision and no line after laning (13:35, LANING = false) or with
+-- the support's T1 down before 10:00. The same spawn in laning is the contrast.
+do
+	local function run(o)
+		local w = world({ T = o.T })
+		if o.notLaning then LANING = false end
+		if o.t1Dead then TOWERS_W[2][dota.Tower.Top1].alive = false end
+		rolls(PASS)
+		local d = w.R.Decide(w.p4, T)
+		w.H.Transitions.Tick(w.p4)
+		return { go = d.go, reason = d.reason, said = count(w.said, "say_rune_coming_mid") }
+	end
+	local on = run({ T = 815 })
+	check("in laning at 13:35 (contrast): pos 4 rotates and announces", on.go and on.said == 1, on.reason)
+	local off = run({ T = 815, notLaning = true })
+	check("after laning: no rotation", off.go == false and off.reason == "phase", off.reason)
+	check("after laning: no coming-mid line", off.said == 0, off.said)
+	local dead = run({ T = 335, t1Dead = true })
+	check("our top T1 down before 10:00: the top pos 4 does not rotate", dead.go == false and dead.said == 0, dead.reason)
+end
+
+do
+	-- Laning ends during a rotation: the floor claim goes at once and the rune mode loses its target.
+	local w = world()
+	rolls(PASS)
+	check("precondition: pos 4 goes", w.R.Decide(w.p4, 335).go)
+	T = 345
+	w.H.Transitions.Tick(w.p4)
+	check("precondition: rotation claim and target", w.H.Intent.ClaimAge(w.p4, "transitions:rotate", BotMode.Rune) ~= nil and w.R.RuneTarget(w.p4) ~= nil)
+	LANING = false
+	T = 346
+	w.H.Transitions.Tick(w.p4)
+	check("laning ends: rotation claim released", w.H.Intent.ClaimAge(w.p4, "transitions:rotate", BotMode.Rune) == nil)
+	check("laning ends: no rune target", w.R.RuneTarget(w.p4) == nil)
+end
+
 finish()

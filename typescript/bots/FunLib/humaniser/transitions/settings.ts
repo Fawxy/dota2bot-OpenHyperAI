@@ -78,6 +78,8 @@ export const DEFAULTS = {
     AttackScaleMin: 0.7,
     SkillAmount: { Low: 0.5, High: 1.0 } as LerpPair,
     MissingCooldown: 30,
+    // An enemy unseen longer than this is no longer counted as missing (it has left the lane, not hidden near it).
+    MissingMaxAge: 60,
     // SuppressTrades lets trades through when WeAreStronger within this radius.
     CautionStrongerRadius: 1200,
     // A mid callout is skipped when the counterplay already noticed mid_missing this recently.

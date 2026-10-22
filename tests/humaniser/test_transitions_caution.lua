@@ -61,10 +61,15 @@ do
 end
 
 do
+	-- The core stands 1,500 behind the front, the support at the front: apart, but the support is not far from the front.
 	local w = world()
+	w.core.loc = Vector(-1500, -5000)
 	check("support in lane: the core is not alone", not w.C.IsAlone(w.core, snap(w, w.core)))
 	w.H.Transitions.Rotation.Active = function(u) if u:GetPlayerID() == 5 then return { go = true } end end
-	check("support leaving makes the core alone", w.C.IsAlone(w.core, snap(w, w.core)))
+	check("support rotating and gone from the core: the core is alone", w.C.IsAlone(w.core, snap(w, w.core)))
+	w = world()
+	w.H.Transitions.Rotation.Active = function(u) if u:GetPlayerID() == 5 then return { go = true } end end
+	check("support rotating but still beside the core: not alone", not w.C.IsAlone(w.core, snap(w, w.core)))
 end
 
 do
@@ -86,6 +91,15 @@ do
 	w = world()
 	enemy(10, { unseen = 10 })
 	check("alive enemy unseen 10 s is missing", w.C.Missing(w.core, snap(w, w.core), false) == 1)
+end
+
+do
+	local w = world()
+	enemy(10, { unseen = 30 })
+	check("unseen 30 s is missing", w.C.Missing(w.core, snap(w, w.core), false) == 1)
+	w = world()
+	enemy(10, { unseen = 61 })
+	check("unseen longer than MissingMaxAge (60 s) is no longer missing", w.C.Missing(w.core, snap(w, w.core), false) == 0)
 end
 
 do
@@ -279,6 +293,46 @@ do
 	end
 	check("mid missing is called", count(midWorld(false).said, "say_ss_mid") == 1)
 	check("mid callout skipped after a recent counterplay mid_missing", count(midWorld(true).said, "say_ss_mid") == 0)
+end
+
+-- Caution and its callout are laning-phase transitions: after laning (LANING = false at 11:40) or with our T1 down
+-- before 10:00 there is no level, no claim and no line. Each case runs in laning first, as the contrast.
+do
+	local function run(laning, t1Dead)
+		local w = world()
+		T = 700
+		enemy(10, { unseen = 10 })
+		if not laning then LANING = false end
+		if t1Dead then T = 300; TOWERS_W[2][dota.Tower.Bot1].alive = false end
+		local t0 = T
+		w.C.Tick(w.core)
+		T = t0 + 0.6
+		w.C.Tick(w.core)
+		return { level = w.C.Level(w.core), claim = w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil,
+			said = count(w.said, "say_ss_bot"), pos = w.C.AdjustPosition(w.core, FRONT) }
+	end
+	local on, off, dead = run(true), run(false), run(true, true)
+	check("in laning at 11:40 (contrast): cautious with a claim and a callout", on.level > 0 and on.claim and on.said == 1, on.level)
+	check("after laning: caution level 0", off.level == 0, off.level)
+	check("after laning: no caution claim", not off.claim)
+	check("after laning: no missing callout", off.said == 0, off.said)
+	check("after laning: no position offset", off.pos == FRONT)
+	check("our T1 down before 10:00: level 0, no claim, no callout", dead.level == 0 and not dead.claim and dead.said == 0, dead.level)
+end
+
+do
+	-- Laning ends while cautious: the claim goes on the next tick, not after the notice delay or the claim TTL.
+	local w = world({ delay = 1.0 })
+	enemy(10, { unseen = 10 })
+	w.C.Tick(w.core)
+	T = 301.1
+	w.C.Tick(w.core)
+	check("precondition: cautious with a claim", w.C.Level(w.core) > 0 and w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil)
+	LANING = false
+	T = 301.7
+	w.C.Tick(w.core)
+	check("laning ends: level 0 at once", w.C.Level(w.core) == 0, w.C.Level(w.core))
+	check("laning ends: the claim is released at once", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 end
 
 finish()

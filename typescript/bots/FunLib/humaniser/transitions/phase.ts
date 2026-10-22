@@ -14,6 +14,7 @@ import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
+import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 
 export const SOURCE_PHASE = "transitions:phase";
@@ -45,9 +46,11 @@ interface PhaseState {
 }
 
 let states: Record<number, PhaseState> = {};
+let laningReads: Record<number, { at: number; value: boolean }> = {};
 
 export function ResetCache(): void {
     states = {};
+    laningReads = {};
 }
 
 function stateOf(bot: Unit): PhaseState {
@@ -124,6 +127,21 @@ export function IsLaningFor(bot: Unit): boolean {
         return false;
     }
     return true;
+}
+
+/**
+ * Whether the laning-phase transitions (caution and its callout, the TP reaction, support rotations) apply to this
+ * bot: IsLaningFor with the Phase flag on, the global laning phase otherwise. Never for the trainer self-test bot.
+ * Read at most once per Refresh, since the caution probes ask every frame.
+ */
+export function LaningTransitions(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const r = laningReads[pid];
+    if (r !== undefined && now >= r.at && now - r.at < Settings.Get().Refresh) return r.value;
+    const value = !Trainer.IsSelfTestBot(bot) && (Settings.IsOn("Phase") ? IsLaningFor(bot) : LaneConfig.InLaningPhase());
+    laningReads[pid] = { at: now, value };
+    return value;
 }
 
 export interface LostInput {

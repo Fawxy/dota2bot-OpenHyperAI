@@ -168,6 +168,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local Caution = require(GetScriptDirectory().."/FunLib/humaniser/transitions/caution")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local ENEMY_T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local reads = {}
 local known = {}
@@ -204,7 +205,7 @@ function ____exports.EnemyTps(team)
         do
             local __continue9
             repeat
-                if not (enemyIds[t.playerid] ~= nil) then
+                if t == nil or t == nil or t.location == nil or t.location == nil or not (enemyIds[t.playerid] ~= nil) then
                     __continue9 = true
                     break
                 end
@@ -323,6 +324,14 @@ function ____exports.Tick(bot)
         return
     end
     checkAt[pid] = now + Settings.Get().Refresh
+    if not Phase.LaningTransitions(bot) then
+        if reactions[pid] ~= nil then
+            __TS__Delete(reactions, pid)
+            Caution.ForceLevel(bot, 0, -math.huge)
+            Caution.ForceSetup(bot, nil, -math.huge)
+        end
+        return
+    end
     local s = LaneState.ForBot(bot)
     local ____temp_0
     if s ~= nil then

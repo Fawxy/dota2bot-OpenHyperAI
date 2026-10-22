@@ -12,6 +12,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as Caution from "bots/FunLib/humaniser/transitions/caution";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 export interface EnemyTp {
     pid: number;
@@ -67,7 +68,7 @@ export function EnemyTps(team: number): EnemyTp[] {
     const list: EnemyTp[] = [];
     const present = new LuaSet<number>();
     for (const t of GetIncomingTeleports()) {
-        if (!enemyIds.has(t.playerid)) continue;
+        if (t === undefined || t === null || t.location === undefined || t.location === null || !enemyIds.has(t.playerid)) continue;
         present.add(t.playerid);
         let tp = known[t.playerid];
         // A TP that lands later than the one tracked, or somewhere else, is a new cast.
@@ -140,6 +141,14 @@ export function Tick(bot: Unit): void {
     const pid = bot.GetPlayerID();
     if (now < (checkAt[pid] ?? -math.huge)) return;
     checkAt[pid] = now + Settings.Get().Refresh;
+    if (!Phase.LaningTransitions(bot)) {
+        if (reactions[pid] !== undefined) {
+            delete reactions[pid];
+            Caution.ForceLevel(bot, 0, -math.huge);
+            Caution.ForceSetup(bot, undefined, -math.huge);
+        }
+        return;
+    }
     const s = LaneState.ForBot(bot);
     const tp = s !== undefined ? IncomingToLane(bot, s) : undefined;
     if (s === undefined || tp === undefined) return;

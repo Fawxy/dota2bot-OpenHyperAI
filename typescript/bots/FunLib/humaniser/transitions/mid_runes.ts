@@ -148,6 +148,8 @@ export function Focus(bot: Unit): LuaMultiReturn<[boolean, boolean, number | und
 export function Tick(bot: Unit): void {
     if (!IsOn(bot)) return;
     const s = current(bot);
+    // Unlike caution and rotations, the mid-rune floor applies all game, by decision: a mid contesting power runes is
+    // normal play after laning too.
     if (s.claim) Intent.Claim(bot, { source: SOURCE, tier: "TRANSITION", mode: BotMode.Rune, floor: Settings.Get().MidRuneFloor });
 }
 

@@ -66,11 +66,6 @@ J.Humaniser.Lane.SetHelpers({
 	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
 	GetHP = function(u) return J.GetHP(u) end,
 })
-J.Humaniser.Transitions.SetHelpers({
-	IsInLaningPhase = function() return J.IsInLaningPhase() end,
-	WeAreStronger = function(bot, radius) return J.WeAreStronger(bot, radius) end,
-	IsAllyOfHuman = function(bot) return J.Humaniser.Difficulty.IsAllyOfHuman(bot) end,
-})
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
