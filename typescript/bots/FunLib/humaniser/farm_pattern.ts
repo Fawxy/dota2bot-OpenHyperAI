@@ -25,6 +25,7 @@ import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as Transitions from "bots/FunLib/humaniser/transitions/transitions";
 
 export const DEFAULTS = {
     Enable: true,
@@ -263,6 +264,9 @@ export function StartGate(bot: Unit, now: number): string | undefined {
     if (IDLE_MODES[bot.GetActiveMode()] !== true) return "busy-mode";
     if (Orders.GetFor(bot) !== undefined) return "has-order";
     if (LaneConfig.IsActive() && CampJobs.Active(bot)) return "camp-job";
+    // Transitions has ended this core's laning (a farm item) or written its lane off, so upstream farm takes it into
+    // the jungle for good; a trip would walk it back to the lane for the next wave.
+    if (Transitions.FarmAllowedInLaning(bot)) return "jungling";
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= s.Desire) return "retreat";
     return undefined;

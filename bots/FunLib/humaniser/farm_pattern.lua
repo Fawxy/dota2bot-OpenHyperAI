@@ -175,6 +175,7 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local Transitions = require(GetScriptDirectory().."/FunLib/humaniser/transitions/transitions")
 function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
         return defaults
@@ -420,14 +421,14 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue78
+            local __continue79
             repeat
                 if spawner.team ~= team then
-                    __continue78 = true
+                    __continue79 = true
                     break
                 end
                 if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue78 = true
+                    __continue79 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -439,7 +440,7 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                     now,
                     sight
                 ) then
-                    __continue78 = true
+                    __continue79 = true
                     break
                 end
                 if diag ~= nil then
@@ -478,9 +479,9 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                 if stack ~= nil and (best == nil or stack.score > best.score) then
                     best = stack
                 end
-                __continue78 = true
+                __continue79 = true
             until true
-            if not __continue78 then
+            if not __continue79 then
                 break
             end
         end
@@ -795,6 +796,9 @@ function ____exports.StartGate(bot, now)
     end
     if LaneConfig.IsActive() and CampJobs.Active(bot) then
         return "camp-job"
+    end
+    if Transitions.FarmAllowedInLaning(bot) then
+        return "jungling"
     end
     local retreat = Intent.Resolved(bot, BotMode.Retreat)
     if retreat ~= nil and retreat >= s.Desire then

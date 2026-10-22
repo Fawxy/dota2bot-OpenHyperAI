@@ -16,7 +16,7 @@ end
 
 local function world(o)
 	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { dire_bot = { { 325 * o.travel, -5000 }, { -7000, -5000 } } } } },
-		{ skill = o.skill or 0.9, farm = o.farm })
+		{ skill = o.skill or 0.9, farm = o.farm, transitions = o.transitions })
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -240,6 +240,17 @@ do
 	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
 	H.Intent.Resolve(core, BotMode.Retreat, 0.7)
 	check("gate: retreat already wants out", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.StartGate(core, T) == "retreat")
+end
+
+-- A core whose laning Transitions has ended (a farm item) is upstream farm's to take into the jungle: no trip back.
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } }, transitions = { Enable = true } })
+	H.Transitions.Tick(core)
+	check("precondition: a core without a farm item may take a trip", H.FarmPattern.StartGate(core, T) == nil, H.FarmPattern.StartGate(core, T))
+	core.items = { [0] = { name = "item_maelstrom" } }
+	T = T + 1
+	H.Transitions.Tick(core)
+	check("gate: laning ended by Transitions", H.FarmPattern.StartGate(core, T) == "jungling" and H.FarmPattern.Desire(core) == 0)
 end
 
 -- Units sharing the hero's player ID (Meepo clones, tempest double) never take trips.
