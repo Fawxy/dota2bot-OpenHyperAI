@@ -7,6 +7,7 @@ local Tower = ____dota.Tower
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CooldownMemory = require(GetScriptDirectory().."/FunLib/humaniser/cooldown_memory")
 local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
@@ -15,11 +16,13 @@ local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local TARGET_RANGE = 1200
 local TOWER_RANGE = 700
-local LANE_RADIUS = 2500
+local OWN_TOWER_COVER = 750
+local LANE_WIDTH = 1200
 local MISSING_COUNTS = 10
 local ULT_LEVEL = 6
 local INSTANCE_GAP = 1
 local SPIKE_LEVELS = {6, 2}
+local BOUND_IDS = {[Lane.Top] = {Tower.Top2, Tower.Top3}, [Lane.Mid] = {Tower.Mid2, Tower.Mid3}, [Lane.Bot] = {Tower.Bot2, Tower.Bot3}}
 local TOWER_IDS = {[Lane.Top] = {Tower.Top1, Tower.Top2, Tower.Top3}, [Lane.Mid] = {Tower.Mid1, Tower.Mid2, Tower.Mid3}, [Lane.Bot] = {Tower.Bot1, Tower.Bot2, Tower.Bot3}}
 local spikeTracks = {}
 local readCache = {}
@@ -60,7 +63,7 @@ function ____exports.WindowsFrom(i)
     if i.spike == "ours" then
         list[#list + 1] = "level"
     end
-    if i.aheadOfFront > s.OutOfPosition or i.nearOurTower then
+    if not i.nearTheirTower and (i.wavesMet and i.aheadOfFront > s.OutOfPosition or i.nearOurTower) then
         list[#list + 1] = "position"
     end
     return list
@@ -173,8 +176,8 @@ local function usable(u)
     local suspicious = LaneConfig.Helpers().IsSuspiciousIllusion
     return suspicious == nil or not suspicious(u)
 end
-local function nearestTower(team, lane)
-    for ____, id in ipairs(TOWER_IDS[lane] or ({})) do
+local function firstAliveTower(team, ids)
+    for ____, id in ipairs(ids) do
         local tower = GetTower(team, id)
         if tower ~= nil and tower ~= nil and tower:IsAlive() then
             return tower
@@ -182,14 +185,54 @@ local function nearestTower(team, lane)
     end
     return nil
 end
-local function aheadOfFront(team, lane, loc)
-    local front = GetLaneFrontLocation(
-        enemyTeamOf(team),
-        lane,
-        0
+local function nearestTower(team, lane)
+    return firstAliveTower(team, TOWER_IDS[lane] or ({}))
+end
+local function alongLane(team, lane, a, b)
+    return dist2D(
+        GetLocationAlongLane(
+            lane,
+            Camps.ToAbsAmount(team, a)
+        ),
+        GetLocationAlongLane(
+            lane,
+            Camps.ToAbsAmount(team, b)
+        )
     )
-    local d = dist2D(loc, front)
-    return LaneState.TeamAmountAt(team, lane, loc) < LaneState.TeamAmountAt(team, lane, front) and d or -d
+end
+local function aheadOfFront(team, lane, loc, enemyFront)
+    local amount = LaneState.TeamAmountAt(team, lane, loc)
+    local d = alongLane(team, lane, amount, enemyFront)
+    return amount < enemyFront and d or -d
+end
+--- Team-frame amounts bounding the lane: our T2 (or the next alive tower behind it) to theirs, base to base without towers.
+local function laneBounds(team, lane)
+    local ids = BOUND_IDS[lane] or ({})
+    local ours = firstAliveTower(team, ids)
+    local theirs = firstAliveTower(
+        enemyTeamOf(team),
+        ids
+    )
+    return {
+        ours ~= nil and LaneState.TeamAmountAt(
+            team,
+            lane,
+            ours:GetLocation()
+        ) or 0,
+        theirs ~= nil and LaneState.TeamAmountAt(
+            team,
+            lane,
+            theirs:GetLocation()
+        ) or 1
+    }
+end
+local function inLane(team, lane, loc, bounds)
+    local r = GetAmountAlongLane(lane, loc)
+    if r.distance > LANE_WIDTH then
+        return false
+    end
+    local amount = Camps.ToTeamAmount(team, r.amount)
+    return amount >= bounds[1] and amount <= bounds[2]
 end
 local function keyAbilities(enemy)
     local names = {}
@@ -206,10 +249,10 @@ local function ultReady(pid, enemy, enemyPid, now, skill)
     end
     for ____, a in ipairs(CastWatch.AbilitiesOf(enemy)) do
         do
-            local __continue49
+            local __continue54
             repeat
                 if not a.ult or a.item or not a.learned then
-                    __continue49 = true
+                    __continue54 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -223,9 +266,9 @@ local function ultReady(pid, enemy, enemyPid, now, skill)
                 if ready then
                     return true
                 end
-                __continue49 = true
+                __continue54 = true
             until true
-            if not __continue49 then
+            if not __continue54 then
                 break
             end
         end
@@ -252,28 +295,23 @@ local function gather(bot, snap, now)
     local lane = snap.lane
     local skill = Profile.Get(bot).skill
     local botLoc = bot:GetLocation()
+    local bounds = laneBounds(team, lane)
     local ourLaners = 0
     local ourMax = 0
     for ____, h in ipairs(snap.allies) do
-        do
-            local __continue57
-            repeat
-                if not h.assigned then
-                    __continue57 = true
-                    break
-                end
-                if h.alive then
-                    ourLaners = ourLaners + 1
-                end
-                ourMax = math.max(
-                    ourMax,
-                    GetHeroLevel(h.pid)
-                )
-                __continue57 = true
-            until true
-            if not __continue57 then
-                break
-            end
+        if h.alive and not h.unit:IsNull() and inLane(
+            team,
+            lane,
+            h.unit:GetLocation(),
+            bounds
+        ) then
+            ourLaners = ourLaners + 1
+        end
+        if h.assigned then
+            ourMax = math.max(
+                ourMax,
+                GetHeroLevel(h.pid)
+            )
         end
     end
     local target
@@ -283,30 +321,34 @@ local function gather(bot, snap, now)
     local theirUltReady = false
     for ____, e in ipairs(LaneState.Enemies(bot, lane)) do
         do
-            local __continue61
+            local __continue66
             repeat
                 if e == nil or e.location == nil then
-                    __continue61 = true
+                    __continue66 = true
                     break
                 end
                 local unit = e.visible and usable(e.unit) and e.unit or nil
                 local loc = unit ~= nil and unit:GetLocation() or e.location
-                if dist2D(loc, snap.frontLoc) > LANE_RADIUS then
-                    __continue61 = true
+                if not inLane(team, lane, loc, bounds) then
+                    __continue66 = true
                     break
                 end
+                if unit == nil then
+                    if not e.visible and e.timeSinceSeen <= MISSING_COUNTS then
+                        enemiesNear = enemiesNear + 1
+                        theirMax = math.max(
+                            theirMax,
+                            GetHeroLevel(e.pid)
+                        )
+                    end
+                    __continue66 = true
+                    break
+                end
+                enemiesNear = enemiesNear + 1
                 theirMax = math.max(
                     theirMax,
                     GetHeroLevel(e.pid)
                 )
-                if unit == nil then
-                    if not e.visible and e.timeSinceSeen <= MISSING_COUNTS then
-                        enemiesNear = enemiesNear + 1
-                    end
-                    __continue61 = true
-                    break
-                end
-                enemiesNear = enemiesNear + 1
                 if not theirUltReady and ultReady(
                     pid,
                     unit,
@@ -321,9 +363,9 @@ local function gather(bot, snap, now)
                     target = unit
                     targetDist = d
                 end
-                __continue61 = true
+                __continue66 = true
             until true
-            if not __continue61 then
+            if not __continue66 then
                 break
             end
         end
@@ -341,7 +383,9 @@ local function gather(bot, snap, now)
         lastHit = false,
         spike = ____exports.LevelSpike(team, lane, now),
         aheadOfFront = -math.huge,
+        wavesMet = snap.enemy.count > 0 and alongLane(team, lane, snap.ourFront, snap.enemyFront) <= LaneFightConfig.Settings().FrontsMeetDistance,
         nearOurTower = false,
+        nearTheirTower = false,
         theirUltReady = theirUltReady,
         enemiesNear = enemiesNear,
         ourLaners = ourLaners
@@ -356,12 +400,20 @@ local function gather(bot, snap, now)
             skill
         )
         inputs.lastHit = Harass.IsLastHitAttempt(target, snap.ally.units) ~= nil
-        inputs.aheadOfFront = aheadOfFront(team, lane, loc)
-        local tower = nearestTower(team, lane)
-        inputs.nearOurTower = tower ~= nil and dist2D(
+        inputs.aheadOfFront = aheadOfFront(team, lane, loc, snap.enemyFront)
+        local ours = nearestTower(team, lane)
+        inputs.nearOurTower = ours ~= nil and dist2D(
             loc,
-            tower:GetLocation()
+            ours:GetLocation()
         ) <= TOWER_RANGE
+        local theirs = nearestTower(
+            enemyTeamOf(team),
+            lane
+        )
+        inputs.nearTheirTower = theirs ~= nil and dist2D(
+            loc,
+            theirs:GetLocation()
+        ) <= OWN_TOWER_COVER
     end
     return {inputs = inputs, target = target}
 end

@@ -20,6 +20,7 @@ ____exports.DEFAULTS = {
     LevelSpikeMin = 10,
     LevelSpikeMax = 15,
     OutOfPosition = 400,
+    FrontsMeetDistance = 1500,
     TradeDuration = 2.5,
     TradeHits = 3,
     CommitMax = 8,

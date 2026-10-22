@@ -21,8 +21,20 @@ local function lion(u)
 	return u
 end
 
--- One bottom-lane laner per side. Both creep fronts meet at the lane midpoint (x = 0); the Radiant T1 is at x = -2800
--- and the Dire T1 at x = 2800. `sign` mirrors x so the same layout holds for either team: our side is negative x.
+-- T2s at absolute 0.15 / 0.85 (x = -4900 / 4900); lane_world places only T1s.
+local function addT2s()
+	local t1 = TOWERS_W[2][dota.Tower.Bot1]
+	for team, x in pairs({ [2] = -4900, [3] = 4900 }) do
+		local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {}, loc = Vector(x, BOT_Y) },
+			getmetatable(t1))
+		t.GetUnitName = function() return "tower_t2" end
+		TOWERS_W[team][dota.Tower.Bot2] = t
+	end
+end
+
+-- One bottom-lane laner per side. Both creep fronts meet at the lane midpoint (x = 0), with one enemy creep there unless
+-- noWave; the Radiant T1 is at x = -2800 and the Dire T1 at x = 2800. `sign` mirrors x so the same layout holds for
+-- either team: our side is negative x.
 local function world(o)
 	o = o or {}
 	local team = o.team or 2
@@ -32,12 +44,14 @@ local function world(o)
 	T = 100
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
+	addT2s()
 	local bot = MakeUnit({ pid = 1, team = team, loc = Vector(sign * -800, BOT_Y), level = o.botLevel or 1 })
 	bot.pos, bot.lane = 5, Lane.Bot
 	OBSERVER = bot
 	local enemy = lion(MakeUnit({ pid = 6, team = other, loc = Vector(sign * (o.enemyX or 300), BOT_Y), level = o.enemyLevel or 1 }))
+	local creep = not o.noWave and MakeCreep({ team = other, x = sign * 100, y = BOT_Y }) or nil
 	local W = {
-		H = H, bot = bot, enemy = enemy, sign = sign,
+		H = H, bot = bot, enemy = enemy, sign = sign, other = other, creep = creep,
 		FR = H.LaneFight.FightRead,
 		M = H.LaneFight.CooldownMemory,
 	}
@@ -147,6 +161,115 @@ for _, team in ipairs({ 2, 3 }) do
 	W.at(-2300)
 	local r = W.read()
 	check("within our tower's range is out of position" .. tag, r.window == "position", tostring(r.window))
+end
+
+do
+	local W = world({ noWave = true, enemyX = -450 })
+	T = 10
+	local r = W.read()
+	check("ahead of their front is not out of position with no enemy wave in lane (0:10)", r.window == nil and r.target ~= nil,
+		tostring(r.window))
+end
+
+do
+	local W = world({ enemyX = -450 })
+	check("with their wave in lane the same spot is out of position", W.read().window == "position")
+	W.creep.hp = 0
+	T = T + 0.6
+	local r = W.read()
+	check("right after their wave died it is not", r.window == nil and r.target ~= nil, tostring(r.window))
+end
+
+do
+	-- Our wave and theirs 2100 apart along the lane: their creeps have not met ours.
+	local W = world({ noWave = true })
+	LANE_FRONT[2][Lane.Bot] = 0.35
+	MakeCreep({ team = 3, x = -2000, y = BOT_Y })
+	W.bot.loc = Vector(-1400, BOT_Y)
+	W.at(-500)
+	local r = W.read()
+	check("ahead of their front is not out of position before the waves meet", r.window == nil and r.target ~= nil, tostring(r.window))
+end
+
+do
+	-- Waves pushed to their T1 (x = 2800): 420 ahead of their front but 700 from their own tower.
+	local W = world({ noWave = true })
+	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.68, 0.32
+	MakeCreep({ team = 3, x = 2600, y = BOT_Y })
+	W.bot.loc = Vector(1200, BOT_Y)
+	W.at(2100)
+	local r = W.read()
+	check("a target within 750 of its own tower is not out of position", r.window == nil and r.target ~= nil, tostring(r.window))
+	TOWERS_W[3][dota.Tower.Bot1].alive = false
+	T = T + 0.6
+	r = W.read()
+	check("the same spot with their tower down is out of position", r.window == "position", tostring(r.window))
+end
+
+do
+	local W = world()
+	W.enemy.loc = Vector(-300, BOT_Y + 500)
+	local r = W.read()
+	check("300 ahead and 500 to the side is not out of position", r.window == nil and r.target ~= nil, tostring(r.window))
+end
+
+do
+	-- Our wave pushed to their T1; the enemy dives at our T1, 5500 from our creep front.
+	local W = world({ noWave = true })
+	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.7, 0.3
+	W.bot.loc = Vector(-2400, BOT_Y)
+	W.at(-2700)
+	local r = W.read()
+	check("an enemy diving at our T1 is a target", r.target == W.enemy and r.window == "position", tostring(r.target) .. tostring(r.respect))
+	lion(MakeUnit({ pid = 7, team = 3, loc = Vector(2600, BOT_Y) }))
+	T = T + 0.6
+	r = W.read()
+	check("the diver and their laner at the far end both count", r.respect == "outnumbered", tostring(r.respect))
+	local mid = MakeUnit({ pid = 8, team = 3, loc = Vector(-2400, 0) })
+	W.H.Lane.LaneState.ResetCache()
+	mid.level = 1
+	T = T + 0.6
+	r = W.read()
+	check("an enemy in another lane is not counted", r.respect == "outnumbered" and r.target == W.enemy)
+end
+
+do
+	-- Partner (assigned bottom) is away at a camp: a 1v2 in lane.
+	local W = world()
+	local partner = MakeUnit({ pid = 2, loc = Vector(-3000, -1000) })
+	partner.pos, partner.lane = 4, Lane.Bot
+	lion(MakeUnit({ pid = 7, team = 3, loc = Vector(600, BOT_Y) }))
+	local r = W.read()
+	check("assigned partner away on a camp: 1v2 reads outnumbered", r.respect == "outnumbered", tostring(r.respect))
+	partner.loc = Vector(-900, BOT_Y)
+	W.H.Lane.LaneState.ResetCache()
+	T = T + 0.6
+	r = W.read()
+	check("with the partner back in lane 2v2 is no respect", r.respect == nil, tostring(r.respect))
+end
+
+do
+	local W = world()
+	local missing = MakeUnit({ pid = 7, team = 3, loc = Vector(600, BOT_Y), level = 2 })
+	missing.hiddenFrom = { [W.bot] = true }
+	LAST_SEEN[7] = { location = Vector(600, BOT_Y), time_since_seen = 15 }
+	MakeUnit({ pid = 8, team = 3, loc = Vector(-800, 0), level = 2 })
+	local r = W.read()
+	check("a level 2 enemy in mid or missing for 15 s sets no spike", r.respect == nil and W.FR.LevelSpike(2, Lane.Bot, T) == nil,
+		tostring(r.respect))
+	LAST_SEEN[7] = { location = Vector(600, BOT_Y), time_since_seen = 5 }
+	W.H.Lane.LaneState.ResetCache()
+	T = T + 0.6
+	r = W.read()
+	check("the same enemy seen 5 s ago in lane sets their spike", r.respect == "their_spike", tostring(r.respect))
+end
+
+do
+	local W = world()
+	local dying = MakeCreep({ team = 2, x = -200, y = BOT_Y, hp = 40 })
+	W.enemy.target = dying
+	local r = W.read()
+	check("an enemy going for a dying allied creep gives a lasthit window", r.window == "lasthit", tostring(r.window))
 end
 
 do
@@ -268,7 +391,8 @@ end
 do
 	local W = world()
 	local FR = W.FR
-	local base = { target = true, keyThreatsDown = 1, lastHit = true, spike = "ours", aheadOfFront = 500, nearOurTower = false,
+	local base = { target = true, keyThreatsDown = 1, lastHit = true, spike = "ours", aheadOfFront = 500, wavesMet = true,
+		nearOurTower = false, nearTheirTower = false,
 		theirUltReady = false, enemiesNear = 1, ourLaners = 1 }
 	local function with(over) local t = {} for k, v in pairs(base) do t[k] = v end for k, v in pairs(over) do t[k] = v end return t end
 	check("spell is checked first", FR.Decide(base).window == "spell")

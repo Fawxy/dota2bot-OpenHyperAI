@@ -40,6 +40,8 @@ export const DEFAULTS = {
     LevelSpikeMin: 10,
     LevelSpikeMax: 15,
     OutOfPosition: 400,
+    // Fronts closer than this along the lane have met; only then is "ahead of their creeps" meaningful.
+    FrontsMeetDistance: 1500,
     TradeDuration: 2.5,
     TradeHits: 3,
     CommitMax: 8,

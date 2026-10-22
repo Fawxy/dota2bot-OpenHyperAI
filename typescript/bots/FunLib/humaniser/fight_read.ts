@@ -7,6 +7,7 @@ import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CooldownMemory from "bots/FunLib/humaniser/cooldown_memory";
 import * as CastWatch from "bots/FunLib/humaniser/cast_watch";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
@@ -28,9 +29,12 @@ export interface Inputs {
     keyThreatsDown: number;
     lastHit: boolean;
     spike: "ours" | "theirs" | undefined;
-    // Distance the target stands past its own creep front towards our base; negative when behind it.
+    // Along-lane distance the target stands past its own creep front towards our base; negative when behind it.
     aheadOfFront: number;
+    // Their wave is in lane and has met ours; without it "ahead of their creeps" means nothing.
+    wavesMet: boolean;
     nearOurTower: boolean;
+    nearTheirTower: boolean;
     theirUltReady: boolean;
     enemiesNear: number;
     ourLaners: number;
@@ -38,12 +42,20 @@ export interface Inputs {
 
 const TARGET_RANGE = 1200;
 const TOWER_RANGE = 700;
-const LANE_RADIUS = 2500;
+const OWN_TOWER_COVER = 750;
+// Heroes within this of the lane path, between the two T2s, are in the lane.
+const LANE_WIDTH = 1200;
 const MISSING_COUNTS = 10;
 const ULT_LEVEL = 6;
 // A window instance survives gaps shorter than this; a longer one makes the next sighting a new instance.
 const INSTANCE_GAP = 1;
 const SPIKE_LEVELS = [6, 2];
+// Lane membership runs between the two teams' T2s, or the next alive tower behind a fallen one.
+const BOUND_IDS: Record<number, number[]> = {
+    [Lane.Top]: [Tower.Top2, Tower.Top3],
+    [Lane.Mid]: [Tower.Mid2, Tower.Mid3],
+    [Lane.Bot]: [Tower.Bot2, Tower.Bot3],
+};
 const TOWER_IDS: Record<number, number[]> = {
     [Lane.Top]: [Tower.Top1, Tower.Top2, Tower.Top3],
     [Lane.Mid]: [Tower.Mid1, Tower.Mid2, Tower.Mid3],
@@ -97,7 +109,7 @@ export function WindowsFrom(i: Inputs): Window[] {
     if (i.keyThreatsDown > s.KeyThreatsWindow) list.push("spell");
     if (i.lastHit) list.push("lasthit");
     if (i.spike === "ours") list.push("level");
-    if (i.aheadOfFront > s.OutOfPosition || i.nearOurTower) list.push("position");
+    if (!i.nearTheirTower && ((i.wavesMet && i.aheadOfFront > s.OutOfPosition) || i.nearOurTower)) list.push("position");
     return list;
 }
 
@@ -163,19 +175,46 @@ function usable(u: Unit | undefined): u is Unit {
     return suspicious === undefined || !suspicious(u);
 }
 
-function nearestTower(team: number, lane: Lane): Unit | undefined {
-    for (const id of TOWER_IDS[lane] ?? []) {
+function firstAliveTower(team: number, ids: number[]): Unit | undefined {
+    for (const id of ids) {
         const tower = GetTower(team, id);
         if (tower !== null && tower !== undefined && tower.IsAlive()) return tower;
     }
     return undefined;
 }
 
-// Both amounts come from locations in one frame (team's), whichever team's script is reading.
-function aheadOfFront(team: number, lane: Lane, loc: Vector): number {
-    const front = GetLaneFrontLocation(enemyTeamOf(team), lane, 0);
-    const d = dist2D(loc, front);
-    return LaneState.TeamAmountAt(team, lane, loc) < LaneState.TeamAmountAt(team, lane, front) ? d : -d;
+function nearestTower(team: number, lane: Lane): Unit | undefined {
+    return firstAliveTower(team, TOWER_IDS[lane] ?? []);
+}
+
+// Straight distance between two points along the lane given as team-frame amounts.
+function alongLane(team: number, lane: Lane, a: number, b: number): number {
+    return dist2D(GetLocationAlongLane(lane, Camps.ToAbsAmount(team, a)), GetLocationAlongLane(lane, Camps.ToAbsAmount(team, b)));
+}
+
+// Measured along the lane, so standing off to the side of the lane does not count as being ahead.
+function aheadOfFront(team: number, lane: Lane, loc: Vector, enemyFront: number): number {
+    const amount = LaneState.TeamAmountAt(team, lane, loc);
+    const d = alongLane(team, lane, amount, enemyFront);
+    return amount < enemyFront ? d : -d;
+}
+
+/** Team-frame amounts bounding the lane: our T2 (or the next alive tower behind it) to theirs, base to base without towers. */
+function laneBounds(team: number, lane: Lane): [number, number] {
+    const ids = BOUND_IDS[lane] ?? [];
+    const ours = firstAliveTower(team, ids);
+    const theirs = firstAliveTower(enemyTeamOf(team), ids);
+    return [
+        ours !== undefined ? LaneState.TeamAmountAt(team, lane, ours.GetLocation()) : 0,
+        theirs !== undefined ? LaneState.TeamAmountAt(team, lane, theirs.GetLocation()) : 1,
+    ];
+}
+
+function inLane(team: number, lane: Lane, loc: Vector, bounds: [number, number]): boolean {
+    const r = GetAmountAlongLane(lane, loc);
+    if (r.distance > LANE_WIDTH) return false;
+    const amount = Camps.ToTeamAmount(team, r.amount);
+    return amount >= bounds[0] && amount <= bounds[1];
 }
 
 function keyAbilities(enemy: Unit): string[] {
@@ -218,12 +257,14 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     const skill = Profile.Get(bot).skill;
     const botLoc = bot.GetLocation();
 
+    const bounds = laneBounds(team, lane);
     let ourLaners = 0;
     let ourMax = 0;
     for (const h of snap.allies) {
-        if (!h.assigned) continue;
-        if (h.alive) ourLaners++;
-        ourMax = math.max(ourMax, GetHeroLevel(h.pid));
+        // Allies includes unassigned heroes near our front: count whoever stands in the lane (a laner defending its
+        // tower while the wave is pushed out counts; one away at a camp does not), take levels from the assigned laners.
+        if (h.alive && !h.unit.IsNull() && inLane(team, lane, h.unit.GetLocation(), bounds)) ourLaners++;
+        if (h.assigned) ourMax = math.max(ourMax, GetHeroLevel(h.pid));
     }
 
     let target: Unit | undefined;
@@ -235,13 +276,16 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
         if (e === undefined || e.location === undefined) continue;
         const unit = e.visible && usable(e.unit) ? e.unit : undefined;
         const loc = unit !== undefined ? unit.GetLocation() : e.location;
-        if (dist2D(loc, snap.frontLoc) > LANE_RADIUS) continue;
-        theirMax = math.max(theirMax, GetHeroLevel(e.pid));
+        if (!inLane(team, lane, loc, bounds)) continue;
         if (unit === undefined) {
-            if (!e.visible && e.timeSinceSeen <= MISSING_COUNTS) enemiesNear++;
+            if (!e.visible && e.timeSinceSeen <= MISSING_COUNTS) {
+                enemiesNear++;
+                theirMax = math.max(theirMax, GetHeroLevel(e.pid));
+            }
             continue;
         }
         enemiesNear++;
+        theirMax = math.max(theirMax, GetHeroLevel(e.pid));
         if (!theirUltReady && ultReady(pid, unit, e.pid, now, skill)) theirUltReady = true;
         const d = dist2D(botLoc, loc);
         if (d <= TARGET_RANGE && d < targetDist) {
@@ -257,7 +301,9 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
         lastHit: false,
         spike: LevelSpike(team, lane, now),
         aheadOfFront: -math.huge,
+        wavesMet: snap.enemy.count > 0 && alongLane(team, lane, snap.ourFront, snap.enemyFront) <= LaneFightConfig.Settings().FrontsMeetDistance,
         nearOurTower: false,
+        nearTheirTower: false,
         theirUltReady,
         enemiesNear,
         ourLaners,
@@ -266,9 +312,11 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
         const loc = target.GetLocation();
         inputs.keyThreatsDown = CooldownMemory.KeyThreatsDown(pid, target.GetPlayerID(), keyAbilities(target), now, skill);
         inputs.lastHit = Harass.IsLastHitAttempt(target, snap.ally.units) !== undefined;
-        inputs.aheadOfFront = aheadOfFront(team, lane, loc);
-        const tower = nearestTower(team, lane);
-        inputs.nearOurTower = tower !== undefined && dist2D(loc, tower.GetLocation()) <= TOWER_RANGE;
+        inputs.aheadOfFront = aheadOfFront(team, lane, loc, snap.enemyFront);
+        const ours = nearestTower(team, lane);
+        inputs.nearOurTower = ours !== undefined && dist2D(loc, ours.GetLocation()) <= TOWER_RANGE;
+        const theirs = nearestTower(enemyTeamOf(team), lane);
+        inputs.nearTheirTower = theirs !== undefined && dist2D(loc, theirs.GetLocation()) <= OWN_TOWER_COVER;
     }
     return { inputs, target };
 }
