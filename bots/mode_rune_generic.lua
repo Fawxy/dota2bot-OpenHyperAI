@@ -30,6 +30,30 @@ local function Gate(sName, nDesire)
 	return nDesire
 end
 
+-- A rune still on the ground after this bot's pickup order ended is ignored until the next river spawn. The 0:00 bounty
+-- at the top river spot (RUNE_POWERUP_1) never leaves the ground for Action_PickUpRune (upstream too), and without this
+-- the bot retries it for minutes. Ignoring it until the next spawn keeps that spot's water and power runes.
+local nUnpickableUntil = {}
+local tPendingPickup = nil
+
+local function CheckPendingPickup()
+	if tPendingPickup == nil
+	or DotaTime() < tPendingPickup.time + 0.5
+	or bot:GetCurrentActionType() == BOT_ACTION_TYPE_PICK_UP_RUNE
+	then
+		return
+	end
+	local nRune = tPendingPickup.rune
+	tPendingPickup = nil
+	if GetRuneStatus(nRune) == RUNE_STATUS_AVAILABLE then
+		nUnpickableUntil[nRune] = J.GetNextPowerRuneSpawnTime()
+	end
+end
+
+local function IsUnpickable(nRune)
+	return nUnpickableUntil[nRune] ~= nil and DotaTime() < nUnpickableUntil[nRune]
+end
+
 local function IsHumanClaimingRune(nRune)
 	local vRuneLoc = GetRuneSpawnLocation(nRune)
 	if nHumanClaimedRuneTime[nRune] and GameTime() - nHumanClaimedRuneTime[nRune] < 5 then
@@ -221,6 +245,7 @@ end
 local GetDesireRaw = GetDesire
 function GetDesire()
 	sGate = nil
+	CheckPendingPickup()
 	local nRaw = GetDesireRaw()
 	-- The mid-rune floor claim (3b) only lifts a frame that scored a power rune, never past a gate above.
 	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
@@ -444,6 +469,9 @@ function Think()
 				bot:Action_MoveToLocation(vRuneLocation)
 				return
 			else
+				if tPendingPickup == nil then
+					tPendingPickup = { rune = rune.location, time = DotaTime() }
+				end
 				bot:Action_PickUpRune(rune.location)
 				return
 			end
@@ -543,7 +571,7 @@ function X.GetBestRune()
 	-- core within 1200 of the spot, the pick falls to the loop below, whose gates give the core the rune.
 	local hForced = J.Humaniser.Transitions.RuneTarget(bot)
 	local hYielded = nil
-	if hForced then
+	if hForced and not IsUnpickable(hForced) then
 		local vForced = GetRuneSpawnLocation(hForced)
 		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced) then
 			if GetRuneStatus(hForced) == RUNE_STATUS_AVAILABLE and X.IsAllyCoreNear(vForced, 1200) then
@@ -564,6 +592,7 @@ function X.GetBestRune()
 		if (bPower or not bPowerOnly)
 		and (nPowerTarget == nil or rune == nPowerTarget)
 		and rune ~= hYielded
+		and not IsUnpickable(rune)
 		and X.IsTheClosestAlly(bot, vRuneLocation)
 		and not X.IsPingedByHumanPlayer(vRuneLocation, math.huge)
 		and not IsHumanClaimingRune(rune)
