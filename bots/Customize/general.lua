@@ -166,7 +166,7 @@ Customize.Humaniser = {
         Caution = true,   -- an alone core or a lane with a missing enemy plays safer (independent of Teleports)
         Teleports = true, -- bots back off from, or set up on, an enemy TP into their lane (independent of Caution)
         LaneWard = true,  -- the lane support wards the gank path between about 2:30 and 4:30
-        Phase = true,     -- per-bot end of laning: cores with a farm item farm, supports past level 6 leave
+        Phase = true,     -- per-bot end of laning: cores with a farm item and a safe jungle farm; supports above level 6 leave between 6:00 and 8:00 with a smoke or an attack order
         LostLane = true,  -- a lost lane: the core goes to the jungle, a support roams or suggests it to a human
     },
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short

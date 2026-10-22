@@ -232,6 +232,27 @@ do
 end
 
 do
+	-- A pick made while enabled, then the kill switch thrown before the ward mode confirms it:
+	-- Confirm must refuse on the switch itself, since the pending pick is still there to match.
+	for _, flag in ipairs({ "Enable", "LaneWard" }) do
+		local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = { Enable = true } })
+		T, CURRENT_TEAM = 200, 2
+		unit({ pid = 1, pos = 1, lane = Lane.Bot, loc = Vector(0, -5000) })
+		local p5 = unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = Vector(0, -5000) })
+		RANDOM_FRACTION = 0.1
+		local pick = H.Transitions.PickLaneWard(p5, { { location = Vector(3000, -4000) } })
+		RANDOM_FRACTION = nil
+		check("confirm after kill switch (" .. flag .. "): pick was pending", pick ~= nil)
+		local dir = GetScriptDirectory()
+		require(dir .. "/FunLib/humaniser/config").Get().Transitions[flag] = false
+		require(dir .. "/FunLib/humaniser/transitions/settings").ResetSettings()
+		H.Transitions.ConfirmLaneWard(p5, pick)
+		H.Transitions.Tick(p5)
+		check("confirm after kill switch (" .. flag .. "): no claim", not claimed(H, p5, "transitions:ward", BotMode.Ward))
+	end
+end
+
+do
 	local on, off = cautionScenario({ Enable = true }), cautionScenario({ Enable = false })
 	check("caution (enabled): position moved, trades suppressed, plan cautious, retreat claim", on.override and on.moved and on.suppressed and on.cautious and on.claim and on.scans)
 	check("caution (disabled): same table back, trades allowed, not cautious, no claim, no scans", not off.override and not off.moved and not off.suppressed and not off.cautious and not off.claim and not off.scans, tostring(off.moved)..tostring(off.suppressed)..tostring(off.cautious)..tostring(off.claim)..tostring(off.scans))
