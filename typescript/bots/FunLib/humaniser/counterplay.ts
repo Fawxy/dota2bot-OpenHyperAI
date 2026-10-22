@@ -84,6 +84,8 @@ const INVENTORY_SLOTS = 6;
 let observers: Record<number, ObserverState> = {};
 // Hero positions are fixed for the game; read while visible, since PositionOf needs a unit handle.
 let positions: Record<number, number> = {};
+// The latest position read per enemy, so lane_enemy_pos reports a read that differs from the kept one once.
+let positionReads: Record<number, number> = {};
 let marked: Record<number, Record<number, number>> = {};
 let dropDenyUntil: Record<number, number> = {};
 // "<team>:<lane>:<instance key>" of instances already telegraphed: two laners noticing one instance say it once.
@@ -92,6 +94,7 @@ let teamSaid: Record<string, boolean> = {};
 export function ResetCache(): void {
     observers = {};
     positions = {};
+    positionReads = {};
     marked = {};
     dropDenyUntil = {};
     teamSaid = {};
@@ -297,11 +300,23 @@ function prune(st: ObserverState, now: number): void {
     }
 }
 
-function notePositions(enemies: LaneState.LaneEnemy[]): void {
+function notePositions(s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[]): void {
     for (const e of enemies) {
-        if (!e.visible || e.unit === undefined || positions[e.pid] !== undefined) continue;
+        if (!e.visible || e.unit === undefined) continue;
+        const kept = positions[e.pid];
+        if (kept !== undefined && !Telemetry.IsEnabled()) continue;
         const pos = e.position ?? LaneConfig.PositionOf(e.unit);
-        if (pos !== undefined) positions[e.pid] = pos;
+        if (pos === undefined || pos === positionReads[e.pid]) continue;
+        positionReads[e.pid] = pos;
+        if (kept === undefined) positions[e.pid] = pos;
+        Telemetry.Event("lane_enemy_pos", [
+            ["team", s.team],
+            ["enemy", e.pid],
+            ["hero", e.unit.GetUnitName()],
+            ["pos", pos],
+            ["kept", positions[e.pid]],
+            ["lane", s.lane],
+        ]);
     }
 }
 
@@ -461,7 +476,7 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     prune(st, now);
     const enemies = LaneState.Enemies(bot, s.lane);
-    notePositions(enemies);
+    notePositions(s, enemies);
     if (LaneConfig.InLaningPhase()) {
         pullSignals(bot, st, s, enemies, now);
         freezeSignal(bot, st, s, enemies, now);

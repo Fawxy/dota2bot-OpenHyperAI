@@ -139,6 +139,27 @@ do
 end
 
 do
+	-- lane_enemy_pos: the first read of each enemy's position is kept for the game; a later, different read is logged once.
+	local H, support, _, _, esup = world(1, { telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local function posLines()
+		local r = {}
+		for _, l in ipairs(lines) do if l:find(" ev=lane_enemy_pos ", 1, true) and l:find("enemy=15", 1, true) then table.insert(r, l) end end
+		return r
+	end
+	tick(H, support, 60)
+	tick(H, support, 61)
+	local first = posLines()
+	check("first read logged once with the kept position", #first == 1 and first[1]:find("pos=5 kept=5", 1, true) ~= nil, first[1])
+	esup.pos = 2
+	tick(H, support, 62)
+	tick(H, support, 63)
+	local later = posLines()
+	check("a different later read is logged once; the kept position stays", #later == 2 and later[2]:find("pos=2 kept=5", 1, true) ~= nil, later[2])
+end
+
+do
 	local H = world(0.5)
 	local C = H.Lane.Counter
 	check("two cycles near their tower with denies -> freeze", C.FreezeSuspected({ 0.7, 0.65 }, { 3, 2 }))

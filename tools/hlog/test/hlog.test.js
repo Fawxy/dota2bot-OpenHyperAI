@@ -339,6 +339,9 @@ test('summary reports take-pull outcomes and swings', () => {
             '[HEV] t=117.5 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
             '[HEV] t=118 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
             '[HEV] t=118.5 ev=lane_take_skip pid=1 kind=pull camp=2 reason=owner',
+            '[HEV] t=118.6 ev=lane_enemy_pos team=2 enemy=8 hero=npc_dota_hero_lion pos=1 kept=1 lane=3',
+            '[HEV] t=118.7 ev=lane_enemy_pos team=2 enemy=7 hero=npc_dota_hero_ursa pos=3 kept=3 lane=3',
+            '[HEV] t=118.8 ev=lane_enemy_pos team=2 enemy=8 hero=npc_dota_hero_lion pos=5 kept=1 lane=3',
             '[HEV] t=120 ev=lane_job_start pid=4 kind=contest camp=2',
             '[HEV] t=125 ev=lane_job_end pid=4 kind=contest camp=2 reason=timeout pre=0',
         ].join('\n')
@@ -346,5 +349,7 @@ test('summary reports take-pull outcomes and swings', () => {
     const text = report.summary(game);
     assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 low-hp 1 lane-wave 1 aborted 1/);
     assert.match(text, /pull signals: 2 noticed 1; take skipped: lane-creeps 2 owner 1/);
+    assert.match(text, /enemy positions kept by rad: ursa\[7\]=3 lion\[8\]=1 \(\+1 later reads\)/);
+    assert.doesNotMatch(text, /enemy positions kept by dire/);
     assert.doesNotMatch(text, /pre-contest:/);
 });
