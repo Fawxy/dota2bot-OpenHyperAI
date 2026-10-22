@@ -453,4 +453,27 @@ do
 	check("our mid not coming 4 s after the spawn: the support picks it up", think(Vector(-6000, 0), 364) == "pickup", think(Vector(-6000, 0), 364))
 end
 
+do
+	-- The 0:00 bounty at the top river spot, which Action_PickUpRune never takes in game: the bot stands on it,
+	-- its pickup order ends, and the rune is still there.
+	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE }
+	local bot = load(0, { T = 10, loc = DEFAULT_RUNE_AT[RUNE_POWERUP_1] })
+	local picks = 0
+	bot.Action_PickUpRune = function() picks = picks + 1 end
+	bot.GetAttackRange = function() return 150 end
+	bot.GetNearbyCreeps = function() return {} end
+
+	GetDesire()
+	Think()
+	check("on the spot: the bot orders the pickup", picks == 1, picks)
+
+	T = 10.6
+	local d = GetDesire()
+	check("pickup over and the rune still there: the bot leaves it", d == 0 and bot.rune.normal.location ~= RUNE_POWERUP_1, d)
+
+	T = 121
+	d = GetDesire()
+	check("after the next river spawn the spot counts again", d > 0 and bot.rune.normal.location == RUNE_POWERUP_1, d)
+end
+
 finish()
