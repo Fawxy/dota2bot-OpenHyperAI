@@ -10,7 +10,7 @@
  * Lessons carried over from camp jobs: claims posted from farm's GetDesire reach retreat and the errands only in the
  * next scoring round, so the retreat hold starts on the walk in; a trip never starts while retreat already bids its
  * desire (it would only win in retreat's dip and end at once); enemy sightings end a trip after a reaction delay, not
- * on the first frame; mode-end and pre-emption logs name the mode that won.
+ * on the first frame; pre-emption logs name the mode that won; farm_gate logs why trips do not start.
  */
 import { BotMode, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
@@ -29,8 +29,11 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 export const DEFAULTS = {
     Enable: true,
     // First trip by position: not before StartTime (DotaTime) nor below MinLevel. From EndTime upstream farm runs alone.
+    // Bot games level slowly (console.9057060616: cores L3-4 at 5:00, L5 at 8-9 min), so the level gate is per camp
+    // type (CampMinLevel) and the clear-time fit decides the rest; a pos-based level gate held every core to 11 min.
     StartTime: { [1]: 300, [2]: 360, [3]: 330 } as Record<number, number>,
-    MinLevel: { [1]: 5, [2]: 6, [3]: 6 } as Record<number, number>,
+    MinLevel: { [1]: 3, [2]: 3, [3]: 3 } as Record<number, number>,
+    CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     EndTime: 1200,
     // Above laning's 0.446 (+ the 0.06 stickiness) and farm's own lane-front desires; below last hits (0.9) and camp jobs (0.7).
     Desire: 0.62,
@@ -46,7 +49,9 @@ export const DEFAULTS = {
     // Visible enemy heroes this close to the bot (or to a camp) end a trip after the bot's reaction time (or rule the
     // camp out). The walk back ignores them: laning and retreat decide there.
     EnemyRadius: 1400,
-    MaxCampDist: 2800,
+    // From the lane front. A mid front near the river has its nearest own camps at ~2,800 (Dire evil_5) and ~3,650
+    // (Radiant good_5); the walk is priced into the fit, so a far camp is only taken when the wave gap allows it.
+    MaxCampDist: 3800,
     // How late after the next enemy wave reaches the front the bot may get back; it fights our creeps that long.
     LateTolerance: 5,
     // A stack may leave the front this much longer, since its gold arrives on a later trip.
@@ -62,7 +67,6 @@ export const DEFAULTS = {
     LearnClamp: [0.4, 2.5],
     // A camp left unfinished at leaveBy says the estimate was short: the bot's factor grows by this.
     LateGrowth: 1.15,
-    AncientMinLevel: 12,
     // Relative gold of a camp; a stack counts StackValue of its camp's value, since it pays out later.
     Value: { small: 1, medium: 1.4, large: 1.9, ancient: 2.6 } as Record<string, number>,
     StackValue: 0.8,
@@ -77,7 +81,11 @@ export const DEFAULTS = {
     EmptySight: 1200,
     NeutralScan: 1600,
     PlanEvery: 0.5,
-    PreemptAfter: 1.0,
+    // Another mode this long without a farm Think ends the trip. Farm's OnEnd does not: upstream team_roam grabs a
+    // neutral's last hit at 0.72 for under BLIP_DWELL (2 s, tools/hlog) and handed every trip to laning (MK 11:40).
+    PreemptAfter: 2.0,
+    // farm_gate: why a core is not starting a trip, logged when the reason changes and at most every GateLogEvery.
+    GateLogEvery: 15,
     ReturnMax: 25,
     // Errands that wait for the trip (camp jobs' JOB_FOCUS_MODES less rune, roam and team roam, which a core should still take).
     FocusMargin: 0.05,
@@ -108,6 +116,12 @@ interface Trip {
     estimate?: number;
     /** When a visible enemy hero first came within EnemyRadius; cleared once none is. */
     enemySince?: number;
+}
+
+/** Why PlanCamp found nothing: open camps in range, and the shortest farm trip among them against the window. */
+export interface PlanDiag {
+    open: number;
+    bestTotal?: number;
 }
 
 export interface CampPlan {
@@ -153,6 +167,7 @@ export function ResetCache(): void {
     cleared = {};
     stackRolls = {};
     paceFactor = {};
+    gateLogged = {};
 }
 
 export function IsActive(): boolean {
@@ -354,7 +369,7 @@ function stackPlan(bot: Unit, spawner: Camps.Spawner, from: Vector, front: Vecto
  * The best camp of the bot's own jungle within MaxCampDist of `front` that it can clear from `from` and still be back
  * at `front` by `deadline`, or stack on the way; by value per second of trip.
  */
-export function PlanCamp(bot: Unit, from: Vector, front: Vector, now: number, deadline: number): CampPlan | undefined {
+export function PlanCamp(bot: Unit, from: Vector, front: Vector, now: number, deadline: number, diag?: PlanDiag): CampPlan | undefined {
     const s = Settings();
     const team = bot.GetTeam();
     const speed = speedOf(bot);
@@ -363,14 +378,16 @@ export function PlanCamp(bot: Unit, from: Vector, front: Vector, now: number, de
     let best: CampPlan | undefined;
     for (const spawner of Camps.Spawners()) {
         if (spawner.team !== team) continue;
-        if (spawner.type === "ancient" && level < s.AncientMinLevel) continue;
+        if (level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist2D(center, front) > s.MaxCampDist || !campOpen(bot, team, spawner.idx, center, now, sight)) continue;
+        if (diag !== undefined) diag.open++;
         const stacks = Stacking.StackCount(spawner.idx);
         const value = (s.Value[spawner.type] ?? 1) * (1 + stacks);
         const back = dist2D(center, front) / speed;
         const clearTime = ClearTime(bot, spawner.type, stacks);
         const total = dist2D(from, center) / speed + clearTime + back;
+        if (diag !== undefined && (diag.bestTotal === undefined || total < diag.bestTotal)) diag.bestTotal = total;
         if (now + total <= deadline) {
             const score = value / total;
             if (best === undefined || score > best.score)
@@ -432,24 +449,44 @@ function adopt(bot: Unit, trip: Trip, plan: CampPlan): boolean {
     return true;
 }
 
-function schedule(bot: Unit, now: number): boolean {
+/** Starts a trip, or returns why not (with the numbers behind the reason) for farm_gate. */
+function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, [string, any][]]> {
     const s = Settings();
-    if (StartGate(bot, now) !== undefined) return false;
+    const gate = StartGate(bot, now);
+    if (gate !== undefined) return $multi(gate, [["lvl", bot.GetLevel()], ["hp", fmt(hpOf(bot))], ["mode", HDebug.ModeName(bot.GetActiveMode())]]);
     const team = bot.GetTeam();
     const lane = homeLane(bot);
     const front = GetLaneFrontLocation(team, lane, 0);
-    if (GetUnitToLocationDistance(bot, front) > s.FrontRadius) return false;
-    if (enemyCreepsNear(bot, s.WaveClearRadius) || waveAlive(front, s.WaveClearRadius) || anyNear(aliveUnits(UnitType.EnemyHeroes), bot.GetLocation(), s.EnemyRadius)) return false;
+    const fromFront = GetUnitToLocationDistance(bot, front);
+    if (fromFront > s.FrontRadius) return $multi("far", [["lane", lane], ["dist", math.floor(fromFront)]]);
+    if (enemyCreepsNear(bot, s.WaveClearRadius) || waveAlive(front, s.WaveClearRadius)) return $multi("wave", [["lane", lane]]);
+    if (anyNear(aliveUnits(UnitType.EnemyHeroes), bot.GetLocation(), s.EnemyRadius)) return $multi("enemy", [["lane", lane]]);
     const waveAt = NextWaveAt(team, lane, front, now);
-    if (waveAt === undefined) return false;
+    if (waveAt === undefined) return $multi("no-path", [["lane", lane]]);
     const deadline = waveAt + s.LateTolerance;
-    const plan = PlanCamp(bot, bot.GetLocation(), front, now, deadline);
-    if (plan === undefined) return false;
+    const diag: PlanDiag = { open: 0 };
+    const plan = PlanCamp(bot, bot.GetLocation(), front, now, deadline, diag);
+    if (plan === undefined)
+        return $multi(diag.open === 0 ? "no-camp" : "no-fit", [["lane", lane], ["lvl", bot.GetLevel()], ["window", fmt(deadline - now)], ["best", fmt(diag.bestTotal)], ["open", diag.open], ["pace", string.format("%.2f", PaceFactor(bot))]]);
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };
-    if (!adopt(bot, trip, plan)) return false;
+    if (!adopt(bot, trip, plan)) return $multi("stack-start", [["camp", plan.campIdx]]);
     trips[bot.GetPlayerID()] = trip;
     log(bot, "farm_trip_start", trip, [["lane", lane], ["pace", string.format("%.2f", PaceFactor(bot))]]);
-    return true;
+    return $multi(undefined, []);
+}
+
+let gateLogged: Record<number, { why: string; at: number }> = {};
+
+/** One farm_gate line per reason change (and every GateLogEvery while it holds), so a game shows why cores stayed in lane. */
+function noteGate(bot: Unit, why: string, fields: [string, any][], now: number): void {
+    if (!Telemetry.IsEnabled() && !HDebug.IsEnabled()) return;
+    if (why === "not-core" || why === "unit") return;
+    const pid = bot.GetPlayerID();
+    const last = gateLogged[pid];
+    if (last !== undefined && last.why === why && now - last.at < Settings().GateLogEvery) return;
+    gateLogged[pid] = { why, at: now };
+    Telemetry.Event("farm_gate", [["pid", pid], ["why", why], ...fields]);
+    HDebug.Log("farm", `gate pid=${pid} why=${why}`);
 }
 
 function releaseClaims(bot: Unit): void {
@@ -461,7 +498,7 @@ function end(bot: Unit, trip: Trip, why: string): void {
     delete trips[bot.GetPlayerID()];
     releaseClaims(bot);
     const extra: [string, any][] = [["why", why], ["camps", trip.camps], ["secs", fmt(DotaTime() - trip.startedAt)]];
-    if (why === "preempted" || why === "mode-end") {
+    if (why === "preempted") {
         const to = bot.GetActiveMode();
         extra.push(["to", HDebug.ModeName(to)]);
         if (Intent.IsActive()) extra.push(["toBy", Intent.Explain(bot, to)]);
@@ -547,7 +584,12 @@ export function Desire(bot: Unit): number {
     }
     if (!bot.IsAlive() || now < (nextPlanAt[pid] ?? -math.huge)) return 0;
     nextPlanAt[pid] = now + Settings().PlanEvery;
-    if (!schedule(bot, now)) return 0;
+    const [why, fields] = schedule(bot, now);
+    if (why !== undefined) {
+        noteGate(bot, why, fields, now);
+        return 0;
+    }
+    gateLogged[pid] = undefined as any;
     postClaims(bot, trips[pid]);
     return Settings().Desire;
 }
@@ -647,11 +689,11 @@ export function Think(bot: Unit): boolean {
     return step(bot, trip, now);
 }
 
-export function OnEnd(bot: Unit): void {
-    if (!IsActive()) return;
-    const trip = trips[bot.GetPlayerID()];
-    if (trip !== undefined) end(bot, trip, "mode-end");
-}
+/**
+ * Farm lost the round. The trip is kept: a blip (team_roam's neutral last hit) hands farm back within PreemptAfter,
+ * and a real take-over ends it as "preempted" from Desire, where GetActiveMode already names the winner.
+ */
+export function OnEnd(_bot: Unit): void {}
 
 /** mode_farm_generic: a run started, so the trip ends now. */
 export function Abort(bot: Unit, why: string): void {

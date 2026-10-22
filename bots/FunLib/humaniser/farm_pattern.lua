@@ -157,7 +157,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, MAX_STEPS
+local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, gateLogged, MAX_STEPS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -408,7 +408,7 @@ function stackPlan(bot, spawner, from, front, now, deadline, value)
 end
 --- The best camp of the bot's own jungle within MaxCampDist of `front` that it can clear from `from` and still be back
 -- at `front` by `deadline`, or stack on the way; by value per second of trip.
-function ____exports.PlanCamp(bot, from, front, now, deadline)
+function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
     local s = ____exports.Settings()
     local team = bot:GetTeam()
     local speed = speedOf(bot)
@@ -426,7 +426,7 @@ function ____exports.PlanCamp(bot, from, front, now, deadline)
                     __continue78 = true
                     break
                 end
-                if spawner.type == "ancient" and level < s.AncientMinLevel then
+                if level < (s.CampMinLevel[spawner.type] or 1) then
                     __continue78 = true
                     break
                 end
@@ -442,11 +442,17 @@ function ____exports.PlanCamp(bot, from, front, now, deadline)
                     __continue78 = true
                     break
                 end
+                if diag ~= nil then
+                    diag.open = diag.open + 1
+                end
                 local stacks = Stacking.StackCount(spawner.idx)
                 local value = (s.Value[spawner.type] or 1) * (1 + stacks)
                 local back = dist2D(center, front) / speed
                 local clearTime = ____exports.ClearTime(bot, spawner.type, stacks)
                 local total = dist2D(from, center) / speed + clearTime + back
+                if diag ~= nil and (diag.bestTotal == nil or total < diag.bestTotal) then
+                    diag.bestTotal = total
+                end
                 if now + total <= deadline then
                     local score = value / total
                     if best == nil or score > best.score then
@@ -667,7 +673,8 @@ end
 ____exports.DEFAULTS = {
     Enable = true,
     StartTime = {[1] = 300, [2] = 360, [3] = 330},
-    MinLevel = {[1] = 5, [2] = 6, [3] = 6},
+    MinLevel = {[1] = 3, [2] = 3, [3] = 3},
+    CampMinLevel = {small = 3, medium = 4, large = 6, ancient = 12},
     EndTime = 1200,
     Desire = 0.62,
     StartHP = 0.65,
@@ -677,7 +684,7 @@ ____exports.DEFAULTS = {
     FrontRadius = 1800,
     WaveClearRadius = 1000,
     EnemyRadius = 1400,
-    MaxCampDist = 2800,
+    MaxCampDist = 3800,
     LateTolerance = 5,
     StackLateExtra = 8,
     WavePeriod = 30,
@@ -688,7 +695,6 @@ ____exports.DEFAULTS = {
     Learn = 0.3,
     LearnClamp = {0.4, 2.5},
     LateGrowth = 1.15,
-    AncientMinLevel = 12,
     Value = {small = 1, medium = 1.4, large = 1.9, ancient = 2.6},
     StackValue = 0.8,
     StackMinWait = 0.5,
@@ -699,7 +705,8 @@ ____exports.DEFAULTS = {
     EmptySight = 1200,
     NeutralScan = 1600,
     PlanEvery = 0.5,
-    PreemptAfter = 1,
+    PreemptAfter = 2,
+    GateLogEvery = 15,
     ReturnMax = 25,
     FocusMargin = 0.05
 }
@@ -715,6 +722,7 @@ function ____exports.ResetCache()
     cleared = {}
     stackRolls = {}
     paceFactor = {}
+    gateLogged = {}
 end
 function ____exports.IsActive()
     return Config.IsFeatureEnabled("FarmPattern")
@@ -833,38 +841,87 @@ local function homeLane(bot)
     end
     return best
 end
+--- Starts a trip, or returns why not (with the numbers behind the reason) for farm_gate.
 local function schedule(bot, now)
     local s = ____exports.Settings()
-    if ____exports.StartGate(bot, now) ~= nil then
-        return false
+    local gate = ____exports.StartGate(bot, now)
+    if gate ~= nil then
+        return gate, {
+            {
+                "lvl",
+                bot:GetLevel()
+            },
+            {
+                "hp",
+                fmt(hpOf(bot))
+            },
+            {
+                "mode",
+                HDebug.ModeName(bot:GetActiveMode())
+            }
+        }
     end
     local team = bot:GetTeam()
     local lane = homeLane(bot)
     local front = GetLaneFrontLocation(team, lane, 0)
-    if GetUnitToLocationDistance(bot, front) > s.FrontRadius then
-        return false
+    local fromFront = GetUnitToLocationDistance(bot, front)
+    if fromFront > s.FrontRadius then
+        return "far", {
+            {"lane", lane},
+            {
+                "dist",
+                math.floor(fromFront)
+            }
+        }
     end
-    if enemyCreepsNear(bot, s.WaveClearRadius) or waveAlive(front, s.WaveClearRadius) or anyNear(
+    if enemyCreepsNear(bot, s.WaveClearRadius) or waveAlive(front, s.WaveClearRadius) then
+        return "wave", {{"lane", lane}}
+    end
+    if anyNear(
         aliveUnits(UnitType.EnemyHeroes),
         bot:GetLocation(),
         s.EnemyRadius
     ) then
-        return false
+        return "enemy", {{"lane", lane}}
     end
     local waveAt = ____exports.NextWaveAt(team, lane, front, now)
     if waveAt == nil then
-        return false
+        return "no-path", {{"lane", lane}}
     end
     local deadline = waveAt + s.LateTolerance
+    local diag = {open = 0}
     local plan = ____exports.PlanCamp(
         bot,
         bot:GetLocation(),
         front,
         now,
-        deadline
+        deadline,
+        diag
     )
     if plan == nil then
-        return false
+        return diag.open == 0 and "no-camp" or "no-fit", {
+            {"lane", lane},
+            {
+                "lvl",
+                bot:GetLevel()
+            },
+            {
+                "window",
+                fmt(deadline - now)
+            },
+            {
+                "best",
+                fmt(diag.bestTotal)
+            },
+            {"open", diag.open},
+            {
+                "pace",
+                string.format(
+                    "%.2f",
+                    ____exports.PaceFactor(bot)
+                )
+            }
+        }
     end
     local trip = {
         team = team,
@@ -879,7 +936,7 @@ local function schedule(bot, now)
         camps = 0
     }
     if not adopt(bot, trip, plan) then
-        return false
+        return "stack-start", {{"camp", plan.campIdx}}
     end
     trips[bot:GetPlayerID()] = trip
     log(
@@ -897,7 +954,35 @@ local function schedule(bot, now)
             }
         }
     )
-    return true
+    return nil, {}
+end
+gateLogged = {}
+--- One farm_gate line per reason change (and every GateLogEvery while it holds), so a game shows why cores stayed in lane.
+local function noteGate(bot, why, fields, now)
+    if not Telemetry.IsEnabled() and not HDebug.IsEnabled() then
+        return
+    end
+    if why == "not-core" or why == "unit" then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local last = gateLogged[pid]
+    if last ~= nil and last.why == why and now - last.at < ____exports.Settings().GateLogEvery then
+        return
+    end
+    gateLogged[pid] = {why = why, at = now}
+    Telemetry.Event(
+        "farm_gate",
+        {
+            {"pid", pid},
+            {"why", why},
+            unpack(fields)
+        }
+    )
+    HDebug.Log(
+        "farm",
+        (("gate pid=" .. tostring(pid)) .. " why=") .. why
+    )
 end
 local function ____end(bot, trip, why)
     __TS__Delete(
@@ -913,7 +998,7 @@ local function ____end(bot, trip, why)
             fmt(DotaTime() - trip.startedAt)
         }
     }
-    if why == "preempted" or why == "mode-end" then
+    if why == "preempted" then
         local to = bot:GetActiveMode()
         extra[#extra + 1] = {
             "to",
@@ -1026,9 +1111,12 @@ function ____exports.Desire(bot)
         return 0
     end
     nextPlanAt[pid] = now + ____exports.Settings().PlanEvery
-    if not schedule(bot, now) then
+    local why, fields = schedule(bot, now)
+    if why ~= nil then
+        noteGate(bot, why, fields, now)
         return 0
     end
+    gateLogged[pid] = nil
     postClaims(bot, trips[pid])
     return ____exports.Settings().Desire
 end
@@ -1062,14 +1150,9 @@ function ____exports.Think(bot)
     overlay(bot, trip, now)
     return step(bot, trip, now)
 end
-function ____exports.OnEnd(bot)
-    if not ____exports.IsActive() then
-        return
-    end
-    local trip = trips[bot:GetPlayerID()]
-    if trip ~= nil then
-        ____end(bot, trip, "mode-end")
-    end
+--- Farm lost the round. The trip is kept: a blip (team_roam's neutral last hit) hands farm back within PreemptAfter,
+-- and a real take-over ends it as "preempted" from Desire, where GetActiveMode already names the winner.
+function ____exports.OnEnd(_bot)
 end
 --- mode_farm_generic: a run started, so the trip ends now.
 function ____exports.Abort(bot, why)

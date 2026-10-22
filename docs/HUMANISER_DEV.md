@@ -761,10 +761,11 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 ### Start
 - Any bot except illusions, non-heroes (the Lone Druid bear), Meepo and Arc's tempest double. Intent skips shared player IDs too.
 - Time: from `StartTime[pos]` (5:00 / 6:00 / 5:30) to `EndTime` (20:00).
-- `MinLevel[pos]`, and HP ≥ 0.65 (camp jobs' start gate).
+- Level 3, then camp types by level (`CampMinLevel`): small 3, medium 4, large 6, ancient 12. In the first test game (console.9057060616) cores were L3–4 at 5:00 and L5 at 8–9 min, so a per-position gate of 5–6 held trips back to 11 min.
+- HP ≥ 0.65 (camp jobs' start gate).
 - Active mode is laning, farm or none, with no order and no camp job.
 - Retreat's resolved desire is below 0.62. A trip that could only win in retreat's dip would end as `mode-end` the next round, which camp jobs hit at mirana 4:49.
-- The bot is within 1,800 of its lane front: the assigned lane while laning, then the nearest front.
+- The bot is within 1,800 of its lane front: the assigned lane while laning, then the nearest front. Camps count within 3,800 of that front.
 - No enemy lane creep within 1,000 and no visible enemy hero within 1,400.
 
 ### Timing
@@ -797,16 +798,17 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 ### Stops
 - Dead, HP < 0.3, or an order.
 - A visible enemy hero within 1,400 for the bot's reaction time (`Profile.reactBase`, on top of perception's delay). Ignored on the walk back, where laning and retreat decide.
-- Another mode active with no farm Think for 1 s.
+- Another mode active with no farm Think for 2 s. Farm's `OnEnd` doesn't end a trip: upstream team_roam grabs a neutral's last hit at 0.72 for under a second, and in the first test game that ended both trips mid-camp.
 - The walk back ends at 900 from the front, when the wave arrives, or after 25 s.
 
 ### Logs
 - `farm_trip_start` / `next` / `return` / `end` as `[HEV]` events and `[H:farm]` lines.
-- On `preempted` / `mode-end`, `farm_trip_end` names the winning mode (`to`, `toBy`).
+- On `preempted`, `farm_trip_end` names the winning mode (`to`, `toBy`).
+- `farm_gate` logs why a core isn't starting a trip (`time`, `level`, `low-hp`, `busy-mode`, `retreat`, `far`, `wave`, `enemy`, `no-camp`, `no-fit` with `window`/`best`/`open`/`pace`). It's logged when the reason changes, and every 15 s while it holds.
 - Overlay key: `farm`.
 
 ### Reading a game
-- `node tools/hlog/analyse.js` shows a `farm trips` table per core: trips, camps, stacks landed/tried (from `lane_stack`), average trip length, why trips walked back, how they ended, and the latest pace factor.
+- `node tools/hlog/analyse.js` shows a `farm trips` table per core: trips, camps, stacks landed/tried (from `lane_stack`), average trip length, why trips walked back, how they ended, the latest pace factor, and the seconds each `farm_gate` reason kept the core from starting.
 - `--check` adds `farm_trips`. It warns on trips that ended under another mode (with the winning mode), walk-backs that timed out, and a core leaving more than 40% of its camps unfinished.
 - `--from 5:00 --to 8:00 --ev farm_trip_start,farm_trip_next,farm_trip_return,farm_trip_end,lane_job_start,lane_stack` gives the trip timeline. A core's stack jobs have `core=1` on `lane_job_start`.
 

@@ -304,9 +304,11 @@ test('real FarmPattern telemetry: trips summarised per core, a trip lost to anot
     const r = levels(game).farm_trips;
     assert.strictEqual(r.level, 'warn', r.summary);
     assert.strictEqual(r.details.length, 1, r.details.join('; '));
-    assert.match(r.details[0], /preempted -> rune 1x, first at 8:26/);
+    assert.match(r.details[0], /preempted -> rune 1x, first at 8:27/);
     // Trip 1 left its camp unfinished, so trip 2 starts with the pace grown by LateGrowth (1.15).
     const row = report.summary(game).split('\n').find(l => /^pid1 /.test(l));
     assert.ok(row, report.summary(game));
-    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15$/);
+    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15\s+wave 16$/);
+    const gate = game.events.find(e => e.ev === 'farm_gate');
+    assert.strictEqual(gate.why, 'wave', 'the 9:05 check logs the live wave');
 });

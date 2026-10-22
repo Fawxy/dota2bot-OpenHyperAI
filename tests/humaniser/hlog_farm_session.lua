@@ -1,6 +1,6 @@
 -- Plays two FarmPattern trips through the real modules with telemetry on and returns the [HEV] lines in HLOG_LINES:
--- one left unfinished at leaveBy and walked back, one pre-empted by the rune mode. Driven from tools/hlog/test to
--- check the Lua -> analyser contract for farm_trip_* events.
+-- one left unfinished at leaveBy and walked back, one pre-empted by the rune mode, then a farm_gate while the wave
+-- is up. Driven from tools/hlog/test to check the Lua -> analyser contract for farm_trip_* and farm_gate events.
 dofile(HARNESS_DIR .. "/lane_world.lua")
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
@@ -39,5 +39,12 @@ H.FarmPattern.Desire(core)
 core.mode = BotMode.Farm
 H.FarmPattern.Think(core)
 core.mode = BotMode.Rune
-T = 506.5
+H.FarmPattern.OnEnd(core)
+T = 507.5
+H.FarmPattern.Desire(core)
+
+-- 9:05: the camp is up but the wave is alive at the front, so no trip; farm_gate says why.
+core.mode, core.loc = BotMode.Laning, FRONT
+MakeCreep({ team = 3, x = 200, y = -5000 })
+T = 545
 H.FarmPattern.Desire(core)

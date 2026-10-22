@@ -61,6 +61,20 @@ do
 	check("trip: heads into the camp it can see", a and a.kind == "AttackUnit" and dist(a.args[1]:GetLocation(), SMALL) < 1, a and a.kind)
 end
 
+-- Camp types open by level. At 7:12 (33 s to the wave) a large camp 1,200 away fits even at level 3's clear time
+-- (4 + 20.8 + 4), so only CampMinLevel keeps a level-3 core out of it; at level 6 it is taken.
+do
+	local H, core = world({ travel = 10, t = 432, level = 3, camps = { { "large", SMALL } } })
+	check("level: large camp shut at level 3", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+	local H2, core2 = world({ travel = 10, t = 432, level = 6, camps = { { "large", SMALL } } })
+	check("level: large camp open at level 6", H2.FarmPattern.Desire(core2) > 0)
+end
+do
+	local H, core = world({ travel = 10, t = 440, level = 3, camps = { { "small", SMALL } } })
+	H.FarmPattern.Desire(core)
+	check("level: small camp open at level 3", H.FarmPattern.Current(core) ~= nil)
+end
+
 -- No trip while the wave in front is still alive, nor when the next wave is too close for any camp.
 do
 	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
@@ -159,8 +173,11 @@ do
 	core.mode = BotMode.Farm
 	H.FarmPattern.Think(core)
 	core.mode = BotMode.Rune
+	H.FarmPattern.OnEnd(core)
 	T = 446.5
-	check("preempt: trip ends under another mode", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+	check("preempt: a short blip under another mode keeps the trip", H.FarmPattern.Desire(core) > 0 and H.FarmPattern.Current(core) ~= nil)
+	T = 447.5
+	check("preempt: trip ends once another mode holds past PreemptAfter", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
 end
 
 -- From the trip's start (the claim reaches retreat a scoring round later, so it cannot wait for the first neutral hit)

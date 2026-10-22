@@ -88,11 +88,31 @@ function counts(items) {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || '-';
 }
 
-/** FarmPattern trips per core: camps per trip, stacks and whether they landed (lane_stack), how trips ended, pace. */
+// FarmPattern re-logs an unchanged farm_gate reason every GateLogEvery (15 s), so a gap longer than that is time the
+// reason was not holding (a trip, death, another mode) and only counts up to it.
+const FARM_GATE_SPAN = 16;
+
+/** Seconds each farm_gate reason held for `pid`: from its line to the next farm event, capped at FARM_GATE_SPAN. */
+function gateTime(farm, pid) {
+    const mine = farm.filter(e => e.pid === pid);
+    const secs = new Map();
+    mine.forEach((e, i) => {
+        if (e.ev !== 'farm_gate') return;
+        const next = mine[i + 1];
+        const span = Math.min(next ? next.t - e.t : FARM_GATE_SPAN, FARM_GATE_SPAN);
+        secs.set(e.why, (secs.get(e.why) || 0) + span);
+    });
+    return [...secs.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * FarmPattern per core: trips, camps, stacks and whether they landed (lane_stack), how trips ended, pace, and what
+ * kept the core from starting trips (farm_gate time by reason).
+ */
 function farmSection(game) {
-    const farm = game.events.filter(e => e.ev.startsWith('farm_trip_'));
+    const farm = game.events.filter(e => e.ev.startsWith('farm_'));
     if (farm.length === 0) return [];
-    const rows = [['player', 'trips', 'camps', 'stacks ok/tried', 'avg s', 'returns', 'ends', 'pace']];
+    const rows = [['player', 'trips', 'camps', 'stacks ok/tried', 'avg s', 'returns', 'ends', 'pace', 'no trip because (s)']];
     for (const pid of [...new Set(farm.map(e => e.pid))].sort((a, b) => a - b)) {
         const of = ev => farm.filter(e => e.pid === pid && e.ev === ev);
         const starts = of('farm_trip_start');
@@ -100,6 +120,7 @@ function farmSection(game) {
         const stacks = [...starts, ...of('farm_trip_next')].filter(e => e.phase === 'stack');
         const outcomes = game.events.filter(e => e.ev === 'lane_stack' && e.pid === pid && stacks.some(s => s.camp === e.camp && e.t >= s.t));
         const pace = starts.length > 0 ? starts[starts.length - 1].pace : undefined;
+        const gates = gateTime(farm, pid).slice(0, 4).map(([why, t]) => `${why} ${Math.round(t)}`).join(', ');
         rows.push([
             who(game, pid),
             starts.length,
@@ -109,9 +130,14 @@ function farmSection(game) {
             counts(of('farm_trip_return').map(e => e.why)),
             counts(ends.map(e => e.why)),
             pace === undefined ? '-' : String(pace),
+            gates || '-',
         ]);
     }
-    return ['', 'farm trips (FarmPattern; pace is the latest learned clear-time factor, 1 = prior):', table(rows)];
+    return [
+        '',
+        'farm trips (FarmPattern; pace is the latest learned clear-time factor, 1 = prior; no-fit = no camp fits before the next wave):',
+        table(rows),
+    ];
 }
 
 function summary(game) {
