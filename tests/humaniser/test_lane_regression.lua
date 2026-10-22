@@ -311,6 +311,7 @@ do
 	local NO_TRANSITIONS = {
 		MidRunesOn = function() return false end, MidRuneFocus = function() return false, false end,
 		MidRuneYield = function() end, MidRuneSkip = function() end,
+		RuneTarget = function() return nil end, MidRuneDesire = function() return 0 end, RotationYield = function() end,
 	}
 	local function runeDesire(laneFacade, intent, transitions)
 		T = 1000

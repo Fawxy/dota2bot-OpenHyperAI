@@ -67,11 +67,12 @@ local nShrineOfWisdomTeam = TEAM_RADIANT
 function GetDesire()
 	X.InitRune()
 
-	-- A mid waiting on the spot for a power spawn keeps its desire (3b).
+	-- A mid waiting on the spot for a power spawn keeps its desire (3b), as does a support rotating to it (task 12, Task 4).
 	local bMidRuneFocus = J.Humaniser.Transitions.MidRuneFocus(bot)
+	local bRotating = J.Humaniser.Transitions.RuneTarget(bot) ~= nil
 
 	if (DotaTime() > 2 * 60 and DotaTime() < 6 * 60 and GetUnitToLocationDistance(bot, GetRuneSpawnLocation(RUNE_POWERUP_2)) < 80)
-	and not bMidRuneFocus
+	and not bMidRuneFocus and not bRotating
 	then
 		return Gate('power2_spot', BOT_MODE_DESIRE_NONE)
 	end
@@ -140,7 +141,7 @@ function GetDesire()
 		end
 	end
 
-	if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) and not bMidRuneFocus then
+	if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) and not bMidRuneFocus and not bRotating then
 		return Gate('idle', BOT_MODE_DESIRE_NONE)
 	end
 
@@ -208,7 +209,7 @@ function GetDesire()
 			else
 				-- Power rune / water rune
 				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
-				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot)))
+				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end
 		end
 	end
@@ -224,6 +225,10 @@ function GetDesire()
 	-- The mid-rune floor claim (3b) only lifts a frame that scored a power rune, never past a gate above.
 	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
 		J.Humaniser.Transitions.MidRuneYield(bot)
+	end
+	-- Likewise the rotating support's floor (Task 4).
+	if sGate ~= 'power' and J.Humaniser.Transitions.RuneTarget(bot) then
+		J.Humaniser.Transitions.RotationYield(bot)
 	end
 	local nDesire = J.Humaniser.Intent.Resolve(bot, BOT_MODE_RUNE, nRaw)
 	local rune = bot.rune and bot.rune.normal
@@ -522,6 +527,16 @@ function X.GetBestRune()
 	-- that has not spawned yet (MISSING until the spawn) still counts, and after the spawn only the spot
 	-- holding (or maybe holding) the rune does.
 	local bPowerOnly, bPowerDue, nPowerTarget = J.Humaniser.Transitions.MidRuneFocus(bot)
+
+	-- A support rotating to a power spawn (task 12, Task 4) heads for that spot, spawned or not,
+	-- whoever is nearer; a human claiming or pinging it still wins.
+	local hForced = J.Humaniser.Transitions.RuneTarget(bot)
+	if hForced then
+		local vForced = GetRuneSpawnLocation(hForced)
+		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced) then
+			return hForced, GetUnitToLocationDistance(bot, vForced)
+		end
+	end
 
 	local targetRune = -1
 	local targetRuneDistance = math.huge

@@ -216,5 +216,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Stacking.RegisterProbes()
 	H.Lane.LaneMid.RegisterProbes()
 	H.Lane.Counter.RegisterProbes()
+	H.Transitions.Rotation.RegisterProbes()
 	return H
 end

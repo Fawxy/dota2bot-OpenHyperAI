@@ -9,8 +9,9 @@ import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
+import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 
-export { Settings, Runes, Busy, MidRunes };
+export { Settings, Runes, Busy, MidRunes, Rotation };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -32,7 +33,7 @@ let providers: OverlayProviders = {
     Busy: (bot) => LaneState.ForBot(bot) !== undefined && Busy.IsBusy(bot, DotaTime())[0],
     Spare: (bot) => LaneState.ForBot(bot) !== undefined && Busy.LaneCanSpare(bot, false)[0],
     Alone: NEVER,
-    Rotation: () => undefined,
+    Rotation: (bot) => Rotation.Target(bot),
 };
 
 export function SetHelpers(h: TransitionHelpers): void {
@@ -58,6 +59,7 @@ export function InLaningPhase(): boolean {
 export function Tick(bot: Unit): void {
     if (!Settings.IsActive()) return;
     MidRunes.Tick(bot);
+    Rotation.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */
@@ -75,6 +77,21 @@ export function MidRuneYield(bot: Unit): void {
 
 export function MidRuneSkip(bot: Unit, raw: number, desire: number, target?: number, status?: number, gate?: string): void {
     MidRunes.NoteSkip(bot, raw, desire, target, status, gate);
+}
+
+/** Rune-mode hooks (Task 4): the power rune a rotating support heads for, or undefined. */
+export function RuneTarget(bot: Unit): number | undefined {
+    return Rotation.RuneTarget(bot);
+}
+
+/** Our mid's power-rune desire while a rotating support is with it or at the spot; 0 otherwise. */
+export function MidRuneDesire(bot: Unit): number {
+    return Rotation.MidRuneDesire(bot);
+}
+
+/** The rune mode refused this frame: the rotation floor must not apply. */
+export function RotationYield(bot: Unit): void {
+    Rotation.Yield(bot);
 }
 
 export function Overlay(bot: Unit): string {

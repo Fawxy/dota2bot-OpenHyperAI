@@ -69,6 +69,9 @@ local function load(contest, opts)
 			MidRuneFocus = function() return false, false end,
 			MidRuneYield = function() end,
 			MidRuneSkip = function() end,
+			RuneTarget = function() return nil end,
+			MidRuneDesire = function() return 0 end,
+			RotationYield = function() end,
 		},
 	}
 	local J = setmetatable({
@@ -308,6 +311,56 @@ do
 	local bot = load(0, { H = H, T = 420, loc = Vector(0, 0), runeAt = BOTH_POWER })
 	local d = frame(H, bot)
 	check("unseen spots a minute after the spawn: no floor", d < 0.6, d)
+end
+
+-- Support rotations (task 12, Task 4). The decision is tested in test_transitions_rotation.lua; here
+-- Rotation.Active is stubbed so the rune mode sees a pos 4 rotating to the top power spot (y > 0).
+local ROT_WORLD = { [1] = Vector(0, 900), [2] = Vector(6000, -6000), [3] = Vector(1800, 500), [4] = Vector(-6000, -6000) }
+local function rotatingHumaniser(transitions)
+	local H = realHumaniser(transitions)
+	H.Transitions.Rotation.Active = function()
+		return { spawn = 360, go = true, side = "top", spot = ROT_WORLD[3], leaveAt = 340, reason = "ok" }
+	end
+	return H
+end
+
+do
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 355, loc = Vector(0, 0), runeAt = ROT_WORLD, pos = 4 })
+	local d = frame(H, bot)
+	check("support not rotating: no rotation floor (control)", d < 0.7 and bot.rune.normal.location ~= RUNE_POWERUP_1, d)
+
+	H = rotatingHumaniser()
+	bot = load(0, { H = H, T = 355, loc = Vector(0, 0), runeAt = ROT_WORLD, pos = 4 })
+	d = frame(H, bot)
+	check("rotating support heads for its power spot over a nearer bounty", bot.rune.normal.location == RUNE_POWERUP_1, bot.rune.normal.location)
+	check("rotating support: the rotation floor lifts the rune mode", d >= 0.7, d)
+
+	H = rotatingHumaniser()
+	bot = load(0, { H = H, T = 355, loc = Vector(1750, 500), runeAt = ROT_WORLD, pos = 4, idle = true })
+	d = frame(H, bot)
+	check("rotating support waiting idle at the spot keeps the floor", d >= 0.7, d)
+	check("rotating support waiting at the spot holds", H.Intent.HeldBy(bot) == "transitions:rotate", H.Intent.HeldBy(bot))
+
+	H = rotatingHumaniser()
+	bot = load(0, { H = H, T = 355, loc = Vector(0, 0), runeAt = ROT_WORLD, pos = 4, enemies = { hero({ loc = Vector(300, 0) }) } })
+	check("outnumbered rotating support: no floor", frame(H, bot) == 0)
+	H = rotatingHumaniser()
+	bot = load(0, { H = H, T = 355, loc = Vector(900, 0), runeAt = ROT_WORLD, pos = 4, allies = { hero({ loc = Vector(1500, 500), isBot = false }) } })
+	check("human ally at the rune: no rotation floor", frame(H, bot) == 0)
+end
+
+do
+	-- The mid's contest desire (MidRunes off, so the 3b floor does not mask it).
+	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_MISSING }
+	local H = realHumaniser({ Enable = true, MidRunes = false })
+	local bot = load(0, { H = H, T = 357, loc = Vector(0, 0), runeAt = FAR_POWER })
+	check("mid alone: the bottle-less desire (control)", near(frame(H, bot), 0.25))
+	H = realHumaniser({ Enable = true, MidRunes = false })
+	H.Transitions.Rotation.MidRuneDesire = function() return 0.55 end
+	bot = load(0, { H = H, T = 357, loc = Vector(0, 0), runeAt = FAR_POWER })
+	check("mid with a rotating support near contests the rune", near(frame(H, bot), 0.55))
 end
 
 finish()

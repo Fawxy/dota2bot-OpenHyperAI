@@ -170,6 +170,8 @@ local Localization = {
         say_lane_their_sup_missing = {"their sup is missing"},
         say_lane_they_freeze = {"they're freezing"},
         say_lane_ss_mid = {"ss mid"},
+        say_rune_coming_mid = {"coming mid for rune"},
+        say_rune_lost = {"rune lost"},
     },
     zh = {
         welcome_msgs = {
@@ -313,6 +315,8 @@ local Localization = {
         say_lane_their_sup_missing = {"对面辅助不见了"},
         say_lane_they_freeze = {"对面在控线"},
         say_lane_ss_mid = {"中路miss"},
+        say_rune_coming_mid = {"来中路抢符"},
+        say_rune_lost = {"符丢了"},
     },
     ru = {
         welcome_msgs = {
@@ -449,6 +453,8 @@ local Localization = {
         say_lane_their_sup_missing = {"их саппорта не видно"},
         say_lane_they_freeze = {"они фризят линию"},
         say_lane_ss_mid = {"мид пропал"},
+        say_rune_coming_mid = {"иду на мид за руной"},
+        say_rune_lost = {"руну потеряли"},
     },
     ja = {
         welcome_msgs = {
@@ -585,6 +591,8 @@ local Localization = {
         say_lane_their_sup_missing = {"相手のサポが見えない"},
         say_lane_they_freeze = {"相手がフリーズしてる"},
         say_lane_ss_mid = {"ミッドmiss"},
+        say_rune_coming_mid = {"ルーンのためにミッドへ行く"},
+        say_rune_lost = {"ルーン取られた"},
     },
 }
 

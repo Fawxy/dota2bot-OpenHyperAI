@@ -1,0 +1,478 @@
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local function __TS__ClassExtends(target, base)
+    target.____super = base
+    local staticMetatable = setmetatable({__index = base}, base)
+    setmetatable(target, staticMetatable)
+    local baseMetatable = getmetatable(base)
+    if baseMetatable then
+        if type(baseMetatable.__index) == "function" then
+            staticMetatable.__index = baseMetatable.__index
+        end
+        if type(baseMetatable.__newindex) == "function" then
+            staticMetatable.__newindex = baseMetatable.__newindex
+        end
+    end
+    setmetatable(target.prototype, base.prototype)
+    if type(base.prototype.__index) == "function" then
+        target.prototype.__index = base.prototype.__index
+    end
+    if type(base.prototype.__newindex) == "function" then
+        target.prototype.__newindex = base.prototype.__newindex
+    end
+    if type(base.prototype.__tostring) == "function" then
+        target.prototype.__tostring = base.prototype.__tostring
+    end
+end
+
+local Error, RangeError, ReferenceError, SyntaxError, TypeError, URIError
+do
+    local function getErrorStack(self, constructor)
+        if debug == nil then
+            return nil
+        end
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "f")
+            level = level + 1
+            if not info then
+                level = 1
+                break
+            elseif info.func == constructor then
+                break
+            end
+        end
+        if __TS__StringIncludes(_VERSION, "Lua 5.0") then
+            return debug.traceback(("[Level " .. tostring(level)) .. "]")
+        else
+            return debug.traceback(nil, level)
+        end
+    end
+    local function wrapErrorToString(self, getDescription)
+        return function(self)
+            local description = getDescription(self)
+            local caller = debug.getinfo(3, "f")
+            local isClassicLua = __TS__StringIncludes(_VERSION, "Lua 5.0") or _VERSION == "Lua 5.1"
+            if isClassicLua or caller and caller.func ~= error then
+                return description
+            else
+                return (description .. "\n") .. tostring(self.stack)
+            end
+        end
+    end
+    local function initErrorClass(self, Type, name)
+        Type.name = name
+        return setmetatable(
+            Type,
+            {__call = function(____, _self, message) return __TS__New(Type, message) end}
+        )
+    end
+    local ____initErrorClass_1 = initErrorClass
+    local ____class_0 = __TS__Class()
+    ____class_0.name = ""
+    function ____class_0.prototype.____constructor(self, message)
+        if message == nil then
+            message = ""
+        end
+        self.message = message
+        self.name = "Error"
+        self.stack = getErrorStack(nil, self.constructor.new)
+        local metatable = getmetatable(self)
+        if metatable and not metatable.__errorToStringPatched then
+            metatable.__errorToStringPatched = true
+            metatable.__tostring = wrapErrorToString(nil, metatable.__tostring)
+        end
+    end
+    function ____class_0.prototype.__tostring(self)
+        return self.message ~= "" and (self.name .. ": ") .. self.message or self.name
+    end
+    Error = ____initErrorClass_1(nil, ____class_0, "Error")
+    local function createErrorClass(self, name)
+        local ____initErrorClass_3 = initErrorClass
+        local ____class_2 = __TS__Class()
+        ____class_2.name = ____class_2.name
+        __TS__ClassExtends(____class_2, Error)
+        function ____class_2.prototype.____constructor(self, ...)
+            ____class_2.____super.prototype.____constructor(self, ...)
+            self.name = name
+        end
+        return ____initErrorClass_3(nil, ____class_2, name)
+    end
+    RangeError = createErrorClass(nil, "RangeError")
+    ReferenceError = createErrorClass(nil, "ReferenceError")
+    SyntaxError = createErrorClass(nil, "SyntaxError")
+    TypeError = createErrorClass(nil, "TypeError")
+    URIError = createErrorClass(nil, "URIError")
+end
+
+local function __TS__ObjectGetOwnPropertyDescriptors(object)
+    local metatable = getmetatable(object)
+    if not metatable then
+        return {}
+    end
+    return rawget(metatable, "_descriptors") or ({})
+end
+
+local function __TS__Delete(target, key)
+    local descriptors = __TS__ObjectGetOwnPropertyDescriptors(target)
+    local descriptor = descriptors[key]
+    if descriptor then
+        if not descriptor.configurable then
+            error(
+                __TS__New(
+                    TypeError,
+                    ((("Cannot delete property " .. tostring(key)) .. " of ") .. tostring(target)) .. "."
+                ),
+                0
+            )
+        end
+        descriptors[key] = nil
+        return true
+    end
+    target[key] = nil
+    return true
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
+local Rune = ____dota.Rune
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
+local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
+____exports.SOURCE = "transitions:rotate"
+local entries = {}
+function ____exports.ResetCache()
+    for k in pairs(entries) do
+        __TS__Delete(entries, k)
+    end
+end
+local function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+local function isSupport(bot)
+    local pos = LaneConfig.PositionOf(bot)
+    return pos == 4 or pos == 5
+end
+local function teammate(bot, pos)
+    local n = #GetTeamPlayers(bot:GetTeam())
+    do
+        local i = 1
+        while i <= n do
+            local m = GetTeamMember(i)
+            if m ~= nil and m ~= nil and m:IsAlive() and LaneConfig.PositionOf(m) == pos then
+                return m
+            end
+            i = i + 1
+        end
+    end
+    return nil
+end
+--- Enemies visible, or seen within ContestSeenWithin, inside ContestRadius of the spot. Perception goes through LaneState.
+local function enemiesNear(bot, spot)
+    local cfg = Settings.Get()
+    local n = 0
+    for ____, e in ipairs(LaneState.Enemies(
+        bot,
+        bot:GetAssignedLane()
+    )) do
+        do
+            local __continue10
+            repeat
+                if not e.visible and e.timeSinceSeen > cfg.ContestSeenWithin then
+                    __continue10 = true
+                    break
+                end
+                if dist2D(e.location, spot) <= cfg.ContestRadius then
+                    n = n + 1
+                end
+                __continue10 = true
+            until true
+            if not __continue10 then
+                break
+            end
+        end
+    end
+    return n
+end
+local function log(bot, d, extra)
+    if extra == nil then
+        extra = ""
+    end
+    HDebug.Log(
+        "transitions",
+        ((((((((((("rotate pid=" .. tostring(bot:GetPlayerID())) .. " spawn=") .. tostring(d.spawn)) .. " go=") .. tostring(d.go)) .. " side=") .. (d.side or "-")) .. " leaveAt=") .. (d.leaveAt ~= nil and string.format("%.1f", d.leaveAt) or "-")) .. " reason=") .. d.reason) .. extra
+    )
+end
+function ____exports.Decide(bot, now)
+    local cfg = Settings.Get()
+    local pid = bot:GetPlayerID()
+    local spawn = Runes.NextSpawn("power", now)
+    local cached = entries[pid]
+    if cached ~= nil and cached.decision.spawn == spawn then
+        return cached.decision
+    end
+    if not Settings.IsOn("Rotation") then
+        return {spawn = spawn, go = false, reason = "off"}
+    end
+    if not isSupport(bot) then
+        return {spawn = spawn, go = false, reason = "role"}
+    end
+    if spawn < Runes.RUNE_RULES.power.first or now < spawn - cfg.DecideFrom or now > spawn - cfg.DecideTo then
+        return {spawn = spawn, go = false, reason = "window"}
+    end
+    local ____temp_0
+    if LaneConfig.PositionOf(bot) == 5 then
+        ____temp_0 = teammate(bot, 4)
+    else
+        ____temp_0 = nil
+    end
+    local p4 = ____temp_0
+    local d4 = p4 ~= nil and ____exports.Decide(p4, now) or nil
+    local skill = LaneConfig.SkillOf(bot)
+    local rolled = LaneConfig.Roll(Settings.Lerp(cfg.RotateChance, skill))
+    local jitter = LaneConfig.Gauss() * Settings.Lerp(cfg.ArriveSigma, skill)
+    local mistake = LaneConfig.Roll(Settings.Lerp(cfg.MistakeChance, skill))
+    local loc = bot:GetLocation()
+    local spot, side = Runes.NearestPowerSpot(loc)
+    local travel = dist2D(loc, spot) * cfg.PathFactor / math.max(
+        bot:GetCurrentMovementSpeed(),
+        1
+    )
+    local leaveAt = spawn - cfg.ArriveLead - travel + jitter
+    local d = {
+        spawn = spawn,
+        go = false,
+        spot = spot,
+        side = side,
+        leaveAt = leaveAt,
+        reason = "ok"
+    }
+    local strict = LaneConfig.PositionOf(bot) == 5
+    local busy, busyWhy = Busy.IsBusy(bot, spawn)
+    local spare, spareWhy = Busy.LaneCanSpare(bot, strict)
+    if busy then
+        d.reason = busyWhy
+    elseif leaveAt < now - cfg.LateSlack then
+        d.reason = "late"
+    elseif not spare and not mistake then
+        d.reason = spareWhy
+    elseif not rolled then
+        d.reason = "roll"
+    elseif p4 ~= nil then
+        local p4Busy = (Busy.IsBusy(p4, spawn))
+        local contested = enemiesNear(bot, spot) >= cfg.Pos5ContestEnemies
+        if d4 ~= nil and d4.go and not contested then
+            d.reason = "pos4 going"
+        elseif not p4Busy and dist2D(loc, spot) > dist2D(
+            p4:GetLocation(),
+            spot
+        ) then
+            d.reason = "pos4 closer"
+        else
+            d.go = true
+        end
+    else
+        d.go = true
+    end
+    if d.go and not spare then
+        d.reason = "mistake"
+    end
+    entries[pid] = {decision = d, arriveAt = leaveAt + travel, announced = false, checkAt = -math.huge}
+    log(bot, d)
+    return d
+end
+function ____exports.Active(bot)
+    if not Settings.IsOn("Rotation") then
+        return nil
+    end
+    local e = entries[bot:GetPlayerID()]
+    if e == nil or not e.decision.go then
+        return nil
+    end
+    local now = DotaTime()
+    local d = e.decision
+    return d.leaveAt ~= nil and now >= d.leaveAt and now <= d.spawn + Settings.Get().RotateLinger and d or nil
+end
+--- The power rune id at the active decision's side (named by the spot's y, as Runes.NearestPowerSpot does).
+function ____exports.RuneTarget(bot)
+    local d = ____exports.Active(bot)
+    if d == nil then
+        return nil
+    end
+    for ____, rune in ipairs({Rune.Power1, Rune.Power2}) do
+        if (GetRuneSpawnLocation(rune).y > 0 and "top" or "bot") == d.side then
+            return rune
+        end
+    end
+    return nil
+end
+--- For our mid: contest the rune harder when a rotating support is with it or at the spot.
+function ____exports.MidRuneDesire(bot)
+    if not Settings.IsOn("Rotation") or LaneConfig.PositionOf(bot) ~= 2 then
+        return 0
+    end
+    local cfg = Settings.Get()
+    local now = DotaTime()
+    for ____, pos in ipairs({4, 5}) do
+        do
+            local __continue40
+            repeat
+                local support = teammate(bot, pos)
+                local ____temp_1
+                if support ~= nil then
+                    ____temp_1 = ____exports.Active(support)
+                else
+                    ____temp_1 = nil
+                end
+                local d = ____temp_1
+                if support == nil or d == nil or d.spot == nil then
+                    __continue40 = true
+                    break
+                end
+                if now < d.spawn - cfg.MidContestFrom or now > d.spawn + cfg.RotateLinger then
+                    __continue40 = true
+                    break
+                end
+                local sLoc = support:GetLocation()
+                if dist2D(
+                    sLoc,
+                    bot:GetLocation()
+                ) <= cfg.MidSupportRadius or dist2D(sLoc, d.spot) <= cfg.MidSupportRadius then
+                    return cfg.MidContestDesire
+                end
+                __continue40 = true
+            until true
+            if not __continue40 then
+                break
+            end
+        end
+    end
+    return 0
+end
+--- The planned (or current) rotation side, for the overlay.
+function ____exports.Target(bot)
+    if not Settings.IsOn("Rotation") then
+        return nil
+    end
+    local e = entries[bot:GetPlayerID()]
+    if e == nil or not e.decision.go or DotaTime() > e.decision.spawn + Settings.Get().RotateLinger then
+        return nil
+    end
+    return e.decision.side
+end
+local function say(bot, key)
+    if Difficulty.IsAllyOfHuman(bot) then
+        Orders.Say(
+            bot,
+            key,
+            Settings.Get().ChatCooldown
+        )
+    end
+end
+--- Our heroes at or heading for the spot: the support, our mid within ContestMidRadius, and another support rotating there.
+local function ours(bot, d)
+    local cfg = Settings.Get()
+    local n = 1
+    local mid = teammate(bot, 2)
+    if mid ~= nil and d.spot ~= nil and dist2D(
+        mid:GetLocation(),
+        d.spot
+    ) <= cfg.ContestMidRadius then
+        n = n + 1
+    end
+    local other = teammate(
+        bot,
+        LaneConfig.PositionOf(bot) == 4 and 5 or 4
+    )
+    local od = other ~= nil and entries[other:GetPlayerID()] or nil
+    if od ~= nil and od.decision.go and od.decision.spawn == d.spawn and od.decision.side == d.side then
+        n = n + 1
+    end
+    return n
+end
+function ____exports.Tick(bot)
+    if not Settings.IsOn("Rotation") or not isSupport(bot) then
+        return
+    end
+    local cfg = Settings.Get()
+    local now = DotaTime()
+    ____exports.Decide(bot, now)
+    local e = entries[bot:GetPlayerID()]
+    if e ~= nil and e.decision.go and now <= e.decision.spawn + cfg.RotateLinger then
+        local d = e.decision
+        if not e.announced then
+            e.announced = true
+            say(bot, "say_rune_coming_mid")
+        end
+        if now >= e.checkAt and now >= e.arriveAt - cfg.ContestFrom and d.spot ~= nil then
+            e.checkAt = now + cfg.Refresh
+            local enemies = enemiesNear(bot, d.spot)
+            local us = ours(bot, d)
+            if enemies > us then
+                d.go = false
+                d.reason = "contested"
+                Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)
+                log(
+                    bot,
+                    d,
+                    ((" enemies=" .. tostring(enemies)) .. " ours=") .. tostring(us)
+                )
+                say(bot, "say_rune_lost")
+                return
+            end
+        end
+    end
+    local a = ____exports.Active(bot)
+    if a == nil then
+        return
+    end
+    Intent.Claim(bot, {source = ____exports.SOURCE, tier = "TRANSITION", mode = BotMode.Rune, floor = cfg.RotateFloor})
+    if now < a.spawn and a.spot ~= nil and dist2D(
+        bot:GetLocation(),
+        a.spot
+    ) <= cfg.RotateHoldRadius then
+        Intent.Hold(bot, ____exports.SOURCE)
+    end
+end
+--- The rune mode refused this frame (a safety gate, no power target): the floor must not apply.
+function ____exports.Yield(bot)
+    Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)
+end
+function ____exports.RegisterProbes()
+    LaneHooks.SetRotationProbe(function(bot) return ____exports.Active(bot) ~= nil end)
+end
+____exports.RegisterProbes()
+return ____exports

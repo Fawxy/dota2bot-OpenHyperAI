@@ -55,6 +55,21 @@ export const DEFAULTS = {
     ContestSeenWithin: 5,
     Pos5ContestEnemies: 2,
     ChatCooldown: 60,
+    // Straight-line distance to the spot times this is the travel estimate.
+    PathFactor: 1.2,
+    // A support whose leave time is further in the past than this can no longer make the spawn.
+    LateSlack: 2,
+    // A rotation stays active this long after the spawn.
+    RotateLinger: 5,
+    RotateFloor: 0.7,
+    // Standing this close to the spot before the spawn is a deliberate wait (Intent.Hold).
+    RotateHoldRadius: 300,
+    // The contest check starts this many seconds before the planned arrival.
+    ContestFrom: 6,
+    // Our mid counts towards a contest within this distance of the spot.
+    ContestMidRadius: 2500,
+    // The mid's contest desire applies from this many seconds before the spawn.
+    MidContestFrom: 10,
     AloneMissing: 4,
     LaneMissing: 6,
     OffsetMin: 150,

@@ -248,7 +248,10 @@ if Telemetry.GuardsEnabled() then
             MidRunesOn = no,
             MidRuneFocus = function() return false, false, nil end,
             MidRuneYield = none,
-            MidRuneSkip = none
+            MidRuneSkip = none,
+            RuneTarget = none,
+            MidRuneDesire = zero,
+            RotationYield = none
         }
     )
     Telemetry.GuardModule(

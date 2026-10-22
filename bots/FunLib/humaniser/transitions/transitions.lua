@@ -17,10 +17,12 @@ local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mid_runes")
+local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 ____exports.Settings = Settings
 ____exports.Runes = Runes
 ____exports.Busy = Busy
 ____exports.MidRunes = MidRunes
+____exports.Rotation = Rotation
 local function NEVER()
     return false
 end
@@ -32,7 +34,7 @@ local providers = {
     )) end,
     Spare = function(bot) return LaneState.ForBot(bot) ~= nil and (Busy.LaneCanSpare(bot, false)) end,
     Alone = NEVER,
-    Rotation = function() return nil end
+    Rotation = function(bot) return Rotation.Target(bot) end
 }
 function ____exports.SetHelpers(h)
     helpers = h
@@ -60,6 +62,7 @@ function ____exports.Tick(bot)
         return
     end
     MidRunes.Tick(bot)
+    Rotation.Tick(bot)
 end
 --- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
 function ____exports.MidRunesOn(bot)
@@ -80,6 +83,18 @@ function ____exports.MidRuneSkip(bot, raw, desire, target, status, gate)
         status,
         gate
     )
+end
+--- Rune-mode hooks (Task 4): the power rune a rotating support heads for, or undefined.
+function ____exports.RuneTarget(bot)
+    return Rotation.RuneTarget(bot)
+end
+--- Our mid's power-rune desire while a rotating support is with it or at the spot; 0 otherwise.
+function ____exports.MidRuneDesire(bot)
+    return Rotation.MidRuneDesire(bot)
+end
+--- The rune mode refused this frame: the rotation floor must not apply.
+function ____exports.RotationYield(bot)
+    Rotation.Yield(bot)
 end
 function ____exports.Overlay(bot)
     return (((((((("phase: " .. (____exports.InLaningPhase() and "laning" or "post")) .. " busy=") .. tostring(providers.Busy(bot))) .. " spare=") .. tostring(providers.Spare(bot))) .. " alone=") .. tostring(providers.Alone(bot))) .. " rot=") .. (providers.Rotation(bot) or "-")
