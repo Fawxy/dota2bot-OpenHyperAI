@@ -899,7 +899,7 @@ Telemetry (`[HEV] ... ev=<name>`; `tools/hlog/analyse.js` lists a per-bot lane-f
 | Event | Fields |
 |---|---|
 | `lanefight_window` | `pid window target noticed` (once per window instance) |
-| `lanefight_gate` | `pid gate` (`low-hp`, `retreat`, `camp`, `cover`, `priority`, `mode:<m>`, `range`, `unseen`, `laning`, `follow-margin` (with `target margin`, and `why` when the kill check vetoed rather than fell short on burst), `partner_backed_off`, `respect:<reason>`; once per instance), and `pid gate=kill:<reason> target` for a near-miss kill check |
+| `lanefight_gate` | `pid gate` (`low-hp`, `retreat`, `camp`, `cover`, `caution` (trades only: task 12's caution suppresses lane trades), `priority`, `mode:<m>`, `range`, `unseen`, `laning`, `follow-margin` (with `target margin`, and `why` when the kill check vetoed rather than fell short on burst), `partner_backed_off`, `respect:<reason>`; once per instance), and `pid gate=kill:<reason> target` for a near-miss kill check |
 | `lanefight_start` | `pid phase target`, then `window` (trade), `margin via=<initiate|solo|follow>` (commit; a follow adds `with sync`), `margin with human` (wait_partner) |
 | `lanefight_commit` | `pid target margin role=<initiator|follower|solo>` (with every commit start) |
 | `lanefight_end` | `pid phase reason hits took=<0|1>` (every start has one; `took=1` when team_roam or attack took over). Reasons: `dead`, `low-hp` (StopHP), `flag-off`, `priority`, `target-dead`, `illusion`, `unkillable`, `magic_immune`, `far`, `fog`, `partner_gone` and `partner_timeout` (wait), `escape`, `outnumbered`, `partner_abandon` (commit aborts), `hits`, `duration`, `reach` (trade), `commit-max`, `retreat`, `mode:<m>`, `commit` (replaced by a commit), `off`, `avoid` |

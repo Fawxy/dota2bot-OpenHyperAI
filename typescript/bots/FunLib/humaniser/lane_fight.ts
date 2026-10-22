@@ -291,6 +291,8 @@ function startBlocked(bot: Unit, commit: boolean): string | undefined {
     if (retreat !== undefined && retreat >= cfg.StartMaxRetreat) return "retreat";
     if (CampJobs.Active(bot)) return "camp";
     if (CampJobs.Covering(bot)) return "cover";
+    // Task 12's caution suppresses lane trades; kills keep the kill check's own safety rules.
+    if (!commit && LaneHooks.TradesSuppressed(bot)) return "caution";
     if (priorityLive(bot)) return "priority";
     return undefined;
 }

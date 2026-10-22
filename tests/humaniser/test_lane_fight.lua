@@ -361,6 +361,11 @@ do
 	W = gateWorld({}, function(W) W.H.Lane.CampJobs.Covering = function() return true end end)
 	check("no start while covering a support's camp job", not hasStart(W, "trade") and W.events("lanefight_gate", "gate=cover") == 1)
 
+	-- Task 12's caution (a lone core, a missing enemy, not stronger) suppresses lane trades, ours included.
+	W = gateWorld({}, function(W) W.H.Lane.Hooks.SetTradeProbe(function() return true end) end)
+	check("no trade while caution suppresses trades, logged once", not hasStart(W, "trade")
+		and W.events("lanefight_gate", "gate=caution") == 1, table.concat(W.lines, "\n"))
+
 	W = gateWorld({}, function(W)
 		W.onFrame = function()
 			W.H.Intent.Claim(W.bot, { source = "orders:GATHER", tier = "HUMAN_ORDER", mode = BotMode.Assemble, floor = 0.85 })
@@ -513,6 +518,15 @@ do
 	play(W2, 10)
 	check("every lanefight_start has a lanefight_end", W.events("lanefight_start") == W.events("lanefight_end")
 		and W2.events("lanefight_start") == W2.events("lanefight_end") and W2.events("lanefight_start") >= 1, table.concat(W2.lines, "\n"))
+end
+
+do
+	-- Caution holds trades only: a kill pass still commits (the kill check's tower, outnumbered and counter rules decide).
+	local W = world({ burst = 1000, botX = 0 })
+	W.H.Lane.Hooks.SetTradeProbe(function() return true end)
+	play(W, 1)
+	check("caution does not stop a kill commit", W.age("commit") ~= nil and W.events("lanefight_gate", "gate=caution") == 0,
+		table.concat(W.lines, "\n"))
 end
 
 -- ------------------------------------------------------------------------------------- chase and dive limits

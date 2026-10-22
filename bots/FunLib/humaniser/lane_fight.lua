@@ -133,6 +133,9 @@ function startBlocked(bot, commit)
     if CampJobs.Covering(bot) then
         return "cover"
     end
+    if not commit and LaneHooks.TradesSuppressed(bot) then
+        return "caution"
+    end
     if priorityLive(bot) then
         return "priority"
     end
@@ -183,11 +186,11 @@ function holdsReadyKey(u)
         local i = 0
         while i < 6 do
             do
-                local __continue46
+                local __continue47
                 repeat
                     local a = u:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:GetLevel() < 1 then
-                        __continue46 = true
+                        __continue47 = true
                         break
                     end
                     local name = a:GetName()
@@ -197,9 +200,9 @@ function holdsReadyKey(u)
                     ) == "key" and not AbilityClasses.IsEscape(name) and a:IsFullyCastable() then
                         return true
                     end
-                    __continue46 = true
+                    __continue47 = true
                 until true
-                if not __continue46 then
+                if not __continue47 then
                     break
                 end
             end
@@ -339,10 +342,10 @@ function partnerCommitTarget(bot, s, ally, now)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue79
+            local __continue80
             repeat
                 if e == nil or not e.visible or not usableUnit(e.unit) then
-                    __continue79 = true
+                    __continue80 = true
                     break
                 end
                 local prev = sampleDistance(bot, ally, e.unit, now)
@@ -356,9 +359,9 @@ function partnerCommitTarget(bot, s, ally, now)
                         s.partnerSeen[ally:GetPlayerID()] = now
                     end
                 end
-                __continue79 = true
+                __continue80 = true
             until true
-            if not __continue79 then
+            if not __continue80 then
                 break
             end
         end
@@ -446,15 +449,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue105
+            local __continue106
             repeat
                 if not a.learned then
-                    __continue105 = true
+                    __continue106 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue105 = true
+                    __continue106 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -468,9 +471,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue105 = true
+                __continue106 = true
             until true
-            if not __continue105 then
+            if not __continue106 then
                 break
             end
         end
