@@ -48,6 +48,7 @@ local function stateOf(bot)
         st = {
             record = {deaths = {}, lastHits = {}},
             checkAt = -math.huge,
+            wasLaning = false,
             levelSeen = {},
             phaseEnded = false,
             lostResp = false,
@@ -242,12 +243,13 @@ end
 local function sample(bot, st, now)
     local cfg = Settings.Get()
     local alive = bot:IsAlive()
-    if st.wasAlive == true and not alive then
+    if st.wasAlive == true and not alive and st.wasLaning then
         local ____st_record_deaths_1 = st.record.deaths
         ____st_record_deaths_1[#____st_record_deaths_1 + 1] = now
     end
     st.wasAlive = alive
-    if alive then
+    st.wasLaning = ____exports.IsLaningFor(bot)
+    if alive and now >= cfg.LostLHFrom then
         local last = st.record.lastHits[#st.record.lastHits]
         if last == nil or now - last.at >= cfg.LHSampleGap then
             local ____st_record_lastHits_2 = st.record.lastHits
@@ -325,14 +327,14 @@ local function evaluate(bot, st, now)
     if not lost then
         st.capStarted = false
         st.absentSince = nil
+    elseif not humanWaiting(bot, st, now) then
+        st.lostResp = true
+        st.cap = st.cap or ____exports.SOURCE_LOST
+    end
+    if not st.phaseEnded and not st.lostResp then
         st.jungleSaid = false
         return
     end
-    if humanWaiting(bot, st, now) then
-        return
-    end
-    st.lostResp = true
-    st.cap = st.cap or ____exports.SOURCE_LOST
     local pos = LaneConfig.PositionOf(bot)
     if not st.jungleSaid and pos ~= nil and pos <= 3 and Difficulty.IsAllyOfHuman(bot) then
         st.jungleSaid = Orders.Say(

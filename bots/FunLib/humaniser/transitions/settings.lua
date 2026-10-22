@@ -83,6 +83,7 @@ ____exports.DEFAULTS = {
     ExpectedLHPerMin = {Low = 3, High = 7},
     SuggestCooldown = 60,
     LostMinSpan = 90,
+    LostLHFrom = 60,
     LHSampleGap = 5,
     JungleSeenWindow = 3,
     JungleCampRadius = 2500,

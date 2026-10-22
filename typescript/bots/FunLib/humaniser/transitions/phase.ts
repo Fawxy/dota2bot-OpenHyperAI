@@ -31,6 +31,7 @@ export interface LaneRecord {
 interface PhaseState {
     record: LaneRecord;
     wasAlive?: boolean;
+    wasLaning: boolean;
     checkAt: number;
     levelSeen: Record<number, number>;
     phaseEnded: boolean;
@@ -53,7 +54,7 @@ function stateOf(bot: Unit): PhaseState {
     const pid = bot.GetPlayerID();
     let st = states[pid];
     if (st === undefined) {
-        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, levelSeen: {}, phaseEnded: false, lostResp: false, capStarted: false, jungleSaid: false };
+        st = { record: { deaths: [], lastHits: [] }, checkAt: -math.huge, wasLaning: false, levelSeen: {}, phaseEnded: false, lostResp: false, capStarted: false, jungleSaid: false };
         states[pid] = st;
     }
     return st;
@@ -194,9 +195,11 @@ function partnerOf(bot: Unit): LaneState.LaneHero | undefined {
 function sample(bot: Unit, st: PhaseState, now: number): void {
     const cfg = Settings.Get();
     const alive = bot.IsAlive();
-    if (st.wasAlive === true && !alive) st.record.deaths.push(now);
+    // A death while the bot was off-lane (farming, ganking) says nothing about the lane.
+    if (st.wasAlive === true && !alive && st.wasLaning) st.record.deaths.push(now);
     st.wasAlive = alive;
-    if (alive) {
+    st.wasLaning = IsLaningFor(bot);
+    if (alive && now >= cfg.LostLHFrom) {
         const last = st.record.lastHits[st.record.lastHits.length - 1];
         if (last === undefined || now - last.at >= cfg.LHSampleGap) st.record.lastHits.push({ at: now, total: lastHits(bot) });
         const s = LaneState.ForBot(bot);
@@ -253,12 +256,14 @@ function evaluate(bot: Unit, st: PhaseState, now: number): void {
     if (!lost) {
         st.capStarted = false;
         st.absentSince = undefined;
+    } else if (!humanWaiting(bot, st, now)) {
+        st.lostResp = true;
+        st.cap = st.cap ?? SOURCE_LOST;
+    }
+    if (!st.phaseEnded && !st.lostResp) {
         st.jungleSaid = false;
         return;
     }
-    if (humanWaiting(bot, st, now)) return;
-    st.lostResp = true;
-    st.cap = st.cap ?? SOURCE_LOST;
     const pos = LaneConfig.PositionOf(bot);
     if (!st.jungleSaid && pos !== undefined && pos <= 3 && Difficulty.IsAllyOfHuman(bot)) {
         st.jungleSaid = Orders.Say(bot, "say_going_jungle", Settings.Get().SuggestCooldown);

@@ -168,21 +168,45 @@ end
 
 do
 	local w = world()
-	tick(w, w.core, 10)
+	tick(w, w.core, 70)
 	w.core.lh = 2
-	T = 130
+	T = 190
 	local l, r = w.P.LaneLost(w.core)
 	check("1 LH/min against an expected 5: lost by lasthits", l == true and r == "lasthits", r)
 	w.core.lh = 10
 	check("5 LH/min: not lost", w.P.LaneLost(w.core) == false)
 	w = world()
-	tick(w, w.core, 10)
-	T = 50
+	tick(w, w.core, 70)
+	T = 110
 	check("a 40 s span is too short to judge last hits", w.P.LaneLost(w.core) == false)
 	w = world()
-	tick(w, w.sup, 10)
-	T = 130
+	tick(w, w.sup, 70)
+	T = 190
 	check("a support is not judged on last hits", w.P.LaneLost(w.sup) == false)
+end
+
+do
+	-- Ticks start before the horn; the core then last-hits normally (about 4 a minute from 0:30).
+	local w = world()
+	local lostEver = false
+	T = -60
+	w.P.Tick(w.core)
+	for t = 0, 180, 10 do
+		T = t
+		w.core.lh = t < 30 and 0 or math.floor((t - 30) / 60 * 4)
+		w.P.Tick(w.core)
+		if t == 30 or t == 120 or t == 180 then lostEver = lostEver or w.P.LaneLost(w.core) end
+	end
+	check("a core last-hitting normally is never lost, pre-horn ticks included", lostEver == false)
+	w = world()
+	T = -60
+	w.P.Tick(w.core)
+	for t = 0, 180, 10 do
+		T = t
+		w.core.lh = 0
+		w.P.Tick(w.core)
+	end
+	check("contrast: a core with no last hits by 3:00 is lost", w.P.LaneLost(w.core) == true)
 end
 
 do
@@ -209,6 +233,25 @@ do
 	LAST_SEEN[10] = { location = FRONT, time_since_seen = 6 }
 	w.core.level = 3
 	check("an opponent never seen has no known level", w.P.LaneLost(w.core) == false)
+end
+
+do
+	-- Deaths while farming away from the lane do not count against the lane.
+	local w = world()
+	w.core.items = { [0] = { name = "item_maelstrom" } }
+	tick(w, w.core, 20)
+	die(w, w.core, 30)
+	die(w, w.core, 60)
+	w.core.items = {}
+	tick(w, w.core, 80)
+	T = 90
+	check("deaths while not laning do not read as lost", w.P.LaneLost(w.core) == false)
+	w = world()
+	tick(w, w.core, 20)
+	die(w, w.core, 30)
+	die(w, w.core, 60)
+	T = 90
+	check("contrast: the same deaths while laning do", w.P.LaneLost(w.core) == true)
 end
 
 -- Response: a lost core
@@ -268,6 +311,16 @@ do
 	end
 	check("Maelstrom core with a clear jungle may farm", res[true].allowed == true and res[true].cap ~= nil)
 	check("Phase off: not allowed and no cap", res[false].allowed == false and res[false].cap == nil)
+	local jw = world()
+	jw.core.items = { [0] = { name = "item_maelstrom" } }
+	tick(jw, jw.core, 100)
+	tick(jw, jw.core, 101)
+	tick(jw, jw.core, 160)
+	check("a core leaving by phase end says going jungle once", count(jw.said, "say_going_jungle") == 1, count(jw.said, "say_going_jungle"))
+	jw = world({ transitions = { Enable = true, Phase = false } })
+	jw.core.items = { [0] = { name = "item_maelstrom" } }
+	tick(jw, jw.core, 100)
+	check("Phase off: no jungle line", count(jw.said, "say_going_jungle") == 0)
 	local w = world()
 	w.core.items = { [0] = { name = "item_maelstrom" } }
 	tick(w, w.core, 100)
@@ -339,11 +392,22 @@ do
 	-- A ping near the bot answers the suggestion.
 	w = setup({ humanCore = true })
 	tick(w, w.sup, 100)
+	-- Pings can also become orders; hide those so only the ping trigger is under test.
+	w.H.Orders.GetFor = function() return nil end
 	w.core.GetMostRecentPing = function() return { time = 105, location = Vector(100, -4900), normal_ping = true } end
 	T = 106
 	w.H.Pings.Scan(2)
 	tick(w, w.sup, 106)
 	check("a human ping within 1500 of the bot starts the cap", claim(w, w.sup, LOST) ~= nil)
+
+	w = setup({ humanCore = true })
+	tick(w, w.sup, 100)
+	w.H.Orders.GetFor = function() return nil end
+	w.core.GetMostRecentPing = function() return { time = 105, location = Vector(1600, -5000), normal_ping = true } end
+	T = 106
+	w.H.Pings.Scan(2)
+	tick(w, w.sup, 106)
+	check("a ping 1600 from the bot does not start the cap", claim(w, w.sup, LOST) == nil)
 
 	-- A ping from before the suggestion does not.
 	w = setup({ humanCore = true })
