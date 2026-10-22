@@ -172,6 +172,9 @@ local Localization = {
         say_lane_ss_mid = {"ss mid"},
         say_rune_coming_mid = {"coming mid for rune"},
         say_rune_lost = {"rune lost"},
+        say_ss_top = {"ss top"},
+        say_ss_mid = {"ss mid"},
+        say_ss_bot = {"ss bot"},
     },
     zh = {
         welcome_msgs = {
@@ -317,6 +320,9 @@ local Localization = {
         say_lane_ss_mid = {"中路miss"},
         say_rune_coming_mid = {"来中路抢符"},
         say_rune_lost = {"符丢了"},
+        say_ss_top = {"上路miss"},
+        say_ss_mid = {"中路miss"},
+        say_ss_bot = {"下路miss"},
     },
     ru = {
         welcome_msgs = {
@@ -455,6 +461,9 @@ local Localization = {
         say_lane_ss_mid = {"мид пропал"},
         say_rune_coming_mid = {"иду на мид за руной"},
         say_rune_lost = {"руну потеряли"},
+        say_ss_top = {"топ пропал"},
+        say_ss_mid = {"мид пропал"},
+        say_ss_bot = {"бот пропал"},
     },
     ja = {
         welcome_msgs = {
@@ -593,6 +602,9 @@ local Localization = {
         say_lane_ss_mid = {"ミッドmiss"},
         say_rune_coming_mid = {"ルーンのためにミッドへ行く"},
         say_rune_lost = {"ルーン取られた"},
+        say_ss_top = {"トップmiss"},
+        say_ss_mid = {"ミッドmiss"},
+        say_ss_bot = {"ボットmiss"},
     },
 }
 

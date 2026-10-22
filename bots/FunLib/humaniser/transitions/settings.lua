@@ -56,6 +56,8 @@ ____exports.DEFAULTS = {
     AttackScaleMin = 0.7,
     SkillAmount = {Low = 0.5, High = 1},
     MissingCooldown = 30,
+    CautionStrongerRadius = 1200,
+    MidMissingSignalWindow = 30,
     TpRadius = 1600,
     TpLinger = 2,
     TpSetupSkill = 0.7,

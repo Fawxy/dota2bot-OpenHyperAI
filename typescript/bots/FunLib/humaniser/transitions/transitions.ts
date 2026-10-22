@@ -10,8 +10,9 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
+import * as Caution from "bots/FunLib/humaniser/transitions/caution";
 
-export { Settings, Runes, Busy, MidRunes, Rotation };
+export { Settings, Runes, Busy, MidRunes, Rotation, Caution };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -27,12 +28,14 @@ export interface OverlayProviders {
     Rotation: (this: void, bot: Unit) => "top" | "bot" | undefined;
 }
 
-const NEVER = (): boolean => false;
 let helpers: TransitionHelpers = {};
 let providers: OverlayProviders = {
     Busy: (bot) => LaneState.ForBot(bot) !== undefined && Busy.IsBusy(bot, DotaTime())[0],
     Spare: (bot) => LaneState.ForBot(bot) !== undefined && Busy.LaneCanSpare(bot, false)[0],
-    Alone: NEVER,
+    Alone: (bot) => {
+        const s = LaneState.ForBot(bot);
+        return s !== undefined && Caution.IsAlone(bot, s);
+    },
     Rotation: (bot) => Rotation.Target(bot),
 };
 
@@ -60,6 +63,7 @@ export function Tick(bot: Unit): void {
     if (!Settings.IsActive()) return;
     MidRunes.Tick(bot);
     Rotation.Tick(bot);
+    Caution.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */

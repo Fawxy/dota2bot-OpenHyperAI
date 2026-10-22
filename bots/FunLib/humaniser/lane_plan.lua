@@ -48,13 +48,14 @@ local PLAN_RANK = {"SHOVE", "FREEZE", "HOLD", "NEUTRAL"}
 local NEUTRAL_SCORE = 0.25
 function ____exports.PickCorePlan(i)
     local cfg = LaneConfig.Settings()
-    if i.rotating then
+    local cautious = i.cautious == true
+    if i.rotating and not cautious then
         return "SHOVE"
     end
     if i.skill >= cfg.Gates.Freeze and i.stronger and i.enemyLaners > 0 and i.eqPos <= cfg.Thresholds.FreezeCoreEqMax then
         return "FREEZE"
     end
-    if i.enemyLaners == 0 and i.laneScore < 0 then
+    if not cautious and i.enemyLaners == 0 and i.laneScore < 0 then
         return "SHOVE"
     end
     return "HOLD"
@@ -380,7 +381,10 @@ local function pickFor(picker, s)
     return ____exports.PickCorePlan(__TS__ObjectAssign(
         {},
         inputs,
-        {rotating = LaneHooks.IsRotationPlanned(picker)}
+        {
+            rotating = LaneHooks.IsRotationPlanned(picker),
+            cautious = LaneHooks.IsCautious(picker)
+        }
     ))
 end
 function ____exports.View(bot, s)
