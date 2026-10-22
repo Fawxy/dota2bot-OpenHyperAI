@@ -798,6 +798,7 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 ### Stops
 - Dead, HP < 0.3, or an order.
 - A visible enemy hero within 1,400 for the bot's reaction time (`Profile.reactBase`, on top of perception's delay). Ignored on the walk back, where laning and retreat decide.
+- Retreat's resolved desire over the trip's (`retreat`). The hold keeps it below on the walk in and in the camp, so this fires on a real threat or on the walk back. In console.9057083956 Enigma left a half-cleared centaur camp at leaveBy with the camp chasing it, and retreat (0.9, creep damage) and the trip (0.62) swapped the bot five times in five seconds until it fell under `AbortHP`.
 - Another mode active with no farm Think for 2 s. Farm's `OnEnd` doesn't end a trip: upstream team_roam grabs a neutral's last hit at 0.72 for under a second, and in the first test game that ended both trips mid-camp.
 - The walk back ends at 900 from the front, when the wave arrives, or after 25 s.
 

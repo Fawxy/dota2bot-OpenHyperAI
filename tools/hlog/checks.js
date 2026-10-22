@@ -404,7 +404,7 @@ function trainerSelfTest(game) {
 // FarmPattern trips: how each one ended. Ends a trip is meant to have (back at the front, wave arrived, enemy, low HP,
 // death, order, run) are fine; pre-emption by another mode (named in `to`), or the walk back timing out, means
 // something out-bid or stalled it. Leaving many camps unfinished means the clear-time estimate runs short.
-const FARM_OK_ENDS = new Set(['back', 'wave', 'enemy', 'low-hp', 'dead', 'order', 'run']);
+const FARM_OK_ENDS = new Set(['back', 'wave', 'enemy', 'low-hp', 'dead', 'order', 'run', 'retreat']);
 const FARM_LATE_SHARE = 0.4;
 const FARM_LATE_MIN = 3;
 

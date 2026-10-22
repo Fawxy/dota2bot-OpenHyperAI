@@ -122,6 +122,20 @@ do
 	check("leave: trip ends back at the front", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
 end
 
+-- On the walk back the retreat hold is off; once retreat out-bids the trip (the camp left with aggro chases the core),
+-- the trip ends instead of trading the bot with retreat every scoring round.
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	H.FarmPattern.Desire(core)
+	core.mode, core.loc = BotMode.Farm, SMALL
+	T = 461.5
+	H.FarmPattern.Think(core)
+	H.FarmPattern.Desire(core)
+	check("retreat: hold released on the walk back", near(H.Intent.Resolve(core, BotMode.Retreat, 0.9), 0.9))
+	H.FarmPattern.Think(core)
+	check("retreat: trip ends once retreat out-bids it", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+end
+
 -- At level 12 a cleared small camp leaves time for the second one (3.3 + 4.7 + 6.1 before 465), so the trip chains.
 do
 	local H, core, _, camp = world({ travel = 10, t = 445, level = 12, camps = { { "small", SMALL }, { "small", SMALL2 } } })

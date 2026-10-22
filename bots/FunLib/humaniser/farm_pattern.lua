@@ -1058,6 +1058,10 @@ local function stopReason(bot, trip, now)
     if threatened(bot, trip, now) then
         return "enemy"
     end
+    local retreat = Intent.Resolved(bot, BotMode.Retreat)
+    if retreat ~= nil and retreat > s.Desire then
+        return "retreat"
+    end
     if now - (trip.lastThinkAt or trip.startedAt) > s.PreemptAfter and bot:GetActiveMode() ~= BotMode.Farm then
         return "preempted"
     end

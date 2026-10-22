@@ -545,6 +545,10 @@ function stopReason(bot: Unit, trip: Trip, now: number): string | undefined {
     if (hpOf(bot) < s.AbortHP) return "low-hp";
     if (Orders.GetFor(bot) !== undefined) return "order";
     if (threatened(bot, trip, now)) return "enemy";
+    // Retreat over the trip means the hold is off (a real threat, or the walk back, where a camp left with aggro chases
+    // the core): left running, farm took retreat's every dip and the two traded the bot back and forth each second.
+    const retreat = Intent.Resolved(bot, BotMode.Retreat);
+    if (retreat !== undefined && retreat > s.Desire) return "retreat";
     // A stack job owns farm's Think while it runs, so a stale Think only means pre-emption under another mode.
     if (now - (trip.lastThinkAt ?? trip.startedAt) > s.PreemptAfter && bot.GetActiveMode() !== BotMode.Farm) return "preempted";
     if (trip.phase === "return") {
