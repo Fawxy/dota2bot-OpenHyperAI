@@ -112,6 +112,10 @@ interface FightState {
     escapeAt?: number;
     startEnemies: number;
     countUp: boolean;
+    // The target was under one of its towers at the last check (a commit that started there cleared TowerOverride).
+    towerUp: boolean;
+    // When the commit last had its target within attack range (ChaseMax runs from here).
+    reachAt: number;
     countAt: number;
     // Abilities a start believed down; one cast within MISTAKE_WINDOW of `at` proves the memory wrong.
     bet?: { targetPid: number; at: number; abilities: Record<string, boolean>; done: boolean };
@@ -182,6 +186,9 @@ const PARTNER_RANGE = 1200;
 // A counted partner's attack on the target keeps it seen going in this long: between attacks (about 1.7 s at level 1)
 // and while casting it has no attack target.
 const PARTNER_RECENT_ATTACK = 1.5;
+// A chase: moving at least this fast (units/s; heroes run 280+) and losing ground no faster than CHASE_LOSS.
+const CHASE_MIN_SPEED = 150;
+const CHASE_LOSS = 40;
 // An initiator's partner gets this long to be seen following (its react + SyncDelay, then closing) before AbortNotice
 // starts to run.
 const INITIATE_GRACE = 1.5;
@@ -219,6 +226,8 @@ function stateFor(bot: Unit): FightState {
             partnerSince: 0,
             startEnemies: 0,
             countUp: false,
+            towerUp: false,
+            reachAt: 0,
             countAt: -math.huge,
         };
         fights[pid] = s;
@@ -337,6 +346,7 @@ function skillOf(bot: Unit): number {
 export interface Sample {
     dist: number;
     at: number;
+    loc?: Vector;
     // Attacks the ally landed on the target within InRangeWindow before this sample.
     attacks?: number;
 }
@@ -397,7 +407,7 @@ function sampleDistance(bot: Unit, ally: Unit, target: Unit, now: number): Sampl
     t.attackTimes = recent;
     if (t.cur === undefined || now - t.cur.at >= SAMPLE_GAP) {
         t.prev = t.cur;
-        t.cur = { dist: GetUnitToUnitDistance(ally, target), at: now };
+        t.cur = { dist: GetUnitToUnitDistance(ally, target), at: now, loc: ally.GetLocation() };
     }
     t.cur.attacks = recent.length;
     if (t.prev !== undefined) t.prev.attacks = recent.length;
@@ -430,7 +440,7 @@ function partnerCommitTarget(bot: Unit, s: FightState, ally: Unit, now: number):
         if (found === undefined && committing && followable(s, ally, e.unit, prev)) found = e.unit;
         if (counted && e.pid === s.targetPid) {
             const hit = lastAttackOn(bot, ally, e.unit);
-            if (committing || attackingInRange(ally, e.unit) || (hit !== undefined && now - hit <= PARTNER_RECENT_ATTACK))
+            if (committing || attackingInRange(ally, e.unit) || (hit !== undefined && now - hit <= PARTNER_RECENT_ATTACK) || chasing(ally, e.unit, prev, now))
                 s.partnerSeen[ally.GetPlayerID()] = now;
         }
     }
@@ -444,6 +454,25 @@ function countsPartner(s: FightState, pid: number): boolean {
 
 function attackingInRange(ally: Unit, target: Unit): boolean {
     return isHeroTarget(ally.GetAttackTarget(), target, target.GetPlayerID()) && inAttackRange(ally, target, GetUnitToUnitDistance(ally, target));
+}
+
+/**
+ * Out of range the engine reports no attack target, and a partner running after a target as fast as it flees is not
+ * closing: it counts as going in while it moves towards the target without falling behind faster than CHASE_LOSS.
+ * How long a chase may last is the bot's own ChaseMax.
+ */
+function chasing(ally: Unit, target: Unit, prev: Sample | undefined, now: number): boolean {
+    if (prev === undefined || prev.loc === undefined || now - prev.at > PREV_MAX_AGE || now <= prev.at) return false;
+    const from = prev.loc;
+    const at = ally.GetLocation();
+    const moved = math.sqrt((at.x - from.x) ** 2 + (at.y - from.y) ** 2);
+    if (moved < CHASE_MIN_SPEED * (now - prev.at)) return false;
+    const dist = GetUnitToUnitDistance(ally, target);
+    if (dist > PARTNER_RANGE || dist > prev.dist + CHASE_LOSS * (now - prev.at)) return false;
+    const to = target.GetLocation();
+    const toDist = math.sqrt((to.x - at.x) ** 2 + (to.y - at.y) ** 2);
+    if (toDist < 1) return true;
+    return ((at.x - from.x) * (to.x - at.x) + (at.y - from.y) * (to.y - at.y)) / (moved * toDist) >= FACING_COS;
 }
 
 function inAttackRange(attacker: Unit, target: Unit, dist: number): boolean {
@@ -523,6 +552,8 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     s.recheckMargin = opts.recheckMargin;
     s.abort = undefined;
     s.countUp = false;
+    s.towerUp = KillCheck.TowerCovers(target.GetTeam(), target.GetLocation());
+    s.reachAt = now;
     s.countAt = -math.huge;
     s.startEnemies = 0;
     const snap = LaneState.ForBot(bot);
@@ -672,6 +703,12 @@ function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     }
     if (now - s.countAt < COUNT_EVERY) return undefined;
     s.countAt = now;
+    if (target !== undefined) {
+        const under = KillCheck.TowerCovers(target.GetTeam(), target.GetLocation());
+        const entered = under && !s.towerUp;
+        s.towerUp = under;
+        if (entered) return "tower";
+    }
     const snap = LaneState.ForBot(bot);
     if (snap === undefined) return undefined;
     const c = FightRead.LaneCounts(bot, snap, COUNT_RADIUS);
@@ -703,7 +740,11 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(s, target, now) !== undefined);
     const partners = solo ? [] : s.partners;
     const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
-    const pass = k !== undefined && (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);
+    // A follow re-check holds to FollowMargin, but a dive still needs to clear the tower rule.
+    const pass =
+        k !== undefined &&
+        (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass) &&
+        !(a.why === "tower" && k.margin < LaneFightConfig.Settings().TowerOverride);
     if (pass && solo) {
         s.partners = [];
         s.recheckMargin = undefined;
@@ -768,10 +809,13 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
         if (target.IsIllusion() || (h.IsSuspiciousIllusion !== undefined && h.IsSuspiciousIllusion(target))) return "illusion";
         if (h.CannotBeKilled !== undefined && h.CannotBeKilled(bot, target)) return "unkillable";
         if (target.IsMagicImmune()) return "magic_immune";
-        if (GetUnitToUnitDistance(bot, target) > LEASH) {
+        const d = GetUnitToUnitDistance(bot, target);
+        if (d > LEASH) {
             s.farSince = s.farSince ?? now;
             if (now - s.farSince > END_GRACE) return "far";
         } else s.farSince = undefined;
+        if (inAttackRange(bot, target, d)) s.reachAt = now;
+        else if (s.phase === "commit" && now - s.reachAt > cfg.ChaseMax) return "chase";
     } else {
         if (s.targetPid === undefined || !IsHeroAlive(s.targetPid)) return "target-dead";
         s.fogSince = s.fogSince ?? now;

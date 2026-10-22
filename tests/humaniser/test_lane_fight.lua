@@ -292,7 +292,7 @@ for _, team in ipairs({ 2, 3 }) do
 end
 
 do
-	local W = world({ burst = 1000 })
+	local W = world({ burst = 1000, botX = 0 })
 	play(W, 0.7)
 	play(W, 7)
 	check("the commit holds up to CommitMax", W.events("lanefight_end") == 0 and W.age("commit") ~= nil)
@@ -388,7 +388,7 @@ end
 do
 	-- Their level-6 spike (and unseen ult) for 2 s during a commit, then gone: the kill pass stayed one instance, so
 	-- CommitMax ends the commit for good rather than a lapsed instance restarting it.
-	local W = world({ burst = 1000 })
+	local W = world({ burst = 1000, botX = 0 })
 	play(W, 1)
 	check("setup: committing", W.LF.CurrentPhase(W.bot) == "commit")
 	W.enemy.level = 6
@@ -513,6 +513,58 @@ do
 	play(W2, 10)
 	check("every lanefight_start has a lanefight_end", W.events("lanefight_start") == W.events("lanefight_end")
 		and W2.events("lanefight_start") == W2.events("lanefight_end") and W2.events("lanefight_start") >= 1, table.concat(W2.lines, "\n"))
+end
+
+-- ------------------------------------------------------------------------------------- chase and dive limits
+
+local function enemyT1(team)
+	for _, t in pairs(TOWERS_W[team]) do if math.abs(t.loc.y - BOT_Y) < 1000 then return t end end
+end
+
+do
+	-- The bot reaches the target, then the target pulls out of range and stays out: the chase ends after ChaseMax (3 s)
+	-- out of reach, well before CommitMax (8 s).
+	local W = world({ burst = 1000, botX = 0 })
+	play(W, 0.7)
+	check("setup: an in-range commit", W.age("commit") ~= nil, table.concat(W.lines, "\n"))
+	play(W, 1)
+	local lost = T
+	W.at(-700)
+	local endAt
+	for _ = 1, 200 do
+		play(W, 1 / 30)
+		for i, l in ipairs(W.lines) do if endAt == nil and l:find("ev=lanefight_end", 1, true) then endAt = T end end
+		if endAt then break end
+	end
+	check("a chase out of reach for ChaseMax ends the commit as chase", endAt ~= nil and endAt >= lost + 3 - 1e-6 and endAt <= lost + 3.4
+		and W.events("lanefight_end", "phase=commit reason=chase") == 1, string.format("lost %.2f end %s", lost, tostring(endAt)))
+
+	W = world({ burst = 1000, botX = 0, laneFight = { ChaseMax = 1.5 } })
+	play(W, 1.7)
+	W.at(-700)
+	play(W, 1.7)
+	check("ChaseMax is read from config", W.events("lanefight_end", "phase=commit reason=chase") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- The target runs under its tower. Margin 1.2: enough to commit, short of TowerOverride (1.3), so the dive ends.
+	local W = world({ burst = 120, botX = 0 })
+	play(W, 0.7)
+	check("setup: a commit at margin 1.2 outside tower range", W.age("commit") ~= nil, table.concat(W.lines, "\n"))
+	local tower = enemyT1(W.other or (W.bot.team == 2 and 3 or 2))
+	W.enemy.loc = Vector(tower.loc.x - W.sign * 600, BOT_Y)
+	W.bot.loc = Vector(W.enemy.loc.x - W.sign * 300, BOT_Y)
+	play(W, 1)
+	check("a target fleeing under its tower ends a commit short of TowerOverride", W.events("lanefight_end", "phase=commit reason=tower") == 1
+		and W.events("lanefight_recheck", "reason=tower pass=0") == 1, table.concat(W.lines, "\n"))
+
+	W = world({ burst = 1000, botX = 0 })
+	play(W, 0.7)
+	W.enemy.loc = Vector(tower.loc.x - W.sign * 600, BOT_Y)
+	W.bot.loc = Vector(W.enemy.loc.x - W.sign * 300, BOT_Y)
+	play(W, 1)
+	check("a commit that clears TowerOverride follows the target under its tower", W.age("commit") ~= nil
+		and W.events("lanefight_recheck", "reason=tower pass=1") == 1 and W.events("lanefight_end") == 0, table.concat(W.lines, "\n"))
 end
 
 -- ------------------------------------------------------------------------------------------- commit focus

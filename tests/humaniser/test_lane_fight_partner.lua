@@ -605,6 +605,49 @@ do
 end
 
 do
+	-- In game (0:40) both bots chased a fleeing target at the same speed: no attack target while out of range, not closing.
+	-- The bot is kept in range so its own ChaseMax does not decide; the partner runs after the target, 400 behind.
+	local function chase(partnerMoves)
+		local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+		trading(W, T)
+		playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+		play(W, 0.6)
+		W.onFrame = function()
+			W.enemy.loc = Vector(W.enemy.loc.x + W.sign * SPEED * FRAME, BOT_Y)
+			W.bot.loc = Vector(W.enemy.loc.x - W.sign * 300, BOT_Y)
+			W.partner.target = nil
+			if partnerMoves then step(W.partner, W.enemy.loc)
+			else W.partner.facing = W.sign > 0 and 0 or 180 end
+			if dist(W.partner, W.enemy) < 400 then W.partner.loc = Vector(W.enemy.loc.x - W.sign * 400, BOT_Y) end
+		end
+		play(W, 4)
+		return W
+	end
+	local W = chase(true)
+	check("a partner chasing the target at its pace is not abandoned", W.LF.CurrentPhase(W.bot) == "commit"
+		and W.events("lanefight_abandon") == 0, table.concat(W.lines, "\n"))
+	W = chase(false)
+	check("a partner standing still facing the target is abandoned", W.events("lanefight_abandon", "why=unseen") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- A follow commit re-checks to FollowMargin (0.9 here passes it), but under the target's tower margin 0.9 is short of
+	-- TowerOverride: the dive still ends.
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup: a follow commit at margin 0.9", W.events("lanefight_start", "margin=0.900 via=follow") == 1, table.concat(W.lines, "\n"))
+	local tower
+	for _, t in pairs(TOWERS_W[3]) do if math.abs(t.loc.y - BOT_Y) < 1000 then tower = t end end
+	W.enemy.loc = Vector(tower.loc.x - 600, BOT_Y)
+	W.bot.loc = Vector(W.enemy.loc.x - 300, BOT_Y)
+	W.partner.loc = Vector(W.enemy.loc.x - 350, BOT_Y)
+	play(W, 1)
+	check("a follow commit's tower re-check needs TowerOverride, not FollowMargin", W.events("lanefight_end", "phase=commit reason=tower") == 1,
+		table.concat(W.lines, "\n"))
+end
+
+do
 	-- A partner that stops: its last attack counts for PARTNER_RECENT_ATTACK, then PartnerLapse, then the re-check.
 	local function stops(cfg)
 		local W = world({ burst = 50, partner = { pos = 5, burst = 40 }, laneFight = cfg })

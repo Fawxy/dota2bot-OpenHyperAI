@@ -11,7 +11,7 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, inAttackRange, lastAttackOn, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, fitToCommit, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, PARTNER_RECENT_ATTACK, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, followable, partnerCommitTarget, countsPartner, attackingInRange, chasing, inAttackRange, lastAttackOn, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, fitToCommit, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, PARTNER_RECENT_ATTACK, CHASE_MIN_SPEED, CHASE_LOSS, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -49,6 +49,8 @@ function stateFor(bot)
             partnerSince = 0,
             startEnemies = 0,
             countUp = false,
+            towerUp = false,
+            reachAt = 0,
             countAt = -math.huge
         }
         fights[pid] = s
@@ -303,7 +305,8 @@ function sampleDistance(bot, ally, target, now)
         t.prev = t.cur
         t.cur = {
             dist = GetUnitToUnitDistance(ally, target),
-            at = now
+            at = now,
+            loc = ally:GetLocation()
         }
     end
     t.cur.attacks = #recent
@@ -349,7 +352,7 @@ function partnerCommitTarget(bot, s, ally, now)
                 end
                 if counted and e.pid == s.targetPid then
                     local hit = lastAttackOn(bot, ally, e.unit)
-                    if committing or attackingInRange(ally, e.unit) or hit ~= nil and now - hit <= PARTNER_RECENT_ATTACK then
+                    if committing or attackingInRange(ally, e.unit) or hit ~= nil and now - hit <= PARTNER_RECENT_ATTACK or chasing(ally, e.unit, prev, now) then
                         s.partnerSeen[ally:GetPlayerID()] = now
                     end
                 end
@@ -380,6 +383,27 @@ function attackingInRange(ally, target)
         target,
         GetUnitToUnitDistance(ally, target)
     )
+end
+function chasing(ally, target, prev, now)
+    if prev == nil or prev.loc == nil or now - prev.at > PREV_MAX_AGE or now <= prev.at then
+        return false
+    end
+    local from = prev.loc
+    local at = ally:GetLocation()
+    local moved = math.sqrt((at.x - from.x) ^ 2 + (at.y - from.y) ^ 2)
+    if moved < CHASE_MIN_SPEED * (now - prev.at) then
+        return false
+    end
+    local dist = GetUnitToUnitDistance(ally, target)
+    if dist > PARTNER_RANGE or dist > prev.dist + CHASE_LOSS * (now - prev.at) then
+        return false
+    end
+    local to = target:GetLocation()
+    local toDist = math.sqrt((to.x - at.x) ^ 2 + (to.y - at.y) ^ 2)
+    if toDist < 1 then
+        return true
+    end
+    return ((at.x - from.x) * (to.x - at.x) + (at.y - from.y) * (to.y - at.y)) / (moved * toDist) >= FACING_COS
 end
 function inAttackRange(attacker, target, dist)
     return dist <= attacker:GetAttackRange() + attacker:GetBoundingRadius() + target:GetBoundingRadius() + RANGE_SLACK
@@ -422,15 +446,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue100
+            local __continue105
             repeat
                 if not a.learned then
-                    __continue100 = true
+                    __continue105 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue100 = true
+                    __continue105 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -444,9 +468,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue100 = true
+                __continue105 = true
             until true
-            if not __continue100 then
+            if not __continue105 then
                 break
             end
         end
@@ -474,6 +498,11 @@ function start(bot, s, phase, target, inst, now, detail, opts)
     s.recheckMargin = opts.recheckMargin
     s.abort = nil
     s.countUp = false
+    s.towerUp = KillCheck.TowerCovers(
+        target:GetTeam(),
+        target:GetLocation()
+    )
+    s.reachAt = now
     s.countAt = -math.huge
     s.startEnemies = 0
     local snap = LaneState.ForBot(bot)
@@ -691,6 +720,17 @@ function abortSignal(bot, s, target, now)
         return nil
     end
     s.countAt = now
+    if target ~= nil then
+        local under = KillCheck.TowerCovers(
+            target:GetTeam(),
+            target:GetLocation()
+        )
+        local entered = under and not s.towerUp
+        s.towerUp = under
+        if entered then
+            return "tower"
+        end
+    end
     local snap = LaneState.ForBot(bot)
     if snap == nil then
         return nil
@@ -761,7 +801,7 @@ function abortReason(bot, s, target, now)
         end
         ____temp_9 = ____temp_8
     end
-    local pass = ____temp_9
+    local pass = ____temp_9 and not (a.why == "tower" and k.margin < LaneFightConfig.Settings().TowerOverride)
     if pass and solo then
         s.partners = {}
         s.recheckMargin = nil
@@ -869,13 +909,19 @@ function endReason(bot, s, now)
         if target:IsMagicImmune() then
             return "magic_immune"
         end
-        if GetUnitToUnitDistance(bot, target) > LEASH then
+        local d = GetUnitToUnitDistance(bot, target)
+        if d > LEASH then
             s.farSince = s.farSince or now
             if now - s.farSince > END_GRACE then
                 return "far"
             end
         else
             s.farSince = nil
+        end
+        if inAttackRange(bot, target, d) then
+            s.reachAt = now
+        elseif s.phase == "commit" and now - s.reachAt > cfg.ChaseMax then
+            return "chase"
         end
     else
         if s.targetPid == nil or not IsHeroAlive(s.targetPid) then
@@ -1314,6 +1360,8 @@ IN_RANGE_ATTACKS = 2
 FOLLOW_FRESH = 0.3
 PARTNER_RANGE = 1200
 PARTNER_RECENT_ATTACK = 1.5
+CHASE_MIN_SPEED = 150
+CHASE_LOSS = 40
 INITIATE_GRACE = 1.5
 NEAR_MISS = 0.8
 FOCUS_SOURCE = "lanefight:commit_focus"

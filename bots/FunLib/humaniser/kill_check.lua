@@ -1,5 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local dist2D, towerInRange, TOWER_RANGE, TOWER_IDS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Tower = ____dota.Tower
@@ -11,13 +12,43 @@ local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local FightRead = require(GetScriptDirectory().."/FunLib/humaniser/fight_read")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+function towerInRange(enemyTeam, loc)
+    for ____, id in ipairs(TOWER_IDS) do
+        do
+            local __continue23
+            repeat
+                local tower = GetTower(enemyTeam, id)
+                if tower == nil or tower == nil or not tower:IsAlive() then
+                    __continue23 = true
+                    break
+                end
+                if dist2D(
+                    loc,
+                    tower:GetLocation()
+                ) <= TOWER_RANGE then
+                    return true
+                end
+                __continue23 = true
+            until true
+            if not __continue23 then
+                break
+            end
+        end
+    end
+    return false
+end
 local BURST_RANGE = 1200
 local BURST_SECONDS = 5
-local TOWER_RANGE = 900
+TOWER_RANGE = 900
 local COUNTER_ENEMIES = 2
 local COUNTER_HP = 0.5
 local COUNTER_RANGE = 1200
-local TOWER_IDS = {
+TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,
@@ -29,11 +60,6 @@ local TOWER_IDS = {
     Tower.Bot3
 }
 local cache = {}
-local function dist2D(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
-end
 local function marginOf(i)
     local err = LaneFightConfig.Curve("BurstError", i.skill) * (2 * i.errRoll - 1)
     return i.burst * (1 + err) / math.max(1, i.hp + i.regen * 2)
@@ -106,30 +132,9 @@ local function escapeReady(botPid, target, now, skill)
     end
     return false
 end
-local function towerInRange(enemyTeam, loc)
-    for ____, id in ipairs(TOWER_IDS) do
-        do
-            local __continue22
-            repeat
-                local tower = GetTower(enemyTeam, id)
-                if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue22 = true
-                    break
-                end
-                if dist2D(
-                    loc,
-                    tower:GetLocation()
-                ) <= TOWER_RANGE then
-                    return true
-                end
-                __continue22 = true
-            until true
-            if not __continue22 then
-                break
-            end
-        end
-    end
-    return false
+--- An alive tower of `enemyTeam` covers `loc` (the kill check's tower rule).
+function ____exports.TowerCovers(enemyTeam, loc)
+    return towerInRange(enemyTeam, loc)
 end
 local function hpFraction(u)
     local max = u:GetMaxHealth()
@@ -194,17 +199,17 @@ function ____exports.Check(bot, partners, target, now, fresh)
     end
     for ____, p in ipairs(partners) do
         do
-            local __continue37
+            local __continue38
             repeat
                 if p == bot or not contributes(p, loc) then
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 contributors[#contributors + 1] = p
                 partnerPids[#partnerPids + 1] = p:GetPlayerID()
-                __continue37 = true
+                __continue38 = true
             until true
-            if not __continue37 then
+            if not __continue38 then
                 break
             end
         end

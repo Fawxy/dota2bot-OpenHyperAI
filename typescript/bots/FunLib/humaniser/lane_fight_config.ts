@@ -45,6 +45,9 @@ export const DEFAULTS = {
     TradeDuration: 2.5,
     TradeHits: 3,
     CommitMax: 8,
+    // A commit whose target stays out of the bot's attack range this long (since the start or the last time in range)
+    // ends as chase.
+    ChaseMax: 3,
     StartHP: 0.5,
     // Commits (and waits for a partner's commit) start only at this HP or above; a running commit holds to CommitHoldHP.
     CommitStartHP: 0.65,

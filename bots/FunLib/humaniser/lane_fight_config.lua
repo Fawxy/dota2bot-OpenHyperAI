@@ -24,6 +24,7 @@ ____exports.DEFAULTS = {
     TradeDuration = 2.5,
     TradeHits = 3,
     CommitMax = 8,
+    ChaseMax = 3,
     StartHP = 0.5,
     CommitStartHP = 0.65,
     StartMaxRetreat = 0.7,

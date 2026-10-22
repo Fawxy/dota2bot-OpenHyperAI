@@ -111,6 +111,11 @@ function escapeReady(botPid: number, target: Unit, now: number, skill: number): 
     return false;
 }
 
+/** An alive tower of `enemyTeam` covers `loc` (the kill check's tower rule). */
+export function TowerCovers(enemyTeam: number, loc: Vector): boolean {
+    return towerInRange(enemyTeam, loc);
+}
+
 function towerInRange(enemyTeam: number, loc: Vector): boolean {
     for (const id of TOWER_IDS) {
         const tower = GetTower(enemyTeam, id);
