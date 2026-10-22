@@ -124,6 +124,17 @@ do
 end
 
 do
+	-- console.9057072982 0:34: during the block a removed creep's handle, still in a list, threw from IsAlive.
+	local H, bot = blockWorld(2)
+	check("precondition: blocking", H.Lane.PreThink(bot, {}, {}, {}) == true)
+	T = 5.6
+	local gone = MakeCreep({ team = 3, x = -2500, y = BOT_Y })
+	RemoveCreep(gone)
+	local ok, acted = pcall(H.Lane.PreThink, bot, {}, { gone }, {})
+	check("a removed creep in the list: the block goes on", ok and acted == true, acted)
+end
+
+do
 	local H = world(1)
 	local core = unit({ pid = 1, pos = 1, x = -100 })
 	local support = unit({ pid = 5, pos = 5, x = -200 })

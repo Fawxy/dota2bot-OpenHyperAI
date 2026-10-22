@@ -183,6 +183,26 @@ function forecastSection(game) {
         out.push('', 'forecast fit:');
         for (const r of rows) out.push(`  ${r.kind} n=${r.n} K=${r.k.toFixed(2)} r2=${r.r2.toFixed(2)}`);
     }
+    const take = game.events.filter(e => e.kind === 'contest' && e.take === 1);
+    const takeEnds = take.filter(e => e.ev === 'lane_job_end');
+    if (take.length > 0) {
+        const n = reason => takeEnds.filter(e => e.reason === reason).length;
+        const swings = takeEnds.reduce((a, e) => a + (e.swings || 0), 0);
+        const started = take.filter(e => e.ev === 'lane_job_start').length;
+        const aborted = take.filter(e => e.ev === 'lane_job_abort').length;
+        out.push(
+            '',
+            `take-pull: started ${started} swings ${swings} no-creeps ${n('no-creeps')} timeout ${n('timeout')} outnumbered ${n('outnumbered')} low-hp ${n('low-hp')} lane-wave ${n('lane-wave')} aborted ${aborted}`
+        );
+    }
+    const pullSignals = game.events.filter(e => e.ev === 'lane_signal' && (e.kind === 'pull' || e.kind === 'half_pull'));
+    const skips = game.events.filter(e => e.ev === 'lane_take_skip');
+    if (pullSignals.length > 0 || skips.length > 0) {
+        const byReason = new Map();
+        for (const e of skips) byReason.set(e.reason, (byReason.get(e.reason) || 0) + 1);
+        const reasons = [...byReason].map(([r, c]) => `${r} ${c}`).join(' ') || 'none';
+        out.push('', `pull signals: ${pullSignals.length} noticed ${pullSignals.filter(e => e.noticed === 1).length}; take skipped: ${reasons}`);
+    }
     const pre = game.events.filter(e => e.kind === 'contest' && e.pre === 1);
     const started = pre.filter(e => e.ev === 'lane_job_start').length;
     const ends = pre.filter(e => e.ev === 'lane_job_end');

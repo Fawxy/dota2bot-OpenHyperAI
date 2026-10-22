@@ -43,12 +43,26 @@ function CreepMeta:GetAttackTarget() return self.target end
 function CreepMeta:GetHealth() return self.hp end
 function CreepMeta:GetMaxHealth() return self.maxhp end
 function CreepMeta:GetUnitName() return self.name end
-function CreepMeta:IsAlive() return self.hp > 0 end
-function CreepMeta:CanBeSeen() return true end
-function CreepMeta:GetLocation() return self.loc end
+-- `removed`: the engine deleted the creep but a list still holds its handle, as after a death in game.
+function CreepMeta:IsNull() return self.removed == true end
+function CreepMeta:IsAlive()
+	if self.removed then error("Invalid object passed to IsAlive.") end
+	return self.hp > 0
+end
+function CreepMeta:CanBeSeen() return not self.unseen end
+-- `unseen`: a live handle the team cannot see; the engine gives it no location.
+function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
 function CreepMeta:IsNull() return self.removed == true end
+
+-- The engine deletes the creep: fresh queries no longer return it, handles already in a list stay behind.
+function RemoveCreep(c)
+	c.removed = true
+	for _, list in pairs(CREEPS) do
+		for i = #list, 1, -1 do if list[i] == c then table.remove(list, i) end end
+	end
+end
 
 function MakeCreep(o)
 	local c = setmetatable({

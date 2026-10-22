@@ -107,6 +107,38 @@ do
 end
 
 do
+	-- The wave anomaly against real waves: `sizes` enemy creeps reach our front at :05 of successive cycles from 1:00.
+	-- console.9057072982: one stacked cycle (8) made the next normal waves (4) read as thin, 73 half_pulls and no pull.
+	local function anomalies(sizes, supportInLane)
+		local H, support, _, _, esup = world(1, { telemetry = { Enable = true } })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		if not supportInLane then
+			hide(esup, 4)
+			esup.loc = Vector(-6000, -6000)
+		end
+		RANDOM_FRACTION = 0
+		for k, n in ipairs(sizes) do
+			local c0 = 60 + 30 * (k - 1)
+			for i = #CREEPS[3], 1, -1 do table.remove(CREEPS[3], i) end
+			for t = c0, c0 + 29.5, 0.5 do
+				if t == c0 + 5 then for i = 1, n do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end end
+				tick(H, support, t)
+			end
+		end
+		RANDOM_FRACTION = nil
+		local n = 0
+		for _, l in ipairs(lines) do
+			if l:find(" ev=lane_signal ", 1, true) and (l:find("kind=half_pull", 1, true) or l:find("kind=pull ", 1, true)) then n = n + 1 end
+		end
+		return n
+	end
+	check("a stacked cycle does not make the next normal waves thin", anomalies({ 8, 4, 4, 4 }) == 0, anomalies({ 8, 4, 4, 4 }))
+	check("positive control: 2 of a 4-creep wave with their support unseen -> thin", anomalies({ 4, 4, 2 }) == 1, anomalies({ 4, 4, 2 }))
+	check("their support seen in our lane: a thin wave is no pull", anomalies({ 4, 4, 2 }, true) == 0, anomalies({ 4, 4, 2 }, true))
+end
+
+do
 	local H = world(0.5)
 	local C = H.Lane.Counter
 	check("two cycles near their tower with denies -> freeze", C.FreezeSuspected({ 0.7, 0.65 }, { 3, 2 }))
@@ -808,6 +840,218 @@ do
 	end
 	check("a partner-low-hp abort", aborted ~= nil)
 	check("the abort of a pre-contest carries pre=1", aborted ~= nil and aborted:find("pre=1", 1, true) ~= nil, aborted)
+end
+
+do
+	-- Take the pull: their support pulls their small camp at 1:15 and our core (pid 3, not the lane's camp-job owner)
+	-- has no enemy creeps left at its front. Their Dire top T1 stands 1,697 from the camp, outside its 850 range.
+	local function taking(opts)
+		opts = opts or {}
+		local H, support, core, ecore, esup = world(opts.skill or 1, { cfg = opts.cfg, telemetry = { Enable = true },
+			enemyCoreAt = opts.enemyCoreAt == true and Vector(300, 5000) or Vector(-3000, 5000) })
+		OBSERVER = 3
+		H.LastHitSkill.SetHelpers({ WillKillTarget = function(c, dmg) return dmg >= c:GetHealth() end })
+		local lines = {}
+		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+		esup.loc = THEIR_SMALL
+		for i = 1, (opts.laneCreeps or 0) do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end
+		if opts.setup ~= nil then opts.setup(H, core) end
+		RANDOM_FRACTION = 0
+		tick(H, core, 75)
+		RANDOM_FRACTION = nil
+		check("precondition: the core noticed the pull", #signalsOf(H, core, "pull") == 1)
+		T = 75.5
+		H.Lane.Counter.Think(core, {})
+		return H, core, H.Lane.CampJobs.Current(core), lines, ecore, esup, support
+	end
+	local function frame(H, bot, t)
+		T = t
+		local d = H.Lane.CampJobDesire(bot)
+		H.Lane.CampJobThink(bot)
+		return d
+	end
+	local function ended(lines)
+		for _, l in ipairs(lines) do if l:find(" ev=lane_job_end ", 1, true) then return l end end
+		return nil
+	end
+
+	local H, core, job, lines, _, _, support = taking()
+	check("not the owner, empty lane: the core takes their pull", job ~= nil and job.kind == "contest" and job.take == true and job.campIdx == 1)
+	check("the take is the cycle's commit", H.Lane.LanePlanner.Committed(core) == "contest")
+	local start
+	for _, l in ipairs(lines) do if l:find(" ev=lane_job_start ", 1, true) then start = l end end
+	check("lane_job_start marks the take", start ~= nil and start:find("pid=3", 1, true) ~= nil and start:find("take=1", 1, true) ~= nil, start)
+	OBSERVER = 4
+	tick(H, support, 75)
+	T = 75.5
+	H.Lane.Counter.Think(support, {})
+	local own = H.Lane.CampJobs.Current(support)
+	check("the owner's answer stays a contest of the puller", own ~= nil and own.kind == "contest" and own.take ~= true)
+
+	local asOwner = select(3, taking({ setup = function(_, c) c.pos = 5 end }))
+	check("the owner contests rather than takes", asOwner ~= nil and asOwner.kind == "contest" and asOwner.take ~= true)
+	check("two enemy creeps still at our front: no take", select(3, taking({ laneCreeps = 2 })) == nil)
+	check("one enemy creep at our front: take", select(3, taking({ laneCreeps = 1 })) ~= nil)
+	check("skill 0.4: no take", select(3, taking({ skill = 0.4 })) == nil)
+	check("TakePull off: no take", select(3, taking({ cfg = { Enable = true, TakePull = false } })) == nil)
+	check("their tower beside the camp: no take", select(3, taking({ setup = function()
+		TOWERS_W[3][dota.Tower.Top1].loc = Vector(THEIR_SMALL.x + 300, THEIR_SMALL.y)
+	end })) == nil)
+	check("a third enemy seen near the route: no take", select(3, taking({ setup = function()
+		local mid = unit({ pid = 12, team = 3, pos = 2, lane = Lane.Mid, loc = Vector(-6000, 0) })
+		hide(mid, 3)
+		LAST_SEEN[12] = { location = Vector(1800, 6800), time_since_seen = 2 }
+	end })) == nil)
+
+	-- The executor.
+	H, core, job, lines = taking()
+	local d = frame(H, core, 76)
+	local moves = ActionsOf(3, "MoveToLocation")
+	check("take walks to their camp", #moves == 1 and moves[1].args[1].x == THEIR_SMALL.x and moves[1].args[1].y == THEIR_SMALL.y)
+	check("take desire is the contest's", near(d, 0.65), d)
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	local creep = MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	d = frame(H, core, 77)
+	check("a non-owner's take is not aborted as not-owner", near(d, 0.65), d)
+	check("a creep it cannot kill is waited by, not hit", attacksOn(3, creep) == 0 and H.Intent.HeldBy(core) == "lane:take_pull", H.Intent.HeldBy(core))
+	creep.hp = 30
+	RANDOM_FRACTION = 0
+	frame(H, core, 77.5)
+	RANDOM_FRACTION = nil
+	check("last-hits the killable pulled creep", attacksOn(3, creep) == 1, attacksOn(3, creep))
+	frame(H, core, 77.8)
+	check("one swing per creep", attacksOn(3, creep) == 1, attacksOn(3, creep))
+	creep.hp = 0
+	frame(H, core, 79)
+	check("under 3 s since the last pulled creep: still there", H.Lane.CampJobs.Active(core))
+	frame(H, core, 81.1)
+	check("3 s since the last pulled creep: the take ends", not H.Lane.CampJobs.Active(core))
+	check("the take frees the core's cycle", H.Lane.LanePlanner.Committed(core) == nil, H.Lane.LanePlanner.Committed(core))
+	local e = ended(lines)
+	check("lane_job_end: no-creeps, take=1, one swing", e ~= nil and e:find("reason=no-creeps", 1, true) ~= nil
+		and e:find("take=1", 1, true) ~= nil and e:find("swings=1", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	frame(H, core, 76)
+	check("precondition: taking with one enemy hero by it", H.Lane.CampJobs.Active(core))
+	local ecore
+	H, core, job, lines, ecore = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	ecore.loc = Vector(THEIR_SMALL.x + 400, THEIR_SMALL.y)
+	frame(H, core, 76)
+	e = ended(lines)
+	check("two enemy heroes by it: the take ends outnumbered", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=outnumbered", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	frame(H, core, 89)
+	check("14.5 s in: still taking", H.Lane.CampJobs.Active(core))
+	frame(H, core, 90.6)
+	e = ended(lines)
+	check("15 s after its start: the take ends on timeout", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=timeout", 1, true) ~= nil, e)
+
+	-- Stronger with no enemy laner by our front (J.WeAreStronger reads an empty radius as stronger): nobody to punish, so take.
+	job = select(3, taking({ setup = function(_, _) STRONGER = true end }))
+	check("stronger, no laner to punish: take", job ~= nil and job.take == true)
+	local Hs, _, js, _, ecs = taking({ setup = function(_, _) STRONGER = true end, enemyCoreAt = true })
+	check("stronger with their core in lane: punish, no take", js == nil and attacksOn(3, ecs) == 1, attacksOn(3, ecs))
+
+	-- Chasing a pulled creep out of attack range, then a second swing once the first's window passes.
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	creep = MakeCreep({ team = 3, x = THEIR_SMALL.x + 700, y = THEIR_SMALL.y, hp = 300 })
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 650, y = THEIR_SMALL.y, hp = 200 })
+	frame(H, core, 76)
+	moves = ActionsOf(3, "MoveToLocation")
+	check("lowest-HP pulled creep out of range: walks to it", #moves == 1 and moves[1].args[1].x == THEIR_SMALL.x + 650, moves[1] and moves[1].args[1].x)
+	core.loc = Vector(THEIR_SMALL.x + 400, THEIR_SMALL.y)
+	creep.hp = 30
+	RANDOM_FRACTION = 0
+	frame(H, core, 76.5)
+	frame(H, core, 77.6)
+	RANDOM_FRACTION = nil
+	check("a creep that survives the swing window is swung at again", attacksOn(3, creep) == 2, attacksOn(3, creep))
+	RemoveCreep(creep)
+	local okFrame, err = pcall(frame, H, core, 77.9)
+	local guarded
+	for _, l in ipairs(lines) do if l:find(" ev=lua_error ", 1, true) then guarded = l end end
+	check("a swing target removed by the engine does not throw", okFrame and guarded == nil and H.Lane.CampJobs.Active(core), tostring(guarded) .. " active=" .. tostring(H.Lane.CampJobs.Active(core)))
+
+	-- Their wave was only late: it reaches our front before any pulled creep is seen, so the core goes back.
+	H, core, job, lines = taking()
+	frame(H, core, 76)
+	for i = 1, 3 do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end
+	frame(H, core, 77)
+	e = ended(lines)
+	check("their wave in our lane before any pulled creep: the take ends lane-wave", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=lane-wave", 1, true) ~= nil, e)
+
+	H, core, job, lines = taking()
+	core.loc = Vector(THEIR_SMALL.x, THEIR_SMALL.y)
+	MakeCreep({ team = 3, x = THEIR_SMALL.x + 200, y = THEIR_SMALL.y, hp = 300 })
+	frame(H, core, 76)
+	for i = 1, 3 do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end
+	frame(H, core, 77)
+	check("pulled creeps in hand: a wave in our lane does not end the take", H.Lane.CampJobs.Active(core))
+	core.hp = 30
+	frame(H, core, 78)
+	e = ended(lines)
+	check("under JobMinHP: the take ends low-hp", not H.Lane.CampJobs.Active(core) and e ~= nil and e:find("reason=low-hp", 1, true) ~= nil, e)
+
+	local function handsOff(H2, c, at)
+		H2.Orders.Post(2, { type = "LANE_HANDSOFF", sourceKey = "ping", issuerPID = 0, lane = Lane.Top, duration = 30,
+			maxResponders = 1, onlyPIDs = { 3 }, delayKind = "ping" })
+		T = at or 72
+		check("precondition: handsoff accepted", H2.Orders.GetAcceptedForLane(c, "LANE_HANDSOFF", Lane.Top) ~= nil)
+	end
+	check("a hands-off order: no take", select(3, taking({ setup = handsOff })) == nil)
+	H, core, job, lines = taking()
+	frame(H, core, 76)
+	handsOff(H, core, 82)
+	check("a hands-off order mid-take: desire 0", H.Lane.CampJobDesire(core) == 0)
+
+	-- Telemetry for the decision: the signal, noticed or not, and the first check that declined a take, once per signal.
+	local function evs(ls, name)
+		local r = {}
+		for _, l in ipairs(ls) do if l:find(" ev=" .. name .. " ", 1, true) then table.insert(r, l) end end
+		return r
+	end
+	lines = select(4, taking())
+	local sig = evs(lines, "lane_signal")
+	check("lane_signal: the core's noticed pull", #sig == 1 and sig[1]:find("pid=3 kind=pull", 1, true) ~= nil and sig[1]:find("camp=1", 1, true) ~= nil
+		and sig[1]:find("noticed=1", 1, true) ~= nil, sig[1])
+	check("a take logs no skip", #evs(lines, "lane_take_skip") == 0)
+	H, core, job, lines = taking({ laneCreeps = 2 })
+	for t = 76, 79, 0.5 do T = t H.Lane.Counter.Think(core, {}) end
+	local skips = evs(lines, "lane_take_skip")
+	check("lane_take_skip names the blocking check once", #skips == 1 and skips[1]:find("pid=3 kind=pull camp=1 reason=lane-creeps", 1, true) ~= nil, #skips .. " " .. tostring(skips[1]))
+	skips = evs(select(4, taking({ setup = function(_, c) c.pos = 5 end })), "lane_take_skip")
+	check("lane_take_skip: the owner", #skips == 1 and skips[1]:find("reason=owner", 1, true) ~= nil, skips[1])
+	skips = evs(select(4, taking({ setup = function(_, _) STRONGER = true end, enemyCoreAt = true })), "lane_take_skip")
+	check("lane_take_skip: punishing instead", #skips == 1 and skips[1]:find("reason=punish", 1, true) ~= nil, skips[1])
+	do
+		local H2, _, core2, _, esup2 = world(1, { telemetry = { Enable = true } })
+		OBSERVER = 3
+		local ls = {}
+		H2.Telemetry.SetSink(function(l) table.insert(ls, l) end)
+		esup2.loc = THEIR_SMALL
+		RANDOM_FRACTION = 0.999
+		tick(H2, core2, 75)
+		RANDOM_FRACTION = nil
+		sig = evs(ls, "lane_signal")
+		check("lane_signal: a missed notice roll logs noticed=0", #sig == 1 and sig[1]:find("noticed=0", 1, true) ~= nil, sig[1])
+	end
+
+	H, core, job, lines = taking()
+	frame(H, core, 76)
+	H.Lane.CampJobs.OnEnd(core)
+	-- A mode-end abort is logged once the next mode is known.
+	H.Lane.CampJobs.FlushModeEnd(core, true)
+	local aborted
+	for _, l in ipairs(lines) do if l:find(" ev=lane_job_abort ", 1, true) then aborted = l end end
+	check("a take's abort carries take=1", aborted ~= nil and aborted:find("take=1", 1, true) ~= nil, aborted)
 end
 
 finish()
