@@ -80,6 +80,10 @@ function ____exports.MayTouchWave(bot, creep)
     if creep:IsNull() or not LaneConfig.IsOn("Mid") or not LaneConfig.InLaningPhase() or bot:GetAssignedLane() == Lane.Mid then
         return true
     end
+    local loc = creep:GetLocation()
+    if loc == nil then
+        return true
+    end
     local s = LaneState.Get(
         bot:GetTeam(),
         Lane.Mid,
@@ -89,10 +93,7 @@ function ____exports.MayTouchWave(bot, creep)
         return true
     end
     local radii = LaneConfig.Settings().Radii
-    if dist2D(
-        creep:GetLocation(),
-        s.frontLoc
-    ) > radii.MidFront then
+    if dist2D(loc, s.frontLoc) > radii.MidFront then
         return true
     end
     for ____, h in ipairs(s.allies) do

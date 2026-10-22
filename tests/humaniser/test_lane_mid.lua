@@ -102,6 +102,11 @@ do
 	RemoveCreep(gone)
 	local ok, err = pcall(M.MayTouchWave, support, gone)
 	check("a removed creep handle does not throw", ok, err)
+	-- console.9057163106: 50 throws with IsNull guarded; the engine lists creeps out of sight with no location.
+	local unseen = MakeCreep({ team = 3, x = 100, y = 0 })
+	unseen.unseen = true
+	ok, err = pcall(M.MayTouchWave, support, unseen)
+	check("a creep with no location does not throw", ok, err)
 	T = 700
 	LANING = false
 	check("after laning anyone may touch it", M.MayTouchWave(support, creep) == true)

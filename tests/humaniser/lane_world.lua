@@ -49,8 +49,9 @@ function CreepMeta:IsAlive()
 	if self.removed then error("Invalid object passed to IsAlive.") end
 	return self.hp > 0
 end
-function CreepMeta:CanBeSeen() return true end
-function CreepMeta:GetLocation() if self.removed then return nil end return self.loc end
+function CreepMeta:CanBeSeen() return not self.unseen end
+-- `unseen`: a live handle the team cannot see; the engine gives it no location.
+function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:IsHero() return false end
 
