@@ -20,7 +20,7 @@ local function hide(u) u.hiddenFrom = setmetatable({}, { __index = function() re
 -- opts.humanCore / opts.humanSupport make that laner a human.
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.5, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
 	T = opts.T or 100
 	CURRENT_TEAM = 2
 	LANING = true
@@ -132,16 +132,19 @@ end
 -- LaneLostPure
 do
 	local P = world().P
-	local function lost(d, lh, gap) return P.LaneLostPure({ deathsInWindow = d, lhPerMin = lh, expectedLhPerMin = 5, levelGap = gap }) end
+	local function lost(d, lh, gap, oppLh, oppGain)
+		return P.LaneLostPure({ deathsInWindow = d, lhPerMin = lh, oppLhPerMin = oppLh or 5, oppLastHits = oppGain or 20, levelGap = gap })
+	end
 	local l, r = lost(2, 5, 0)
 	check("2 deaths: lost by deaths", l == true and r == "deaths", r)
 	check("1 death: not lost", lost(1, 5, 0) == false)
 	l, r = lost(0, 1.75, 0)
-	check("LH ratio 0.35: lasthits", l == true and r == "lasthits", r)
-	check("LH ratio 0.45: not lost", lost(0, 2.25, 0) == false)
+	check("35% of the opponent's rate: lasthits", l == true and r == "lasthits", r)
+	check("45% of the opponent's rate: not lost", lost(0, 2.25, 0) == false)
+	check("35% of the opponent's rate, but the opponent took only 14 in the window: not judged", lost(0, 1.75, 0, 5, 14) == false)
 	l, r = lost(0, 5, 2)
 	check("level gap 2: levels", l == true and r == "levels", r)
-	check("level gap 1: not lost", lost(0, 5, 1) == false)
+	check("level gap 1: not lost", lost(1, 5, 1) == false)
 end
 
 -- Adapter inputs
@@ -166,47 +169,108 @@ do
 	check("the older death drops out", w.P.LaneLost(w.core) == false)
 end
 
+-- Last hits, judged against the lane opponent. The core and a visible enemy laner farm at a steady rate from 1:00;
+-- the bot's Tick runs every second.
+local function farmLane(w, opp, to, myRate, oppRate, from)
+	for t = from or 60, to do
+		w.core.lh = math.floor((t - 60) / 60 * myRate)
+		if opp ~= nil then opp.lh = math.floor((t - 60) / 60 * oppRate) end
+		tick(w, w.core, t)
+	end
+end
+
 do
-	local w = world()
-	tick(w, w.core, 70)
-	w.core.lh = 2
-	T = 190
+	-- The in-game case (console.9057185236, 2:30): an even lane at 2.5 a minute each, skill 1.0. Against a fixed
+	-- expected rate of 7 this read as lost at 2:30 and stayed latched for the rest of laning.
+	local w = world({ skill = 1 })
+	local e = hero({ pid = 10, team = 3 })
+	local lostEver = false
+	for t = 60, 420 do
+		farmLane(w, e, t, 2.5, 2.5, t)
+		lostEver = lostEver or w.P.LaneLost(w.core) or w.P.FarmAllowedInLaning(w.core)
+	end
+	check("even lane at 2.5 LH/min, skill 1.0: never lost through 7:00", lostEver == false)
+	w = world({ skill = 1 })
+	e = hero({ pid = 10, team = 3 })
+	farmLane(w, e, 150, 2, 3)
+	check("2 against 3 LH/min at 2:30: not lost", w.P.LaneLost(w.core) == false)
+	-- Both cores starved (a support-heavy lane): the core is not losing the last-hit war.
+	w = world({ skill = 1 })
+	e = hero({ pid = 10, team = 3 })
+	farmLane(w, e, 300, 1, 1.5)
+	check("both cores at about 1 LH/min: not lost", w.P.LaneLost(w.core) == false)
+end
+
+do
+	-- Starved: 0.5 a minute against an opponent at 6. Judged once the opponent has 15 in the window (3:30).
+	local w = world({ skill = 1 })
+	local e = hero({ pid = 10, team = 3 })
+	farmLane(w, e, 200, 0.5, 6)
+	check("starved, the opponent has 14 by 3:20: not judged yet", w.P.LaneLost(w.core) == false)
+	farmLane(w, e, 215, 0.5, 6, 201)
 	local l, r = w.P.LaneLost(w.core)
-	check("1 LH/min against an expected 5: lost by lasthits", l == true and r == "lasthits", r)
-	w.core.lh = 10
-	check("5 LH/min: not lost", w.P.LaneLost(w.core) == false)
-	w = world()
-	tick(w, w.core, 70)
-	T = 110
-	check("a 40 s span is too short to judge last hits", w.P.LaneLost(w.core) == false)
-	w = world()
-	tick(w, w.sup, 70)
-	T = 190
+	check("starved, the opponent has 15 by 3:35: lost by lasthits", l == true and r == "lasthits", r)
+	check("... and released to farm", w.P.FarmAllowedInLaning(w.core))
+	-- The same split with the opponent never visible gives no rate to compare with.
+	w = world({ skill = 1 })
+	e = hero({ pid = 10, team = 3 })
+	hide(e)
+	farmLane(w, e, 300, 0.5, 6)
+	check("an opponent never seen: not judged on last hits", w.P.LaneLost(w.core) == false)
+	-- An enemy that left the lane is not the lane opponent.
+	w = world({ skill = 1 })
+	e = hero({ pid = 10, team = 3, loc = FAR })
+	farmLane(w, e, 300, 0.5, 6)
+	check("a farming enemy far from our front is not the lane opponent", w.P.LaneLost(w.core) == false)
+	w = world({ skill = 1 })
+	e = hero({ pid = 10, team = 3 })
+	for t = 60, 300 do
+		e.lh = math.floor((t - 60) / 60 * 6)
+		tick(w, w.sup, t)
+	end
 	check("a support is not judged on last hits", w.P.LaneLost(w.sup) == false)
 end
 
 do
-	-- Ticks start before the horn; the core then last-hits normally (about 4 a minute from 0:30).
+	-- The opponent's rate comes from its own samples: one seen only for the last 60 s has too short a span.
+	local w = world({ skill = 1 })
+	local e = hero({ pid = 10, team = 3 })
+	hide(e)
+	farmLane(w, e, 239, 0, 10)
+	e.hiddenFrom = nil
+	w.H.Lane.LaneState.ResetCache()
+	farmLane(w, e, 300, 0, 10, 240)
+	check("an opponent seen for 60 s is not judged yet", w.P.LaneLost(w.core) == false)
+	farmLane(w, e, 370, 0, 10, 301)
+	check("... and is once it has been seen for 120 s", select(2, w.P.LaneLost(w.core)) == "lasthits")
+end
+
+do
+	-- Ticks start before the horn; the core then last-hits normally (about 4 a minute from 0:30), level with its opponent.
 	local w = world()
+	local e = hero({ pid = 10, team = 3 })
 	local lostEver = false
 	T = -60
 	w.P.Tick(w.core)
-	for t = 0, 180, 10 do
+	for t = 0, 300, 10 do
 		T = t
 		w.core.lh = t < 30 and 0 or math.floor((t - 30) / 60 * 4)
+		e.lh = w.core.lh
 		w.P.Tick(w.core)
-		if t == 30 or t == 120 or t == 180 then lostEver = lostEver or w.P.LaneLost(w.core) end
+		if t == 30 or t == 120 or t == 300 then lostEver = lostEver or w.P.LaneLost(w.core) end
 	end
 	check("a core last-hitting normally is never lost, pre-horn ticks included", lostEver == false)
 	w = world()
+	e = hero({ pid = 10, team = 3 })
 	T = -60
 	w.P.Tick(w.core)
-	for t = 0, 180, 10 do
+	for t = 0, 300, 10 do
 		T = t
 		w.core.lh = 0
+		e.lh = t < 30 and 0 or math.floor((t - 30) / 60 * 4)
 		w.P.Tick(w.core)
 	end
-	check("contrast: a core with no last hits by 3:00 is lost", w.P.LaneLost(w.core) == true)
+	check("contrast: a core with no last hits by 5:00 against that opponent is lost", w.P.LaneLost(w.core) == true)
 end
 
 do
@@ -502,21 +566,24 @@ do
 end
 
 do
-	-- A core lost on last hits at 2:40 farms neutrals at 8 a minute: its jungle last hits must not send it back to the lane.
+	-- A core lost on last hits at 3:00 farms neutrals at 8 a minute: its jungle last hits must not send it back to the lane.
 	local w = world({ T = 60 })
-	for t = 60, 160, 5 do
+	local e = hero({ pid = 10, team = 3 })
+	for t = 60, 180, 5 do
 		w.core.lh = 0
+		e.lh = math.floor((t - 60) / 60 * 8)
 		tick(w, w.core, t)
 	end
-	check("precondition: lost by last hits at 2:40, released to farm", w.P.FarmAllowedInLaning(w.core) and select(2, w.P.LaneLost(w.core)) == "lasthits")
+	check("precondition: lost by last hits at 3:00, released to farm", w.P.FarmAllowedInLaning(w.core) and select(2, w.P.LaneLost(w.core)) == "lasthits")
 	check("precondition: one jungle line", count(w.said, "say_going_jungle") == 1)
 	w.core.loc = CAMP
-	for t = 165, 260, 5 do
-		w.core.lh = math.floor((t - 160) / 60 * 8)
+	for t = 185, 360, 5 do
+		w.core.lh = math.floor((t - 180) / 60 * 8)
+		e.lh = math.floor((t - 60) / 60 * 8)
 		tick(w, w.core, t)
 	end
 	check("the jungle farm lifts the last-hit rate: the lane no longer reads lost", w.P.LaneLost(w.core) == false)
-	check("still released to farm at 4:20", w.P.FarmAllowedInLaning(w.core))
+	check("still released to farm at 6:00", w.P.FarmAllowedInLaning(w.core))
 	check("still one jungle line", count(w.said, "say_going_jungle") == 1, count(w.said, "say_going_jungle"))
 end
 
@@ -537,22 +604,24 @@ local function has(l, ...)
 end
 
 do
-	-- A core with no last hits: one tr_lost when the response starts, with the numbers that judged it, and
-	-- one more when laning ends; nothing in between while the latch holds.
+	-- A core with no last hits against an opponent at 4 a minute: one tr_lost when the response starts, with the
+	-- numbers that judged it, and one more when laning ends; nothing in between while the latch holds.
 	local w = world({ telemetry = { Enable = true } })
+	local e = hero({ pid = 10, team = 3 })
 	local ev = capture(w)
 	T = -60
 	w.P.Tick(w.core)
-	for t = 0, 240, 10 do
+	for t = 0, 340, 10 do
 		T = t
 		w.core.lh = 0
+		e.lh = t < 60 and 0 or math.floor((t - 60) / 60 * 4)
 		w.P.Tick(w.core)
 	end
 	local lost = ev("tr_lost")
 	check("tr_lost: once while the lane stays lost", #lost == 1, #lost)
-	check("tr_lost: names the rule and its inputs", has(lost[1], "pid=1", "lost=1", "reason=lasthits", "lhpm=0", "expected=5", "deaths=0"), lost[1])
+	check("tr_lost: names the rule and its inputs", has(lost[1], "pid=1", "lost=1", "reason=lasthits", "lhpm=0", "opp=10", "opplhpm=3.913", "oppgain=15", "deaths=0"), lost[1])
 	LANING = false
-	T = 250
+	T = 350
 	w.P.Tick(w.core)
 	lost = ev("tr_lost")
 	check("tr_lost: the end of laning reports the response off", #lost == 2 and has(lost[2], "lost=0", "reason=phase"), lost[2])

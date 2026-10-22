@@ -133,13 +133,15 @@ export const DEFAULTS = {
     SupportTo: 480,
     LostWindow: 240,
     LostDeaths: 2,
+    // Lost on last hits: our rate under this share of the lane opponent's over the same window.
     LostLHRatio: 0.4,
+    // ...and only once that opponent took this many last hits in the window. Bot cores take about 2 a minute in a
+    // contested lane (29 bot games, skill 1.0), so a handful of last hits early on is noise, not a lost lane.
+    LostLHMinOpp: 15,
     LostLevelGap: 2,
-    // Placeholder until minute 10.
-    ExpectedLHPerMin: { Low: 3, High: 7 } as LerpPair,
     SuggestCooldown: 60,
-    // The last-hit rate is only judged once this many seconds of samples exist (early in the game the window is short).
-    LostMinSpan: 90,
+    // Our rate and the opponent's are each judged only once their samples span this many seconds.
+    LostMinSpan: 120,
     // Last-hit samples start here: before the creeps meet there is nothing to last hit.
     LostLHFrom: 60,
     // GetLastHits is sampled at most this often.
