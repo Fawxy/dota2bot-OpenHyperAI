@@ -258,5 +258,6 @@ function LaneFresh(laneCfg, extra)
 	H.Transitions.LaneWard.ResetCache()
 	H.Transitions.Teleports.ResetCache()
 	H.Transitions.Phase.ResetCache()
+	H.Transitions.MidRunes.ResetCache()
 	return H
 end

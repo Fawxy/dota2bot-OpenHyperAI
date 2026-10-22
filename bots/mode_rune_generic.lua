@@ -529,11 +529,14 @@ function X.GetBestRune()
 	local bPowerOnly, bPowerDue, nPowerTarget = J.Humaniser.Transitions.MidRuneFocus(bot)
 
 	-- A support rotating to a power spawn (task 12, Task 4) heads for that spot, spawned or not,
-	-- whoever is nearer; a human claiming or pinging it still wins.
+	-- whoever is nearer; a human claiming or pinging it still wins. Once the rune is up with an allied
+	-- core within 1200 of the spot, the pick falls to the loop below, whose gates give the core the rune.
 	local hForced = J.Humaniser.Transitions.RuneTarget(bot)
 	if hForced then
 		local vForced = GetRuneSpawnLocation(hForced)
-		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced) then
+		if not X.IsPingedByHumanPlayer(vForced, math.huge) and not IsHumanClaimingRune(hForced)
+		and not (GetRuneStatus(hForced) == RUNE_STATUS_AVAILABLE and X.IsAllyCoreNear(vForced, 1200))
+		then
 			return hForced, GetUnitToLocationDistance(bot, vForced)
 		end
 	end
@@ -564,6 +567,18 @@ function X.GetBestRune()
 	end
 
 	return targetRune, targetRuneDistance
+end
+
+function X.IsAllyCoreNear(vLocation, nRadius)
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= bot and J.IsValidHero(member) and J.IsCore(member)
+		and GetUnitToLocationDistance(member, vLocation) <= nRadius
+		then
+			return true
+		end
+	end
+	return false
 end
 
 --------------------------------------------------------------------

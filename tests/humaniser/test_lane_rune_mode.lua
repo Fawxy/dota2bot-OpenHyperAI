@@ -88,6 +88,7 @@ local function load(contest, opts)
 		Utils = { IsTeamPushingSecondTierOrHighGround = function() return false end, CountEnemyHeroesNear = function() return 0 end },
 		Humaniser = humaniser,
 	}, { __index = function() return function() return false end end })
+	for k, v in pairs(opts.J or {}) do J[k] = v end
 	package.loaded["bots/FunLib/jmz_func"] = J
 	package.loaded["bots/Customize/general"] = { Enable = false }
 	dofile(HARNESS_DIR .. "/../../bots/mode_rune_generic.lua")
@@ -297,6 +298,30 @@ do
 end
 
 do
+	-- At the spawn instant the engine can still read MISSING at both spots; the rune shows a frame later.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING, [RUNE_POWERUP_2] = RUNE_STATUS_MISSING }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 360.1, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	frame(H, bot)
+	RUNE_STATUS[RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE
+	T = 360.7
+	local d = frame(H, bot)
+	check("one MISSING read at the spawn instant, then AVAILABLE: the spawn is still pending", d >= 0.6 and bot.rune.normal.location == RUNE_POWERUP_1, d)
+	local focus = H.Transitions.MidRuneFocus(bot)
+	check("... and the mid keeps its focus", focus == true)
+
+	-- Both spots read MISSING after the first second (a stale read), then the rune shows: AVAILABLE clears the empty mark.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING, [RUNE_POWERUP_2] = RUNE_STATUS_MISSING }
+	H = realHumaniser()
+	bot = load(0, { H = H, T = 361.5, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	check("precondition: both spots seen empty, no floor", frame(H, bot) < 0.6)
+	RUNE_STATUS[RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE
+	T = 362.1
+	d = frame(H, bot)
+	check("seen empty, then AVAILABLE: the mid heads for it", d >= 0.6 and bot.rune.normal.location == RUNE_POWERUP_1, d)
+end
+
+do
 	-- Nearer spot seen empty, the other unseen: the mid checks the other spot inside the check window.
 	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING, [RUNE_POWERUP_2] = RUNE_STATUS_UNKNOWN }
 	local H = realHumaniser()
@@ -350,6 +375,38 @@ do
 	H = rotatingHumaniser()
 	bot = load(0, { H = H, T = 355, loc = Vector(900, 0), runeAt = ROT_WORLD, pos = 4, allies = { hero({ loc = Vector(1500, 500), isBot = false }) } })
 	check("human ally at the rune: no rotation floor", frame(H, bot) == 0)
+end
+
+do
+	-- The rotating support positions and contests, but a spawned rune with our core beside the spot is the core's:
+	-- the forced target yields to the normal pick, whose closest-ally and core gates then apply.
+	local function J()
+		return {
+			IsCore = function(u) return (u.pos or 1) <= 3 end,
+			IsThereCoreNearby = function(r)
+				for _, m in ipairs(UNITS[2]) do
+					if m.pos <= 3 and GetUnitToLocationDistance(GetBot(), m.loc) <= r then return true end
+				end
+				return false
+			end,
+		}
+	end
+	local function run(midLoc, status, t)
+		RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = status }
+		local H = rotatingHumaniser()
+		local mid = MakeUnit({ pid = 3, team = 2, bot = true, loc = midLoc })
+		mid.pos = 2
+		local bot = load(0, { H = H, T = t or 361, loc = Vector(1750, 500), runeAt = ROT_WORLD, pos = 4, J = J() })
+		local d = frame(H, bot)
+		return bot.rune.normal.location, d
+	end
+	local loc, d = run(Vector(1800, -400), RUNE_STATUS_AVAILABLE)
+	check("rune up, our mid 900 from the spot: the rotating support does not take it", loc ~= RUNE_POWERUP_1, loc)
+	check("... and the rotation floor does not lift its rune mode", d < 0.7, d)
+	check("contrast: rune up, no core near the spot: the support keeps its forced target",
+		run(Vector(-6000, 0), RUNE_STATUS_AVAILABLE) == RUNE_POWERUP_1)
+	check("contrast: before the spawn, mid near: the support still heads for the spot",
+		run(Vector(1800, -400), RUNE_STATUS_MISSING, 355) == RUNE_POWERUP_1)
 end
 
 do

@@ -28,6 +28,8 @@ export const DEFAULTS = {
     MidRuneRadius: 3500,
     // After a power spawn, an unseen spot is still worth checking for this long.
     MidRuneCheckWindow: 15,
+    // A MISSING read this soon after a power spawn is not taken as "spawned elsewhere".
+    MidRuneSpawnGrace: 1,
     // rune_skip telemetry: a mid's rune desire below this within this many seconds of a power spawn.
     MidRuneSkipDesire: 0.3,
     MidRuneSkipWindow: 10,

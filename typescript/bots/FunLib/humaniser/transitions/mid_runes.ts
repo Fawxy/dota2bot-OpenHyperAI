@@ -32,17 +32,22 @@ interface MidState {
     spawn: number;
     seenAvailable: Record<number, boolean>;
     seenEmpty: Record<number, boolean>;
+    taken: boolean;
     done: boolean;
     skipSpawn: number;
 }
 
 const states: Record<number, MidState> = {};
 
+export function ResetCache(): void {
+    for (const [k] of pairs(states)) delete states[k as number];
+}
+
 function stateFor(bot: Unit): MidState {
     const pid = bot.GetPlayerID();
     let s = states[pid];
     if (s === undefined) {
-        s = { checkAt: -math.huge, claim: false, focus: false, preSpawn: false, spawn: -1, seenAvailable: {}, seenEmpty: {}, done: false, skipSpawn: -1 };
+        s = { checkAt: -math.huge, claim: false, focus: false, preSpawn: false, spawn: -1, seenAvailable: {}, seenEmpty: {}, taken: false, done: false, skipSpawn: -1 };
         states[pid] = s;
     }
     return s;
@@ -98,21 +103,23 @@ function refresh(bot: Unit, s: MidState, now: number): void {
             s.spawn = last;
             s.seenAvailable = {};
             s.seenEmpty = {};
-            s.done = false;
+            s.taken = false;
         }
         let available: number | undefined;
         for (const rune of POWER_SPOTS) {
             const status = GetRuneStatus(rune);
             if (status === RUNE_STATUS_AVAILABLE) {
                 s.seenAvailable[rune] = true;
+                s.seenEmpty[rune] = false;
                 available = rune;
             } else if (status === RUNE_STATUS_MISSING) {
-                // Seen available here before: taken. Otherwise the rune did not spawn here.
-                if (s.seenAvailable[rune] === true) s.done = true;
-                s.seenEmpty[rune] = true;
+                // Seen available here before: taken. Otherwise the rune did not spawn here, unless this is the
+                // spawn instant, where the engine can still read MISSING at both spots.
+                if (s.seenAvailable[rune] === true) s.taken = true;
+                else if (now - last >= cfg.MidRuneSpawnGrace) s.seenEmpty[rune] = true;
             }
         }
-        if (s.seenEmpty[Rune.Power1] === true && s.seenEmpty[Rune.Power2] === true) s.done = true;
+        s.done = s.taken || (s.seenEmpty[Rune.Power1] === true && s.seenEmpty[Rune.Power2] === true);
         if (!s.done) {
             if (available !== undefined) s.target = available;
             // An unseen spot is only worth checking shortly after the spawn.

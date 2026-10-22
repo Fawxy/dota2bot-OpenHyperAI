@@ -16,6 +16,7 @@ ____exports.DEFAULTS = {
     MidRuneLead = 15,
     MidRuneRadius = 3500,
     MidRuneCheckWindow = 15,
+    MidRuneSpawnGrace = 1,
     MidRuneSkipDesire = 0.3,
     MidRuneSkipWindow = 10,
     BusyHP = 0.5,
