@@ -13,8 +13,9 @@ import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Caution from "bots/FunLib/humaniser/transitions/caution";
 import * as Teleports from "bots/FunLib/humaniser/transitions/teleports";
 import * as LaneWard from "bots/FunLib/humaniser/transitions/lane_ward";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
-export { Settings, Runes, Busy, MidRunes, Rotation, Caution, Teleports, LaneWard };
+export { Settings, Runes, Busy, MidRunes, Rotation, Caution, Teleports, LaneWard, Phase };
 
 export interface TransitionHelpers {
     IsInLaningPhase?: (this: void) => boolean;
@@ -68,6 +69,7 @@ export function Tick(bot: Unit): void {
     Teleports.Tick(bot);
     Caution.Tick(bot);
     LaneWard.Tick(bot);
+    Phase.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */
@@ -103,7 +105,7 @@ export function RotationYield(bot: Unit): void {
 }
 
 export function Overlay(bot: Unit): string {
-    return `phase: ${InLaningPhase() ? "laning" : "post"} busy=${tostring(providers.Busy(bot))} spare=${tostring(providers.Spare(bot))} alone=${tostring(
+    return `phase: ${Phase.IsLaningFor(bot) ? "laning" : "post"} busy=${tostring(providers.Busy(bot))} spare=${tostring(providers.Spare(bot))} alone=${tostring(
         providers.Alone(bot)
     )} rot=${providers.Rotation(bot) ?? "-"}`;
 }
@@ -116,4 +118,9 @@ export function PickLaneWard(bot: Unit, spots: { location: Vector }[]): { locati
 /** Ward-mode hook: the ward mode accepted `spot` (a PickLaneWard result) as its target, so the lane-ward floor may apply. */
 export function ConfirmLaneWard(bot: Unit, spot: { location: Vector }): void {
     LaneWard.Confirm(bot, spot);
+}
+
+/** Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended or its lane is lost). */
+export function FarmAllowedInLaning(bot: Unit): boolean {
+    return Phase.FarmAllowedInLaning(bot);
 }

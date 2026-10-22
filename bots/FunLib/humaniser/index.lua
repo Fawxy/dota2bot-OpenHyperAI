@@ -255,7 +255,8 @@ if Telemetry.GuardsEnabled() then
             MidRuneDesire = zero,
             RotationYield = none,
             PickLaneWard = none,
-            ConfirmLaneWard = none
+            ConfirmLaneWard = none,
+            FarmAllowedInLaning = no
         }
     )
     Telemetry.GuardModule(

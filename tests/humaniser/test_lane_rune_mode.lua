@@ -31,6 +31,7 @@ local function hero(o)
 		IsBot = function(self) return self.isBot ~= false end,
 		IsFacingLocation = function() return true end,
 		FindItemSlot = function(self, name) return (name == "item_bottle" and self.bottle) and 0 or -1 end,
+		GetLastHits = function() return 0 end,
 	} })
 end
 

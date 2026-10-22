@@ -81,7 +81,14 @@ ____exports.DEFAULTS = {
     LostLHRatio = 0.4,
     LostLevelGap = 2,
     ExpectedLHPerMin = {Low = 3, High = 7},
-    SuggestCooldown = 60
+    SuggestCooldown = 60,
+    LostMinSpan = 90,
+    LHSampleGap = 5,
+    JungleSeenWindow = 3,
+    JungleCampRadius = 2500,
+    LostPingRadius = 1500,
+    AbsentHold = 10,
+    LaningCap = 0.3
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then

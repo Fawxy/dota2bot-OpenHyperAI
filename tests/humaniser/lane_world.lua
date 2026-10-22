@@ -174,6 +174,7 @@ function UnitMeta:GetItemInSlot(slot)
 end
 function UnitMeta:GetMana() return self.mana or 100 end
 function UnitMeta:GetMaxMana() return self.maxMana or 100 end
+function UnitMeta:GetLastHits() return self.lh or 0 end
 function UnitMeta:GetNearbyTrees(r)
 	local ids = {}
 	for id, loc in pairs(TREES or {}) do if GetUnitToLocationDistance(self, loc) <= r then table.insert(ids, id) end end
@@ -257,5 +258,6 @@ function LaneFresh(laneCfg, extra)
 	WARDS = { [2] = {}, [3] = {} }
 	H.Transitions.LaneWard.ResetCache()
 	H.Transitions.Teleports.ResetCache()
+	H.Transitions.Phase.ResetCache()
 	return H
 end

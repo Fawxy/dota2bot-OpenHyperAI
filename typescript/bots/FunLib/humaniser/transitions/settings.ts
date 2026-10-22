@@ -114,6 +114,19 @@ export const DEFAULTS = {
     // Placeholder until minute 10.
     ExpectedLHPerMin: { Low: 3, High: 7 } as LerpPair,
     SuggestCooldown: 60,
+    // The last-hit rate is only judged once this many seconds of samples exist (early in the game the window is short).
+    LostMinSpan: 90,
+    // GetLastHits is sampled at most this often.
+    LHSampleGap: 5,
+    // Enemy hero seen within this long counts as present near our jungle camp.
+    JungleSeenWindow: 3,
+    JungleCampRadius: 2500,
+    // A human ping this close to the bot after a lost-lane suggestion is taken as an answer.
+    LostPingRadius: 1500,
+    // The human partner must be away from the lane this long after a suggestion before the bot leaves.
+    AbsentHold: 10,
+    // Laning mode cap once a bot's laning has ended.
+    LaningCap: 0.3,
 };
 
 export type TransitionSettings = typeof DEFAULTS;
