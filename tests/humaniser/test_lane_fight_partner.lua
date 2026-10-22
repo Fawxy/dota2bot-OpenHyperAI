@@ -490,6 +490,9 @@ do
 	check("a follower whose partner's trade ends re-checks solo and ends", endAt ~= nil and endAt >= from + 2.5
 		and W.events("lanefight_end", "phase=commit reason=partner_abandon") == 1
 		and W.events("lanefight_recheck", "reason=partner_abandon pass=0") == 1, table.concat(W.lines, "\n"))
+	check("the abandon logs what the partner was doing: unseen, no attack target", W.events("lanefight_abandon",
+		"why=unseen") == 1 and W.events("lanefight_abandon", "ally=" .. W.partner.pid .. " ") == 1
+		and W.events("lanefight_abandon", "atk=-") == 1, table.concat(W.lines, "\n"))
 
 	W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
 	trading(W, T)

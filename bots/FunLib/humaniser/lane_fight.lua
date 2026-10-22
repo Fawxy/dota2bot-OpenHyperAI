@@ -1,6 +1,17 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArrayPush(self, ...)
+    local items = {...}
+    local len = #self
+    for i = 1, #items do
+        len = len + 1
+        self[len] = items[i]
+    end
+    return len
+end
+-- End of Lua Library inline imports
 local ____exports = {}
-local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, partnerCommitTarget, countsPartner, attackingInRange, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
+local stateFor, gatesOpen, hpFraction, floorOf, touch, gate, priorityLive, startBlocked, usableUnit, memberByPid, isSupport, partnerOf, holdsReadyKey, isHeroTarget, skillOf, castingAt, sampleDistance, partnerCommitTarget, countsPartner, attackingInRange, focusCap, claim, believedDown, start, ____end, checkMistake, partnerAbandoned, logAbandon, abortSignal, abortReason, lastHits, attackingTarget, targetEntry, seenTarget, endReason, checkEnd, heroName, callKill, planKill, visibleEnemy, coordinate, considerKill, INSTANCE_GAP, END_GRACE, MODE_GRACE, LEASH, RANGE_SLACK, ACTIVE_BOOST, WAIT_TIMEOUT, WAIT_HOLD, MISTAKE_WINDOW, FACING_COS, CAST_SLACK, CLOSE_MIN, PREV_MAX_AGE, SAMPLE_GAP, COUNT_EVERY, COUNT_RADIUS, IN_RANGE_ATTACKS, FOLLOW_FRESH, PARTNER_RANGE, INITIATE_GRACE, NEAR_MISS, FOCUS_SOURCE, PARTNER_ABANDON, COMMIT_ROLES, FOCUS_MODES, START_MODES, fights, tracks
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
@@ -573,20 +584,63 @@ function partnerAbandoned(bot, s, target, now)
     )
     for ____, u in ipairs(s.partners) do
         if not usableUnit(u) then
-            return true
-        end
-        if target ~= nil and GetUnitToUnitDistance(u, target) > PARTNER_RANGE then
-            return true
+            return {ally = u, why = "gone", since = 0}
         end
         local last = math.max(
             s.partnerSince,
             s.partnerSeen[u:GetPlayerID()] or -math.huge
         )
+        if target ~= nil and GetUnitToUnitDistance(u, target) > PARTNER_RANGE then
+            return {ally = u, why = "far", since = now - last}
+        end
         if now - last >= notice then
-            return true
+            return {ally = u, why = "unseen", since = now - last}
         end
     end
-    return false
+    return nil
+end
+function logAbandon(bot, s, target, a)
+    local fields = {
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"why", a.why},
+        {"since", a.since},
+        {
+            "mode",
+            HDebug.ModeName(bot:GetActiveMode())
+        }
+    }
+    if a.why ~= "gone" then
+        local atk = a.ally:GetAttackTarget()
+        local named = (atk == nil or atk == nil or atk:IsNull()) and "-" or (isHeroTarget(atk, target, s.targetPid) and "target" or atk:GetUnitName())
+        __TS__ArrayPush(
+            fields,
+            {
+                "ally",
+                a.ally:GetPlayerID()
+            },
+            {
+                "amode",
+                HDebug.ModeName(a.ally:GetActiveMode())
+            },
+            {"atk", named},
+            {
+                "dist",
+                GetUnitToUnitDistance(a.ally, target)
+            },
+            {
+                "range",
+                a.ally:GetAttackRange()
+            },
+            {
+                "lastatk",
+                DotaTime() - a.ally:GetLastAttackTime()
+            }
+        )
+    end
+    Telemetry.Event("lanefight_abandon", fields)
 end
 function abortSignal(bot, s, target, now)
     local seen = CastWatch.LastSeenCast(bot:GetPlayerID())
@@ -594,8 +648,12 @@ function abortSignal(bot, s, target, now)
         s.escapeAt = seen.at
         return "escape"
     end
-    if #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now) then
-        return PARTNER_ABANDON
+    if #s.partners > 0 and target ~= nil then
+        local a = partnerAbandoned(bot, s, target, now)
+        if a ~= nil then
+            logAbandon(bot, s, target, a)
+            return PARTNER_ABANDON
+        end
     end
     if now - s.countAt < COUNT_EVERY then
         return nil
@@ -643,10 +701,10 @@ function abortReason(bot, s, target, now)
     end
     s.abort = nil
     local abandon = a.why == PARTNER_ABANDON
-    if abandon and (target == nil or not partnerAbandoned(bot, s, target, now)) then
+    if abandon and (target == nil or partnerAbandoned(bot, s, target, now) == nil) then
         return nil
     end
-    local solo = abandon or #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now)
+    local solo = abandon or #s.partners > 0 and target ~= nil and partnerAbandoned(bot, s, target, now) ~= nil
     local partners = solo and ({}) or s.partners
     local ____temp_3
     if target ~= nil then

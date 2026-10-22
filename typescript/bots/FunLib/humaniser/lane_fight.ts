@@ -579,16 +579,45 @@ function checkMistake(bot: Unit, s: FightState, now: number): void {
     if (now - bet.at > MISTAKE_WINDOW + INSTANCE_GAP) s.bet = undefined;
 }
 
+interface Abandon {
+    ally: Unit;
+    why: "gone" | "far" | "unseen";
+    since: number;
+}
+
 /** A partner the commit's checks count is dead, farther than PARTNER_RANGE from the target, or not seen going in. */
-function partnerAbandoned(bot: Unit, s: FightState, target: Unit | undefined, now: number): boolean {
+function partnerAbandoned(bot: Unit, s: FightState, target: Unit | undefined, now: number): Abandon | undefined {
     const notice = LaneFightConfig.Curve("AbortNotice", skillOf(bot));
     for (const u of s.partners) {
-        if (!usableUnit(u)) return true;
-        if (target !== undefined && GetUnitToUnitDistance(u, target) > PARTNER_RANGE) return true;
+        if (!usableUnit(u)) return { ally: u, why: "gone", since: 0 };
         const last = math.max(s.partnerSince, s.partnerSeen[u.GetPlayerID()] ?? -math.huge);
-        if (now - last >= notice) return true;
+        if (target !== undefined && GetUnitToUnitDistance(u, target) > PARTNER_RANGE) return { ally: u, why: "far", since: now - last };
+        if (now - last >= notice) return { ally: u, why: "unseen", since: now - last };
     }
-    return false;
+    return undefined;
+}
+
+/** What the abandoning partner was visibly doing, to tell a partner that backed off from one the checks missed. */
+function logAbandon(bot: Unit, s: FightState, target: Unit, a: Abandon): void {
+    const fields: [string, any][] = [
+        ["pid", bot.GetPlayerID()],
+        ["why", a.why],
+        ["since", a.since],
+        ["mode", HDebug.ModeName(bot.GetActiveMode())],
+    ];
+    if (a.why !== "gone") {
+        const atk = a.ally.GetAttackTarget();
+        const named = atk === null || atk === undefined || atk.IsNull() ? "-" : isHeroTarget(atk, target, s.targetPid) ? "target" : atk.GetUnitName();
+        fields.push(
+            ["ally", a.ally.GetPlayerID()],
+            ["amode", HDebug.ModeName(a.ally.GetActiveMode())],
+            ["atk", named],
+            ["dist", GetUnitToUnitDistance(a.ally, target)],
+            ["range", a.ally.GetAttackRange()],
+            ["lastatk", DotaTime() - a.ally.GetLastAttackTime()],
+        );
+    }
+    Telemetry.Event("lanefight_abandon", fields);
 }
 
 /**
@@ -601,7 +630,13 @@ function abortSignal(bot: Unit, s: FightState, target: Unit | undefined, now: nu
         s.escapeAt = seen.at;
         return "escape";
     }
-    if (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now)) return PARTNER_ABANDON;
+    if (s.partners.length > 0 && target !== undefined) {
+        const a = partnerAbandoned(bot, s, target, now);
+        if (a !== undefined) {
+            logAbandon(bot, s, target, a);
+            return PARTNER_ABANDON;
+        }
+    }
     if (now - s.countAt < COUNT_EVERY) return undefined;
     s.countAt = now;
     const snap = LaneState.ForBot(bot);
@@ -631,8 +666,8 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     if (now < a.at) return undefined;
     s.abort = undefined;
     const abandon = a.why === PARTNER_ABANDON;
-    if (abandon && (target === undefined || !partnerAbandoned(bot, s, target, now))) return undefined;
-    const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now));
+    if (abandon && (target === undefined || partnerAbandoned(bot, s, target, now) === undefined)) return undefined;
+    const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(bot, s, target, now) !== undefined);
     const partners = solo ? [] : s.partners;
     const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
     const pass = k !== undefined && (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass);

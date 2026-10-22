@@ -93,7 +93,15 @@ function laneFightSection(game) {
     const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes', 'mem']];
     for (const b of stats)
         rows.push([who(game, b.pid), counts(b.windows), counts(b.starts), `${b.took}/${b.fights} took`, counts(b.ends), counts(b.gates), counts(b.aborts), counts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
-    return ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
+    const out = ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
+    const abandons = game.events.filter(e => e.ev === 'lanefight_abandon');
+    if (abandons.length > 0) {
+        const arows = [['t', 'player', 'why', 'since', 'mode', 'ally', 'ally mode', 'ally atk', 'dist', 'range', 'last atk']];
+        for (const e of abandons)
+            arows.push([fmtT(e.t), who(game, e.pid), e.why, f1(e.since), e.mode, e.ally === undefined ? '-' : who(game, e.ally), e.amode ?? '-', e.atk ?? '-', e.dist === undefined ? '-' : Math.round(e.dist), e.range ?? '-', e.lastatk === undefined ? '-' : f1(e.lastatk)]);
+        out.push('', 'partner abandons (what the partner was doing when the commit gave up on it):', table(arows));
+    }
+    return out;
 }
 
 function summary(game) {

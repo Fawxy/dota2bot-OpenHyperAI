@@ -874,6 +874,7 @@ Telemetry (`[HEV] ... ev=<name>`; `tools/hlog/analyse.js` lists a per-bot lane-f
 | `lanefight_end` | `pid phase reason hits took=<0|1>` (every start has one; `took=1` when team_roam or attack took over). Reasons: `dead`, `low-hp` (StopHP), `flag-off`, `priority`, `target-dead`, `illusion`, `unkillable`, `magic_immune`, `far`, `fog`, `partner_gone` and `partner_timeout` (wait), `escape`, `outnumbered`, `partner_abandon` (commit aborts), `hits`, `duration`, `reach` (trade), `commit-max`, `retreat`, `mode:<m>`, `commit` (replaced by a commit), `off`, `avoid` |
 | `lanefight_abort` | `pid phase reason` (`escape`, `outnumbered`, `partner_abandon`, `mode:<m>`) |
 | `lanefight_recheck` | `pid reason pass margin after` (the abort re-check) |
+| `lanefight_abandon` | `pid why(gone\|far\|unseen) since mode ally amode atk(target\|-\|unit name) dist range lastatk` (the partner as seen when a partner_abandon signal is raised; the analyser lists them under "partner abandons") |
 | `lanefight_call` | `pid target said pinged` |
 | `lanefight_mistake` | `pid kind=bad_memory ability target after` |
 | `lanefight_mem` | `pid enemy ability cls cd remembered src=<poll|jump|callback>`, or `pid enemy ability remembered=0 reason=no_cd` once per ability when `GetCooldown` reads 0 |
