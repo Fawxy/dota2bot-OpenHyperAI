@@ -189,7 +189,7 @@ for _, cfg in ipairs({ { Enable = true, MidRunes = false }, { Enable = false } }
 	check(tag .. ": the nearer bounty is still the target", bot.rune.normal.location == RUNE_BOUNTY_1 and d == 0, d)
 	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_MISSING }
 	H = realHumaniser(cfg)
-	load(0, { H = H, T = 357, loc = Vector(0, 0), runeAt = FAR_POWER })
+	bot = load(0, { H = H, T = 357, loc = Vector(0, 0), runeAt = FAR_POWER })
 	d = frame(H, bot)
 	check(tag .. ": bottle-less desire unlifted", near(d, 0.25), d)
 	H = realHumaniser(cfg)
@@ -197,11 +197,11 @@ for _, cfg in ipairs({ { Enable = true, MidRunes = false }, { Enable = false } }
 	d = frame(H, bot)
 	check(tag .. ": unspawned power rune skipped before :52", bot.rune.normal.location == -1 and d == 0, d)
 	H = realHumaniser(cfg)
-	load(0, { H = H, T = 355, loc = Vector(1700, 0), runeAt = FAR_POWER, idle = true })
+	bot = load(0, { H = H, T = 355, loc = Vector(1700, 0), runeAt = FAR_POWER, idle = true })
 	check(tag .. ": idle gate kept", frame(H, bot) == 0)
 	RUNE_STATUS = { [RUNE_POWERUP_2] = RUNE_STATUS_MISSING }
 	H = realHumaniser(cfg)
-	load(0, { H = H, T = 355, loc = Vector(-5950, -6000), runeAt = FAR_POWER })
+	bot = load(0, { H = H, T = 355, loc = Vector(-5950, -6000), runeAt = FAR_POWER })
 	check(tag .. ": power-2 spot gate kept", frame(H, bot) == 0)
 end
 
@@ -236,10 +236,11 @@ do
 	local bot = load(0, { H = H, T = 362, loc = Vector(0, 0), runeAt = NEAR_BOUNTY })
 	local d = frame(H, bot)
 	check("after the spawn, unseen: mid still heads for the power rune", d >= 0.6 and bot.rune.normal.location == RUNE_POWERUP_1, d)
+	-- Both spots now known empty (the far one defaults to MISSING).
 	RUNE_STATUS[RUNE_POWERUP_1] = RUNE_STATUS_MISSING
 	T = 365
 	d = frame(H, bot)
-	check("taken: no floor", d < 0.6, d)
+	check("both spots seen empty: no floor", d < 0.6, d)
 	RUNE_STATUS[RUNE_POWERUP_1] = RUNE_STATUS_UNKNOWN
 	T = 370
 	d = frame(H, bot)
@@ -265,6 +266,48 @@ do
 	T = 400
 	frame(H, bot)
 	check("rune_skip: none away from a spawn", #lines == #skips)
+end
+
+-- Only one of the two power spots gets the rune: the spawn is judged as a whole.
+local BOTH_POWER = { [1] = Vector(0, 900), [2] = Vector(6000, -6000), [3] = Vector(1400, 0), [4] = Vector(-2500, 0) }
+
+do
+	-- The mid waits at its nearer spot; the rune appears on the other side of the river.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING, [RUNE_POWERUP_2] = RUNE_STATUS_AVAILABLE }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 361, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	local d = frame(H, bot)
+	check("rune at the other spot: mid goes there", d >= 0.6 and bot.rune.normal.location == RUNE_POWERUP_2, d)
+end
+
+do
+	-- Seen available at one spot, then taken: done, even with the other spot unseen.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE, [RUNE_POWERUP_2] = RUNE_STATUS_UNKNOWN }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 361, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	frame(H, bot)
+	RUNE_STATUS[RUNE_POWERUP_1] = RUNE_STATUS_MISSING
+	T = 362
+	local d = frame(H, bot)
+	check("seen available then taken: no floor", d < 0.6, d)
+end
+
+do
+	-- Nearer spot seen empty, the other unseen: the mid checks the other spot inside the check window.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_MISSING, [RUNE_POWERUP_2] = RUNE_STATUS_UNKNOWN }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 362, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	local d = frame(H, bot)
+	check("nearer spot empty, other unseen: mid checks the other", d >= 0.6 and bot.rune.normal.location == RUNE_POWERUP_2, d)
+end
+
+do
+	-- A minute after the spawn an unseen spot is stale: no pull.
+	RUNE_STATUS = { [RUNE_BOUNTY_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_1] = RUNE_STATUS_UNKNOWN, [RUNE_POWERUP_2] = RUNE_STATUS_UNKNOWN }
+	local H = realHumaniser()
+	local bot = load(0, { H = H, T = 420, loc = Vector(0, 0), runeAt = BOTH_POWER })
+	local d = frame(H, bot)
+	check("unseen spots a minute after the spawn: no floor", d < 0.6, d)
 end
 
 finish()

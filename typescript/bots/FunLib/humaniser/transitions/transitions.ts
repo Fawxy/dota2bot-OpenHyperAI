@@ -64,7 +64,7 @@ export function MidRunesOn(bot: Unit): boolean {
     return MidRunes.IsOn(bot);
 }
 
-export function MidRuneFocus(bot: Unit): LuaMultiReturn<[boolean, boolean]> {
+export function MidRuneFocus(bot: Unit): LuaMultiReturn<[boolean, boolean, number | undefined]> {
     return MidRunes.Focus(bot);
 }
 

@@ -90,6 +90,10 @@ end
 function GetNeutralSpawners() return SPAWNERS end
 -- IMPASSABLE(v) true marks a blocked location (e.g. beyond a map edge); nil means everything is passable.
 function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
+-- Rune API (task 12, 3b: Transitions.Tick reads the power spots). Tests that need runes override these.
+RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = RUNE_STATUS_UNKNOWN or 0, RUNE_STATUS_AVAILABLE or 1, RUNE_STATUS_MISSING or 2
+function GetRuneSpawnLocation(r) return Vector(-9000 + 1000 * (r or 0), 9000) end
+function GetRuneStatus(r) return RUNE_STATUS_MISSING end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index

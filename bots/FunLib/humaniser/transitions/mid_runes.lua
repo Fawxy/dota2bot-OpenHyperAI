@@ -19,7 +19,10 @@ local function stateFor(bot)
             claim = false,
             focus = false,
             preSpawn = false,
-            doneSpawn = -1,
+            spawn = -1,
+            seenAvailable = {},
+            seenEmpty = {},
+            done = false,
             skipSpawn = -1
         }
         states[pid] = s
@@ -32,13 +35,18 @@ end
 function ____exports.IsOn(bot)
     return Settings.IsOn("MidRunes") and ____exports.IsMid(bot)
 end
-local function nearestPower(loc)
-    local best = Rune.Power1
+local POWER_SPOTS = {Rune.Power1, Rune.Power2}
+local function distanceTo(loc, rune)
+    local spot = GetRuneSpawnLocation(rune)
+    return math.sqrt((spot.x - loc.x) ^ 2 + (spot.y - loc.y) ^ 2)
+end
+--- The nearest power spot passing `ok`, or undefined.
+local function nearestPower(loc, ok)
+    local best
     local bestD = math.huge
-    for ____, rune in ipairs({Rune.Power1, Rune.Power2}) do
-        local spot = GetRuneSpawnLocation(rune)
-        local d = math.sqrt((spot.x - loc.x) ^ 2 + (spot.y - loc.y) ^ 2)
-        if d < bestD then
+    for ____, rune in ipairs(POWER_SPOTS) do
+        local d = distanceTo(loc, rune)
+        if ok(rune) and d < bestD then
             bestD = d
             best = rune
         end
@@ -53,18 +61,59 @@ end
 local function refresh(bot, s, now)
     local cfg = Settings.Get()
     s.checkAt = now + cfg.Refresh
+    local loc = bot:GetLocation()
     local due = Runes.NextSpawn("power", now) - now
-    local rune, dist = nearestPower(bot:GetLocation())
-    local status = GetRuneStatus(rune)
-    local last = lastSpawn(now)
-    if last ~= nil and status == RUNE_STATUS_MISSING then
-        s.doneSpawn = last
-    end
-    local pending = last ~= nil and s.doneSpawn ~= last and status ~= RUNE_STATUS_MISSING
-    local inReach = dist <= cfg.MidRuneRadius
     s.preSpawn = due <= cfg.MidRuneFocus
-    s.focus = s.preSpawn or pending and (status == RUNE_STATUS_AVAILABLE or inReach)
+    s.target = nil
+    local pending = false
+    local last = lastSpawn(now)
+    if last ~= nil then
+        if s.spawn ~= last then
+            s.spawn = last
+            s.seenAvailable = {}
+            s.seenEmpty = {}
+            s.done = false
+        end
+        local available
+        for ____, rune in ipairs(POWER_SPOTS) do
+            local status = GetRuneStatus(rune)
+            if status == RUNE_STATUS_AVAILABLE then
+                s.seenAvailable[rune] = true
+                available = rune
+            elseif status == RUNE_STATUS_MISSING then
+                if s.seenAvailable[rune] == true then
+                    s.done = true
+                end
+                s.seenEmpty[rune] = true
+            end
+        end
+        if s.seenEmpty[Rune.Power1] == true and s.seenEmpty[Rune.Power2] == true then
+            s.done = true
+        end
+        if not s.done then
+            if available ~= nil then
+                s.target = available
+            elseif now - last <= cfg.MidRuneCheckWindow then
+                s.target = (nearestPower(
+                    loc,
+                    function(r) return s.seenEmpty[r] ~= true end
+                ))
+            end
+            pending = s.target ~= nil
+        end
+    end
+    local inReach = (s.target ~= nil and distanceTo(loc, s.target) or select(
+        2,
+        nearestPower(
+            loc,
+            function() return true end
+        )
+    )) <= cfg.MidRuneRadius
+    s.focus = s.preSpawn or pending and inReach
     s.claim = inReach and (due <= cfg.MidRuneLead or pending)
+    if not pending then
+        s.target = nil
+    end
 end
 local function current(bot)
     local s = stateFor(bot)
@@ -75,13 +124,22 @@ local function current(bot)
     return s
 end
 --- For the rune mode: whether only power spots count (a power rune is due within MidRuneFocus or is up),
--- and whether it is due rather than up, so a MISSING (not yet spawned) power spot still counts.
+-- whether it is due rather than up, so a MISSING (not yet spawned) power spot still counts, and after a
+-- spawn the one spot to head for (where it was seen, else the nearer spot not yet seen empty).
 function ____exports.Focus(bot)
     if not ____exports.IsOn(bot) then
-        return false, false
+        return false, false, nil
     end
     local s = current(bot)
-    return s.focus, s.focus and s.preSpawn
+    local ____s_focus_1 = s.focus
+    local ____temp_2 = s.focus and s.preSpawn
+    local ____temp_0
+    if s.focus and not s.preSpawn then
+        ____temp_0 = s.target
+    else
+        ____temp_0 = nil
+    end
+    return ____s_focus_1, ____temp_2, ____temp_0
 end
 function ____exports.Tick(bot)
     if not ____exports.IsOn(bot) then

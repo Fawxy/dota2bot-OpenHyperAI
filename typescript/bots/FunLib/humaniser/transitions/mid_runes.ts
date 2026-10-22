@@ -26,8 +26,13 @@ interface MidState {
     claim: boolean;
     focus: boolean;
     preSpawn: boolean;
-    // The spawn this bot has seen taken or empty at its spot; that spawn no longer pulls it.
-    doneSpawn: number;
+    // The power spot to head for after a spawn; undefined lets the rune mode pick the nearest.
+    target?: number;
+    // What this bot has seen of the latest spawn. A rune spawns at only one of the two spots.
+    spawn: number;
+    seenAvailable: Record<number, boolean>;
+    seenEmpty: Record<number, boolean>;
+    done: boolean;
     skipSpawn: number;
 }
 
@@ -37,7 +42,7 @@ function stateFor(bot: Unit): MidState {
     const pid = bot.GetPlayerID();
     let s = states[pid];
     if (s === undefined) {
-        s = { checkAt: -math.huge, claim: false, focus: false, preSpawn: false, doneSpawn: -1, skipSpawn: -1 };
+        s = { checkAt: -math.huge, claim: false, focus: false, preSpawn: false, spawn: -1, seenAvailable: {}, seenEmpty: {}, done: false, skipSpawn: -1 };
         states[pid] = s;
     }
     return s;
@@ -51,13 +56,20 @@ export function IsOn(bot: Unit): boolean {
     return Settings.IsOn("MidRunes") && IsMid(bot);
 }
 
-function nearestPower(loc: Vector): LuaMultiReturn<[number, number]> {
-    let best = Rune.Power1 as number;
+const POWER_SPOTS: number[] = [Rune.Power1, Rune.Power2];
+
+function distanceTo(loc: Vector, rune: number): number {
+    const spot = GetRuneSpawnLocation(rune);
+    return math.sqrt((spot.x - loc.x) ** 2 + (spot.y - loc.y) ** 2);
+}
+
+/** The nearest power spot passing `ok`, or undefined. */
+function nearestPower(loc: Vector, ok: (this: void, rune: number) => boolean): LuaMultiReturn<[number | undefined, number]> {
+    let best: number | undefined;
     let bestD = math.huge;
-    for (const rune of [Rune.Power1, Rune.Power2]) {
-        const spot = GetRuneSpawnLocation(rune);
-        const d = math.sqrt((spot.x - loc.x) ** 2 + (spot.y - loc.y) ** 2);
-        if (d < bestD) {
+    for (const rune of POWER_SPOTS) {
+        const d = distanceTo(loc, rune);
+        if (ok(rune) && d < bestD) {
             bestD = d;
             best = rune;
         }
@@ -74,17 +86,45 @@ function lastSpawn(now: number): number | undefined {
 function refresh(bot: Unit, s: MidState, now: number): void {
     const cfg = Settings.Get();
     s.checkAt = now + cfg.Refresh;
+    const loc = bot.GetLocation();
     const due = Runes.NextSpawn("power", now) - now;
-    const [rune, dist] = nearestPower(bot.GetLocation());
-    const status = GetRuneStatus(rune);
-    const last = lastSpawn(now);
-    if (last !== undefined && status === RUNE_STATUS_MISSING) s.doneSpawn = last;
-    // Spawned and not yet seen taken; an unseen (UNKNOWN) spot only counts within reach.
-    const pending = last !== undefined && s.doneSpawn !== last && status !== RUNE_STATUS_MISSING;
-    const inReach = dist <= cfg.MidRuneRadius;
     s.preSpawn = due <= cfg.MidRuneFocus;
-    s.focus = s.preSpawn || (pending && (status === RUNE_STATUS_AVAILABLE || inReach));
+    s.target = undefined;
+
+    let pending = false;
+    const last = lastSpawn(now);
+    if (last !== undefined) {
+        if (s.spawn !== last) {
+            s.spawn = last;
+            s.seenAvailable = {};
+            s.seenEmpty = {};
+            s.done = false;
+        }
+        let available: number | undefined;
+        for (const rune of POWER_SPOTS) {
+            const status = GetRuneStatus(rune);
+            if (status === RUNE_STATUS_AVAILABLE) {
+                s.seenAvailable[rune] = true;
+                available = rune;
+            } else if (status === RUNE_STATUS_MISSING) {
+                // Seen available here before: taken. Otherwise the rune did not spawn here.
+                if (s.seenAvailable[rune] === true) s.done = true;
+                s.seenEmpty[rune] = true;
+            }
+        }
+        if (s.seenEmpty[Rune.Power1] === true && s.seenEmpty[Rune.Power2] === true) s.done = true;
+        if (!s.done) {
+            if (available !== undefined) s.target = available;
+            // An unseen spot is only worth checking shortly after the spawn.
+            else if (now - last <= cfg.MidRuneCheckWindow) s.target = nearestPower(loc, (r) => s.seenEmpty[r] !== true)[0];
+            pending = s.target !== undefined;
+        }
+    }
+
+    const inReach = (s.target !== undefined ? distanceTo(loc, s.target) : nearestPower(loc, () => true)[1]) <= cfg.MidRuneRadius;
+    s.focus = s.preSpawn || (pending && inReach);
     s.claim = inReach && (due <= cfg.MidRuneLead || pending);
+    if (!pending) s.target = undefined;
 }
 
 function current(bot: Unit): MidState {
@@ -96,12 +136,13 @@ function current(bot: Unit): MidState {
 
 /**
  * For the rune mode: whether only power spots count (a power rune is due within MidRuneFocus or is up),
- * and whether it is due rather than up, so a MISSING (not yet spawned) power spot still counts.
+ * whether it is due rather than up, so a MISSING (not yet spawned) power spot still counts, and after a
+ * spawn the one spot to head for (where it was seen, else the nearer spot not yet seen empty).
  */
-export function Focus(bot: Unit): LuaMultiReturn<[boolean, boolean]> {
-    if (!IsOn(bot)) return $multi(false, false);
+export function Focus(bot: Unit): LuaMultiReturn<[boolean, boolean, number | undefined]> {
+    if (!IsOn(bot)) return $multi(false, false, undefined);
     const s = current(bot);
-    return $multi(s.focus, s.focus && s.preSpawn);
+    return $multi(s.focus, s.focus && s.preSpawn, s.focus && !s.preSpawn ? s.target : undefined);
 }
 
 export function Tick(bot: Unit): void {

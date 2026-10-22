@@ -158,7 +158,7 @@ if (Telemetry.GuardsEnabled()) {
         HarassThink: no,
         AdjustPosition: arg2,
     });
-    Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: no, MidRuneYield: none, MidRuneSkip: none });
+    Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

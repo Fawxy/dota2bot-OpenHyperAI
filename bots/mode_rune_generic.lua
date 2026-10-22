@@ -518,9 +518,10 @@ function X.GetBestRune()
 	minute = math.floor(DotaTime() / 60)
 	second = DotaTime() % 60
 
-	-- Our mid around a power spawn (3b): a nearer bounty must not shadow the power rune, and a power
-	-- rune that has not spawned yet (MISSING until the spawn) still counts.
-	local bPowerOnly, bPowerDue = J.Humaniser.Transitions.MidRuneFocus(bot)
+	-- Our mid around a power spawn (3b): a nearer bounty must not shadow the power rune, a power rune
+	-- that has not spawned yet (MISSING until the spawn) still counts, and after the spawn only the spot
+	-- holding (or maybe holding) the rune does.
+	local bPowerOnly, bPowerDue, nPowerTarget = J.Humaniser.Transitions.MidRuneFocus(bot)
 
 	local targetRune = -1
 	local targetRuneDistance = math.huge
@@ -529,6 +530,7 @@ function X.GetBestRune()
 		local bPower = rune == RUNE_POWERUP_1 or rune == RUNE_POWERUP_2
 
 		if (bPower or not bPowerOnly)
+		and (nPowerTarget == nil or rune == nPowerTarget)
 		and X.IsTheClosestAlly(bot, vRuneLocation)
 		and not X.IsPingedByHumanPlayer(vRuneLocation, math.huge)
 		and not IsHumanClaimingRune(rune)
