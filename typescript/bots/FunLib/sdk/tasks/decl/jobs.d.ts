@@ -34,6 +34,8 @@ export interface AggroInfo {
     error: number;
     orderedAt: number;
     confirmedAt: number;
+    /** The neutral the order went to (hosts time a ranged hit's flight from it). */
+    target?: TaskAttacker;
 }
 export interface AggroOpts {
     /** Stand-point tolerance. Default 100. */
@@ -134,3 +136,62 @@ export declare function runeLeaveAt(bot: TaskUnit, p: RunePlan): number;
  * or `channel`.
  */
 export declare function runeRun(bot: TaskUnit, p: RunePlan, h?: JobHooks): TaskBody;
+export interface ClearPlan {
+    /** The camp's centre (its box centre); neutrals within `radius` of it are the camp. */
+    at: Vec;
+    /** Neutrals chase out of the box: this far from `at` they still count. Default 700. */
+    radius?: number;
+    /** Within this of `at` the bot is at the camp. Default 300. */
+    arrive?: number;
+    /** `GetNearbyNeutralCreeps` radius. Default 1600. */
+    search?: number;
+    /** Absolute time the camp must be left by: past it the verb fails `timeout` "late". */
+    deadline?: number;
+    /** Seconds at the camp seeing nothing before it counts as empty. Default 0.5. */
+    emptyAfter?: number;
+    /** Seconds between repeated attack orders on the same target (a dropped order is re-given). Default 1. */
+    reorder?: number;
+    /** Host override of the next target among the camp's neutrals (default: keep the current one, else lowest HP). */
+    pick?: (this: void, neutrals: TaskAttacker[]) => TaskAttacker | undefined;
+    /** Called once, the first frame a neutral is within attack range + 100 (hosts time the clear from here). */
+    onEngage?: (this: void, t: number) => void;
+}
+/**
+ * Clears a neutral camp: walks to `at`, attacks its neutrals (the current target is kept while it lives, else the
+ * lowest HP one), one order per target (re-given every `reorder` s), and after each kill waits one reaction delay
+ * (`Skill.react`, skill-scaled) before the next order. Ends ok with message "cleared" once a camp it fought is
+ * empty, or "empty" when nothing was there; `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a neutral is in attack range (+100).
+ */
+export declare function clearCamp(bot: TaskUnit, p: ClearPlan, h?: JobHooks): TaskBody;
+export interface GankPlan {
+    /** The hero to kill, re-read every frame (the host's perception decides what the bot knows). */
+    target: (this: void) => TaskAttacker | undefined;
+    /** Approach waypoints chosen by the host (through fog and trees, not down the lane); then the chase starts. */
+    path: Vec[];
+    /** Within this of the target the bot engages (attacks). Default 700. */
+    engageRange?: number;
+    /** Called once when the ETA to the target falls to `lead` s (humans ping "coming" ~3-5 s before arriving). */
+    telegraph?: {
+        lead: number;
+        fn: (this: void, eta: number) => void;
+    };
+    /** Host check every frame; a returned string ends the gank `interrupted` with it (target under its tower, ...). */
+    commit?: (this: void) => string | undefined;
+    /** Seconds the target may be out of sight before it counts as escaped. Default 2. */
+    lostGrace?: number;
+    /** Seconds of fighting after engaging before giving up. Default 8. */
+    engageFor?: number;
+    /** Absolute time to have engaged by; fails `timeout` "late". */
+    deadline?: number;
+    /** Seconds between repeated attack orders. Default 1. */
+    reorder?: number;
+    onEngage?: (this: void, t: number) => void;
+}
+/**
+ * A gank: walk the host's approach path, then chase the target into `engageRange` and attack it (one reaction delay
+ * after reaching range, `Skill.react`), re-ordering every `reorder` s. Ends ok "kill" when the target dies; fails
+ * `interrupted` "escaped" when it stays out of sight `lostGrace` s, `timeout` "no-kill" after `engageFor` s of
+ * fighting, `timeout` "late" if not engaged by `deadline`, or with the host's `commit` message. Labels `travel`,
+ * `engage`; urgent while engaged.
+ */
+export declare function gank(bot: TaskUnit, p: GankPlan, h?: JobHooks): TaskBody;

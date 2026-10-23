@@ -4,7 +4,7 @@
  * host Think() hook and telemetry. Off (Enable = false) means no selection, no telemetry and no tasks.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -13,6 +13,12 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
+import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
+import * as Rotate from "bots/FunLib/humaniser/states/rotate";
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as Farm from "bots/FunLib/humaniser/states/farm";
+import * as Gank from "bots/FunLib/humaniser/states/gank";
+import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -97,6 +103,12 @@ export function Registered(): string[] {
 
 Register(Laning.NAME, (bot) => Laning.Spec(bot));
 for (const [name, make] of Shadow.SPECS) Register(name, make);
+// Owned job states (team slices 7-9) replace the shadow specs of the same name; unowned bots keep the shadow scores.
+Register(CampJob.PULL, (bot) => CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore));
+Register(CampJob.STACK, (bot) => CampJob.Spec(bot, CampJob.STACK, owns, Shadow.StackScore));
+Register(Rotate.NAME, (bot) => Rotate.Spec(bot, owns, Shadow.RotateScore));
+Register(Farm.NAME, (bot) => Farm.Spec(bot, Shadow.FarmScore));
+Register(Gank.NAME, (bot) => Gank.Spec(bot, owns));
 
 // The SDK treats a scorer error as "not applicable" and only logs it under Debug; with guards on it becomes an
 // ev=lua_error like any other hook's, so a scorer failing on some bot (e.g. a Dire one) shows in the error count.
@@ -114,7 +126,13 @@ function lib(): ReturnType<typeof Tasks.Loaded> {
     if (l === undefined || l.States === undefined) return undefined;
     if (!installed) {
         installed = true;
-        l.States.SetOwned((b, state) => owns(b as unknown as Unit, state));
+        // `farm` is owned only while an SDK trip runs: a posture owned all game would start a task the farm mode
+        // never steps outside trips, and the runner would cancel and restart it every second (pre-flight H1).
+        l.States.SetOwned((b, state) => {
+            const u = b as unknown as Unit;
+            if (!owns(u, state)) return false;
+            return state !== Farm.NAME || FarmPattern.Live(u)?.sdk === true;
+        });
     }
     return l;
 }
@@ -159,6 +177,42 @@ export function Tick(bot: Unit): void {
     l.States.Tick(bot as unknown as Lib.TaskUnit);
     LaneMetrics.Tick(bot);
     lanePos(bot, l);
+}
+
+/** Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own). */
+export function Owns(bot: Unit, state: string): boolean {
+    return IsEnabled() && owns(bot, state);
+}
+
+/** Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body. */
+function stepFarm(bot: Unit, names: Record<string, boolean>): boolean {
+    const cur = lib()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && names[cur.name] === true && Step(bot, BotMode.Farm);
+}
+
+const FARM_STATES: Record<string, boolean> = { [Farm.NAME]: true };
+const CAMP_STATES: Record<string, boolean> = { [CampJob.STACK]: true, [CampJob.PULL]: true };
+
+FarmPattern.SetExecutor({
+    Owns: (bot) => Owns(bot, Farm.NAME) && lib() !== undefined,
+    Step: (bot) => stepFarm(bot, FARM_STATES),
+});
+
+CampJobs.SetExecutor({
+    Owns: (bot, job) => {
+        const state = CampJob.StateOf(job);
+        return state !== undefined && Owns(bot, state) && lib() !== undefined;
+    },
+    Step: (bot) => stepFarm(bot, CAMP_STATES),
+});
+
+/**
+ * mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
+ * team (an owned trip is on the shrine this fill).
+ */
+export function WisdomOwned(bot: Unit): boolean {
+    if (!IsEnabled()) return false;
+    return (Owns(bot, Rotate.NAME) && Rotate.OnTrip(bot)) || Rotate.ShrineTaken(bot.GetTeam());
 }
 
 /** First thing in a host mode's Think() step it replaces: true when the state's body acted this frame. */
