@@ -316,6 +316,7 @@ function check(runs, spec) {
 
 function fmtV(v) {
     if (v === undefined) return '-';
+    if (typeof v !== 'number') return String(v);
     return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
