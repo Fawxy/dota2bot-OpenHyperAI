@@ -157,6 +157,7 @@ function collect(game, { until = 600, file } = {}) {
         const b = game.bots[m.pid];
         const l = lane[m.pid] || {};
         const events = game.events.filter(e => e.pid === m.pid && e.t <= until);
+        const ownedPos = events.filter(e => e.ev === 'lane_pos' && e.owned === 1 && e.spot !== undefined);
         bots.push({
             pid: m.pid,
             hero: m.hero,
@@ -169,6 +170,9 @@ function collect(game, { until = 600, file } = {}) {
                 lh2: l.lh2, lh5: l.lh5, lh10: l.lh10, dn10: l.dn10, deaths: l.deaths, hph: l.hph,
                 bodyLhPct: fraction(l.bodyLH), bodyLhTries: count(events, e => e.ev === 'lh' && e.kind === 'lasthit'),
                 contestedPct: fraction(l.contested), bodyDnPct: fraction(l.bodyDN), holdD: l.holdD, runningPct: l.running,
+                // Slice 3: the spot follows the creeps most of the time, and moves when the wave pushes.
+                spotCreepPct: ratio(count(ownedPos, e => e.spot === 'creep'), ownedPos.length),
+                pushedLines: count(ownedPos, e => typeof e.pushed === 'number' && e.pushed > 0),
             },
             states: stateFields(states[m.pid]),
             jobs: jobMetrics(events),
