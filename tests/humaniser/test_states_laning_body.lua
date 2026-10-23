@@ -236,4 +236,30 @@ do
 	check("not owned: BodyLastHits false", H.States.BodyLastHits(bot) == false)
 end
 
+
+-- Core farm etiquette (adapter lastHitFilter): a support leaves a dying creep to an allied core that can reach it,
+-- takes it when no core can, and a mid (pos 2) never defers.
+if GetUnitToUnitDistance == nil then
+	function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
+end
+function Unit:GetExtrapolatedLocation() return self.loc end
+do
+	local function offered(pos, coreLoc)
+		local H, bot, positions = Fresh({ Enable = true, Own = { laning = { 1, 2, 3, 4, 5 } } }, { pos = pos })
+		local core = MakeUnit({ pid = 2, loc = coreLoc })
+		positions[2] = 1
+		creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
+		local t
+		silenced(function() t = H.Tasks.Verbs().nextLastHit(bot) end)
+		return t
+	end
+	local beside = Vector(-170, 30)
+	local t5 = offered(5, beside)
+	check("etiquette: pos 5 leaves the creep to the core beside it", t5 == nil, t5 and t5.kind)
+	local t5far = offered(5, Vector(-3000, 0))
+	check("etiquette: pos 5 takes it with no core near", t5far ~= nil and t5far.kind == "lasthit")
+	local t2 = offered(2, beside)
+	check("etiquette: pos 2 never defers", t2 ~= nil and t2.kind == "lasthit")
+end
+
 finish()
