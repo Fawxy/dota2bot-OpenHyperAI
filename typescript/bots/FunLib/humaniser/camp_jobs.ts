@@ -105,6 +105,8 @@ export interface Job extends JobRequest {
     trace?: PullTrace;
     /** The lane-at-meet gate ran before the first hit. */
     meetChecked?: boolean;
+    /** Clash pull: enemy front HP samples, the camp's walk to the fight point, and the last clear prediction before the hit. */
+    clash?: { samples: HpSample[]; walk: number; waitFrom?: number; pred?: number };
 }
 
 /** Times are DotaTime; the event reports them relative to the hit. */
@@ -443,6 +445,57 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     );
 }
 
+/** Where a clash pull leads the camp: our lane front, stood off toward the camp's origin so the neutrals stop at our creeps. */
+function clashFight(s: LaneState.LaneSnapshot, spawner: Camps.Spawner): Vector {
+    return ClashPoint(s.frontLoc, spawner.location, settings().Radii.ClashStandOff);
+}
+
+/** The camp's lead path to the fight point and its walk there in seconds. */
+function clashLead(data: Camps.CampJobData, spawner: Camps.Spawner, fight: Vector): LuaMultiReturn<[Vector[], number]> {
+    const path = leadPath(data.pull!, fight);
+    const speed = (settings().PullTiming.NeutralSpeed as Record<string, number>)[data.type] ?? 300;
+    return $multi(path, PullTiming.WalkLength(spawner.location, path) / speed);
+}
+
+/**
+ * Not timed: the hit waits on the clash at our front (stepClashWait). The path is not noised, since it follows the
+ * front until the hit; the stand is, as a full pull's.
+ */
+function startClash(bot: Unit, req: JobRequest): boolean {
+    const data = Camps.ByIdx(req.campIdx, bot.GetTeam());
+    const spawner = Camps.SpawnerByIdx(req.campIdx);
+    const s = LaneState.ForBot(bot);
+    if (data === undefined || data.pull === undefined || spawner === undefined || s === undefined) return false;
+    const now = DotaTime();
+    const fight = clashFight(s, spawner);
+    const [path, walk] = clashLead(data, spawner, fight);
+    const stand = noisy(standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]), LaneConfig.Curve("PathNoise", LaneConfig.SkillOf(bot)));
+    register(
+        bot,
+        {
+            ...req,
+            phase: "travel",
+            aggroAt: now,
+            plannedSec: now % settings().Timing.PullPeriod,
+            path,
+            meet: fight,
+            clash: { samples: [], walk },
+            trace: Telemetry.IsEnabled() ? newTrace(undefined) : undefined,
+            startedAt: now,
+            peakDivert: 0,
+            waveSize: 0,
+            activeCamp: req.campIdx,
+            stand,
+            waypoint: 0,
+            stage: 1,
+            telegraphed: false,
+            baseAggro: now,
+        },
+        data
+    );
+    return true;
+}
+
 function startStack(bot: Unit, req: JobRequest): boolean {
     const data = Camps.ByIdx(req.campIdx);
     const spawner = Camps.SpawnerByIdx(req.campIdx);
@@ -533,6 +586,7 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     if (req.kind === "stack") return startStack(bot, req);
     if (!hpOk(bot)) return false;
     if (req.kind === "contest") return startContest(bot, req);
+    if (req.kind === "clash_pull") return startClash(bot, req);
     if (PULL_KINDS[req.kind] !== true) return false;
     const data = Camps.ByIdx(req.campIdx, bot.GetTeam());
     const spawner = Camps.SpawnerByIdx(req.campIdx);
@@ -737,13 +791,14 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing.
  */
-function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = [], deferLog = false): void {
+/** `keepCycle`: the job leaves the cycle free even though it acted (a timed pull refused at its hit, for a clash pull). */
+function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = [], deferLog = false, keepCycle = false): void {
     FlushModeEnd(bot, true);
     const phase = job.phase;
     job.phase = "return";
     releaseClaims(bot);
     const pid = bot.GetPlayerID();
-    if (job.acted !== true) {
+    if (job.acted !== true || keepCycle) {
         // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
         LanePlanner.Release(bot, commitTech(job.kind));
         skipped[pid] = job.slot ?? job.baseAggro;
@@ -1143,6 +1198,26 @@ function doubleFor(bot: Unit, camps: Camps.CampJobData[], now: number): { open: 
     return { open: WindowOpen(now, hardAt, travel), g };
 }
 
+/**
+ * A clash pull, at any second of the cycle: the planner wants a pull, the lane-at-meet gate would refuse it, and our
+ * creeps are winning a clash whose fight point the camp can reach.
+ */
+function clashWanted(bot: Unit, s: LaneState.LaneSnapshot, data: Camps.CampJobData, now: number): boolean {
+    const cfg = settings();
+    if (!LaneConfig.IsOn("ClashPull") || LaneConfig.SkillOf(bot) < cfg.Gates.ClashPull) return false;
+    if (LanePlanner.Committed(bot) !== undefined || !CampsUp(now)) return false;
+    if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.allyPower <= s.enemyPower) return false;
+    const spawner = Camps.SpawnerByIdx(data.campIdx);
+    if (spawner === undefined || data.pull === undefined) return false;
+    const choice = LanePlanner.Plan(bot, s);
+    if (choice.tech !== "full_pull" && choice.tech !== "half_pull") return false;
+    const meet = choice.tech === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
+    if (!laneAtMeet(meet) || StartBlocked(bot) !== undefined) return false;
+    const [path] = clashLead(data, spawner, clashFight(s, spawner));
+    if (PullTiming.WalkLength(spawner.location, path) > cfg.Radii.ClashPullReach) return false;
+    return travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0])) <= cfg.Timing.MaxTravel;
+}
+
 function schedule(bot: Unit): boolean {
     const now = DotaTime();
     const pid = bot.GetPlayerID();
@@ -1154,6 +1229,7 @@ function schedule(bot: Unit): boolean {
         notePlan(bot, s, now, [["gate", "no-camp"]]);
         return false;
     }
+    if (clashWanted(bot, s, camps[0], now)) return Start(bot, { kind: "clash_pull", campIdx: camps[0].campIdx });
     const double = doubleFor(bot, camps, now);
     const doubleOpen = double !== undefined && double.open;
     if (!doubleOpen && !windowFor(bot, camps[0], "full_pull", now) && !windowFor(bot, camps[0], "half_pull", now)) {
@@ -1674,10 +1750,10 @@ function aggroLead(bot: Unit, creep: Unit): number {
 
 function orderAggro(bot: Unit, job: Job, creep: Unit): boolean {
     // Checked once, before the job's first hit: past it the camp is already on the bot.
-    if (PULL_KINDS[job.kind] === true && job.forced !== true && job.meetChecked !== true) {
+    if (PULL_KINDS[job.kind] === true && job.kind !== "clash_pull" && job.forced !== true && job.meetChecked !== true) {
         job.meetChecked = true;
         if (laneAtMeet(job.meet)) {
-            abort(bot, job, "lane-at-meet");
+            abort(bot, job, "lane-at-meet", false, [], false, true);
             return false;
         }
     }

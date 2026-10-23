@@ -1424,4 +1424,79 @@ do
 	check("no prediction while the HP is flat", J.ClearPrediction({ { t = 10, hp = 600 }, { t = 11, hp = 600 } }, 11, 1.5) == nil)
 end
 
+-- The bot lane's clash at the front (default 0.5: x = 0), and one of our creeps at the small camp's meet point
+-- (-1610, -5000), 1,610 from the front, so the lane-at-meet gate refuses the timed pull. The camp's lead path to the
+-- fight point (front moved 400 toward the camp) is ~1,740 from its origin.
+local function clashWorld(skill, opts)
+	opts = opts or {}
+	local H, core, support, data, stand = jobWorld(skill, { t = opts.t or 65, cfg = opts.cfg, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local fx = opts.frontX or 0
+	if fx ~= 0 then LANE_FRONT[2][Lane.Bot] = 0.5 + fx / 14000 end
+	local ours, theirs = {}, {}
+	for i = 1, opts.ours or 3 do ours[i] = MakeCreep({ team = 2, x = fx - 100, y = -5000 + i * 50 }) end
+	for i = 1, opts.theirs or 2 do theirs[i] = MakeCreep({ team = 3, x = fx + 100, y = -5000 + i * 50 }) end
+	local atMeet = MakeCreep({ team = 2, x = data.pull.meetPoint.x, y = data.pull.meetPoint.y })
+	return H, support, data, lines, ours, theirs, atMeet, stand
+end
+
+local function kindOf(H, bot) local j = H.Lane.CampJobs.Current(bot) return j and j.phase ~= "return" and j.phase ~= "done" and j.kind or nil end
+local function gatedAtMeet(lines)
+	for _, l in ipairs(lines) do if l:find("ev=lane_plan ", 1, true) and l:find("gate=lane-at-meet", 1, true) then return true end end
+	return false
+end
+
+do
+	-- 1:05 is cycle second 5: the small camp's :15 window has not opened, so only the clash entry can start a job.
+	local H, support, _, lines = clashWorld(0.9)
+	frame(H, support, 65)
+	local job = H.Lane.CampJobs.Current(support)
+	check("our creeps winning the clash with the meet point in it: a clash pull starts", kindOf(H, support) == "clash_pull", table.concat(lines, "\n"))
+	check("... outside any timed pull window", not H.Lane.CampJobs.WindowOpen(65, 75, 0))
+	check("... its meet is the fight point, stood off toward the camp", job ~= nil and job.meet ~= nil and near(job.meet.x, -320) and near(job.meet.y, -5240),
+		job and job.meet and (job.meet.x .. "," .. job.meet.y))
+
+	-- In the timed window, so each refused clash leaves the timed pull's gate line.
+	H, support, _, lines = clashWorld(0.9, { t = 72.5, theirs = 3 })
+	frame(H, support, 72.5)
+	check("an even clash starts no clash pull", kindOf(H, support) == nil and gatedAtMeet(lines), table.concat(lines, "\n"))
+	H, support, _, lines = clashWorld(0.6, { t = 72.5 })
+	frame(H, support, 72.5)
+	check("skill 0.6 starts no clash pull", kindOf(H, support) == nil and gatedAtMeet(lines), table.concat(lines, "\n"))
+	H, support, _, lines = clashWorld(0.9, { t = 72.5, cfg = { Enable = true, ClashPull = false } })
+	frame(H, support, 72.5)
+	check("ClashPull off starts no clash pull", kindOf(H, support) == nil and gatedAtMeet(lines), table.concat(lines, "\n"))
+	H, support, _, lines = clashWorld(0.9, { t = 72.5, ours = 1, theirs = 0 })
+	frame(H, support, 72.5)
+	check("one creep of ours at the front starts no clash pull", kindOf(H, support) == nil and gatedAtMeet(lines), table.concat(lines, "\n"))
+	H, support, _, lines = clashWorld(0.9, { t = 72.5, frontX = 800 })
+	frame(H, support, 72.5)
+	check("a fight beyond ClashPullReach starts no clash pull", kindOf(H, support) == nil and gatedAtMeet(lines), table.concat(lines, "\n"))
+end
+
+do
+	-- A timed pull refused at its hit leaves the cycle to a clash pull.
+	local H, _, support, data = jobWorld(0.9, { telemetry = { Enable = true } })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	frame(H, support, 72.5)
+	local job = H.Lane.CampJobs.Current(support)
+	check("precondition: a timed pull", job ~= nil and job.kind == "full_pull")
+	frame(H, support, job.aggroAt - 1)
+	MakeCreep({ team = 2, x = data.pull.meetPoint.x, y = data.pull.meetPoint.y })
+	frame(H, support, job.aggroAt)
+	check("precondition: aborted lane-at-meet before its hit", job.phase == "return")
+	for i = 1, 3 do MakeCreep({ team = 2, x = -100, y = -5000 + i * 50 }) end
+	for i = 1, 2 do MakeCreep({ team = 3, x = 100, y = -5000 + i * 50 }) end
+	frame(H, support, job.aggroAt + 0.6)
+	check("a clash pull in the same cycle", kindOf(H, support) == "clash_pull")
+
+	-- One clash pull per cycle: once it has acted and ended, the cycle is spent.
+	H.Lane.CampJobs.Abort(support, "test")
+	frame(H, support, job.aggroAt + 1.2)
+	check("no second clash pull in the cycle", kindOf(H, support) == nil)
+	frame(H, support, 90.5)
+	check("a new cycle may clash again", kindOf(H, support) == "clash_pull")
+end
+
 finish()
