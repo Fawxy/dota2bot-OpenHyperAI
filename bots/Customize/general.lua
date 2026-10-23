@@ -137,7 +137,7 @@ Customize.Humaniser = {
     ValveWeight = 0.5,
     FretWeight = 0.5,
     -- A number in [0, 1] forces every bot's skill (for testing). nil = use difficulty.
-    SkillOverride = nil,
+    SkillOverride = 0.2,
     FretBridge = {
         -- Force the FretBots level (0-10) bots assume, if the chat-vote mirror gets it wrong. nil = detect.
         FretBotsLevelOverride = nil,
@@ -225,8 +225,8 @@ Customize.Humaniser = {
     -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
     -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);
     -- LastHit: positions whose last hits and denies the laning body takes over (slice 4).
-    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 }, farm = { 1, 2, 3 }, gank = { 2, 4 } }, Teams = 'allies', ShadowTeams = 'all',
-        Laning = { Spot = 'oha', LastHit = {} },
+    States = { Enable = true, Shadow = true, Own = { laning = { 1, 2, 3, 4, 5 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 }, farm = { 1, 2, 3 }, gank = { 2, 4 } }, Teams = 'allies', ShadowTeams = 'all',
+        Laning = { Spot = 'sdk', LastHit = { 1, 2, 3, 4, 5 } },
         -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
         Rotate = { Power = false } },
 }
