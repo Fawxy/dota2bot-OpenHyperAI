@@ -205,6 +205,15 @@ local function canHumanReach(human, creep, rule)
     )
     return ahead < dist - s.ApproachEpsilon
 end
+--- Whether an allied core can take `creep` itself: within its attack range plus the helpful tier's buffer, or walking
+-- towards it. Bot supports judge their bot cores from the creep, not from their own position (laning mode).
+function ____exports.CoreCanReach(core, creep)
+    return canHumanReach(
+        core,
+        creep,
+        ____exports.Settings().MissRules.helpful
+    )
+end
 local function isAboutToBeDenied(bot, creep)
     if creep:GetHealth() >= creep:GetMaxHealth() * ____exports.Settings().DeniableHealth then
         return false

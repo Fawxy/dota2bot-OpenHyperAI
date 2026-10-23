@@ -105,7 +105,7 @@ function ____exports.MayDeny(bot, allyCreeps)
     return mayTouchAny(bot, allyCreeps)
 end
 --- Runs before last hits; true means this frame's action is issued.
-function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
+function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies, lastHit)
     if not mayTouchAny(bot, enemyCreeps) then
         local touchable = {}
         for ____, c in ipairs(allyCreeps) do
@@ -115,7 +115,13 @@ function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
         end
         return LaneTech.TowerDropThink(bot, touchable)
     end
-    return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies)
+    return LaneTech.PreThink(
+        bot,
+        allyCreeps,
+        enemyCreeps,
+        enemies,
+        lastHit
+    )
 end
 --- Runs after last hit and deny; true means this frame's action is issued.
 function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)

@@ -11,8 +11,8 @@ local function unit(o)
 	return u
 end
 
-local function world(skill, laneCfg, t)
-	local H = LaneFresh(laneCfg or { Enable = true }, { skill = skill })
+local function world(skill, laneCfg, t, telemetry)
+	local H = LaneFresh(laneCfg or { Enable = true }, { skill = skill, telemetry = telemetry })
 	T = t or 95
 	CURRENT_TEAM = 2
 	return H
@@ -92,7 +92,7 @@ end
 -- `front` moves our lane front (and the enemy laner's exposure) toward the Dire T1.
 local function aggroWorld(skill, opts)
 	opts = opts or {}
-	local H = world(skill)
+	local H = world(skill, nil, nil, opts.telemetry)
 	if opts.front then setFronts(opts.front, 0.5) end
 	local bot = unit({ pid = opts.pid or 1, pos = opts.pos or 1, x = opts.x or -200, hp = opts.hp })
 	local creep = MakeCreep({ team = 2, x = (opts.x or -200) + 100, y = BOT_Y })
@@ -265,6 +265,51 @@ do
 	T = T + 0.1
 	check("swap waits for the tower without a new order", H.Lane.PreThink(support, {}, {}, { hero }) == true and #attacks(5) == 1)
 	check("swap wait is a deliberate hold for intent's stuck detector", H.Intent.HeldBy(support) == "lane:swap", H.Intent.HeldBy(support))
+end
+
+-- Aggro draws wait for the last hit: never across a dying creep.
+for _, lh in ipairs({ "kill", "soon" }) do
+	local H, bot, creep, hero = aggroWorld(0.8)
+	check("no aggro draw while a creep is " .. lh, H.Lane.PreThink(bot, { creep }, {}, { hero }, lh) == false and #attacks(1) == 0)
+	check("no commit while a creep is " .. lh, H.Lane.LanePlanner.Committed(bot) == nil)
+end
+
+do
+	local H, bot, creep, hero = aggroWorld(0.8)
+	check("precondition: the draw starts with nothing to last-hit", H.Lane.PreThink(bot, { creep }, {}, { hero }) == true)
+	T = 95.5
+	check("walk-back ends for a killable creep", H.Lane.PreThink(bot, { creep }, {}, { hero }, "kill") == false)
+	T = 95.6
+	check("and does not resume", H.Lane.PreThink(bot, { creep }, {}, { hero }) == false and #attacks(1) == 1)
+end
+
+do
+	local H, bot, creep, hero = aggroWorld(0.8)
+	H.Lane.PreThink(bot, { creep }, {}, { hero })
+	T = 95.5
+	check("a creep only about to be killable keeps the walk-back", H.Lane.PreThink(bot, { creep }, {}, { hero }, "soon") == true)
+end
+
+do
+	local H = world(0.8)
+	setFronts(0.6, 0.5)
+	local core = unit({ pid = 1, pos = 1, x = 2200, hp = 50 })
+	local support = unit({ pid = 5, pos = 5, x = 1950 })
+	local hero = unit({ pid = 6, team = 3, pos = 3, x = 2500 })
+	TOWERS_W[3][dota.Tower.Bot1].target = core
+	H.Lane.PreThink(support, {}, {}, { hero })
+	T = T + 0.1
+	check("the tower swap does not hold the frame over a killable creep", H.Lane.PreThink(support, {}, {}, { hero }, "kill") == false)
+end
+
+do
+	local H, bot, creep, hero = aggroWorld(0.8, { telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	H.Lane.PreThink(bot, { creep }, {}, { hero })
+	local found
+	for _, l in ipairs(lines) do if l:find("ev=lane_tech ", 1, true) and l:find("tech=aggro_pull", 1, true) then found = l end end
+	check("an aggro draw start is logged with lh=0", found ~= nil and found:find(" lh=0", 1, true) ~= nil, found)
 end
 
 -- Shove worlds: Radiant safe lane, no enemy laner, wave at the default front; c2 is under the Dire T1.

@@ -13,6 +13,7 @@ import * as LanePlanner from "bots/FunLib/humaniser/lane_planner";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Intent from "bots/FunLib/humaniser/intent";
 
 type Phase = "approach" | "block" | "walk" | "swap";
@@ -176,13 +177,22 @@ function cycleSecText(time: number): string {
     return string.format("%.1f", time % settings().Timing.WaveCycle);
 }
 
-function noteStart(bot: Unit, tech: string, reason: string): void {
+/** Laning's last-hit state this frame: a creep killable now, one about to be, or none. */
+export type LastHit = "kill" | "soon" | undefined;
+
+function noteStart(bot: Unit, tech: string, reason: string, lastHit?: LastHit): void {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const key = `${cycleOf(now)}:${tech}`;
     if (started[pid] === key) return;
     started[pid] = key;
     HDebug.Log("lane", `pid=${pid} tech=${tech} @${cycleSecText(now)} reason=${reason}`);
+    Telemetry.Event("lane_tech", [
+        ["pid", pid],
+        ["tech", tech],
+        ["reason", reason],
+        ["lh", lastHit !== undefined],
+    ]);
 }
 
 export function Mistake(bot: Unit, kind: string): void {
@@ -393,16 +403,16 @@ function walkBackPoint(bot: Unit, s: LaneState.LaneSnapshot): Vector {
     return dist2D(here, point) > cfg.Radii.AggroWalkMax ? toward(here, point, cfg.Radii.AggroWalkMax) : point;
 }
 
-function beginDrop(bot: Unit, s: LaneState.LaneSnapshot, phase: Phase, reason: string): void {
+function beginDrop(bot: Unit, s: LaneState.LaneSnapshot, phase: Phase, reason: string, lastHit: LastHit): void {
     const now = DotaTime();
     LanePlanner.Commit(bot, "aggro_pull");
     LaneRoles.NoteAggroDraw(bot, s);
     sequences[bot.GetPlayerID()] = { tech: "aggro_pull", phase, startedAt: now, walkTo: phase === "walk" ? walkBackPoint(bot, s) : undefined };
-    noteStart(bot, "aggro_pull", reason);
+    noteStart(bot, "aggro_pull", reason, lastHit);
 }
 
 /** Planned swap: an allied core is losing HP to an enemy tower, so the bot takes the tower's aggro instead. */
-function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: string): boolean {
+function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: string, lastHit: LastHit): boolean {
     const t = settings().Thresholds;
     if (hpOf(bot) <= t.TowerSwapBotHP) return false;
     const pid = bot.GetPlayerID();
@@ -415,14 +425,14 @@ function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: 
         const hero = nearest(tower.GetLocation(), candidates, t.EnemyTowerRange);
         if (hero === undefined) continue;
         bot.Action_AttackUnit(hero, true);
-        beginDrop(bot, s, "swap", `${reason}: tower swap`);
+        beginDrop(bot, s, "swap", `${reason}: tower swap`, lastHit);
         overlay(bot, `tech=aggro_pull@${cycleSecText(DotaTime())} swap`);
         return true;
     }
     return false;
 }
 
-function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choice: LanePlanner.Choice): boolean {
+function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choice: LanePlanner.Choice, lastHit: LastHit): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     let at = drawAt[pid];
@@ -439,9 +449,14 @@ function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choic
         overlay(bot, `tech=aggro_pull ${why}`);
         return false;
     }
-    if (trySwap(bot, s, enemies, choice.reason)) {
+    // A tower swap saves a core's life, so it goes ahead; a plain draw waits until no creep is dying.
+    if (trySwap(bot, s, enemies, choice.reason, lastHit)) {
         delete drawAt[pid];
         return true;
+    }
+    if (lastHit !== undefined) {
+        overlay(bot, "tech=aggro_pull wait: last hit");
+        return false;
     }
     const hero = drawTarget(bot, enemies);
     if (hero === undefined) {
@@ -450,14 +465,19 @@ function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choic
     }
     delete drawAt[pid];
     bot.Action_AttackUnit(hero, true);
-    beginDrop(bot, s, "walk", choice.reason);
+    beginDrop(bot, s, "walk", choice.reason, lastHit);
     overlay(bot, `tech=aggro_pull@${cycleSecText(DotaTime())} draw`);
     return true;
 }
 
-function runAggro(bot: Unit, seq: Sequence, allyCreeps: Unit[]): boolean {
+function runAggro(bot: Unit, seq: Sequence, allyCreeps: Unit[], lastHit: LastHit): boolean {
     const now = DotaTime();
     const walkBack = settings().Timing.WalkBack;
+    // A creep dying in range is taken now: the drawn creeps lose interest in a few seconds anyway.
+    if (lastHit === "kill" && (seq.phase === "swap" || seq.phase === "walk")) {
+        finish(bot);
+        return false;
+    }
     if (seq.phase === "swap") {
         // The tower drop above takes over once the tower switches to the bot.
         if (now - seq.startedAt < walkBack) {
@@ -491,7 +511,7 @@ export function TowerDropThink(bot: Unit, allyCreeps: Unit[]): boolean {
     return s !== undefined && towerDrop(bot, s, allyCreeps);
 }
 
-export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
+export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], lastHit?: LastHit): boolean {
     const s = activeSnapshot(bot);
     if (s === undefined) return false;
     if (towerDrop(bot, s, allyCreeps)) return true;
@@ -500,13 +520,13 @@ export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], ene
     const seq = sequences[pid];
     if (seq !== undefined) {
         if (seq.tech === "block") return runBlock(bot, s, seq, enemyCreeps, choice);
-        return runAggro(bot, seq, allyCreeps);
+        return runAggro(bot, seq, allyCreeps, lastHit);
     }
     // The draw delay is sampled once per need: a choice change ends the need.
     if (choice.tech !== "aggro_pull") delete drawAt[pid];
     if (finishedThisCycle(pid)) return false;
     if (choice.tech === "block") return startBlock(bot, s, enemyCreeps, choice);
-    if (choice.tech === "aggro_pull") return startAggro(bot, s, enemies, choice);
+    if (choice.tech === "aggro_pull") return startAggro(bot, s, enemies, choice, lastHit);
     return false;
 }
 
