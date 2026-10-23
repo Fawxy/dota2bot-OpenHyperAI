@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ e107e1dc932fdae8feefe5efa182b097ab4d478e. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 5d44e46e0b2669168b8bbdeeb1bc7b23146a0ad8. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -2043,6 +2043,31 @@ do
         end
     end
 end
+
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____adapter = require("adapter")
@@ -2535,6 +2560,170 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
         coroutine.yield()
     end
 end)
+local CLEAR_RADIUS = 700
+local CLEAR_ARRIVE = 300
+local CLEAR_SEARCH = 1600
+local CLEAR_EMPTY_AFTER = 0.5
+local CLEAR_REORDER = 1
+local ENGAGE_SLACK = 100
+local function campOf(bot, p)
+    local out = {}
+    if bot.GetNearbyNeutralCreeps == nil then
+        return out
+    end
+    local r = p.radius or CLEAR_RADIUS
+    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
+        do
+            local __continue70
+            repeat
+                local ____opt_47 = n.IsNull
+                local ____temp_49 = ____opt_47 and ____opt_47(n)
+                if ____temp_49 == nil then
+                    ____temp_49 = false
+                end
+                local ____temp_53 = ____temp_49 or not n:IsAlive()
+                if not ____temp_53 then
+                    local ____opt_50 = n.CanBeSeen
+                    local ____temp_52 = ____opt_50 and ____opt_50(n)
+                    if ____temp_52 == nil then
+                        ____temp_52 = true
+                    end
+                    ____temp_53 = not ____temp_52
+                end
+                if ____temp_53 then
+                    __continue70 = true
+                    break
+                end
+                if dist(
+                    n:GetLocation(),
+                    p.at
+                ) <= r then
+                    out[#out + 1] = n
+                end
+                __continue70 = true
+            until true
+            if not __continue70 then
+                break
+            end
+        end
+    end
+    return out
+end
+local function hpOf(n)
+    local c = n
+    return c.GetHealth ~= nil and c:GetHealth() or 0
+end
+local function lowestHp(list)
+    local best
+    for ____, n in ipairs(list) do
+        if best == nil or hpOf(n) < hpOf(best) then
+            best = n
+        end
+    end
+    return best
+end
+--- Clears a neutral camp: walks to `at`, attacks its neutrals (the current target is kept while it lives, else the
+-- lowest HP one), one order per target (re-given every `reorder` s), and after each kill waits one reaction delay
+-- (`Skill.react`, skill-scaled) before the next order. Ends ok with message "cleared" once a camp it fought is
+-- empty, or "empty" when nothing was there; `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a neutral is in attack range (+100).
+____exports.clearCamp = __TS__Generator(function(bot, p, h)
+    if h == nil then
+        h = {}
+    end
+    local arrive = p.arrive or CLEAR_ARRIVE
+    local fought = false
+    local engaged = false
+    local target
+    local orderedAt = -math.huge
+    local nextOrderAt = -math.huge
+    local emptySince
+    local ____opt_54 = h.label
+    if ____opt_54 ~= nil then
+        ____opt_54("go")
+    end
+    while true do
+        do
+            local __continue80
+            repeat
+                if not bot:IsAlive() then
+                    return fail("dead")
+                end
+                local t = now()
+                if p.deadline ~= nil and t >= p.deadline then
+                    return fail("timeout", "late")
+                end
+                local camp = campOf(bot, p)
+                if target ~= nil and __TS__ArrayIndexOf(camp, target) < 0 then
+                    target = nil
+                    nextOrderAt = t + Skill.react(bot)
+                end
+                if #camp == 0 then
+                    if dist(
+                        bot:GetLocation(),
+                        p.at
+                    ) > arrive then
+                        emptySince = nil
+                        bot:Action_MoveToLocation(p.at)
+                    else
+                        if emptySince == nil then
+                            emptySince = t
+                        end
+                        if fought or t - emptySince >= (p.emptyAfter or CLEAR_EMPTY_AFTER) then
+                            return {success = true, reason = "ok", message = fought and "cleared" or "empty"}
+                        end
+                        hold(bot, "camp_look")
+                    end
+                    coroutine.yield()
+                    __continue80 = true
+                    break
+                end
+                emptySince = nil
+                fought = true
+                if t < nextOrderAt then
+                    hold(bot, "camp_react")
+                    coroutine.yield()
+                    __continue80 = true
+                    break
+                end
+                local ____target_57 = target
+                if ____target_57 == nil then
+                    local ____temp_56
+                    if p.pick ~= nil then
+                        ____temp_56 = p.pick(camp)
+                    else
+                        ____temp_56 = nil
+                    end
+                    ____target_57 = ____temp_56
+                end
+                local next = ____target_57 or lowestHp(camp)
+                if next ~= target or t - orderedAt >= (p.reorder or CLEAR_REORDER) then
+                    bot:Action_AttackUnit(next, false)
+                    orderedAt = t
+                end
+                target = next
+                if not engaged and dist(
+                    bot:GetLocation(),
+                    next:GetLocation()
+                ) <= bot:GetAttackRange() + ENGAGE_SLACK then
+                    engaged = true
+                    local ____opt_58 = h.label
+                    if ____opt_58 ~= nil then
+                        ____opt_58("farm")
+                    end
+                    local ____opt_60 = p.onEngage
+                    if ____opt_60 ~= nil then
+                        ____opt_60(t)
+                    end
+                end
+                coroutine.yield()
+                __continue80 = true
+            until true
+            if not __continue80 then
+                break
+            end
+        end
+    end
+end)
 return ____exports
  end,
 ["verbs_all"] = function(...) 
@@ -2616,7 +2805,8 @@ function ____exports.makeCtx(bot, c)
         pickUpRune = function(rune, opts) return Verbs.pickUpRune(bot, rune, opts) end,
         stack = function(plan) return Verbs.stack(bot, plan, hooks) end,
         pull = function(plan) return Verbs.pull(bot, plan, hooks) end,
-        runeRun = function(plan) return Verbs.runeRun(bot, plan, hooks) end
+        runeRun = function(plan) return Verbs.runeRun(bot, plan, hooks) end,
+        clearCamp = function(plan) return Verbs.clearCamp(bot, plan, hooks) end
     }
 end
 return ____exports

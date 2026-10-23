@@ -16,6 +16,8 @@ import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as Farm from "bots/FunLib/humaniser/states/farm";
+import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -104,6 +106,7 @@ for (const [name, make] of Shadow.SPECS) Register(name, make);
 Register(CampJob.PULL, (bot) => CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore));
 Register(CampJob.STACK, (bot) => CampJob.Spec(bot, CampJob.STACK, owns, Shadow.StackScore));
 Register(Rotate.NAME, (bot) => Rotate.Spec(bot, owns, Shadow.RotateScore));
+Register(Farm.NAME, (bot) => Farm.Spec(bot, Shadow.FarmScore));
 
 // The SDK treats a scorer error as "not applicable" and only logs it under Debug; with guards on it becomes an
 // ev=lua_error like any other hook's, so a scorer failing on some bot (e.g. a Dire one) shows in the error count.
@@ -172,6 +175,11 @@ export function Tick(bot: Unit): void {
 export function Owns(bot: Unit, state: string): boolean {
     return IsEnabled() && owns(bot, state);
 }
+
+FarmPattern.SetExecutor({
+    Owns: (bot) => Owns(bot, Farm.NAME) && lib() !== undefined,
+    Step: (bot) => Step(bot, BotMode.Farm),
+});
 
 CampJobs.SetExecutor({
     Owns: (bot, job) => {

@@ -37,6 +37,7 @@ export interface Ctx {
     stack(this: void, plan: Verbs.StackPlan): TaskBody;
     pull(this: void, plan: Verbs.PullPlan): TaskBody;
     runeRun(this: void, plan: Verbs.RunePlan): TaskBody;
+    clearCamp(this: void, plan: Verbs.ClearPlan): TaskBody;
 }
 export interface CtxControls {
     startedAt: number;

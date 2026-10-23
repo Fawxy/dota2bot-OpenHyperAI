@@ -48,6 +48,8 @@ local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
+local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -156,6 +158,10 @@ ____exports.Register(
     Rotate.NAME,
     function(bot) return Rotate.Spec(bot, owns, Shadow.RotateScore) end
 )
+____exports.Register(
+    Farm.NAME,
+    function(bot) return Farm.Spec(bot, Shadow.FarmScore) end
+)
 local function guarded(spec)
     if Telemetry.GuardsEnabled() then
         spec.score = Telemetry.Guard(
@@ -249,6 +255,10 @@ end
 function ____exports.Owns(bot, state)
     return ____exports.IsEnabled() and owns(bot, state)
 end
+FarmPattern.SetExecutor({
+    Owns = function(bot) return ____exports.Owns(bot, Farm.NAME) and lib() ~= nil end,
+    Step = function(bot) return ____exports.Step(bot, BotMode.Farm) end
+})
 CampJobs.SetExecutor({
     Owns = function(bot, job)
         local state = CampJob.StateOf(job)

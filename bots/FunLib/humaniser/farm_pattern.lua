@@ -155,6 +155,16 @@ local function __TS__Delete(target, key)
     target[key] = nil
     return true
 end
+
+local function __TS__ArrayPush(self, ...)
+    local items = {...}
+    local len = #self
+    for i = 1, #items do
+        len = len + 1
+        self[len] = items[i]
+    end
+    return len
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, mateJobCamp, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, gateLogged, MAX_STEPS
@@ -447,14 +457,14 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue95
+            local __continue96
             repeat
                 if spawner.team ~= team then
-                    __continue95 = true
+                    __continue96 = true
                     break
                 end
                 if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue95 = true
+                    __continue96 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -466,7 +476,7 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                     now,
                     sight
                 ) then
-                    __continue95 = true
+                    __continue96 = true
                     break
                 end
                 if diag ~= nil then
@@ -505,9 +515,9 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                 if stack ~= nil and (best == nil or stack.score > best.score) then
                     best = stack
                 end
-                __continue95 = true
+                __continue96 = true
             until true
-            if not __continue95 then
+            if not __continue96 then
                 break
             end
         end
@@ -740,6 +750,10 @@ ____exports.DEFAULTS = {
     ReturnMax = 25,
     FocusMargin = 0.05
 }
+local executor
+function ____exports.SetExecutor(e)
+    executor = e
+end
 trips = {}
 local nextPlanAt = {}
 local enemyEndAt = {}
@@ -1010,6 +1024,9 @@ local function schedule(bot, now)
     if not adopt(bot, trip, plan) then
         return "stack-start", {{"camp", plan.campIdx}}
     end
+    if executor ~= nil and executor.Owns(bot) then
+        trip.sdk = true
+    end
     trips[bot:GetPlayerID()] = trip
     log(
         bot,
@@ -1073,6 +1090,9 @@ local function ____end(bot, trip, why)
             fmt(DotaTime() - trip.startedAt)
         }
     }
+    if trip.sdk ~= nil then
+        __TS__ArrayPush(extra, {"sdk", trip.sdkFrames or 0}, {"legacy", trip.legacyFrames or 0})
+    end
     if why == "preempted" then
         local to = bot:GetActiveMode()
         extra[#extra + 1] = {
@@ -1227,8 +1247,55 @@ function ____exports.Think(bot)
     local now = DotaTime()
     trip.lastThinkAt = now
     overlay(bot, trip, now)
+    if trip.sdk == true and executor ~= nil and executor.Step(bot) then
+        trip.sdkFrames = (trip.sdkFrames or 0) + 1
+        return true
+    end
+    if trip.sdk == true then
+        trip.legacyFrames = (trip.legacyFrames or 0) + 1
+    end
     return step(bot, trip, now)
 end
+--- A trip's next camp after `why` (cleared, empty, stacked), else the walk back; true when it chained a camp.
+local function planNext(bot, trip, now, why)
+    local plan = ____exports.PlanCamp(
+        bot,
+        bot:GetLocation(),
+        GetLaneFrontLocation(trip.team, trip.lane, 0),
+        now,
+        trip.deadline
+    )
+    if plan ~= nil and adopt(bot, trip, plan) then
+        log(bot, "farm_trip_next", trip, {{"after", why}})
+        return true
+    end
+    toReturn(bot, trip, now, why)
+    return false
+end
+--- What an SDK trip body (states/farm.ts) needs of the trip's planning and bookkeeping: everything but step().
+____exports.Exec = {
+    CampDone = function(bot, trip, fought)
+        local now = DotaTime()
+        if fought and trip.farmFrom ~= nil and trip.estimate ~= nil then
+            learnPace(bot, now - trip.farmFrom, trip.estimate)
+        end
+        markCleared(trip.team, trip.campIdx, now)
+        Stacking.ClearStack(trip.campIdx)
+        return planNext(bot, trip, now, fought and "cleared" or "empty")
+    end,
+    Stacked = function(bot, trip) return planNext(
+        bot,
+        trip,
+        DotaTime(),
+        "stacked"
+    ) end,
+    ToReturn = function(bot, trip, why) return toReturn(
+        bot,
+        trip,
+        DotaTime(),
+        why
+    ) end
+}
 --- Farm lost the round. The trip is kept: a blip (team_roam's neutral last hit) hands farm back within PreemptAfter,
 -- and a real take-over ends it as "preempted" from Desire, where GetActiveMode already names the winner.
 function ____exports.OnEnd(_bot)
@@ -1244,6 +1311,10 @@ function ____exports.Abort(bot, why)
     end
 end
 function ____exports.Current(bot)
+    return trips[bot:GetPlayerID()]
+end
+--- The live trip itself, for its SDK executor (states/farm.ts).
+function ____exports.Live(bot)
     return trips[bot:GetPlayerID()]
 end
 return ____exports
