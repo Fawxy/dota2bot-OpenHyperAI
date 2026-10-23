@@ -1,0 +1,11 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 11: gank, pos 4 and mid (runs 1, 2, 4, 5, 8, 11, 15+). The kill rate (~20%/~30% of runs) is 'any' over the runs given",
+ "until": "10:00",
+ "bars": [
+  { "id": "team attempts by 10:00", "metric": "game.human.gankAttempts", "range": [2, 4] },
+  { "id": "away <= 40 s", "select": { "team": "human", "pos": [2, 4] }, "metric": "jobs.gankAwayMax", "max": 40, "optional": true },
+  { "id": "a rotation kill in some run", "select": { "team": "human", "pos": [2, 4] }, "metric": "jobs.gankKills", "agg": "sum", "min": 1, "over": "any" },
+  { "id": "first kill 6:30-9:40", "select": { "team": "human", "pos": [2, 4] }, "metric": "jobs.gankFirstKill", "range": [390, 580], "optional": true }
+ ]
+}

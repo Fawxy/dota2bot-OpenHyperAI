@@ -215,6 +215,7 @@ local PATH_FACTOR = 1.2
 local DANGER_RADIUS = 1200
 local DANGER_HP = 0.5
 local WISDOM_POSITIONS = {[4] = true}
+local WISDOM_IGNORES = {["lane pushed"] = true, ["enemy missing"] = true}
 local trips = {}
 doneFor = {}
 powerTrips = {}
@@ -291,6 +292,17 @@ local function danger(bot)
     end
     return nil
 end
+local gateNoted = {}
+--- ev=wisdom_gate: why the pos 4 is past its leave time but not going, once per fill and reason.
+local function noteGate(bot, spawn, why)
+    local pid = bot:GetPlayerID()
+    local key = (tostring(spawn) .. ":") .. why
+    if gateNoted[pid] == key then
+        return
+    end
+    gateNoted[pid] = key
+    Telemetry.Event("wisdom_gate", {{"pid", pid}, {"spawn", spawn}, {"why", why}})
+end
 local function score(bot)
     local pid = bot:GetPlayerID()
     local trip = trips[pid]
@@ -313,7 +325,12 @@ local function score(bot)
     if leave == nil or now < leave then
         return nil
     end
-    if (Busy.IsBusy(bot, spawn)) or not (Busy.LaneCanSpare(bot, false)) or danger(bot) ~= nil then
+    local busy, busyWhy = Busy.IsBusy(bot, spawn)
+    local spare, spareWhy = Busy.LaneCanSpare(bot, false)
+    local laneBlocks = not spare and not WISDOM_IGNORES[spareWhy]
+    local why = busy and busyWhy or (laneBlocks and spareWhy or danger(bot))
+    if why ~= nil then
+        noteGate(bot, spawn, why)
         return nil
     end
     return SCORE
@@ -369,7 +386,7 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
     ctx.label("wait")
     while true do
         do
-            local __continue32
+            local __continue34
             repeat
                 if not bot:IsAlive() then
                     return ctx.fail("dead")
@@ -387,7 +404,7 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
                             Intent.Hold(bot, "lane:rune_hold")
                         end
                         coroutine.yield()
-                        __continue32 = true
+                        __continue34 = true
                         break
                     end
                     ctx.label("pickup")
@@ -402,9 +419,9 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
                     Intent.Hold(bot, "lane:rune_wait")
                 end
                 coroutine.yield()
-                __continue32 = true
+                __continue34 = true
             until true
-            if not __continue32 then
+            if not __continue34 then
                 break
             end
         end

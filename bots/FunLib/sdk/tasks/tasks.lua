@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ ef0b2d1a8f4beeb2ab821d2ddce40f3737a86d56. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ c648c644cecb8c0b27e582249a581f9dd6d05d4c. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1604,6 +1604,10 @@ local LAPSE_MAX = 0.4
 -- time, since bots think less often per game second at high timescales.
 local MIN_MARGIN = 0.034
 local MAX_MARGIN = 0.3
+--- Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s).
+local SEEN_AHEAD = 0.45
+--- An attack order may be given this long before the cooldown ends: Dota queues it and the swing starts on time.
+local COOLDOWN_QUEUE = 0.25
 --- Seconds after the predicted hit time before an unresolved swing counts as `missed`.
 local CONFIRM_SLACK = 0.5
 local function ok()
@@ -1745,11 +1749,10 @@ local function believe(bot, creep, withError, margin)
     local ____opt_65 = ____this_66.GetHealthRegen
     local regen = ____opt_65 and ____opt_65(____this_66) or 0
     local hp = creep:GetHealth()
-    local visible = hp + regen * tHit - ____exports.incomingDamage(
-        bot,
-        creep,
-        math.max(0, tHit - margin)
-    )
+    local relied = math.max(0, tHit - margin)
+    local dps = ____exports.incomingDps(bot, creep)
+    local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
+    local visible = certain - math.max(0, relied - SEEN_AHEAD) * dps
     local believed = visible
     local width = 0
     local eps = 0
@@ -1759,13 +1762,13 @@ local function believe(bot, creep, withError, margin)
         eps = r.eps
         if r.shift < 0 then
             local h = math.max(0, tHit - margin + r.shift)
-            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h)
+            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * dps
         elseif r.shift > 0 then
-            believed = visible + regen * r.shift - ____exports.incomingDps(bot, creep) * r.shift
+            believed = visible + regen * r.shift - dps * r.shift
         end
     end
     local ____tHit_72 = tHit
-    local ____temp_73 = visible > 0
+    local ____temp_73 = certain > 0
     local ____believed_74 = believed
     local ____physical_71 = physical
     local ____creep_70 = creep
@@ -2019,7 +2022,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
         ) > bot:GetAttackRange() then
             bot:Action_MoveToLocation(creep:GetLocation())
         else
-            if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= margin then
+            if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
                 local b = believe(bot, creep, true, margin)
                 if due(b) then
                     tHit = b.tHit
@@ -2251,6 +2254,7 @@ local NEUTRAL_SEARCH = 700
 local START_LATE = 2
 local NO_CAMP_AFTER = 1
 local AGGRO_CONFIRM = 2
+local APPROACH_LEAD = 3
 local AGGRO_LEAD_DEFAULT = 0.4
 local AGGRO_LEAD_MAX = 1.5
 local LEAD_MAX_AFTER_AGGRO = 15
@@ -2381,10 +2385,12 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
     local at = planned + err
     local arrive = o.arrive or ARRIVE
     local late = at + (o.startLate or START_LATE)
+    local stand = camp.stand
+    local approached = camp.approach == nil
     local function there()
         return dist(
             bot:GetLocation(),
-            camp.stand
+            stand
         ) <= arrive
     end
     local reached = false
@@ -2405,6 +2411,11 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
         if n ~= nil and t >= at - (o.aggroLead or ____exports.aggroLead(bot, n)) then
             break
         end
+        if n == nil and not approached and there() and t >= at - (o.approachLead or APPROACH_LEAD) then
+            approached = true
+            stand = camp.approach
+            waiting = false
+        end
         if t >= at and there() then
             break
         end
@@ -2412,7 +2423,7 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
             if t >= late then
                 return fail("timeout", "late")
             end
-            bot:Action_MoveToLocation(camp.stand)
+            bot:Action_MoveToLocation(stand)
         else
             if not waiting then
                 local ____opt_14 = h.label
@@ -2739,7 +2750,7 @@ local function campOf(bot, p)
     local r = p.radius or CLEAR_RADIUS
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
         do
-            local __continue70
+            local __continue71
             repeat
                 local ____opt_47 = n.IsNull
                 local ____temp_49 = ____opt_47 and ____opt_47(n)
@@ -2756,7 +2767,7 @@ local function campOf(bot, p)
                     ____temp_53 = not ____temp_52
                 end
                 if ____temp_53 then
-                    __continue70 = true
+                    __continue71 = true
                     break
                 end
                 if dist(
@@ -2765,9 +2776,9 @@ local function campOf(bot, p)
                 ) <= r then
                     out[#out + 1] = n
                 end
-                __continue70 = true
+                __continue71 = true
             until true
-            if not __continue70 then
+            if not __continue71 then
                 break
             end
         end
@@ -2809,7 +2820,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
     end
     while true do
         do
-            local __continue80
+            local __continue81
             repeat
                 if not bot:IsAlive() then
                     return fail("dead")
@@ -2822,7 +2833,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 local kept = {}
                 for ____, e in ipairs(seen) do
                     do
-                        local __continue83
+                        local __continue84
                         repeat
                             local ____this_57
                             ____this_57 = e.n
@@ -2833,7 +2844,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             end
                             local alive = not ____temp_58 and e.n:IsAlive()
                             if not alive then
-                                __continue83 = true
+                                __continue84 = true
                                 break
                             end
                             local inCamp = __TS__ArrayIndexOf(camp, e.n) >= 0
@@ -2851,16 +2862,16 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             local visibleNow = ____inCamp_62
                             local at = visibleNow and t or e.at
                             if t - at > CLEAR_LOST then
-                                __continue83 = true
+                                __continue84 = true
                                 break
                             end
                             if not inCamp and visibleNow then
                                 camp[#camp + 1] = e.n
                             end
                             kept[#kept + 1] = {n = e.n, at = at}
-                            __continue83 = true
+                            __continue84 = true
                         until true
-                        if not __continue83 then
+                        if not __continue84 then
                             break
                         end
                     end
@@ -2895,7 +2906,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                         hold(bot, "camp_look")
                     end
                     coroutine.yield()
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 emptySince = nil
@@ -2903,7 +2914,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 if t < nextOrderAt then
                     hold(bot, "camp_react")
                     coroutine.yield()
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 local ____target_64 = target
@@ -2937,9 +2948,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     end
                 end
                 coroutine.yield()
-                __continue80 = true
+                __continue81 = true
             until true
-            if not __continue80 then
+            if not __continue81 then
                 break
             end
         end

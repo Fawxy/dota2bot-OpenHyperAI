@@ -1,0 +1,48 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 4: SDK last hit and deny (runs 4, 5, 12, 14)",
+ "until": "10:00",
+ "minRuns": 2,
+ "bars": [
+  {
+   "id": "lh@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh10",
+   "min": 45
+  },
+  {
+   "id": "lh@5",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh5",
+   "min": 20
+  },
+  {
+   "id": "dn@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.dn10",
+   "min": 3
+  },
+  {
+   "id": "contested success",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.contestedPct",
+   "range": [
+    75,
+    85
+   ],
+   "over": "median"
+  }
+ ]
+}

@@ -3,6 +3,8 @@
 
 const FIELD_RE = /(\w+)=("([^"]*)"|\S+)/g;
 const NUMBER_RE = /^-?\d+(\.\d+)?$/;
+// Text fields that can look numeric: an all-digit git sha ("0123456") must not lose its leading zero.
+const STRING_KEYS = new Set(['build', 'text', 'msg']);
 // Lua runtime errors as the Dota console prints them; exact wording varies by build, so match loosely.
 const ERROR_RE = /script runtime error|stack traceback|attempt to (index|call|perform arithmetic|compare|concatenate)|\.lua:\d+: /i;
 // Dota stops printing a repeated message after 10 copies.
@@ -18,7 +20,7 @@ function parseFields(text) {
     const out = {};
     for (const m of text.matchAll(FIELD_RE)) {
         const raw = m[3] !== undefined ? m[3] : m[2];
-        out[m[1]] = m[3] === undefined && NUMBER_RE.test(raw) ? Number(raw) : raw;
+        out[m[1]] = m[3] === undefined && !STRING_KEYS.has(m[1]) && NUMBER_RE.test(raw) ? Number(raw) : raw;
     }
     return out;
 }
