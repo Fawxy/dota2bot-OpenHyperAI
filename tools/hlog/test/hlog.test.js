@@ -135,6 +135,21 @@ test('a death gap ending in the fountain is not a stall; repeated errors group a
     assert.match(r.script_errors.summary, /squelched/);
 });
 
+test('a bot that dies shortly before the log ends is not a stall; one that goes quiet with no enemy kill is', () => {
+    const enemy = '[HEV] t=0 ev=bot pid=3 hero=axe team=3 schema=1 skill=0.500 notice=0.365 react=0.335 ping=1.400 chat=1.500 jitter=0.325 lapse=0.085 lapseMax=0.800 minReact=0.170 deference=0.500';
+    const run = killAt => {
+        const kills = [];
+        for (let t = 0; t <= 40; t++) kills.push(...snaps(3, t, t, `kills=${killAt !== undefined && t >= killAt ? 1 : 0}`));
+        const lines = [...header(0), enemy, ...snaps(1, 0, 20), ...snaps(2, 0, 40), ...kills];
+        return levels(parseLog(ordered(lines).join('\n'))[0]).snapshot_gaps;
+    };
+    const died = run(21);
+    assert.strictEqual(died.level, 'pass', died.details.join('; '));
+    const stalled = run(undefined);
+    assert.strictEqual(stalled.level, 'fail', stalled.summary);
+    assert.match(stalled.details[0], /lion\[1\] stopped reporting at 0:20/);
+});
+
 test('times accept seconds or m:ss', () => {
     assert.strictEqual(parseTime('5:12'), 312);
     assert.strictEqual(parseTime('-0:30'), -30);

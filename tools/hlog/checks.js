@@ -88,6 +88,21 @@ function scriptErrors(game) {
     return { id: 'script_errors', level: 'fail', summary: parts.join('; '), details: details.slice(0, DETAIL_LIMIT), more: Math.max(0, details.length - DETAIL_LIMIT) };
 }
 
+// Snapshots run about once a second, so the killer's count shows the kill within a few seconds of the victim going quiet.
+const DEATH_KILL_WINDOW = 3;
+
+function enemyKillSoonAfter(game, b, t) {
+    for (const o of Object.values(game.bots)) {
+        if (o.team === b.team || o.team === undefined) continue;
+        for (let i = 1; i < o.snaps.length; i++) {
+            const s = o.snaps[i];
+            if (s.t > t + DEATH_KILL_WINDOW) break;
+            if (s.t > t && s.kills > o.snaps[i - 1].kills) return true;
+        }
+    }
+    return false;
+}
+
 function snapshotGaps(game) {
     const fails = [];
     let botCount = 0;
@@ -101,7 +116,8 @@ function snapshotGaps(game) {
             if (gap > SNAP_GAP_FAIL && !nearFountain(b.snaps[i])) fails.push(`${name(game, b.pid)} no snapshot for ${gap.toFixed(1)}s from ${fmtT(b.snaps[i - 1].t)} (bot script stalled or errored)`);
         }
         const last = b.snaps[b.snaps.length - 1].t;
-        if (!game.ended && end - last > SNAP_GAP_FAIL) fails.push(`${name(game, b.pid)} stopped reporting at ${fmtT(last)}, game ran to ${fmtT(end)}`);
+        // A death near the end leaves no fountain snapshot to excuse the gap.
+        if (!game.ended && end - last > SNAP_GAP_FAIL && !enemyKillSoonAfter(game, b, last)) fails.push(`${name(game, b.pid)} stopped reporting at ${fmtT(last)}, game ran to ${fmtT(end)}`);
     }
     if (botCount === 0) return skip('snapshot_gaps', 'no bot snapshots');
     return result('snapshot_gaps', fails, [], `${botCount} bots reported continuously`);
