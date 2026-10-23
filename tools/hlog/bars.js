@@ -193,6 +193,8 @@ function collect(game, { until = 600, file } = {}) {
             until,
             maxT: game.maxT,
             complete: lan.complete,
+            // Dota drops repeats of a message past its count limit; telemetry from then on may be missing lines.
+            squelched: game.squelched === true,
             humanTeam: human ? teamName(human.team) : undefined,
             humanHero: human ? human.hero : undefined,
             humanPos: humanPosition(game),
