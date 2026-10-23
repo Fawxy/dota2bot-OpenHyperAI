@@ -22,6 +22,7 @@ ____exports.DEFAULTS = {
     Forecast = true,
     PreContest = false,
     TakePull = true,
+    PullLaneGate = true,
     ForecastModel = {K = 0.4, TypeWeight = {melee = 1, ranged = 1.6, siege = 1}, PowerFloor = 550},
     Gates = {
         Block = 0.3,
@@ -247,6 +248,7 @@ ____exports.DEFAULTS = {
         JobArrive = 100,
         LaneCreepScan = 1600,
         MeetWatch = 800,
+        MeetBusy = 800,
         WaveSize = 1200,
         StackExit = 900,
         StackCoreCamp = 3000,

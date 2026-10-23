@@ -327,6 +327,45 @@ do
 	check("no trace for a pull that was never hit", traceEvent(lines) == nil)
 end
 
+do
+	-- Our creep already at the meet point: the planner's pull is not started, logged as lane_plan gate=lane-at-meet.
+	local H, _, support, data = jobWorld(0.9, { t = 103, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	MakeCreep({ team = 2, x = data.pull.meetPoint.x, y = data.pull.meetPoint.y + 300 })
+	frame(H, support, 103)
+	local gated = false
+	for _, l in ipairs(lines) do if l:find("ev=lane_plan ", 1, true) and l:find("gate=lane-at-meet", 1, true) then gated = true end end
+	check("no pull with our creeps at the meet point", gated and H.Lane.CampJobs.Current(support) == nil, table.concat(lines, "\n"))
+
+	-- They walk in while the support waits at the camp: the job ends before the hit instead of drawing the camp.
+	local neutral
+	H, _, support, data = jobWorld(1, { telemetry = { Enable = true } })
+	lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	frame(H, support, 72.5)
+	local job = H.Lane.CampJobs.Current(support)
+	check("precondition: pull started", job ~= nil)
+	frame(H, support, job.aggroAt - 1)
+	MakeCreep({ team = 2, x = job.meet.x, y = job.meet.y })
+	local before = #ActionsOf(5, "AttackUnit")
+	frame(H, support, job.aggroAt)
+	local aborted = false
+	for _, l in ipairs(lines) do if l:find("ev=lane_job_abort ", 1, true) and l:find("reason=lane-at-meet", 1, true) then aborted = true end end
+	check("creeps reaching the meet before the hit abort the pull", aborted and job.phase == "return" and #ActionsOf(5, "AttackUnit") == before)
+
+	H, _, support = jobWorld(1, { cfg = { Enable = true, PullLaneGate = false } })
+	neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	frame(H, support, 72.5)
+	job = H.Lane.CampJobs.Current(support)
+	frame(H, support, job.aggroAt - 1)
+	MakeCreep({ team = 2, x = job.meet.x, y = job.meet.y })
+	before = #ActionsOf(5, "AttackUnit")
+	frame(H, support, job.aggroAt)
+	check("with PullLaneGate off the camp is still hit", #ActionsOf(5, "AttackUnit") == before + 1 and job.phase == "aggro")
+end
+
 -- A creep path along the stub bot lane (y = -5000), so the small camp's pull is wave-timed: the :00 wave reaches its
 -- meet (-1600, -5000) after 7,800 / 325 = 24 s.
 local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }

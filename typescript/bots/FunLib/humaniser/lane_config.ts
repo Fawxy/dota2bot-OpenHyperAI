@@ -24,7 +24,8 @@ export type LaneFlag =
     | "CampBlock"
     | "Forecast"
     | "PreContest"
-    | "TakePull";
+    | "TakePull"
+    | "PullLaneGate";
 export type Technique = "block" | "full_pull" | "half_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
@@ -60,6 +61,8 @@ export const DEFAULTS = {
     // pulling; the lane forecast it reads has not predicted the lane in any game so far.
     PreContest: false,
     TakePull: true,
+    // No pull while our lane creeps are already at its meet point: the camp meets a fight there and leashes home.
+    PullLaneGate: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
@@ -295,6 +298,9 @@ export const DEFAULTS = {
         JobArrive: 100,
         LaneCreepScan: 1600,
         MeetWatch: 800,
+        // lane_pull_trace, console.9057326631/9057329817: radiant_off_large with our creeps within 800 of the meet at
+        // the hit diverted none (4 of 7); 7.41 moved the creep meeting point toward the off lane.
+        MeetBusy: 800,
         WaveSize: 1200,
         StackExit: 900,
         StackCoreCamp: 3000,

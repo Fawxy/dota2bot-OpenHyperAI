@@ -5,7 +5,7 @@
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
  * the minute, and both are logged for tools/replay-mining.
  */
-import { BotMode, Item, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Item, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -103,6 +103,8 @@ export interface Job extends JobRequest {
     supplyNoted?: Record<string, boolean>;
     /** Pull with telemetry on: what reached the meet point and when, for lane_pull_trace. */
     trace?: PullTrace;
+    /** The lane-at-meet gate ran before the first hit. */
+    meetChecked?: boolean;
 }
 
 /** Times are DotaTime; the event reports them relative to the hit. */
@@ -1169,6 +1171,10 @@ function schedule(bot: Unit): boolean {
         return false;
     }
     const camp = pullCampFor(kind, camps);
+    if (laneAtMeet(kind === "half_pull" ? camp.pull?.halfMeetPoint ?? camp.pull?.meetPoint : camp.pull?.meetPoint)) {
+        notePlan(bot, s, now, [["gate", "lane-at-meet"], ["camp", camp.campIdx]]);
+        return false;
+    }
     const asDouble = kind === "full_pull" && doubleOpen;
     // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
     if (kind === "full_pull" && double !== undefined && !double.open && double.why === undefined) return false;
@@ -1308,6 +1314,17 @@ function telegraph(bot: Unit, job: Job, now: number): void {
     job.telegraphed = true;
     if (!LaneConfig.IsOn("Telegraph") || !Difficulty.IsAllyOfHuman(bot)) return;
     Orders.Say(bot, job.kind === "half_pull" ? "say_lane_half_pull" : "say_lane_pulling_in_5", settings().Timing.PullTelegraphCooldown);
+}
+
+/** Our lane creeps are already at the pull's meet point (a fight or a passing wave), so nothing walks into the camp there. */
+function laneAtMeet(meet: Vector | undefined): boolean {
+    if (meet === undefined || !LaneConfig.IsOn("PullLaneGate")) return false;
+    const r = settings().Radii.MeetBusy;
+    for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (dist2D(c.GetLocation(), meet) <= r) return true;
+    }
+    return false;
 }
 
 function campNeutral(bot: Unit, job: Job): Unit | undefined {
@@ -1626,6 +1643,14 @@ function aggroLead(bot: Unit, creep: Unit): number {
 }
 
 function orderAggro(bot: Unit, job: Job, creep: Unit): boolean {
+    // Checked once, before the job's first hit: past it the camp is already on the bot.
+    if (PULL_KINDS[job.kind] === true && job.forced !== true && job.meetChecked !== true) {
+        job.meetChecked = true;
+        if (laneAtMeet(job.meet)) {
+            abort(bot, job, "lane-at-meet");
+            return false;
+        }
+    }
     if (job.kind === "stack") job.stackBefore = neutralsInBox(bot, job.activeCamp);
     bot.Action_AttackUnit(creep, true);
     job.aggroTarget = creep;

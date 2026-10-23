@@ -223,10 +223,11 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, inFight, enemyHeroNear, desireOf, campNeutral, neutralsInBox, boxInSight, settleStack, newTrace, logTrace, aggroLead, awaitSupply, noteSupply, round3, modeEndFields, LOG_KIND, pendingStacks, pendingModeEnd
+local settings, dist2D, inFight, enemyHeroNear, desireOf, laneAtMeet, campNeutral, neutralsInBox, boxInSight, settleStack, newTrace, logTrace, aggroLead, awaitSupply, noteSupply, round3, modeEndFields, LOG_KIND, pendingStacks, pendingModeEnd
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
+local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -244,6 +245,11 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 function settings()
     return LaneConfig.Settings()
+end
+function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
 end
 function inFight(bot)
     local cfg = settings()
@@ -268,6 +274,34 @@ function desireOf(kind)
     local t = settings().Timing
     return kind == "contest" and t.ContestDesire or t.JobDesire
 end
+function laneAtMeet(meet)
+    if meet == nil or not LaneConfig.IsOn("PullLaneGate") then
+        return false
+    end
+    local r = settings().Radii.MeetBusy
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
+        do
+            local __continue272
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue272 = true
+                    break
+                end
+                if dist2D(
+                    c:GetLocation(),
+                    meet
+                ) <= r then
+                    return true
+                end
+                __continue272 = true
+            until true
+            if not __continue272 then
+                break
+            end
+        end
+    end
+    return false
+end
 function campNeutral(bot, job)
     local best
     local bestDist = math.huge
@@ -276,17 +310,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue270
+            local __continue277
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue270 = true
+                    __continue277 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue270 = true
+                    __continue277 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -297,9 +331,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue270 = true
+                __continue277 = true
             until true
-            if not __continue270 then
+            if not __continue277 then
                 break
             end
         end
@@ -431,8 +465,8 @@ function logTrace(bot, job, ____end)
     local function rel(t)
         return t == nil and -1 or round3(t - hit)
     end
-    local ____Telemetry_Event_47 = Telemetry.Event
-    local ____array_46 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_56 = Telemetry.Event
+    local ____array_55 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -440,13 +474,13 @@ function logTrace(bot, job, ____end)
         {"kind", LOG_KIND[job.kind]},
         {"camp", job.campIdx}
     )
-    local ____opt_44 = Camps.ByIdx(
+    local ____opt_53 = Camps.ByIdx(
         job.campIdx,
         bot:GetTeam()
     )
     __TS__SparseArrayPush(
-        ____array_46,
-        {"key", ____opt_44 and ____opt_44.key},
+        ____array_55,
+        {"key", ____opt_53 and ____opt_53.key},
         {"end", ____end},
         {
             "expWave",
@@ -480,9 +514,9 @@ function logTrace(bot, job, ____end)
             round3(tr.shift)
         }}) or ({}))
     )
-    ____Telemetry_Event_47(
+    ____Telemetry_Event_56(
         "lane_pull_trace",
-        {__TS__SparseArraySpread(____array_46)}
+        {__TS__SparseArraySpread(____array_55)}
     )
 end
 function aggroLead(bot, creep)
@@ -514,8 +548,8 @@ function noteSupply(bot, job, item, state, reason)
     job.supplyNoted[key] = true
     local maxHP = bot:GetMaxHealth()
     local maxMP = bot:GetMaxMana()
-    local ____Telemetry_Event_51 = Telemetry.Event
-    local ____array_50 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_60 = Telemetry.Event
+    local ____array_59 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -525,7 +559,7 @@ function noteSupply(bot, job, item, state, reason)
         unpack(reason ~= nil and ({{"reason", reason}}) or ({}))
     )
     __TS__SparseArrayPush(
-        ____array_50,
+        ____array_59,
         {"kind", LOG_KIND[job.kind]},
         {"phase", job.phase},
         {
@@ -537,9 +571,9 @@ function noteSupply(bot, job, item, state, reason)
             maxMP > 0 and round3(bot:GetMana() / maxMP) or -1
         }
     )
-    ____Telemetry_Event_51(
+    ____Telemetry_Event_60(
         "lane_job_supply",
-        {__TS__SparseArraySpread(____array_50)}
+        {__TS__SparseArraySpread(____array_59)}
     )
 end
 --- Logs a pending mode-end abort once farm has given way, or at once when forced; it waits at most a second.
@@ -557,10 +591,10 @@ function ____exports.FlushModeEnd(bot, force)
         return
     end
     __TS__Delete(pendingModeEnd, pid)
-    local ____Telemetry_Event_53 = Telemetry.Event
-    local ____array_52 = __TS__SparseArrayNew(unpack(pending.fields))
+    local ____Telemetry_Event_62 = Telemetry.Event
+    local ____array_61 = __TS__SparseArrayNew(unpack(pending.fields))
     __TS__SparseArrayPush(
-        ____array_52,
+        ____array_61,
         {
             "to",
             HDebug.ModeName(to)
@@ -578,9 +612,9 @@ function ____exports.FlushModeEnd(bot, force)
             round3(GameTime() - pending.at)
         }
     )
-    ____Telemetry_Event_53(
+    ____Telemetry_Event_62(
         "lane_job_abort",
-        {__TS__SparseArraySpread(____array_52)}
+        {__TS__SparseArraySpread(____array_61)}
     )
 end
 function round3(v)
@@ -651,11 +685,6 @@ function ____exports.ResetCache()
     covering = {}
     preContestRest = {}
     pendingModeEnd = {}
-end
-local function dist2D(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
 end
 local function cycleOf(time)
     return math.floor(time / settings().Timing.WaveCycle)
@@ -1975,6 +2004,24 @@ local function schedule(bot)
         return false
     end
     local camp = pullCampFor(kind, camps)
+    local ____laneAtMeet_48 = laneAtMeet
+    local ____temp_47
+    if kind == "half_pull" then
+        local ____opt_40 = camp.pull
+        local ____temp_44 = ____opt_40 and ____opt_40.halfMeetPoint
+        if ____temp_44 == nil then
+            local ____opt_42 = camp.pull
+            ____temp_44 = ____opt_42 and ____opt_42.meetPoint
+        end
+        ____temp_47 = ____temp_44
+    else
+        local ____opt_45 = camp.pull
+        ____temp_47 = ____opt_45 and ____opt_45.meetPoint
+    end
+    if ____laneAtMeet_48(____temp_47) then
+        notePlan(bot, s, now, {{"gate", "lane-at-meet"}, {"camp", camp.campIdx}})
+        return false
+    end
     local asDouble = kind == "full_pull" and doubleOpen
     if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
         return false
@@ -2031,13 +2078,13 @@ local function scheduleStack(bot, now)
         return false
     end
     local data = Stacking.WantsStack(bot, minute)
-    local ____temp_40
+    local ____temp_49
     if data ~= nil then
-        ____temp_40 = Camps.SpawnerByIdx(data.campIdx)
+        ____temp_49 = Camps.SpawnerByIdx(data.campIdx)
     else
-        ____temp_40 = nil
+        ____temp_49 = nil
     end
-    local spawner = ____temp_40
+    local spawner = ____temp_49
     if data == nil or data.stack == nil or spawner == nil then
         return false
     end
@@ -2156,13 +2203,13 @@ local function pingPartner(bot, job)
         return
     end
     local s = LaneState.ForBot(bot)
-    local ____temp_41
+    local ____temp_50
     if s ~= nil then
-        ____temp_41 = LaneRoles.Partner(bot, s)
+        ____temp_50 = LaneRoles.Partner(bot, s)
     else
-        ____temp_41 = nil
+        ____temp_50 = nil
     end
-    local partner = ____temp_41
+    local partner = ____temp_50
     if partner == nil or partner.isBot or not Orders.Ping(bot, job.stand) then
         return
     end
@@ -2239,10 +2286,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue298
+            local __continue305
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue298 = true
+                    __continue305 = true
                     break
                 end
                 if dist2D(
@@ -2251,9 +2298,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue298 = true
+                __continue305 = true
             until true
-            if not __continue298 then
+            if not __continue305 then
                 break
             end
         end
@@ -2313,13 +2360,13 @@ local function tracePull(bot, job, now)
     local atMeet = 0
     for ____, c in ipairs(wave) do
         do
-            local __continue314
+            local __continue321
             repeat
                 if dist2D(
                     c:GetLocation(),
                     meet
                 ) > cfg.Radii.MeetWatch then
-                    __continue314 = true
+                    __continue321 = true
                     break
                 end
                 atMeet = atMeet + 1
@@ -2327,9 +2374,9 @@ local function tracePull(bot, job, now)
                     tr.everDiverted[c] = true
                     tr.everN = tr.everN + 1
                 end
-                __continue314 = true
+                __continue321 = true
             until true
-            if not __continue314 then
+            if not __continue321 then
                 break
             end
         end
@@ -2349,10 +2396,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue323
+            local __continue330
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue323 = true
+                    __continue330 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2362,9 +2409,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue323 = true
+                __continue330 = true
             until true
-            if not __continue323 then
+            if not __continue330 then
                 break
             end
         end
@@ -2405,19 +2452,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue338
+            local __continue345
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue338 = true
+                    __continue345 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue338 = true
+                __continue345 = true
             until true
-            if not __continue338 then
+            if not __continue345 then
                 break
             end
         end
@@ -2451,13 +2498,13 @@ local function stepTake(bot, job, now)
                 false
             ) end
         )
-        local ____temp_48
+        local ____temp_57
         if #killable > 0 then
-            ____temp_48 = LastHitSkill.Choose(bot, killable)
+            ____temp_57 = LastHitSkill.Choose(bot, killable)
         else
-            ____temp_48 = nil
+            ____temp_57 = nil
         end
-        local pick = ____temp_48
+        local pick = ____temp_57
         if pick ~= nil then
             bot:Action_AttackUnit(pick, true)
             LastHitSkill.NoteAttempt(bot, pick)
@@ -2517,6 +2564,13 @@ local function stepContest(bot, job, now)
     return false
 end
 local function orderAggro(bot, job, creep)
+    if PULL_KINDS[job.kind] == true and job.forced ~= true and job.meetChecked ~= true then
+        job.meetChecked = true
+        if laneAtMeet(job.meet) then
+            abort(bot, job, "lane-at-meet")
+            return false
+        end
+    end
     if job.kind == "stack" then
         job.stackBefore = neutralsInBox(bot, job.activeCamp)
     end
@@ -2629,13 +2683,13 @@ local function supply(bot, job, now)
     end
     if needTango then
         local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
-        local ____temp_49
+        local ____temp_58
         if tango ~= nil and blocked == nil then
-            ____temp_49 = tangoTree(bot)
+            ____temp_58 = tangoTree(bot)
         else
-            ____temp_49 = nil
+            ____temp_58 = nil
         end
-        local tree = ____temp_49
+        local tree = ____temp_58
         if tango == nil or tree == nil then
             noteSupply(
                 bot,
