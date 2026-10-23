@@ -112,6 +112,8 @@ function snapshotGaps(game) {
         botCount++;
         for (let i = 1; i < b.snaps.length; i++) {
             const gap = b.snaps[i].t - b.snaps[i - 1].t;
+            // dota_dev forcegamestart (scenario setups) jumps the clock from the pregame to 0:00 between two ticks.
+            if (b.snaps[i - 1].t < 0 && b.snaps[i].t >= 0 && b.snaps[i].t < 2) continue;
             // Dota does not run a dead bot's script, so a death shows as a gap that ends in the fountain.
             if (gap > SNAP_GAP_FAIL && !nearFountain(b.snaps[i])) fails.push(`${name(game, b.pid)} no snapshot for ${gap.toFixed(1)}s from ${fmtT(b.snaps[i - 1].t)} (bot script stalled or errored)`);
         }
