@@ -4,13 +4,15 @@
  * host Think() hook and telemetry. Off (Enable = false) means no selection, no telemetry and no tasks.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -105,11 +107,28 @@ export function Tick(bot: Unit): void {
     const pid = bot.GetPlayerID();
     if (defined[pid] !== true) {
         defined[pid] = true;
-        l.States.define(bot as unknown as Lib.TaskUnit, [Laning.Spec(bot)]);
+        l.States.define(bot as unknown as Lib.TaskUnit, [
+            Laning.Spec(bot),
+            CampJob.Spec(bot, CampJob.STACK, owns),
+            CampJob.Spec(bot, CampJob.PULL, owns),
+        ]);
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
     lanePos(bot, l);
 }
+
+/** Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own). */
+export function Owns(bot: Unit, state: string): boolean {
+    return IsEnabled() && teamApplies(bot) && owns(bot, state);
+}
+
+CampJobs.SetExecutor({
+    Owns: (bot, job) => {
+        const state = CampJob.StateOf(job);
+        return state !== undefined && Owns(bot, state) && lib() !== undefined;
+    },
+    Step: (bot) => Step(bot, BotMode.Farm),
+});
 
 /** First thing in a host mode's Think() step it replaces: true when the state's body acted this frame. */
 export function Step(bot: Unit, mode: number): boolean {

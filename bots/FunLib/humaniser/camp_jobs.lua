@@ -277,17 +277,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue271
+            local __continue273
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue271 = true
+                    __continue273 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue271 = true
+                    __continue273 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -298,9 +298,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue271 = true
+                __continue273 = true
             until true
-            if not __continue271 then
+            if not __continue273 then
                 break
             end
         end
@@ -538,6 +538,10 @@ function modeEndFields(bot, job)
         }
     }
 end
+local executor
+function ____exports.SetExecutor(e)
+    executor = e
+end
 local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
 local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
 LOG_KIND = {
@@ -558,6 +562,7 @@ local FLAG_OF = {
 }
 local JOB_FLAGS = {"FullPull", "HalfPull", "StackPull"}
 local RANGED_ATTACK_RANGE = 326
+local EXIT_GRACE_SDK = 0.5
 local jobs = {}
 local doneCycle = {}
 pendingStacks = {}
@@ -786,6 +791,9 @@ local function dataLabel(data)
     return data.unverified == true and "unverified" or data.source
 end
 local function register(bot, job, data)
+    if executor ~= nil and executor.Owns(bot, job) then
+        job.sdk = true
+    end
     jobs[bot:GetPlayerID()] = job
     LanePlanner.Commit(
         bot,
@@ -2018,7 +2026,8 @@ function ____exports.Desire(bot)
     settleStack(bot, now)
     local job = jobs[bot:GetPlayerID()]
     if isLive(job) then
-        if job.kind == "stack" and job.phase == "exit" and now >= (job.exitUntil or now) then
+        local exitGrace = job.sdk == true and EXIT_GRACE_SDK or 0
+        if job.kind == "stack" and job.phase == "exit" and now >= (job.exitUntil or now) + exitGrace then
             endStack(bot, job)
             return 0
         end
@@ -2170,10 +2179,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue299
+            local __continue301
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue299 = true
+                    __continue301 = true
                     break
                 end
                 if dist2D(
@@ -2182,9 +2191,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue299 = true
+                __continue301 = true
             until true
-            if not __continue299 then
+            if not __continue301 then
                 break
             end
         end
@@ -2223,10 +2232,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue308
+            local __continue310
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue308 = true
+                    __continue310 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2236,9 +2245,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue308 = true
+                __continue310 = true
             until true
-            if not __continue308 then
+            if not __continue310 then
                 break
             end
         end
@@ -2279,19 +2288,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue323
+            local __continue325
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue323 = true
+                    __continue325 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue323 = true
+                __continue325 = true
             until true
-            if not __continue323 then
+            if not __continue325 then
                 break
             end
         end
@@ -2681,6 +2690,14 @@ function ____exports.Think(bot)
     job.acted = true
     job.lastThinkAt = DotaTime()
     job.unthought = false
+    if job.sdk == true and executor ~= nil and executor.Step(bot) then
+        job.sdkFrames = (job.sdkFrames or 0) + 1
+        overlay(bot, job)
+        return true
+    end
+    if job.sdk == true then
+        job.legacyFrames = (job.legacyFrames or 0) + 1
+    end
     local acted = step(bot, job)
     overlay(bot, job)
     return acted
@@ -2701,6 +2718,42 @@ function ____exports.OnEnd(bot)
         )
     end
 end
+--- What an SDK body (states/camp_job.ts) needs of the legacy job's bookkeeping: everything but step()'s execution.
+____exports.Exec = {
+    IsLive = isLive,
+    Abort = function(bot, job, reason, keepStack)
+        if keepStack == nil then
+            keepStack = false
+        end
+        return abort(bot, job, reason, keepStack)
+    end,
+    Close = function(bot, job) return close(
+        bot,
+        job,
+        "done",
+        ____exports.Grade(job.kind, job.peakDivert)
+    ) end,
+    EndStack = endStack,
+    NoteStackAggro = noteStackAggro,
+    NeutralsInBox = neutralsInBox,
+    Sample = sample,
+    Supply = supply,
+    Telegraph = telegraph,
+    AggroLanded = aggroLanded,
+    NeutralTargets = function(bot)
+        for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
+            settings().Radii.NeutralSearch,
+            false
+        ) or ({})) do
+            if n ~= nil and n ~= nil and n:IsAlive() and n:CanBeSeen() and n:GetAttackTarget() == bot then
+                return true
+            end
+        end
+        return false
+    end,
+    DesireOf = desireOf,
+    LogKind = function(kind) return LOG_KIND[kind] end
+}
 function ____exports.RegisterProbes()
     LaneHooks.SetRotationProbe(function(bot) return ____exports.UpcomingWithin(
         bot,

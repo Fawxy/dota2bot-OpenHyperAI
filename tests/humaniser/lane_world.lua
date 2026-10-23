@@ -258,7 +258,7 @@ function LaneFresh(laneCfg, extra)
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
-		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm })
+		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

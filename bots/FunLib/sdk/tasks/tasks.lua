@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 9b6800e1813022e2a73e128defccdda6ce102b61. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 8972913b40cd226767e259259ad7fffe0de6f749. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -2117,10 +2117,14 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
         ____opt_16("aggro")
     end
     local orderedAt
+    local target
     local function pick()
         local n = ____exports.campNeutral(bot, camp)
         if n ~= nil and orderedAt == nil then
             orderedAt = now()
+        end
+        if n ~= nil then
+            target = n
         end
         return n
     end
@@ -2151,7 +2155,8 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
             planned = planned,
             error = err,
             orderedAt = orderedAt or now(),
-            confirmedAt = now()
+            confirmedAt = now(),
+            target = target
         })
     end
     return ok()
@@ -2957,6 +2962,17 @@ local function select(bot, s, now)
     end
     if cur ~= nil and best ~= cur then
         if jobActive(s) then
+            if curRaw == nil and not ours(bot, s) then
+                change(
+                    bot,
+                    s,
+                    best,
+                    bestRaw,
+                    "n/a",
+                    now
+                )
+                return
+            end
             if best == nil or bestRaw < config.jobBreak then
                 return
             end
@@ -3077,13 +3093,20 @@ local function maybeStart(bot, s, now)
             floor = spec.floor or 0,
             preemptAfter = spec.preemptAfter or (spec.kind == "posture" and 3 or 0),
             stallAfter = spec.stallAfter or math.huge,
-            onEnd = function(r, info) return ended(
-                bot,
-                s,
-                spec,
-                r,
-                info
-            ) end
+            guard = spec.guard,
+            onEnd = function(r, info)
+                ended(
+                    bot,
+                    s,
+                    spec,
+                    r,
+                    info
+                )
+                local ____opt_8 = spec.onEnd
+                if ____opt_8 ~= nil then
+                    ____opt_8(r, info)
+                end
+            end
         },
         spec.body
     )

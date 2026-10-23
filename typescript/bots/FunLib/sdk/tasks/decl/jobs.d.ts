@@ -34,6 +34,8 @@ export interface AggroInfo {
     error: number;
     orderedAt: number;
     confirmedAt: number;
+    /** The neutral the order went to (hosts time a ranged hit's flight from it). */
+    target?: TaskAttacker;
 }
 export interface AggroOpts {
     /** Stand-point tolerance. Default 100. */

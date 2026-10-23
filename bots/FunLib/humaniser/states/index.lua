@@ -26,23 +26,60 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local ownList, owns, lib, installed
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
-local LANE_POS_EVERY = 2
+local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
+local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 function ____exports.Settings()
     return Config.Get().States
 end
-local function ownList(state)
+function ownList(state)
     local own = ____exports.Settings().Own
     return own ~= nil and own[state] or nil
 end
 function ____exports.IsEnabled()
     return Config.IsEnabled() and ____exports.Settings().Enable == true and Tasks.Enabled()
 end
+function owns(bot, state)
+    local list = ownList(state)
+    if list == nil then
+        return false
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    for ____, p in ipairs(list) do
+        if p == pos then
+            return true
+        end
+    end
+    return false
+end
+function lib()
+    local l = Tasks.Loaded()
+    if l == nil or l.States == nil then
+        return nil
+    end
+    if not installed then
+        installed = true
+        l.States.SetOwned(function(b, state) return owns(b, state) end)
+    end
+    return l
+end
+--- First thing in a host mode's Think() step it replaces: true when the state's body acted this frame.
+function ____exports.Step(bot, mode)
+    if not ____exports.IsEnabled() then
+        return false
+    end
+    local l = lib()
+    return l ~= nil and l.States.Step(bot, mode)
+end
+local LANE_POS_EVERY = 2
 local function teamApplies(bot)
     return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
 end
@@ -62,33 +99,9 @@ end
 function ____exports.MayOwn(bot)
     return ____exports.IsEnabled() and teamApplies(bot) and ownsAny()
 end
-local function owns(bot, state)
-    local list = ownList(state)
-    if list == nil then
-        return false
-    end
-    local pos = LaneConfig.PositionOf(bot)
-    for ____, p in ipairs(list) do
-        if p == pos then
-            return true
-        end
-    end
-    return false
-end
-local installed = false
+installed = false
 local defined = {}
 local lanePosAt = {}
-local function lib()
-    local l = Tasks.Loaded()
-    if l == nil or l.States == nil then
-        return nil
-    end
-    if not installed then
-        installed = true
-        l.States.SetOwned(function(b, state) return owns(b, state) end)
-    end
-    return l
-end
 local function lanePos(bot, l)
     local cur = l.States.Current(bot)
     if cur == nil or cur.name ~= Laning.NAME then
@@ -148,20 +161,27 @@ function ____exports.Tick(bot)
         defined[pid] = true
         l.States.define(
             bot,
-            {Laning.Spec(bot)}
+            {
+                Laning.Spec(bot),
+                CampJob.Spec(bot, CampJob.STACK, owns),
+                CampJob.Spec(bot, CampJob.PULL, owns)
+            }
         )
     end
     l.States.Tick(bot)
     lanePos(bot, l)
 end
---- First thing in a host mode's Think() step it replaces: true when the state's body acted this frame.
-function ____exports.Step(bot, mode)
-    if not ____exports.IsEnabled() then
-        return false
-    end
-    local l = lib()
-    return l ~= nil and l.States.Step(bot, mode)
+--- Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own).
+function ____exports.Owns(bot, state)
+    return ____exports.IsEnabled() and teamApplies(bot) and owns(bot, state)
 end
+CampJobs.SetExecutor({
+    Owns = function(bot, job)
+        local state = CampJob.StateOf(job)
+        return state ~= nil and ____exports.Owns(bot, state) and lib() ~= nil
+    end,
+    Step = function(bot) return ____exports.Step(bot, BotMode.Farm) end
+})
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)

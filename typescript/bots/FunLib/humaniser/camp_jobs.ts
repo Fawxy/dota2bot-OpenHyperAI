@@ -102,6 +102,26 @@ export interface Job extends JobRequest {
     supplyItem?: SupplyItem;
     /** lane_job_supply events already logged, once per item and outcome. */
     supplyNoted?: Record<string, boolean>;
+    /** Executed by a behaviour-state SDK body (states/camp_job.ts) instead of step(), decided at registration. */
+    sdk?: boolean;
+    /** Farm Think frames the SDK body acted in, and frames step() ran instead (before the body started, or after it gave the job back). */
+    sdkFrames?: number;
+    legacyFrames?: number;
+}
+
+/**
+ * The state layer's camp-job executor (states/camp_job.ts registers it; it imports this module). `Owns` decides at a
+ * job's registration whether its body replaces step(); `Step` runs that body from farm's Think, false when it did not act.
+ */
+export interface Executor {
+    Owns(this: void, bot: Unit, job: Job): boolean;
+    Step(this: void, bot: Unit): boolean;
+}
+
+let executor: Executor | undefined;
+
+export function SetExecutor(e: Executor | undefined): void {
+    executor = e;
 }
 
 type SupplyItem = "tango" | "clarity";
@@ -144,6 +164,7 @@ const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
 const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
 // jmz_func's melee/ranged split for attack timing.
 const RANGED_ATTACK_RANGE = 326;
+const EXIT_GRACE_SDK = 0.5;
 
 let jobs: Record<number, Job> = {};
 let doneCycle: Record<number, number> = {};
@@ -362,6 +383,7 @@ function dataLabel(data: Camps.CampJobData): string {
 }
 
 function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
+    if (executor !== undefined && executor.Owns(bot, job)) job.sdk = true;
     jobs[bot.GetPlayerID()] = job;
     LanePlanner.Commit(bot, commitTech(job.kind));
     const fields: [string, any][] = [
@@ -1225,7 +1247,9 @@ export function Desire(bot: Unit): number {
     settleStack(bot, now);
     const job = jobs[bot.GetPlayerID()];
     if (isLive(job)) {
-        if (job.kind === "stack" && job.phase === "exit" && now >= (job.exitUntil ?? now)) {
+        // An SDK body ends its own walk-off at exitUntil; the grace only covers a body that is no longer stepping.
+        const exitGrace = job.sdk === true ? EXIT_GRACE_SDK : 0;
+        if (job.kind === "stack" && job.phase === "exit" && now >= (job.exitUntil ?? now) + exitGrace) {
             endStack(bot, job);
             return 0;
         }
@@ -1798,6 +1822,12 @@ export function Think(bot: Unit): boolean {
     job.acted = true;
     job.lastThinkAt = DotaTime();
     job.unthought = false;
+    if (job.sdk === true && executor !== undefined && executor.Step(bot)) {
+        job.sdkFrames = (job.sdkFrames ?? 0) + 1;
+        overlay(bot, job);
+        return true;
+    }
+    if (job.sdk === true) job.legacyFrames = (job.legacyFrames ?? 0) + 1;
     const acted = step(bot, job);
     overlay(bot, job);
     return acted;
@@ -1841,6 +1871,29 @@ function modeEndFields(bot: Unit, job: Job): [string, any][] {
         ["farmAge", round3(Intent.SampleAge(bot, BotMode.Farm))],
     ];
 }
+
+/** What an SDK body (states/camp_job.ts) needs of the legacy job's bookkeeping: everything but step()'s execution. */
+export const Exec = {
+    IsLive: isLive,
+    Abort: (bot: Unit, job: Job, reason: string, keepStack = false): void => abort(bot, job, reason, keepStack),
+    Close: (bot: Unit, job: Job): void => close(bot, job, "done", Grade(job.kind, job.peakDivert)),
+    EndStack: endStack,
+    NoteStackAggro: noteStackAggro,
+    NeutralsInBox: neutralsInBox,
+    Sample: sample,
+    Supply: supply,
+    Telegraph: telegraph,
+    AggroLanded: aggroLanded,
+    /** A visible neutral near the bot is attacking it (the legacy aggro confirmation, without the last-attack check). */
+    NeutralTargets: (bot: Unit): boolean => {
+        for (const n of bot.GetNearbyNeutralCreeps(settings().Radii.NeutralSearch, false) ?? []) {
+            if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && n.GetAttackTarget() === bot) return true;
+        }
+        return false;
+    },
+    DesireOf: desireOf,
+    LogKind: (kind: JobKind): string => LOG_KIND[kind],
+};
 
 export function RegisterProbes(): void {
     LaneHooks.SetRotationProbe((bot) => UpcomingWithin(bot, settings().Timing.JobUpcoming));
