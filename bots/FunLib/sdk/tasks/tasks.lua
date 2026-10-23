@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 9b6800e1813022e2a73e128defccdda6ce102b61. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 989b81f03a17c617f99f24dc710f7ba4e8111ce0. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -614,16 +614,40 @@ ____exports.attackAndConfirm = __TS__Generator(function(bot, pick, opts)
         coroutine.yield()
     end
 end)
+local function vec(x, y, z)
+    local make = get().vector
+    return make ~= nil and make(x, y, z or 0) or ({x = x, y = y, z = z})
+end
 local function scattered(p, r)
     if r <= 0 then
         return p
     end
     local a = random() * 2 * math.pi
     local d = random() * r
-    local x = p.x + math.cos(a) * d
-    local y = p.y + math.sin(a) * d
-    local make = get().vector
-    return make ~= nil and make(x, y, p.z or 0) or ({x = x, y = y, z = p.z})
+    return vec(
+        p.x + math.cos(a) * d,
+        p.y + math.sin(a) * d,
+        p.z
+    )
+end
+local function stepped(from, p, r, min, max)
+    local len = min + random() * (max - min)
+    local a = random() * 2 * math.pi
+    local x = from.x + math.cos(a) * len
+    local y = from.y + math.sin(a) * len
+    if dist({x = x, y = y}, p) > r then
+        local d = dist(from, p)
+        if d > 0.000001 then
+            x = from.x + (p.x - from.x) / d * len
+            y = from.y + (p.y - from.y) / d * len
+        end
+        local e = dist({x = x, y = y}, p)
+        if e > r then
+            x = p.x + (x - p.x) / e * r
+            y = p.y + (y - p.y) / e * r
+        end
+    end
+    return vec(x, y, p.z)
 end
 --- Posture verb: keeps the bot within `tolerance` of `point()` (re-read every frame) and never ends `ok` by itself.
 -- A new spot is picked when the point moves more than half the tolerance or every `repath` s (+jitter). An order
@@ -637,6 +661,7 @@ ____exports.holdAt = __TS__Generator(function(bot, point, opts)
     local repath = opts.repath or 1
     local jitter = opts.jitter or 0.3
     local scatter = opts.scatter or 50
+    local follow = opts.follow or tolerance / 2
     local anchor
     local spot
     local nextPick = 0
@@ -657,9 +682,17 @@ ____exports.holdAt = __TS__Generator(function(bot, point, opts)
             bot:Action_MoveToLocation(bot:GetLocation())
             hold(bot, opts.hold)
         else
-            if anchor == nil or t >= nextPick or dist(p, anchor) > tolerance / 2 then
+            if anchor == nil or t >= nextPick or dist(p, anchor) > follow then
+                local step = opts.step
+                local here = bot:GetLocation()
+                spot = step ~= nil and dist(here, p) <= scatter + tolerance and stepped(
+                    here,
+                    p,
+                    scatter,
+                    step[1],
+                    step[2]
+                ) or scattered(p, scatter)
                 anchor = p
-                spot = scattered(p, scatter)
                 nextPick = t + repath * (1 + jitter * (random() - 0.5))
             end
             if dist(
@@ -1687,6 +1720,98 @@ local function enemyTargeting(bot, creep)
     end
     return false
 end
+local function etaOf(bot, c, walkSpeed)
+    local b = believe(bot, c, false)
+    if not b.survives then
+        return nil
+    end
+    local walk = math.max(
+        0,
+        dist(
+            bot:GetLocation(),
+            c:GetLocation()
+        ) - bot:GetAttackRange()
+    ) / walkSpeed
+    local margin = b.hpAtHit - b.mine
+    if margin <= 0 then
+        return walk
+    end
+    local ____exports_incomingDps_result_59 = ____exports.incomingDps(bot, c)
+    local ____math_max_58 = math.max
+    local ____this_57
+    ____this_57 = c
+    local ____opt_56 = ____this_57.GetHealthRegen
+    local dps = ____exports_incomingDps_result_59 + ____math_max_58(
+        0,
+        -(____opt_56 and ____opt_56(____this_57) or 0)
+    )
+    if dps <= 0 then
+        return nil
+    end
+    return math.max(walk, margin / dps)
+end
+--- The lane creep the bot should go for next, if any is due within `within` seconds: an enemy creep to last-hit
+-- (the adapter's `lastHitFilter` applies) or an allied creep to deny. Exact prediction, no skill error (the
+-- verbs apply that when they swing): eta is when the creep becomes killable by a swing ordered then (from
+-- incoming DPS), or the walk into range if longer. Priority (knowledge.md 1.2): ranged last hit, ranged deny,
+-- melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
+function ____exports.nextLastHit(bot, opts)
+    if opts == nil then
+        opts = {}
+    end
+    if bot.GetAttackDamage == nil or bot.GetAttackPoint == nil or bot.GetNearbyLaneCreeps == nil then
+        return nil
+    end
+    local adapter = get()
+    local radius = opts.radius or bot:GetAttackRange() + 400
+    local within = opts.within or 1
+    local rangedBias = opts.rangedBias or 0.4
+    local lhBias = opts.lastHitBias or 0.3
+    local ____math_max_62 = math.max
+    local ____this_61
+    ____this_61 = bot
+    local ____opt_60 = ____this_61.GetCurrentMovementSpeed
+    local speed = ____math_max_62(
+        100,
+        ____opt_60 and ____opt_60(____this_61) or 300
+    )
+    local here = bot:GetLocation()
+    local n = nearby(bot)
+    local best
+    local bestKey = math.huge
+    local function consider(c, kind)
+        if gone(c) or dist(
+            here,
+            c:GetLocation()
+        ) > radius then
+            return
+        end
+        if kind == "lasthit" and adapter.lastHitFilter ~= nil and not adapter.lastHitFilter(bot, c) then
+            return
+        end
+        local eta = etaOf(bot, c, speed)
+        if eta == nil or eta > within then
+            return
+        end
+        local ranged = isRangedCreep(c)
+        local key = eta - (ranged and rangedBias or 0) - (kind == "lasthit" and lhBias or 0)
+        if key < bestKey then
+            bestKey = key
+            best = {creep = c, kind = kind, eta = eta, ranged = ranged}
+        end
+    end
+    if opts.lastHit ~= false then
+        for ____, c in ipairs(n.enemyCreeps) do
+            consider(c, "lasthit")
+        end
+    end
+    if opts.deny ~= false and bot.GetDenies ~= nil then
+        for ____, c in ipairs(n.allyCreeps) do
+            consider(c, "deny")
+        end
+    end
+    return best
+end
 local strike = __TS__Generator(function(bot, mode, opts)
     local adapter = get()
     if bot.GetAttackDamage == nil or bot.GetAttackPoint == nil then
@@ -1769,10 +1894,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
         coroutine.yield()
     end
     local swingAt = now()
-    local ____this_57
-    ____this_57 = bot
-    local ____opt_56 = ____this_57.GetLastAttackTime
-    local attackedAt = ____opt_56 and ____opt_56(____this_57)
+    local ____this_64
+    ____this_64 = bot
+    local ____opt_63 = ____this_64.GetLastAttackTime
+    local attackedAt = ____opt_63 and ____opt_63(____this_64)
     local function landed()
         return attackedAt ~= nil and bot:GetLastAttackTime() > attackedAt
     end
