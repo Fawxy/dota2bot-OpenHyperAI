@@ -34,6 +34,9 @@ A clash pull is not tied to a pull second. `camp_jobs.schedule` gets its own ent
 window check (`windowFor`): any time in the cycle that the planner wants a `full_pull` or `half_pull`, the lane-at-meet
 gate would refuse it, and the cycle has no technique yet, a clash pull starts when all hold:
 
+0. The lane needs fixing: `LanePlanner.Plan` picks `full_pull` or `half_pull`. That is the planner's existing judgement
+   (where the lane is against where this lane kind wants it, with the forecast weighted by skill), asked at any second of
+   the cycle instead of only near a pull second. Whether to pull is the planner's; when to hit is the clash's.
 1. `Flags.ClashPull` on and `SkillOf(bot) >= Gates.ClashPull` (0.7).
 2. The checks a timed pull passes apart from its window: planner choice, `StartBlocked`, owner, travel to the stand
    ≤ `MaxTravel`, `CampsUp(now)`.
