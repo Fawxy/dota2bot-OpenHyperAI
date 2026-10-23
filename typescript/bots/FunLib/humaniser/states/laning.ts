@@ -65,6 +65,10 @@ interface SpotCache {
     info?: LaneSpot.SpotInfo;
 }
 const spotCache: Record<number, SpotCache | undefined> = {};
+/** The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
+ * not shuttle to OHA's spot and back between waves. */
+const lastSdk: Record<number, { t: number; info: LaneSpot.SpotInfo } | undefined> = {};
+const HOLD_OVER = 4;
 
 /** The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). */
 export function Spot(bot: Unit): Vector | undefined {
@@ -79,6 +83,13 @@ export function Spot(bot: Unit): Vector | undefined {
         if (ok && res !== undefined) {
             info = res;
             v = res.spot;
+            lastSdk[pid] = { t: now, info: res };
+        } else {
+            const held = lastSdk[pid];
+            if (held !== undefined && now - held.t <= HOLD_OVER) {
+                info = held.info;
+                v = held.info.spot;
+            }
         }
     }
     spotCache[pid] = { t: now, v, info };

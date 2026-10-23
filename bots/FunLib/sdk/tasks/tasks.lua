@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ c887ebb25b502790279d242c6418f19005483585. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 0f86a463af54928d3fb4b07d594289d64082567e. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1580,11 +1580,11 @@ function ____exports.cooldownLeft(bot)
     local ____opt_41 = ____this_42.GetAttackSpeed
     local windup = ____temp_43 / (____opt_41 and ____opt_41(____this_42) or 1)
     local idle = bot:GetSecondsPerAttack() - windup
-    local since = math.max(
-        0,
-        a.attackClock() - bot:GetLastAttackTime() + 0.01
-    )
-    return since < idle and idle - since or 0
+    local since = a.attackClock() - bot:GetLastAttackTime() + 0.01
+    if since < -0.1 then
+        return 0
+    end
+    return math.max(0, since) < idle and idle - math.max(0, since) or 0
 end
 function ____exports.ownHitTime(bot, creep)
     local ____temp_46 = bot:GetAttackPoint()
@@ -2731,7 +2731,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         if opts.lastHits ~= nil and not opts.lastHits() then
             return false
         end
-        if away() > far then
+        if away() > leash then
             return false
         end
         target = nextLastHit(bot, {within = opts.within})
@@ -2741,10 +2741,16 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         return opts.interruptIf ~= nil and opts.interruptIf() or opts.deadline ~= nil and get().now() >= opts.deadline
     end
     local atSpot = false
+    local passAt
     while true do
         do
             local __continue14
             repeat
+                local t0 = get().now()
+                if passAt == t0 then
+                    coroutine.yield()
+                end
+                passAt = get().now()
                 label(atSpot and "hold" or "walk")
                 local r = __TS__DelegatedYield(holdAt(
                     bot,

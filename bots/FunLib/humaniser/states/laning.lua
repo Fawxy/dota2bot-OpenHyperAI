@@ -143,6 +143,10 @@ function ____exports.RoleOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
 local spotCache = {}
+--- The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
+-- not shuttle to OHA's spot and back between waves.
+local lastSdk = {}
+local HOLD_OVER = 4
 --- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times).
 function ____exports.Spot(bot)
     local pid = bot:GetPlayerID()
@@ -162,6 +166,13 @@ function ____exports.Spot(bot)
         if ok and res ~= nil then
             info = res
             v = res.spot
+            lastSdk[pid] = {t = now, info = res}
+        else
+            local held = lastSdk[pid]
+            if held ~= nil and now - held.t <= HOLD_OVER then
+                info = held.info
+                v = held.info.spot
+            end
         end
     end
     spotCache[pid] = {t = now, v = v, info = info}

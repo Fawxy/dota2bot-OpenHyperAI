@@ -145,6 +145,22 @@ do
 	check("no wave: OHA's spot", s ~= nil and s.x == -777, s and s.x)
 end
 
+
+-- The wave dies: the last SDK spot is kept for a few seconds rather than jumping to OHA's spot and back.
+do
+	local c
+	local s1, bot, H = spotFor(SDK, nil, function() c = creep({ loc = Vector(60, 0) }) end)
+	H.States.SetLaneSpot(bot, function() return Vector(-1500, 0) end)
+	local Laning = require("bots/FunLib/humaniser/states/laning")
+	c.alive = false
+	T = T + 2
+	local s2 = Laning.Spot(bot)
+	check("wave gone 2 s: SDK spot kept", s2 ~= nil and s1 ~= nil and s2.x == s1.x, s2 and s2.x)
+	T = T + 3
+	local s3 = Laning.Spot(bot)
+	check("wave gone 5 s: OHA's spot", s3 ~= nil and s3.x == -1500, s3 and s3.x)
+end
+
 -- Spot = 'oha' (the default) ignores the wave: slice 1's behaviour.
 do
 	local s, bot, H = spotFor({ Enable = true, Own = { laning = { 2 } } }, nil, function() creep({ loc = Vector(60, 0) }) end)

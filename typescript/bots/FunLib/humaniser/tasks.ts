@@ -38,6 +38,17 @@ function CoreCanTake(bot: Unit, creep: Unit): boolean {
     return false;
 }
 
+function mayTake(bot: Unit, creep: Unit): boolean {
+    const [allowed, reason] = AllyLastHit.MayLastHit(bot, creep);
+    if (!allowed) return false;
+    // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
+    if (string.sub(reason, 1, 5) === "take:") return true;
+    const pos = LaneConfig.PositionOf(bot);
+    return pos === undefined || pos <= 2 || !CoreCanTake(bot, creep);
+}
+
+const filterCache: Record<number, { t: number; by: LuaTable<object, boolean> } | undefined> = {};
+
 const adapter: Lib.Adapter = {
     claim: (bot, c) =>
         Intent.Claim(bot as unknown as Unit, {
@@ -50,12 +61,20 @@ const adapter: Lib.Adapter = {
     release: (bot, source, mode) => Intent.Release(bot as unknown as Unit, source, mode as BotMode),
     hold: (bot, tag) => Intent.Hold(bot as unknown as Unit, tag),
     lastHitFilter: (bot, creep) => {
-        const [allowed, reason] = AllyLastHit.MayLastHit(bot as unknown as Unit, creep);
-        if (!allowed) return false;
-        // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
-        if (string.sub(reason, 1, 5) === "take:") return true;
-        const pos = LaneConfig.PositionOf(bot as unknown as Unit);
-        return pos === undefined || pos <= 2 || !CoreCanTake(bot as unknown as Unit, creep as unknown as Unit);
+        // nextLastHit asks for every creep every frame; one answer per bot, creep and frame.
+        const pid = bot.GetPlayerID();
+        const now = DotaTime();
+        let cache = filterCache[pid];
+        if (cache === undefined || cache.t !== now) {
+            cache = { t: now, by: new LuaTable<object, boolean>() };
+            filterCache[pid] = cache;
+        }
+        const by = cache.by;
+        const hit = by.get(creep);
+        if (hit !== undefined) return hit;
+        const allowed = mayTake(bot as unknown as Unit, creep as unknown as Unit);
+        by.set(creep, allowed);
+        return allowed;
     },
     skill: (bot) => Difficulty.GetSkill(bot as unknown as Unit),
     profile: (bot) => {

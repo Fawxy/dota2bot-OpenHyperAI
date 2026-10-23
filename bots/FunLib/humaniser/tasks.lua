@@ -29,6 +29,18 @@ local function CoreCanTake(bot, creep)
     end
     return false
 end
+local function mayTake(bot, creep)
+    local allowed, reason = AllyLastHit.MayLastHit(bot, creep)
+    if not allowed then
+        return false
+    end
+    if string.sub(reason, 1, 5) == "take:" then
+        return true
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    return pos == nil or pos <= 2 or not CoreCanTake(bot, creep)
+end
+local filterCache = {}
 local adapter = {
     claim = function(bot, c)
         local ____Intent_Claim_6 = Intent.Claim
@@ -54,15 +66,21 @@ local adapter = {
     release = function(bot, source, mode) return Intent.Release(bot, source, mode) end,
     hold = function(bot, tag) return Intent.Hold(bot, tag) end,
     lastHitFilter = function(bot, creep)
-        local allowed, reason = AllyLastHit.MayLastHit(bot, creep)
-        if not allowed then
-            return false
+        local pid = bot:GetPlayerID()
+        local now = DotaTime()
+        local cache = filterCache[pid]
+        if cache == nil or cache.t ~= now then
+            cache = {t = now, by = {}}
+            filterCache[pid] = cache
         end
-        if string.sub(reason, 1, 5) == "take:" then
-            return true
+        local by = cache.by
+        local hit = by[creep]
+        if hit ~= nil then
+            return hit
         end
-        local pos = LaneConfig.PositionOf(bot)
-        return pos == nil or pos <= 2 or not CoreCanTake(bot, creep)
+        local allowed = mayTake(bot, creep)
+        by[creep] = allowed
+        return allowed
     end,
     skill = function(bot) return Difficulty.GetSkill(bot) end,
     profile = function(bot)
