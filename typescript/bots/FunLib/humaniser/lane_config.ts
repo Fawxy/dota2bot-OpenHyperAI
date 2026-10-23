@@ -504,5 +504,7 @@ export function PositionOf(unit: Unit): number | undefined {
 }
 
 export function InLaningPhase(): boolean {
+    // OHA's own check reads raw DotaTime(); a scenario clock offset makes our phase reads use Config.Now() instead.
+    if (Config.Now() !== DotaTime()) return Config.Now() < 600;
     return helpers.IsInLaningPhase !== undefined ? helpers.IsInLaningPhase() : DotaTime() < 600;
 }

@@ -231,6 +231,28 @@ Customize.Humaniser = {
         Rotate = { Power = false } },
 }
 
+-- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
+-- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
+Customize.Overrides = { ClockOffset = 0 }
+
+-- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
+-- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
+do
+    local path = GetScriptDirectory() == 'bots' and 'bots.Customize.override' or GetScriptDirectory()..'/Customize/override'
+    local ok, overrides = pcall(require, path)
+    if ok and type(overrides) == 'table' then
+        for key, value in pairs(overrides) do
+            local node, rest = Customize, tostring(key)
+            for part in rest:gmatch('([^.]+)%.') do
+                if type(node[part]) ~= 'table' then node[part] = {} end
+                node = node[part]
+            end
+            node[rest:match('([^.]+)$')] = value
+            print('[Customize] override '..rest..' = '..tostring(value))
+        end
+    end
+end
+
 return Customize
 
 
