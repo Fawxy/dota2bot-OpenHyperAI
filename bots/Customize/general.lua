@@ -229,7 +229,33 @@ Customize.Humaniser = {
         Laning = { Spot = 'oha', LastHit = {} },
         -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
         Rotate = { Power = false } },
+    -- Team game phase (humaniser/states/phase, team slice 12; needs Tasks.Enable): laning, transition, midgame,
+    -- push, defend, late per team, logged as ev=phase. Priors = false is shadow (behaviour unchanged); true makes
+    -- the phase multiply every state score (docs/team/slices/12-game-phase.md). Enable = false: nothing runs.
+    Phase = { Enable = true, Priors = false },
 }
+
+-- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
+-- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
+Customize.Overrides = { ClockOffset = 0 }
+
+-- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
+-- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
+do
+    local path = GetScriptDirectory() == 'bots' and 'bots.Customize.override' or GetScriptDirectory()..'/Customize/override'
+    local ok, overrides = pcall(require, path)
+    if ok and type(overrides) == 'table' then
+        for key, value in pairs(overrides) do
+            local node, rest = Customize, tostring(key)
+            for part in rest:gmatch('([^.]+)%.') do
+                if type(node[part]) ~= 'table' then node[part] = {} end
+                node = node[part]
+            end
+            node[rest:match('([^.]+)$')] = value
+            print('[Customize] override '..rest..' = '..tostring(value))
+        end
+    end
+end
 
 return Customize
 

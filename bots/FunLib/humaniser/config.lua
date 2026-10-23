@@ -62,6 +62,13 @@ ____exports.DEFAULTS = {
         Teams = "allies",
         ShadowTeams = "allies",
         LanePosEvery = 2
+    },
+    Phase = {
+        Enable = false,
+        Priors = false,
+        Interval = 0.5,
+        SeenWindow = 3,
+        ThreatRadius = 900
     }
 }
 local function merge(defaults, overrides)
@@ -108,6 +115,17 @@ function ____exports.Get()
         cached = merged
     end
     return cached
+end
+--- Game time as the humaniser's game-phase logic sees it: DotaTime() plus Customize.Overrides.ClockOffset (scenario
+-- games fake "10:00 in" this way, since the real clock can't be set). Only for "which part of the game is it" reads;
+-- anything synced to world timers (camp spawns, runes, waves) and relative timers must keep raw DotaTime().
+function ____exports.Now()
+    local ____opt_7 = Customize.Overrides
+    if ____opt_7 ~= nil then
+        ____opt_7 = ____opt_7.ClockOffset
+    end
+    local offset = ____opt_7
+    return DotaTime() + (type(offset) == "number" and offset or 0)
 end
 function ____exports.IsEnabled()
     return ____exports.Get().Enable == true

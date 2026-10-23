@@ -70,6 +70,8 @@ export const DEFAULTS = {
     Tasks: { Enable: true, Demo: false, Stack: false } as Record<string, any>,
     // Behaviour-state layer on the SDK's States (humaniser/states). Off: no selection, telemetry or tasks.
     States: { Enable: false, Shadow: true, Own: { laning: [2] }, Teams: "allies", ShadowTeams: "allies", LanePosEvery: 2 } as Record<string, any>,
+    // Team game phase on the SDK's Phase (humaniser/states/phase). Priors off: shadow, logs ev=phase only.
+    Phase: { Enable: false, Priors: false, Interval: 0.5, SeenWindow: 3, ThreatRadius: 900 } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
@@ -101,6 +103,16 @@ export function Get(): HumaniserConfig {
         cached = merged;
     }
     return cached;
+}
+
+/**
+ * Game time as the humaniser's game-phase logic sees it: DotaTime() plus Customize.Overrides.ClockOffset (scenario
+ * games fake "10:00 in" this way, since the real clock can't be set). Only for "which part of the game is it" reads;
+ * anything synced to world timers (camp spawns, runes, waves) and relative timers must keep raw DotaTime().
+ */
+export function Now(): number {
+    const offset = (Customize as any).Overrides?.ClockOffset;
+    return DotaTime() + (typeof offset === "number" ? offset : 0);
 }
 
 export function IsEnabled(): boolean {

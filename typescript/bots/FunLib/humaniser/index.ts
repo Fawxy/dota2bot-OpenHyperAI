@@ -29,7 +29,8 @@ import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
 export { Tasks };
 import * as States from "bots/FunLib/humaniser/states/index";
-export { States };
+import * as Phase from "bots/FunLib/humaniser/states/phase";
+export { States, Phase };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -115,6 +116,7 @@ function drawOverlay(bot: Unit): void {
         // tasks: task runner spike
         if (Tasks.IsActive()) HDebug.Text(bot, "task", Tasks.Describe(bot) ?? "-");
         if (States.IsEnabled()) HDebug.Text(bot, "state", States.Describe(bot) ?? "-");
+        if (Phase.IsEnabled()) HDebug.Text(bot, "gphase", Phase.Describe(bot.GetTeam()) ?? "-");
     }
     HDebug.Draw(bot);
 }
@@ -145,6 +147,8 @@ function tick(this: void, bot: Unit): void {
     Orders.GetFor(bot);
     Intent.Tick(bot);
     Telemetry.Tick(bot, telemetryContext);
+    // The team phase is evaluated before States so its priors are current when they score.
+    Phase.Tick(bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike
@@ -187,6 +191,7 @@ if (Telemetry.GuardsEnabled()) {
     });
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none, FarmAllowedInLaning: no });
     Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no });
+    Telemetry.GuardModule("Phase", Phase, { Tick: none, Describe: none, IsEnabled: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {

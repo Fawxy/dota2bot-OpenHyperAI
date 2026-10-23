@@ -435,6 +435,9 @@ function ____exports.PositionOf(unit)
     return helpers.GetPosition ~= nil and helpers.GetPosition(unit) or nil
 end
 function ____exports.InLaningPhase()
+    if Config.Now() ~= DotaTime() then
+        return Config.Now() < 600
+    end
     local ____temp_2
     if helpers.IsInLaningPhase ~= nil then
         ____temp_2 = helpers.IsInLaningPhase()

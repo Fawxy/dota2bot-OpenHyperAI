@@ -17,6 +17,7 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Config from "bots/FunLib/humaniser/config";
 
 export const SOURCE_PHASE = "transitions:phase";
 export const SOURCE_LOST = "transitions:lostlane";
@@ -125,7 +126,7 @@ function notLaningWhy(bot: Unit): string | undefined {
     const lane = bot.GetAssignedLane();
     if (towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) return "tower";
     const pos = LaneConfig.PositionOf(bot);
-    const now = DotaTime();
+    const now = Config.Now();
     if (pos !== undefined && pos >= 4) {
         if (bot.GetLevel() > cfg.SupportLevel && now >= cfg.SupportFrom && now <= cfg.SupportTo) {
             if (Commands.HasSmoke(bot) || Orders.GetAccepted(bot, "ATTACK") !== undefined || Orders.GetAccepted(bot, "SMOKE") !== undefined) return "smoke";
