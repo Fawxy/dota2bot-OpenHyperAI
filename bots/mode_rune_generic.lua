@@ -135,6 +135,8 @@ function GetDesire()
 		and not J.IsMeepoClone(bot)
 		and not bot:HasModifier('modifier_arc_warden_tempest_double')
 		and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
+		-- A shrine trip run by the state layer (team slice 9) owns this fill: OHA's wisdom logic stands aside.
+		and not J.Humaniser.States.WisdomOwned(bot)
 		then
 			local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]
 
@@ -325,8 +327,12 @@ function Think()
 		return
 	end
 
+	-- Behaviour states (team slice 9): a rune-hosted state body (the pos 4's shrine trip) acts first.
+	if J.Humaniser.States.Step(bot, BOT_MODE_RUNE) then return end
+
 	-- Wisdom Rune
 	if nShrineOfWisdomTeam and DotaTime() >= 7 * 60
+	and not J.Humaniser.States.WisdomOwned(bot)
 	and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
 	then
 		local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]

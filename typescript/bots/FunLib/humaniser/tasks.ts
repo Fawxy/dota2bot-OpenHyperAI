@@ -11,6 +11,10 @@ import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
+import * as Difficulty from "bots/FunLib/humaniser/difficulty";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
+import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Utils from "bots/FunLib/utils";
 
@@ -21,6 +25,36 @@ let lib: Bundle | undefined;
 
 export function Enabled(): boolean {
     return Config.IsEnabled() && Config.Get().Tasks.Enable !== false;
+}
+
+/** An allied core (position 1-3, not the bot) within 1600 that can take the creep itself. */
+function CoreCanTake(bot: Unit, creep: Unit, allies: Unit[]): boolean {
+    for (const ally of allies) {
+        if (ally !== bot && ally.IsAlive()) {
+            const pos = LaneConfig.PositionOf(ally);
+            if (pos !== undefined && pos <= 3 && AllyLastHit.CoreCanReach(ally, creep)) return true;
+        }
+    }
+    return false;
+}
+
+interface FilterFrame {
+    t: number;
+    by: LuaTable<object, boolean>;
+    allies?: Unit[];
+}
+/** One table per bot, cleared on a new frame (no allocation per frame). */
+const filterCache: Record<number, FilterFrame | undefined> = {};
+
+function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
+    const [allowed, reason] = AllyLastHit.MayLastHit(bot, creep);
+    if (!allowed) return false;
+    // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
+    if (string.sub(reason, 1, 5) === "take:") return true;
+    const pos = LaneConfig.PositionOf(bot);
+    if (pos === undefined || pos <= 2) return true;
+    if (f.allies === undefined) f.allies = bot.GetNearbyHeroes(1600, false, BotMode.None);
+    return !CoreCanTake(bot, creep, f.allies);
 }
 
 const adapter: Lib.Adapter = {
@@ -35,9 +69,34 @@ const adapter: Lib.Adapter = {
     release: (bot, source, mode) => Intent.Release(bot as unknown as Unit, source, mode as BotMode),
     hold: (bot, tag) => Intent.Hold(bot as unknown as Unit, tag),
     lastHitFilter: (bot, creep) => {
-        const [allowed] = AllyLastHit.MayLastHit(bot as unknown as Unit, creep);
+        // nextLastHit asks for every creep every frame; one answer per bot, creep and frame.
+        const pid = bot.GetPlayerID();
+        const now = DotaTime();
+        let f = filterCache[pid];
+        if (f === undefined) {
+            f = { t: now, by: new LuaTable<object, boolean>() };
+            filterCache[pid] = f;
+        } else if (f.t !== now) {
+            f.t = now;
+            f.allies = undefined;
+            for (const [k] of f.by) f.by.delete(k);
+        }
+        const by = f.by;
+        const hit = by.get(creep);
+        if (hit !== undefined) return hit;
+        const allowed = mayTake(bot as unknown as Unit, creep as unknown as Unit, f);
+        by.set(creep, allowed);
         return allowed;
     },
+    skill: (bot) => Difficulty.GetSkill(bot as unknown as Unit),
+    profile: (bot) => {
+        const p = Profile.Get(bot as unknown as Unit);
+        return { react: p.reactBase, jitter: p.jitter, aimError: p.aimError, lapse: p.lapseChance };
+    },
+    lastHitError: (bot) => LastHitSkill.ErrorWidth(bot as unknown as Unit),
+    random: () => RandomFloat(0, 1),
+    // GetLastAttackTime is on the GameTime clock.
+    attackClock: () => GameTime(),
     // DotaTime, the clock camp-job plans are timed in; the runner and verbs only ever use differences of it.
     now: () => DotaTime(),
     log: (tag, msg) => HDebug.Log(tag, msg),

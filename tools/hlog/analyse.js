@@ -9,7 +9,7 @@ const path = require('path');
 const { parseLog } = require('./parse');
 const { runChecks } = require('./checks');
 const report = require('./report');
-const { laningMetrics } = require('./metrics');
+const { laningMetrics, stateMetrics, median, INTERRUPT_MODES, BLIP } = require('./metrics');
 
 const LOG_DIR = path.join(os.homedir(), 'Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota');
 const DEFAULT_LOG = path.join(LOG_DIR, 'console.log');
@@ -39,6 +39,9 @@ const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
   --snaps              include 1 s snapshots in timelines
   --json               dump the parsed game as JSON
   --laning [--until T] per-position laning metrics to T (default 10:00), as compare.js computes them
+  --states [--from T] [--until T]  behaviour states per bot, 0:00 (default) to T (default 10:00): seconds per state, switches/min,
+                       agreement of the state's host mode with the active mode outside interrupts,
+                       task starts, restart lag, end reasons, lane_pos distance (ev=state*, lane_pos, snap)
 
 default log: the newest console.<matchid>.log in ${LOG_DIR}, else ${DEFAULT_LOG}`;
 
@@ -110,6 +113,47 @@ function laningTable(game, until) {
     return head + '\n' + report.table(rows);
 }
 
+const STATE_ORDER = ['laning', 'pull', 'stack', 'rotate', 'farm', 'none'];
+const AGREE_BAR = 85;
+const SWITCH_BAR = 1.5;
+
+function fmt(v, digits = 0) {
+    return v === undefined || Number.isNaN(v) ? '-' : v.toFixed(digits);
+}
+
+function statesTable(game, until, from = 0) {
+    const team = t => (t === 2 ? 'rad' : t === 3 ? 'dire' : String(t));
+    const rows = [['team', 'pos', 'lane', 'player', 'states (s)', 'sw/min', 'agree%', `agree%>${BLIP}s`, 'cmp s', 'intr s', 'starts', 'lag max', 'gap med', 'ends', 'laneD med']];
+    const notes = [];
+    const ms = stateMetrics(game, { until, from }).sort((a, b) => (a.team === b.team ? a.pid - b.pid : a.team - b.team));
+    if (ms.length === 0) return 'no ev=state lines (States off, or a build without the state layer)';
+    for (const r of ms) {
+        const secs = STATE_ORDER.filter(s => r.secs[s] > 0).concat(Object.keys(r.secs).filter(s => !STATE_ORDER.includes(s)));
+        const agree = r.compareSec > 0 ? (100 * r.agreeSec) / r.compareSec : undefined;
+        const agreeLong = r.compareLongSec > 0 ? (100 * r.agreeLongSec) / r.compareLongSec : undefined;
+        const swm = r.minutes > 0 ? r.switches / r.minutes : undefined;
+        const flag = (agree !== undefined && agree < AGREE_BAR ? '!' : '') + (swm !== undefined && swm > SWITCH_BAR ? '~' : '');
+        const ends = Object.entries(r.ends).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ');
+        const laneD = r.laneDHold.length > 0 ? `${fmt(median(r.laneDHold))} hold` : fmt(median(r.laneD));
+        rows.push([
+            team(r.team), r.pos ?? '-', playedLane(game.bots[r.pid]), `${r.hero}[${r.pid}]${flag}`,
+            secs.map(s => `${s} ${fmt(r.secs[s])}`).join(' '), fmt(swm, 2), fmt(agree, 1), fmt(agreeLong, 1), fmt(r.compareSec), fmt(r.interruptSec),
+            r.starts, r.restartLags.length > 0 ? fmt(Math.max(...r.restartLags), 1) : '-', fmt(median(r.restartGaps), 1), ends || '-', laneD,
+        ]);
+        const worst = Object.entries(r.disagree).sort((a, b) => b[1] - a[1]).slice(0, 4);
+        if (worst.length > 0) notes.push(`  ${r.hero}[${r.pid}]: ${worst.map(([k, v]) => `${k} ${fmt(v)}s`).join(', ')}`);
+    }
+    const head = `states ${from}s to ${Math.floor(until / 60)}:${String(until % 60).padStart(2, '0')} (agree% = state host == active mode, outside interrupts; bar >= ${AGREE_BAR} '!', switches <= ${SWITCH_BAR}/min '~')`;
+    const foot = [
+        `interrupts (left out of agree%): ${[...INTERRUPT_MODES].join(', ')}`,
+        `agree%>${BLIP}s leaves out active-mode episodes shorter than ${BLIP} s (farm/team_roam last-hit blips)`,
+        'hosts: laning=laning, pull/stack/farm=farm, rotate=rune|roam; lag = restart after the host mode came back (after a preempt); gap = since the task ended',
+        'largest disagreements (state/mode):',
+        ...notes,
+    ];
+    return head + '\n' + report.table(rows) + '\n' + foot.join('\n');
+}
+
 function main(argv) {
     const opts = parseArgs(argv);
     if (opts.help) {
@@ -140,6 +184,10 @@ function main(argv) {
         console.log(JSON.stringify(game, null, 1));
         return 0;
     }
+    if (opts.states) {
+        console.log(statesTable(game, opts.until !== undefined ? parseTime(opts.until) : 600, opts.from !== undefined ? parseTime(opts.from) : 0));
+        return 0;
+    }
     if (opts.laning) {
         console.log(laningTable(game, opts.until !== undefined ? parseTime(opts.until) : 600));
         return 0;
@@ -162,4 +210,4 @@ function main(argv) {
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { main, parseTime, latestLog, LOG_DIR };
+module.exports = { main, parseTime, latestLog, LOG_DIR, statesTable };

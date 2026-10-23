@@ -4,22 +4,32 @@
  * host Think() hook and telemetry. Off (Enable = false) means no selection, no telemetry and no tasks.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
+import * as Shadow from "bots/FunLib/humaniser/states/shadow";
+import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
+import * as Rotate from "bots/FunLib/humaniser/states/rotate";
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as Farm from "bots/FunLib/humaniser/states/farm";
+import * as Gank from "bots/FunLib/humaniser/states/gank";
+import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 
 export interface StatesSettings {
     Enable: boolean;
-    /** Choose and log states for every bot in Teams; own only what Own lists. */
+    /** Choose and log states for every bot in ShadowTeams (and Teams); own only what Own lists. */
     Shadow: boolean;
     /** State name -> positions (J.GetPosition) whose body the SDK runs. */
     Own: Record<string, number[]>;
-    /** "allies": allies of a human only (where OHA's Lua laning Think runs); "all": every bot. */
+    /** Who may own: "allies" = allies of a human only (where OHA's Lua laning Think runs); "all": every bot. */
     Teams: "allies" | "all";
+    /** Who is shadowed (states chosen and logged, nothing owned beyond Teams): "allies" or "all". */
+    ShadowTeams: "allies" | "all";
     /** Seconds between `lane_pos` telemetry lines per bot in the laning state. */
     LanePosEvery: number;
 }
@@ -39,8 +49,12 @@ export function IsEnabled(): boolean {
     return Config.IsEnabled() && Settings().Enable === true && Tasks.Enabled();
 }
 
-function teamApplies(bot: Unit): boolean {
+function ownTeam(bot: Unit): boolean {
     return Settings().Teams === "all" || Difficulty.IsAllyOfHuman(bot);
+}
+
+function shadowTeam(bot: Unit): boolean {
+    return Settings().Shadow === true && (Settings().ShadowTeams === "all" || ownTeam(bot));
 }
 
 function ownsAny(): boolean {
@@ -52,10 +66,13 @@ function ownsAny(): boolean {
 
 /** Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think). */
 export function MayOwn(bot: Unit): boolean {
-    return IsEnabled() && teamApplies(bot) && ownsAny();
+    return IsEnabled() && ownTeam(bot) && ownsAny();
 }
 
+// Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
+// Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
+    if (!ownTeam(bot)) return false;
     const list = ownList(state);
     if (list === undefined) return false;
     const pos = LaneConfig.PositionOf(bot);
@@ -63,8 +80,45 @@ function owns(bot: Unit, state: string): boolean {
     return false;
 }
 
+type SpecFactory = (this: void, bot: Unit) => Lib.StateSpec;
+
+/** States by name in registration order; registering an existing name replaces it in place. */
+const registry: { name: string; make: SpecFactory }[] = [];
+let registryVersion = 0;
+
+export function Register(name: string, make: SpecFactory): void {
+    registryVersion += 1;
+    for (const r of registry) {
+        if (r.name === name) {
+            r.make = make;
+            return;
+        }
+    }
+    registry.push({ name, make });
+}
+
+export function Registered(): string[] {
+    return registry.map((r) => r.name);
+}
+
+Register(Laning.NAME, (bot) => Laning.Spec(bot));
+for (const [name, make] of Shadow.SPECS) Register(name, make);
+// Owned job states (team slices 7-9) replace the shadow specs of the same name; unowned bots keep the shadow scores.
+Register(CampJob.PULL, (bot) => CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore));
+Register(CampJob.STACK, (bot) => CampJob.Spec(bot, CampJob.STACK, owns, Shadow.StackScore));
+Register(Rotate.NAME, (bot) => Rotate.Spec(bot, owns, Shadow.RotateScore));
+Register(Farm.NAME, (bot) => Farm.Spec(bot, Shadow.FarmScore));
+Register(Gank.NAME, (bot) => Gank.Spec(bot, owns));
+
+// The SDK treats a scorer error as "not applicable" and only logs it under Debug; with guards on it becomes an
+// ev=lua_error like any other hook's, so a scorer failing on some bot (e.g. a Dire one) shows in the error count.
+function guarded(spec: Lib.StateSpec): Lib.StateSpec {
+    if (Telemetry.GuardsEnabled()) spec.score = Telemetry.Guard(`States.score.${spec.name}`, spec.score, () => undefined);
+    return spec;
+}
+
 let installed = false;
-const defined: Record<number, boolean | undefined> = {};
+const defined: Record<number, number | undefined> = {};
 const lanePosAt: Record<number, number | undefined> = {};
 
 function lib(): ReturnType<typeof Tasks.Loaded> {
@@ -72,7 +126,13 @@ function lib(): ReturnType<typeof Tasks.Loaded> {
     if (l === undefined || l.States === undefined) return undefined;
     if (!installed) {
         installed = true;
-        l.States.SetOwned((b, state) => owns(b as unknown as Unit, state));
+        // `farm` is owned only while an SDK trip runs: a posture owned all game would start a task the farm mode
+        // never steps outside trips, and the runner would cancel and restart it every second (pre-flight H1).
+        l.States.SetOwned((b, state) => {
+            const u = b as unknown as Unit;
+            if (!owns(u, state)) return false;
+            return state !== Farm.NAME || FarmPattern.Live(u)?.sdk === true;
+        });
     }
     return l;
 }
@@ -86,6 +146,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
     lanePosAt[pid] = now;
     const spot = Laning.Spot(bot);
     const task = Tasks.Current(bot);
+    const info = Laning.SpotInfo(bot);
     Telemetry.Event("lane_pos", [
         ["pid", pid],
         ["d", spot !== undefined ? math.floor(GetUnitToLocationDistance(bot, spot)) : undefined],
@@ -93,22 +154,65 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["running", cur.running],
         ["label", cur.running ? task?.label : undefined],
         ["mode", bot.GetActiveMode()],
+        ["spot", info !== undefined ? info.anchor : "oha"],
+        ["pushed", info?.pushed],
+        ["hph", LaneMetrics.HeroLost(bot)],
     ]);
 }
 
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
-    if (!IsEnabled() || !teamApplies(bot)) return;
-    if (Settings().Shadow !== true && !ownsAny()) return;
+    if (!IsEnabled()) return;
+    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny())) return;
     const l = lib();
     if (l === undefined) return;
     const pid = bot.GetPlayerID();
-    if (defined[pid] !== true) {
-        defined[pid] = true;
-        l.States.define(bot as unknown as Lib.TaskUnit, [Laning.Spec(bot)]);
+    if (defined[pid] !== registryVersion) {
+        defined[pid] = registryVersion;
+        l.States.define(
+            bot as unknown as Lib.TaskUnit,
+            registry.map((r) => guarded(r.make(bot))),
+        );
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
+    LaneMetrics.Tick(bot);
     lanePos(bot, l);
+}
+
+/** Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own). */
+export function Owns(bot: Unit, state: string): boolean {
+    return IsEnabled() && owns(bot, state);
+}
+
+/** Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body. */
+function stepFarm(bot: Unit, names: Record<string, boolean>): boolean {
+    const cur = lib()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && names[cur.name] === true && Step(bot, BotMode.Farm);
+}
+
+const FARM_STATES: Record<string, boolean> = { [Farm.NAME]: true };
+const CAMP_STATES: Record<string, boolean> = { [CampJob.STACK]: true, [CampJob.PULL]: true };
+
+FarmPattern.SetExecutor({
+    Owns: (bot) => Owns(bot, Farm.NAME) && lib() !== undefined,
+    Step: (bot) => stepFarm(bot, FARM_STATES),
+});
+
+CampJobs.SetExecutor({
+    Owns: (bot, job) => {
+        const state = CampJob.StateOf(job);
+        return state !== undefined && Owns(bot, state) && lib() !== undefined;
+    },
+    Step: (bot) => stepFarm(bot, CAMP_STATES),
+});
+
+/**
+ * mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
+ * team (an owned trip is on the shrine this fill).
+ */
+export function WisdomOwned(bot: Unit): boolean {
+    if (!IsEnabled()) return false;
+    return (Owns(bot, Rotate.NAME) && Rotate.OnTrip(bot)) || Rotate.ShrineTaken(bot.GetTeam());
 }
 
 /** First thing in a host mode's Think() step it replaces: true when the state's body acted this frame. */
@@ -116,6 +220,24 @@ export function Step(bot: Unit, mode: number): boolean {
     if (!IsEnabled()) return false;
     const l = lib();
     return l !== undefined && l.States.Step(bot as unknown as Lib.TaskUnit, mode);
+}
+
+/** True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own. */
+export function BodyLastHits(bot: Unit): boolean {
+    if (!IsEnabled() || !Laning.OwnsLastHit(bot)) return false;
+    const cur = Tasks.Loaded()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
+}
+
+/**
+ * True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
+ * skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
+ * that never landed, `missed` with the creep alive seconds later).
+ */
+export function BodyBusy(bot: Unit): boolean {
+    if (!BodyLastHits(bot)) return false;
+    const label = Tasks.Current(bot)?.label;
+    return label === "lasthit" || label === "deny";
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */

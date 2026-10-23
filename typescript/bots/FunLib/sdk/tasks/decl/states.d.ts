@@ -1,6 +1,6 @@
 /** @noSelfInFile */
 import { TaskFactory } from "./runner";
-import { TaskUnit } from "./types";
+import { Result, TaskUnit } from "./types";
 /** A posture holds while chosen and never ends by itself; a job has a goal and ends ok or with a reason. */
 export type StateKind = "posture" | "job";
 export interface StateSpec {
@@ -18,6 +18,13 @@ export interface StateSpec {
     /** Score in [0, 1], or undefined when the state does not apply now. Errors count as undefined. */
     score(this: void, bot: TaskUnit): number | undefined;
     body: TaskFactory;
+    /** Passed to the task: a returned string ends it `interrupted` with that message (e.g. a job's safety checks). */
+    guard?: (this: void) => string | undefined;
+    /** Called once per task end (any reason, including preempts that the layer restarts), after the layer's own. */
+    onEnd?: (this: void, result: Result, info: {
+        label?: string;
+        steps: number;
+    }) => void;
 }
 export interface StatesConfig {
     /** Seconds between selections. */
@@ -39,6 +46,12 @@ export declare function SetOwned(fn: (this: void, bot: TaskUnit, state: string) 
 /** Registers (or replaces) a bot's states. The current state is kept if a spec of that name remains. */
 export declare function define(bot: TaskUnit, specs: StateSpec[]): void;
 export declare function Forget(bot: TaskUnit): void;
+type Prior = (this: void, bot: TaskUnit, state: string, raw: number) => number | undefined;
+/**
+ * A prior on every raw score (e.g. `Phase.Prior()`), applied before stickiness and the job-break check; undefined
+ * from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
+ */
+export declare function SetPrior(fn: Prior | undefined): void;
 /** Every frame from the host's global tick, before the runner's Tick. Selects at `interval`, starts and restarts. */
 export declare function Tick(bot: TaskUnit): void;
 /** From the host mode's Think(): steps the current owned state's task when it runs on `host`; false otherwise. */
@@ -53,3 +66,4 @@ export declare function Current(bot: TaskUnit): {
     running: boolean;
     starts: number;
 } | undefined;
+export {};

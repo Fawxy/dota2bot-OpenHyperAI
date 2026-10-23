@@ -101,9 +101,9 @@ export const DEFAULTS = {
 
 export type FarmSettings = typeof DEFAULTS;
 
-type Phase = "go" | "farm" | "stack" | "return";
+export type Phase = "go" | "farm" | "stack" | "return";
 
-interface Trip {
+export interface Trip {
     team: number;
     lane: Lane;
     campIdx: number;
@@ -124,6 +124,23 @@ interface Trip {
     estimate?: number;
     /** When a visible enemy hero first came within EnemyRadius; cleared once none is. */
     enemySince?: number;
+    /** Executed by the behaviour-state SDK body (states/farm.ts) instead of step(), decided at the start. */
+    sdk?: boolean;
+    /** Farm Think frames the SDK body acted in, and frames step() ran instead. */
+    sdkFrames?: number;
+    legacyFrames?: number;
+}
+
+/** The state layer's trip executor (states/index.ts): `Owns` decides at a trip's start, `Step` runs the body from Think. */
+export interface Executor {
+    Owns(this: void, bot: Unit): boolean;
+    Step(this: void, bot: Unit): boolean;
+}
+
+let executor: Executor | undefined;
+
+export function SetExecutor(e: Executor | undefined): void {
+    executor = e;
 }
 
 /** Why PlanCamp found nothing: open camps in range, and the shortest farm trip among them against the window. */
@@ -254,6 +271,15 @@ function sharesPlayerID(bot: Unit): boolean {
 
 const IDLE_MODES: Record<number, boolean> = { [BotMode.Laning]: true, [BotMode.Farm]: true, [BotMode.None]: true };
 const FOCUS_MODES: BotMode[] = [BotMode.Ward, BotMode.SideShop, BotMode.SecretShop];
+
+/** StartGate's lasting part (the unit, a core position, its level): why this bot is not a farmer, or undefined. */
+export function Eligible(bot: Unit): string | undefined {
+    if (!bot.IsHero() || bot.IsIllusion() || sharesPlayerID(bot) || string.sub(bot.GetUnitName(), 1, 14) !== "npc_dota_hero_") return "unit";
+    const pos = eligiblePosition(bot);
+    if (pos === undefined) return "not-core";
+    if (bot.GetLevel() < (Settings().MinLevel[pos] ?? Settings().MinLevel[1])) return "level";
+    return undefined;
+}
 
 /** Why the bot may not start a trip now, or undefined. */
 export function StartGate(bot: Unit, now: number): string | undefined {
@@ -499,6 +525,7 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, [
         return $multi(diag.open === 0 ? "no-camp" : "no-fit", [["lane", lane], ["lvl", bot.GetLevel()], ["window", fmt(deadline - now)], ["best", fmt(diag.bestTotal)], ["open", diag.open], ["pace", string.format("%.2f", PaceFactor(bot))]]);
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };
     if (!adopt(bot, trip, plan)) return $multi("stack-start", [["camp", plan.campIdx]]);
+    if (executor !== undefined && executor.Owns(bot)) trip.sdk = true;
     trips[bot.GetPlayerID()] = trip;
     log(bot, "farm_trip_start", trip, [["lane", lane], ["pace", string.format("%.2f", PaceFactor(bot))]]);
     return $multi(undefined, []);
@@ -528,6 +555,7 @@ function end(bot: Unit, trip: Trip, why: string): void {
     if (why === "enemy") enemyEndAt[bot.GetPlayerID()] = DotaTime();
     releaseClaims(bot);
     const extra: [string, any][] = [["why", why], ["camps", trip.camps], ["secs", fmt(DotaTime() - trip.startedAt)]];
+    if (trip.sdk !== undefined) extra.push(["sdk", trip.sdkFrames ?? 0], ["legacy", trip.legacyFrames ?? 0]);
     if (why === "preempted") {
         const to = bot.GetActiveMode();
         extra.push(["to", HDebug.ModeName(to)]);
@@ -720,8 +748,38 @@ export function Think(bot: Unit): boolean {
     const now = DotaTime();
     trip.lastThinkAt = now;
     overlay(bot, trip, now);
+    if (trip.sdk === true && executor !== undefined && executor.Step(bot)) {
+        trip.sdkFrames = (trip.sdkFrames ?? 0) + 1;
+        return true;
+    }
+    if (trip.sdk === true) trip.legacyFrames = (trip.legacyFrames ?? 0) + 1;
     return step(bot, trip, now);
 }
+
+/** A trip's next camp after `why` (cleared, empty, stacked), else the walk back; true when it chained a camp. */
+function planNext(bot: Unit, trip: Trip, now: number, why: string): boolean {
+    const plan = PlanCamp(bot, bot.GetLocation(), GetLaneFrontLocation(trip.team, trip.lane, 0), now, trip.deadline);
+    if (plan !== undefined && adopt(bot, trip, plan)) {
+        log(bot, "farm_trip_next", trip, [["after", why]]);
+        return true;
+    }
+    toReturn(bot, trip, now, why);
+    return false;
+}
+
+/** What an SDK trip body (states/farm.ts) needs of the trip's planning and bookkeeping: everything but step(). */
+export const Exec = {
+    /** The camp was cleared (`fought`) or found empty: learn the pace, record it, chain the next camp or walk back. */
+    CampDone: (bot: Unit, trip: Trip, fought: boolean): boolean => {
+        const now = DotaTime();
+        if (fought && trip.farmFrom !== undefined && trip.estimate !== undefined) learnPace(bot, now - trip.farmFrom, trip.estimate);
+        markCleared(trip.team, trip.campIdx, now);
+        Stacking.ClearStack(trip.campIdx);
+        return planNext(bot, trip, now, fought ? "cleared" : "empty");
+    },
+    Stacked: (bot: Unit, trip: Trip): boolean => planNext(bot, trip, DotaTime(), "stacked"),
+    ToReturn: (bot: Unit, trip: Trip, why: string): void => toReturn(bot, trip, DotaTime(), why),
+};
 
 /**
  * Farm lost the round. The trip is kept: a blip (team_roam's neutral last hit) hands farm back within PreemptAfter,
@@ -737,5 +795,10 @@ export function Abort(bot: Unit, why: string): void {
 }
 
 export function Current(bot: Unit): Readonly<Trip> | undefined {
+    return trips[bot.GetPlayerID()];
+}
+
+/** The live trip itself, for its SDK executor (states/farm.ts). */
+export function Live(bot: Unit): Trip | undefined {
     return trips[bot.GetPlayerID()];
 }

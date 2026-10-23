@@ -60,6 +60,13 @@ export interface HoldOpts {
     scatter?: number;
     /** Adapter hold tag reported every frame the bot stands still. */
     hold?: string;
+    /**
+     * Idle steps: each new spot is a step of [min, max] units from where the bot stands (kept within `scatter`
+     * of the point), instead of a random offset from the point, so a waiting laner shuffles rather than freezes.
+     */
+    step?: [number, number];
+    /** How far the point must move to force a new spot before `repath`. Default tolerance / 2. */
+    follow?: number;
     deadline?: number;
     interruptIf?: (this: void) => boolean;
 }

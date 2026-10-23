@@ -18,6 +18,11 @@ export interface Vec {
  */
 export interface TaskUnit {
     GetPlayerID(): number;
+    GetTeam?(): number;
+    /** Degrees, 0 = east, 90 = north. */
+    GetFacing?(): number;
+    /** +- spread of the base attack damage around GetAttackDamage's average. */
+    GetBaseDamageVariance?(): number;
     GetLocation(): Vec;
     IsAlive(): boolean;
     GetActiveMode(): number;
@@ -71,6 +76,7 @@ export interface TaskAbility {
 export interface TaskAttacker {
     GetLocation(): Vec;
     IsAlive(): boolean;
+    GetTeam?(): number;
     IsNull?(): boolean;
     CanBeSeen?(): boolean;
     GetAttackTarget?(): unknown;
