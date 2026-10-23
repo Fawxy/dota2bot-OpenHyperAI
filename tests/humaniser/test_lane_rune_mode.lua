@@ -75,6 +75,7 @@ local function load(contest, opts)
 			RotationYield = function() end,
 			HoldsRune = function() return false end,
 		},
+		States = { Step = function() return false end, WisdomOwned = function() return false end },
 	}
 	local J = setmetatable({
 		GetHP = function() return 1 end,

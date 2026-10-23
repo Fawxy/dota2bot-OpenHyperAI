@@ -222,7 +222,7 @@ Customize.Humaniser = {
     -- Behaviour states (humaniser/states, on the SDK's States; needs Tasks.Enable). Enable = false restores OHA
     -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions the SDK body runs
     -- (replaces the default list). Teams: 'allies' (allies of a human) or 'all'.
-    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 } }, Teams = 'allies' },
+    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 } }, Teams = 'allies' },
 }
 
 return Customize

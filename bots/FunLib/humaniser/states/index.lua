@@ -36,6 +36,7 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
+local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 function ____exports.Settings()
     return Config.Get().States
@@ -164,7 +165,8 @@ function ____exports.Tick(bot)
             {
                 Laning.Spec(bot),
                 CampJob.Spec(bot, CampJob.STACK, owns),
-                CampJob.Spec(bot, CampJob.PULL, owns)
+                CampJob.Spec(bot, CampJob.PULL, owns),
+                Rotate.Spec(bot)
             }
         )
     end
@@ -182,6 +184,14 @@ CampJobs.SetExecutor({
     end,
     Step = function(bot) return ____exports.Step(bot, BotMode.Farm) end
 })
+--- mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
+-- team (an owned trip is on the shrine this fill).
+function ____exports.WisdomOwned(bot)
+    if not ____exports.IsEnabled() then
+        return false
+    end
+    return ____exports.Owns(bot, Rotate.NAME) and Rotate.OnTrip(bot) or Rotate.ShrineTaken(bot:GetTeam())
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)

@@ -12,6 +12,7 @@ import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
+import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 
 export interface StatesSettings {
@@ -111,6 +112,7 @@ export function Tick(bot: Unit): void {
             Laning.Spec(bot),
             CampJob.Spec(bot, CampJob.STACK, owns),
             CampJob.Spec(bot, CampJob.PULL, owns),
+            Rotate.Spec(bot),
         ]);
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
@@ -129,6 +131,15 @@ CampJobs.SetExecutor({
     },
     Step: (bot) => Step(bot, BotMode.Farm),
 });
+
+/**
+ * mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
+ * team (an owned trip is on the shrine this fill).
+ */
+export function WisdomOwned(bot: Unit): boolean {
+    if (!IsEnabled()) return false;
+    return (Owns(bot, Rotate.NAME) && Rotate.OnTrip(bot)) || Rotate.ShrineTaken(bot.GetTeam());
+}
 
 /** First thing in a host mode's Think() step it replaces: true when the state's body acted this frame. */
 export function Step(bot: Unit, mode: number): boolean {
