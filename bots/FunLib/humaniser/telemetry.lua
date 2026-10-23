@@ -8,8 +8,22 @@ local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
-____exports.SCHEMA = 1
+____exports.SCHEMA = 2
+local BUILD = (function()
+    local ok, info = pcall(
+        require,
+        GetScriptDirectory() .. "/FunLib/humaniser/build_info"
+    )
+    local ____temp_0
+    if ok and type(info) == "table" and type(info.build) == "string" then
+        ____temp_0 = info.build
+    else
+        ____temp_0 = "unknown"
+    end
+    return ____temp_0
+end)()
 ____exports.DEFAULTS = {
     Enable = false,
     SnapshotInterval = 1,
@@ -153,15 +167,15 @@ local function reportError(where, err, tb)
     end
     stat.at = now
     local okPid, pid = pcall(currentPID)
-    local ____exports_Event_1 = ____exports.Event
-    local ____okPid_0
+    local ____exports_Event_2 = ____exports.Event
+    local ____okPid_1
     if okPid then
-        ____okPid_0 = pid
+        ____okPid_1 = pid
     else
-        ____okPid_0 = nil
+        ____okPid_1 = nil
     end
-    ____exports_Event_1("lua_error", {
-        {"pid", ____okPid_0},
+    ____exports_Event_2("lua_error", {
+        {"pid", ____okPid_1},
         {"where", where},
         {"n", stat.n},
         {"msg", msg},
@@ -192,13 +206,13 @@ function ____exports.Guard(where, fn, fallback)
     end
     local function handler(err)
         local ok, t = pcall(shortTrace)
-        local ____ok_2
+        local ____ok_3
         if ok then
-            ____ok_2 = t
+            ____ok_3 = t
         else
-            ____ok_2 = nil
+            ____ok_3 = nil
         end
-        tb = ____ok_2
+        tb = ____ok_3
         return err
     end
     local function fail(b1, b2, b3, b4, b5, b6, err)
@@ -325,8 +339,8 @@ function ____exports.HandleChat(team, msg)
     if marksByTeam[team] == nil then
         marksByTeam[team] = {}
     end
-    local ____marksByTeam_team_3 = marksByTeam[team]
-    ____marksByTeam_team_3[#____marksByTeam_team_3 + 1] = {
+    local ____marksByTeam_team_4 = marksByTeam[team]
+    ____marksByTeam_team_4[#____marksByTeam_team_4 + 1] = {
         by = msg.pid,
         text = note,
         t = DotaTime(),
@@ -389,6 +403,14 @@ local function unitFields(unit)
             stats:GetDenies()
         },
         {
+            "kills",
+            GetHeroKills ~= nil and GetHeroKills(unit:GetPlayerID()) or nil
+        },
+        {
+            "deaths",
+            GetHeroDeaths ~= nil and GetHeroDeaths(unit:GetPlayerID()) or nil
+        },
+        {
             "tgt",
             target ~= nil and target ~= nil and target:GetUnitName() or nil
         }
@@ -448,6 +470,11 @@ local function maybeProfile(bot, s)
                 {
                     "ally",
                     Difficulty.IsAllyOfHuman(bot)
+                },
+                {"build", BUILD},
+                {
+                    "pos",
+                    LaneConfig.PositionOf(bot)
                 }
             }
         )
@@ -489,7 +516,12 @@ local function maybeProfile(bot, s)
             {"lapse", p.lapseChance},
             {"lapseMax", cfg.LapseMaxExtra},
             {"minReact", cfg.MinReact},
-            {"deference", p.deference}
+            {"deference", p.deference},
+            {"build", BUILD},
+            {
+                "pos",
+                LaneConfig.PositionOf(bot)
+            }
         }
     )
 end
@@ -634,15 +666,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue87
+                local __continue88
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue87 = true
+                        __continue88 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue87 = true
+                        __continue88 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -679,9 +711,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue87 = true
+                    __continue88 = true
                 until true
-                if not __continue87 then
+                if not __continue88 then
                     break
                 end
             end

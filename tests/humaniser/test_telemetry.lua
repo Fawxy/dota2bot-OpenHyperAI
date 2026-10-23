@@ -274,3 +274,31 @@ do
 end
 
 finish()
+
+-- Before/after runs: the bot line names the build and the position; snapshots carry kills and deaths.
+do
+	package.preload["bots/FunLib/humaniser/build_info"] = function() return { build = "abc1234+dirty" } end
+	local H = fresh()
+	package.preload["bots/FunLib/humaniser/build_info"] = nil
+	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
+	GetHeroKills = function(pid) return pid == 1 and 2 or 0 end
+	GetHeroDeaths = function(pid) return pid == 1 and 3 or 0 end
+	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })
+	b.pos = 4
+	-- lane_world.lua (loaded above) replaces MakeUnit's metatable, so the counters the snapshot reads are set here.
+	b.GetLastHits = function() return 0 end
+	b.GetDenies = function() return 0 end
+	b.GetMana = function() return 50 end
+	b.GetMaxMana = function() return 100 end
+	b.GetGold = function() return 600 end
+	b.GetAttackTarget = function() return nil end
+	T = 0
+	H.Telemetry.Tick(b)
+	local bot = events("bot")[1]
+	check("bot line carries the build", bot and field(bot, "build") == "abc1234+dirty", bot)
+	check("bot line carries the position", bot and field(bot, "pos") == "4", bot)
+	check("bot line is schema 2", bot and field(bot, "schema") == "2", bot)
+	local snap = events("snap")[1]
+	check("snap carries kills and deaths", snap and field(snap, "kills") == "2" and field(snap, "deaths") == "3", snap)
+	GetHeroKills, GetHeroDeaths = nil, nil
+end

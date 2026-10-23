@@ -69,3 +69,4 @@ game/Customize
 
 tools/replay-mining/replays/
 tools/replay-mining/out/
+bots/FunLib/humaniser/build_info.lua

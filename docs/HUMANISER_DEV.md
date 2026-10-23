@@ -155,6 +155,25 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 
 **Hands-off regression run:** an all-bot lobby (spectate, `host_timescale 4`, about 15 minutes of game time), then `analyse.js --check`. That covers errors, stalls, perception bounds, thrash and freezes. Etiquette, orders and pings need a human on the team.
 
+### Before/after runs
+To show that a behaviour change helps, compare builds on the same lineup, not just eyeballing one game.
+
+- **Build stamp:** `npm run build` writes `bots/FunLib/humaniser/build_info.lua` (git-ignored) with the commit's short sha, plus `+dirty` if there are uncommitted changes. Every `bot` line carries `build=` and `pos=`, and every snapshot carries the scoreboard `kills=`/`deaths=` (snapshots stop while a bot is dead). **Commit first, then build.** The `bots` symlink is shared between worktrees and other sessions re-point it, so trust a game only when `build=` names the commit you meant.
+- **Arms:**
+  - **A (defaults):** `general.lua` as committed.
+  - **B (owned laning):** A with `Lane.OwnLaningThink = 'all'`, so OHA's laning `Think()` (etiquette, last-hit skill, in-lane techniques) runs for every bot.
+- **Lineup:** for test runs only, set `Customize.Radiant_Heros = { 'npc_dota_hero_dragon_knight', 'npc_dota_hero_medusa', 'npc_dota_hero_magnataur', 'npc_dota_hero_jakiro', 'npc_dota_hero_shadow_demon' }` and `Customize.Dire_Heros = { 'npc_dota_hero_troll_warlord', 'npc_dota_hero_queenofpain', 'npc_dota_hero_venomancer', 'npc_dota_hero_mirana', 'npc_dota_hero_ogre_magi' }` (pos 1-5 in order). Don't commit the lineup.
+- **Per game:**
+  1. all-bot lobby;
+  2. `host_timescale 4`;
+  3. run to at least 11:00 game time;
+  4. `node tools/hlog/analyse.js --list` should show the game, and `--check` should have no script errors.
+- **Count:** 4 games per arm per build. Laning varies a lot between bot games; a delta the tool marks `noisy` (under two pooled standard errors) is not shown. Add games or call it no change.
+- **Compare:** `node tools/hlog/compare.js --builds <base>,<cand>` reads every `console.*.log` in the Dota folder (or `--dir`), takes the games whose `build` matches and that reach `--until` (default 10:00), and prints per-position rows: `lh dn kills deaths retreatSec retreatHealthySec retreatBy:<claim source> cautiousSec commits commitKills commitSec trades pullsStarted stacksStarted rotations aggroWithLastHit`. Use `--base <logs> --cand <logs>` to compare explicit files instead.
+
+#### Results to date
+_Baseline not recorded yet._
+
 ## Humaniser core (task 02): design notes
 All of these are built to work whichever way the shared-state check turns out.
 

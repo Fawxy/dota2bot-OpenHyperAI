@@ -13,9 +13,17 @@ import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Utils from "bots/FunLib/utils";
 
-export const SCHEMA = 1;
+export const SCHEMA = 2;
+
+// Written by typescript/post-process/build-info.js at build time (git sha, "+dirty" for local changes); a log names the
+// build it ran, since the Dota bots symlink can point at any worktree.
+const BUILD: string = (() => {
+    const [ok, info] = pcall(require, GetScriptDirectory() + "/FunLib/humaniser/build_info");
+    return ok && type(info) === "table" && type((info as any).build) === "string" ? (info as any).build : "unknown";
+})();
 
 export const DEFAULTS = {
     Enable: false,
@@ -311,6 +319,9 @@ function unitFields(unit: Unit): [string, any][] {
         ["lvl", unit.GetLevel()],
         ["lh", stats.GetLastHits()],
         ["dn", stats.GetDenies()],
+        // Snapshots stop while a bot is dead, so deaths come from the scoreboard, not from alive=0.
+        ["kills", GetHeroKills !== undefined ? GetHeroKills(unit.GetPlayerID()) : undefined],
+        ["deaths", GetHeroDeaths !== undefined ? GetHeroDeaths(unit.GetPlayerID()) : undefined],
         ["tgt", target !== null && target !== undefined ? target.GetUnitName() : undefined],
     ];
 }
@@ -341,6 +352,8 @@ function maybeProfile(bot: Unit, s: BotState): void {
             ["humaniser", false],
             ["skill", Difficulty.GetSkill(bot)],
             ["ally", Difficulty.IsAllyOfHuman(bot)],
+            ["build", BUILD],
+            ["pos", LaneConfig.PositionOf(bot)],
         ]);
         return;
     }
@@ -365,6 +378,8 @@ function maybeProfile(bot: Unit, s: BotState): void {
         ["lapseMax", cfg.LapseMaxExtra],
         ["minReact", cfg.MinReact],
         ["deference", p.deference],
+        ["build", BUILD],
+        ["pos", LaneConfig.PositionOf(bot)],
     ]);
 }
 

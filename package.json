@@ -13,7 +13,7 @@
         "typescript-to-lua": "^1.26.2"
     },
     "scripts": {
-        "build:lua": "tstl -p tsconfig-tstl.json && node ./typescript/post-process/post-process-lua.js",
+        "build:lua": "tstl -p tsconfig-tstl.json && node ./typescript/post-process/post-process-lua.js && node ./typescript/post-process/build-info.js",
         "build:node": "tsc -p tsconfig-node.json",
         "build": "npm run build:lua",
         "dev": "tstl -p tsconfig-tstl.json --watch",
