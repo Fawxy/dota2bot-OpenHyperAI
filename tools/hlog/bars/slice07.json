@@ -1,0 +1,14 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 7: stack, pos 4/5 (runs 1, 2, 4, 5, 8, 11)",
+ "until": "10:00",
+ "minRuns": 2,
+ "bars": [
+  { "id": "stacks by 10:00 per support", "select": { "team": "human", "pos": [4, 5] }, "metric": "jobs.stacked", "range": [0, 1] },
+  { "id": "stack attempts", "select": { "team": "human", "pos": [4, 5] }, "metric": "jobs.stackAttempts", "agg": "sum", "min": 1 },
+  { "id": "stacked share", "select": { "team": "human", "pos": [4, 5] }, "metric": "jobs.stackedPct", "min": 70, "over": "median" },
+  { "id": "aggro error sd", "select": { "team": "human", "pos": [4, 5] }, "metric": "jobs.aggroErrSd", "max": 0.3, "optional": true },
+  { "id": "SDK share of owned job frames", "metric": "game.human.jobSdkPct", "min": 95 },
+  { "id": "support ownLane%", "select": { "team": "human", "pos": [4, 5] }, "metric": "laning.ownLane", "range": [54, 75] }
+ ]
+}

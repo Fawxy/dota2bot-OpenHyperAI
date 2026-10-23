@@ -137,7 +137,17 @@ local function R()
 end
 local function campOf(bot, idx, stand, opts)
     local sp = Camps.SpawnerByIdx(idx)
+    local approach
+    if sp ~= nil then
+        local o = sp.location
+        local d = math.sqrt((stand.x - o.x) ^ 2 + (stand.y - o.y) ^ 2)
+        local near = R().StandApproach
+        if d > near + R().JobArrive then
+            approach = {x = o.x + (stand.x - o.x) * near / d, y = o.y + (stand.y - o.y) * near / d, z = o.z}
+        end
+    end
     return {
+        approach = approach ~= nil and Vector(approach.x, approach.y, approach.z or 0) or nil,
         stand = stand,
         box = sp ~= nil and ({min = sp.min, max = sp.max}) or nil,
         origin = sp ~= nil and sp.location or nil,
@@ -186,6 +196,7 @@ local function stackPlan(bot, job)
         exitUntil = job.exitUntil or job.aggroAt + T().JobMaxAfterAggro,
         arrive = R().JobArrive,
         startLate = T().JobStartLate,
+        approachLead = T().StandApproachLead,
         noCampAfter = T().NoCampAfter,
         confirmFor = T().AggroConfirm,
         onAggro = function(info) return landed(bot, job, info) end
@@ -208,6 +219,7 @@ local function pullPlan(bot, job)
         leadDeadline = (chain ~= nil and chain.aggroAt or job.aggroAt) + T().JobMaxAfterAggro,
         arrive = R().JobArrive,
         startLate = T().JobStartLate,
+        approachLead = T().StandApproachLead,
         noCampAfter = T().NoCampAfter,
         confirmFor = T().AggroConfirm,
         onAggro = function(info) return landed(bot, job, info) end

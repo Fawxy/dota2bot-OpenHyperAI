@@ -1,0 +1,8 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 1 OFF control: no state layer lines at all",
+ "until": "10:00",
+ "bars": [
+  { "id": "no ev=state lines", "metric": "game.stateLines", "eq": 0 }
+ ]
+}

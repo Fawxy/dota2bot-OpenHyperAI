@@ -1,0 +1,10 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 9: wisdom rotation, pos 4 (runs 1, 2, 5, 8, 11)",
+ "until": "10:00",
+ "bars": [
+  { "id": "wisdom trips", "select": { "team": "human", "pos": 4 }, "metric": "jobs.wisdomOk", "min": 1, "over": "any" },
+  { "id": "taken within 15 s of the fill", "select": { "team": "human", "pos": 4 }, "metric": "jobs.wisdomTakenMax", "max": 15, "optional": true },
+  { "id": "away", "select": { "team": "human", "pos": 4 }, "metric": "jobs.wisdomAwayMax", "max": 30, "optional": true }
+ ]
+}

@@ -47,6 +47,7 @@ const DANGER_RADIUS = 1200;
 const DANGER_HP = 0.5;
 
 const WISDOM_POSITIONS: Record<number, boolean> = { [4]: true };
+const WISDOM_IGNORES: Record<string, boolean> = { "lane pushed": true, "enemy missing": true };
 
 interface Trip {
     team: number;
@@ -129,6 +130,17 @@ function danger(bot: Unit): string | undefined {
     return undefined;
 }
 
+const gateNoted: Record<number, string | undefined> = {};
+
+/** ev=wisdom_gate: why the pos 4 is past its leave time but not going, once per fill and reason. */
+function noteGate(bot: Unit, spawn: number, why: string): void {
+    const pid = bot.GetPlayerID();
+    const key = `${spawn}:${why}`;
+    if (gateNoted[pid] === key) return;
+    gateNoted[pid] = key;
+    Telemetry.Event("wisdom_gate", [["pid", pid], ["spawn", spawn], ["why", why]]);
+}
+
 function score(bot: Unit): number | undefined {
     const pid = bot.GetPlayerID();
     const trip = trips[pid];
@@ -145,7 +157,16 @@ function score(bot: Unit): number | undefined {
     const leave = LeaveAt(bot, spawn);
     if (leave === undefined || now < leave) return undefined;
     // The same lane checks a power-rune rotation passes (task 12): no trip while busy or while the lane needs us.
-    if (Busy.IsBusy(bot, spawn)[0] || !Busy.LaneCanSpare(bot, false)[0] || danger(bot) !== undefined) return undefined;
+    const [busy, busyWhy] = Busy.IsBusy(bot, spawn);
+    const [spare, spareWhy] = Busy.LaneCanSpare(bot, false);
+    // The power-rune lane gate is for a river trip; a shrine in our own offlane jungle at a fixed time is taken with
+    // the wave pushed or a laner out of sight (G1/G2: those two reasons alone kept every pos 4 home).
+    const laneBlocks = !spare && !WISDOM_IGNORES[spareWhy];
+    const why = busy ? busyWhy : laneBlocks ? spareWhy : danger(bot);
+    if (why !== undefined) {
+        noteGate(bot, spawn, why);
+        return undefined;
+    }
     return SCORE;
 }
 

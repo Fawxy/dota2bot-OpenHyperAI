@@ -1,0 +1,10 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 8: pull, pos 5 (runs 1, 2, 4, 8, 11). Zero pulls planned is 'missing', which says nothing about the body",
+ "until": "10:00",
+ "bars": [
+  { "id": "pulls planned", "select": { "team": "human", "pos": 5 }, "metric": "jobs.pullsPlanned", "min": 1, "over": "any" },
+  { "id": "pull grade ok", "select": { "team": "human", "pos": 5 }, "metric": "jobs.pullOkPct", "min": 60, "over": "median", "optional": true },
+  { "id": "SDK share of owned job frames", "metric": "game.human.jobSdkPct", "min": 95 }
+ ]
+}

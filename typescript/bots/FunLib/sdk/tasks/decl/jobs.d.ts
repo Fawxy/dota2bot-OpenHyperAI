@@ -17,6 +17,11 @@ export interface Camp {
     box?: Box;
     /** Spawner origin, walked towards when nothing is seen from the stand point. */
     origin?: Vec;
+    /**
+     * A closer stand point (OHA: StandApproach from the origin), taken `approachLead` s before the aggro when nothing
+     * is in sight from `stand` (trees, night vision), so the camp is seen in time to hit it on its second.
+     */
+    approach?: Vec;
     /** Box margin: idle neutrals stand just outside the box. Default 300 (OHA `Radii.BoxMargin`). */
     margin?: number;
     /** `GetNearbyNeutralCreeps` radius. Default 700. */
@@ -50,6 +55,8 @@ export interface AggroOpts {
     timingError?: number;
     /** Seconds before the hit the order goes out; default estimated per target (`aggroLead`). */
     aggroLead?: number;
+    /** Seconds before the aggro the bot moves to `camp.approach` when it sees nothing. Default 3 (OHA StandApproachLead). */
+    approachLead?: number;
     onAggro?: (this: void, info: AggroInfo) => void;
 }
 /**
