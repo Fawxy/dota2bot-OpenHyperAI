@@ -392,7 +392,7 @@ export const GetPosition = function (bot: Unit) {
         }
         role = HeroPositions[playerId] != null ? HeroPositions[playerId] : GetPositionForCM(bot);
         print("[ERROR] Failed to match bot role for bot: " + unitName + ", PlayerID: " + playerId + ", set it to play pos: " + role);
-        print("Stack Trace:", debug.traceback());
+        // Dota's bot VM has no debug library, so debug.traceback() here threw before the role was cached.
         bot.assignedRole = role;
     }
 
