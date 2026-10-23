@@ -172,7 +172,35 @@ To show that a behaviour change helps, compare builds on the same lineup, not ju
 - **Compare:** `node tools/hlog/compare.js --builds <base>,<cand>` reads every `console.*.log` in the Dota folder (or `--dir`), takes the games whose `build` matches and that reach `--until` (default 10:00), and prints per-position rows: `lh dn kills deaths retreatSec retreatHealthySec retreatBy:<claim source> cautiousSec commits commitKills commitSec trades pullsStarted stacksStarted rotations aggroWithLastHit`. Use `--base <logs> --cand <logs>` to compare explicit files instead.
 
 #### Results to date
-_Baseline not recorded yet._
+Priority fixes (23/10/2026), lineup above, `host_timescale 4`, 2 games per side, metrics to 10:00. "Clear" means the delta is at least two pooled standard errors (the compare tool's `noisy` flag is off).
+
+| Arm | Baseline | Fixes |
+|---|---|---|
+| A (defaults) | `d0cd961`: console.9057337899, console.9057341161 | `849782a`: console.9057353154, console.9057356448 |
+| B (`OwnLaningThink = 'all'`) | `d0cd961`: console.9057386848, console.9057391976 | `849782a`: console.9057376520, console.9057380135 |
+
+- **Kill commits:** fewer and shorter in both arms, with no fewer kills.
+  - Clear: pos 1 commits fell from 4.3 to 1.5 (A) and from 5.3 to 1.5 (B); pos 5 from 4.8 to 1.3 (B).
+  - Clear: pos 1 commit time fell from 12.7 s to 2.6 s (A) and from 13.7 s to 3.7 s (B); pos 5 from 15.7 s to 3.9 s (B).
+  - Hero kills and deaths per position are unchanged (noisy).
+  - Batch-1 commits ended with the target dead 9 times out of 14, against roughly 1 in 6 at baseline.
+- **Caution's retreat scale:** clear in arm A.
+  - Retreat led by a scale claim fell from 69 s to 16 s for pos 1 and from 46 s to 21 s for pos 3.
+  - Carries spent about 20% more of the laning phase in laning (DK 297/256 s to 324/344 s, Troll 272/253 s to 324/311 s).
+  - In arm B the drop is within noise. There OHA's own laning trades hits, so bots are hit by heroes more often, and caution still scales retreat for a bot hit in the last 2 s, as designed.
+- **Last hits at 10:00:** no clear change for any position in either arm (pos 1 19.0 to 19.8 in A, 20.3 to 19.8 in B). So the carries' low CS is not mainly a priority problem.
+  - In arm A, Valve's C++ laning does the last-hitting, and Valve's attack mode, which no claim reaches, still takes 46–145 s per core before 10:00.
+  - In arm B, OHA's simple laning Think() does the last-hitting, and its accuracy is the limit.
+- **Pulls:** unchanged (pos 4 3.5 to 3.5 in A; pos 4/5 2.3/3.0 to 3.0/2.0 in B). The new missing-enemy gate did not stop pulling.
+- **Script errors:** `error in error handling` errors were as follows. The bursts are unexplained.
+  - Arm A: about 1 per game after 10:30 in both builds.
+  - Arm B baseline: bursts of 10 at 6:56 and at 4:57.
+  - Arm B fixes: none.
+- **Follow-ups:**
+  - Valve's attack mode in lane: the largest time sink left, and outside intent's reach.
+  - Last-hit accuracy of OHA's laning Think().
+  - The arm-B error bursts.
+  - `retreatBy` shows every scale claim as `scale`, because `Intent.Explain` does not name a scale claim's source.
 
 ## Humaniser core (task 02): design notes
 All of these are built to work whichever way the shared-state check turns out.
