@@ -192,7 +192,7 @@ do
 		frames(H, bot, 6)
 		after = describe(H, bot)
 	end)
-	check("register: replaced in place", names == "laning,pull,stack,rotate,farm", names)
+	check("register: replaced in place", names == "laning,pull,stack,rotate,farm,gank", names)
 	check("register: live bot uses the new spec", after:sub(1, 5) == "stack", after)
 end
 
