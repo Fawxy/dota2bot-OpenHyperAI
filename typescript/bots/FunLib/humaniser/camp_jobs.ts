@@ -21,6 +21,7 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
+import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
 
 export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -332,6 +333,9 @@ export function StartBlocked(bot: Unit): string | undefined {
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
     if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
+    if (LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
+    if (LaneHooks.RotationDecided(bot)) return "rotation";
     if (inFight(bot)) return "fight";
     return undefined;
 }
@@ -590,9 +594,10 @@ export function CoverFor(bot: Unit): LuaMultiReturn<[string | undefined, number 
 }
 
 /**
- * Lane.Tick: while its support is on a camp, the core plays safer: retreat is scaled up by Thresholds.CoverRetreatScale
- * (it backs off sooner from a threat it would have stood against with the support beside it) and 07's harass and
- * forward stand point are off (Covering). `lane_cover` marks when that starts and ends.
+ * Lane.Tick: while its support is on a camp, the core plays safer: 07's harass and forward stand point are off
+ * (Covering), and without task 12's caution retreat is scaled up by Thresholds.CoverRetreatScale (it backs off sooner
+ * from a threat it would have stood against with the support beside it). With caution on, the support's camp already
+ * makes the core alone there, so a second scale would double-count it. `lane_cover` marks when covering starts and ends.
  */
 export function CoverTick(bot: Unit): void {
     const pid = bot.GetPlayerID();
@@ -623,7 +628,8 @@ export function CoverTick(bot: Unit): void {
             ["kind", kind],
         ]);
     }
-    Intent.Claim(bot, { source: "lane:cover", tier: "LANE_PLAN", mode: BotMode.Retreat, scale: settings().Thresholds.CoverRetreatScale });
+    if (TransitionSettings.IsOn("Caution")) Intent.Release(bot, "lane:cover", BotMode.Retreat);
+    else Intent.Claim(bot, { source: "lane:cover", tier: "LANE_PLAN", mode: BotMode.Retreat, scale: settings().Thresholds.CoverRetreatScale });
 }
 
 export function Covering(bot: Unit): boolean {
@@ -850,8 +856,7 @@ function retreatThreat(bot: Unit): string | undefined {
     for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
         if (e.visible && e.unit !== undefined && e.unit.GetAttackTarget() === bot) return "hero-attack";
     }
-    // Tower range (700) plus a margin; only a tower already shooting us counts.
-    for (const tower of bot.GetNearbyTowers(1000, true)) if (tower.GetAttackTarget() === bot) return "tower";
+    if (LaneState.EnemyTowerTargeting(bot)) return "tower";
     return undefined;
 }
 

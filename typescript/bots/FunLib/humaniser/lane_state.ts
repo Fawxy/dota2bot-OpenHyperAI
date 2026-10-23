@@ -520,6 +520,12 @@ function holdsRemovedUnit(list: LaneEnemy[]): boolean {
     return false;
 }
 
+/** An enemy tower within its range (700, plus a margin) has `bot` as its attack target. */
+export function EnemyTowerTargeting(bot: Unit): boolean {
+    for (const tower of bot.GetNearbyTowers(1000, true) ?? []) if (tower.GetAttackTarget() === bot) return true;
+    return false;
+}
+
 export function Enemies(bot: Unit, _lane: Lane): LaneEnemy[] {
     if (!LaneConfig.IsActive()) return [];
     const pid = bot.GetPlayerID();

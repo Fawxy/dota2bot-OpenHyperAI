@@ -208,17 +208,32 @@ do
 end
 
 do
+	-- A missing enemy alone is a reason to stand further back, not to leave: retreat is untouched until a threat.
 	local w = world()
 	enemy(10, { unseen = 7 })
 	w.C.Tick(w.core)
 	T = 300.6
 	w.C.Tick(w.core)
-	check("caution claims retreat", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil)
-	check("caution scales retreat up by 1.3 at level 1", near(w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5), 0.65), w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5))
-	check("caution scales attack down by 0.7 at level 1", near(w.H.Intent.Resolve(w.core, BotMode.Attack, 0.5), 0.35), w.H.Intent.Resolve(w.core, BotMode.Attack, 0.5))
+	check("missing enemy (precondition): level 1", near(w.C.Level(w.core), 1), w.C.Level(w.core))
+	check("missing enemy, untouched core: no retreat scale", near(w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.8), 0.8), w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.8))
+	check("MissingNow reports the missing enemy", w.C.MissingNow(w.core) == 1, w.C.MissingNow(w.core))
+	check("the missing probe reports it too", w.H.Lane.Hooks.EnemiesMissing(w.core) == 1)
+	check("caution never posts an attack claim", near(w.H.Intent.Resolve(w.core, BotMode.Attack, 0.5), 0.5), w.H.Intent.Resolve(w.core, BotMode.Attack, 0.5))
+	w.core.heroHitAt = 300.1
+	w.C.Tick(w.core)
+	check("caution claims retreat once the core is hit", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil)
+	check("hit: retreat scaled up by 1.3 at level 1", near(w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5), 0.65), w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5))
+	w.core.heroHitAt = nil
+	w.core.hp = w.core:GetMaxHealth() * 0.4
+	w.C.Tick(w.core)
+	check("low HP is a threat too", near(w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5), 0.65), w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5))
+	w.core.hp = w.core:GetMaxHealth()
+	w.C.Tick(w.core)
+	check("threat gone: the scale is released", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	LAST_SEEN[10] = nil
 	w.H.Lane.LaneState.ResetCache()
 	T = 301.2
+	w.core.heroHitAt = 301.1
 	w.C.Tick(w.core)
 	check("caution releases its claims at level 0", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 end
@@ -305,6 +320,7 @@ do
 		if not laning then LANING = false end
 		if t1Dead then T = 300; TOWERS_W[2][dota.Tower.Bot1].alive = false end
 		local t0 = T
+		w.core.heroHitAt = t0
 		w.C.Tick(w.core)
 		T = t0 + 0.6
 		w.C.Tick(w.core)
@@ -324,6 +340,7 @@ do
 	-- Laning ends while cautious: the claim goes on the next tick, not after the notice delay or the claim TTL.
 	local w = world({ delay = 1.0 })
 	enemy(10, { unseen = 10 })
+	w.core.heroHitAt = 300.5
 	w.C.Tick(w.core)
 	T = 301.1
 	w.C.Tick(w.core)
@@ -366,6 +383,15 @@ do
 	w.H.Transitions.Tick(w.sup)
 	l = ev("tr_caution")
 	check("tr_caution: the end of laning reports level 0", #l == 2 and has(l[2], "pid=5", "level=0 "), l[2])
+end
+
+do
+	-- MissingNow's freshness argument: only enemies unseen at most maxAge seconds count.
+	local w = world()
+	enemy(10, { unseen = 10 })
+	enemy(11, { unseen = 40 })
+	check("MissingNow counts both without maxAge", w.C.MissingNow(w.core) == 2, w.C.MissingNow(w.core))
+	check("MissingNow(20) counts the fresh one", w.C.MissingNow(w.core, 20) == 1, w.C.MissingNow(w.core, 20))
 end
 
 finish()

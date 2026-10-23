@@ -157,7 +157,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, gateLogged, MAX_STEPS
+local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, mateJobCamp, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, gateLogged, MAX_STEPS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -175,6 +175,8 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
         return defaults
@@ -320,6 +322,28 @@ function knownEmpty(bot, team, idx, center, now)
         center
     ) <= ____exports.Settings().EmptySight and IsLocationVisible(center) and #campNeutrals(bot, center) == 0
 end
+function mateJobCamp(bot, idx)
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    local pull = false
+    for ____, c in ipairs(Camps.PullCampsFor(s.team, s.lane)) do
+        if c.campIdx == idx then
+            pull = true
+        end
+    end
+    if not pull then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    for ____, h in ipairs(s.allies) do
+        if h.assigned and h.pid ~= pid and h.alive and CampJobs.Active(h.unit) then
+            return true
+        end
+    end
+    return false
+end
 function campOpen(bot, team, idx, center, now, sight)
     if knownEmpty(
         bot,
@@ -328,6 +352,9 @@ function campOpen(bot, team, idx, center, now, sight)
         center,
         now
     ) then
+        return false
+    end
+    if mateJobCamp(bot, idx) then
         return false
     end
     if allyInBox(bot, idx, sight.allies) or claimedByAlly(bot, idx) or Stacking.ReservedByAlly(
@@ -420,14 +447,14 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue78
+            local __continue91
             repeat
                 if spawner.team ~= team then
-                    __continue78 = true
+                    __continue91 = true
                     break
                 end
                 if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue78 = true
+                    __continue91 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -439,7 +466,7 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                     now,
                     sight
                 ) then
-                    __continue78 = true
+                    __continue91 = true
                     break
                 end
                 if diag ~= nil then
@@ -478,9 +505,9 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                 if stack ~= nil and (best == nil or stack.score > best.score) then
                     best = stack
                 end
-                __continue78 = true
+                __continue91 = true
             until true
-            if not __continue78 then
+            if not __continue91 then
                 break
             end
         end
@@ -677,6 +704,7 @@ ____exports.DEFAULTS = {
     CampMinLevel = {small = 3, medium = 4, large = 6, ancient = 12},
     EndTime = 1200,
     Desire = 0.62,
+    MidRuneGuard = 40,
     StartHP = 0.65,
     AbortHP = 0.3,
     HoldRetreatHP = 0.4,
@@ -795,6 +823,18 @@ function ____exports.StartGate(bot, now)
     end
     if LaneConfig.IsActive() and CampJobs.Active(bot) then
         return "camp-job"
+    end
+    if LaneConfig.IsActive() and CampJobs.Covering(bot) then
+        return "covering"
+    end
+    if LaneHooks.EnemiesMissing(
+        bot,
+        LaneConfig.Settings().Thresholds.JobMissingFresh
+    ) > 0 then
+        return "enemy-missing"
+    end
+    if pos == 2 and Runes.NextSpawn("power", now) - now < s.MidRuneGuard then
+        return "rune"
     end
     local retreat = Intent.Resolved(bot, BotMode.Retreat)
     if retreat ~= nil and retreat >= s.Desire then

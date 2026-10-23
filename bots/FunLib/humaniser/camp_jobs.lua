@@ -242,6 +242,7 @@ local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
+local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 function settings()
     return LaneConfig.Settings()
 end
@@ -276,17 +277,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue269
+            local __continue271
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue269 = true
+                    __continue271 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue269 = true
+                    __continue271 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -297,9 +298,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue269 = true
+                __continue271 = true
             until true
-            if not __continue269 then
+            if not __continue271 then
                 break
             end
         end
@@ -761,6 +762,15 @@ function ____exports.StartBlocked(bot)
     if LaneHooks.IsFightCommitting(bot) then
         return "lanefight"
     end
+    if LaneHooks.EnemiesMissing(
+        bot,
+        settings().Thresholds.JobMissingFresh
+    ) > 0 then
+        return "enemy-missing"
+    end
+    if LaneHooks.RotationDecided(bot) then
+        return "rotation"
+    end
     if inFight(bot) then
         return "fight"
     end
@@ -1089,9 +1099,10 @@ function ____exports.CoverFor(bot)
     end
     return nil, nil, nil
 end
---- Lane.Tick: while its support is on a camp, the core plays safer: retreat is scaled up by Thresholds.CoverRetreatScale
--- (it backs off sooner from a threat it would have stood against with the support beside it) and 07's harass and
--- forward stand point are off (Covering). `lane_cover` marks when that starts and ends.
+--- Lane.Tick: while its support is on a camp, the core plays safer: 07's harass and forward stand point are off
+-- (Covering), and without task 12's caution retreat is scaled up by Thresholds.CoverRetreatScale (it backs off sooner
+-- from a threat it would have stood against with the support beside it). With caution on, the support's camp already
+-- makes the core alone there, so a second scale would double-count it. `lane_cover` marks when covering starts and ends.
 function ____exports.CoverTick(bot)
     local pid = bot:GetPlayerID()
     local via, partner, kind = ____exports.CoverFor(bot)
@@ -1121,15 +1132,19 @@ function ____exports.CoverTick(bot)
             {"kind", kind}
         })
     end
-    Intent.Claim(
-        bot,
-        {
-            source = "lane:cover",
-            tier = "LANE_PLAN",
-            mode = BotMode.Retreat,
-            scale = settings().Thresholds.CoverRetreatScale
-        }
-    )
+    if TransitionSettings.IsOn("Caution") then
+        Intent.Release(bot, "lane:cover", BotMode.Retreat)
+    else
+        Intent.Claim(
+            bot,
+            {
+                source = "lane:cover",
+                tier = "LANE_PLAN",
+                mode = BotMode.Retreat,
+                scale = settings().Thresholds.CoverRetreatScale
+            }
+        )
+    end
 end
 function ____exports.Covering(bot)
     return covering[bot:GetPlayerID()] ~= nil
@@ -1479,10 +1494,8 @@ local function retreatThreat(bot)
             return "hero-attack"
         end
     end
-    for ____, tower in ipairs(bot:GetNearbyTowers(1000, true)) do
-        if tower:GetAttackTarget() == bot then
-            return "tower"
-        end
+    if LaneState.EnemyTowerTargeting(bot) then
+        return "tower"
     end
     return nil
 end
@@ -2157,10 +2170,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue297
+            local __continue299
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue297 = true
+                    __continue299 = true
                     break
                 end
                 if dist2D(
@@ -2169,9 +2182,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue297 = true
+                __continue299 = true
             until true
-            if not __continue297 then
+            if not __continue299 then
                 break
             end
         end
@@ -2210,10 +2223,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue306
+            local __continue308
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue306 = true
+                    __continue308 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2223,9 +2236,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue306 = true
+                __continue308 = true
             until true
-            if not __continue306 then
+            if not __continue308 then
                 break
             end
         end
@@ -2266,19 +2279,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue321
+            local __continue323
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue321 = true
+                    __continue323 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue321 = true
+                __continue323 = true
             until true
-            if not __continue321 then
+            if not __continue323 then
                 break
             end
         end

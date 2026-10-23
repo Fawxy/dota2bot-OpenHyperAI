@@ -405,4 +405,41 @@ do
 end
 GetRuneStatus = baseStatus
 
+-- Priority fixes (Task 6): a decided rotation is re-checked until RecheckUntilWalk s after leaving, and tells the lane hooks.
+do
+	local w = world()
+	rolls(PASS)
+	check("precondition: pos 4 goes", w.R.Decide(w.p4, 335).go)
+	check("a decided rotation is reported to the lane hooks", w.H.Lane.Hooks.RotationDecided(w.p4))
+	check("no rotation, nothing reported", not w.H.Lane.Hooks.RotationDecided(w.p5))
+	T = 336
+	w.H.Transitions.Tick(w.p4)
+	w.off.hp = 40
+	T = 339.5
+	w.H.Transitions.Tick(w.p4)
+	local d = w.R.Decide(w.p4, 339.5)
+	check("the lane turns unsafe before leaving: the rotation is called off", d.go == false and d.reason == "partner hp", d.reason)
+	-- No "rune lost" line here: the "coming mid" line 3.5 s earlier holds the bot's chat for MIN_LINE_GAP (10 s).
+	check("called off: no longer reported", not w.H.Lane.Hooks.RotationDecided(w.p4))
+end
+do
+	local w = world()
+	rolls(PASS)
+	w.R.Decide(w.p4, 335)
+	w.off.hp = 40
+	T = LEAVE + 4.5
+	w.H.Transitions.Tick(w.p4)
+	check("past RecheckUntilWalk the walk goes on", w.R.Decide(w.p4, T).go == true, w.R.Decide(w.p4, T).reason)
+end
+do
+	-- A low-skill mistake rotation left knowing the lane could not spare it: no re-check calls it off.
+	local w = world({ skill = 0 })
+	w.off.hp = 40
+	rolls({ 0, 0.5, 0.25, 0.1 })
+	check("precondition: a mistake rotation", w.R.Decide(w.p4, 335).reason == "mistake")
+	T = 336
+	w.H.Transitions.Tick(w.p4)
+	check("a mistake rotation is not re-checked", w.R.Decide(w.p4, 336).go == true)
+end
+
 finish()

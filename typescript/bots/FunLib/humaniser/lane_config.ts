@@ -211,6 +211,9 @@ export const DEFAULTS = {
         // Starting needs room above JobHoldMinHP for the camp's hits (console.9055994510: 4 of 8 jobs that ended in
         // retreat started at 51-59%).
         JobStartHP: 0.65,
+        // A pull, stack or take does not start while a lane enemy went missing at most this long ago: a fresh
+        // disappearance is a gank threat to the core left behind; one gone longer is back in base or at its own camp.
+        JobMissingFresh: 20,
         // Before a pull: a tango from this much lost HP and a clarity from this much lost mana, as the camp's hits and
         // the pull's casts will use the rest (upstream waits for 200 HP or 60% mana).
         TangoMinLost: 80,

@@ -27,7 +27,7 @@ local function teleport(bot) local m = lastMove(bot.pid) if m then bot.loc = Vec
 -- `away` puts the support that far east of its stand point (300 speed, so 300 units = 1 s of travel).
 local function jobWorld(skill, opts)
 	opts = opts or {}
-	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry })
+	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = skill, debug = opts.debug, telemetry = opts.telemetry, transitions = opts.transitions })
 	T = opts.t or 70
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -1204,8 +1204,9 @@ end
 
 -- The core's side: while its support is out on a camp, it backs off sooner.
 do
-	-- The support starts at the front, so only its job (not its position) says it is away.
-	local H, core, support = jobWorld(1, { telemetry = { Enable = true } })
+	-- The support starts at the front, so only its job (not its position) says it is away. Task 12 off: with its
+	-- caution on, cover posts no scale (below).
+	local H, core, support = jobWorld(1, { telemetry = { Enable = true }, transitions = { Enable = false } })
 	support.loc = FRONT
 	local lines = {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
@@ -1225,6 +1226,19 @@ do
 	local covers = hev(lines, "lane_cover")
 	check("cover start and end logged", #covers == 2 and field(covers[1], "state") == "start" and field(covers[1], "via") == "job"
 		and field(covers[1], "partner") == "5" and field(covers[2], "state") == "end", table.concat(covers, " | "))
+end
+
+do
+	-- With task 12's caution on, the support's job already makes the core alone (Caution.IsAlone), so cover adds no
+	-- second retreat scale on top of it.
+	local H, core, support = jobWorld(1, { transitions = { Enable = true } })
+	support.loc = FRONT
+	local I, RETREAT = H.Intent, dota.BotMode.Retreat
+	frame(H, support, 70)
+	check("precondition (caution on): the support's pull runs", H.Lane.CampJobs.Active(support))
+	H.Lane.Tick(core)
+	check("caution on: the core covers", H.Lane.CampJobs.Covering(core))
+	check("caution on: cover posts no retreat scale", near(I.Resolve(core, RETREAT, 0.4), 0.4), I.Resolve(core, RETREAT, 0.4))
 end
 
 do
@@ -1323,6 +1337,20 @@ do
 	H.Lane.CampJobOnEnd(support)
 	check("an ended job leaves retreat alone at once", near(H.Intent.Resolve(support, dota.BotMode.Retreat, 0.82), 0.82))
 	check("and its errand caps", near(H.Intent.Resolve(support, dota.BotMode.Ward, 0.81), 0.81))
+end
+
+-- Priority fixes (Task 6): no pull or stack while a lane enemy went missing recently, or once a rune rotation is decided.
+do
+	local H, core, support = jobWorld(1)
+	check("precondition: nothing blocks a start", H.Lane.CampJobs.StartBlocked(support) == nil, H.Lane.CampJobs.StartBlocked(support))
+	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 10 and 1 or 0 end)
+	check("a lane enemy missing 10 s blocks the start", H.Lane.CampJobs.StartBlocked(support) == "enemy-missing")
+	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 40 and 1 or 0 end)
+	check("one missing 40 s does not", H.Lane.CampJobs.StartBlocked(support) == nil, H.Lane.CampJobs.StartBlocked(support))
+	H.Lane.Hooks.SetRotationDecidedProbe(function(u) return u == support end)
+	check("a decided rune rotation blocks the start", H.Lane.CampJobs.StartBlocked(support) == "rotation")
+	frame(H, support, 70)
+	check("and no pull runs", not H.Lane.CampJobs.Active(support))
 end
 
 finish()

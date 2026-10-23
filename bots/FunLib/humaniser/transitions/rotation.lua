@@ -567,6 +567,21 @@ function ____exports.Tick(bot)
             e.announced = true
             say(bot, "say_rune_coming_mid")
         end
+        if d.reason ~= "mistake" and d.leaveAt ~= nil and now < d.leaveAt + cfg.RecheckUntilWalk and now >= (e.spareAt or -math.huge) then
+            e.spareAt = now + cfg.Refresh
+            local spare, why = Busy.LaneCanSpare(
+                bot,
+                LaneConfig.PositionOf(bot) == 5
+            )
+            if not spare then
+                d.go = false
+                d.reason = why
+                Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)
+                log(bot, d)
+                say(bot, "say_rune_lost")
+                return
+            end
+        end
         if now >= e.checkAt and now >= e.arriveAt - cfg.ContestFrom and d.spot ~= nil then
             e.checkAt = now + cfg.Refresh
             local enemies = enemiesNear(bot, d.spot)
@@ -599,6 +614,7 @@ function ____exports.Yield(bot)
 end
 function ____exports.RegisterProbes()
     LaneHooks.SetRotationProbe(function(bot) return ____exports.Active(bot) ~= nil end)
+    LaneHooks.SetRotationDecidedProbe(function(bot) return ____exports.Target(bot) ~= nil end)
 end
 ____exports.RegisterProbes()
 return ____exports

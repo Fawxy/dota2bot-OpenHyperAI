@@ -137,6 +137,8 @@ local function cautionScenario(tcfg)
 	local FRONT = Vector(0, -5000)
 	unit({ pid = 2, bot = false, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
 	local core = unit({ pid = 1, pos = 1, lane = Lane.Bot, loc = FRONT })
+	-- Hit by a hero just now, so caution's retreat scale applies (it only does for a threatened bot).
+	core.heroHitAt = 300
 	unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = FRONT })
 	local foe = MakeUnit({ pid = 10, team = 3, loc = FRONT })
 	foe.hiddenFrom = setmetatable({}, { __index = function() return true end })

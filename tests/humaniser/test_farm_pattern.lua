@@ -347,4 +347,43 @@ do
 	check("claims: second core takes another camp", a and b and a.campIdx ~= b.campIdx, b and b.campIdx)
 end
 
+-- Priority fixes (Task 6): trips respect a covering core, a fresh missing enemy, the mid's power rune and the lane's pull camp.
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	local covering = H.Lane.CampJobs.Covering
+	H.Lane.CampJobs.Covering = function(u) return u:GetPlayerID() == 1 end
+	check("gate: no trip while covering for a support on a camp", H.FarmPattern.StartGate(core, T) == "covering")
+	H.Lane.CampJobs.Covering = covering
+end
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 10 and 1 or 0 end)
+	check("gate: no trip while a lane enemy went missing 10 s ago", H.FarmPattern.StartGate(core, T) == "enemy-missing")
+	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 40 and 1 or 0 end)
+	check("gate: an enemy missing 40 s does not block a trip", H.FarmPattern.StartGate(core, T) ~= "enemy-missing")
+end
+do
+	local H, core = world({ travel = 10, t = 465, pos = 2, camps = { { "small", SMALL } } })
+	check("gate: a mid at 7:45 keeps the 8:00 power rune", H.FarmPattern.StartGate(core, T) == "rune", H.FarmPattern.StartGate(core, T))
+	H, core = world({ travel = 10, t = 380, pos = 2, camps = { { "small", SMALL } } })
+	check("gate: a mid at 6:20 may take a trip", H.FarmPattern.StartGate(core, T) ~= "rune", H.FarmPattern.StartGate(core, T))
+	H, core = world({ travel = 10, t = 465, pos = 1, camps = { { "small", SMALL } } })
+	check("gate: the rune guard is the mid's only", H.FarmPattern.StartGate(core, T) ~= "rune")
+end
+do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	-- The stub world resolves no pull paths, so the lane's pull camp is named here.
+	local pullCamps = H.Lane.Camps.PullCampsFor
+	H.Lane.Camps.PullCampsFor = function() return { { campIdx = 1 } } end
+	local active = H.Lane.CampJobs.Active
+	H.Lane.CampJobs.Active = function(u) return u:GetPlayerID() == 5 end
+	check("a core leaves its lane's pull camp to a lane-mate's live camp job", H.FarmPattern.Desire(core) == 0 and H.FarmPattern.Current(core) == nil)
+	H.Lane.CampJobs.Active = active
+	H.Lane.Camps.PullCampsFor = pullCamps
+	H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	H.Lane.Camps.PullCampsFor = function() return { { campIdx = 1 } } end
+	check("control: with no lane-mate on a job the lane's pull camp is taken", H.FarmPattern.Desire(core) > 0)
+	H.Lane.Camps.PullCampsFor = pullCamps
+end
+
 finish()

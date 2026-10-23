@@ -25,6 +25,8 @@ import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 export const DEFAULTS = {
     Enable: true,
@@ -37,6 +39,8 @@ export const DEFAULTS = {
     EndTime: 1200,
     // Above laning's 0.446 (+ the 0.06 stickiness) and farm's own lane-front desires; below last hits (0.9) and camp jobs (0.7).
     Desire: 0.62,
+    // A mid starts no trip this close (s) before a power rune spawn: a trip lasts up to the next wave plus 5 s.
+    MidRuneGuard: 40,
     // Camp jobs' start gate (JobStartHP): lower starts ran into retreat's creep-damage branch on the first hits.
     StartHP: 0.65,
     AbortHP: 0.3,
@@ -263,6 +267,10 @@ export function StartGate(bot: Unit, now: number): string | undefined {
     if (IDLE_MODES[bot.GetActiveMode()] !== true) return "busy-mode";
     if (Orders.GetFor(bot) !== undefined) return "has-order";
     if (LaneConfig.IsActive() && CampJobs.Active(bot)) return "camp-job";
+    // Its support is on a camp: the core is the lane's only hero, so it stays with the wave.
+    if (LaneConfig.IsActive() && CampJobs.Covering(bot)) return "covering";
+    if (LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    if (pos === 2 && Runes.NextSpawn("power", now) - now < s.MidRuneGuard) return "rune";
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= s.Desire) return "retreat";
     return undefined;
@@ -335,8 +343,21 @@ function knownEmpty(bot: Unit, team: number, idx: number, center: Vector, now: n
     return dist2D(bot.GetLocation(), center) <= Settings().EmptySight && IsLocationVisible(center) && campNeutrals(bot, center).length === 0;
 }
 
+/** The lane's pull camps while a lane-mate is on a camp job: the camp is about to be pulled or stacked. */
+function mateJobCamp(bot: Unit, idx: number): boolean {
+    const s = LaneState.ForBot(bot);
+    if (s === undefined) return false;
+    let pull = false;
+    for (const c of Camps.PullCampsFor(s.team, s.lane)) if (c.campIdx === idx) pull = true;
+    if (!pull) return false;
+    const pid = bot.GetPlayerID();
+    for (const h of s.allies) if (h.assigned && h.pid !== pid && h.alive && CampJobs.Active(h.unit)) return true;
+    return false;
+}
+
 function campOpen(bot: Unit, team: number, idx: number, center: Vector, now: number, sight: Sight): boolean {
     if (knownEmpty(bot, team, idx, center, now)) return false;
+    if (mateJobCamp(bot, idx)) return false;
     if (allyInBox(bot, idx, sight.allies) || claimedByAlly(bot, idx) || Stacking.ReservedByAlly(idx, bot.GetPlayerID())) return false;
     if (Orders.AvoidsLocation(bot, center)) return false;
     return !anyNear(sight.enemies, center, Settings().EnemyRadius);

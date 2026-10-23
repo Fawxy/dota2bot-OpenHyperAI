@@ -68,6 +68,8 @@ export const DEFAULTS = {
     PathFactor: 1.2,
     // A support whose leave time is further in the past than this can no longer make the spawn.
     LateSlack: 2,
+    // A decided rotation re-checks LaneCanSpare until this long after its leave time (the first part of the walk).
+    RecheckUntilWalk: 4,
     // A rotation stays active this long after the spawn.
     RotateLinger: 5,
     RotateFloor: 0.7,
@@ -90,7 +92,10 @@ export const DEFAULTS = {
     OffsetMin: 150,
     OffsetMax: 300,
     RetreatScaleMax: 1.3,
-    AttackScaleMin: 0.7,
+    // Caution scales retreat only while the bot is threatened: hit by a hero within ThreatHitWindow s, under ThreatHP,
+    // or targeted by an enemy tower. Otherwise it only steps the lane position back and suppresses trades.
+    ThreatHitWindow: 2,
+    ThreatHP: 0.5,
     SkillAmount: { Low: 0.5, High: 1.0 } as LerpPair,
     MissingCooldown: 30,
     // An alone laner's caution: AloneLevel against one enemy laner, plus AloneLevelPerEnemy per extra one (capped at 1).
