@@ -32,6 +32,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local LANE_POS_EVERY = 2
 function ____exports.Settings()
     return Config.Get().States
@@ -102,8 +103,9 @@ local function lanePos(bot, l)
     lanePosAt[pid] = now
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
-    local ____Telemetry_Event_4 = Telemetry.Event
-    local ____array_3 = __TS__SparseArrayNew(
+    local info = Laning.SpotInfo(bot)
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -119,16 +121,22 @@ local function lanePos(bot, l)
         ____cur_running_2 = nil
     end
     __TS__SparseArrayPush(
-        ____array_3,
+        ____array_5,
         {"label", ____cur_running_2},
         {
             "mode",
             bot:GetActiveMode()
+        },
+        {"spot", info ~= nil and info.anchor or "oha"},
+        {"pushed", info and info.pushed},
+        {
+            "hph",
+            LaneMetrics.HeroLost(bot)
         }
     )
-    ____Telemetry_Event_4(
+    ____Telemetry_Event_6(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_3)}
+        {__TS__SparseArraySpread(____array_5)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
@@ -152,6 +160,7 @@ function ____exports.Tick(bot)
         )
     end
     l.States.Tick(bot)
+    LaneMetrics.Tick(bot)
     lanePos(bot, l)
 end
 --- First thing in a host mode's Think() step it replaces: true when the state's body acted this frame.
@@ -162,6 +171,15 @@ function ____exports.Step(bot, mode)
     local l = lib()
     return l ~= nil and l.States.Step(bot, mode)
 end
+--- True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own.
+function ____exports.BodyLastHits(bot)
+    if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
+        return false
+    end
+    local ____opt_7 = Tasks.Loaded()
+    local cur = ____opt_7 and ____opt_7.States.Current(bot)
+    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)
@@ -170,8 +188,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_5 = Tasks.Loaded()
-    local cur = ____opt_5 and ____opt_5.States.Current(bot)
+    local ____opt_9 = Tasks.Loaded()
+    local cur = ____opt_9 and ____opt_9.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

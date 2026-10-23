@@ -352,12 +352,15 @@ if bOwnsThink then
 			if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return end
 		end
 		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
-		-- so taking it before a deny is intended.
-		if LastHitThink() then return end
-		if DenyThink() then return end
-		if bHoldingForLastHit then
-			bot:Action_MoveToLocation(bot:GetLocation())
-			return
+		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
+		-- slice 4), it takes them and the denies itself in its Step below.
+		if not States.BodyLastHits(bot) then
+			if LastHitThink() then return end
+			if DenyThink() then return end
+			if bHoldingForLastHit then
+				bot:Action_MoveToLocation(bot:GetLocation())
+				return
+			end
 		end
 		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
 

@@ -11,6 +11,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -86,6 +87,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
     lanePosAt[pid] = now;
     const spot = Laning.Spot(bot);
     const task = Tasks.Current(bot);
+    const info = Laning.SpotInfo(bot);
     Telemetry.Event("lane_pos", [
         ["pid", pid],
         ["d", spot !== undefined ? math.floor(GetUnitToLocationDistance(bot, spot)) : undefined],
@@ -93,6 +95,9 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["running", cur.running],
         ["label", cur.running ? task?.label : undefined],
         ["mode", bot.GetActiveMode()],
+        ["spot", info !== undefined ? info.anchor : "oha"],
+        ["pushed", info?.pushed],
+        ["hph", LaneMetrics.HeroLost(bot)],
     ]);
 }
 
@@ -108,6 +113,7 @@ export function Tick(bot: Unit): void {
         l.States.define(bot as unknown as Lib.TaskUnit, [Laning.Spec(bot)]);
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
+    LaneMetrics.Tick(bot);
     lanePos(bot, l);
 }
 
@@ -116,6 +122,13 @@ export function Step(bot: Unit, mode: number): boolean {
     if (!IsEnabled()) return false;
     const l = lib();
     return l !== undefined && l.States.Step(bot as unknown as Lib.TaskUnit, mode);
+}
+
+/** True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own. */
+export function BodyLastHits(bot: Unit): boolean {
+    if (!IsEnabled() || !Laning.OwnsLastHit(bot)) return false;
+    const cur = Tasks.Loaded()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
