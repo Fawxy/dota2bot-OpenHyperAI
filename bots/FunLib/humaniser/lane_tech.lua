@@ -169,6 +169,7 @@ local LanePlanner = require(GetScriptDirectory().."/FunLib/humaniser/lane_planne
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local IN_LANE_FLAGS = {
     "Block",
@@ -331,7 +332,7 @@ local function cycleSecText(time)
         time % settings().Timing.WaveCycle
     )
 end
-local function noteStart(bot, tech, reason)
+local function noteStart(bot, tech, reason, lastHit)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local key = (tostring(cycleOf(now)) .. ":") .. tech
@@ -343,6 +344,7 @@ local function noteStart(bot, tech, reason)
         "lane",
         (((((("pid=" .. tostring(pid)) .. " tech=") .. tech) .. " @") .. cycleSecText(now)) .. " reason=") .. reason
     )
+    Telemetry.Event("lane_tech", {{"pid", pid}, {"tech", tech}, {"reason", reason}, {"lh", lastHit ~= nil}})
 end
 function ____exports.Mistake(bot, kind)
     HDebug.Log(
@@ -684,7 +686,7 @@ local function walkBackPoint(bot, s)
     )
     return dist2D(here, point) > cfg.Radii.AggroWalkMax and toward(here, point, cfg.Radii.AggroWalkMax) or point
 end
-local function beginDrop(bot, s, phase, reason)
+local function beginDrop(bot, s, phase, reason, lastHit)
     local now = DotaTime()
     LanePlanner.Commit(bot, "aggro_pull")
     LaneRoles.NoteAggroDraw(bot, s)
@@ -694,10 +696,10 @@ local function beginDrop(bot, s, phase, reason)
         startedAt = now,
         walkTo = phase == "walk" and walkBackPoint(bot, s) or nil
     }
-    noteStart(bot, "aggro_pull", reason)
+    noteStart(bot, "aggro_pull", reason, lastHit)
 end
 --- Planned swap: an allied core is losing HP to an enemy tower, so the bot takes the tower's aggro instead.
-local function trySwap(bot, s, enemies, reason)
+local function trySwap(bot, s, enemies, reason, lastHit)
     local t = settings().Thresholds
     if hpOf(bot) <= t.TowerSwapBotHP then
         return false
@@ -736,7 +738,13 @@ local function trySwap(bot, s, enemies, reason)
                     break
                 end
                 bot:Action_AttackUnit(hero, true)
-                beginDrop(bot, s, "swap", reason .. ": tower swap")
+                beginDrop(
+                    bot,
+                    s,
+                    "swap",
+                    reason .. ": tower swap",
+                    lastHit
+                )
                 overlay(
                     bot,
                     ("tech=aggro_pull@" .. cycleSecText(DotaTime())) .. " swap"
@@ -750,7 +758,7 @@ local function trySwap(bot, s, enemies, reason)
     end
     return false
 end
-local function startAggro(bot, s, enemies, choice)
+local function startAggro(bot, s, enemies, choice, lastHit)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local at = drawAt[pid]
@@ -773,9 +781,19 @@ local function startAggro(bot, s, enemies, choice)
         overlay(bot, "tech=aggro_pull " .. why)
         return false
     end
-    if trySwap(bot, s, enemies, choice.reason) then
+    if trySwap(
+        bot,
+        s,
+        enemies,
+        choice.reason,
+        lastHit
+    ) then
         __TS__Delete(drawAt, pid)
         return true
+    end
+    if lastHit ~= nil then
+        overlay(bot, "tech=aggro_pull wait: last hit")
+        return false
     end
     local hero = drawTarget(bot, enemies)
     if hero == nil then
@@ -784,16 +802,26 @@ local function startAggro(bot, s, enemies, choice)
     end
     __TS__Delete(drawAt, pid)
     bot:Action_AttackUnit(hero, true)
-    beginDrop(bot, s, "walk", choice.reason)
+    beginDrop(
+        bot,
+        s,
+        "walk",
+        choice.reason,
+        lastHit
+    )
     overlay(
         bot,
         ("tech=aggro_pull@" .. cycleSecText(DotaTime())) .. " draw"
     )
     return true
 end
-local function runAggro(bot, seq, allyCreeps)
+local function runAggro(bot, seq, allyCreeps, lastHit)
     local now = DotaTime()
     local walkBack = settings().Timing.WalkBack
+    if lastHit == "kill" and (seq.phase == "swap" or seq.phase == "walk") then
+        finish(bot)
+        return false
+    end
     if seq.phase == "swap" then
         if now - seq.startedAt < walkBack then
             Intent.Hold(bot, "lane:swap")
@@ -833,7 +861,7 @@ function ____exports.TowerDropThink(bot, allyCreeps)
     local s = activeSnapshot(bot)
     return s ~= nil and towerDrop(bot, s, allyCreeps)
 end
-function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
+function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies, lastHit)
     local s = activeSnapshot(bot)
     if s == nil then
         return false
@@ -854,7 +882,7 @@ function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
                 choice
             )
         end
-        return runAggro(bot, seq, allyCreeps)
+        return runAggro(bot, seq, allyCreeps, lastHit)
     end
     if choice.tech ~= "aggro_pull" then
         __TS__Delete(drawAt, pid)
@@ -866,7 +894,13 @@ function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies)
         return startBlock(bot, s, enemyCreeps, choice)
     end
     if choice.tech == "aggro_pull" then
-        return startAggro(bot, s, enemies, choice)
+        return startAggro(
+            bot,
+            s,
+            enemies,
+            choice,
+            lastHit
+        )
     end
     return false
 end
@@ -929,10 +963,10 @@ local function zoneTarget(bot, s)
     local bestDist = math.huge
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue146
+            local __continue148
             repeat
                 if not e.visible or dist2D(e.location, s.frontLoc) > zone then
-                    __continue146 = true
+                    __continue148 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -940,9 +974,9 @@ local function zoneTarget(bot, s)
                     best = e.location
                     bestDist = d
                 end
-                __continue146 = true
+                __continue148 = true
             until true
-            if not __continue146 then
+            if not __continue148 then
                 break
             end
         end

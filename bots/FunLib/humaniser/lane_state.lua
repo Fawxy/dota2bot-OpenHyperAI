@@ -50,10 +50,10 @@ function ____exports.Enemies(bot, _lane)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue108
+            local __continue112
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue108 = true
+                    __continue112 = true
                     break
                 end
                 local epid = u:GetPlayerID()
@@ -66,30 +66,30 @@ function ____exports.Enemies(bot, _lane)
                     timeSinceSeen = 0,
                     position = LaneConfig.PositionOf(u)
                 }
-                __continue108 = true
+                __continue112 = true
             until true
-            if not __continue108 then
+            if not __continue112 then
                 break
             end
         end
     end
     for ____, epid in ipairs(GetTeamPlayers(enemyTeamOf(bot:GetTeam()))) do
         do
-            local __continue111
+            local __continue115
             repeat
                 if seen[epid] == true or not IsHeroAlive(epid) then
-                    __continue111 = true
+                    __continue115 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(epid)[1]
                 if info == nil then
-                    __continue111 = true
+                    __continue115 = true
                     break
                 end
                 list[#list + 1] = {pid = epid, visible = false, location = info.location, timeSinceSeen = info.time_since_seen}
-                __continue111 = true
+                __continue115 = true
             until true
-            if not __continue111 then
+            if not __continue115 then
                 break
             end
         end
@@ -616,6 +616,15 @@ function ____exports.ForBot(bot)
         bot
     )
 end
+--- An enemy tower within its range (700, plus a margin) has `bot` as its attack target.
+function ____exports.EnemyTowerTargeting(bot)
+    for ____, tower in ipairs(bot:GetNearbyTowers(1000, true) or ({})) do
+        if tower:GetAttackTarget() == bot then
+            return true
+        end
+    end
+    return false
+end
 function ____exports.ScoreFor(bot, s)
     local pid = bot:GetPlayerID()
     local key = (tostring(pid) .. ":") .. tostring(s.lane)
@@ -628,18 +637,18 @@ function ____exports.ScoreFor(bot, s)
     local seenWithin = timing().ExposureSeen
     for ____, e in ipairs(____exports.Enemies(bot, s.lane)) do
         do
-            local __continue117
+            local __continue121
             repeat
                 if not e.visible and e.timeSinceSeen > seenWithin then
-                    __continue117 = true
+                    __continue121 = true
                     break
                 end
                 if dist2D(e.location, s.frontLoc) <= radius then
                     near = near + 1
                 end
-                __continue117 = true
+                __continue121 = true
             until true
-            if not __continue117 then
+            if not __continue121 then
                 break
             end
         end

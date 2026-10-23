@@ -157,6 +157,7 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local dist2D, countsMissing
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -177,6 +178,19 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
+function dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+function countsMissing(s, alone, e)
+    local cfg = Settings.Get()
+    local after = alone and cfg.AloneMissing or cfg.LaneMissing
+    if e.visible or e.timeSinceSeen <= after or e.timeSinceSeen > cfg.MissingMaxAge or not IsHeroAlive(e.pid) then
+        return false
+    end
+    return dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius
+end
 ____exports.SOURCE = "transitions:caution"
 function ____exports.CautionLevel(i)
     local cfg = Settings.Get()
@@ -215,11 +229,6 @@ function ____exports.ForceSetup(bot, point, ____until)
     f.point = point
     f.pointUntil = ____until
 end
-local function dist2D(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
-end
 function ____exports.IsAlone(bot, s)
     local pid = bot:GetPlayerID()
     local others = {}
@@ -249,25 +258,10 @@ function ____exports.IsAlone(bot, s)
     return apart and Rotation.Active(p.unit) ~= nil or CampJobs.Active(p.unit)
 end
 function ____exports.Missing(bot, s, alone)
-    local cfg = Settings.Get()
-    local after = alone and cfg.AloneMissing or cfg.LaneMissing
     local n = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
-        do
-            local __continue18
-            repeat
-                if e.visible or e.timeSinceSeen <= after or e.timeSinceSeen > cfg.MissingMaxAge or not IsHeroAlive(e.pid) then
-                    __continue18 = true
-                    break
-                end
-                if dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius then
-                    n = n + 1
-                end
-                __continue18 = true
-            until true
-            if not __continue18 then
-                break
-            end
+        if countsMissing(s, alone, e) then
+            n = n + 1
         end
     end
     return n
@@ -352,6 +346,42 @@ local function update(bot, now)
         )
     end
     return st
+end
+--- Lane enemies missing for the bot right now (0 when caution is off or the bot is not laning); `maxAge` keeps only those unseen at most that long.
+function ____exports.MissingNow(bot, maxAge)
+    if not Settings.IsOn("Caution") or not Phase.LaningTransitions(bot) then
+        return 0
+    end
+    local st = update(
+        bot,
+        DotaTime()
+    )
+    if st.missing == 0 or maxAge == nil then
+        return st.missing
+    end
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return 0
+    end
+    local n = 0
+    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
+        if e.timeSinceSeen <= maxAge and countsMissing(s, st.alone, e) then
+            n = n + 1
+        end
+    end
+    return n
+end
+--- Hit by a hero just now, low on HP, or under an enemy tower's fire: the moments caution makes a bot readier to run.
+function ____exports.Threatened(bot)
+    local cfg = Settings.Get()
+    local max = bot:GetMaxHealth()
+    if max > 0 and bot:GetHealth() / max < cfg.ThreatHP then
+        return true
+    end
+    if bot:WasRecentlyDamagedByAnyHero(cfg.ThreatHitWindow) then
+        return true
+    end
+    return LaneState.EnemyTowerTargeting(bot)
 end
 function ____exports.Level(bot)
     if not Phase.LaningTransitions(bot) then
@@ -480,14 +510,27 @@ function ____exports.Tick(bot)
         Intent.ReleaseSource(bot, ____exports.SOURCE)
         return
     end
-    local cfg = Settings.Get()
-    Intent.Claim(bot, {source = ____exports.SOURCE, tier = "TRANSITION", mode = BotMode.Retreat, scale = 1 + (cfg.RetreatScaleMax - 1) * level})
-    Intent.Claim(bot, {source = ____exports.SOURCE, tier = "TRANSITION", mode = BotMode.Attack, scale = 1 - (1 - cfg.AttackScaleMin) * level})
+    local f = forced[bot:GetPlayerID()]
+    local tpForced = f ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.levelUntil
+    if not tpForced and not ____exports.Threatened(bot) then
+        Intent.ReleaseSource(bot, ____exports.SOURCE)
+        return
+    end
+    Intent.Claim(
+        bot,
+        {
+            source = ____exports.SOURCE,
+            tier = "TRANSITION",
+            mode = BotMode.Retreat,
+            scale = 1 + (Settings.Get().RetreatScaleMax - 1) * level
+        }
+    )
 end
 function ____exports.RegisterProbes()
     LaneHooks.SetCautionProbe(function(bot) return ____exports.Level(bot) > 0 end)
     LaneHooks.SetPositionProbe(____exports.AdjustPosition)
     LaneHooks.SetTradeProbe(____exports.SuppressTrades)
+    LaneHooks.SetMissingProbe(____exports.MissingNow)
 end
 ____exports.RegisterProbes()
 return ____exports

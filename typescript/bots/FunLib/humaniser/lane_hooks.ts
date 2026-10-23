@@ -13,6 +13,8 @@ type FightProbe = (this: void, bot: Unit) => boolean;
 type CautionProbe = (this: void, bot: Unit) => boolean;
 type PositionProbe = (this: void, bot: Unit, loc: Vector) => Vector;
 type TradeProbe = (this: void, bot: Unit) => boolean;
+type MissingProbe = (this: void, bot: Unit, maxAge?: number) => number;
+type RotationDecidedProbe = (this: void, bot: Unit) => boolean;
 
 let rotationProbes: RotationProbe[] = [];
 let stackedProbes: StackedProbe[] = [];
@@ -22,6 +24,8 @@ let fightProbes: FightProbe[] = [];
 let cautionProbe: CautionProbe | undefined;
 let positionProbe: PositionProbe | undefined;
 let tradeProbe: TradeProbe | undefined;
+let missingProbe: MissingProbe | undefined;
+let rotationDecidedProbe: RotationDecidedProbe | undefined;
 
 export function SetRotationProbe(fn: RotationProbe): void {
     rotationProbes.push(fn);
@@ -95,6 +99,24 @@ export function TradesSuppressed(bot: Unit): boolean {
     return tradeProbe !== undefined && tradeProbe(bot);
 }
 
+export function SetMissingProbe(fn: MissingProbe): void {
+    missingProbe = fn;
+}
+
+/** Task 12's count of lane enemies gone missing from the bot's lane; `maxAge` keeps only those unseen at most that long. */
+export function EnemiesMissing(bot: Unit, maxAge?: number): number {
+    return missingProbe !== undefined ? missingProbe(bot, maxAge) : 0;
+}
+
+/** Task 12 registers this: the bot has decided to rotate for the next power rune (from the decision, not the leave time). */
+export function SetRotationDecidedProbe(fn: RotationDecidedProbe): void {
+    rotationDecidedProbe = fn;
+}
+
+export function RotationDecided(bot: Unit): boolean {
+    return rotationDecidedProbe !== undefined && rotationDecidedProbe(bot);
+}
+
 export function ResetHooks(): void {
     rotationProbes = [];
     stackedProbes = [];
@@ -104,4 +126,6 @@ export function ResetHooks(): void {
     cautionProbe = undefined;
     positionProbe = undefined;
     tradeProbe = undefined;
+    missingProbe = undefined;
+    rotationDecidedProbe = undefined;
 }

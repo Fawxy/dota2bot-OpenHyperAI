@@ -171,6 +171,7 @@ ____exports.DEFAULTS = {
         JobMinHP = 0.4,
         JobHoldMinHP = 0.5,
         JobStartHP = 0.65,
+        JobMissingFresh = 20,
         TangoMinLost = 80,
         ClarityMinLost = 150,
         PartnerDangerEnemies = 2,

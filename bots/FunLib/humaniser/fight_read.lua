@@ -424,15 +424,19 @@ local function gather(bot, snap, now)
     end
     return {inputs = inputs, target = target}
 end
---- Heroes in `bot`'s lane by the read's rules (allies standing in it, enemies counted in it), and enemies counted within `radius` of the bot.
-function ____exports.LaneCounts(bot, snap, radius)
+--- Lane heroes on each side. With `near` (a fight's target), only allies within `radius` of it count: a partner walking
+-- back to tower or a camp is in lane but not in the fight. Enemies count anywhere in lane (they can join).
+function ____exports.LaneCounts(bot, snap, radius, near)
     local team = bot:GetTeam()
     local lane = snap.lane
     local bounds = laneBounds(team, lane)
     local botLoc = bot:GetLocation()
     local allies = 0
     for ____, h in ipairs(snap.allies) do
-        if allyInLane(team, lane, h, bounds) then
+        if allyInLane(team, lane, h, bounds) and (near == nil or dist2D(
+            h.unit:GetLocation(),
+            near
+        ) <= radius) then
             allies = allies + 1
         end
     end

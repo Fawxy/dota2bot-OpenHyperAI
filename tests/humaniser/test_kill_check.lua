@@ -28,8 +28,10 @@ local function world(o)
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
 	local bot = MakeUnit({ pid = 1, team = team, loc = Vector(sign * -800, BOT_Y), hp = o.botHP or 100 })
-	bot.pos, bot.lane = 5, Lane.Bot
+	bot.pos, bot.lane = o.pos or 5, Lane.Bot
 	bot.estDamage = o.burst or 500
+	-- In attack range of the target (1,100 away), so the arrival scaling leaves its burst whole.
+	bot.range = o.range or 1200
 	OBSERVER = bot
 	local enemy = MakeUnit({ pid = 6, team = other, loc = Vector(sign * (o.enemyX or 300), BOT_Y), hp = o.hp or 450 })
 	enemy.lane = Lane.Bot
@@ -48,11 +50,11 @@ do
 	local H = LaneFresh({ Enable = true }, {})
 	local KC = H.LaneFight.KillCheck
 	local pass, margin = KC.Passes(base)
-	check("exact maths with fixed inputs", pass == true and near(margin, 500 / 460), tostring(margin))
+	check("exact maths with fixed inputs: regen counts over the 5 s window", pass == true and near(margin, 500 / 475), tostring(margin))
 	pass, margin = KC.Passes(with({ skill = 0, errRoll = 0 }))
-	check("low-skill error can flip the result", pass == false and near(margin, 500 * 0.7 / 460), tostring(margin))
+	check("low-skill error can flip the result", pass == false and near(margin, 500 * 0.7 / 475), tostring(margin))
 	pass, margin = KC.Passes(with({ skill = 0, errRoll = 1, burst = 400 }))
-	check("low-skill error can also overrate the burst", pass == true and near(margin, 400 * 1.3 / 460), tostring(margin))
+	check("low-skill error can also overrate the burst", pass == true and near(margin, 400 * 1.3 / 475), tostring(margin))
 
 	local p1 = KC.Passes(with({ burst = 1200, hp = 1000, regen = 0, towerInRange = false }))
 	local p2 = KC.Passes(with({ burst = 1200, hp = 1000, regen = 0, towerInRange = true }))
@@ -94,7 +96,7 @@ for _, team in ipairs({ 2, 3 }) do
 
 	W = world({ team = team, regen = 30 })
 	r = W.check()
-	check("Check counts the target's regen" .. tag, r ~= nil and r.pass == false and r.reason == "burst" and near(r.margin, 500 / 510),
+	check("Check counts the target's regen" .. tag, r ~= nil and r.pass == false and r.reason == "burst" and near(r.margin, 500 / 600),
 		r and r.margin)
 
 	-- Target 600 from the enemy T1 at x = 2800; the bot stands close enough to count its burst.
@@ -131,7 +133,7 @@ end
 do
 	local W = world({ burst = 300, hp = 500 })
 	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
-	partner.lane = Lane.Bot
+	partner.lane, partner.range = Lane.Bot, 1200
 	partner.estDamage = 300
 	local r = W.check({ partner })
 	check("a partner near the target adds its burst", r ~= nil and r.pass == true and near(r.margin, 600 / 500), r and r.margin)
@@ -220,7 +222,7 @@ do
 	-- The cache key includes the contributing partners.
 	local W = world({ burst = 300, hp = 500 })
 	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
-	partner.lane = Lane.Bot
+	partner.lane, partner.range = Lane.Bot, 1200
 	partner.estDamage = 300
 	local solo = W.check({})
 	local duo = W.check({ partner })
@@ -308,6 +310,86 @@ do
 	T = T + 1
 	r = W.H.LaneFight.CheckKill(W.bot, {}, W.enemy, T)
 	check("an error in the guarded facade reads as no check", r == nil)
+end
+
+
+-- Task 4 (priority fixes): the kill check sees arrival time, the damage the bot takes, local allies and its own bar.
+do
+	local H = LaneFresh({ Enable = true }, {})
+	local KC = H.LaneFight.KillCheck
+	local e = KC.Evaluate(with({ burst = 340, hp = 300, regen = 10 }))
+	check("regen counts over the whole burst window", near(e.margin, 340 / 350) and e.reason == "burst", e.margin)
+	e = KC.Evaluate(with({ burst = 1400, hp = 1000, regen = 0, botHealth = 400, botMaxHealth = 600, incoming = 300 }))
+	check("the bot would drop below SurviveHP: fail with survive", e.pass == false and e.reason == "survive", tostring(e.reason))
+	e = KC.Evaluate(with({ burst = 1400, hp = 1000, regen = 0, botHealth = 600, botMaxHealth = 600, incoming = 300 }))
+	check("the bot stays above SurviveHP: passes", e.pass == true, tostring(e.reason))
+	e = KC.Evaluate(with({ burst = 1100, hp = 1000, regen = 0, minMargin = 1.2 }))
+	check("minMargin 1.2: 1.1 fails as burst", e.pass == false and e.reason == "burst", tostring(e.reason))
+	e = KC.Evaluate(with({ burst = 1250, hp = 1000, regen = 0, minMargin = 1.2 }))
+	check("minMargin 1.2: 1.25 passes", e.pass == true, tostring(e.reason))
+end
+
+do
+	-- Partner 1,000 from the target, melee (150) at 300 speed: in range after 850 / 300 = 2.83 s of the 5.
+	local W = world({ burst = 300, hp = 500 })
+	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
+	partner.lane, partner.range, partner.speed = Lane.Bot, 150, 300
+	partner.estDamage = 300
+	local r = W.check({ partner })
+	local credited = 300 * (5 - 850 / 300) / 5
+	check("a contributor beyond attack range is credited for the time left after it arrives", r ~= nil and near(r.margin, (300 + credited) / 500), r and r.margin)
+end
+
+do
+	-- Four enemy creeps by the target and a covering tower: their damage on the bot over the survive window.
+	local W = world({ burst = 2000, hp = 450 })
+	W.bot.GetActualIncomingDamage = function(_, dmg) return dmg end
+	W.bot.maxhp = 600
+	W.bot.GetMaxHealth = function() return 600 end
+	W.bot.GetHealth = function() return 600 end
+	for i = 1, 4 do
+		local c = MakeCreep({ team = W.other, x = W.sign * (300 + 50 * i), y = BOT_Y })
+		c.GetAttackDamage = function() return 20 end
+		c.GetAttackSpeed = function() return 1 end
+	end
+	W.H.Lane.LaneState.ResetCache()
+	local r = W.check()
+	check("enemy creeps by the target are counted: 4 x 20 x 3 s = 240 leaves 360 of 600, above 30%", r ~= nil and r.pass == true, r and r.reason)
+	for _, c in ipairs(CREEPS[W.other]) do c.GetAttackDamage = function() return 40 end end
+	W.H.Lane.LaneState.ResetCache()
+	W.KC.ResetCache()
+	r = W.check()
+	check("doubled creep damage (480) leaves 120 of 600, under 30%: survive", r ~= nil and r.pass == false and r.reason == "survive", r and r.reason)
+end
+
+do
+	-- A solo check: a pos 1 needs CoreSoloMargin (1.2), a pos 5 1.0. Margin 550 / 500 = 1.1.
+	local W = world({ burst = 550, hp = 500, pos = 1 })
+	local r = W.check()
+	check("a solo check for a pos 1 uses CoreSoloMargin", r ~= nil and r.pass == false and r.reason == "burst", r and r.reason)
+	W = world({ burst = 550, hp = 500, pos = 5 })
+	r = W.check()
+	check("a solo check for a pos 5 uses 1.0", r ~= nil and r.pass == true, r and r.reason)
+	W = world({ burst = 550, hp = 500, pos = 5 })
+	W.H.Lane.Hooks.SetMissingProbe(function() return 1 end)
+	r = W.check()
+	check("with an enemy missing the minimum margin is MissingMargin", r ~= nil and r.pass == false and r.reason == "burst", r and r.reason)
+end
+
+do
+	-- A partner 1,500 from the target is not "here": the bot alone against two enemies is outnumbered.
+	local W = world({ burst = 2000 })
+	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-1200, BOT_Y) })
+	partner.lane = Lane.Bot
+	local second = MakeUnit({ pid = 7, team = 3, loc = Vector(400, BOT_Y) })
+	second.lane = Lane.Bot
+	local r = W.check()
+	check("an ally 1,500 from the target does not count against two enemies", r ~= nil and r.reason == "outnumbered", r and r.reason)
+	partner.loc = Vector(-300, BOT_Y)
+	W.H.Lane.LaneState.ResetCache()
+	W.KC.ResetCache()
+	r = W.check()
+	check("an ally 600 from the target counts", r ~= nil and r.pass == true, r and r.reason)
 end
 
 finish()

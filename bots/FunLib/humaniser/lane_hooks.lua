@@ -8,6 +8,8 @@ local fightProbes = {}
 local cautionProbe
 local positionProbe
 local tradeProbe
+local missingProbe
+local rotationDecidedProbe
 function ____exports.SetRotationProbe(fn)
     rotationProbes[#rotationProbes + 1] = fn
 end
@@ -86,6 +88,20 @@ end
 function ____exports.TradesSuppressed(bot)
     return tradeProbe ~= nil and tradeProbe(bot)
 end
+function ____exports.SetMissingProbe(fn)
+    missingProbe = fn
+end
+--- Task 12's count of lane enemies gone missing from the bot's lane; `maxAge` keeps only those unseen at most that long.
+function ____exports.EnemiesMissing(bot, maxAge)
+    return missingProbe ~= nil and missingProbe(bot, maxAge) or 0
+end
+--- Task 12 registers this: the bot has decided to rotate for the next power rune (from the decision, not the leave time).
+function ____exports.SetRotationDecidedProbe(fn)
+    rotationDecidedProbe = fn
+end
+function ____exports.RotationDecided(bot)
+    return rotationDecidedProbe ~= nil and rotationDecidedProbe(bot)
+end
 function ____exports.ResetHooks()
     rotationProbes = {}
     stackedProbes = {}
@@ -95,5 +111,7 @@ function ____exports.ResetHooks()
     cautionProbe = nil
     positionProbe = nil
     tradeProbe = nil
+    missingProbe = nil
+    rotationDecidedProbe = nil
 end
 return ____exports

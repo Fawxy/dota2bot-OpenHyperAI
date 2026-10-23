@@ -344,4 +344,4 @@ function markView(game, n, window, opts = {}) {
     return out.join('\n');
 }
 
-module.exports = { summary, fitForecast, checksText, timeline, markView, gameLine };
+module.exports = { table, summary, fitForecast, checksText, timeline, markView, gameLine };

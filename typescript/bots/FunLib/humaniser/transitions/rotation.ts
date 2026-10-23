@@ -40,6 +40,7 @@ interface Entry {
     arriveAt: number;
     announced: boolean;
     checkAt: number;
+    spareAt?: number;
 }
 
 const entries: Record<number, Entry> = {};
@@ -284,6 +285,20 @@ export function Tick(bot: Unit): void {
             e.announced = true;
             say(bot, "say_rune_coming_mid");
         }
+        // The lane can turn unsafe between the decision and the first steps out (a kill threat, an enemy TP). A
+        // mistake rotation went knowing the lane could not spare it, so it is not re-checked.
+        if (d.reason !== "mistake" && d.leaveAt !== undefined && now < d.leaveAt + cfg.RecheckUntilWalk && now >= (e.spareAt ?? -math.huge)) {
+            e.spareAt = now + cfg.Refresh;
+            const [spare, why] = Busy.LaneCanSpare(bot, LaneConfig.PositionOf(bot) === 5);
+            if (!spare) {
+                d.go = false;
+                d.reason = why;
+                Intent.Release(bot, SOURCE, BotMode.Rune);
+                log(bot, d);
+                say(bot, "say_rune_lost");
+                return;
+            }
+        }
         if (now >= e.checkAt && now >= e.arriveAt - cfg.ContestFrom && d.spot !== undefined) {
             e.checkAt = now + cfg.Refresh;
             const enemies = enemiesNear(bot, d.spot);
@@ -312,6 +327,7 @@ export function Yield(bot: Unit): void {
 
 export function RegisterProbes(): void {
     LaneHooks.SetRotationProbe(bot => Active(bot) !== undefined);
+    LaneHooks.SetRotationDecidedProbe(bot => Target(bot) !== undefined);
 }
 
 RegisterProbes();

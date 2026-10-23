@@ -267,7 +267,8 @@ local function source(path)
 end
 local laningSrc, farmSrc = source("mode_laning_generic.lua"), source("mode_farm_generic.lua")
 for _, line in ipairs({
-	"if bLaneLaning and not bTrainerSelfTest and Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end",
+	"if bLaneLaning and not bTrainerSelfTest then",
+	"if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return end",
 	"if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end",
 	"if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end",
 	"denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)",

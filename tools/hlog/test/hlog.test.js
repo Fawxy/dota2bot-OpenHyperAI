@@ -459,3 +459,112 @@ test('summary reports take-pull outcomes and swings', () => {
     assert.doesNotMatch(text, /enemy roles read by dire/);
     assert.doesNotMatch(text, /pre-contest:/);
 });
+
+// ---- laning metrics and before/after compare
+
+function botLine(pid, build, pos, t = -60) {
+    return `[HEV] t=${t} ev=bot pid=${pid} hero=h${pid} team=2 schema=2 skill=0.500 notice=0.365 react=0.335 ping=1.400 chat=1.500 jitter=0.325 lapse=0.085 lapseMax=0.800 minReact=0.170 deference=0.500 build=${build} pos=${pos}`;
+}
+
+function snapAt(pid, t, { lh = 0, dn = 0, hp = 100, alive = 1 } = {}) {
+    return `[HEV] t=${t} ev=snap pid=${pid} x=0 y=0 alive=${alive} hp=${hp} mp=50 lvl=1 lh=${lh} dn=${dn} mode=laning d=0.300 act=2 gold=600`;
+}
+
+const { laningMetrics } = (() => {
+    try {
+        return require('../metrics');
+    } catch (e) {
+        return {};
+    }
+})();
+
+test('laningMetrics: lh and dn are read from the last snap at or before 10:00', () => {
+    const lines = [botLine(1, 'aaa', 1)];
+    for (let t = 0; t <= 660; t += 30) lines.push(snapAt(1, t, { lh: t / 15, dn: t / 60 }));
+    const m = laningMetrics(parseLog(lines.join('\n'))[0]);
+    const b = m.bots.find(x => x.pid === 1);
+    assert.strictEqual(b.lh, 40);
+    assert.strictEqual(b.dn, 10);
+    assert.strictEqual(b.pos, 1);
+    assert.strictEqual(m.build, 'aaa');
+    assert.strictEqual(m.complete, true);
+});
+
+test('laningMetrics: retreatHealthySec counts retreat time only while hp >= 60', () => {
+    const lines = [botLine(1, 'aaa', 1)];
+    for (let t = 0; t <= 620; t++) lines.push(snapAt(1, t, { hp: t >= 105 && t <= 110 ? 40 : 80 }));
+    lines.push('[HEV] t=100 ev=mode pid=1 from=laning to=retreat d=0.9 dwell=5 by="retreat 0.90 by raw"');
+    lines.push('[HEV] t=110 ev=mode pid=1 from=retreat to=laning d=0.9 dwell=10 by="laning 0.90 by raw"');
+    const b = laningMetrics(parseLog(lines.sort(byT).join('\n'))[0]).bots.find(x => x.pid === 1);
+    assert.strictEqual(b.retreatSec, 10);
+    assert.strictEqual(b.retreatHealthySec, 5);
+});
+
+test('laningMetrics: retreatBy splits retreat time by the claim source in the mode event by= text', () => {
+    const lines = [botLine(1, 'aaa', 1), snapAt(1, 0), snapAt(1, 620)];
+    lines.push('[HEV] t=100 ev=mode pid=1 from=laning to=retreat d=1.1 dwell=5 by="retreat 1.10 by transitions:caution+sticky"');
+    lines.push('[HEV] t=110 ev=mode pid=1 from=retreat to=retreat d=0.8 dwell=10 by="retreat 0.80 by raw"');
+    lines.push('[HEV] t=114 ev=mode pid=1 from=retreat to=laning d=0.9 dwell=4 by="laning 0.90 by raw"');
+    const b = laningMetrics(parseLog(lines.sort(byT).join('\n'))[0]).bots.find(x => x.pid === 1);
+    assert.strictEqual(b.retreatBy['transitions:caution'], 10);
+    assert.strictEqual(b.retreatBy.raw, 4);
+});
+
+test('laningMetrics: deaths, caution time, commits, kills, pulls, stacks, rotations and aggro draws with a last hit', () => {
+    const lines = [botLine(1, 'aaa', 5), snapAt(1, 0), snapAt(1, 100, { alive: 0 }), snapAt(1, 130), snapAt(1, 200, { alive: 0 }), snapAt(1, 620)];
+    lines.push('[HEV] t=10 ev=tr_caution pid=1 level=0.500 alone=1 missing=0 lane=1');
+    lines.push('[HEV] t=40 ev=tr_caution pid=1 level=0 alone=0 missing=0 lane=1');
+    lines.push('[HEV] t=50 ev=lanefight_start pid=1 phase=commit target=7');
+    lines.push('[HEV] t=54 ev=lanefight_end pid=1 phase=commit reason=target-dead hits=4 took=1');
+    lines.push('[HEV] t=60 ev=lanefight_start pid=1 phase=commit target=7');
+    lines.push('[HEV] t=66 ev=lanefight_end pid=1 phase=commit reason=chase hits=1 took=1');
+    lines.push('[HEV] t=70 ev=lanefight_start pid=1 phase=trade target=7');
+    lines.push('[HEV] t=72 ev=lanefight_end pid=1 phase=trade reason=hits hits=3 took=1');
+    lines.push('[HEV] t=80 ev=lane_job_start pid=1 kind=full camp=2');
+    lines.push('[HEV] t=80.5 ev=lane_job_start pid=1 kind=contest camp=2');
+    lines.push('[HEV] t=81 ev=lane_job_start pid=1 kind=stack camp=3');
+    lines.push('[HEV] t=82 ev=tr_rotate pid=1 spawn=360 go=1 side=top leaveAt=340 reason=ok');
+    lines.push('[HEV] t=83 ev=tr_rotate pid=1 spawn=480 go=0 side=top leaveAt=460 reason=roll');
+    lines.push('[HEV] t=84 ev=lane_tech pid=1 tech=aggro_pull reason=x lh=1');
+    lines.push('[HEV] t=85 ev=lane_tech pid=1 tech=aggro_pull reason=x lh=0');
+    const b = laningMetrics(parseLog(lines.sort(byT).join('\n'))[0]).bots.find(x => x.pid === 1);
+    assert.deepStrictEqual(
+        [b.deaths, b.cautiousSec, b.commits, b.commitKills, b.commitSec, b.trades, b.pullsStarted, b.stacksStarted, b.rotations, b.aggroWithLastHit],
+        [2, 30, 2, 1, 10, 1, 1, 1, 1, 1]
+    );
+});
+
+test('laningMetrics: a game that ends before until is complete=false', () => {
+    const m = laningMetrics(parseLog([botLine(1, 'aaa', 1), snapAt(1, 0), snapAt(1, 300)].join('\n'))[0]);
+    assert.strictEqual(m.complete, false);
+});
+
+function byT(a, b) {
+    const t = l => Number((l.match(/t=(\S+)/) || [])[1]);
+    return t(a) - t(b);
+}
+
+test('compare: picks games by build, skips incomplete ones, and flags a delta under 2 pooled SE as noisy', () => {
+    const { compareGames } = require('../compare');
+    const game = (build, lhs, until = 620) => {
+        const lines = [];
+        lhs.forEach((lh, i) => lines.push(botLine(i + 1, build, 1)));
+        lhs.forEach((lh, i) => lines.push(snapAt(i + 1, 0), snapAt(i + 1, until - 30, { lh }), snapAt(i + 1, until, { lh })));
+        return parseLog(lines.sort(byT).join('\n'))[0];
+    };
+    const games = [game('base', [20, 22]), game('base', [21, 23]), game('base', [99], 300), game('cand', [40, 42]), game('cand', [41, 43]), game('other', [0])];
+    const rows = compareGames(games, { base: 'base', cand: 'cand' });
+    const lh = rows.find(r => r.metric === 'lh' && r.pos === 1);
+    assert.strictEqual(lh.base.n, 4);
+    assert.strictEqual(lh.cand.n, 4);
+    assert.ok(Math.abs(lh.delta - 20) < 1e-9);
+    assert.strictEqual(lh.noisy, false);
+    const noisy = compareGames([game('base', [10, 30]), game('cand', [12, 31])], { base: 'base', cand: 'cand' }).find(r => r.metric === 'lh' && r.pos === 1);
+    assert.strictEqual(noisy.noisy, true);
+});
+
+test('laningMetrics: deaths and kills come from the snapshot scoreboard fields when present', () => {
+    const lines = [botLine(1, 'aaa', 1), snapAt(1, 0), snapAt(1, 590).replace('gold=600', 'gold=600 kills=2 deaths=3'), snapAt(1, 620).replace('gold=600', 'gold=600 kills=5 deaths=4')];
+    const b = laningMetrics(parseLog(lines.join('\n'))[0]).bots.find(x => x.pid === 1);
+    assert.deepStrictEqual([b.kills, b.deaths], [2, 3]);
+});

@@ -44,7 +44,10 @@ export const DEFAULTS = {
     FrontsMeetDistance: 1500,
     TradeDuration: 2.5,
     TradeHits: 3,
-    CommitMax: 8,
+    CommitMax: 5,
+    // A commit whose kill-check margin on the target stays under AbandonMargin for AbandonAfter s ends as margin.
+    AbandonMargin: 0.8,
+    AbandonAfter: 1.0,
     // A commit whose target stays out of the bot's attack range this long (since the start or the last time in range)
     // ends as chase.
     ChaseMax: 3,
@@ -65,13 +68,23 @@ export const DEFAULTS = {
     CommitFocusMargin: 0.01,
     CommitHoldHP: 0.5,
     TowerOverride: 1.3,
-    FollowMargin: 0.8,
+    // A follower joins a partner's visible commit only on a margin the kill check itself would pass.
+    FollowMargin: 1.0,
     // A partner's attacks from within range make a commit when two land within this window (one harass hit does not).
     // About two attack intervals of a slow level-1 hero.
     InRangeWindow: 2.5,
     // A counted partner not seen going in for this long raises partner_abandon (re-checked AbortNotice later).
     PartnerLapse: 1.0,
     Overwhelming: 1.5,
+    // Kill check (priority fixes): enemy creeps within CreepAggroRadius of the target turn on the bot when it attacks;
+    // the bot must keep SurviveHP of its HP after their, a covering tower's and the enemy heroes' damage over
+    // SurviveWindow s. A pos 1/2 going alone needs CoreSoloMargin (its farm is worth more than a support's), and any
+    // check with a lane enemy missing needs MissingMargin.
+    CreepAggroRadius: 500,
+    SurviveHP: 0.3,
+    SurviveWindow: 3,
+    CoreSoloMargin: 1.2,
+    MissingMargin: 1.5,
     SoloSkill: 0.7,
     CallCooldown: 30,
     Curves: {

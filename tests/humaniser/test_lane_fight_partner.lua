@@ -35,6 +35,8 @@ local function world(o)
 	local sign = team == 2 and 1 or -1
 	local laneFight = o.laneFight or {}
 	if laneFight.Enable == nil then laneFight.Enable = true end
+	-- The follow mechanics below are pinned at the old FollowMargin (0.8); the default (1.0) has its own test.
+	if laneFight.FollowMargin == nil and not o.defaultFollow then laneFight.FollowMargin = 0.8 end
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true } })
 	T = 100
 	CURRENT_TEAM = team
@@ -389,8 +391,9 @@ do
 end
 
 do
-	-- A human's key-class cast towards the enemy, within its cast range + 200, is a commit.
-	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 } })
+	-- A human's key-class cast towards the enemy, within its cast range + 200, is a commit. Burst credited for the walk
+	-- into range (bot 5/6, partner 13/15): 0.92, a follow but no kill pass of its own.
+	local W = world({ burst = 60, partner = { human = true, pos = 5, burst = 48 } })
 	local cast = ability("lion_impale", { range = 600 })
 	W.onFrame = function() W.partner.casting = cast end
 	play(W, 2)
@@ -475,6 +478,15 @@ do
 		and dist(W.bot, W.enemy) > W.bot:GetAttackRange() + 50, a and a.kind)
 end
 
+do
+	-- Default FollowMargin 1.0: a partner's trade-shaped attacks on a target the bot reads at 0.9 are not followed.
+	local W = world({ burst = 50, partner = { human = true, pos = 5, burst = 40 }, defaultFollow = true })
+	trading(W, T)
+	play(W, 3)
+	check("default FollowMargin: a 0.9 margin is not followed", W.events("lanefight_start") == 0
+		and W.events("lanefight_gate", "gate=follow-margin") == 1, table.concat(W.lines, "\n"))
+end
+
 -- ------------------------------------------------------------------------------------------------ aborts
 
 do
@@ -543,7 +555,7 @@ do
 	local W = world({ burst = 30, partner = { human = true, pos = 5, burst = 40 } })
 	trading(W, T)
 	play(W, 3)
-	check("the follow-margin gate logs its margin", W.events("lanefight_gate", "gate=follow-margin target=6 margin=0.700") == 1, table.concat(W.lines, "\n"))
+	check("the follow-margin gate logs its margin", W.events("lanefight_gate", "gate=follow-margin target=6 margin=0.650") == 1, table.concat(W.lines, "\n"))
 end
 
 
@@ -631,12 +643,12 @@ do
 end
 
 do
-	-- A follow commit re-checks to FollowMargin (0.9 here passes it), but under the target's tower margin 0.9 is short of
+	-- A follow commit re-checks to FollowMargin (0.82 here passes it), but under the target's tower 0.82 is short of
 	-- TowerOverride: the dive still ends.
 	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
 	trading(W, T)
 	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
-	check("setup: a follow commit at margin 0.9", W.events("lanefight_start", "margin=0.900 via=follow") == 1, table.concat(W.lines, "\n"))
+	check("setup: a follow commit at margin 0.82", W.events("lanefight_start", "margin=0.817 via=follow") == 1, table.concat(W.lines, "\n"))
 	local tower
 	for _, t in pairs(TOWERS_W[3]) do if math.abs(t.loc.y - BOT_Y) < 1000 then tower = t end end
 	W.enemy.loc = Vector(tower.loc.x - 600, BOT_Y)
@@ -881,6 +893,26 @@ do
 	W.H.Config.Get().LaneFight.Enable = false
 	check("the probe is false once LaneFight is off, before the commit is ended", W.LF.CurrentPhase(W.bot) == "commit"
 		and not W.H.Lane.Hooks.IsFightCommitting(W.bot))
+end
+
+do
+	-- Final review fix: a follow commit's tower re-check also needs the kill check to pass, so a follower clearing
+	-- TowerOverride on margin but unable to survive the tower's shots still ends the dive.
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup (survive): a follow commit", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	local tower
+	for _, t in pairs(TOWERS_W[3]) do if math.abs(t.loc.y - BOT_Y) < 1000 then tower = t end end
+	W.bot.estDamage, W.partner.estDamage = 400, 400
+	tower.dmg = 100
+	W.enemy.loc = Vector(tower.loc.x - 600, BOT_Y)
+	W.bot.loc = Vector(W.enemy.loc.x - 300, BOT_Y)
+	W.partner.loc = Vector(W.enemy.loc.x - 350, BOT_Y)
+	play(W, 1)
+	check("a follower that cannot survive the tower ends the dive", W.events("lanefight_end", "phase=commit reason=tower") == 1,
+		table.concat(W.lines, "\n"))
+	tower.dmg = 0
 end
 
 finish()

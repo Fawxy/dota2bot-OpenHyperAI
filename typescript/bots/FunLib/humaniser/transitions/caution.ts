@@ -1,7 +1,8 @@
 /**
  * Lane safety and laning-phase transitions (task 12, Task 5): caution for a laner left alone or facing
- * missing enemies. The level biases retreat over attack, steps the lane position back toward our tower
- * (where OHA owns laning), suppresses trades unless we are stronger, and keeps a cautious core from shoving.
+ * missing enemies. The level steps the lane position back toward our tower (where OHA owns laning), suppresses trades
+ * unless we are stronger, keeps a cautious core from shoving, and makes a threatened bot readier to retreat. It does
+ * not scale retreat for an untouched bot: a laner wary of a missing enemy stands back but keeps last-hitting.
  */
 import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
 import * as Intent from "bots/FunLib/humaniser/intent";
@@ -120,14 +121,16 @@ export function IsAlone(bot: Unit, s: LaneState.LaneSnapshot): boolean {
 }
 
 export function Missing(bot: Unit, s: LaneState.LaneSnapshot, alone: boolean): number {
+    let n = 0;
+    for (const e of LaneState.Enemies(bot, s.lane)) if (countsMissing(s, alone, e)) n++;
+    return n;
+}
+
+function countsMissing(s: LaneState.LaneSnapshot, alone: boolean, e: LaneState.LaneEnemy): boolean {
     const cfg = Settings.Get();
     const after = alone ? cfg.AloneMissing : cfg.LaneMissing;
-    let n = 0;
-    for (const e of LaneState.Enemies(bot, s.lane)) {
-        if (e.visible || e.timeSinceSeen <= after || e.timeSinceSeen > cfg.MissingMaxAge || !IsHeroAlive(e.pid)) continue;
-        if (dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius) n++;
-    }
-    return n;
+    if (e.visible || e.timeSinceSeen <= after || e.timeSinceSeen > cfg.MissingMaxAge || !IsHeroAlive(e.pid)) return false;
+    return dist2D(e.location, s.frontLoc) <= cfg.SpareLaneRadius;
 }
 
 function stateOf(bot: Unit): State {
@@ -183,6 +186,27 @@ function update(bot: Unit, now: number): State {
         ]);
     }
     return st;
+}
+
+/** Lane enemies missing for the bot right now (0 when caution is off or the bot is not laning); `maxAge` keeps only those unseen at most that long. */
+export function MissingNow(bot: Unit, maxAge?: number): number {
+    if (!Settings.IsOn("Caution") || !Phase.LaningTransitions(bot)) return 0;
+    const st = update(bot, DotaTime());
+    if (st.missing === 0 || maxAge === undefined) return st.missing;
+    const s = LaneState.ForBot(bot);
+    if (s === undefined) return 0;
+    let n = 0;
+    for (const e of LaneState.Enemies(bot, s.lane)) if (e.timeSinceSeen <= maxAge && countsMissing(s, st.alone, e)) n++;
+    return n;
+}
+
+/** Hit by a hero just now, low on HP, or under an enemy tower's fire: the moments caution makes a bot readier to run. */
+export function Threatened(bot: Unit): boolean {
+    const cfg = Settings.Get();
+    const max = bot.GetMaxHealth();
+    if (max > 0 && bot.GetHealth() / max < cfg.ThreatHP) return true;
+    if (bot.WasRecentlyDamagedByAnyHero(cfg.ThreatHitWindow)) return true;
+    return LaneState.EnemyTowerTargeting(bot);
 }
 
 export function Level(bot: Unit): number {
@@ -273,15 +297,21 @@ export function Tick(bot: Unit): void {
         Intent.ReleaseSource(bot, SOURCE);
         return;
     }
-    const cfg = Settings.Get();
-    Intent.Claim(bot, { source: SOURCE, tier: "TRANSITION", mode: BotMode.Retreat, scale: 1 + (cfg.RetreatScaleMax - 1) * level });
-    Intent.Claim(bot, { source: SOURCE, tier: "TRANSITION", mode: BotMode.Attack, scale: 1 - (1 - cfg.AttackScaleMin) * level });
+    // An incoming enemy teleport (Teleports' forced level) is a threat in itself: back off before it lands.
+    const f = forced[bot.GetPlayerID()];
+    const tpForced = f !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.levelUntil;
+    if (!tpForced && !Threatened(bot)) {
+        Intent.ReleaseSource(bot, SOURCE);
+        return;
+    }
+    Intent.Claim(bot, { source: SOURCE, tier: "TRANSITION", mode: BotMode.Retreat, scale: 1 + (Settings.Get().RetreatScaleMax - 1) * level });
 }
 
 export function RegisterProbes(): void {
     LaneHooks.SetCautionProbe(bot => Level(bot) > 0);
     LaneHooks.SetPositionProbe(AdjustPosition);
     LaneHooks.SetTradeProbe(SuppressTrades);
+    LaneHooks.SetMissingProbe(MissingNow);
 }
 
 RegisterProbes();
