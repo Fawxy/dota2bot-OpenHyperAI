@@ -15,6 +15,8 @@ export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): number;
  */
 /** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
 export declare function cooldownLeft(bot: TaskUnit): number;
+/** Seconds to turn to face the creep (0 without GetFacing). */
+export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 export interface LaneTarget {
     creep: TaskCreep;

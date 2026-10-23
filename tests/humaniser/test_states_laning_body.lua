@@ -201,6 +201,7 @@ do
 	end)
 	check("body: owns last hits while running", H.States.BodyLastHits(bot) == true)
 	check("body: attacked the dying creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == c)
+	check("body: busy while the swing is in flight (OHA's steps stand back)", H.States.BodyBusy(bot) == true)
 	silenced(function()
 		c.alive, c.hp = false, 0
 		bot.lastHits = 1
@@ -223,6 +224,7 @@ do
 		for _ = 1, 6 do frame(H, bot) end
 	end)
 	check("unlisted: BodyLastHits false", H.States.BodyLastHits(bot) == false)
+	check("unlisted: never busy", H.States.BodyBusy(bot) == false)
 	check("unlisted: body never attacked", bot.attacks == nil)
 end
 

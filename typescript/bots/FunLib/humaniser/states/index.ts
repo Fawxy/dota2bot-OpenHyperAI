@@ -229,6 +229,17 @@ export function BodyLastHits(bot: Unit): boolean {
     return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
 }
 
+/**
+ * True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
+ * skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
+ * that never landed, `missed` with the creep alive seconds later).
+ */
+export function BodyBusy(bot: Unit): boolean {
+    if (!BodyLastHits(bot)) return false;
+    const label = Tasks.Current(bot)?.label;
+    return label === "lasthit" || label === "deny";
+}
+
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
 export function SetLaneSpot(bot: Unit, fn: (this: void) => Vector | undefined): void {
     Laning.SetSpot(bot, fn);
