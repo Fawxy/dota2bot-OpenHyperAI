@@ -34,8 +34,9 @@ local function isRangedCreep(c)
         true
     )) ~= nil
 end
+--- Alive and in sight: a unit in the fog keeps a valid handle but reads no location.
 local function alive(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive()
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 --- Rings the spot must stay outside of: enemy creeps by type, the enemy tower before level 6.
 function ____exports.Violates(bot, p, creeps, towers)
