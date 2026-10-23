@@ -344,6 +344,8 @@ end
 if bOwnsThink then
 	States.SetLaneSpot(bot, PositionTarget)
 	function Think()
+		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
+		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
 		if bLaneLaning and not bTrainerSelfTest then

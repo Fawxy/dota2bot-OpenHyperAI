@@ -312,7 +312,9 @@ if Telemetry.GuardsEnabled() then
         Describe = none,
         IsEnabled = no,
         WisdomOwned = no,
-        Owns = no
+        Owns = no,
+        BodyLastHits = no,
+        BodyBusy = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(
