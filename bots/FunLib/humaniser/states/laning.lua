@@ -1,16 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__ObjectAssign(target, ...)
-    local sources = {...}
-    for i = 1, #sources do
-        local source = sources[i]
-        for key in pairs(source) do
-            target[key] = source[key]
-        end
-    end
-    return target
-end
-
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -114,7 +103,6 @@ local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 ____exports.NAME = "laning"
@@ -155,6 +143,10 @@ function ____exports.RoleOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
 local spotCache = {}
+--- The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
+-- not shuttle to OHA's spot and back between waves.
+local lastSdk = {}
+local HOLD_OVER = 4
 --- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times).
 function ____exports.Spot(bot)
     local pid = bot:GetPlayerID()
@@ -174,6 +166,13 @@ function ____exports.Spot(bot)
         if ok and res ~= nil then
             info = res
             v = res.spot
+            lastSdk[pid] = {t = now, info = res}
+        else
+            local held = lastSdk[pid]
+            if held ~= nil and now - held.t <= HOLD_OVER then
+                info = held.info
+                v = held.info.spot
+            end
         end
     end
     spotCache[pid] = {t = now, v = v, info = info}
@@ -197,21 +196,7 @@ function ____exports.OwnsLastHit(bot)
     end
     return false
 end
-local function distTo(bot, p)
-    return p ~= nil and GetUnitToLocationDistance(bot, p) or nil
-end
-local function enemyHeroNear(bot, r)
-    for ____, h in ipairs(bot:GetNearbyHeroes(r, true, BotMode.None)) do
-        if h:IsAlive() then
-            return true
-        end
-    end
-    return false
-end
 local body = __TS__Generator(function(bot, ctx)
-    local function spot()
-        return ____exports.Spot(bot)
-    end
     local sdk = ____exports.Settings().Spot == "sdk"
     local hold = sdk and ({
         tolerance = 40,
@@ -228,104 +213,35 @@ local body = __TS__Generator(function(bot, ctx)
         scatter = 50,
         hold = "state:laning"
     })
-    local verbs = Tasks.Verbs()
-    local target
-    local function pick()
-        if verbs == nil or not ____exports.OwnsLastHit(bot) or (distTo(
-            bot,
-            ____exports.Spot(bot)
-        ) or 0) > FAR then
-            return false
-        end
-        target = verbs.nextLastHit(
-            bot,
-            {within = ____exports.Settings().LastHitWithin}
-        )
-        return target ~= nil
-    end
-    local near = false
-    while true do
-        do
-            local __continue26
-            repeat
-                ctx.label(near and "hold" or "walk")
-                local r = __TS__DelegatedYield(ctx.holdAt(
-                    spot,
-                    __TS__ObjectAssign(
-                        {},
-                        hold,
-                        {interruptIf = function()
-                            local d = distTo(
-                                bot,
-                                ____exports.Spot(bot)
-                            )
-                            local ____near_11
-                            if near then
-                                ____near_11 = (d or 0) > FAR
-                            else
-                                ____near_11 = (d or math.huge) <= NEAR
-                            end
-                            if ____near_11 then
-                                return true
-                            end
-                            return pick()
-                        end}
-                    )
-                ))
-                if r.reason ~= "interrupted" then
-                    return r
-                end
-                if target == nil then
-                    local d = distTo(
-                        bot,
-                        ____exports.Spot(bot)
-                    )
-                    near = d ~= nil and d <= (near and FAR or NEAR)
-                    __continue26 = true
-                    break
-                end
-                local t = target
-                target = nil
-                local contested = enemyHeroNear(bot, 1000)
-                ctx.label(t.kind)
-                local opts = {
-                    target = t.creep,
-                    maxWait = ____exports.Settings().LastHitWithin + 1,
-                    hold = "state:laning",
-                    interruptIf = function() return (distTo(
-                        bot,
-                        ____exports.Spot(bot)
-                    ) or 0) > LEASH end
-                }
-                local res = t.kind == "lasthit" and __TS__DelegatedYield(ctx.lastHit(opts)) or __TS__DelegatedYield(ctx.deny(opts))
-                Telemetry.Event(
-                    "lh",
+    return __TS__DelegatedYield(ctx.laneFarm(
+        function() return ____exports.Spot(bot) end,
+        {
+            hold = hold,
+            lastHits = function() return ____exports.OwnsLastHit(bot) end,
+            within = ____exports.Settings().LastHitWithin,
+            near = NEAR,
+            far = FAR,
+            leash = LEASH,
+            onAttempt = function(t, res, contested) return Telemetry.Event(
+                "lh",
+                {
                     {
-                        {
-                            "pid",
-                            bot:GetPlayerID()
-                        },
-                        {"kind", t.kind},
-                        {"result", res.success and "ok" or "fail"},
-                        {"reason", res.reason},
-                        {"ranged", t.ranged},
-                        {
-                            "eta",
-                            math.floor(t.eta * 100) / 100
-                        },
-                        {"contested", contested}
-                    }
-                )
-                if res.reason == "dead" then
-                    return res
-                end
-                __continue26 = true
-            until true
-            if not __continue26 then
-                break
-            end
-        end
-    end
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {"kind", t.kind},
+                    {"result", res.success and "ok" or "fail"},
+                    {"reason", res.reason},
+                    {"ranged", t.ranged},
+                    {
+                        "eta",
+                        math.floor(t.eta * 100) / 100
+                    },
+                    {"contested", contested}
+                }
+            ) end
+        }
+    ))
 end)
 function ____exports.Spec(bot)
     return {

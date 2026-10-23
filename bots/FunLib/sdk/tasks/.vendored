@@ -7,6 +7,7 @@ types	../../../../typescript/bots/FunLib/sdk/tasks	decl/combinators.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/ctx.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/index.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/jobs.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/lane.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/lasthit.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/runner.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/simple_host.d.ts

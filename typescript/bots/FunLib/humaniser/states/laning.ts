@@ -10,7 +10,6 @@ import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 
@@ -66,6 +65,10 @@ interface SpotCache {
     info?: LaneSpot.SpotInfo;
 }
 const spotCache: Record<number, SpotCache | undefined> = {};
+/** The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
+ * not shuttle to OHA's spot and back between waves. */
+const lastSdk: Record<number, { t: number; info: LaneSpot.SpotInfo } | undefined> = {};
+const HOLD_OVER = 4;
 
 /** The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). */
 export function Spot(bot: Unit): Vector | undefined {
@@ -80,6 +83,13 @@ export function Spot(bot: Unit): Vector | undefined {
         if (ok && res !== undefined) {
             info = res;
             v = res.spot;
+            lastSdk[pid] = { t: now, info: res };
+        } else {
+            const held = lastSdk[pid];
+            if (held !== undefined && now - held.t <= HOLD_OVER) {
+                info = held.info;
+                v = held.info.spot;
+            }
         }
     }
     spotCache[pid] = { t: now, v, info };
@@ -99,69 +109,31 @@ export function OwnsLastHit(bot: Unit): boolean {
     return false;
 }
 
-function distTo(bot: Unit, p: Vector | undefined): number | undefined {
-    return p !== undefined ? GetUnitToLocationDistance(bot, p) : undefined;
-}
-
-function enemyHeroNear(bot: Unit, r: number): boolean {
-    for (const h of bot.GetNearbyHeroes(r, true, BotMode.None)) if (h.IsAlive()) return true;
-    return false;
-}
-
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
-    const spot = () => Spot(bot) as unknown as Lib.Vec | undefined;
     const sdk = Settings().Spot === "sdk";
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in
     // 50-150 steps every 0.6-1.5 s (knowledge.md 1.1 idle motion) and follows the wave in 150-unit jumps.
     const hold: Lib.Verbs.HoldOpts = sdk
         ? { tolerance: 40, repath: 1.05, jitter: 0.85, scatter: 130, step: [50, 150], follow: 150, hold: "state:laning" }
         : { tolerance: 100, repath: 1, jitter: 0.3, scatter: 50, hold: "state:laning" };
-    const verbs = Tasks.Verbs();
-    let target: Lib.Verbs.LaneTarget | undefined;
-    const pick = (): boolean => {
-        if (verbs === undefined || !OwnsLastHit(bot) || (distTo(bot, Spot(bot)) ?? 0) > FAR) return false;
-        target = verbs.nextLastHit(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin });
-        return target !== undefined;
-    };
-    let near = false;
-    while (true) {
-        ctx.label(near ? "hold" : "walk");
-        const r = yield* ctx.holdAt(spot, {
-            ...hold,
-            interruptIf: () => {
-                const d = distTo(bot, Spot(bot));
-                if (near ? (d ?? 0) > FAR : (d ?? math.huge) <= NEAR) return true;
-                return pick();
-            },
-        });
-        if (r.reason !== "interrupted") return r;
-        if (target === undefined) {
-            const d = distTo(bot, Spot(bot));
-            near = d !== undefined && d <= (near ? FAR : NEAR);
-            continue;
-        }
-        const t = target;
-        target = undefined;
-        const contested = enemyHeroNear(bot, 1000);
-        ctx.label(t.kind);
-        const opts: Lib.Verbs.LastHitOpts = {
-            target: t.creep,
-            maxWait: Settings().LastHitWithin + 1,
-            hold: "state:laning",
-            interruptIf: () => (distTo(bot, Spot(bot)) ?? 0) > LEASH,
-        };
-        const res = t.kind === "lasthit" ? yield* ctx.lastHit(opts) : yield* ctx.deny(opts);
-        Telemetry.Event("lh", [
-            ["pid", bot.GetPlayerID()],
-            ["kind", t.kind],
-            ["result", res.success ? "ok" : "fail"],
-            ["reason", res.reason],
-            ["ranged", t.ranged],
-            ["eta", math.floor(t.eta * 100) / 100],
-            ["contested", contested],
-        ]);
-        if (res.reason === "dead") return res;
-    }
+    return yield* ctx.laneFarm(() => Spot(bot) as unknown as Lib.Vec | undefined, {
+        hold,
+        lastHits: () => OwnsLastHit(bot),
+        within: Settings().LastHitWithin,
+        near: NEAR,
+        far: FAR,
+        leash: LEASH,
+        onAttempt: (t, res, contested) =>
+            Telemetry.Event("lh", [
+                ["pid", bot.GetPlayerID()],
+                ["kind", t.kind],
+                ["result", res.success ? "ok" : "fail"],
+                ["reason", res.reason],
+                ["ranged", t.ranged],
+                ["eta", math.floor(t.eta * 100) / 100],
+                ["contested", contested],
+            ]),
+    });
 }
 
 export function Spec(bot: Unit): Lib.StateSpec {
