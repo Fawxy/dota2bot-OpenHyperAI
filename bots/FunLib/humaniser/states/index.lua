@@ -307,6 +307,17 @@ function ____exports.BodyLastHits(bot)
     local cur = ____opt_12 and ____opt_12.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
+--- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
+-- skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
+-- that never landed, `missed` with the creep alive seconds later).
+function ____exports.BodyBusy(bot)
+    if not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    local ____opt_14 = Tasks.Current(bot)
+    local label = ____opt_14 and ____opt_14.label
+    return label == "lasthit" or label == "deny"
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)
@@ -315,8 +326,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_14 = Tasks.Loaded()
-    local cur = ____opt_14 and ____opt_14.States.Current(bot)
+    local ____opt_16 = Tasks.Loaded()
+    local cur = ____opt_16 and ____opt_16.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports
