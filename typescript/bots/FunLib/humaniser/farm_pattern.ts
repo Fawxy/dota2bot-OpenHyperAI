@@ -255,6 +255,15 @@ function sharesPlayerID(bot: Unit): boolean {
 const IDLE_MODES: Record<number, boolean> = { [BotMode.Laning]: true, [BotMode.Farm]: true, [BotMode.None]: true };
 const FOCUS_MODES: BotMode[] = [BotMode.Ward, BotMode.SideShop, BotMode.SecretShop];
 
+/** StartGate's lasting part (the unit, a core position, its level): why this bot is not a farmer, or undefined. */
+export function Eligible(bot: Unit): string | undefined {
+    if (!bot.IsHero() || bot.IsIllusion() || sharesPlayerID(bot) || string.sub(bot.GetUnitName(), 1, 14) !== "npc_dota_hero_") return "unit";
+    const pos = eligiblePosition(bot);
+    if (pos === undefined) return "not-core";
+    if (bot.GetLevel() < (Settings().MinLevel[pos] ?? Settings().MinLevel[1])) return "level";
+    return undefined;
+}
+
 /** Why the bot may not start a trip now, or undefined. */
 export function StartGate(bot: Unit, now: number): string | undefined {
     const s = Settings();

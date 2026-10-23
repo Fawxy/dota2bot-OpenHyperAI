@@ -60,6 +60,7 @@ ____exports.DEFAULTS = {
         Shadow = true,
         Own = {laning = {2}},
         Teams = "allies",
+        ShadowTeams = "allies",
         LanePosEvery = 2
     }
 }

@@ -69,7 +69,7 @@ export const DEFAULTS = {
     // tasks: coroutine task runner spike (see humaniser/tasks.ts). Stack: run camp stacks as a task (stack_task.ts).
     Tasks: { Enable: true, Demo: false, Stack: false } as Record<string, any>,
     // Behaviour-state layer on the SDK's States (humaniser/states). Off: no selection, telemetry or tasks.
-    States: { Enable: false, Shadow: true, Own: { laning: [2] }, Teams: "allies", LanePosEvery: 2 } as Record<string, any>,
+    States: { Enable: false, Shadow: true, Own: { laning: [2] }, Teams: "allies", ShadowTeams: "allies", LanePosEvery: 2 } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;

@@ -12,15 +12,18 @@ import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
+import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 
 export interface StatesSettings {
     Enable: boolean;
-    /** Choose and log states for every bot in Teams; own only what Own lists. */
+    /** Choose and log states for every bot in ShadowTeams (and Teams); own only what Own lists. */
     Shadow: boolean;
     /** State name -> positions (J.GetPosition) whose body the SDK runs. */
     Own: Record<string, number[]>;
-    /** "allies": allies of a human only (where OHA's Lua laning Think runs); "all": every bot. */
+    /** Who may own: "allies" = allies of a human only (where OHA's Lua laning Think runs); "all": every bot. */
     Teams: "allies" | "all";
+    /** Who is shadowed (states chosen and logged, nothing owned beyond Teams): "allies" or "all". */
+    ShadowTeams: "allies" | "all";
     /** Seconds between `lane_pos` telemetry lines per bot in the laning state. */
     LanePosEvery: number;
 }
@@ -40,8 +43,12 @@ export function IsEnabled(): boolean {
     return Config.IsEnabled() && Settings().Enable === true && Tasks.Enabled();
 }
 
-function teamApplies(bot: Unit): boolean {
+function ownTeam(bot: Unit): boolean {
     return Settings().Teams === "all" || Difficulty.IsAllyOfHuman(bot);
+}
+
+function shadowTeam(bot: Unit): boolean {
+    return Settings().Shadow === true && (Settings().ShadowTeams === "all" || ownTeam(bot));
 }
 
 function ownsAny(): boolean {
@@ -53,10 +60,13 @@ function ownsAny(): boolean {
 
 /** Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think). */
 export function MayOwn(bot: Unit): boolean {
-    return IsEnabled() && teamApplies(bot) && ownsAny();
+    return IsEnabled() && ownTeam(bot) && ownsAny();
 }
 
+// Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
+// Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
+    if (!ownTeam(bot)) return false;
     const list = ownList(state);
     if (list === undefined) return false;
     const pos = LaneConfig.PositionOf(bot);
@@ -64,8 +74,39 @@ function owns(bot: Unit, state: string): boolean {
     return false;
 }
 
+type SpecFactory = (this: void, bot: Unit) => Lib.StateSpec;
+
+/** States by name in registration order; registering an existing name replaces it in place. */
+const registry: { name: string; make: SpecFactory }[] = [];
+let registryVersion = 0;
+
+export function Register(name: string, make: SpecFactory): void {
+    registryVersion += 1;
+    for (const r of registry) {
+        if (r.name === name) {
+            r.make = make;
+            return;
+        }
+    }
+    registry.push({ name, make });
+}
+
+export function Registered(): string[] {
+    return registry.map((r) => r.name);
+}
+
+Register(Laning.NAME, (bot) => Laning.Spec(bot));
+for (const [name, make] of Shadow.SPECS) Register(name, make);
+
+// The SDK treats a scorer error as "not applicable" and only logs it under Debug; with guards on it becomes an
+// ev=lua_error like any other hook's, so a scorer failing on some bot (e.g. a Dire one) shows in the error count.
+function guarded(spec: Lib.StateSpec): Lib.StateSpec {
+    if (Telemetry.GuardsEnabled()) spec.score = Telemetry.Guard(`States.score.${spec.name}`, spec.score, () => undefined);
+    return spec;
+}
+
 let installed = false;
-const defined: Record<number, boolean | undefined> = {};
+const defined: Record<number, number | undefined> = {};
 const lanePosAt: Record<number, number | undefined> = {};
 
 function lib(): ReturnType<typeof Tasks.Loaded> {
@@ -103,14 +144,17 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
 
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
-    if (!IsEnabled() || !teamApplies(bot)) return;
-    if (Settings().Shadow !== true && !ownsAny()) return;
+    if (!IsEnabled()) return;
+    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny())) return;
     const l = lib();
     if (l === undefined) return;
     const pid = bot.GetPlayerID();
-    if (defined[pid] !== true) {
-        defined[pid] = true;
-        l.States.define(bot as unknown as Lib.TaskUnit, [Laning.Spec(bot)]);
+    if (defined[pid] !== registryVersion) {
+        defined[pid] = registryVersion;
+        l.States.define(
+            bot as unknown as Lib.TaskUnit,
+            registry.map((r) => guarded(r.make(bot))),
+        );
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
     LaneMetrics.Tick(bot);

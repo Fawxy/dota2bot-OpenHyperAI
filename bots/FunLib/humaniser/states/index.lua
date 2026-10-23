@@ -1,5 +1,13 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -33,6 +41,7 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
+local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local LANE_POS_EVERY = 2
 function ____exports.Settings()
     return Config.Get().States
@@ -44,8 +53,11 @@ end
 function ____exports.IsEnabled()
     return Config.IsEnabled() and ____exports.Settings().Enable == true and Tasks.Enabled()
 end
-local function teamApplies(bot)
+local function ownTeam(bot)
     return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
+end
+local function shadowTeam(bot)
+    return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
 local function ownsAny()
     local own = ____exports.Settings().Own
@@ -61,9 +73,12 @@ local function ownsAny()
 end
 --- Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think).
 function ____exports.MayOwn(bot)
-    return ____exports.IsEnabled() and teamApplies(bot) and ownsAny()
+    return ____exports.IsEnabled() and ownTeam(bot) and ownsAny()
 end
 local function owns(bot, state)
+    if not ownTeam(bot) then
+        return false
+    end
     local list = ownList(state)
     if list == nil then
         return false
@@ -75,6 +90,44 @@ local function owns(bot, state)
         end
     end
     return false
+end
+--- States by name in registration order; registering an existing name replaces it in place.
+local registry = {}
+local registryVersion = 0
+function ____exports.Register(name, make)
+    registryVersion = registryVersion + 1
+    for ____, r in ipairs(registry) do
+        if r.name == name then
+            r.make = make
+            return
+        end
+    end
+    registry[#registry + 1] = {name = name, make = make}
+end
+function ____exports.Registered()
+    return __TS__ArrayMap(
+        registry,
+        function(____, r) return r.name end
+    )
+end
+____exports.Register(
+    Laning.NAME,
+    function(bot) return Laning.Spec(bot) end
+)
+for ____, ____value in ipairs(Shadow.SPECS) do
+    local name = ____value[1]
+    local make = ____value[2]
+    ____exports.Register(name, make)
+end
+local function guarded(spec)
+    if Telemetry.GuardsEnabled() then
+        spec.score = Telemetry.Guard(
+            "States.score." .. spec.name,
+            spec.score,
+            function() return nil end
+        )
+    end
+    return spec
 end
 local installed = false
 local defined = {}
@@ -141,10 +194,10 @@ local function lanePos(bot, l)
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
 function ____exports.Tick(bot)
-    if not ____exports.IsEnabled() or not teamApplies(bot) then
+    if not ____exports.IsEnabled() then
         return
     end
-    if ____exports.Settings().Shadow ~= true and not ownsAny() then
+    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) then
         return
     end
     local l = lib()
@@ -152,11 +205,14 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    if defined[pid] ~= true then
-        defined[pid] = true
+    if defined[pid] ~= registryVersion then
+        defined[pid] = registryVersion
         l.States.define(
             bot,
-            {Laning.Spec(bot)}
+            __TS__ArrayMap(
+                registry,
+                function(____, r) return guarded(r.make(bot)) end
+            )
         )
     end
     l.States.Tick(bot)
