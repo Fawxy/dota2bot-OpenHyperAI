@@ -53,6 +53,9 @@ function CreepMeta:CanBeSeen() return not self.unseen end
 -- `unseen`: a live handle the team cannot see; the engine gives it no location.
 function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
+-- Creep and tower damage default to 0 so worlds that do not set it keep the kill check's incoming damage at 0.
+function CreepMeta:GetAttackDamage() return self.dmg or 0 end
+function CreepMeta:GetAttackSpeed() return self.aspd or 1 end
 function CreepMeta:IsHero() return false end
 function CreepMeta:IsNull() return self.removed == true end
 
@@ -125,6 +128,7 @@ function MakeLaneTowers()
 			local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {},
 				loc = absLoc(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
 			t.GetUnitName = function() return "tower_t1" end
+			t.dmg = 0
 			w[team][id] = t
 		end
 	end
@@ -158,6 +162,8 @@ function UnitMeta:SetTarget(t)
 end
 function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
+function UnitMeta:GetAttackSpeed() return self.aspd or 1 end
+function UnitMeta:GetActualIncomingDamage(dmg) return dmg end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
 function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
 function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end

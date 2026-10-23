@@ -294,10 +294,45 @@ end
 do
 	local W = world({ burst = 1000, botX = 0 })
 	play(W, 0.7)
-	play(W, 7)
-	check("the commit holds up to CommitMax", W.events("lanefight_end") == 0 and W.age("commit") ~= nil)
+	play(W, 4)
+	check("the commit holds up to CommitMax (5 s)", W.events("lanefight_end") == 0 and W.age("commit") ~= nil)
 	play(W, 1.0)
-	check("CommitMax ends the commit", W.events("lanefight_end", "reason=commit-max") == 1, table.concat(W.lines, "\n"))
+	check("CommitMax ends the commit at 5 s", W.events("lanefight_end", "reason=commit-max") == 1, table.concat(W.lines, "\n"))
+end
+
+do
+	-- The kill stops working (the stun missed, the target regenerated): margin under AbandonMargin for over AbandonAfter.
+	local W = world({ burst = 1000, botX = 0 })
+	play(W, 0.7)
+	check("setup: committing", W.age("commit") ~= nil)
+	W.bot.estDamage = 50
+	play(W, 0.6)
+	check("a dip under AbandonMargin shorter than AbandonAfter keeps the commit", W.events("lanefight_end") == 0 and W.age("commit") ~= nil,
+		table.concat(W.lines, "\n"))
+	W.bot.estDamage = 1000
+	play(W, 0.6)
+	W.bot.estDamage = 50
+	play(W, 1.6)
+	check("a margin under AbandonMargin for over AbandonAfter ends the commit as margin", W.events("lanefight_end", "phase=commit reason=margin") == 1,
+		table.concat(W.lines, "\n"))
+end
+
+do
+	-- An enemy tower takes aggro on the bot mid-commit: retreat is no longer held, and the commit ends as tower-aggro.
+	local W = world({ burst = 1000, botX = 0 })
+	play(W, 0.7)
+	check("setup: committing", W.age("commit") ~= nil)
+	local tower
+	for _, t in pairs(TOWERS_W[W.bot.team == 2 and 3 or 2]) do if math.abs(t.loc.y - BOT_Y) < 1000 then tower = t end end
+	W.bot.loc = Vector(tower.loc.x - W.sign * 600, BOT_Y)
+	W.enemy.loc = Vector(tower.loc.x - W.sign * 400, BOT_Y)
+	tower.target = W.bot
+	W.retreat = 0.85
+	score(W)
+	check("under tower fire the commit does not cap retreat", near(W.last.retreat, 0.85), W.last.retreat)
+	play(W, 1)
+	check("tower aggro ends the commit", W.events("lanefight_end", "phase=commit reason=tower-aggro") == 1, table.concat(W.lines, "\n"))
+	tower.target = nil
 end
 
 do
@@ -418,8 +453,9 @@ do
 end
 
 do
-	-- A near miss (margin 0.9) logs why it failed, once per target instance; a margin under 0.8 logs nothing.
-	local W = world({ botLevel = 1, burst = 90 })
+	-- A near miss (margin 0.9) logs why it failed, once per target instance; a margin under 0.8 logs nothing. The bot
+	-- stands 250 outside its range, so 108 burst is credited at 5/6: 0.9.
+	local W = world({ botLevel = 1, burst = 108 })
 	play(W, 3)
 	check("a kill check failing with margin >= 0.8 logs gate=kill:<reason> once", W.events("lanefight_gate", "gate=kill:burst target=6") == 1
 		and W.events("lanefight_gate", "gate=kill:") == 1, table.concat(W.lines, "\n"))
@@ -726,7 +762,7 @@ do
 	DebugDrawText = realDraw
 	local line
 	for _, t in ipairs(drawn) do if t:sub(1, 6) == "fight:" then line = t end end
-	check("overlay shows window, kill margin and remembered count", line == "fight: window=spell kill=1.12 mem=2 phase=trade",
+	check("overlay shows window, kill margin and remembered count", line == "fight: window=spell kill=0.93 mem=2 phase=trade",
 		tostring(line) .. " | " .. table.concat(drawn, " | ") .. table.concat(W.lines, "\n"))
 
 	local W2 = world({ burst = 112 })
@@ -767,7 +803,8 @@ local function fieldSet(fields)
 end
 
 do
-	local W = world({ burst = 1000 })
+	-- 1,200 burst credited at 5/6 (the bot starts 250 outside its range): margin 10.
+	local W = world({ burst = 1200 })
 	play(W, 1.5)
 	local stripT = function(l) return (l:gsub(" t=%S+", "", 1)) end
 	local seen, roundTrip = {}, true

@@ -330,13 +330,17 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
 }
 
 /** Heroes in `bot`'s lane by the read's rules (allies standing in it, enemies counted in it), and enemies counted within `radius` of the bot. */
-export function LaneCounts(bot: Unit, snap: LaneState.LaneSnapshot, radius: number): { enemies: number; allies: number; enemiesNearBot: number } {
+/**
+ * Lane heroes on each side. With `near` (a fight's target), only allies within `radius` of it count: a partner walking
+ * back to tower or a camp is in lane but not in the fight. Enemies count anywhere in lane (they can join).
+ */
+export function LaneCounts(bot: Unit, snap: LaneState.LaneSnapshot, radius: number, near?: Vector): { enemies: number; allies: number; enemiesNearBot: number } {
     const team = bot.GetTeam();
     const lane = snap.lane;
     const bounds = laneBounds(team, lane);
     const botLoc = bot.GetLocation();
     let allies = 0;
-    for (const h of snap.allies) if (allyInLane(team, lane, h, bounds)) allies++;
+    for (const h of snap.allies) if (allyInLane(team, lane, h, bounds) && (near === undefined || dist2D(h.unit.GetLocation(), near) <= radius)) allies++;
     let enemies = 0;
     let enemiesNearBot = 0;
     for (const e of LaneState.Enemies(bot, lane)) {

@@ -436,7 +436,7 @@ function claim(bot, phase)
     for ____, mode in ipairs(FOCUS_MODES) do
         Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = mode, cap = cap})
     end
-    if hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP then
+    if hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP and not LaneState.EnemyTowerTargeting(bot) then
         Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = BotMode.Retreat, cap = cap})
     else
         Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat)
@@ -946,6 +946,29 @@ function endReason(bot, s, now)
         if abort ~= nil then
             return abort
         end
+        local ____temp_15
+        if target ~= nil then
+            ____temp_15 = KillCheck.Check(bot, s.partners, target, now)
+        else
+            ____temp_15 = nil
+        end
+        local k = ____temp_15
+        if k ~= nil and k.margin < cfg.AbandonMargin then
+            s.lowMarginSince = s.lowMarginSince or now
+            if now - s.lowMarginSince > cfg.AbandonAfter then
+                return "margin"
+            end
+        else
+            s.lowMarginSince = nil
+        end
+        if LaneState.EnemyTowerTargeting(bot) then
+            s.towerAggroSince = s.towerAggroSince or now
+            if now - s.towerAggroSince > END_GRACE then
+                return "tower-aggro"
+            end
+        else
+            s.towerAggroSince = nil
+        end
     end
     if s.phase == "trade" then
         if s.hits >= cfg.TradeHits then
@@ -1009,13 +1032,13 @@ function checkEnd(bot, s, now)
 end
 function heroName(u)
     local h = LaneConfig.Helpers().HeroDisplayName
-    local ____temp_15
+    local ____temp_16
     if h ~= nil then
-        ____temp_15 = h(u)
+        ____temp_16 = h(u)
     else
-        ____temp_15 = nil
+        ____temp_16 = nil
     end
-    local name = ____temp_15
+    local name = ____temp_16
     return name or (string.gsub(
         u:GetUnitName(),
         "npc_dota_hero_",
@@ -1113,13 +1136,13 @@ function coordinate(bot, s, snap, now)
         Intent.Hold(bot, WAIT_HOLD)
     end
     checkMistake(bot, s, now)
-    local ____LaneFightConfig_IsOn_result_16
+    local ____LaneFightConfig_IsOn_result_17
     if LaneFightConfig.IsOn("Kill") then
-        ____LaneFightConfig_IsOn_result_16 = partnerOf(bot, snap)
+        ____LaneFightConfig_IsOn_result_17 = partnerOf(bot, snap)
     else
-        ____LaneFightConfig_IsOn_result_16 = nil
+        ____LaneFightConfig_IsOn_result_17 = nil
     end
-    local p = ____LaneFightConfig_IsOn_result_16
+    local p = ____LaneFightConfig_IsOn_result_17
     if p == nil then
         s.follow = nil
         return
@@ -1230,9 +1253,9 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
     local tpid = target:GetPlayerID()
     local p = partnerOf(bot, snap)
     local plan = planKill(bot, p, target, now)
-    local ____s_24 = s
-    local ____opt_22 = plan.k
-    ____s_24.lastMargin = ____opt_22 and ____opt_22.margin
+    local ____s_25 = s
+    local ____opt_23 = plan.k
+    ____s_25.lastMargin = ____opt_23 and ____opt_23.margin
     if plan.action == "none" then
         s.killSince = nil
         local k = plan.k
@@ -1283,8 +1306,8 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
         if windowKey ~= nil then
             local w = touch(s, windowKey, now)
             w.started = true
-            local ____s_spent_25 = s.spent
-            ____s_spent_25[#____s_spent_25 + 1] = w
+            local ____s_spent_26 = s.spent
+            ____s_spent_26[#____s_spent_26 + 1] = w
         end
     elseif p ~= nil then
         if p.human then
@@ -1446,13 +1469,13 @@ local function considerStart(bot, s, snap, now)
         return
     end
     local blocked = startBlocked(bot, false)
-    local ____temp_21
+    local ____temp_22
     if blocked == nil then
-        ____temp_21 = visibleEnemy(bot, tpid)
+        ____temp_22 = visibleEnemy(bot, tpid)
     else
-        ____temp_21 = nil
+        ____temp_22 = nil
     end
-    local seen = ____temp_21
+    local seen = ____temp_22
     if blocked == nil and seen == nil then
         blocked = "unseen"
     end
@@ -1565,17 +1588,17 @@ end
 --- The trade or commit target, while one runs.
 function ____exports.Target(bot)
     local s = fights[bot:GetPlayerID()]
-    local ____temp_26
+    local ____temp_27
     if s ~= nil and (s.phase == "trade" or s.phase == "commit") then
-        ____temp_26 = s.target
+        ____temp_27 = s.target
     else
-        ____temp_26 = nil
+        ____temp_27 = nil
     end
-    return ____temp_26
+    return ____temp_27
 end
 function ____exports.CurrentPhase(bot)
-    local ____opt_27 = fights[bot:GetPlayerID()]
-    return ____opt_27 and ____opt_27.phase or "idle"
+    local ____opt_28 = fights[bot:GetPlayerID()]
+    return ____opt_28 and ____opt_28.phase or "idle"
 end
 --- "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line.
 function ____exports.Describe(bot)

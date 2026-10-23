@@ -80,6 +80,10 @@ interface FightState {
     // Window instances this phase spends; given back if the phase never took over.
     spent: Instance[];
     retreatSince?: number;
+    // Commit discipline: since when the kill check's margin on the target has been under AbandonMargin, and since when
+    // an enemy tower has had the bot as its target.
+    lowMarginSince?: number;
+    towerAggroSince?: number;
     hits: number;
     lastAttack: number;
     fogSince?: number;
@@ -198,7 +202,9 @@ const FOCUS_SOURCE = "lanefight:commit_focus";
 const PARTNER_ABANDON = "partner_abandon";
 // lanefight_commit role per start `via`.
 const COMMIT_ROLES: Record<string, string> = { initiate: "initiator", follow: "follower", solo: "solo" };
-// The errands and laning a commit caps; attack, defend and push stay free, retreat is held separately.
+// The errands and laning a commit caps; defend and push stay free, retreat is held separately. The Attack cap only
+// reaches the heroes whose attack mode is OHA's Lua override (Valve's C++ attack mode is never resolved), but there it
+// keeps that mode (1.0, x1.1 when active) from beating the commit.
 const FOCUS_MODES: BotMode[] = [BotMode.Laning, BotMode.Farm, BotMode.Attack, BotMode.Ward, BotMode.Rune, BotMode.SecretShop, BotMode.SideShop, BotMode.Roam];
 // Modes a lane fight may start from.
 const START_MODES: BotMode[] = [BotMode.Laning, BotMode.TeamRoam, BotMode.Attack];
@@ -501,7 +507,9 @@ function claim(bot: Unit, phase: Phase): boolean {
     if (!posted || phase !== "commit") return posted;
     const cap = focusCap(bot);
     for (const mode of FOCUS_MODES) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode, cap });
-    if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode: BotMode.Retreat, cap });
+    // Under an enemy tower's fire retreat is never held: Valve's retreat reads the tower threat and must be able to win.
+    if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP && !LaneState.EnemyTowerTargeting(bot))
+        Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode: BotMode.Retreat, cap });
     else Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat);
     return posted;
 }
@@ -832,6 +840,17 @@ function endReason(bot: Unit, s: FightState, now: number): string | undefined {
     if (s.phase === "commit") {
         const abort = abortReason(bot, s, target, now);
         if (abort !== undefined) return abort;
+        // A kill that stopped working (the stun missed, the target regenerated) is let go, not chased to CommitMax.
+        // Checked on the commit's own target and partners (cached for KillCheckEvery): the fight read may name no target.
+        const k = target !== undefined ? KillCheck.Check(bot, s.partners, target, now) : undefined;
+        if (k !== undefined && k.margin < cfg.AbandonMargin) {
+            s.lowMarginSince = s.lowMarginSince ?? now;
+            if (now - s.lowMarginSince > cfg.AbandonAfter) return "margin";
+        } else s.lowMarginSince = undefined;
+        if (LaneState.EnemyTowerTargeting(bot)) {
+            s.towerAggroSince = s.towerAggroSince ?? now;
+            if (now - s.towerAggroSince > END_GRACE) return "tower-aggro";
+        } else s.towerAggroSince = undefined;
     }
 
     if (s.phase === "trade") {
