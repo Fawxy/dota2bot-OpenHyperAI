@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 7eee78bbc9daa213da62e27e010f1731152001ad. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ ba258aad42c194bde4245b19873980df9a094e73. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1357,7 +1357,7 @@ function gone(u)
     if ____temp_2 == nil then
         ____temp_2 = false
     end
-    return ____temp_2 or not u:IsAlive()
+    return ____temp_2 or not u:IsAlive() or u:GetLocation() == nil
 end
 function nearby(bot)
     local id = bot:GetPlayerID()
@@ -1951,6 +1951,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local baseline = counter()
     local enemyOnIt = false
     local tHit = 0
+    local diag = ""
     local lastFrame
     local margin = MIN_MARGIN
     while true do
@@ -1987,6 +1988,14 @@ local strike = __TS__Generator(function(bot, mode, opts)
                 local b = believe(bot, creep, true, margin)
                 if due(b) then
                     tHit = b.tHit
+                    diag = string.format(
+                        "hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        math.floor(creep:GetHealth()),
+                        math.floor(b.hpAtHit),
+                        math.floor(b.mine),
+                        b.tHit,
+                        margin
+                    )
                     bot:Action_AttackUnit(creep, true)
                     break
                 end
@@ -2001,19 +2010,29 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
+    local function out(r)
+        local hp = gone(creep) and 0 or math.floor(creep:GetHealth())
+        r.message = string.format(
+            "%s end=%d dt=%.2f",
+            diag,
+            hp,
+            now() - swingAt
+        )
+        return r
+    end
     while true do
         coroutine.yield()
         if counter() > baseline then
-            return ok()
+            return out(ok())
         end
         if gone(creep) then
-            return fail(landBy() and "missed" or lostReason(enemyOnIt))
+            return out(fail(landBy() and "missed" or lostReason(enemyOnIt)))
         end
         if not bot:IsAlive() then
             return fail("dead")
         end
         if now() - swingAt > tHit + CONFIRM_SLACK then
-            return fail("missed")
+            return out(fail("missed"))
         end
         if mode == "lasthit" then
             enemyOnIt = enemyTargeting(bot, creep)

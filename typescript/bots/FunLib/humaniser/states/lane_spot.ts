@@ -43,8 +43,9 @@ function isRangedCreep(c: Unit): boolean {
     return string.find(c.GetUnitName(), "ranged", 1, true)[0] !== undefined;
 }
 
+/** Alive and in sight: a unit in the fog keeps a valid handle but reads no location. */
 function alive(u: Unit | undefined): u is Unit {
-    return u !== undefined && u !== null && !u.IsNull() && u.IsAlive();
+    return u !== undefined && u !== null && !u.IsNull() && u.IsAlive() && u.GetLocation() !== undefined;
 }
 
 export interface SpotInfo {

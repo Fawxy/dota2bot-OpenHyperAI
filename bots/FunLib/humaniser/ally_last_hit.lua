@@ -163,8 +163,10 @@ local function protectedHumans(bot)
         end
     )
 end
---- The protected human nearest to `location` within ProtectRange, or undefined with the "free:" reason
--- explaining why etiquette does not apply.
+--- A handle Dota no longer backs (IsNull), or a dead unit. Fakes without IsNull count as live.
+local function stale(u)
+    return u.IsNull ~= nil and u:IsNull() or not u:IsAlive()
+end
 function ____exports.GetProtectedHuman(bot, location)
     if not Config.IsFeatureEnabled("AllyLastHit") then
         return nil, "free: disabled"
@@ -172,14 +174,30 @@ function ____exports.GetProtectedHuman(bot, location)
     if not inLaningPhase() then
         return nil, "free: not-laning"
     end
+    if location == nil or location == nil then
+        return nil, "free: no-location"
+    end
     local s = ____exports.Settings()
     local nearest
     local nearestDist = s.ProtectRange
     for ____, human in ipairs(protectedHumans(bot)) do
-        local dist = GetUnitToLocationDistance(human, location)
-        if dist <= nearestDist then
-            nearest = human
-            nearestDist = dist
+        do
+            local __continue35
+            repeat
+                if stale(human) then
+                    __continue35 = true
+                    break
+                end
+                local dist = GetUnitToLocationDistance(human, location)
+                if dist <= nearestDist then
+                    nearest = human
+                    nearestDist = dist
+                end
+                __continue35 = true
+            until true
+            if not __continue35 then
+                break
+            end
         end
     end
     if nearest == nil then
@@ -288,6 +306,9 @@ end
 function ____exports.MayLastHit(bot, creep)
     if not Config.IsFeatureEnabled("AllyLastHit") then
         return true, "free: disabled"
+    end
+    if creep == nil or creep == nil or stale(creep) then
+        return false, "skip: invalid"
     end
     if creep:GetTeam() == bot:GetTeam() then
         return true, "free: deny"
