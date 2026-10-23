@@ -113,3 +113,15 @@ test('an all-digit build sha stays the string it was, leading zero and all', () 
     const { parseLine } = require('../parse');
     assert.strictEqual(parseLine('[HEV] t=1 ev=bot pid=1 build=0123456 pos=2').e.build, '0123456');
 });
+
+test('a forced game start (pregame clock jumps to 0:00) is not a snapshot gap; a real stall still is', () => {
+    const { runChecks } = require('../checks');
+    const snap = (t, x = -1000) => `[HEV] t=${t} ev=snap pid=1 x=${x} y=0 alive=1 hp=100 mp=50 lvl=1 lh=0 dn=0 mode=laning d=0.3 act=2 gold=600`;
+    const lines = ['[HEV] t=-89 ev=player pid=0 hero=abaddon team=2 human=1', botLine(1, 2)];
+    for (let t = -89; t <= -53; t++) lines.push(snap(t));
+    for (let t = 0.033; t <= 60; t++) lines.push(snap(t));
+    const gaps = log => runChecks(parseLog(log.join('\n'))[0]).find(r => r.id === 'snapshot_gaps');
+    assert.strictEqual(gaps(lines).level, 'pass');
+    const stalled = lines.filter(l => !/t=(2\d|3\d)\.033 /.test(l));
+    assert.strictEqual(gaps(stalled).level, 'fail');
+});
