@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 3e6a41442b6ca95dabaa5ee4b3ebf94ea34478f0. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ ba258aad42c194bde4245b19873980df9a094e73. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1357,7 +1357,7 @@ function gone(u)
     if ____temp_2 == nil then
         ____temp_2 = false
     end
-    return ____temp_2 or not u:IsAlive()
+    return ____temp_2 or not u:IsAlive() or u:GetLocation() == nil
 end
 function nearby(bot)
     local id = bot:GetPlayerID()
