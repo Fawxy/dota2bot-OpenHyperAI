@@ -137,6 +137,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["ranged", t.ranged],
                 ["eta", math.floor(t.eta * 100) / 100],
                 ["contested", contested],
+                ["msg", res.message],
             ]),
     });
 }

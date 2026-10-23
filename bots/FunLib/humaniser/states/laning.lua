@@ -243,7 +243,8 @@ local body = __TS__Generator(function(bot, ctx)
                         "eta",
                         math.floor(t.eta * 100) / 100
                     },
-                    {"contested", contested}
+                    {"contested", contested},
+                    {"msg", res.message}
                 }
             ) end
         }
