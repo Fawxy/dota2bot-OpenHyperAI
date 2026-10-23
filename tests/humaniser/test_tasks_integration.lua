@@ -28,6 +28,7 @@ local function Fresh(cfg, botOpts)
 	cfg = cfg or { Enable = true }
 	-- H.Tick would otherwise run the lane layer, which needs a lane world these tests don't stub.
 	cfg.Lane = cfg.Lane or { Enable = false }
+	cfg.Transitions = cfg.Transitions or { Enable = false }
 	local H = FreshHumaniser(cfg)
 	local o = botOpts or {}
 	o.pid, o.mode = o.pid or 1, o.mode or ASSEMBLE
@@ -65,8 +66,8 @@ do
 	check("Explain names the task", I.Explain(bot, ASSEMBLE):find("by task:hold", 1, true) ~= nil, I.Explain(bot, ASSEMBLE))
 	check("Describe shows the running task", H.Tasks.Describe(bot) == "hold step=1", H.Tasks.Describe(bot))
 
-	-- Without `until`, a task that stops stepping loses its claim after ClaimTTL.
-	T = T + 0.3
+	-- Without `until`, a task that stops stepping loses its claim after ClaimTTL (0.5).
+	T = T + H.Intent.Get().ClaimTTL + 0.1
 	check("unstepped task's claim lapses", near(I.Resolve(bot, ASSEMBLE, RAW), RAW), I.Resolve(bot, ASSEMBLE, RAW))
 
 	H.Tasks.Step(bot, ASSEMBLE)

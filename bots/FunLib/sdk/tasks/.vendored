@@ -1,9 +1,15 @@
 lua	.	tasks.lua
 lua	.	VERSION
 types	../../../../typescript/bots/FunLib/sdk/tasks	tasks.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/abort.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/adapter.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/combinators.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/ctx.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/index.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/runner.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/simple_host.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/support.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/types.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs_all.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs_cast.d.ts

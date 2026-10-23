@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 4b4a4afe9d79aa924cfcd9558aecdc134046dc56. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 03bfea6e9b3bb264fb4456cc2d8f3778437641c2. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -28,6 +28,138 @@ ____modules = {
 local ____exports = {}
 return ____exports
  end,
+["abort"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local TAG = {}
+--- Ends the running task with `result` from any generator depth; the runner finishes it as if returned.
+function ____exports.abortWith(result)
+    local thrown = {tag = TAG, result = result}
+    error(thrown, 0)
+end
+function ____exports.abort(reason, message)
+    return ____exports.abortWith({success = false, reason = reason, message = message})
+end
+--- The carried result if `err` was raised by `abort`/`must`, else undefined.
+function ____exports.aborted(err)
+    if type(err) ~= "table" then
+        return nil
+    end
+    local t = err
+    return rawequal(t.tag, TAG) and t.result or nil
+end
+--- Runs `g` and returns its result if it succeeded; a failure ends the whole task with that result, its message
+-- replaced by `message` when given.
+____exports.must = __TS__Generator(function(g, message)
+    local r = __TS__DelegatedYield(g)
+    if r == nil then
+        return {success = true, reason = "ok"}
+    end
+    if not r.success then
+        ____exports.abortWith(message == nil and r or ({success = false, reason = r.reason, message = message}))
+    end
+    return r
+end)
+return ____exports
+ end,
 ["adapter"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
@@ -38,249 +170,6 @@ function ____exports.init(a)
 end
 function ____exports.get()
     return current
-end
-return ____exports
- end,
-["support"] = function(...) 
---[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
-local ____exports = {}
---- True iff the VM exposes a usable `coroutine` library (generators compile to coroutines).
-function ____exports.Supported()
-    local co = rawget(_G, "coroutine")
-    if type(co) ~= "table" then
-        return false
-    end
-    local t = co
-    return type(t.create) == "function" and type(t.resume) == "function" and type(t.status) == "function" and type(t.yield) == "function"
-end
-return ____exports
- end,
-["runner"] = function(...) 
---[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
-local ____exports = {}
-local finish, running, last
-local ____adapter = require("adapter")
-local getAdapter = ____adapter.get
-local ____support = require("support")
-local Supported = ____support.Supported
-function finish(bot, t, result)
-    local id = bot:GetPlayerID()
-    running[id] = nil
-    last[id] = {name = t.name, result = result}
-    local a = getAdapter()
-    if a ~= nil then
-        a.release(bot, t.source, t.host)
-    end
-    local onEnd = t.onEnd
-    if onEnd == nil then
-        return
-    end
-    local ok, err = pcall(function() return onEnd(result, {label = t.label, steps = t.steps}) end)
-    if not ok and a ~= nil then
-        a.log(
-            "tasks",
-            (("task " .. t.name) .. " onEnd error: ") .. tostring(err)
-        )
-    end
-end
-function ____exports.Cancel(bot, reason, message)
-    local t = running[bot:GetPlayerID()]
-    if t == nil then
-        return
-    end
-    finish(bot, t, {success = false, reason = reason, message = message})
-end
---- Seconds a task may wait for its first `Step`, whatever the active mode, before it is cancelled.
-____exports.START_GRACE = 1
-local DEFAULT_TIER = "LANE_PLAN"
-local DEFAULT_FLOOR = 0.6
-local DEFAULT_STALL_AFTER = 2
-running = {}
-last = {}
-local loggedRefusals = {}
-local function refuse(why)
-    local a = getAdapter()
-    if a ~= nil and loggedRefusals[why] == nil then
-        loggedRefusals[why] = true
-        a.log("tasks", "task refused: " .. why)
-    end
-    return false
-end
-local function claim(a, bot, t)
-    local now = a.now()
-    if t.claimedAt == now and t.claimedUrgent == t.urgent then
-        return
-    end
-    t.claimedAt = now
-    t.claimedUrgent = t.urgent
-    a.claim(bot, {
-        source = t.source,
-        mode = t.host,
-        tier = t.tier,
-        floor = t.floor,
-        urgent = t.urgent
-    })
-end
-local function guarded(bot, t)
-    if t.guard == nil then
-        return false
-    end
-    local message = t.guard()
-    if message == nil then
-        return false
-    end
-    finish(bot, t, {success = false, reason = "interrupted", message = message})
-    return true
-end
-function ____exports.task(bot, opts, body)
-    local a = getAdapter()
-    if a == nil then
-        return refuse("no_adapter")
-    end
-    if not a.enabled() then
-        return refuse("disabled")
-    end
-    if not Supported() then
-        return refuse("unsupported")
-    end
-    if running[bot:GetPlayerID()] ~= nil then
-        ____exports.Cancel(bot, "cancelled", "replaced")
-    end
-    local now = a.now()
-    running[bot:GetPlayerID()] = {
-        name = opts.name,
-        host = opts.host,
-        tier = opts.tier or DEFAULT_TIER,
-        floor = opts.floor or DEFAULT_FLOOR,
-        source = "task:" .. opts.name,
-        startedAt = now,
-        steps = 0,
-        body = body,
-        onEnd = opts.onEnd,
-        guard = opts.guard,
-        stallAfter = opts.stallAfter or DEFAULT_STALL_AFTER,
-        preemptAfter = opts.preemptAfter or 0,
-        lastStepAt = now,
-        urgent = false
-    }
-    return true
-end
-function ____exports.Step(bot, host)
-    local a = getAdapter()
-    local t = running[bot:GetPlayerID()]
-    if a == nil or t == nil or t.host ~= host or not a.enabled() then
-        return false
-    end
-    if guarded(bot, t) then
-        return false
-    end
-    claim(a, bot, t)
-    local ok, res = pcall(function()
-        if t.gen == nil then
-            t.gen = t.body()
-        end
-        return t.gen:next()
-    end)
-    t.steps = t.steps + 1
-    t.lastStepAt = a.now()
-    if not ok then
-        local message = tostring(res)
-        a.log("tasks", (("task " .. t.name) .. " error: ") .. message)
-        finish(bot, t, {success = false, reason = "error", message = message})
-    elseif res.done then
-        finish(bot, t, res.value or ({success = true, reason = "ok"}))
-    end
-    return true
-end
---- Every frame from the host's global tick. Re-posts the claim while the task is live, so the host can win
--- the mode before the first `Step`; the grace and stall limits keep an unstepped task from pinning it.
-function ____exports.Tick(bot)
-    local a = getAdapter()
-    local t = running[bot:GetPlayerID()]
-    if t == nil then
-        return
-    end
-    if a == nil or not a.enabled() then
-        ____exports.Cancel(bot, "cancelled", "disabled")
-        return
-    end
-    if not bot:IsAlive() then
-        ____exports.Cancel(bot, "dead")
-        return
-    end
-    if guarded(bot, t) then
-        return
-    end
-    local now = a.now()
-    if t.steps == 0 then
-        if now - t.startedAt > ____exports.START_GRACE then
-            ____exports.Cancel(bot, "preempted", "never_started")
-            return
-        end
-    else
-        local mode = bot:GetActiveMode()
-        if mode == t.host then
-            t.awaySince = nil
-        else
-            if t.awaySince == nil then
-                t.awaySince = now
-            end
-            if now - t.awaySince >= t.preemptAfter then
-                ____exports.Cancel(
-                    bot,
-                    "preempted",
-                    "mode=" .. tostring(mode)
-                )
-                return
-            end
-        end
-        if now - t.lastStepAt > t.stallAfter then
-            ____exports.Cancel(bot, "preempted", "stalled")
-            return
-        end
-    end
-    claim(a, bot, t)
-end
---- Sets or clears urgency on the current task's claims from the next one posted; callable from a body.
-function ____exports.Urgent(bot, on)
-    local t = running[bot:GetPlayerID()]
-    if t ~= nil then
-        t.urgent = on
-    end
-end
---- Sets a free-form label on the current task, shown by `Current`/`Describe` and passed to `onEnd`.
-function ____exports.Label(bot, label)
-    local t = running[bot:GetPlayerID()]
-    if t ~= nil then
-        t.label = label
-    end
-end
-function ____exports.Current(bot)
-    local t = running[bot:GetPlayerID()]
-    if t == nil then
-        return nil
-    end
-    return {
-        name = t.name,
-        host = t.host,
-        startedAt = t.startedAt,
-        steps = t.steps,
-        label = t.label
-    }
-end
-function ____exports.Last(bot)
-    return last[bot:GetPlayerID()]
-end
-function ____exports.Describe(bot)
-    local t = running[bot:GetPlayerID()]
-    if t ~= nil then
-        return ((t.name .. (t.label ~= nil and ":" .. t.label or "")) .. " step=") .. tostring(t.steps)
-    end
-    local l = last[bot:GetPlayerID()]
-    if l ~= nil then
-        return (("- last=" .. l.name) .. " ") .. (l.result.success and "ok" or l.result.reason)
-    end
-    return "-"
 end
 return ____exports
  end,
@@ -385,7 +274,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ok, fail, now, dist
+local ok, fail, now, expired, dist
 local ____adapter = require("adapter")
 local get = ____adapter.get
 function ok()
@@ -396,6 +285,9 @@ function fail(reason)
 end
 function now()
     return get().now()
+end
+function expired(deadline)
+    return deadline ~= nil and now() >= deadline
 end
 function dist(a, b)
     local dx = a.x - b.x
@@ -435,7 +327,7 @@ ____exports.walkPath = __TS__Generator(function(bot, points, opts)
         if opts.interruptIf ~= nil and opts.interruptIf() then
             return fail("interrupted")
         end
-        if t - start > timeout then
+        if t - start > timeout or expired(opts.deadline) then
             return fail("timeout")
         end
         local d = dist(
@@ -490,6 +382,9 @@ ____exports.wait = __TS__Generator(function(bot, secs, opts)
         if now() - start >= secs then
             return ok()
         end
+        if expired(opts.deadline) then
+            return fail("timeout")
+        end
         coroutine.yield()
     end
 end)
@@ -516,6 +411,9 @@ ____exports.waitUntil = __TS__Generator(function(bot, t, opts)
         end
         if opts.interruptIf ~= nil and opts.interruptIf() then
             return fail("interrupted")
+        end
+        if expired(opts.deadline) then
+            return fail("timeout")
         end
         hold(bot, opts.hold)
         coroutine.yield()
@@ -614,7 +512,7 @@ ____exports.lastHit = __TS__Generator(function(bot, opts)
         if creepGone(creep) then
             return fail(enemyOnIt and "denied" or "taken_by_other")
         end
-        if adapter.now() - start > maxWait then
+        if adapter.now() - start > maxWait or expired(opts.deadline) then
             return fail("timeout")
         end
         enemyOnIt = enemyTargeting(bot, creep)
@@ -686,6 +584,9 @@ ____exports.attackAndConfirm = __TS__Generator(function(bot, pick, opts)
         if not bot:IsAlive() then
             return fail("dead")
         end
+        if expired(opts.deadline) then
+            return fail("timeout")
+        end
         if target == nil then
             target = pick()
             if target ~= nil then
@@ -729,6 +630,1314 @@ ____exports.attackAndConfirm = __TS__Generator(function(bot, pick, opts)
 end)
 return ____exports
  end,
+["verbs_cast"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____adapter = require("adapter")
+local get = ____adapter.get
+local ____verbs = require("verbs")
+local walkTo = ____verbs.walkTo
+local function ok()
+    return {success = true, reason = "ok"}
+end
+local function fail(reason, message)
+    return {success = false, reason = reason, message = message}
+end
+local function now()
+    return get().now()
+end
+local function dist(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+local function stopped(opts)
+    if opts.interruptIf ~= nil and opts.interruptIf() then
+        return fail("interrupted")
+    end
+    if opts.deadline ~= nil and now() >= opts.deadline then
+        return fail("timeout")
+    end
+    return nil
+end
+local function targetLost(t)
+    local ____this_1
+    ____this_1 = t
+    local ____opt_0 = ____this_1.IsNull
+    local ____temp_2 = ____opt_0 and ____opt_0(____this_1)
+    if ____temp_2 == nil then
+        ____temp_2 = false
+    end
+    local ____temp_6 = ____temp_2 or not t:IsAlive()
+    if not ____temp_6 then
+        local ____this_4
+        ____this_4 = t
+        local ____opt_3 = ____this_4.CanBeSeen
+        local ____temp_5 = ____opt_3 and ____opt_3(____this_4)
+        if ____temp_5 == nil then
+            ____temp_5 = true
+        end
+        ____temp_6 = not ____temp_5
+    end
+    return ____temp_6
+end
+local REORDER_SECS = 0.5
+local CHANNEL_SLACK = 0.25
+local function inPhase(bot, ability)
+    local ____this_8
+    ____this_8 = ability
+    local ____opt_7 = ____this_8.IsInAbilityPhase
+    local ____temp_11 = ____opt_7 and ____opt_7(____this_8)
+    if ____temp_11 == nil then
+        local ____this_10
+        ____this_10 = bot
+        local ____opt_9 = ____this_10.IsCastingAbility
+        ____temp_11 = ____opt_9 and ____opt_9(____this_10)
+    end
+    local ____temp_11_12 = ____temp_11
+    if ____temp_11_12 == nil then
+        ____temp_11_12 = false
+    end
+    return ____temp_11_12
+end
+local function channeling(bot, ability)
+    local ____this_14
+    ____this_14 = ability
+    local ____opt_13 = ____this_14.IsChanneling
+    local ____temp_17 = ____opt_13 and ____opt_13(____this_14)
+    if ____temp_17 == nil then
+        local ____this_16
+        ____this_16 = bot
+        local ____opt_15 = ____this_16.IsChanneling
+        ____temp_17 = ____opt_15 and ____opt_15(____this_16)
+    end
+    return ____temp_17
+end
+local function orderFor(bot, ability, opts)
+    local target = opts.target
+    if target ~= nil then
+        if bot.Action_UseAbilityOnEntity == nil then
+            return nil
+        end
+        return function() return bot:Action_UseAbilityOnEntity(ability, target) end
+    end
+    local at = opts.at
+    if at ~= nil then
+        if bot.Action_UseAbilityOnLocation == nil then
+            return nil
+        end
+        return function() return bot:Action_UseAbilityOnLocation(ability, at) end
+    end
+    if bot.Action_UseAbility == nil then
+        return nil
+    end
+    return function() return bot:Action_UseAbility(ability) end
+end
+--- Casts `ability` and finishes `ok` only once its effect is seen: the cooldown rose above its reading at the
+-- order, or mana fell by at least half the mana cost. A cast phase that is seen and then ends without that
+-- effect (two frames in a row, allowing the effect to show a frame late) fails `interrupted`; a unit target
+-- that dies or vanishes first fails `no_target`.
+-- 
+-- Re-ordering: while neither the cast phase nor the effect has been seen, the order is re-issued every
+-- 0.5 s (another order in the same frame may have replaced it). Never once the phase is seen, since
+-- re-issuing during the cast point risks restarting it, and only when a phase signal exists at all.
+-- Failing (including `interruptIf`/`deadline`) does not cancel a cast in progress in-game.
+-- 
+-- The default `timeout` assumes the caster is already in range and facing; pass a longer one when the order
+-- has to walk the bot into cast range first.
+-- 
+-- Channels (`channel: true`): after the effect, waits for the channel; ends `ok` if it ran within 0.25 s of
+-- `GetChannelTime()`, else `interrupted`. Early ends shorter than that slack are indistinguishable from
+-- natural ones. A target dying mid-channel counts as an early end.
+-- 
+-- UNVERIFIED in-game: that `GetCooldownTimeRemaining` / mana drop are visible within a frame of the cast
+-- point ending; that `IsInAbilityPhase` is true for the whole cast point; that a stun-cancelled cast starts
+-- no cooldown and costs no mana; that re-issuing the same cast order before its phase starts is harmless;
+-- that channelled abilities start their cooldown when the channel starts; `IsChanneling` on the handle
+-- (falls back to the unit's). Abilities with neither cooldown nor mana cost (and not channelled) can never
+-- be confirmed and time out; charge-based abilities may not raise the cooldown and rely on mana.
+____exports.cast = __TS__Generator(function(bot, ability, opts)
+    if opts == nil then
+        opts = {}
+    end
+    local ____temp_21 = ability == nil
+    if not ____temp_21 then
+        local ____this_19
+        ____this_19 = ability
+        local ____opt_18 = ____this_19.IsNull
+        local ____temp_20 = ____opt_18 and ____opt_18(____this_19)
+        if ____temp_20 == nil then
+            ____temp_20 = false
+        end
+        ____temp_21 = ____temp_20
+    end
+    if ____temp_21 then
+        return fail("not_castable", "no ability")
+    end
+    local order = orderFor(bot, ability, opts)
+    if order == nil then
+        return fail("unsupported")
+    end
+    local ____this_23
+    ____this_23 = ability
+    local ____opt_22 = ____this_23.GetManaCost
+    local cost = ____opt_22 and ____opt_22(____this_23) or 0
+    local canSeeChannel = channeling(bot, ability) ~= nil and ability.GetChannelTime ~= nil
+    if opts.channel == true and not canSeeChannel then
+        return fail("unsupported")
+    end
+    local canSeeEffect = ability.GetCooldownTimeRemaining ~= nil or bot.GetMana ~= nil and cost > 0
+    if not canSeeEffect then
+        return fail("unsupported")
+    end
+    local canSeePhase = ability.IsInAbilityPhase ~= nil or bot.IsCastingAbility ~= nil
+    if not bot:IsAlive() then
+        return fail("dead")
+    end
+    local early = stopped(opts)
+    if early ~= nil then
+        return early
+    end
+    if not ability:IsFullyCastable() then
+        return fail("not_castable")
+    end
+    if opts.target ~= nil and targetLost(opts.target) then
+        return fail("no_target")
+    end
+    local start = now()
+    local ____opts_timeout_26 = opts.timeout
+    if ____opts_timeout_26 == nil then
+        local ____this_25
+        ____this_25 = ability
+        local ____opt_24 = ____this_25.GetCastPoint
+        ____opts_timeout_26 = (____opt_24 and ____opt_24(____this_25) or 0) + 1
+    end
+    local timeout = ____opts_timeout_26
+    local ____this_28
+    ____this_28 = ability
+    local ____opt_27 = ____this_28.GetCooldownTimeRemaining
+    local cd0 = ____opt_27 and ____opt_27(____this_28)
+    local ____this_30
+    ____this_30 = bot
+    local ____opt_29 = ____this_30.GetMana
+    local mana0 = ____opt_29 and ____opt_29(____this_30)
+    local function effectSeen()
+        local ____this_32
+        ____this_32 = ability
+        local ____opt_31 = ____this_32.GetCooldownTimeRemaining
+        local cd = ____opt_31 and ____opt_31(____this_32)
+        if cd ~= nil and cd0 ~= nil and cd > cd0 + 0.05 then
+            return true
+        end
+        local ____this_34
+        ____this_34 = bot
+        local ____opt_33 = ____this_34.GetMana
+        local mana = ____opt_33 and ____opt_33(____this_34)
+        return cost > 0 and mana ~= nil and mana0 ~= nil and mana0 - mana >= cost * 0.5
+    end
+    order()
+    local orderedAt = start
+    local phaseSeen = false
+    local phaseGone = 0
+    while true do
+        coroutine.yield()
+        if not bot:IsAlive() then
+            return fail("dead")
+        end
+        if effectSeen() or opts.channel == true and channeling(bot, ability) == true then
+            break
+        end
+        if opts.target ~= nil and targetLost(opts.target) then
+            return fail("no_target", "target lost before cast")
+        end
+        if inPhase(bot, ability) then
+            phaseSeen = true
+            phaseGone = 0
+        elseif phaseSeen then
+            phaseGone = phaseGone + 1
+            if phaseGone >= 2 then
+                return fail("interrupted", "cast phase cancelled")
+            end
+        end
+        local stop = stopped(opts)
+        if stop ~= nil then
+            return stop
+        end
+        if now() - start >= timeout then
+            return fail("timeout")
+        end
+        if canSeePhase and not phaseSeen and now() - orderedAt >= REORDER_SECS and ability:IsFullyCastable() then
+            order()
+            orderedAt = now()
+        end
+    end
+    if opts.channel ~= true then
+        return ok()
+    end
+    local channelTime = ability:GetChannelTime()
+    local castAt = now()
+    local channelStart
+    while true do
+        if not bot:IsAlive() then
+            return fail("dead")
+        end
+        local ch = channeling(bot, ability) == true
+        if channelStart == nil then
+            if ch then
+                channelStart = now()
+            elseif now() - castAt > CHANNEL_SLACK then
+                return fail("interrupted", "channel never started")
+            end
+        elseif not ch then
+            if now() - channelStart >= channelTime - CHANNEL_SLACK then
+                return ok()
+            end
+            return fail("interrupted", "channel ended early")
+        elseif now() - channelStart > channelTime + 1 then
+            return fail("timeout", "still channelling past channel time")
+        end
+        local stop = stopped(opts)
+        if stop ~= nil then
+            return stop
+        end
+        coroutine.yield()
+    end
+end)
+local MAIN_SLOTS = 6
+local function findMainItem(bot, name)
+    if bot.FindItemSlot ~= nil then
+        local slot = bot:FindItemSlot(name)
+        local ____temp_35
+        if slot >= 0 and slot < MAIN_SLOTS then
+            ____temp_35 = bot:GetItemInSlot(slot)
+        else
+            ____temp_35 = nil
+        end
+        return ____temp_35
+    end
+    do
+        local slot = 0
+        while slot < MAIN_SLOTS do
+            local item = bot:GetItemInSlot(slot)
+            local ____temp_38 = item ~= nil
+            if ____temp_38 then
+                local ____opt_36 = item.GetName
+                ____temp_38 = (____opt_36 and ____opt_36(item)) == name
+            end
+            if ____temp_38 then
+                return item
+            end
+            slot = slot + 1
+        end
+    end
+    return nil
+end
+--- Finds `itemName` in the six main inventory slots (backpack, stash, TP and neutral slots are not searched)
+-- and casts it with `cast`, so the same options and confirmation apply.
+-- UNVERIFIED in-game: that `FindItemSlot` returns the main-slot copy when the bot holds several.
+____exports.useItem = __TS__Generator(function(bot, itemName, opts)
+    if opts == nil then
+        opts = {}
+    end
+    if bot.GetItemInSlot == nil then
+        return fail("unsupported")
+    end
+    local item = findMainItem(bot, itemName)
+    if item == nil then
+        return fail("no_item", itemName)
+    end
+    return __TS__DelegatedYield(____exports.cast(bot, item, opts))
+end)
+local function dotaGlobal(name)
+    return rawget(_G, name)
+end
+--- Walks to the rune at location constant `rune`, orders `Action_PickUpRune` and finishes `ok` when the
+-- rune's status leaves `RUNE_STATUS_AVAILABLE` while we are within `tolerance` having ordered the pick-up
+-- (or, with `confirmed`, when that says so). A rune that disappears before then fails `taken_by_other`;
+-- one already reported missing fails `no_target` without moving. Re-orders the pick-up every 0.5 s.
+-- 
+-- Reads the Dota globals `GetRuneStatus`, `GetRuneSpawnLocation` and `RUNE_STATUS_AVAILABLE`/`_MISSING`
+-- through `_G`, failing `unsupported` when absent.
+-- 
+-- UNVERIFIED in-game: that `GetRuneStatus` leaves `AVAILABLE` within a frame of the pick-up; that a rune
+-- vanishing while we stand on it with a pick-up ordered was ours (another hero grabbing it at the same
+-- moment reads as ok unless `confirmed` is given); that `Action_PickUpRune` is a no-op once it is gone.
+____exports.pickUpRune = __TS__Generator(function(bot, rune, opts)
+    if opts == nil then
+        opts = {}
+    end
+    local status = dotaGlobal("GetRuneStatus")
+    local available = dotaGlobal("RUNE_STATUS_AVAILABLE")
+    local missing = dotaGlobal("RUNE_STATUS_MISSING")
+    local spawnAt = dotaGlobal("GetRuneSpawnLocation")
+    local loc = opts.at or (spawnAt ~= nil and spawnAt(rune) or nil)
+    if status == nil or available == nil or missing == nil then
+        return fail("unsupported")
+    end
+    if loc == nil or bot.Action_PickUpRune == nil then
+        return fail("unsupported")
+    end
+    if not bot:IsAlive() then
+        return fail("dead")
+    end
+    if status(rune) == missing then
+        return fail("no_target", "rune missing")
+    end
+    local tolerance = opts.tolerance or 150
+    local confirmFor = opts.confirmFor or 2
+    local start = now()
+    local deadline = start + (opts.timeout or 15)
+    local seen = false
+    local function gone()
+        local s = status(rune)
+        if s == available then
+            seen = true
+        end
+        return s == missing or seen and s ~= available
+    end
+    local function lost()
+        return seen and fail("taken_by_other") or fail("no_target", "rune missing")
+    end
+    local walked = __TS__DelegatedYield(walkTo(
+        bot,
+        loc,
+        {
+            tolerance = tolerance,
+            timeout = deadline - start,
+            stuckSecs = 3,
+            interruptIf = function() return gone() or stopped(opts) ~= nil end
+        }
+    ))
+    if not walked.success then
+        if walked.reason ~= "interrupted" then
+            return walked
+        end
+        if gone() then
+            return lost()
+        end
+        return stopped(opts) or walked
+    end
+    if gone() then
+        return lost()
+    end
+    if not seen then
+        return fail("no_target", "rune not seen at location")
+    end
+    local orderedAt = now()
+    local firstOrder = orderedAt
+    bot:Action_PickUpRune(rune)
+    while true do
+        coroutine.yield()
+        if not bot:IsAlive() then
+            return fail("dead")
+        end
+        if gone() then
+            if opts.confirmed ~= nil then
+                return opts.confirmed() and ok() or fail("taken_by_other")
+            end
+            return dist(
+                bot:GetLocation(),
+                loc
+            ) <= tolerance and ok() or fail("taken_by_other")
+        end
+        local stop = stopped(opts)
+        if stop ~= nil then
+            return stop
+        end
+        if now() >= deadline then
+            return fail("timeout")
+        end
+        if now() - firstOrder >= confirmFor then
+            return fail("missed")
+        end
+        if now() - orderedAt >= REORDER_SECS then
+            bot:Action_PickUpRune(rune)
+            orderedAt = now()
+        end
+    end
+end)
+return ____exports
+ end,
+["verbs_all"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+local ____exports = {}
+do
+    local ____export = require("verbs")
+    for ____exportKey, ____exportValue in pairs(____export) do
+        if ____exportKey ~= "default" then
+            ____exports[____exportKey] = ____exportValue
+        end
+    end
+end
+do
+    local ____export = require("verbs_cast")
+    for ____exportKey, ____exportValue in pairs(____export) do
+        if ____exportKey ~= "default" then
+            ____exports[____exportKey] = ____exportValue
+        end
+    end
+end
+return ____exports
+ end,
+["ctx"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+local ____exports = {}
+local ____adapter = require("adapter")
+local get = ____adapter.get
+local ____abort = require("abort")
+local abort = ____abort.abort
+local must = ____abort.must
+local Verbs = require("verbs_all")
+function ____exports.makeCtx(bot, c)
+    local function now()
+        return get().now()
+    end
+    return {
+        bot = bot,
+        now = now,
+        elapsed = function() return now() - c.startedAt end,
+        label = c.label,
+        urgent = c.urgent,
+        ok = function() return {success = true, reason = "ok"} end,
+        fail = function(reason, message) return {success = false, reason = reason, message = message} end,
+        abort = abort,
+        must = must,
+        walkTo = function(loc, opts) return Verbs.walkTo(bot, loc, opts) end,
+        walkPath = function(points, opts) return Verbs.walkPath(bot, points, opts) end,
+        wait = function(secs, opts) return Verbs.wait(bot, secs, opts) end,
+        waitUntil = function(t, opts) return Verbs.waitUntil(bot, t, opts) end,
+        retreatTo = function(opts) return Verbs.retreatTo(bot, opts) end,
+        lastHit = function(opts) return Verbs.lastHit(bot, opts) end,
+        attackAndConfirm = function(pick, opts) return Verbs.attackAndConfirm(bot, pick, opts) end,
+        cast = function(ability, opts) return Verbs.cast(bot, ability, opts) end,
+        useItem = function(name, opts) return Verbs.useItem(bot, name, opts) end,
+        pickUpRune = function(rune, opts) return Verbs.pickUpRune(bot, rune, opts) end
+    }
+end
+return ____exports
+ end,
+["support"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+local ____exports = {}
+--- True iff the VM exposes a usable `coroutine` library (generators compile to coroutines).
+function ____exports.Supported()
+    local co = rawget(_G, "coroutine")
+    if type(co) ~= "table" then
+        return false
+    end
+    local t = co
+    return type(t.create) == "function" and type(t.resume) == "function" and type(t.status) == "function" and type(t.yield) == "function"
+end
+return ____exports
+ end,
+["runner"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+local ____exports = {}
+local finish, running, last
+local ____abort = require("abort")
+local aborted = ____abort.aborted
+local ____adapter = require("adapter")
+local getAdapter = ____adapter.get
+local ____ctx = require("ctx")
+local makeCtx = ____ctx.makeCtx
+local ____support = require("support")
+local Supported = ____support.Supported
+function finish(bot, t, result)
+    local id = bot:GetPlayerID()
+    running[id] = nil
+    last[id] = {name = t.name, result = result}
+    local a = getAdapter()
+    if a ~= nil then
+        a.release(bot, t.source, t.host)
+    end
+    local onEnd = t.onEnd
+    if onEnd == nil then
+        return
+    end
+    local ok, err = pcall(function() return onEnd(result, {label = t.label, steps = t.steps}) end)
+    if not ok and a ~= nil then
+        a.log(
+            "tasks",
+            (("task " .. t.name) .. " onEnd error: ") .. tostring(err)
+        )
+    end
+end
+function ____exports.Cancel(bot, reason, message)
+    local t = running[bot:GetPlayerID()]
+    if t == nil then
+        return
+    end
+    finish(bot, t, {success = false, reason = reason, message = message})
+end
+--- Seconds a task may wait for its first `Step`, whatever the active mode, before it is cancelled.
+____exports.START_GRACE = 1
+local DEFAULT_TIER = "LANE_PLAN"
+local DEFAULT_FLOOR = 0.6
+local DEFAULT_STALL_AFTER = 2
+running = {}
+last = {}
+local loggedRefusals = {}
+local function refuse(why)
+    local a = getAdapter()
+    if a ~= nil and loggedRefusals[why] == nil then
+        loggedRefusals[why] = true
+        a.log("tasks", "task refused: " .. why)
+    end
+    return false
+end
+local function claim(a, bot, t)
+    local now = a.now()
+    if t.claimedAt == now and t.claimedUrgent == t.urgent then
+        return
+    end
+    t.claimedAt = now
+    t.claimedUrgent = t.urgent
+    a.claim(bot, {
+        source = t.source,
+        mode = t.host,
+        tier = t.tier,
+        floor = t.floor,
+        urgent = t.urgent
+    })
+end
+local function guarded(bot, t)
+    if t.guard == nil then
+        return false
+    end
+    local message = t.guard()
+    if message == nil then
+        return false
+    end
+    finish(bot, t, {success = false, reason = "interrupted", message = message})
+    return true
+end
+function ____exports.task(bot, opts, body)
+    local a = getAdapter()
+    if a == nil then
+        return refuse("no_adapter")
+    end
+    if not a.enabled() then
+        return refuse("disabled")
+    end
+    if not Supported() then
+        return refuse("unsupported")
+    end
+    if running[bot:GetPlayerID()] ~= nil then
+        ____exports.Cancel(bot, "cancelled", "replaced")
+    end
+    local now = a.now()
+    local t = {
+        name = opts.name,
+        host = opts.host,
+        tier = opts.tier or DEFAULT_TIER,
+        floor = opts.floor or DEFAULT_FLOOR,
+        source = "task:" .. opts.name,
+        startedAt = now,
+        steps = 0,
+        body = body,
+        onEnd = opts.onEnd,
+        guard = opts.guard,
+        stallAfter = opts.stallAfter or DEFAULT_STALL_AFTER,
+        preemptAfter = opts.preemptAfter or 0,
+        lastStepAt = now,
+        urgent = false
+    }
+    t.ctx = makeCtx(
+        bot,
+        {
+            startedAt = now,
+            label = function(label)
+                t.label = label
+            end,
+            urgent = function(on)
+                t.urgent = on
+            end
+        }
+    )
+    running[bot:GetPlayerID()] = t
+    return true
+end
+function ____exports.Step(bot, host)
+    local a = getAdapter()
+    local t = running[bot:GetPlayerID()]
+    if a == nil or t == nil or t.host ~= host or not a.enabled() then
+        return false
+    end
+    if guarded(bot, t) then
+        return false
+    end
+    claim(a, bot, t)
+    local ok, res = pcall(function()
+        if t.gen == nil then
+            t.gen = t.body(t.ctx)
+        end
+        return t.gen:next()
+    end)
+    t.steps = t.steps + 1
+    t.lastStepAt = a.now()
+    if not ok then
+        local thrown = aborted(res)
+        if thrown ~= nil then
+            finish(bot, t, thrown)
+            return true
+        end
+        local message = tostring(res)
+        a.log("tasks", (("task " .. t.name) .. " error: ") .. message)
+        finish(bot, t, {success = false, reason = "error", message = message})
+    elseif res.done then
+        finish(bot, t, res.value or ({success = true, reason = "ok"}))
+    end
+    return true
+end
+--- Every frame from the host's global tick. Re-posts the claim while the task is live, so the host can win
+-- the mode before the first `Step`; the grace and stall limits keep an unstepped task from pinning it.
+function ____exports.Tick(bot)
+    local a = getAdapter()
+    local t = running[bot:GetPlayerID()]
+    if t == nil then
+        return
+    end
+    if a == nil or not a.enabled() then
+        ____exports.Cancel(bot, "cancelled", "disabled")
+        return
+    end
+    if not bot:IsAlive() then
+        ____exports.Cancel(bot, "dead")
+        return
+    end
+    if guarded(bot, t) then
+        return
+    end
+    local now = a.now()
+    if t.steps == 0 then
+        if now - t.startedAt > ____exports.START_GRACE then
+            ____exports.Cancel(bot, "preempted", "never_started")
+            return
+        end
+    else
+        local mode = bot:GetActiveMode()
+        if mode == t.host then
+            t.awaySince = nil
+        else
+            if t.awaySince == nil then
+                t.awaySince = now
+            end
+            if now - t.awaySince >= t.preemptAfter then
+                ____exports.Cancel(
+                    bot,
+                    "preempted",
+                    "mode=" .. tostring(mode)
+                )
+                return
+            end
+        end
+        if now - t.lastStepAt > t.stallAfter then
+            ____exports.Cancel(bot, "preempted", "stalled")
+            return
+        end
+    end
+    claim(a, bot, t)
+end
+--- Sets or clears urgency on the current task's claims from the next one posted; callable from a body.
+function ____exports.Urgent(bot, on)
+    local t = running[bot:GetPlayerID()]
+    if t ~= nil then
+        t.urgent = on
+    end
+end
+--- Sets a free-form label on the current task, shown by `Current`/`Describe` and passed to `onEnd`.
+function ____exports.Label(bot, label)
+    local t = running[bot:GetPlayerID()]
+    if t ~= nil then
+        t.label = label
+    end
+end
+function ____exports.Current(bot)
+    local t = running[bot:GetPlayerID()]
+    if t == nil then
+        return nil
+    end
+    local name = t.name
+    local host = t.host
+    local startedAt = t.startedAt
+    local steps = t.steps
+    local label = t.label
+    local preemptAfter = t.preemptAfter
+    return {
+        name = name,
+        host = host,
+        startedAt = startedAt,
+        steps = steps,
+        label = label,
+        preemptAfter = preemptAfter
+    }
+end
+function ____exports.Last(bot)
+    return last[bot:GetPlayerID()]
+end
+function ____exports.Describe(bot)
+    local t = running[bot:GetPlayerID()]
+    if t ~= nil then
+        return ((t.name .. (t.label ~= nil and ":" .. t.label or "")) .. " step=") .. tostring(t.steps)
+    end
+    local l = last[bot:GetPlayerID()]
+    if l ~= nil then
+        return (("- last=" .. l.name) .. " ") .. (l.result.success and "ok" or l.result.reason)
+    end
+    return "-"
+end
+return ____exports
+ end,
+["combinators"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____adapter = require("adapter")
+local get = ____adapter.get
+local function settle(value)
+    return value or ({success = true, reason = "ok"})
+end
+--- Steps `g` once per frame. Before each step `check()` may return a message, which ends the combinator with
+-- `interrupted` carrying it; `g` is then abandoned (its `finally` blocks do not run).
+____exports.watch = __TS__Generator(function(g, check)
+    while true do
+        local message = check()
+        if message ~= nil then
+            return {success = false, reason = "interrupted", message = message}
+        end
+        local s = g:next()
+        if s.done then
+            return settle(s.value)
+        end
+        coroutine.yield()
+    end
+end)
+--- Ends with `timeout` once `secs` have passed since its first step, unless `g` finished first.
+____exports.withTimeout = __TS__Generator(function(g, secs)
+    local now = get().now
+    local start = now()
+    while true do
+        if now() - start >= secs then
+            return {success = false, reason = "timeout"}
+        end
+        local s = g:next()
+        if s.done then
+            return settle(s.value)
+        end
+        coroutine.yield()
+    end
+end)
+--- Runs `factory()` up to `times` times, starting a fresh attempt the frame after a failed one, while
+-- `shouldRetry(result)` allows (default: any failure). Returns the last attempt's result.
+____exports.retry = __TS__Generator(function(times, factory, shouldRetry)
+    local r = {success = false, reason = "error", message = "retry: times < 1"}
+    do
+        local attempt = 1
+        while attempt <= times do
+            r = settle(__TS__DelegatedYield(factory(attempt)))
+            if r.success then
+                return r
+            end
+            if shouldRetry ~= nil and not shouldRetry(r) then
+                return r
+            end
+            if attempt < times then
+                coroutine.yield()
+            end
+            attempt = attempt + 1
+        end
+    end
+    return r
+end)
+--- Steps every branch once per frame, in order, and returns the first to finish; the rest are abandoned.
+-- Branches stepped after an acting one in the same frame override its orders, so let one branch act and make
+-- the others watchers (`waitUntil`, conditions).
+____exports.race = __TS__Generator(function(...)
+    local branches = {...}
+    if #branches == 0 then
+        return {success = false, reason = "error", message = "race: no branches", winner = 0}
+    end
+    while true do
+        do
+            local i = 0
+            while i < #branches do
+                local s = branches[i + 1]:next()
+                if s.done then
+                    local r = settle(s.value)
+                    return {success = r.success, reason = r.reason, message = r.message, winner = i + 1}
+                end
+                i = i + 1
+            end
+        end
+        coroutine.yield()
+    end
+end)
+--- Never acts; finishes `ok` on the first frame `cond()` holds (without yielding if it already does).
+____exports["until"] = __TS__Generator(function(cond)
+    while not cond() do
+        coroutine.yield()
+    end
+    return {success = true, reason = "ok"}
+end)
+return ____exports
+ end,
+["simple_host"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local run
+local ____adapter = require("adapter")
+local init = ____adapter.init
+local Runner = require("runner")
+function run(gen)
+    while true do
+        local r = gen:next()
+        if r.done == true then
+            return r.value
+        end
+        coroutine.yield()
+    end
+end
+local claims = {}
+local tickedAt = {}
+local opts = {}
+local switchedOn = true
+local function global(name)
+    return rawget(_G, name)
+end
+local function now()
+    return opts.now ~= nil and opts.now() or global("DotaTime")()
+end
+local function enabled()
+    return switchedOn and (opts.enabled == nil or opts.enabled())
+end
+____exports.adapter = {
+    claim = function(bot, c)
+        local id = bot:GetPlayerID()
+        local ____claims_id_1 = claims[id]
+        if ____claims_id_1 == nil then
+            local ____temp_0 = {}
+            claims[id] = ____temp_0
+            ____claims_id_1 = ____temp_0
+        end
+        local byMode = ____claims_id_1
+        local ____byMode_c_mode_3 = byMode[c.mode]
+        if ____byMode_c_mode_3 == nil then
+            local ____temp_2 = {}
+            byMode[c.mode] = ____temp_2
+            ____byMode_c_mode_3 = ____temp_2
+        end
+        local bySource = ____byMode_c_mode_3
+        bySource[c.source] = {
+            floor = c.floor,
+            urgent = c.urgent == true,
+            at = now()
+        }
+    end,
+    release = function(bot, source, mode)
+        local ____opt_4 = claims[bot:GetPlayerID()]
+        local bySource = ____opt_4 and ____opt_4[mode]
+        if bySource ~= nil then
+            bySource[source] = nil
+        end
+    end,
+    now = function() return now() end,
+    log = function(tag, msg)
+        if opts.debug == true then
+            print((("[" .. tag) .. "] ") .. msg)
+        end
+    end,
+    enabled = function() return enabled() end
+}
+--- Installs the host as the runner's adapter. Returns false (and installs nothing) without a clock.
+function ____exports.install(o)
+    if o == nil then
+        o = {}
+    end
+    if o.now == nil and type(global("DotaTime")) ~= "function" then
+        print("[tasks] SimpleHost.install: no DotaTime; pass opts.now")
+        return false
+    end
+    opts = o
+    init(____exports.adapter)
+    return true
+end
+--- Kill switch. Off: the next `desire` call cancels the running task (`cancelled`/`disabled`).
+function ____exports.SetEnabled(on)
+    switchedOn = on
+end
+--- The strongest live claim on `mode` for this bot: highest floor, urgent if any live claim is.
+function ____exports.ClaimOf(bot, mode)
+    local ____opt_6 = claims[bot:GetPlayerID()]
+    local bySource = ____opt_6 and ____opt_6[mode]
+    if bySource == nil or not enabled() then
+        return nil
+    end
+    local t = now()
+    local ttl = opts.claimTTL or 1
+    local best
+    for ____, c in pairs(bySource) do
+        do
+            local __continue17
+            repeat
+                if c == nil or t - c.at > ttl then
+                    __continue17 = true
+                    break
+                end
+                if best == nil then
+                    best = {floor = c.floor, urgent = c.urgent}
+                else
+                    best.floor = math.max(best.floor, c.floor)
+                    best.urgent = best.urgent or c.urgent
+                end
+                __continue17 = true
+            until true
+            if not __continue17 then
+                break
+            end
+        end
+    end
+    return best
+end
+--- Call from mode `mode`'s `GetDesire` with the desire it would return without tasks (nil falls through to
+-- Valve's). Ticks the runner once per bot per frame, then returns `max(base, floor)` while a task holds a
+-- live claim on `mode`, else `base`. Urgency is not used: this host has no hysteresis to suppress.
+function ____exports.desire(bot, mode, base)
+    local id = bot:GetPlayerID()
+    local t = now()
+    if tickedAt[id] ~= t then
+        tickedAt[id] = t
+        Runner.Tick(bot)
+    end
+    local c = ____exports.ClaimOf(bot, mode)
+    if c == nil then
+        return base
+    end
+    return base == nil and c.floor or math.max(base, c.floor)
+end
+--- Call from mode `mode`'s `Think`; steps this bot's task if it is hosted on `mode`. True if one ran.
+function ____exports.think(bot, mode)
+    return Runner.Step(bot, mode)
+end
+--- Call from mode `mode`'s `OnEnd`. A started task hosted on `mode` ends `preempted`, as the runner's `Tick`
+-- would on the next frame; one with `preemptAfter` set is left to `Tick`, and an unstarted one to the grace.
+function ____exports.onEnd(bot, mode)
+    local t = Runner.Current(bot)
+    if t == nil or t.host ~= mode or t.steps == 0 or t.preemptAfter > 0 then
+        return
+    end
+    Runner.Cancel(bot, "preempted", "mode_end")
+end
+--- Layers task hosting on a mode file's functions:
+--   local M = tasks.SimpleHost.wrapMode(BOT_MODE_FARM, { GetDesire = GetDesire, Think = Think, OnEnd = OnEnd })
+--   GetDesire, Think, OnStart, OnEnd = M.GetDesire, M.Think, M.OnStart, M.OnEnd
+-- `Think` runs the task, else the original. Defining `Think` replaces Valve's built-in one for the mode, so a
+-- file with no `Think` of its own should not let `GetDesire` fall through (nil) to Valve's desire.
+function ____exports.wrapMode(mode, original, getBot)
+    if original == nil then
+        original = {}
+    end
+    local function bot()
+        return (getBot or global("GetBot"))()
+    end
+    return {
+        GetDesire = function()
+            local ____exports_desire_11 = ____exports.desire
+            local ____bot_result_9 = bot()
+            local ____mode_10 = mode
+            local ____temp_8
+            if original.GetDesire ~= nil then
+                ____temp_8 = original.GetDesire()
+            else
+                ____temp_8 = nil
+            end
+            return ____exports_desire_11(____bot_result_9, ____mode_10, ____temp_8)
+        end,
+        Think = function()
+            if not ____exports.think(
+                bot(),
+                mode
+            ) and original.Think ~= nil then
+                original.Think()
+            end
+        end,
+        OnStart = function()
+            if original.OnStart ~= nil then
+                original.OnStart()
+            end
+        end,
+        OnEnd = function()
+            ____exports.onEnd(
+                bot(),
+                mode
+            )
+            if original.OnEnd ~= nil then
+                original.OnEnd()
+            end
+        end
+    }
+end
+--- A task body written as a plain function, for Lua callers (who cannot write generators). Inside `fn`,
+-- `coroutine.yield()` ends this frame's slice and `run(verb)` runs a verb to completion, one slice per frame,
+-- returning its `Result`; `run(ctx.must(verb))` ends the task on failure. Returning nothing counts as ok.
+function ____exports.body(fn)
+    return __TS__Generator(function(ctx)
+        return fn(run, ctx)
+    end)
+end
+return ____exports
+ end,
 ["index"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
@@ -752,7 +1961,16 @@ do
         end
     end
 end
-____exports.Verbs = require("verbs")
+____exports.Verbs = require("verbs_all")
+____exports.Flow = require("combinators")
+do
+    local ____abort = require("abort")
+    local abort = ____abort.abort
+    local must = ____abort.must
+    ____exports.abort = abort
+    ____exports.must = must
+end
+____exports.SimpleHost = require("simple_host")
 return ____exports
  end,
 }

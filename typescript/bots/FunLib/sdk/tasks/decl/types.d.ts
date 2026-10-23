@@ -1,5 +1,5 @@
 /** @noSelfInFile */
-export type Reason = "ok" | "timeout" | "stuck" | "preempted" | "dead" | "cancelled" | "error" | "no_target" | "missed" | "denied" | "taken_by_other" | "etiquette" | "interrupted" | "unsupported";
+export type Reason = "ok" | "timeout" | "stuck" | "preempted" | "dead" | "cancelled" | "error" | "no_target" | "missed" | "denied" | "taken_by_other" | "etiquette" | "interrupted" | "unsupported" | "not_castable" | "no_item";
 export interface Result {
     success: boolean;
     reason: Reason;
@@ -33,6 +33,31 @@ export interface TaskUnit {
     GetLastAttackTime?(): number;
     GetNearbyLaneCreeps?(radius: number, enemies: boolean): TaskCreep[];
     GetNearbyHeroes?(radius: number, enemies: boolean, mode: number): TaskHero[];
+    GetMana?(): number;
+    IsChanneling?(): boolean;
+    /** True during any ability's cast point. */
+    IsCastingAbility?(): boolean;
+    Action_UseAbility?(ability: TaskAbility): void;
+    Action_UseAbilityOnEntity?(ability: TaskAbility, target: any): void;
+    Action_UseAbilityOnLocation?(ability: TaskAbility, loc: Vec): void;
+    /** `rune` is a rune location constant (`RUNE_POWERUP_1`, `RUNE_BOUNTY_1`, ...), not a position. */
+    Action_PickUpRune?(rune: number): void;
+    /** Slot index of the named item anywhere in the inventory, or -1. */
+    FindItemSlot?(name: string): number;
+    GetItemInSlot?(slot: number): TaskAbility | undefined;
+}
+/** Minimal structural ability handle. Items are abilities in Dota's API, so item handles fit too. */
+export interface TaskAbility {
+    /** Off cooldown and enough mana. */
+    IsFullyCastable(): boolean;
+    IsNull?(): boolean;
+    GetName?(): string;
+    GetCooldownTimeRemaining?(): number;
+    GetCastPoint?(): number;
+    GetChannelTime?(): number;
+    GetManaCost?(): number;
+    IsInAbilityPhase?(): boolean;
+    IsChanneling?(): boolean;
 }
 /** Minimal structural lane creep handle. */
 export interface TaskCreep {

@@ -3,6 +3,7 @@ import { TaskBody, TaskCreep, TaskTarget, TaskUnit, Vec } from "./types";
 export interface WalkOpts {
     tolerance?: number;
     timeout?: number;
+    deadline?: number;
     stuckSecs?: number;
     interruptIf?: (this: void) => boolean;
 }
@@ -14,11 +15,13 @@ export declare function walkTo(bot: TaskUnit, loc: Vec, opts?: WalkOpts): TaskBo
  */
 export declare function walkPath(bot: TaskUnit, points: Vec[], opts?: WalkOpts): TaskBody;
 export declare function wait(bot: TaskUnit, secs: number, opts?: {
+    deadline?: number;
     interruptIf?: (this: void) => boolean;
 }): TaskBody;
 /** Finishes as soon as game time reaches `t`, on the first resume without yielding if it already has. */
 export declare function waitUntil(bot: TaskUnit, t: number, opts?: {
     hold?: string;
+    deadline?: number;
     interruptIf?: (this: void) => boolean;
 }): TaskBody;
 export declare function retreatTo(bot: TaskUnit, opts: {
@@ -28,6 +31,7 @@ export declare function retreatTo(bot: TaskUnit, opts: {
 }): TaskBody;
 export interface LastHitOpts {
     maxWait?: number;
+    deadline?: number;
     target?: TaskCreep;
     searchRadius?: number;
 }
@@ -40,6 +44,8 @@ export interface AttackConfirmOpts {
     /** Walked towards while `pick` finds nothing. */
     searchAt?: Vec;
     hold?: string;
+    /** Absolute game time after which the verb fails `timeout` if not yet confirmed. */
+    deadline?: number;
     /** Extra host-specific confirmation, checked alongside the bot's own signals. */
     confirmed?: (this: void) => boolean;
 }
