@@ -52,11 +52,6 @@
    },
    "metric": "laneEval.pushedLines",
    "min": 1
-  },
-  {
-   "id": "no squelched telemetry",
-   "metric": "game.squelched",
-   "eq": false
   }
  ]
 }

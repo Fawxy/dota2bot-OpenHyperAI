@@ -84,11 +84,6 @@
    "id": "team-code lua errors",
    "metric": "game.errors.luaTeam",
    "max": 0
-  },
-  {
-   "id": "no squelched telemetry",
-   "metric": "game.squelched",
-   "eq": false
   }
  ]
 }

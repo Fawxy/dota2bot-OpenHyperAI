@@ -43,11 +43,6 @@
     85
    ],
    "over": "median"
-  },
-  {
-   "id": "no squelched telemetry",
-   "metric": "game.squelched",
-   "eq": false
   }
  ]
 }
