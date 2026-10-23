@@ -215,6 +215,7 @@ local PATH_FACTOR = 1.2
 local DANGER_RADIUS = 1200
 local DANGER_HP = 0.5
 local WISDOM_POSITIONS = {[4] = true}
+local WISDOM_IGNORES = {["lane pushed"] = true, ["enemy missing"] = true}
 local trips = {}
 doneFor = {}
 powerTrips = {}
@@ -326,7 +327,8 @@ local function score(bot)
     end
     local busy, busyWhy = Busy.IsBusy(bot, spawn)
     local spare, spareWhy = Busy.LaneCanSpare(bot, false)
-    local why = busy and busyWhy or (not spare and spareWhy or danger(bot))
+    local laneBlocks = not spare and not WISDOM_IGNORES[spareWhy]
+    local why = busy and busyWhy or (laneBlocks and spareWhy or danger(bot))
     if why ~= nil then
         noteGate(bot, spawn, why)
         return nil
