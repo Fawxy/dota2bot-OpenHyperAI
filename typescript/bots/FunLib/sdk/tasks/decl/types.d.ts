@@ -33,6 +33,14 @@ export interface TaskUnit {
     GetLastAttackTime?(): number;
     GetNearbyLaneCreeps?(radius: number, enemies: boolean): TaskCreep[];
     GetNearbyHeroes?(radius: number, enemies: boolean, mode: number): TaskHero[];
+    GetNearbyTowers?(radius: number, enemies: boolean): TaskAttacker[];
+    GetNearbyNeutralCreeps?(radius: number): TaskAttacker[];
+    /** Attack speed multiplier (1 = base); divides the attack point. */
+    GetAttackSpeed?(): number;
+    GetSecondsPerAttack?(): number;
+    GetAttackProjectileSpeed?(): number;
+    GetCurrentMovementSpeed?(): number;
+    GetDenies?(): number;
     GetMana?(): number;
     IsChanneling?(): boolean;
     /** True during any ability's cast point. */
@@ -59,12 +67,42 @@ export interface TaskAbility {
     IsInAbilityPhase?(): boolean;
     IsChanneling?(): boolean;
 }
-/** Minimal structural lane creep handle. */
-export interface TaskCreep {
+/** A unit whose attacks on a creep the last-hit prediction counts (creeps, heroes, towers). */
+export interface TaskAttacker {
+    GetLocation(): Vec;
+    IsAlive(): boolean;
+    IsNull?(): boolean;
+    CanBeSeen?(): boolean;
+    GetAttackTarget?(): unknown;
+    /** 1503 (ACTIVITY_ATTACK) during an attack animation. */
+    GetAnimActivity?(): number;
+    /** Progress through the current animation, 0..1. */
+    GetAnimCycle?(): number;
+    GetAttackPoint?(): number;
+    GetSecondsPerAttack?(): number;
+    GetAttackDamage?(): number;
+    GetAttackRange?(): number;
+    GetAttackProjectileSpeed?(): number;
+}
+/** An entry of `GetIncomingTrackingProjectiles()`: plain fields, as Dota returns them. */
+export interface TaskProjectile {
+    location: Vec;
+    caster?: TaskAttacker;
+    is_attack?: boolean;
+}
+/** Minimal structural lane creep handle. Optional members feed the last-hit prediction. */
+export interface TaskCreep extends TaskAttacker {
     GetHealth(): number;
     IsAlive(): boolean;
     GetLocation(): Vec;
     IsNull?(): boolean;
+    GetMaxHealth?(): number;
+    /** HP per second; negative while losing HP over time. */
+    GetHealthRegen?(): number;
+    /** Damage after armour/resistance (Dota: `DAMAGE_TYPE_PHYSICAL` = 1). */
+    GetActualIncomingDamage?(damage: number, damageType: number): number;
+    GetIncomingTrackingProjectiles?(): TaskProjectile[];
+    GetUnitName?(): string;
 }
 /** Minimal structural attack target handle. */
 export interface TaskTarget {
@@ -76,6 +114,24 @@ export interface TaskTarget {
 /** Minimal structural hero handle, as returned by `GetNearbyHeroes`. */
 export interface TaskHero {
     GetAttackTarget?(): unknown;
+    GetLocation?(): Vec;
+    IsAlive?(): boolean;
+    IsNull?(): boolean;
+    CanBeSeen?(): boolean;
+    GetAnimActivity?(): number;
+    GetAnimCycle?(): number;
+    GetAttackPoint?(): number;
+    GetSecondsPerAttack?(): number;
+    GetAttackDamage?(): number;
+    GetAttackRange?(): number;
+    GetAttackProjectileSpeed?(): number;
+}
+/** Human timing profile (OHA `Profile.Get`): `react` s base reaction, `jitter` fraction, `lapse` chance. */
+export interface SkillProfile {
+    react: number;
+    jitter: number;
+    aimError?: number;
+    lapse?: number;
 }
 /** Mode claim forwarded to the host's mode arbiter. `floor` is the minimum desire the claim holds. */
 export interface ClaimSpec {
@@ -101,6 +157,18 @@ export interface Adapter {
     enabled(this: void): boolean;
     /** Builds a point verbs create themselves (e.g. holdAt's scattered spot); hosts whose move order needs a native vector supply it. */
     vector?(this: void, x: number, y: number, z: number): Vec;
+    /** Execution skill in [0, 1] (OHA `Difficulty.GetSkill`). Absent: 1. Read every time a verb needs it. */
+    skill?(this: void, bot: TaskUnit): number;
+    profile?(this: void, bot: TaskUnit): SkillProfile;
+    /** Last-hit error half-width (OHA `LastHitSkill.ErrorWidth`, pressure included); overrides the skill lerp. */
+    lastHitError?(this: void, bot: TaskUnit): number;
+    /** Uniform [0, 1); defaults to `math.random`. */
+    random?(this: void): number;
+    /**
+     * The clock `GetLastAttackTime()` runs on (Dota: `GameTime()`, not `DotaTime()`). With it, `lastHit`/`deny`
+     * add the bot's remaining attack cooldown to its own hit time.
+     */
+    attackClock?(this: void): number;
 }
 /** `host` is the mode id the task runs under. */
 export interface TaskOptions {

@@ -1,5 +1,5 @@
 /** @noSelfInFile */
-import { TaskBody, TaskCreep, TaskTarget, TaskUnit, Vec } from "./types";
+import { TaskBody, TaskTarget, TaskUnit, Vec } from "./types";
 export interface WalkOpts {
     tolerance?: number;
     timeout?: number;
@@ -29,13 +29,6 @@ export declare function retreatTo(bot: TaskUnit, opts: {
     tolerance?: number;
     timeout?: number;
 }): TaskBody;
-export interface LastHitOpts {
-    maxWait?: number;
-    deadline?: number;
-    target?: TaskCreep;
-    searchRadius?: number;
-}
-export declare function lastHit(bot: TaskUnit, opts?: LastHitOpts): TaskBody;
 export interface AttackConfirmOpts {
     /** Seconds from the verb's start to keep calling `pick` before giving up with `no_target`. */
     findFor: number;
