@@ -25,7 +25,8 @@ export type LaneFlag =
     | "Forecast"
     | "PreContest"
     | "TakePull"
-    | "PullLaneGate";
+    | "PullLaneGate"
+    | "ClashPull";
 export type Technique = "block" | "full_pull" | "half_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
@@ -63,6 +64,8 @@ export const DEFAULTS = {
     TakePull: true,
     // No pull while our lane creeps are already at its meet point: the camp meets a fight there and leashes home.
     PullLaneGate: true,
+    // Where that gate refuses a pull, hit the camp as the enemy creeps of the clash die and lead it to the fight.
+    ClashPull: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
@@ -79,6 +82,7 @@ export const DEFAULTS = {
         RandomHarass: 0.5,
         PreContest: 0.7,
         TakePull: 0.5,
+        ClashPull: 0.7,
     },
     Curves: {
         JitterSigma: [1.5, 0.2],
@@ -144,6 +148,9 @@ export const DEFAULTS = {
         TakePullMax: 15,
         TakePullWait: 3,
         TakePullSwing: 1,
+        ClashRateWindow: 1.5,
+        ClashWaitMax: 15,
+        ClashWaveMargin: 3,
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,
@@ -240,6 +247,7 @@ export const DEFAULTS = {
         // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
         TakePullLaneCreeps: 1,
         TakePullDangerEnemies: 2,
+        ClashAllyMin: 2,
         ShoveMinHP: 0.5,
         ShoveDoneCreeps: 1,
         TowerSwapAllyHP: 0.6,
@@ -316,6 +324,10 @@ export const DEFAULTS = {
         ContestReach: 1200,
         TakePullCreeps: 800,
         TakePullDanger: 1200,
+        // The longest meet in use is ~1450 from its camp; the trace will show where the camp starts giving up.
+        ClashPullReach: 2000,
+        ClashStandOff: 400,
+        ClashFight: 600,
         CounterNeutralScan: 1600,
         MidFront: 1200,
         MidHuman: 1500,

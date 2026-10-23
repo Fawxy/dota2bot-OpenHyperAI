@@ -1409,4 +1409,19 @@ do
 	check("and its errand caps", near(H.Intent.Resolve(support, dota.BotMode.Ward, 0.81), 0.81))
 end
 
+-- Clash pull --------------------------------------------------------------------------------------------------------
+
+do
+	local J = LaneFresh({ Enable = true }).Lane.CampJobs
+	local p = J.ClashPoint(Vector(0, 0), Vector(1000, 0), 400)
+	check("clash point stands off toward the camp", near(p.x, 400) and near(p.y, 0))
+	local q = J.ClashPoint(Vector(0, 0), Vector(300, 0), 400)
+	check("a camp nearer than the stand-off is the point", near(q.x, 300))
+	check("no prediction under 1 s of history", J.ClearPrediction({ { t = 10, hp = 900 }, { t = 10.8, hp = 700 } }, 10.8, 1.5) == nil)
+	check("clear time from the drop rate", near(J.ClearPrediction({ { t = 10, hp = 900 }, { t = 11, hp = 600 } }, 11, 1.5) or -1, 2))
+	check("only samples in the window count", near(J.ClearPrediction({ { t = 5, hp = 5000 }, { t = 10, hp = 900 }, { t = 11, hp = 600 } }, 11, 1.5) or -1, 2))
+	check("no prediction while the HP rises", J.ClearPrediction({ { t = 10, hp = 600 }, { t = 11, hp = 900 } }, 11, 1.5) == nil)
+	check("no prediction while the HP is flat", J.ClearPrediction({ { t = 10, hp = 600 }, { t = 11, hp = 600 } }, 11, 1.5) == nil)
+end
+
 finish()

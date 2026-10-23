@@ -281,10 +281,10 @@ function laneAtMeet(meet)
     local r = settings().Radii.MeetBusy
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue272
+            local __continue282
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue272 = true
+                    __continue282 = true
                     break
                 end
                 if dist2D(
@@ -293,9 +293,9 @@ function laneAtMeet(meet)
                 ) <= r then
                     return true
                 end
-                __continue272 = true
+                __continue282 = true
             until true
-            if not __continue272 then
+            if not __continue282 then
                 break
             end
         end
@@ -310,17 +310,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue277
+            local __continue287
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue277 = true
+                    __continue287 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue277 = true
+                    __continue287 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -331,9 +331,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue277 = true
+                __continue287 = true
             until true
-            if not __continue277 then
+            if not __continue287 then
                 break
             end
         end
@@ -644,7 +644,13 @@ function modeEndFields(bot, job)
         }
     }
 end
-local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
+local PULL_KINDS = {
+    full_pull = true,
+    half_pull = true,
+    stack_pull = true,
+    double_pull = true,
+    clash_pull = true
+}
 local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
 LOG_KIND = {
     full_pull = "full",
@@ -652,7 +658,8 @@ LOG_KIND = {
     stack_pull = "stackpull",
     double_pull = "double",
     stack = "stack",
-    contest = "contest"
+    contest = "contest",
+    clash_pull = "clash"
 }
 local FLAG_OF = {
     full_pull = "FullPull",
@@ -660,7 +667,8 @@ local FLAG_OF = {
     stack_pull = "StackPull",
     double_pull = "FullPull",
     stack = "Stack",
-    contest = "CounterPlay"
+    contest = "CounterPlay",
+    clash_pull = "ClashPull"
 }
 local JOB_FLAGS = {"FullPull", "HalfPull", "StackPull"}
 local RANGED_ATTACK_RANGE = 326
@@ -690,7 +698,7 @@ local function cycleOf(time)
     return math.floor(time / settings().Timing.WaveCycle)
 end
 local function commitTech(kind)
-    if kind == "double_pull" then
+    if kind == "double_pull" or kind == "clash_pull" then
         return "full_pull"
     end
     if kind == "contest" then
@@ -773,6 +781,49 @@ function ____exports.Grade(kind, divert)
         return "ok"
     end
     return divert > 0 and "mistake:weak-pull" or "mistake:no-divert"
+end
+--- `front` moved `standOff` toward `origin`, or `origin` when it is nearer than that.
+function ____exports.ClashPoint(front, origin, standOff)
+    local d = dist2D(front, origin)
+    if d <= standOff then
+        return Vector(origin.x, origin.y, origin.z)
+    end
+    local f = standOff / d
+    return Vector(front.x + (origin.x - front.x) * f, front.y + (origin.y - front.y) * f, front.z)
+end
+--- Seconds until the latest HP reaches 0 at its drop rate over the last `window`; undefined under 1 s of it or unless falling.
+function ____exports.ClearPrediction(samples, now, window)
+    local first
+    local last
+    for ____, smp in ipairs(samples) do
+        do
+            local __continue37
+            repeat
+                if now - smp.t > window then
+                    __continue37 = true
+                    break
+                end
+                if first == nil or smp.t < first.t then
+                    first = smp
+                end
+                if last == nil or smp.t > last.t then
+                    last = smp
+                end
+                __continue37 = true
+            until true
+            if not __continue37 then
+                break
+            end
+        end
+    end
+    if first == nil or last == nil or last.t - first.t < 1 then
+        return nil
+    end
+    local rate = (first.hp - last.hp) / (last.t - first.t)
+    if rate <= 0 then
+        return nil
+    end
+    return last.hp / rate
 end
 local function noisy(v, noise)
     local r = RandomVector(noise)
@@ -2286,10 +2337,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue305
+            local __continue315
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue305 = true
+                    __continue315 = true
                     break
                 end
                 if dist2D(
@@ -2298,9 +2349,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue305 = true
+                __continue315 = true
             until true
-            if not __continue305 then
+            if not __continue315 then
                 break
             end
         end
@@ -2360,13 +2411,13 @@ local function tracePull(bot, job, now)
     local atMeet = 0
     for ____, c in ipairs(wave) do
         do
-            local __continue321
+            local __continue331
             repeat
                 if dist2D(
                     c:GetLocation(),
                     meet
                 ) > cfg.Radii.MeetWatch then
-                    __continue321 = true
+                    __continue331 = true
                     break
                 end
                 atMeet = atMeet + 1
@@ -2374,9 +2425,9 @@ local function tracePull(bot, job, now)
                     tr.everDiverted[c] = true
                     tr.everN = tr.everN + 1
                 end
-                __continue321 = true
+                __continue331 = true
             until true
-            if not __continue321 then
+            if not __continue331 then
                 break
             end
         end
@@ -2396,10 +2447,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue330
+            local __continue340
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue330 = true
+                    __continue340 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2409,9 +2460,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue330 = true
+                __continue340 = true
             until true
-            if not __continue330 then
+            if not __continue340 then
                 break
             end
         end
@@ -2452,19 +2503,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue345
+            local __continue355
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue345 = true
+                    __continue355 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue345 = true
+                __continue355 = true
             until true
-            if not __continue345 then
+            if not __continue355 then
                 break
             end
         end

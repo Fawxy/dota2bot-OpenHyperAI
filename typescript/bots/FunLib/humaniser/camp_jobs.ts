@@ -22,7 +22,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 
-export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
+export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest" | "clash_pull";
 
 export interface JobRequest {
     kind: JobKind;
@@ -144,7 +144,7 @@ interface PendingStack {
     type: Camps.CampType;
 }
 
-const PULL_KINDS: Record<string, boolean> = { full_pull: true, half_pull: true, stack_pull: true, double_pull: true };
+const PULL_KINDS: Record<string, boolean> = { full_pull: true, half_pull: true, stack_pull: true, double_pull: true, clash_pull: true };
 const PULL_TECHS: Record<string, JobKind> = { full_pull: "full_pull", half_pull: "half_pull", stack_pull: "stack_pull" };
 // The console parser reads `kind=%w+` and treats `half` as the half-pull timing.
 const LOG_KIND: Record<JobKind, string> = {
@@ -154,6 +154,7 @@ const LOG_KIND: Record<JobKind, string> = {
     double_pull: "double",
     stack: "stack",
     contest: "contest",
+    clash_pull: "clash",
 };
 const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
     full_pull: "FullPull",
@@ -162,6 +163,7 @@ const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
     double_pull: "FullPull",
     stack: "Stack",
     contest: "CounterPlay",
+    clash_pull: "ClashPull",
 };
 const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
 // jmz_func's melee/ranged split for attack timing.
@@ -207,7 +209,7 @@ function cycleOf(time: number): number {
 }
 
 function commitTech(kind: JobKind): LaneConfig.Technique | "contest" {
-    if (kind === "double_pull") return "full_pull";
+    if (kind === "double_pull" || kind === "clash_pull") return "full_pull";
     if (kind === "contest") return "contest";
     return kind as LaneConfig.Technique;
 }
@@ -278,6 +280,34 @@ export function Grade(kind: JobKind, divert: number): string {
     }
     if (divert > t.FullPullMin) return "ok";
     return divert > 0 ? "mistake:weak-pull" : "mistake:no-divert";
+}
+
+/** `front` moved `standOff` toward `origin`, or `origin` when it is nearer than that. */
+export function ClashPoint(front: Vector, origin: Vector, standOff: number): Vector {
+    const d = dist2D(front, origin);
+    if (d <= standOff) return Vector(origin.x, origin.y, origin.z);
+    const f = standOff / d;
+    return Vector(front.x + (origin.x - front.x) * f, front.y + (origin.y - front.y) * f, front.z);
+}
+
+export interface HpSample {
+    t: number;
+    hp: number;
+}
+
+/** Seconds until the latest HP reaches 0 at its drop rate over the last `window`; undefined under 1 s of it or unless falling. */
+export function ClearPrediction(samples: HpSample[], now: number, window: number): number | undefined {
+    let first: HpSample | undefined;
+    let last: HpSample | undefined;
+    for (const smp of samples) {
+        if (now - smp.t > window) continue;
+        if (first === undefined || smp.t < first.t) first = smp;
+        if (last === undefined || smp.t > last.t) last = smp;
+    }
+    if (first === undefined || last === undefined || last.t - first.t < 1) return undefined;
+    const rate = (first.hp - last.hp) / (last.t - first.t);
+    if (rate <= 0) return undefined;
+    return last.hp / rate;
 }
 
 // ---------------------------------------------------------------------------------------------- job setup
