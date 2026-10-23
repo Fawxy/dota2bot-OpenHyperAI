@@ -441,6 +441,20 @@ test('summary reports pull traces per camp', () => {
     assert.match(text, /radiant_off_large n=3 wave seen 2 late \+4\.5s camp gone 1 camp never there 1 ever 4\/8 peak 0\.00/);
     assert.match(text, /radiant_safe_small n=1 wave seen 1 late \+2\.0s camp gone 0 camp never there 0 ever 4\/4 peak 0\.50/);
 });
+test('summary reports clash pulls', () => {
+    const game = parseLog(
+        [
+            ...header(),
+            '[HEV] t=65 ev=lane_job_start pid=4 kind=clash camp=1 key=radiant_safe_small fight=-320,-5240 walk=6',
+            '[HEV] t=69 ev=lane_pull_trace pid=4 kind=clash camp=1 key=radiant_safe_small end=ok expWave=-1 wave=1 nIn=6 nLast=9 nAtWave=0 waveMax=3 ever=3 peak=1 dur=10 pred=3 cleared=3.5',
+            '[HEV] t=79 ev=lane_job pid=4 kind=clash camp=1 key=radiant_safe_small aggro=9.3 planned=9.3 divert=1 grade=ok',
+            '[HEV] t=95 ev=lane_job_start pid=4 kind=clash camp=1 key=radiant_safe_small fight=-320,-5240 walk=6',
+            '[HEV] t=110 ev=lane_job_abort pid=4 kind=clash camp=1 reason=wait-max phase=wait acted=1 divert=0',
+        ].join('\n')
+    )[0];
+    const text = report.summary(game);
+    assert.match(text, /clash pull: started 2 ok 1 weak 0 no-divert 0 lane-won 0 clash-lost 0 next-wave 0 wait-max 1 other 0 cleared-pred \+0\.5s/);
+});
 test('summary reports take-pull outcomes and swings', () => {
     const game = parseLog(
         [

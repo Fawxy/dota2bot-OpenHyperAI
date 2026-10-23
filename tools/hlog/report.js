@@ -217,16 +217,30 @@ function forecastSection(game) {
             `take-pull: started ${started} swings ${swings} no-creeps ${n('no-creeps')} timeout ${n('timeout')} outnumbered ${n('outnumbered')} low-hp ${n('low-hp')} lane-wave ${n('lane-wave')} aborted ${aborted}`
         );
     }
+    const median = xs => {
+        if (xs.length === 0) return undefined;
+        const s = [...xs].sort((a, b) => a - b);
+        return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+    };
+    const sec = v => (v === undefined ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}s`);
+    const clash = game.events.filter(e => e.kind === 'clash');
+    if (clash.length > 0) {
+        const grade = g => clash.filter(e => e.ev === 'lane_job' && e.grade === g).length;
+        const aborts = clash.filter(e => e.ev === 'lane_job_abort');
+        const ENDS = ['lane-won', 'clash-lost', 'next-wave', 'wait-max'];
+        const ends = ENDS.map(r => `${r} ${aborts.filter(e => e.reason === r).length}`).join(' ');
+        const other = aborts.filter(e => !ENDS.includes(e.reason)).length;
+        // Positive: the fight cleared after the predicted clear.
+        const gap = median(clash.filter(e => e.ev === 'lane_pull_trace' && e.pred >= 0 && e.cleared >= 0).map(e => e.cleared - e.pred));
+        out.push(
+            '',
+            `clash pull: started ${clash.filter(e => e.ev === 'lane_job_start').length} ok ${grade('ok')} weak ${grade('mistake:weak-pull')} no-divert ${grade('mistake:no-divert')} ${ends} other ${other} cleared-pred ${sec(gap)}`
+        );
+    }
     const traces = game.events.filter(e => e.ev === 'lane_pull_trace');
     if (traces.length > 0) {
         const byKey = new Map();
         for (const e of traces) byKey.set(e.key, [...(byKey.get(e.key) || []), e]);
-        const median = xs => {
-            if (xs.length === 0) return undefined;
-            const s = [...xs].sort((a, b) => a - b);
-            return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
-        };
-        const sec = v => (v === undefined ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}s`);
         // `wave` is the first creep within MeetWatch (800) of the meet: at 325 speed it reaches the meet ~2.5 s later.
         const toMeet = 800 / 325;
         out.push('', 'pull trace (wave at the meet vs expected; camp gone = neutrals left the meet before the wave got there):');

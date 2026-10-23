@@ -106,7 +106,7 @@ export interface Job extends JobRequest {
     /** The lane-at-meet gate ran before the first hit. */
     meetChecked?: boolean;
     /** Clash pull: enemy front HP samples, the camp's walk to the fight point, and the last clear prediction before the hit. */
-    clash?: { samples: HpSample[]; walk: number; waitFrom?: number; pred?: number };
+    clash?: { samples: HpSample[]; walk: number; waitFrom?: number; pred?: number; predAt?: number };
 }
 
 /** Times are DotaTime; the event reports them relative to the hit. */
@@ -125,6 +125,8 @@ interface PullTrace {
     /** Lane creeps seen with a neutral target at any sample: unlike peakDivert, not required to be at the same time. */
     everDiverted: LuaTable<Unit, boolean>;
     everN: number;
+    /** Clash pull: first sample with no enemy front creep within ClashFight of the meet point. */
+    cleared?: number;
     logged?: boolean;
 }
 
@@ -428,6 +430,9 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     ];
     if (job.preAggroAt !== undefined) fields.push(["pre", 1]);
     if (job.take === true) fields.push(["take", 1]);
+    if (job.clash !== undefined && job.meet !== undefined) {
+        fields.push(["fight", string.format("%d,%d", math.floor(job.meet.x + 0.5), math.floor(job.meet.y + 0.5))], ["walk", round3(job.clash.walk)]);
+    }
     Telemetry.Event("lane_job_start", fields);
     HDebug.Log(
         "lane",
@@ -1603,6 +1608,16 @@ function tracePull(bot: Unit, job: Job, now: number): void {
         tr.waveAt = now;
         tr.neutralsAtWave = neutrals;
     }
+    if (job.clash !== undefined && tr.cleared === undefined) {
+        const s = LaneState.ForBot(bot);
+        let fighting = false;
+        for (const c of s?.enemy.units ?? []) {
+            if (c.IsNull() || !c.IsAlive()) continue;
+            const loc = c.GetLocation();
+            if (loc !== undefined && dist2D(loc, meet) <= cfg.Radii.ClashFight) fighting = true;
+        }
+        if (!fighting) tr.cleared = now;
+    }
 }
 
 /** Once per pull that was hit: what the trace saw, in seconds after the hit (-1 when never seen). */
@@ -1628,6 +1643,7 @@ function logTrace(bot: Unit, job: Job, end: string): void {
         ["peak", round3(job.peakDivert)],
         ["dur", round3(DotaTime() - hit)],
         ...(tr.shift !== undefined ? ([["shift", round3(tr.shift)]] as [string, any][]) : []),
+        ...(job.clash !== undefined ? ([["pred", rel(job.clash.predAt)], ["cleared", rel(tr.cleared)]] as [string, any][]) : []),
     ]);
 }
 
@@ -1955,6 +1971,7 @@ function stepClashWait(bot: Unit, job: Job, now: number): boolean {
     const pred = ClearPrediction(clash.samples, now, cfg.Timing.ClashRateWindow);
     if (pred !== undefined && pred <= walk + lead && (creep !== undefined || there) && !clashCrowded(bot, fight)) {
         clash.pred = pred;
+        clash.predAt = now + pred;
         job.aggroAt = now + lead;
         job.baseAggro = job.aggroAt;
         job.plannedSec = job.aggroAt % cfg.Timing.PullPeriod;

@@ -1653,4 +1653,35 @@ do
 	check("a hit due on an empty camp ends mistake:no-camp", clashAbort(lines) == "mistake:no-camp" and attacks() == 0, tostring(clashAbort(lines)))
 end
 
+do
+	-- Telemetry: the start names the fight and the camp's walk; the trace says when the fight cleared against the prediction.
+	local H, support, _, lines, ours, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	local neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local t = 65
+	while attacks() == 0 and t < 72 do
+		setHp(theirs, 3000 - 300 * (t - 65))
+		frame(H, support, t)
+		t = t + 0.5
+	end
+	local start
+	for _, l in ipairs(lines) do if l:find("ev=lane_job_start ", 1, true) and l:find("kind=clash", 1, true) then start = l end end
+	check("lane_job_start names the fight point and the camp's walk", start ~= nil and start:find(" fight=-320,-5240", 1, true) ~= nil
+		and tonumber(start:match(" walk=(%S+)")) ~= nil and math.abs(tonumber(start:match(" walk=(%S+)")) - 6.0) < 0.1, tostring(start))
+	local job = H.Lane.CampJobs.Current(support)
+	neutral.target = support
+	frame(H, support, t)
+	local clearedAt
+	for k = 1, 24 do
+		t = t + 0.5
+		teleport(support)
+		if k == 4 then for _, c in ipairs(theirs) do RemoveCreep(c) end clearedAt = t end
+		frame(H, support, t)
+	end
+	local e = traceEvent(lines)
+	check("precondition: the clash pull closed", job.phase == "done" and e ~= nil and e.kind == "clash", tostring(job.phase))
+	check("the clash trace times the fight clearing from the hit", e ~= nil and math.abs(e.cleared - (clearedAt - job.actualAggro)) <= 0.51,
+		e and (tostring(e.cleared) .. " vs " .. (clearedAt - job.actualAggro)))
+	check("... and the predicted clear, from the hit", e ~= nil and e.pred ~= nil and math.abs(e.pred - (job.clash.predAt - job.actualAggro)) < 0.01, e and tostring(e.pred))
+end
+
 finish()
