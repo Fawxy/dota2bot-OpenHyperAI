@@ -271,6 +271,9 @@ local body = __TS__Generator(function(bot, ctx)
     local now = DotaTime()
     local ____opt_0 = trips[pid]
     local spawn = ____opt_0 and ____opt_0.spawn or spawnNow(now)
+    if doneFor[pid] == spawn and (trips[pid] == nil or trips[pid].ended ~= nil) then
+        return ctx.fail("no_target", "done")
+    end
     if trips[pid] == nil or trips[pid].ended ~= nil then
         trips[pid] = {
             team = bot:GetTeam(),
@@ -302,7 +305,7 @@ local function ended(bot, r, info)
     if trip == nil or trip.ended ~= nil then
         return
     end
-    if (r.reason == "preempted" or r.reason == "dead") and DotaTime() <= trip.spawn + LATE_BY then
+    if r.reason == "preempted" and DotaTime() <= trip.spawn + LATE_BY then
         return
     end
     close(bot, trip, r, info.label)

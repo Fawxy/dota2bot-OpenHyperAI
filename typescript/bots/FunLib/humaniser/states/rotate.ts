@@ -118,6 +118,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const spawn = trips[pid]?.spawn ?? spawnNow(now);
+    if (doneFor[pid] === spawn && (trips[pid] === undefined || trips[pid]!.ended !== undefined)) return ctx.fail("no_target", "done");
     if (trips[pid] === undefined || trips[pid]!.ended !== undefined) trips[pid] = { team: bot.GetTeam(), spawn, startedAt: now };
     const trip = trips[pid]!;
     const hooks: Lib.Verbs.JobHooks = {
@@ -134,8 +135,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
 function ended(bot: Unit, r: Lib.Result, info: { label?: string; steps: number }): void {
     const trip = trips[bot.GetPlayerID()];
     if (trip === undefined || trip.ended !== undefined) return;
-    // Preempted (a fight, retreat) or dead: the state layer restarts the body while the trip is still worth it.
-    if ((r.reason === "preempted" || r.reason === "dead") && DotaTime() <= trip.spawn + LATE_BY) return;
+    // Preempted (a fight, retreat): the state layer restarts the body while the trip is still worth it. A death closes
+    // it at once, so the team's own wisdom logic (WisdomOwned) can send someone else.
+    if (r.reason === "preempted" && DotaTime() <= trip.spawn + LATE_BY) return;
     close(bot, trip, r, info.label);
 }
 

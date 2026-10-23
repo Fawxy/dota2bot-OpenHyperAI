@@ -178,9 +178,18 @@ export function Owns(bot: Unit, state: string): boolean {
     return IsEnabled() && owns(bot, state);
 }
 
+/** Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body. */
+function stepFarm(bot: Unit, names: Record<string, boolean>): boolean {
+    const cur = lib()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && names[cur.name] === true && Step(bot, BotMode.Farm);
+}
+
+const FARM_STATES: Record<string, boolean> = { [Farm.NAME]: true };
+const CAMP_STATES: Record<string, boolean> = { [CampJob.STACK]: true, [CampJob.PULL]: true };
+
 FarmPattern.SetExecutor({
     Owns: (bot) => Owns(bot, Farm.NAME) && lib() !== undefined,
-    Step: (bot) => Step(bot, BotMode.Farm),
+    Step: (bot) => stepFarm(bot, FARM_STATES),
 });
 
 CampJobs.SetExecutor({
@@ -188,7 +197,7 @@ CampJobs.SetExecutor({
         const state = CampJob.StateOf(job);
         return state !== undefined && Owns(bot, state) && lib() !== undefined;
     },
-    Step: (bot) => Step(bot, BotMode.Farm),
+    Step: (bot) => stepFarm(bot, CAMP_STATES),
 });
 
 /**

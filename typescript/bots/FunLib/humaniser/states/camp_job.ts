@@ -151,13 +151,34 @@ function perFrame(bot: Unit, job: Job): boolean {
 
 const started: Record<number, Job | undefined> = {};
 
+/**
+ * Gives the job back to step(): its path index set to the first waypoint ahead of the bot (the SDK walks paths itself
+ * and never advances `job.waypoint`, so step() would otherwise walk back to the first one).
+ */
+function handBack(bot: Unit, job: Job): void {
+    job.sdk = false;
+    const path = job.path;
+    if (path.length === 0 || (job.phase !== "lead" && job.phase !== "exit" && job.phase !== "watch")) return;
+    let nearest = 0;
+    let best = math.huge;
+    for (let i = 0; i < path.length; i++) {
+        const d = GetUnitToLocationDistance(bot, path[i]);
+        if (d < best) {
+            best = d;
+            nearest = i;
+        }
+    }
+    job.waypoint = best <= R().JobArrive ? nearest + 1 : nearest;
+}
+
 function* body(bot: Unit, state: string, ctx: Lib.Ctx): Lib.TaskBody {
     const job = liveJob(bot, state);
     if (job === undefined) return ctx.fail("no_target", "no-job");
     const pid = bot.GetPlayerID();
-    // A restart after a preempt would replay travel and aggro over a half-done job: step() resumes it from its phase.
-    if (started[pid] === job) {
-        job.sdk = false;
+    // A restart after a preempt, or a first start after step() already ran the job past its wait (the state was held
+    // up behind another job), would replay travel and aggro over a half-done job: step() carries on from its phase.
+    if (started[pid] === job || (job.phase !== "travel" && job.phase !== "wait") || job.aggroOrderedAt !== undefined || job.actualAggro !== undefined) {
+        handBack(bot, job);
         return ctx.fail("interrupted", "legacy-resume");
     }
     started[pid] = job;
@@ -204,11 +225,12 @@ function ended(bot: Unit, state: string, r: Lib.Result, info: { label?: string; 
     }
     // Interrupts and the runner's own endings: step() carries on from the job's phase, or OHA's checks end the job.
     if (r.reason === "preempted" || r.reason === "cancelled" || r.reason === "error" || r.reason === "interrupted") {
-        job.sdk = false;
+        handBack(bot, job);
         return;
     }
     const [reason, keepStack] = abortOf(r);
-    if (reason === "mistake:no-camp" && job.kind === "stack") Stacking.ClearStack(job.activeCamp);
+    // As step(): standing at the box seeing no neutral, whatever was stacked there has been farmed (any job kind).
+    if (reason === "mistake:no-camp") Stacking.ClearStack(job.activeCamp);
     Exec.Abort(bot, job, reason, keepStack);
 }
 

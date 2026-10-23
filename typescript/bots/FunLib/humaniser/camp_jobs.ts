@@ -1825,7 +1825,8 @@ export function Think(bot: Unit): boolean {
     if (job.sdk === true && executor !== undefined && executor.Step(bot)) {
         job.sdkFrames = (job.sdkFrames ?? 0) + 1;
         overlay(bot, job);
-        return true;
+        // The body ended the job this frame (close or abort in its onEnd): leave the frame to upstream farm, as step() does.
+        return isLive(job);
     }
     if (job.sdk === true) job.legacyFrames = (job.legacyFrames ?? 0) + 1;
     const acted = step(bot, job);

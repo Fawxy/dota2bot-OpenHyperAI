@@ -248,6 +248,27 @@ do
 	check("mode end: body started once", starts == 1, starts)
 end
 
+-- The state starts only after step() ran the job past its wait (held up behind another job state): the body hands
+-- the job back instead of replaying travel and aggro over it.
+do
+	local H, support = world({ camps = { { "large", LARGE } } })
+	local job
+	local lines = capture(function()
+		T = 100
+		support.loc = standOf(H, 1)
+		SetRandomSequence({ 1.0, 0.25 })
+		H.Lane.CampJobs.Start(support, { kind = "stack", campIdx = 1 })
+		job = H.Lane.CampJobs.Current(support)
+		NEUTRALS = {}
+		neutrals(LARGE, 3)
+		job.phase, job.actualAggro = "exit", job.aggroAt
+		runUntil(H, support, 105)
+	end)
+	check("late start: handed back to step()", job.sdk == false)
+	check("late start: no aggro replayed", #ActionsOf(5, "AttackUnit") == 0)
+	check("late start: state task ended legacy-resume", find(lines, "msg=legacy-resume") ~= nil)
+end
+
 -- Pulls: the safe-lane small camp (the stacking world above has no pull camp). Default fronts make the planner want a
 -- full pull at :15/:45; the support waits at its stand point.
 local LARGE_PULL = Vector(-1000, -6300)

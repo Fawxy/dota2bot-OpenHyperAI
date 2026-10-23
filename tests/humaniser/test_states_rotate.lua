@@ -161,4 +161,17 @@ do
 	check("preempt: state left", (w.H.States.Describe(w.p4) or ""):sub(1, 6) ~= "rotate", w.H.States.Describe(w.p4))
 end
 
+-- Dying on the way closes the trip at once: the shrine is free for the team's own wisdom logic again.
+do
+	local w = world()
+	local lines = capture(function()
+		while T < 405 do frame(w, w.p4) end
+		w.p4.alive = false
+		for _ = 1, 5 do frame(w, w.p4) end
+	end)
+	local ev = events(lines, "wisdom")[1]
+	check("death: trip closed", ev ~= nil and ev:find("result=fail", 1, true) ~= nil, ev)
+	check("death: shrine free for the team", w.H.States.WisdomOwned(w.off) == false)
+end
+
 finish()

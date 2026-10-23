@@ -2693,7 +2693,7 @@ function ____exports.Think(bot)
     if job.sdk == true and executor ~= nil and executor.Step(bot) then
         job.sdkFrames = (job.sdkFrames or 0) + 1
         overlay(bot, job)
-        return true
+        return isLive(job)
     end
     if job.sdk == true then
         job.legacyFrames = (job.legacyFrames or 0) + 1

@@ -239,14 +239,37 @@ local function perFrame(bot, job)
     return false
 end
 local started = {}
+--- Gives the job back to step(): its path index set to the first waypoint ahead of the bot (the SDK walks paths itself
+-- and never advances `job.waypoint`, so step() would otherwise walk back to the first one).
+local function handBack(bot, job)
+    job.sdk = false
+    local path = job.path
+    if #path == 0 or job.phase ~= "lead" and job.phase ~= "exit" and job.phase ~= "watch" then
+        return
+    end
+    local nearest = 0
+    local best = math.huge
+    do
+        local i = 0
+        while i < #path do
+            local d = GetUnitToLocationDistance(bot, path[i + 1])
+            if d < best then
+                best = d
+                nearest = i
+            end
+            i = i + 1
+        end
+    end
+    job.waypoint = best <= R().JobArrive and nearest + 1 or nearest
+end
 local body = __TS__Generator(function(bot, state, ctx)
     local job = liveJob(bot, state)
     if job == nil then
         return ctx.fail("no_target", "no-job")
     end
     local pid = bot:GetPlayerID()
-    if started[pid] == job then
-        job.sdk = false
+    if started[pid] == job or job.phase ~= "travel" and job.phase ~= "wait" or job.aggroOrderedAt ~= nil or job.actualAggro ~= nil then
+        handBack(bot, job)
         return ctx.fail("interrupted", "legacy-resume")
     end
     started[pid] = job
@@ -323,11 +346,11 @@ local function ended(bot, state, r, info)
         return
     end
     if r.reason == "preempted" or r.reason == "cancelled" or r.reason == "error" or r.reason == "interrupted" then
-        job.sdk = false
+        handBack(bot, job)
         return
     end
     local reason, keepStack = abortOf(r)
-    if reason == "mistake:no-camp" and job.kind == "stack" then
+    if reason == "mistake:no-camp" then
         Stacking.ClearStack(job.activeCamp)
     end
     Exec.Abort(bot, job, reason, keepStack)

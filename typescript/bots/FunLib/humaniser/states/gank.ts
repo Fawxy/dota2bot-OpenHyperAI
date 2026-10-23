@@ -75,6 +75,13 @@ export function ResetCache(): void {
     for (const [k] of pairs(rolls)) rolls[k as string] = undefined;
 }
 
+const ENGAGE_FOR = 8;
+
+/** The latest a body may still be engaging (its deadline plus engageFor), plus slack: past it the attempt is over. */
+function maxAway(): number {
+    return SETTINGS.MaxEta * 1.5 + 20 + ENGAGE_FOR + 5;
+}
+
 function lerp(r: number[], t: number): number {
     return r[0] + (r[1] - r[0]) * t;
 }
@@ -184,7 +191,7 @@ function score(bot: Unit): number | undefined {
     const now = DotaTime();
     if (a !== undefined && a.ended === undefined) {
         // Kept by a preempt or a death past any chance of the gank: over, so the layer can leave the state.
-        if (now - a.left <= SETTINGS.MaxEta * 1.5 + 20) return SETTINGS.Score;
+        if (now - a.left <= maxAway()) return SETTINGS.Score;
         ended(bot, { success: false, reason: "timeout", message: "expired" }, { steps: 0 });
         return undefined;
     }
@@ -252,8 +259,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             target: () => target() as unknown as Lib.TaskAttacker | undefined,
             path,
             engageRange: math.max(600, bot.GetAttackRange() + 100),
-            deadline: now + eta * 1.5 + 5,
-            engageFor: 8,
+            // A restarted body keeps the first start's limit, so the attempt never outlives its expiry in score().
+            deadline: math.min(now + eta * 1.5 + 5, attempt.left + SETTINGS.MaxEta * 1.5 + 20),
+            engageFor: ENGAGE_FOR,
             telegraph: flank
                 ? {
                       lead: SETTINGS.TelegraphLead,

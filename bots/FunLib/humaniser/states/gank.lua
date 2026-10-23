@@ -188,6 +188,11 @@ function ____exports.ResetCache()
         rolls[k] = nil
     end
 end
+local ENGAGE_FOR = 8
+--- The latest a body may still be engaging (its deadline plus engageFor), plus slack: past it the attempt is over.
+local function maxAway()
+    return ____exports.SETTINGS.MaxEta * 1.5 + 20 + ENGAGE_FOR + 5
+end
 local function lerp(r, t)
     return r[1] + (r[2] - r[1]) * t
 end
@@ -240,7 +245,7 @@ function ____exports.BestTarget(bot)
     local best
     for ____, e in ipairs(LaneState.Enemies(bot, own)) do
         do
-            local __continue23
+            local __continue24
             repeat
                 local ____e_visible_0
                 if e.visible then
@@ -250,13 +255,13 @@ function ____exports.BestTarget(bot)
                 end
                 local u = ____e_visible_0
                 if u == nil or e.position ~= nil and e.position > 3 then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local lane = laneOf(loc)
                 if lane == nil or lane == own then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 local eta = d2(
@@ -264,7 +269,7 @@ function ____exports.BestTarget(bot)
                     loc
                 ) * s.PathFactor / speed
                 if eta > s.MaxEta then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 local hp = u:GetHealth() / math.max(
@@ -273,7 +278,7 @@ function ____exports.BestTarget(bot)
                 )
                 local setup = heroesNear(UnitType.AlliedHeroes, loc, s.AllyRadius, bot) > 0
                 if not setup and hp >= 0.5 then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 local score = (1 - hp) * 2
@@ -296,9 +301,9 @@ function ____exports.BestTarget(bot)
                         eta = eta
                     }
                 end
-                __continue23 = true
+                __continue24 = true
             until true
-            if not __continue23 then
+            if not __continue24 then
                 break
             end
         end
@@ -370,7 +375,7 @@ local function score(bot)
     local a = attempts[pid]
     local now = DotaTime()
     if a ~= nil and a.ended == nil then
-        if now - a.left <= ____exports.SETTINGS.MaxEta * 1.5 + 20 then
+        if now - a.left <= maxAway() then
             return ____exports.SETTINGS.Score
         end
         ended(bot, {success = false, reason = "timeout", message = "expired"}, {steps = 0})
@@ -477,8 +482,8 @@ local body = __TS__Generator(function(bot, ctx)
                 600,
                 bot:GetAttackRange() + 100
             ),
-            deadline = now + eta * 1.5 + 5,
-            engageFor = 8,
+            deadline = math.min(now + eta * 1.5 + 5, attempt.left + ____exports.SETTINGS.MaxEta * 1.5 + 20),
+            engageFor = ENGAGE_FOR,
             telegraph = flank and ({
                 lead = ____exports.SETTINGS.TelegraphLead,
                 fn = function()
