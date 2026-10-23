@@ -1,0 +1,11 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 10: farm trips pos 1-3 (runs 1, 2, 11, 15:00). lh@15 parity vs OFF is relative: compare metrics",
+ "until": "15:00",
+ "bars": [
+  { "id": "SDK share of farm trip frames", "select": { "team": "human", "pos": [1, 2, 3] }, "metric": "jobs.farmSdkPct", "min": 95, "optional": true },
+  { "id": "pos1 lh@15", "select": { "team": "human", "pos": 1 }, "metric": "laning.lh", "min": 88, "optional": true },
+  { "id": "pos2 lh@15", "select": { "team": "human", "pos": 2 }, "metric": "laning.lh", "min": 72, "optional": true },
+  { "id": "pos3 lh@15", "select": { "team": "human", "pos": 3 }, "metric": "laning.lh", "min": 67, "optional": true }
+ ]
+}

@@ -202,7 +202,7 @@ function stateMetrics(game, { until = 600, from = 0 } = {}) {
         const r = {
             pid: b.pid, team: b.team, pos: profile.pos, hero: b.hero,
             secs: {}, switches: 0, minutes: 0, agreeSec: 0, compareSec: 0, interruptSec: 0, noneSec: 0,
-            agreeLongSec: 0, compareLongSec: 0, disagree: {}, starts: 0, restartLags: [], restartGaps: [], ends: {}, laneD: [], laneDHold: [],
+            agreeLongSec: 0, compareLongSec: 0, laningModeSec: 0, laningCoverSec: 0, disagree: {}, starts: 0, restartLags: [], restartGaps: [], ends: {}, laneD: [], laneDHold: [],
         };
         let k = 0;
         let state = 'none';
@@ -214,6 +214,11 @@ function stateMetrics(game, { until = 600, from = 0 } = {}) {
             if (p.alive !== 1 || p.t < from) continue;
             const dt = i + 1 < snaps.length ? Math.min(Math.max(snaps[i + 1].t - p.t, 0), 2) : 1;
             r.secs[state] = (r.secs[state] || 0) + dt;
+            // Slice 1's bar: the laning state covers the time Dota's laning mode is active.
+            if (p.mode === 'laning') {
+                r.laningModeSec += dt;
+                if (state === 'laning') r.laningCoverSec += dt;
+            }
             if (state === 'none') {
                 r.noneSec += dt;
                 continue;

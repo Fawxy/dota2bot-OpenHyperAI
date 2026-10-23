@@ -103,6 +103,16 @@ export function Get(): HumaniserConfig {
     return cached;
 }
 
+/**
+ * Game time as the humaniser's game-phase logic sees it: DotaTime() plus Customize.Overrides.ClockOffset (scenario
+ * games fake "10:00 in" this way, since the real clock can't be set). Only for "which part of the game is it" reads;
+ * anything synced to world timers (camp spawns, runes, waves) and relative timers must keep raw DotaTime().
+ */
+export function Now(): number {
+    const offset = (Customize as any).Overrides?.ClockOffset;
+    return DotaTime() + (typeof offset === "number" ? offset : 0);
+}
+
 export function IsEnabled(): boolean {
     return Get().Enable === true;
 }

@@ -10,6 +10,7 @@ const { parseLog } = require('./parse');
 const { runChecks } = require('./checks');
 const report = require('./report');
 const { laningMetrics, stateMetrics, median, INTERRUPT_MODES, BLIP } = require('./metrics');
+const bars = require('./bars');
 
 const LOG_DIR = path.join(os.homedir(), 'Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota');
 const DEFAULT_LOG = path.join(LOG_DIR, 'console.log');
@@ -26,6 +27,13 @@ function latestLog(dir = LOG_DIR) {
 }
 
 const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
+       node tools/hlog/analyse.js metrics <log> [--until T] [--game N]
+       node tools/hlog/analyse.js check <bars.json> <log>... [--until T] [--json]
+
+  metrics              every slice metric for one game as JSON (schema hlog-metrics/1; see LOGGING.md)
+  check                pass bars (JSON, schema hlog-bars/1) against one or more logs (one run each, latest game
+                       of each). Exit 0 if every bar passes, 1 if any fails or is missing, 2 on usage errors.
+                       --until overrides the spec's until (default 10:00)
 
   (no option)          summary and checks for the latest game
   --list               one line per game in the log
@@ -37,7 +45,7 @@ const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
   --pid 1,2            limit the timeline or mark events to these players
   --ev mode,lasthit    limit the timeline to these event names
   --snaps              include 1 s snapshots in timelines
-  --json               dump the parsed game as JSON
+  --json               dump the parsed game as JSON; with --laning or --states, those rows as JSON instead
   --laning [--until T] per-position laning metrics to T (default 10:00), as compare.js computes them
   --states [--from T] [--until T]  behaviour states per bot, 0:00 (default) to T (default 10:00): seconds per state, switches/min,
                        agreement of the state's host mode with the active mode outside interrupts,
@@ -55,14 +63,17 @@ function parseTime(s) {
 }
 
 function parseArgs(argv) {
-    const opts = { file: undefined };
+    const opts = { file: undefined, _: [] };
     const takesValue = new Set(['--game', '--mark', '--window', '--from', '--to', '--pid', '--ev', '--until']);
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '-h' || a === '--help') opts.help = true;
         else if (takesValue.has(a)) opts[a.slice(2)] = argv[++i];
         else if (a.startsWith('--')) opts[a.slice(2)] = true;
-        else opts.file = a;
+        else {
+            opts.file = a;
+            opts._.push(a);
+        }
     }
     return opts;
 }
@@ -154,7 +165,46 @@ function statesTable(game, until, from = 0) {
     return head + '\n' + report.table(rows) + '\n' + foot.join('\n');
 }
 
+function readGames(file) {
+    if (!fs.existsSync(file)) throw new Error(`${file} not found`);
+    return parseLog(fs.readFileSync(file, 'utf8'));
+}
+
+function pickGame(games, n, file) {
+    const game = games[(n !== undefined ? Number(n) : games.length) - 1];
+    if (!game) throw new Error(`no game ${n ?? ''} in ${file} (${games.length} games)`);
+    return game;
+}
+
+function mainMetrics(opts) {
+    const file = opts._[0];
+    if (!file) throw new Error('usage: analyse.js metrics <log> [--until T] [--game N]');
+    const game = pickGame(readGames(file), opts.game, file);
+    console.log(JSON.stringify(bars.collect(game, { until: parseTime(opts.until ?? '10:00'), file }), null, 1));
+    return 0;
+}
+
+function mainCheck(opts) {
+    const [specFile, ...logs] = opts._;
+    if (!specFile || logs.length === 0) throw new Error('usage: analyse.js check <bars.json> <log>... [--until T] [--json]');
+    const spec = JSON.parse(fs.readFileSync(specFile, 'utf8'));
+    const until = parseTime(String(opts.until ?? spec.until ?? '10:00'));
+    const runs = logs.map(f => bars.collect(pickGame(readGames(f), opts.game, f), { until, file: f }));
+    const result = bars.check(runs, spec);
+    console.log(opts.json ? JSON.stringify(result, null, 1) : bars.checkText(result));
+    return result.pass ? 0 : 1;
+}
+
 function main(argv) {
+    if (argv[0] === 'metrics' || argv[0] === 'check') {
+        const opts = parseArgs(argv.slice(1));
+        try {
+            return argv[0] === 'metrics' ? mainMetrics(opts) : mainCheck(opts);
+        } catch (e) {
+            console.error(e.message);
+            return 2;
+        }
+    }
     const opts = parseArgs(argv);
     if (opts.help) {
         console.log(USAGE);
@@ -179,6 +229,12 @@ function main(argv) {
     if (!game) {
         console.error(`no game ${opts.game}; the log has ${games.length}`);
         return 2;
+    }
+    if (opts.json && (opts.laning || opts.states)) {
+        const until = opts.until !== undefined ? parseTime(opts.until) : 600;
+        const rows = opts.laning ? laningMetrics(game, { until }) : stateMetrics(game, { until, from: opts.from !== undefined ? parseTime(opts.from) : 0 });
+        console.log(JSON.stringify(rows, null, 1));
+        return 0;
     }
     if (opts.json) {
         console.log(JSON.stringify(game, null, 1));

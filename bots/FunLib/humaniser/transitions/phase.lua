@@ -30,6 +30,7 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 function stateOf(bot)
     local pid = bot:GetPlayerID()
     local st = states[pid]
@@ -194,7 +195,7 @@ local function notLaningWhy(bot)
         return "tower"
     end
     local pos = LaneConfig.PositionOf(bot)
-    local now = DotaTime()
+    local now = Config.Now()
     if pos ~= nil and pos >= 4 then
         if bot:GetLevel() > cfg.SupportLevel and now >= cfg.SupportFrom and now <= cfg.SupportTo then
             if Commands.HasSmoke(bot) or Orders.GetAccepted(bot, "ATTACK") ~= nil or Orders.GetAccepted(bot, "SMOKE") ~= nil then

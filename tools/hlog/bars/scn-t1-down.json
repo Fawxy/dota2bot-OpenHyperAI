@@ -1,0 +1,13 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "scn t1-down: scenario plumbing smoke (override applied, no team-code errors)",
+ "until": "12:00",
+ "minRuns": 1,
+ "bars": [
+  {
+   "id": "team-code lua errors",
+   "metric": "game.errors.luaTeam",
+   "max": 0
+  }
+ ]
+}
