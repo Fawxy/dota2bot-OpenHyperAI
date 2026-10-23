@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 5d44e46e0b2669168b8bbdeeb1bc7b23146a0ad8. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ eeec72f5a0e609a4fd917cd9304e72acebf986af. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -2724,6 +2724,162 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
         end
     end
 end)
+local GANK_ENGAGE = 700
+local GANK_LOST_GRACE = 2
+local GANK_ENGAGE_FOR = 8
+local GANK_REORDER = 1
+local function visible(t)
+    local ____temp_65 = t ~= nil
+    if ____temp_65 then
+        local ____this_63
+        ____this_63 = t
+        local ____opt_62 = ____this_63.IsNull
+        local ____temp_64 = ____opt_62 and ____opt_62(____this_63)
+        if ____temp_64 == nil then
+            ____temp_64 = false
+        end
+        ____temp_65 = not ____temp_64
+    end
+    local ____temp_69 = ____temp_65 and t:IsAlive()
+    if ____temp_69 then
+        local ____this_67
+        ____this_67 = t
+        local ____opt_66 = ____this_67.CanBeSeen
+        local ____temp_68 = ____opt_66 and ____opt_66(____this_67)
+        if ____temp_68 == nil then
+            ____temp_68 = true
+        end
+        ____temp_69 = ____temp_68
+    end
+    return ____temp_69
+end
+local function pathLeft(from, path, i, ____end)
+    local d = 0
+    local at = from
+    do
+        local k = i
+        while k < #path do
+            d = d + dist(at, path[k + 1])
+            at = path[k + 1]
+            k = k + 1
+        end
+    end
+    return d + dist(at, ____end)
+end
+--- A gank: walk the host's approach path, then chase the target into `engageRange` and attack it (one reaction delay
+-- after reaching range, `Skill.react`), re-ordering every `reorder` s. Ends ok "kill" when the target dies; fails
+-- `interrupted` "escaped" when it stays out of sight `lostGrace` s, `timeout` "no-kill" after `engageFor` s of
+-- fighting, `timeout` "late" if not engaged by `deadline`, or with the host's `commit` message. Labels `travel`,
+-- `engage`; urgent while engaged.
+____exports.gank = __TS__Generator(function(bot, p, h)
+    if h == nil then
+        h = {}
+    end
+    local range = p.engageRange or GANK_ENGAGE
+    local function speed()
+        local ____math_max_72 = math.max
+        local ____this_71
+        ____this_71 = bot
+        local ____opt_70 = ____this_71.GetCurrentMovementSpeed
+        return ____math_max_72(
+            1,
+            ____opt_70 and ____opt_70(____this_71) or 300
+        )
+    end
+    local wp = 0
+    local lastSeen
+    local lostAt
+    local telegraphed = p.telegraph == nil
+    local engagedAt
+    local attackAt
+    local orderedAt = -math.huge
+    local ____opt_73 = h.label
+    if ____opt_73 ~= nil then
+        ____opt_73("travel")
+    end
+    while true do
+        if not bot:IsAlive() then
+            return fail("dead")
+        end
+        local t = now()
+        local ____opt_75 = p.commit
+        local why = ____opt_75 and ____opt_75()
+        if why ~= nil then
+            return fail("interrupted", why)
+        end
+        local target = p.target()
+        local ____temp_80 = target ~= nil
+        if ____temp_80 then
+            local ____opt_77 = target.IsNull
+            local ____temp_79 = ____opt_77 and ____opt_77(target)
+            if ____temp_79 == nil then
+                ____temp_79 = false
+            end
+            ____temp_80 = not ____temp_79
+        end
+        if ____temp_80 and not target:IsAlive() then
+            return {success = true, reason = "ok", message = "kill"}
+        end
+        if visible(target) then
+            lastSeen = target:GetLocation()
+            lostAt = nil
+        else
+            if lostAt == nil then
+                lostAt = t
+            end
+            if t - lostAt >= (p.lostGrace or GANK_LOST_GRACE) then
+                return fail("interrupted", "escaped")
+            end
+        end
+        if engagedAt == nil and p.deadline ~= nil and t >= p.deadline then
+            return fail("timeout", "late")
+        end
+        if engagedAt ~= nil and t - engagedAt >= (p.engageFor or GANK_ENGAGE_FOR) then
+            return fail("timeout", "no-kill")
+        end
+        local here = bot:GetLocation()
+        while wp < #p.path and dist(here, p.path[wp + 1]) <= ARRIVE do
+            wp = wp + 1
+        end
+        local goal = lastSeen or here
+        if not telegraphed and lastSeen ~= nil then
+            local eta = pathLeft(here, p.path, wp, goal) / speed()
+            if eta <= p.telegraph.lead then
+                telegraphed = true
+                p.telegraph.fn(eta)
+            end
+        end
+        if wp < #p.path then
+            bot:Action_MoveToLocation(p.path[wp + 1])
+        elseif engagedAt == nil and (not visible(target) or dist(here, goal) > range) then
+            bot:Action_MoveToLocation(goal)
+        elseif visible(target) then
+            if engagedAt == nil then
+                engagedAt = t
+                attackAt = t + Skill.react(bot)
+                local ____opt_81 = h.label
+                if ____opt_81 ~= nil then
+                    ____opt_81("engage")
+                end
+                local ____opt_83 = h.urgent
+                if ____opt_83 ~= nil then
+                    ____opt_83(true)
+                end
+                local ____opt_85 = p.onEngage
+                if ____opt_85 ~= nil then
+                    ____opt_85(t)
+                end
+            end
+            if t >= attackAt and t - orderedAt >= (p.reorder or GANK_REORDER) then
+                bot:Action_AttackUnit(target, false)
+                orderedAt = t
+            end
+        else
+            bot:Action_MoveToLocation(goal)
+        end
+        coroutine.yield()
+    end
+end)
 return ____exports
  end,
 ["verbs_all"] = function(...) 
@@ -2806,7 +2962,8 @@ function ____exports.makeCtx(bot, c)
         stack = function(plan) return Verbs.stack(bot, plan, hooks) end,
         pull = function(plan) return Verbs.pull(bot, plan, hooks) end,
         runeRun = function(plan) return Verbs.runeRun(bot, plan, hooks) end,
-        clearCamp = function(plan) return Verbs.clearCamp(bot, plan, hooks) end
+        clearCamp = function(plan) return Verbs.clearCamp(bot, plan, hooks) end,
+        gank = function(plan) return Verbs.gank(bot, plan, hooks) end
     }
 end
 return ____exports

@@ -163,3 +163,35 @@ export interface ClearPlan {
  * empty, or "empty" when nothing was there; `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a neutral is in attack range (+100).
  */
 export declare function clearCamp(bot: TaskUnit, p: ClearPlan, h?: JobHooks): TaskBody;
+export interface GankPlan {
+    /** The hero to kill, re-read every frame (the host's perception decides what the bot knows). */
+    target: (this: void) => TaskAttacker | undefined;
+    /** Approach waypoints chosen by the host (through fog and trees, not down the lane); then the chase starts. */
+    path: Vec[];
+    /** Within this of the target the bot engages (attacks). Default 700. */
+    engageRange?: number;
+    /** Called once when the ETA to the target falls to `lead` s (humans ping "coming" ~3-5 s before arriving). */
+    telegraph?: {
+        lead: number;
+        fn: (this: void, eta: number) => void;
+    };
+    /** Host check every frame; a returned string ends the gank `interrupted` with it (target under its tower, ...). */
+    commit?: (this: void) => string | undefined;
+    /** Seconds the target may be out of sight before it counts as escaped. Default 2. */
+    lostGrace?: number;
+    /** Seconds of fighting after engaging before giving up. Default 8. */
+    engageFor?: number;
+    /** Absolute time to have engaged by; fails `timeout` "late". */
+    deadline?: number;
+    /** Seconds between repeated attack orders. Default 1. */
+    reorder?: number;
+    onEngage?: (this: void, t: number) => void;
+}
+/**
+ * A gank: walk the host's approach path, then chase the target into `engageRange` and attack it (one reaction delay
+ * after reaching range, `Skill.react`), re-ordering every `reorder` s. Ends ok "kill" when the target dies; fails
+ * `interrupted` "escaped" when it stays out of sight `lostGrace` s, `timeout` "no-kill" after `engageFor` s of
+ * fighting, `timeout` "late" if not engaged by `deadline`, or with the host's `commit` message. Labels `travel`,
+ * `engage`; urgent while engaged.
+ */
+export declare function gank(bot: TaskUnit, p: GankPlan, h?: JobHooks): TaskBody;

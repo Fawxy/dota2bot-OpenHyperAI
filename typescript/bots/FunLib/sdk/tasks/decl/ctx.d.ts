@@ -38,6 +38,7 @@ export interface Ctx {
     pull(this: void, plan: Verbs.PullPlan): TaskBody;
     runeRun(this: void, plan: Verbs.RunePlan): TaskBody;
     clearCamp(this: void, plan: Verbs.ClearPlan): TaskBody;
+    gank(this: void, plan: Verbs.GankPlan): TaskBody;
 }
 export interface CtxControls {
     startedAt: number;

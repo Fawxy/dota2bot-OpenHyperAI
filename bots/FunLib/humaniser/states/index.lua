@@ -49,6 +49,7 @@ local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
+local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 function ____exports.Settings()
     return Config.Get().States
@@ -161,6 +162,10 @@ ____exports.Register(
 ____exports.Register(
     Farm.NAME,
     function(bot) return Farm.Spec(bot, Shadow.FarmScore) end
+)
+____exports.Register(
+    Gank.NAME,
+    function(bot) return Gank.Spec(bot, owns) end
 )
 local function guarded(spec)
     if Telemetry.GuardsEnabled() then
