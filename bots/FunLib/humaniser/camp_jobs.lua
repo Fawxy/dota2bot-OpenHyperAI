@@ -223,7 +223,7 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, clashSkipped, preContestRest, pendingModeEnd, leadPath, JOB_CLAIM_SOURCES
+local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, nextWaveSoon, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, clashSkipped, preContestRest, pendingModeEnd, leadPath, JOB_CLAIM_SOURCES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -1456,6 +1456,17 @@ function clashCrowded(bot, fight)
     end
     return n >= cfg.Thresholds.TakePullDangerEnemies
 end
+function nextWaveSoon(s, walk, now)
+    if s.enemyArrivalSec == nil then
+        return false
+    end
+    local cycle = settings().Timing.WaveCycle
+    local next = math.floor(now / cycle) * cycle + s.enemyArrivalSec
+    if next <= now then
+        next = next + cycle
+    end
+    return next - now <= walk + settings().Timing.ClashWaveMargin
+end
 function clashEnd(s, job, now)
     local cfg = settings()
     local clash = job.clash
@@ -1465,15 +1476,8 @@ function clashEnd(s, job, now)
     if #s.enemy.units == 0 then
         return "lane-won"
     end
-    if s.enemyArrivalSec ~= nil then
-        local cycle = cfg.Timing.WaveCycle
-        local next = math.floor(now / cycle) * cycle + s.enemyArrivalSec
-        if next <= now then
-            next = next + cycle
-        end
-        if next - now <= clash.walk + cfg.Timing.ClashWaveMargin then
-            return "next-wave"
-        end
+    if nextWaveSoon(s, clash.walk, now) then
+        return "next-wave"
     end
     if clash.waitFrom ~= nil and now - clash.waitFrom >= cfg.Timing.ClashWaitMax then
         return "wait-max"
@@ -2874,7 +2878,7 @@ local function clashWanted(bot, s, data, now)
     if LanePlanner.Committed(bot) ~= nil or not ____exports.CampsUp(now) or clashSkipped[bot:GetPlayerID()] == cycleOf(now) then
         return false
     end
-    if #s.ally.units < cfg.Thresholds.ClashAllyMin or s.allyPower <= s.enemyPower then
+    if #s.ally.units < cfg.Thresholds.ClashAllyMin or #s.enemy.units == 0 or s.allyPower <= s.enemyPower then
         return false
     end
     local spawner = Camps.SpawnerByIdx(data.campIdx)
@@ -2889,12 +2893,12 @@ local function clashWanted(bot, s, data, now)
     if not laneAtMeet(meet) or ____exports.StartBlocked(bot) ~= nil then
         return false
     end
-    local ____, ____, length = clashLead(
+    local ____, walk, length = clashLead(
         data,
         spawner,
         clashFight(s, spawner)
     )
-    if length > cfg.Radii.ClashPullReach then
+    if length > cfg.Radii.ClashPullReach or nextWaveSoon(s, walk, now) then
         return false
     end
     return travelTo(

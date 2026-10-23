@@ -1584,6 +1584,22 @@ do
 	end
 	check("the next enemy wave due within walk + margin ends it next-wave", job ~= nil and job.kind == "clash_pull" and why == "next-wave" and t == 77,
 		tostring(why) .. " " .. t)
+
+	-- Seen first at 1:18, already inside the next wave's margin: it would end on its first frame and spend the cycle.
+	H, support, data, lines = clashWorld(0.9, { t = 56, theirs = 3, ourHp = 2000 })
+	frame(H, support, 56)
+	frame(H, support, 78)
+	check("a clash the next enemy wave is about to reach starts no clash pull", kindOf(H, support) == nil and clashAbort(lines) == nil,
+		table.concat(lines, "\n"))
+end
+
+do
+	-- In game (2:23): our creeps at the meet with no enemy creep at the front read as winning (power 0) and started a
+	-- clash pull that ended lane-won on its first frame, spending the cycle.
+	local H, support, _, lines = clashWorld(0.9, { theirs = 0 })
+	frame(H, support, 65)
+	check("our creeps with no enemy creep at the front start no clash pull", kindOf(H, support) == nil and clashAbort(lines) == nil,
+		table.concat(lines, "\n"))
 end
 
 do

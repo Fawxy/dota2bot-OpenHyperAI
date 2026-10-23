@@ -1216,15 +1216,15 @@ function clashWanted(bot: Unit, s: LaneState.LaneSnapshot, data: Camps.CampJobDa
     const cfg = settings();
     if (!LaneConfig.IsOn("ClashPull") || LaneConfig.SkillOf(bot) < cfg.Gates.ClashPull) return false;
     if (LanePlanner.Committed(bot) !== undefined || !CampsUp(now) || clashSkipped[bot.GetPlayerID()] === cycleOf(now)) return false;
-    if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.allyPower <= s.enemyPower) return false;
+    if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.enemy.units.length === 0 || s.allyPower <= s.enemyPower) return false;
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (spawner === undefined || data.pull === undefined) return false;
     const choice = LanePlanner.Plan(bot, s);
     if (choice.tech !== "full_pull" && choice.tech !== "half_pull") return false;
     const meet = choice.tech === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
     if (!laneAtMeet(meet) || StartBlocked(bot) !== undefined) return false;
-    const [, , length] = clashLead(data, spawner, clashFight(s, spawner));
-    if (length > cfg.Radii.ClashPullReach) return false;
+    const [, walk, length] = clashLead(data, spawner, clashFight(s, spawner));
+    if (length > cfg.Radii.ClashPullReach || nextWaveSoon(s, walk, now)) return false;
     return travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0])) <= cfg.Timing.MaxTravel;
 }
 
@@ -1923,17 +1923,21 @@ function clashCrowded(bot: Unit, fight: Vector): boolean {
 }
 
 /** Why the clash no longer wants a pull, else undefined. With ours gone their creeps are out of sight, so that is a loss. */
+/** The next enemy wave reaches the front within the camp's walk plus `ClashWaveMargin`. */
+function nextWaveSoon(s: LaneState.LaneSnapshot, walk: number, now: number): boolean {
+    if (s.enemyArrivalSec === undefined) return false;
+    const cycle = settings().Timing.WaveCycle;
+    let next = math.floor(now / cycle) * cycle + s.enemyArrivalSec;
+    if (next <= now) next += cycle;
+    return next - now <= walk + settings().Timing.ClashWaveMargin;
+}
+
 function clashEnd(s: LaneState.LaneSnapshot, job: Job, now: number): string | undefined {
     const cfg = settings();
     const clash = job.clash!;
     if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.allyPower <= s.enemyPower) return "clash-lost";
     if (s.enemy.units.length === 0) return "lane-won";
-    if (s.enemyArrivalSec !== undefined) {
-        const cycle = cfg.Timing.WaveCycle;
-        let next = math.floor(now / cycle) * cycle + s.enemyArrivalSec;
-        if (next <= now) next += cycle;
-        if (next - now <= clash.walk + cfg.Timing.ClashWaveMargin) return "next-wave";
-    }
+    if (nextWaveSoon(s, clash.walk, now)) return "next-wave";
     if (clash.waitFrom !== undefined && now - clash.waitFrom >= cfg.Timing.ClashWaitMax) return "wait-max";
     return undefined;
 }
