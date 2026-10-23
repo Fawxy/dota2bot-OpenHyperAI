@@ -895,4 +895,24 @@ do
 		and not W.H.Lane.Hooks.IsFightCommitting(W.bot))
 end
 
+do
+	-- Final review fix: a follow commit's tower re-check also needs the kill check to pass, so a follower clearing
+	-- TowerOverride on margin but unable to survive the tower's shots still ends the dive.
+	local W = world({ burst = 50, partner = { pos = 5, burst = 40 } })
+	trading(W, T)
+	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
+	check("setup (survive): a follow commit", W.events("lanefight_start", "via=follow") == 1, table.concat(W.lines, "\n"))
+	local tower
+	for _, t in pairs(TOWERS_W[3]) do if math.abs(t.loc.y - BOT_Y) < 1000 then tower = t end end
+	W.bot.estDamage, W.partner.estDamage = 400, 400
+	tower.dmg = 100
+	W.enemy.loc = Vector(tower.loc.x - 600, BOT_Y)
+	W.bot.loc = Vector(W.enemy.loc.x - 300, BOT_Y)
+	W.partner.loc = Vector(W.enemy.loc.x - 350, BOT_Y)
+	play(W, 1)
+	check("a follower that cannot survive the tower ends the dive", W.events("lanefight_end", "phase=commit reason=tower") == 1,
+		table.concat(W.lines, "\n"))
+	tower.dmg = 0
+end
+
 finish()

@@ -75,7 +75,7 @@ local function load(opts)
 		Lane = {
 			OwnsLaning = function() return opts.owned == true end,
 			CampJobActive = function() return false end,
-			PreThink = function() return false end,
+			PreThink = function(_, _, _, _, lastHit) bot.preThinkLastHit = lastHit return false end,
 			Think = function() return false end,
 			MayDeny = function() return true end,
 			PickDeny = function() return nil end,
@@ -95,7 +95,7 @@ local function load(opts)
 	}
 	local J = setmetatable({
 		GetPosition = function(u) return u.pos end,
-		IsPosxHuman = function() return false end,
+		IsPosxHuman = function() return opts.humanPos5 == true end,
 		IsInLaningPhase = function() return true end,
 		IsValid = function(u) return u ~= nil and (u.IsAlive == nil or u:IsAlive()) end,
 		IsValidHero = function(u) return u ~= nil end,
@@ -150,7 +150,9 @@ do
 	Think()
 	local a = last(bot)
 	check("nearly killable in range: the deny goes through instead of an early swing", a ~= nil and a.name == "AttackUnit" and a.args[1] == allyCreep, a and a.name)
-	check("no attempt is counted on the nearly-killable creep", #attempts == 0 or attempts[1] ~= enemyCreep, #attempts)
+	local attempted = false
+	for _, c in ipairs(attempts) do if c == enemyCreep then attempted = true end end
+	check("no attempt is counted on the nearly-killable creep", not attempted, #attempts)
 	enemyCreep.hp = 45
 	GetDesire()
 	Think()
@@ -184,6 +186,47 @@ do
 	hit = false
 	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == c then hit = true end end
 	check("support takes a creep its core cannot reach", hit)
+end
+
+do
+	-- Final review fix: the hold is capped. A creep nobody is hitting never turns killable; after HoldMax the bot swings.
+	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
+	local bot = load({ pos = 1, owned = true, enemyCreeps = { enemyCreep } })
+	GetDesire()
+	Think()
+	check("hold: the first frame holds", last(bot).name == "MoveToLocation")
+	DotaTime = function() return 121.6 end
+	GameTime = DotaTime
+	GetDesire()
+	Think()
+	local a = last(bot)
+	check("hold: past HoldMax the bot swings at the creep", a.name == "AttackUnit" and a.args[1] == enemyCreep, a.name)
+end
+
+do
+	-- Final review fix: with the humaniser off, upstream's own owned case (pos 1 with a human pos 5) keeps upstream's
+	-- early swing and its 700-radius core check.
+	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
+	local bot = load({ pos = 1, owned = false, humanPos5 = true, enemyCreeps = { enemyCreep } })
+	GetDesire()
+	Think()
+	local a = last(bot)
+	check("humaniser off: upstream's early swing is kept", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
+end
+
+do
+	-- Final review fix: the last-hit state handed to PreThink is gated like LastHitThink and reads 'kill' only in range.
+	local c = creep({ hp = 40, loc = Vector(100, 0) })
+	local core = hero({ pos = 1, pid = 2, loc = Vector(200, 0), range = 600 })
+	local bot = load({ pos = 5, owned = true, enemyCreeps = { c }, allies = { core } })
+	GetDesire()
+	Think()
+	check("a support's core's creep is no last hit for PreThink", bot.preThinkLastHit == nil, tostring(bot.preThinkLastHit))
+	local far = creep({ hp = 40, loc = Vector(700, 0) })
+	bot = load({ pos = 1, owned = true, enemyCreeps = { far } })
+	GetDesire()
+	Think()
+	check("a killable creep out of attack range reads as soon, not kill", bot.preThinkLastHit == "soon", tostring(bot.preThinkLastHit))
 end
 
 finish()

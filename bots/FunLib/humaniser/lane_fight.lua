@@ -797,7 +797,7 @@ function abortReason(bot, s, target, now)
     local ____temp_9 = k ~= nil
     if ____temp_9 then
         local ____temp_8
-        if not solo and s.recheckMargin ~= nil then
+        if not solo and s.recheckMargin ~= nil and a.why ~= "tower" then
             ____temp_8 = k.margin >= s.recheckMargin
         else
             ____temp_8 = k.pass

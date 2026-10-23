@@ -750,10 +750,11 @@ function abortReason(bot: Unit, s: FightState, target: Unit | undefined, now: nu
     const solo = abandon || (s.partners.length > 0 && target !== undefined && partnerAbandoned(s, target, now) !== undefined);
     const partners = solo ? [] : s.partners;
     const k = target !== undefined ? KillCheck.Check(bot, partners, target, now, true) : undefined;
-    // A follow re-check holds to FollowMargin, but a dive still needs to clear the tower rule.
+    // A follow re-check holds to FollowMargin, but a dive still needs the full kill check: the tower rule and surviving
+    // the tower's and creeps' damage.
     const pass =
         k !== undefined &&
-        (!solo && s.recheckMargin !== undefined ? k.margin >= s.recheckMargin : k.pass) &&
+        (!solo && s.recheckMargin !== undefined && a.why !== "tower" ? k.margin >= s.recheckMargin : k.pass) &&
         !(a.why === "tower" && k.margin < LaneFightConfig.Settings().TowerOverride);
     if (pass && solo) {
         s.partners = [];
