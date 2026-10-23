@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 5a4afb92196c63b838d260b18b0d671ec719b4a0. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ c887ebb25b502790279d242c6418f19005483585. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1530,6 +1530,10 @@ local RANGED_PRIORITY_SKILL = 0.6
 --- Extra seconds a lapse delays the swing, on top of the normal timing error.
 local LAPSE_MIN = 0.15
 local LAPSE_MAX = 0.4
+--- Seconds a hit must land before ours to be relied on (one frame at 30 fps); grows with the observed frame
+-- time, since bots think less often per game second at high timescales.
+local MIN_MARGIN = 0.034
+local MAX_MARGIN = 0.3
 --- Seconds after the predicted hit time before an unresolved swing counts as `missed`.
 local CONFIRM_SLACK = 0.5
 local function ok()
@@ -1564,28 +1568,34 @@ function ____exports.incomingDps(bot, creep)
         scanAttackers(bot, creep, 0).dps
     )
 end
---- Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
--- cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
--- ranged bot. The bot is assumed facing the creep: turn time is not modelled.
-function ____exports.ownHitTime(bot, creep)
+--- Seconds until the bot can start its next swing (0 without the adapter's `attackClock`).
+function ____exports.cooldownLeft(bot)
+    local a = get()
+    if a.attackClock == nil or bot.GetSecondsPerAttack == nil or bot.GetLastAttackTime == nil then
+        return 0
+    end
     local ____temp_43 = bot:GetAttackPoint()
     local ____this_42
     ____this_42 = bot
     local ____opt_41 = ____this_42.GetAttackSpeed
     local windup = ____temp_43 / (____opt_41 and ____opt_41(____this_42) or 1)
-    local t = windup
-    local a = get()
-    if a.attackClock ~= nil and bot.GetSecondsPerAttack ~= nil and bot.GetLastAttackTime ~= nil then
-        local idle = bot:GetSecondsPerAttack() - windup
-        local since = a.attackClock() - bot:GetLastAttackTime()
-        if since >= 0 and since < idle then
-            t = t + (idle - since)
-        end
-    end
+    local idle = bot:GetSecondsPerAttack() - windup
+    local since = math.max(
+        0,
+        a.attackClock() - bot:GetLastAttackTime() + 0.01
+    )
+    return since < idle and idle - since or 0
+end
+function ____exports.ownHitTime(bot, creep)
+    local ____temp_46 = bot:GetAttackPoint()
     local ____this_45
     ____this_45 = bot
-    local ____opt_44 = ____this_45.GetAttackProjectileSpeed
-    local speed = ____opt_44 and ____opt_44(____this_45) or 0
+    local ____opt_44 = ____this_45.GetAttackSpeed
+    local t = ____temp_46 / (____opt_44 and ____opt_44(____this_45) or 1) + ____exports.cooldownLeft(bot)
+    local ____this_48
+    ____this_48 = bot
+    local ____opt_47 = ____this_48.GetAttackProjectileSpeed
+    local speed = ____opt_47 and ____opt_47(____this_48) or 0
     local range = bot:GetAttackRange()
     if range > RANGED_ABOVE and speed > 0 then
         local d = dist(
@@ -1629,14 +1639,21 @@ end
 --- What the bot believes about a swing ordered now. A negative timing shift shortens the horizon (late swing);
 -- a positive one extends it with the attackers' DPS, i.e. counts hits that have not started yet (early swing):
 -- the visible prediction alone cannot over-anticipate, so without that extrapolation early errors vanish.
-local function believe(bot, creep, withError)
+local function believe(bot, creep, withError, margin)
+    if margin == nil then
+        margin = MIN_MARGIN
+    end
     local tHit = ____exports.ownHitTime(bot, creep)
-    local ____this_47
-    ____this_47 = creep
-    local ____opt_46 = ____this_47.GetHealthRegen
-    local regen = ____opt_46 and ____opt_46(____this_47) or 0
+    local ____this_50
+    ____this_50 = creep
+    local ____opt_49 = ____this_50.GetHealthRegen
+    local regen = ____opt_49 and ____opt_49(____this_50) or 0
     local hp = creep:GetHealth()
-    local visible = hp + regen * tHit - ____exports.incomingDamage(bot, creep, tHit)
+    local visible = hp + regen * tHit - ____exports.incomingDamage(
+        bot,
+        creep,
+        math.max(0, tHit - margin)
+    )
     local believed = visible
     local width = 0
     local eps = 0
@@ -1645,7 +1662,7 @@ local function believe(bot, creep, withError)
         width = Skill.lastHitError(bot)
         eps = r.eps
         if r.shift < 0 then
-            local h = math.max(0, tHit + r.shift)
+            local h = math.max(0, tHit - margin + r.shift)
             believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h)
         elseif r.shift > 0 then
             believed = visible + regen * r.shift - ____exports.incomingDps(bot, creep) * r.shift
@@ -1666,20 +1683,20 @@ local function due(b)
     return b.survives and b.hpAtHit <= b.mine
 end
 local function isRangedCreep(c)
-    local ____this_49
-    ____this_49 = c
-    local ____opt_48 = ____this_49.GetUnitName
-    local name = ____opt_48 and ____opt_48(____this_49)
+    local ____this_52
+    ____this_52 = c
+    local ____opt_51 = ____this_52.GetUnitName
+    local name = ____opt_51 and ____opt_51(____this_52)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_51
-    ____this_51 = c
-    local ____opt_50 = ____this_51.GetMaxHealth
-    local max = ____opt_50 and ____opt_50(____this_51)
+    local ____this_54
+    ____this_54 = c
+    local ____opt_53 = ____this_54.GetMaxHealth
+    local max = ____opt_53 and ____opt_53(____this_54)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -1705,16 +1722,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_53
-    ____this_53 = bot
-    local ____opt_52 = ____this_53.GetNearbyHeroes
-    local heroes = ____opt_52 and ____opt_52(____this_53, 1200, true, 0)
+    local ____this_56
+    ____this_56 = bot
+    local ____opt_55 = ____this_56.GetNearbyHeroes
+    local heroes = ____opt_55 and ____opt_55(____this_56, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_54 = h.GetAttackTarget
-        if (____opt_54 and ____opt_54(h)) == creep then
+        local ____opt_57 = h.GetAttackTarget
+        if (____opt_57 and ____opt_57(h)) == creep then
             return true
         end
     end
@@ -1737,14 +1754,14 @@ local function etaOf(bot, c, walkSpeed)
     if margin <= 0 then
         return {0, walk}
     end
-    local ____exports_incomingDps_result_59 = ____exports.incomingDps(bot, c)
-    local ____math_max_58 = math.max
-    local ____this_57
-    ____this_57 = c
-    local ____opt_56 = ____this_57.GetHealthRegen
-    local dps = ____exports_incomingDps_result_59 + ____math_max_58(
+    local ____exports_incomingDps_result_62 = ____exports.incomingDps(bot, c)
+    local ____math_max_61 = math.max
+    local ____this_60
+    ____this_60 = c
+    local ____opt_59 = ____this_60.GetHealthRegen
+    local dps = ____exports_incomingDps_result_62 + ____math_max_61(
         0,
-        -(____opt_56 and ____opt_56(____this_57) or 0)
+        -(____opt_59 and ____opt_59(____this_60) or 0)
     )
     if dps <= 0 then
         return nil
@@ -1771,13 +1788,13 @@ function ____exports.nextLastHit(bot, opts)
     local within = opts.within or 1
     local rangedBias = opts.rangedBias or 0.4
     local lhBias = opts.lastHitBias or 0.3
-    local ____math_max_62 = math.max
-    local ____this_61
-    ____this_61 = bot
-    local ____opt_60 = ____this_61.GetCurrentMovementSpeed
-    local speed = ____math_max_62(
+    local ____math_max_65 = math.max
+    local ____this_64
+    ____this_64 = bot
+    local ____opt_63 = ____this_64.GetCurrentMovementSpeed
+    local speed = ____math_max_65(
         100,
-        ____opt_60 and ____opt_60(____this_61) or 300
+        ____opt_63 and ____opt_63(____this_64) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -1864,7 +1881,17 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local baseline = counter()
     local enemyOnIt = false
     local tHit = 0
+    local lastFrame
+    local margin = MIN_MARGIN
     while true do
+        local t = now()
+        if lastFrame ~= nil and t > lastFrame then
+            margin = math.min(
+                MAX_MARGIN,
+                math.max(MIN_MARGIN, 1.2 * (t - lastFrame))
+            )
+        end
+        lastFrame = t
         if not bot:IsAlive() then
             return fail("dead")
         end
@@ -1885,12 +1912,14 @@ local strike = __TS__Generator(function(bot, mode, opts)
             creep:GetLocation()
         ) > bot:GetAttackRange() then
             bot:Action_MoveToLocation(creep:GetLocation())
-        elseif mode == "lasthit" or deniable(creep) then
-            local b = believe(bot, creep, true)
-            if due(b) then
-                tHit = b.tHit
-                bot:Action_AttackUnit(creep, true)
-                break
+        else
+            if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= margin then
+                local b = believe(bot, creep, true, margin)
+                if due(b) then
+                    tHit = b.tHit
+                    bot:Action_AttackUnit(creep, true)
+                    break
+                end
             end
             if opts.hold ~= nil and adapter.hold ~= nil then
                 adapter.hold(bot, opts.hold)
@@ -1899,10 +1928,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
         coroutine.yield()
     end
     local swingAt = now()
-    local ____this_64
-    ____this_64 = bot
-    local ____opt_63 = ____this_64.GetLastAttackTime
-    local attackedAt = ____opt_63 and ____opt_63(____this_64)
+    local ____this_67
+    ____this_67 = bot
+    local ____opt_66 = ____this_67.GetLastAttackTime
+    local attackedAt = ____opt_66 and ____opt_66(____this_67)
     local function landed()
         return attackedAt ~= nil and bot:GetLastAttackTime() > attackedAt
     end
@@ -2537,6 +2566,257 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
 end)
 return ____exports
  end,
+["lane"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____adapter = require("adapter")
+local get = ____adapter.get
+local ____verbs = require("verbs")
+local holdAt = ____verbs.holdAt
+local ____lasthit = require("lasthit")
+local deny = ____lasthit.deny
+local lastHit = ____lasthit.lastHit
+local nextLastHit = ____lasthit.nextLastHit
+local function dist(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+local function enemyHeroNear(bot, r)
+    local ____this_4
+    ____this_4 = bot
+    local ____opt_3 = ____this_4.GetNearbyHeroes
+    for ____, h in ipairs(____opt_3 and ____opt_3(____this_4, r, true, 0) or ({})) do
+        local ____opt_0 = h.IsAlive
+        local ____temp_2 = ____opt_0 and ____opt_0(h)
+        if ____temp_2 == nil then
+            ____temp_2 = true
+        end
+        if ____temp_2 then
+            return true
+        end
+    end
+    return false
+end
+--- Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
+-- the creep nextLastHit offers (walking in so it arrives as the creep becomes killable), swings with the
+-- skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
+-- `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
+____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
+    if opts == nil then
+        opts = {}
+    end
+    local near = opts.near or 600
+    local far = opts.far or 1200
+    local leash = opts.leash or 900
+    local label = opts.label or (function() return nil end)
+    local function away()
+        local p = spot()
+        return p ~= nil and dist(
+            bot:GetLocation(),
+            p
+        ) or 0
+    end
+    local target
+    local function pick()
+        if opts.lastHits ~= nil and not opts.lastHits() then
+            return false
+        end
+        if away() > far then
+            return false
+        end
+        target = nextLastHit(bot, {within = opts.within})
+        return target ~= nil
+    end
+    local function stop()
+        return opts.interruptIf ~= nil and opts.interruptIf() or opts.deadline ~= nil and get().now() >= opts.deadline
+    end
+    local atSpot = false
+    while true do
+        do
+            local __continue14
+            repeat
+                label(atSpot and "hold" or "walk")
+                local r = __TS__DelegatedYield(holdAt(
+                    bot,
+                    spot,
+                    __TS__ObjectAssign(
+                        {},
+                        opts.hold or ({}),
+                        {
+                            deadline = opts.deadline,
+                            interruptIf = function()
+                                if stop() then
+                                    return true
+                                end
+                                local d = spot() ~= nil and away() or nil
+                                local ____atSpot_5
+                                if atSpot then
+                                    ____atSpot_5 = (d or 0) > far
+                                else
+                                    ____atSpot_5 = (d or math.huge) <= near
+                                end
+                                if ____atSpot_5 then
+                                    return true
+                                end
+                                return pick()
+                            end
+                        }
+                    )
+                ))
+                if r.reason ~= "interrupted" then
+                    return r
+                end
+                if stop() then
+                    return {success = false, reason = "interrupted"}
+                end
+                if target == nil then
+                    local d = spot() ~= nil and away() or nil
+                    atSpot = d ~= nil and d <= (atSpot and far or near)
+                    __continue14 = true
+                    break
+                end
+                local t = target
+                target = nil
+                local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
+                label(t.kind)
+                local ____t_creep_8 = t.creep
+                local ____temp_9 = t.eta + 1.5
+                local ____opts_deadline_10 = opts.deadline
+                local ____opt_6 = opts.hold
+                local o = {
+                    target = ____t_creep_8,
+                    maxWait = ____temp_9,
+                    deadline = ____opts_deadline_10,
+                    hold = ____opt_6 and ____opt_6.hold,
+                    interruptIf = function() return stop() or away() > leash end
+                }
+                local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
+                if opts.onAttempt ~= nil then
+                    opts.onAttempt(t, res, contested)
+                end
+                if res.reason == "dead" then
+                    return res
+                end
+                __continue14 = true
+            until true
+            if not __continue14 then
+                break
+            end
+        end
+    end
+end)
+return ____exports
+ end,
 ["verbs_all"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
@@ -2572,10 +2852,30 @@ do
         end
     end
 end
+do
+    local ____export = require("lane")
+    for ____exportKey, ____exportValue in pairs(____export) do
+        if ____exportKey ~= "default" then
+            ____exports[____exportKey] = ____exportValue
+        end
+    end
+end
 return ____exports
  end,
 ["ctx"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____adapter = require("adapter")
 local get = ____adapter.get
@@ -2609,6 +2909,11 @@ function ____exports.makeCtx(bot, c)
         waitUntil = function(t, opts) return Verbs.waitUntil(bot, t, opts) end,
         retreatTo = function(opts) return Verbs.retreatTo(bot, opts) end,
         lastHit = function(opts) return Verbs.lastHit(bot, opts) end,
+        laneFarm = function(spot, opts) return Verbs.laneFarm(
+            bot,
+            spot,
+            __TS__ObjectAssign({label = c.label}, opts)
+        ) end,
         deny = function(opts) return Verbs.deny(bot, opts) end,
         attackAndConfirm = function(pick, opts) return Verbs.attackAndConfirm(bot, pick, opts) end,
         cast = function(ability, opts) return Verbs.cast(bot, ability, opts) end,

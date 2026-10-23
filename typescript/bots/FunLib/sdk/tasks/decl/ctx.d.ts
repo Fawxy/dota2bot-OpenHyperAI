@@ -28,6 +28,8 @@ export interface Ctx {
     waitUntil(this: void, ...a: Opt<typeof Verbs.waitUntil>): TaskBody;
     retreatTo(this: void, ...a: Opt<typeof Verbs.retreatTo>): TaskBody;
     lastHit(this: void, ...a: Opt<typeof Verbs.lastHit>): TaskBody;
+    /** Laner posture: hold the spot, break off for last hits and denies; phases go to this task's label. */
+    laneFarm(this: void, ...a: Opt<typeof Verbs.laneFarm>): TaskBody;
     deny(this: void, ...a: Opt<typeof Verbs.deny>): TaskBody;
     attackAndConfirm(this: void, pick: (this: void) => TaskTarget | undefined, opts: Verbs.AttackConfirmOpts): TaskBody;
     cast(this: void, ability: TaskAbility | undefined, opts?: Verbs.CastOpts): TaskBody;

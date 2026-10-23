@@ -13,6 +13,8 @@ export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): number;
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
  * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
  */
+/** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
+export declare function cooldownLeft(bot: TaskUnit): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 export interface LaneTarget {
     creep: TaskCreep;
