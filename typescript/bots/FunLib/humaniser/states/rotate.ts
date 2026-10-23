@@ -3,15 +3,27 @@
  * their own shrine as it fills (7:00, then every 7 minutes; research/replays.md: pos 4 takes 63% of wisdom runes,
  * typically 7:03-7:15) and stand in it for its 3 s. OHA's rune mode only sends the nearest ally after the spawn. The
  * body is the SDK's `runeRun` in shrine mode (arrive skill-scaled early, stand within 300 for 3 s), hosted by the
- * rune mode. Power-rune rotations stay transitions/rotation's for now.
+ * rune mode.
+ *
+ * Second case, behind `Customize.Humaniser.States.Rotate.Power`: a power-rune rotation that transitions/rotation
+ * decided (Rotation.Active: the pos 4/5 leaves at its leaveAt for the spot nearest it) is walked and finished by the
+ * body: to the spot, wait for the spawn, hold the rune for our mid while Rotation.HoldsRune says so, else pick it up.
+ * The decision, its re-checks (lane can spare, contested) and the hold rules stay OHA's.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
 import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
+import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
+import * as Config from "bots/FunLib/humaniser/config";
+import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as TrSettings from "bots/FunLib/humaniser/transitions/settings";
+
+declare function GetRuneStatus(this: void, rune: number): number;
+declare const RUNE_STATUS_AVAILABLE: number;
 
 export const NAME = "rotate";
 
@@ -49,9 +61,32 @@ const trips: Record<number, Trip | undefined> = {};
 /** Spawns a bot's trip is over for (done, failed or skipped): not chosen again. */
 const doneFor: Record<number, number | undefined> = {};
 
+interface PowerTrip {
+    spawn: number;
+    side?: string;
+    startedAt: number;
+    arrivedAt?: number;
+    ended?: string;
+}
+
+const powerTrips: Record<number, PowerTrip | undefined> = {};
+
 export function ResetCache(): void {
     for (const [k] of pairs(trips)) trips[k as number] = undefined;
     for (const [k] of pairs(doneFor)) doneFor[k as number] = undefined;
+    for (const [k] of pairs(powerTrips)) powerTrips[k as number] = undefined;
+}
+
+function powerOn(): boolean {
+    const r = (Config.Get().States as { Rotate?: { Power?: boolean } }).Rotate;
+    return r !== undefined && r.Power === true;
+}
+
+/** OHA's active power-rune rotation for this bot, when the body owns its execution. */
+function powerDecision(bot: Unit): Rotation.RotationDecision | undefined {
+    if (!powerOn()) return undefined;
+    const d = Rotation.Active(bot);
+    return d !== undefined && d.spot !== undefined && Rotation.RuneTarget(bot) !== undefined ? d : undefined;
 }
 
 export function ShrineFor(team: number): Vector {
@@ -114,9 +149,94 @@ function score(bot: Unit): number | undefined {
     return SCORE;
 }
 
+function scoreAny(bot: Unit): number | undefined {
+    const w = score(bot);
+    if (w !== undefined) return w;
+    const p = powerTrips[bot.GetPlayerID()];
+    if (p !== undefined && p.ended === undefined) {
+        if (Rotation.Active(bot) !== undefined) return SCORE;
+        // Called off (or over) while the body was not running: close it so the layer can leave the state.
+        powerEnded(bot, { success: true, reason: "ok", message: "over" }, { steps: 0 });
+    }
+    return powerDecision(bot) !== undefined ? SCORE : undefined;
+}
+
+function* powerBody(bot: Unit, ctx: Lib.Ctx, d: Rotation.RotationDecision): Lib.TaskBody {
+    const pid = bot.GetPlayerID();
+    const cfg = TrSettings.Get();
+    const rune = Rotation.RuneTarget(bot)!;
+    const spot = d.spot!;
+    let trip = powerTrips[pid];
+    if (trip === undefined || trip.ended !== undefined || trip.spawn !== d.spawn) {
+        trip = { spawn: d.spawn, side: d.side, startedAt: DotaTime() };
+        powerTrips[pid] = trip;
+    }
+    const t = trip;
+    const V = Tasks.Verbs()!;
+    const u = bot as unknown as Lib.TaskUnit;
+    const over = () => Rotation.Active(bot) === undefined;
+    ctx.label("travel");
+    const walked = yield* V.walkTo(u, spot as unknown as Lib.Vec, {
+        tolerance: 150,
+        timeout: math.huge,
+        stuckSecs: math.huge,
+        deadline: d.spawn + cfg.RotateLinger,
+        interruptIf: over,
+    });
+    if (!walked.success) return walked.reason === "interrupted" ? ctx.ok() : walked;
+    t.arrivedAt ??= DotaTime();
+    ctx.label("wait");
+    while (true) {
+        if (!bot.IsAlive()) return ctx.fail("dead");
+        if (over()) return { success: true, reason: "ok", message: "over" };
+        const now = DotaTime();
+        if (now >= d.spawn && GetRuneStatus(rune) === RUNE_STATUS_AVAILABLE) {
+            // Left on the ground for our mid while it is coming (task 12); stand on it.
+            if (Rotation.HoldsRune(bot, rune)) {
+                ctx.label("hold");
+                if (GetUnitToLocationDistance(bot, spot) > 150) bot.Action_MoveToLocation(spot);
+                else Intent.Hold(bot, "lane:rune_hold");
+                yield;
+                continue;
+            }
+            ctx.label("pickup");
+            return yield* V.pickUpRune(u, rune, { at: spot as unknown as Lib.Vec, timeout: 5 });
+        }
+        if (now >= d.spawn + 2 && GetRuneStatus(rune) !== RUNE_STATUS_AVAILABLE) return { success: true, reason: "ok", message: "gone" };
+        if (GetUnitToLocationDistance(bot, spot) > cfg.RotateHoldRadius) bot.Action_MoveToLocation(spot);
+        else Intent.Hold(bot, "lane:rune_wait");
+        yield;
+    }
+}
+
+function powerEnded(bot: Unit, r: Lib.Result, info: { label?: string; steps: number }): void {
+    const t = powerTrips[bot.GetPlayerID()];
+    if (t === undefined || t.ended !== undefined) return;
+    if (r.reason === "preempted" && Rotation.Active(bot) !== undefined) return;
+    t.ended = r.success ? r.message ?? "ok" : r.message ?? r.reason;
+    const now = DotaTime();
+    Telemetry.Event("rune_trip", [
+        ["pid", bot.GetPlayerID()],
+        ["pos", LaneConfig.PositionOf(bot)],
+        ["spawn", t.spawn],
+        ["side", t.side],
+        ["result", r.success ? "ok" : "fail"],
+        ["msg", t.ended],
+        ["label", info.label],
+        ["left", t.startedAt],
+        ["arrived", t.arrivedAt],
+        ["away", now - t.startedAt],
+    ]);
+}
+
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
+    const wisdomTrip = trips[pid] !== undefined && trips[pid]!.ended === undefined;
+    if (!wisdomTrip && score(bot) === undefined) {
+        const d = powerDecision(bot);
+        if (d !== undefined) return yield* powerBody(bot, ctx, d);
+    }
     const spawn = trips[pid]?.spawn ?? spawnNow(now);
     if (doneFor[pid] === spawn && (trips[pid] === undefined || trips[pid]!.ended !== undefined)) return ctx.fail("no_target", "done");
     if (trips[pid] === undefined || trips[pid]!.ended !== undefined) trips[pid] = { team: bot.GetTeam(), spawn, startedAt: now };
@@ -133,6 +253,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
 }
 
 function ended(bot: Unit, r: Lib.Result, info: { label?: string; steps: number }): void {
+    powerEnded(bot, r, info);
     const trip = trips[bot.GetPlayerID()];
     if (trip === undefined || trip.ended !== undefined) return;
     // Preempted (a fight, retreat): the state layer restarts the body while the trip is still worth it. A death closes
@@ -176,10 +297,11 @@ export function Spec(
         // A trip that cannot be stepped for this long lost to another mode (fight, retreat) and is restarted later.
         preemptAfter: 1,
         score: () => {
-            if (owned === undefined || owned(bot, NAME)) return score(bot);
+            if (owned === undefined || owned(bot, NAME)) return scoreAny(bot);
             return shadow !== undefined ? shadow(bot) : undefined;
         },
         guard: () => danger(bot),
+        // (A power trip whose rotation OHA called off ends from inside its body: `over`.)
         onEnd: (r, info) => ended(bot, r, info),
         body: (ctx) => body(bot, ctx),
     };

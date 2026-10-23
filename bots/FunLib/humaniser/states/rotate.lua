@@ -119,15 +119,51 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local close, doneFor
+local powerEnded, close, doneFor, powerTrips
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
+local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
+local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local TrSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+function powerEnded(bot, r, info)
+    local t = powerTrips[bot:GetPlayerID()]
+    if t == nil or t.ended ~= nil then
+        return
+    end
+    if r.reason == "preempted" and Rotation.Active(bot) ~= nil then
+        return
+    end
+    t.ended = r.success and (r.message or "ok") or (r.message or r.reason)
+    local now = DotaTime()
+    Telemetry.Event(
+        "rune_trip",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "pos",
+                LaneConfig.PositionOf(bot)
+            },
+            {"spawn", t.spawn},
+            {"side", t.side},
+            {"result", r.success and "ok" or "fail"},
+            {"msg", t.ended},
+            {"label", info.label},
+            {"left", t.startedAt},
+            {"arrived", t.arrivedAt},
+            {"away", now - t.startedAt}
+        }
+    )
+end
 function close(bot, trip, r, label)
     local pid = bot:GetPlayerID()
     trip.ended = r.success and "ok" or (r.message or r.reason)
@@ -181,6 +217,7 @@ local DANGER_HP = 0.5
 local WISDOM_POSITIONS = {[4] = true}
 local trips = {}
 doneFor = {}
+powerTrips = {}
 function ____exports.ResetCache()
     for k in pairs(trips) do
         trips[k] = nil
@@ -188,6 +225,21 @@ function ____exports.ResetCache()
     for k in pairs(doneFor) do
         doneFor[k] = nil
     end
+    for k in pairs(powerTrips) do
+        powerTrips[k] = nil
+    end
+end
+local function powerOn()
+    local r = Config.Get().States.Rotate
+    return r ~= nil and r.Power == true
+end
+--- OHA's active power-rune rotation for this bot, when the body owns its execution.
+local function powerDecision(bot)
+    if not powerOn() then
+        return nil
+    end
+    local d = Rotation.Active(bot)
+    return d ~= nil and d.spot ~= nil and Rotation.RuneTarget(bot) ~= nil and d or nil
 end
 function ____exports.ShrineFor(team)
     local s = SHRINE[team] or SHRINE[Team.Radiant]
@@ -266,9 +318,108 @@ local function score(bot)
     end
     return SCORE
 end
+local function scoreAny(bot)
+    local w = score(bot)
+    if w ~= nil then
+        return w
+    end
+    local p = powerTrips[bot:GetPlayerID()]
+    if p ~= nil and p.ended == nil then
+        if Rotation.Active(bot) ~= nil then
+            return SCORE
+        end
+        powerEnded(bot, {success = true, reason = "ok", message = "over"}, {steps = 0})
+    end
+    return powerDecision(bot) ~= nil and SCORE or nil
+end
+local powerBody = __TS__Generator(function(bot, ctx, d)
+    local pid = bot:GetPlayerID()
+    local cfg = TrSettings.Get()
+    local rune = Rotation.RuneTarget(bot)
+    local spot = d.spot
+    local trip = powerTrips[pid]
+    if trip == nil or trip.ended ~= nil or trip.spawn ~= d.spawn then
+        trip = {
+            spawn = d.spawn,
+            side = d.side,
+            startedAt = DotaTime()
+        }
+        powerTrips[pid] = trip
+    end
+    local t = trip
+    local V = Tasks.Verbs()
+    local u = bot
+    local function over()
+        return Rotation.Active(bot) == nil
+    end
+    ctx.label("travel")
+    local walked = __TS__DelegatedYield(V.walkTo(u, spot, {
+        tolerance = 150,
+        timeout = math.huge,
+        stuckSecs = math.huge,
+        deadline = d.spawn + cfg.RotateLinger,
+        interruptIf = over
+    }))
+    if not walked.success then
+        return walked.reason == "interrupted" and ctx.ok() or walked
+    end
+    if t.arrivedAt == nil then
+        t.arrivedAt = DotaTime()
+    end
+    ctx.label("wait")
+    while true do
+        do
+            local __continue32
+            repeat
+                if not bot:IsAlive() then
+                    return ctx.fail("dead")
+                end
+                if over() then
+                    return {success = true, reason = "ok", message = "over"}
+                end
+                local now = DotaTime()
+                if now >= d.spawn and GetRuneStatus(rune) == RUNE_STATUS_AVAILABLE then
+                    if Rotation.HoldsRune(bot, rune) then
+                        ctx.label("hold")
+                        if GetUnitToLocationDistance(bot, spot) > 150 then
+                            bot:Action_MoveToLocation(spot)
+                        else
+                            Intent.Hold(bot, "lane:rune_hold")
+                        end
+                        coroutine.yield()
+                        __continue32 = true
+                        break
+                    end
+                    ctx.label("pickup")
+                    return __TS__DelegatedYield(V.pickUpRune(u, rune, {at = spot, timeout = 5}))
+                end
+                if now >= d.spawn + 2 and GetRuneStatus(rune) ~= RUNE_STATUS_AVAILABLE then
+                    return {success = true, reason = "ok", message = "gone"}
+                end
+                if GetUnitToLocationDistance(bot, spot) > cfg.RotateHoldRadius then
+                    bot:Action_MoveToLocation(spot)
+                else
+                    Intent.Hold(bot, "lane:rune_wait")
+                end
+                coroutine.yield()
+                __continue32 = true
+            until true
+            if not __continue32 then
+                break
+            end
+        end
+    end
+end)
 local body = __TS__Generator(function(bot, ctx)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
+    local wisdomTrip = trips[pid] ~= nil and trips[pid].ended == nil
+    if not wisdomTrip and score(bot) == nil then
+        local d = powerDecision(bot)
+        if d ~= nil then
+            return __TS__DelegatedYield(powerBody(bot, ctx, d))
+        end
+    end
     local ____opt_0 = trips[pid]
     local spawn = ____opt_0 and ____opt_0.spawn or spawnNow(now)
     if doneFor[pid] == spawn and (trips[pid] == nil or trips[pid].ended ~= nil) then
@@ -301,6 +452,7 @@ local body = __TS__Generator(function(bot, ctx)
     ))
 end)
 local function ended(bot, r, info)
+    powerEnded(bot, r, info)
     local trip = trips[bot:GetPlayerID()]
     if trip == nil or trip.ended ~= nil then
         return
@@ -321,7 +473,7 @@ function ____exports.Spec(bot, owned, shadow)
         preemptAfter = 1,
         score = function()
             if owned == nil or owned(bot, ____exports.NAME) then
-                return score(bot)
+                return scoreAny(bot)
             end
             local ____temp_5
             if shadow ~= nil then

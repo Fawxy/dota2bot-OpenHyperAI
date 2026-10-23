@@ -174,4 +174,52 @@ do
 	check("death: shrine free for the team", w.H.States.WisdomOwned(w.off) == false)
 end
 
+-- Power rune (States.Rotate.Power): OHA's rotation decides at ~5:35 and the body walks the pos 4 to the spot, waits for
+-- the 6:00 spawn and, with our mid not coming, takes the rune once OHA's hold rule lets it (RuneHoldGrace, 3 s).
+do
+	local dota2 = require("bots/ts_libs/dota/index")
+	local Rune = dota2.Rune
+	local TOP_SPOT = Vector(-1500, 1500)
+	local function spotOf(r) if r == Rune.Power1 then return TOP_SPOT end return Vector(1500, -1500) end
+	local function powerWorld()
+		local w = world({ T = 330, states = { Enable = true, Shadow = true, Teams = "all", Own = { rotate = { 4 } }, Rotate = { Power = true } } })
+		w.p4.loc = Vector(-2000, 5000)
+		w.mid.loc = Vector(3000, -3000)
+		return w
+	end
+	local oldSpawn, oldStatus = GetRuneSpawnLocation, GetRuneStatus
+	GetRuneSpawnLocation = spotOf
+	local picked
+	GetRuneStatus = function(r) if r == Rune.Power1 and T >= 360 and not picked then return RUNE_STATUS_AVAILABLE end return RUNE_STATUS_MISSING end
+	local w = powerWorld()
+	w.p4.Action_PickUpRune = function(_, r) picked = T end
+	SetRandomSequence({ 0, 0.5, 0.25, 0.9 })
+	local lines = capture(function()
+		while T < 375 do
+			w.H.Transitions.Tick(w.p4)
+			frame(w, w.p4)
+		end
+	end)
+	GetRuneSpawnLocation, GetRuneStatus = oldSpawn, oldStatus
+	local ev = events(lines, "rune_trip")[1]
+	check("power: rotation decided by OHA", events(lines, "tr_rotate")[1] ~= nil and events(lines, "tr_rotate")[1]:find("go=1", 1, true) ~= nil, events(lines, "tr_rotate")[1])
+	check("power: body walked to the top spot", #events(lines, "state_start") >= 1 and dist(w.p4.loc, TOP_SPOT) <= 160, w.p4.loc.x .. "," .. w.p4.loc.y)
+	check("power: rune left for the mid for the hold grace, then taken", picked ~= nil and picked >= 363 - 0.2 and picked <= 365, picked)
+	check("power: trip logged ok", ev ~= nil and ev:find("result=ok", 1, true) ~= nil, ev)
+end
+
+-- Power off (the default): the same rotation runs on OHA's rune mode, no state body.
+do
+	local w = world({ T = 330 })
+	w.p4.loc = Vector(-2000, 5000)
+	SetRandomSequence({ 0, 0.5, 0.25, 0.9 })
+	local lines = capture(function()
+		while T < 345 do
+			w.H.Transitions.Tick(w.p4)
+			frame(w, w.p4)
+		end
+	end)
+	check("power off: no rotate body for the power rune", #events(lines, "state_start") == 0 and #events(lines, "rune_trip") == 0)
+end
+
 finish()

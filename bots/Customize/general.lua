@@ -226,7 +226,9 @@ Customize.Humaniser = {
     -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);
     -- LastHit: positions whose last hits and denies the laning body takes over (slice 4).
     States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 }, farm = { 1, 2, 3 }, gank = { 2, 4 } }, Teams = 'allies', ShadowTeams = 'all',
-        Laning = { Spot = 'oha', LastHit = {} } },
+        Laning = { Spot = 'oha', LastHit = {} },
+        -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
+        Rotate = { Power = false } },
 }
 
 return Customize
