@@ -221,8 +221,12 @@ Customize.Humaniser = {
     Tasks = { Enable = true, Demo = false },
     -- Behaviour states (humaniser/states, on the SDK's States; needs Tasks.Enable). Enable = false restores OHA
     -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions the SDK body runs
-    -- (replaces the default list). Teams: 'allies' (allies of a human) or 'all'.
-    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 } }, Teams = 'allies' },
+    -- (replaces the default list). Teams: who may own ('allies' = allies of a human, or 'all'); ShadowTeams: who
+    -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
+    -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);
+    -- LastHit: positions whose last hits and denies the laning body takes over (slice 4).
+    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 } }, Teams = 'allies', ShadowTeams = 'all',
+        Laning = { Spot = 'oha', LastHit = {} } },
 }
 
 return Customize

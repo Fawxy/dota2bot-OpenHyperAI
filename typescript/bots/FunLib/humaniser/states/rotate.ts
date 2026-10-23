@@ -159,7 +159,12 @@ function close(bot: Unit, trip: Trip, r: Lib.Result, label: string | undefined):
     ]);
 }
 
-export function Spec(bot: Unit): Lib.StateSpec {
+/** Bots not owning `rotate` keep the shadow score (slice 2: OHA's power-rune rotation or the mid's rune claim). */
+export function Spec(
+    bot: Unit,
+    owned?: (this: void, bot: Unit, state: string) => boolean,
+    shadow?: (this: void, bot: Unit) => number | undefined
+): Lib.StateSpec {
     return {
         name: NAME,
         kind: "job",
@@ -168,7 +173,10 @@ export function Spec(bot: Unit): Lib.StateSpec {
         floor: SCORE,
         // A trip that cannot be stepped for this long lost to another mode (fight, retreat) and is restarted later.
         preemptAfter: 1,
-        score: () => score(bot),
+        score: () => {
+            if (owned === undefined || owned(bot, NAME)) return score(bot);
+            return shadow !== undefined ? shadow(bot) : undefined;
+        },
         guard: () => danger(bot),
         onEnd: (r, info) => ended(bot, r, info),
         body: (ctx) => body(bot, ctx),

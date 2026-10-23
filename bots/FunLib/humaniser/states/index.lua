@@ -1,5 +1,13 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -26,7 +34,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ownList, owns, lib, installed
+local ownList, ownTeam, owns, lib, installed
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -35,6 +43,8 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
+local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
@@ -48,7 +58,13 @@ end
 function ____exports.IsEnabled()
     return Config.IsEnabled() and ____exports.Settings().Enable == true and Tasks.Enabled()
 end
+function ownTeam(bot)
+    return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
+end
 function owns(bot, state)
+    if not ownTeam(bot) then
+        return false
+    end
     local list = ownList(state)
     if list == nil then
         return false
@@ -81,8 +97,8 @@ function ____exports.Step(bot, mode)
     return l ~= nil and l.States.Step(bot, mode)
 end
 local LANE_POS_EVERY = 2
-local function teamApplies(bot)
-    return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
+local function shadowTeam(bot)
+    return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
 local function ownsAny()
     local own = ____exports.Settings().Own
@@ -98,7 +114,57 @@ local function ownsAny()
 end
 --- Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think).
 function ____exports.MayOwn(bot)
-    return ____exports.IsEnabled() and teamApplies(bot) and ownsAny()
+    return ____exports.IsEnabled() and ownTeam(bot) and ownsAny()
+end
+--- States by name in registration order; registering an existing name replaces it in place.
+local registry = {}
+local registryVersion = 0
+function ____exports.Register(name, make)
+    registryVersion = registryVersion + 1
+    for ____, r in ipairs(registry) do
+        if r.name == name then
+            r.make = make
+            return
+        end
+    end
+    registry[#registry + 1] = {name = name, make = make}
+end
+function ____exports.Registered()
+    return __TS__ArrayMap(
+        registry,
+        function(____, r) return r.name end
+    )
+end
+____exports.Register(
+    Laning.NAME,
+    function(bot) return Laning.Spec(bot) end
+)
+for ____, ____value in ipairs(Shadow.SPECS) do
+    local name = ____value[1]
+    local make = ____value[2]
+    ____exports.Register(name, make)
+end
+____exports.Register(
+    CampJob.PULL,
+    function(bot) return CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore) end
+)
+____exports.Register(
+    CampJob.STACK,
+    function(bot) return CampJob.Spec(bot, CampJob.STACK, owns, Shadow.StackScore) end
+)
+____exports.Register(
+    Rotate.NAME,
+    function(bot) return Rotate.Spec(bot, owns, Shadow.RotateScore) end
+)
+local function guarded(spec)
+    if Telemetry.GuardsEnabled() then
+        spec.score = Telemetry.Guard(
+            "States.score." .. spec.name,
+            spec.score,
+            function() return nil end
+        )
+    end
+    return spec
 end
 installed = false
 local defined = {}
@@ -116,8 +182,9 @@ local function lanePos(bot, l)
     lanePosAt[pid] = now
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
-    local ____Telemetry_Event_4 = Telemetry.Event
-    local ____array_3 = __TS__SparseArrayNew(
+    local info = Laning.SpotInfo(bot)
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -133,24 +200,30 @@ local function lanePos(bot, l)
         ____cur_running_2 = nil
     end
     __TS__SparseArrayPush(
-        ____array_3,
+        ____array_5,
         {"label", ____cur_running_2},
         {
             "mode",
             bot:GetActiveMode()
+        },
+        {"spot", info ~= nil and info.anchor or "oha"},
+        {"pushed", info and info.pushed},
+        {
+            "hph",
+            LaneMetrics.HeroLost(bot)
         }
     )
-    ____Telemetry_Event_4(
+    ____Telemetry_Event_6(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_3)}
+        {__TS__SparseArraySpread(____array_5)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
 function ____exports.Tick(bot)
-    if not ____exports.IsEnabled() or not teamApplies(bot) then
+    if not ____exports.IsEnabled() then
         return
     end
-    if ____exports.Settings().Shadow ~= true and not ownsAny() then
+    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) then
         return
     end
     local l = lib()
@@ -158,24 +231,23 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    if defined[pid] ~= true then
-        defined[pid] = true
+    if defined[pid] ~= registryVersion then
+        defined[pid] = registryVersion
         l.States.define(
             bot,
-            {
-                Laning.Spec(bot),
-                CampJob.Spec(bot, CampJob.STACK, owns),
-                CampJob.Spec(bot, CampJob.PULL, owns),
-                Rotate.Spec(bot)
-            }
+            __TS__ArrayMap(
+                registry,
+                function(____, r) return guarded(r.make(bot)) end
+            )
         )
     end
     l.States.Tick(bot)
+    LaneMetrics.Tick(bot)
     lanePos(bot, l)
 end
 --- Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own).
 function ____exports.Owns(bot, state)
-    return ____exports.IsEnabled() and teamApplies(bot) and owns(bot, state)
+    return ____exports.IsEnabled() and owns(bot, state)
 end
 CampJobs.SetExecutor({
     Owns = function(bot, job)
@@ -192,6 +264,15 @@ function ____exports.WisdomOwned(bot)
     end
     return ____exports.Owns(bot, Rotate.NAME) and Rotate.OnTrip(bot) or Rotate.ShrineTaken(bot:GetTeam())
 end
+--- True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own.
+function ____exports.BodyLastHits(bot)
+    if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
+        return false
+    end
+    local ____opt_7 = Tasks.Loaded()
+    local cur = ____opt_7 and ____opt_7.States.Current(bot)
+    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)
@@ -200,8 +281,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_5 = Tasks.Loaded()
-    local cur = ____opt_5 and ____opt_5.States.Current(bot)
+    local ____opt_9 = Tasks.Loaded()
+    local cur = ____opt_9 and ____opt_9.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

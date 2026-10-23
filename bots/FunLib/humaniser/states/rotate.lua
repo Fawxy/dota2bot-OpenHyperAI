@@ -307,7 +307,8 @@ local function ended(bot, r, info)
     end
     close(bot, trip, r, info.label)
 end
-function ____exports.Spec(bot)
+--- Bots not owning `rotate` keep the shadow score (slice 2: OHA's power-rune rotation or the mid's rune claim).
+function ____exports.Spec(bot, owned, shadow)
     return {
         name = ____exports.NAME,
         kind = "job",
@@ -315,7 +316,18 @@ function ____exports.Spec(bot)
         tier = "TRANSITION",
         floor = SCORE,
         preemptAfter = 1,
-        score = function() return score(bot) end,
+        score = function()
+            if owned == nil or owned(bot, ____exports.NAME) then
+                return score(bot)
+            end
+            local ____temp_5
+            if shadow ~= nil then
+                ____temp_5 = shadow(bot)
+            else
+                ____temp_5 = nil
+            end
+            return ____temp_5
+        end,
         guard = function() return danger(bot) end,
         onEnd = function(r, info) return ended(bot, r, info) end,
         body = function(ctx) return body(bot, ctx) end

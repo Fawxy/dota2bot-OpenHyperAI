@@ -212,7 +212,16 @@ function ended(bot: Unit, state: string, r: Lib.Result, info: { label?: string; 
     Exec.Abort(bot, job, reason, keepStack);
 }
 
-export function Spec(bot: Unit, state: string, owned: (this: void, bot: Unit, state: string) => boolean): Lib.StateSpec {
+/**
+ * `shadow` scores bots whose position is not owned (states/shadow.ts, slice 2: any live camp job of the kind,
+ * contests included, with its linger), so shadow agreement stays measured the same way.
+ */
+export function Spec(
+    bot: Unit,
+    state: string,
+    owned: (this: void, bot: Unit, state: string) => boolean,
+    shadow?: (this: void, bot: Unit) => number | undefined
+): Lib.StateSpec {
     return {
         name: state,
         kind: "job",
@@ -223,8 +232,10 @@ export function Spec(bot: Unit, state: string, owned: (this: void, bot: Unit, st
         // A job step() runs (planned before the position was owned) is shadowed, never started over it.
         score: () => {
             const job = liveJob(bot, state);
-            if (job === undefined) return undefined;
-            return job.sdk === true || !owned(bot, state) ? SCORE : undefined;
+            if (job !== undefined && job.sdk === true) return SCORE;
+            if (owned(bot, state)) return undefined;
+            if (shadow !== undefined) return shadow(bot);
+            return job !== undefined ? SCORE : undefined;
         },
         guard: () => {
             const job = liveJob(bot, state);

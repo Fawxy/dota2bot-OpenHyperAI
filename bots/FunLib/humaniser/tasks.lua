@@ -1,15 +1,33 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
+local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
+local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local attempted = false
 local lib
 function ____exports.Enabled()
     return Config.IsEnabled() and Config.Get().Tasks.Enable ~= false
+end
+--- An allied core (position 1-3, not the bot) within 1600 that can take the creep itself.
+local function CoreCanTake(bot, creep)
+    for ____, ally in ipairs(bot:GetNearbyHeroes(1600, false, BotMode.None)) do
+        if ally ~= bot and ally:IsAlive() then
+            local pos = LaneConfig.PositionOf(ally)
+            if pos ~= nil and pos <= 3 and AllyLastHit.CoreCanReach(ally, creep) then
+                return true
+            end
+        end
+    end
+    return false
 end
 local adapter = {
     claim = function(bot, c)
@@ -36,9 +54,24 @@ local adapter = {
     release = function(bot, source, mode) return Intent.Release(bot, source, mode) end,
     hold = function(bot, tag) return Intent.Hold(bot, tag) end,
     lastHitFilter = function(bot, creep)
-        local allowed = AllyLastHit.MayLastHit(bot, creep)
-        return allowed
+        local allowed, reason = AllyLastHit.MayLastHit(bot, creep)
+        if not allowed then
+            return false
+        end
+        if string.sub(reason, 1, 5) == "take:" then
+            return true
+        end
+        local pos = LaneConfig.PositionOf(bot)
+        return pos == nil or pos <= 2 or not CoreCanTake(bot, creep)
     end,
+    skill = function(bot) return Difficulty.GetSkill(bot) end,
+    profile = function(bot)
+        local p = Profile.Get(bot)
+        return {react = p.reactBase, jitter = p.jitter, aimError = p.aimError, lapse = p.lapseChance}
+    end,
+    lastHitError = function(bot) return LastHitSkill.ErrorWidth(bot) end,
+    random = function() return RandomFloat(0, 1) end,
+    attackClock = function() return GameTime() end,
     now = function() return DotaTime() end,
     log = function(tag, msg) return HDebug.Log(tag, msg) end,
     event = function(name, fields) return Telemetry.Event(name, fields) end,

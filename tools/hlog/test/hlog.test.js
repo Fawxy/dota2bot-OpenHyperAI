@@ -583,3 +583,30 @@ test('laningMetrics: deaths and kills come from the snapshot scoreboard fields w
     const b = laningMetrics(parseLog(lines.join('\n'))[0]).bots.find(x => x.pid === 1);
     assert.deepStrictEqual([b.kills, b.deaths], [2, 3]);
 });
+
+test('stateMetrics: agreement leaves out interrupts and (for agreeLong) mode blips; switches, restart lag and end reasons', () => {
+    const { stateMetrics } = require('../metrics');
+    const modeAt = t => (t >= 10 && t < 20 ? 'retreat' : (t >= 30 && t < 35) || t === 40 || t >= 50 ? 'farm' : 'laning');
+    const lines = [botLine(1, 'aaa', 2, -5)];
+    for (let t = 0; t < 60; t++) lines.push(snapAt(1, t).replace('mode=laning', `mode=${modeAt(t)}`));
+    const modes = [[9.5, 'laning', 'retreat'], [19.5, 'retreat', 'laning'], [29.5, 'laning', 'farm'], [34.5, 'farm', 'laning'], [39.8, 'laning', 'farm'], [40.3, 'farm', 'laning'], [49.5, 'laning', 'farm']];
+    for (const [t, from, to] of modes) lines.push(`[HEV] t=${t} ev=mode pid=1 from=${from} to=${to} d=0.5 dwell=1`);
+    lines.push(
+        '[HEV] t=0 ev=state pid=1 from=none to=laning score=0.5 owned=1 why=start',
+        '[HEV] t=0 ev=state_start pid=1 state=laning n=1',
+        '[HEV] t=12.5 ev=state_task pid=1 state=laning result=fail reason=preempted msg="mode=4" label=hold steps=9',
+        '[HEV] t=20 ev=state_start pid=1 state=laning n=2 gap=7.5 after=preempted',
+        '[HEV] t=22 ev=lane_pos pid=1 d=120 owned=1 running=1 label=hold mode=1',
+        '[HEV] t=50 ev=state pid=1 from=laning to=pull score=0.8 owned=0 why=best',
+    );
+    const r = stateMetrics(parseLog(lines.sort(byT).join('\n'))[0], { until: 60 }).find(x => x.pid === 1);
+    assert.deepStrictEqual([r.secs.laning, r.secs.pull, r.interruptSec, r.compareSec], [50, 10, 10, 50]);
+    // laning agrees 0-9, 20-29, 35-39, 41-49; pull (farm) 50-59; farm 30-34 and the blip at 40 do not.
+    assert.strictEqual(r.agreeSec, 44);
+    assert.deepStrictEqual([r.agreeLongSec, r.compareLongSec], [44, 49]);
+    assert.strictEqual(r.switches, 1);
+    assert.deepStrictEqual(r.restartLags, [0.5]);
+    assert.deepStrictEqual(r.ends, { 'preempted:retreat': 1 });
+    assert.deepStrictEqual([r.starts, r.laneDHold], [2, [120]]);
+    assert.deepStrictEqual(r.disagree, { 'laning/farm': 6 });
+});

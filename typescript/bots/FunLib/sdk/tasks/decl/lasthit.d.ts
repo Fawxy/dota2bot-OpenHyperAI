@@ -14,6 +14,35 @@ export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): number;
  * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
  */
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
+export interface LaneTarget {
+    creep: TaskCreep;
+    kind: "lasthit" | "deny";
+    /** Seconds until a swing ordered then would be due (0: due now), plus the walk into attack range. */
+    eta: number;
+    ranged: boolean;
+}
+export interface NextLastHitOpts {
+    /** Creeps farther than this are ignored. Default attack range + 400. */
+    radius?: number;
+    /** Only creeps due within this many seconds (walk included) are returned. Default 1. */
+    within?: number;
+    /** Consider allied creeps to deny. Default true. */
+    deny?: boolean;
+    /** Consider enemy creeps to last-hit. Default true. */
+    lastHit?: boolean;
+    /** Seconds of eta a ranged/siege creep is preferred by. Default 0.4. */
+    rangedBias?: number;
+    /** Seconds of eta a last hit is preferred over a deny by (a core never gives up its last hit to deny). Default 0.3. */
+    lastHitBias?: number;
+}
+/**
+ * The lane creep the bot should go for next, if any is due within `within` seconds: an enemy creep to last-hit
+ * (the adapter's `lastHitFilter` applies) or an allied creep to deny. Exact prediction, no skill error (the
+ * verbs apply that when they swing): eta is when the creep becomes killable by a swing ordered then (from
+ * incoming DPS), or the walk into range if longer. Priority (knowledge.md 1.2): ranged last hit, ranged deny,
+ * melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
+ */
+export declare function nextLastHit(bot: TaskUnit, opts?: NextLastHitOpts): LaneTarget | undefined;
 export interface LastHitOpts {
     /** Seconds to wait for the creep to become due before failing `timeout`. Default 1.5. */
     maxWait?: number;

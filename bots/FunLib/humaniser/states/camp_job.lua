@@ -332,7 +332,9 @@ local function ended(bot, state, r, info)
     end
     Exec.Abort(bot, job, reason, keepStack)
 end
-function ____exports.Spec(bot, state, owned)
+--- `shadow` scores bots whose position is not owned (states/shadow.ts, slice 2: any live camp job of the kind,
+-- contests included, with its linger), so shadow agreement stays measured the same way.
+function ____exports.Spec(bot, state, owned, shadow)
     return {
         name = state,
         kind = "job",
@@ -342,10 +344,16 @@ function ____exports.Spec(bot, state, owned)
         preemptAfter = T().JobPreemptAfter,
         score = function()
             local job = liveJob(bot, state)
-            if job == nil then
+            if job ~= nil and job.sdk == true then
+                return SCORE
+            end
+            if owned(bot, state) then
                 return nil
             end
-            return (job.sdk == true or not owned(bot, state)) and SCORE or nil
+            if shadow ~= nil then
+                return shadow(bot)
+            end
+            return job ~= nil and SCORE or nil
         end,
         guard = function()
             local job = liveJob(bot, state)

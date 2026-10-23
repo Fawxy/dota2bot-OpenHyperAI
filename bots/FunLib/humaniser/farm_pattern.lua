@@ -447,14 +447,14 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue91
+            local __continue95
             repeat
                 if spawner.team ~= team then
-                    __continue91 = true
+                    __continue95 = true
                     break
                 end
                 if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue91 = true
+                    __continue95 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -466,7 +466,7 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                     now,
                     sight
                 ) then
-                    __continue91 = true
+                    __continue95 = true
                     break
                 end
                 if diag ~= nil then
@@ -505,9 +505,9 @@ function ____exports.PlanCamp(bot, from, front, now, deadline, diag)
                 if stack ~= nil and (best == nil or stack.score > best.score) then
                     best = stack
                 end
-                __continue91 = true
+                __continue95 = true
             until true
-            if not __continue91 then
+            if not __continue95 then
                 break
             end
         end
@@ -792,6 +792,24 @@ local function sharesPlayerID(bot)
 end
 local IDLE_MODES = {[BotMode.Laning] = true, [BotMode.Farm] = true, [BotMode.None] = true}
 local FOCUS_MODES = {BotMode.Ward, BotMode.SideShop, BotMode.SecretShop}
+--- StartGate's lasting part (the unit, a core position, its level): why this bot is not a farmer, or undefined.
+function ____exports.Eligible(bot)
+    if not bot:IsHero() or bot:IsIllusion() or sharesPlayerID(bot) or string.sub(
+        bot:GetUnitName(),
+        1,
+        14
+    ) ~= "npc_dota_hero_" then
+        return "unit"
+    end
+    local pos = eligiblePosition(bot)
+    if pos == nil then
+        return "not-core"
+    end
+    if bot:GetLevel() < (____exports.Settings().MinLevel[pos] or ____exports.Settings().MinLevel[1]) then
+        return "level"
+    end
+    return nil
+end
 --- Why the bot may not start a trip now, or undefined.
 function ____exports.StartGate(bot, now)
     local s = ____exports.Settings()
