@@ -1,0 +1,15 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 1: state layer + pos 2 lane hold (TEST_QUEUE runs 1, 2, 11)",
+ "until": "10:00",
+ "minRuns": 2,
+ "bars": [
+  { "id": "laning state covers laning mode", "select": { "team": "human", "pos": 2 }, "metric": "states.laningCoverPct", "min": 95 },
+  { "id": "restart lag", "select": { "team": "human", "pos": 2 }, "metric": "states.restartLagMax", "max": 2, "optional": true },
+  { "id": "ownLane%", "select": { "team": "human", "pos": 2 }, "metric": "laning.ownLane", "min": 70 },
+  { "id": "lh@10", "select": { "team": "human", "pos": 2 }, "metric": "laning.lh", "min": 22 },
+  { "id": "deaths", "select": { "team": "human", "pos": 2 }, "metric": "laning.deaths", "max": 1, "over": "median" },
+  { "id": "laningSec", "select": { "team": "human", "pos": 2 }, "metric": "laning.laningSec", "range": [357, 437] },
+  { "id": "team-code lua errors", "metric": "game.errors.luaTeam", "max": 0 }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 6: Dire on the SDK bodies (runs 6, 9). Bot-only team pos= is meaningless, so the core is the top lh in each played lane",
+ "until": "10:00",
+ "minRuns": 2,
+ "bars": [
+  { "id": "safe (top) core lh@10", "select": { "team": "dire", "lane": "top" }, "metric": "laneEval.lh10", "agg": "max", "min": 45 },
+  { "id": "mid core lh@10", "select": { "team": "dire", "lane": "mid" }, "metric": "laneEval.lh10", "agg": "max", "min": 45 },
+  { "id": "off (bot) core lh@10", "select": { "team": "dire", "lane": "bot" }, "metric": "laneEval.lh10", "agg": "max", "min": 39 },
+  { "id": "team-code lua errors", "metric": "game.errors.luaTeam", "max": 0 }
+ ]
+}
