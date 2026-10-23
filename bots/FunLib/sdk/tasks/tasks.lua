@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 989b81f03a17c617f99f24dc710f7ba4e8111ce0. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 5a4afb92196c63b838d260b18b0d671ec719b4a0. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1720,6 +1720,7 @@ local function enemyTargeting(bot, creep)
     end
     return false
 end
+--- Seconds until the creep is killable by a swing ordered then, and the walk into attack range.
 local function etaOf(bot, c, walkSpeed)
     local b = believe(bot, c, false)
     if not b.survives then
@@ -1734,7 +1735,7 @@ local function etaOf(bot, c, walkSpeed)
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
     if margin <= 0 then
-        return walk
+        return {0, walk}
     end
     local ____exports_incomingDps_result_59 = ____exports.incomingDps(bot, c)
     local ____math_max_58 = math.max
@@ -1748,12 +1749,12 @@ local function etaOf(bot, c, walkSpeed)
     if dps <= 0 then
         return nil
     end
-    return math.max(walk, margin / dps)
+    return {margin / dps, walk}
 end
---- The lane creep the bot should go for next, if any is due within `within` seconds: an enemy creep to last-hit
--- (the adapter's `lastHitFilter` applies) or an allied creep to deny. Exact prediction, no skill error (the
--- verbs apply that when they swing): eta is when the creep becomes killable by a swing ordered then (from
--- incoming DPS), or the walk into range if longer. Priority (knowledge.md 1.2): ranged last hit, ranged deny,
+--- The lane creep the bot should go for next, if any becomes killable within `within` seconds of the bot reaching
+-- attack range: an enemy creep to last-hit (the adapter's `lastHitFilter` applies) or an allied creep to deny.
+-- Exact prediction, no skill error (the verbs apply that when they swing): eta is when the creep becomes
+-- killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Priority (knowledge.md 1.2): ranged last hit, ranged deny,
 -- melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
 function ____exports.nextLastHit(bot, opts)
     if opts == nil then
@@ -1763,7 +1764,10 @@ function ____exports.nextLastHit(bot, opts)
         return nil
     end
     local adapter = get()
-    local radius = opts.radius or bot:GetAttackRange() + 400
+    local radius = opts.radius or math.max(
+        800,
+        bot:GetAttackRange() + 400
+    )
     local within = opts.within or 1
     local rangedBias = opts.rangedBias or 0.4
     local lhBias = opts.lastHitBias or 0.3
@@ -1789,10 +1793,11 @@ function ____exports.nextLastHit(bot, opts)
         if kind == "lasthit" and adapter.lastHitFilter ~= nil and not adapter.lastHitFilter(bot, c) then
             return
         end
-        local eta = etaOf(bot, c, speed)
-        if eta == nil or eta > within then
+        local e = etaOf(bot, c, speed)
+        if e == nil or e[1] - e[2] > within then
             return
         end
+        local eta = math.max(e[1], e[2])
         local ranged = isRangedCreep(c)
         local key = eta - (ranged and rangedBias or 0) - (kind == "lasthit" and lhBias or 0)
         if key < bestKey then

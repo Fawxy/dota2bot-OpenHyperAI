@@ -290,7 +290,7 @@ local body = __TS__Generator(function(bot, ctx)
                 ctx.label(t.kind)
                 local opts = {
                     target = t.creep,
-                    maxWait = ____exports.Settings().LastHitWithin + 1,
+                    maxWait = t.eta + 1.5,
                     hold = "state:laning",
                     interruptIf = function() return (distTo(
                         bot,

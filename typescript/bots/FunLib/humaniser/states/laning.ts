@@ -146,7 +146,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         ctx.label(t.kind);
         const opts: Lib.Verbs.LastHitOpts = {
             target: t.creep,
-            maxWait: Settings().LastHitWithin + 1,
+            maxWait: t.eta + 1.5,
             hold: "state:laning",
             interruptIf: () => (distTo(bot, Spot(bot)) ?? 0) > LEASH,
         };
