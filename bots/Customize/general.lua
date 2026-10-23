@@ -229,6 +229,10 @@ Customize.Humaniser = {
         Laning = { Spot = 'oha', LastHit = {} },
         -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
         Rotate = { Power = false } },
+    -- Team game phase (humaniser/states/phase, team slice 12; needs Tasks.Enable): laning, transition, midgame,
+    -- push, defend, late per team, logged as ev=phase. Priors = false is shadow (behaviour unchanged); true makes
+    -- the phase multiply every state score (docs/team/slices/12-game-phase.md). Enable = false: nothing runs.
+    Phase = { Enable = true, Priors = false },
 }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
