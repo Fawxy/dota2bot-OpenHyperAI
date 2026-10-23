@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 0f86a463af54928d3fb4b07d594289d64082567e. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 6bd4d0476cd4266d7fd80f7d865c1d6dc79e5cf4. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -2727,7 +2727,14 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         ) or 0
     end
     local target
+    local scanEvery = opts.scanEvery or 0.1
+    local scannedAt = -math.huge
     local function pick()
+        local t = get().now()
+        if t - scannedAt < scanEvery then
+            return false
+        end
+        scannedAt = t
         if opts.lastHits ~= nil and not opts.lastHits() then
             return false
         end
@@ -2744,7 +2751,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local passAt
     while true do
         do
-            local __continue14
+            local __continue15
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2788,7 +2795,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if target == nil then
                     local d = spot() ~= nil and away() or nil
                     atSpot = d ~= nil and d <= (atSpot and far or near)
-                    __continue14 = true
+                    __continue15 = true
                     break
                 end
                 local t = target
@@ -2813,9 +2820,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue14 = true
+                __continue15 = true
             until true
-            if not __continue14 then
+            if not __continue15 then
                 break
             end
         end

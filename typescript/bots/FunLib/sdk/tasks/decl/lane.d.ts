@@ -14,6 +14,8 @@ export interface LaneFarmOpts {
     /** Within this of the spot the label is `hold`, beyond `far` it is `walk` again. Defaults 600 / 1200. */
     near?: number;
     far?: number;
+    /** Seconds between looks for the next creep while holding (a scan of every creep nearby). Default 0.1. */
+    scanEvery?: number;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;
