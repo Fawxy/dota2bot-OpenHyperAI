@@ -52,7 +52,16 @@ function R(): LaneConfig.LaneSettings["Radii"] {
 
 function campOf(bot: Unit, idx: number, stand: Vector, opts: { confirmAny: boolean }): Lib.Verbs.Camp {
     const sp = Camps.SpawnerByIdx(idx);
+    // step()'s approachCamp: blind at the stand point StandApproachLead s before the aggro, move in to StandApproach.
+    let approach: Lib.Vec | undefined;
+    if (sp !== undefined) {
+        const o = sp.location;
+        const d = math.sqrt((stand.x - o.x) ** 2 + (stand.y - o.y) ** 2);
+        const near = R().StandApproach;
+        if (d > near + R().JobArrive) approach = { x: o.x + ((stand.x - o.x) * near) / d, y: o.y + ((stand.y - o.y) * near) / d, z: o.z } as Lib.Vec;
+    }
     return {
+        approach: approach !== undefined ? (Vector(approach.x, approach.y, approach.z ?? 0) as unknown as Lib.Vec) : undefined,
         stand: stand as unknown as Lib.Vec,
         box: sp !== undefined ? { min: sp.min as unknown as Lib.Vec, max: sp.max as unknown as Lib.Vec } : undefined,
         origin: sp !== undefined ? (sp.location as unknown as Lib.Vec) : undefined,
@@ -102,6 +111,7 @@ function stackPlan(bot: Unit, job: Job): Lib.Verbs.StackPlan {
         exitUntil: job.exitUntil ?? job.aggroAt + T().JobMaxAfterAggro,
         arrive: R().JobArrive,
         startLate: T().JobStartLate,
+        approachLead: T().StandApproachLead,
         noCampAfter: T().NoCampAfter,
         confirmFor: T().AggroConfirm,
         onAggro: (info) => landed(bot, job, info),
@@ -122,6 +132,7 @@ function pullPlan(bot: Unit, job: Job): Lib.Verbs.PullPlan {
         leadDeadline: (chain !== undefined ? chain.aggroAt : job.aggroAt) + T().JobMaxAfterAggro,
         arrive: R().JobArrive,
         startLate: T().JobStartLate,
+        approachLead: T().StandApproachLead,
         noCampAfter: T().NoCampAfter,
         confirmFor: T().AggroConfirm,
         onAggro: (info) => landed(bot, job, info),
