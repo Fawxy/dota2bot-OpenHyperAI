@@ -4,9 +4,50 @@
  "until": "10:00",
  "minRuns": 2,
  "bars": [
-  { "id": "lh@10", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh10", "min": 45 },
-  { "id": "lh@5", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh5", "min": 20 },
-  { "id": "dn@10", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.dn10", "min": 3 },
-  { "id": "contested success", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.contestedPct", "range": [75, 85], "over": "median" }
+  {
+   "id": "lh@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh10",
+   "min": 45
+  },
+  {
+   "id": "lh@5",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh5",
+   "min": 20
+  },
+  {
+   "id": "dn@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.dn10",
+   "min": 3
+  },
+  {
+   "id": "contested success",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.contestedPct",
+   "range": [
+    75,
+    85
+   ],
+   "over": "median"
+  },
+  {
+   "id": "no squelched telemetry",
+   "metric": "game.squelched",
+   "eq": false
+  }
  ]
 }

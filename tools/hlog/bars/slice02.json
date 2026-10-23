@@ -4,8 +4,31 @@
  "until": "10:00",
  "minRuns": 2,
  "bars": [
-  { "id": "agree% per human-team bot", "select": { "team": "human" }, "metric": "states.agreePct", "min": 85 },
-  { "id": "switches/min per human-team bot", "select": { "team": "human" }, "metric": "states.swPerMin", "max": 1.5 },
-  { "id": "team-code lua errors", "metric": "game.errors.luaTeam", "max": 0 }
+  {
+   "id": "agree% per human-team bot",
+   "select": {
+    "team": "human"
+   },
+   "metric": "states.agreePct",
+   "min": 85
+  },
+  {
+   "id": "switches/min per human-team bot",
+   "select": {
+    "team": "human"
+   },
+   "metric": "states.swPerMin",
+   "max": 1.5
+  },
+  {
+   "id": "team-code lua errors",
+   "metric": "game.errors.luaTeam",
+   "max": 0
+  },
+  {
+   "id": "no squelched telemetry",
+   "metric": "game.squelched",
+   "eq": false
+  }
  ]
 }

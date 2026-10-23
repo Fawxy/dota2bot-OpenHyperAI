@@ -4,10 +4,59 @@
  "until": "10:00",
  "minRuns": 2,
  "bars": [
-  { "id": "ownLane%", "select": { "team": "human", "pos": 2 }, "metric": "laning.ownLane", "range": [70, 84] },
-  { "id": "deaths (median)", "select": { "team": "human", "pos": 2 }, "metric": "laning.deaths", "max": 1, "over": "median" },
-  { "id": "lh@10", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh10", "min": 37 },
-  { "id": "spot=creep most of the time", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.spotCreepPct", "min": 50 },
-  { "id": "spot pushed near waves", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.pushedLines", "min": 1 }
+  {
+   "id": "ownLane%",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laning.ownLane",
+   "range": [
+    70,
+    84
+   ]
+  },
+  {
+   "id": "deaths (median)",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laning.deaths",
+   "max": 1,
+   "over": "median"
+  },
+  {
+   "id": "lh@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh10",
+   "min": 37
+  },
+  {
+   "id": "spot=creep most of the time",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.spotCreepPct",
+   "min": 50
+  },
+  {
+   "id": "spot pushed near waves",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.pushedLines",
+   "min": 1
+  },
+  {
+   "id": "no squelched telemetry",
+   "metric": "game.squelched",
+   "eq": false
+  }
  ]
 }

@@ -4,12 +4,91 @@
  "until": "10:00",
  "minRuns": 2,
  "bars": [
-  { "id": "pos1 lh@10", "select": { "team": "human", "pos": 1 }, "metric": "laneEval.lh10", "min": 45, "optional": true },
-  { "id": "pos2 lh@10", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh10", "min": 45, "optional": true },
-  { "id": "pos3 lh@10", "select": { "team": "human", "pos": 3 }, "metric": "laneEval.lh10", "min": 39, "optional": true },
-  { "id": "supports lh@10", "select": { "team": "human", "pos": [4, 5] }, "metric": "laneEval.lh10", "range": [4, 12] },
-  { "id": "cores ownLane%", "select": { "team": "human", "pos": [1, 2, 3] }, "metric": "laning.ownLane", "range": [70, 88] },
-  { "id": "supports ownLane%", "select": { "team": "human", "pos": [4, 5] }, "metric": "laning.ownLane", "range": [54, 75] },
-  { "id": "team-code lua errors", "metric": "game.errors.luaTeam", "max": 0 }
+  {
+   "id": "pos1 lh@10",
+   "select": {
+    "team": "human",
+    "pos": 1
+   },
+   "metric": "laneEval.lh10",
+   "min": 45,
+   "optional": true
+  },
+  {
+   "id": "pos2 lh@10",
+   "select": {
+    "team": "human",
+    "pos": 2
+   },
+   "metric": "laneEval.lh10",
+   "min": 45,
+   "optional": true
+  },
+  {
+   "id": "pos3 lh@10",
+   "select": {
+    "team": "human",
+    "pos": 3
+   },
+   "metric": "laneEval.lh10",
+   "min": 39,
+   "optional": true
+  },
+  {
+   "id": "supports lh@10",
+   "select": {
+    "team": "human",
+    "pos": [
+     4,
+     5
+    ]
+   },
+   "metric": "laneEval.lh10",
+   "range": [
+    4,
+    12
+   ]
+  },
+  {
+   "id": "cores ownLane%",
+   "select": {
+    "team": "human",
+    "pos": [
+     1,
+     2,
+     3
+    ]
+   },
+   "metric": "laning.ownLane",
+   "range": [
+    70,
+    88
+   ]
+  },
+  {
+   "id": "supports ownLane%",
+   "select": {
+    "team": "human",
+    "pos": [
+     4,
+     5
+    ]
+   },
+   "metric": "laning.ownLane",
+   "range": [
+    54,
+    75
+   ]
+  },
+  {
+   "id": "team-code lua errors",
+   "metric": "game.errors.luaTeam",
+   "max": 0
+  },
+  {
+   "id": "no squelched telemetry",
+   "metric": "game.squelched",
+   "eq": false
+  }
  ]
 }

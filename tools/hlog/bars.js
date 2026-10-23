@@ -249,6 +249,7 @@ const AGGS = {
 };
 
 function inBar(v, bar) {
+    if (bar.eq !== undefined && typeof bar.eq !== 'number') return v === bar.eq;
     if (typeof v !== 'number' || Number.isNaN(v)) return false;
     if (bar.min !== undefined && v < bar.min) return false;
     if (bar.max !== undefined && v > bar.max) return false;
@@ -293,10 +294,10 @@ function check(runs, spec) {
         if (bar.agg && bar.agg !== 'each' && !AGGS[bar.agg]) throw new Error(`bar ${bar.id}: unknown agg ${bar.agg}`);
         // An optional bar judges the values that exist (a support with one stack has no spread; the human's own
         // position has no bot) and is skipped when there are none.
-        const perRun = runs.map(m => barValues(m, bar).filter(x => !bar.optional || typeof x.v === 'number'));
+        const perRun = runs.map(m => barValues(m, bar).filter(x => !bar.optional || x.v !== undefined));
         const over = bar.over || spec.over || 'each';
         const flat = perRun.flat();
-        const present = flat.filter(x => typeof x.v === 'number');
+        const present = flat.filter(x => typeof x.v === 'number' || typeof x.v === 'boolean');
         let status, value;
         if (present.length === 0) status = 'missing';
         else if (over === 'median') {
@@ -304,7 +305,7 @@ function check(runs, spec) {
             status = inBar(value, bar) ? 'pass' : 'fail';
         } else if (over === 'any') status = present.some(x => inBar(x.v, bar)) ? 'pass' : 'fail';
         else status = flat.every(x => inBar(x.v, bar)) ? 'pass' : flat.some(x => x.v === undefined) && present.every(x => inBar(x.v, bar)) ? 'missing' : 'fail';
-        const runsWithValue = perRun.filter(r => r.some(x => typeof x.v === 'number')).length;
+        const runsWithValue = perRun.filter(r => r.some(x => x.v !== undefined)).length;
         if (status === 'pass' && runsWithValue < minRuns) status = 'insufficient';
         if (status === 'missing' && bar.optional) status = 'skipped';
         results.push({ id: bar.id || bar.metric, metric: bar.metric, select: bar.select, agg: bar.agg, over, bar: barText(bar), status, value, runs: perRun });
