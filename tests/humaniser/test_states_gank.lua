@@ -66,7 +66,8 @@ local function frame(w, dt)
 	H.States.Tick(bot)
 	H.Tasks.Tick(bot)
 	local t = H.Tasks.Current(bot)
-	bot.mode = (t ~= nil and t.name == "state:gank") and BotMode.Roam or BotMode.Laning
+	if bot.forceMode then bot.mode = bot.forceMode
+	else bot.mode = (t ~= nil and t.name == "state:gank") and BotMode.Roam or BotMode.Laning end
 	if bot.mode == BotMode.Roam then H.States.Step(bot, BotMode.Roam) end
 	for i = #ACTIONS, n0 + 1, -1 do
 		local a = ACTIONS[i]
@@ -179,6 +180,21 @@ do
 	local started = #events(lines, "state_start") > 0
 	check("low hp: started", started)
 	check("low hp: abandoned", ev ~= nil and ev:find("msg=low-hp", 1, true) ~= nil, ev)
+end
+
+-- A retreat preempts the gank: the attempt ends there, and the bot is not pulled back into it (pre-flight M6).
+do
+	local w = world({ targetAt = Vector(-500, 0) })
+	local lines = capture(function()
+		while T < 155 do frame(w) end
+		w.p4.forceMode = BotMode.Retreat
+		while T < 160 do frame(w) end
+		w.p4.forceMode = nil
+		while T < 185 do frame(w) end
+	end)
+	local ev = events(lines, "gank")[1]
+	check("retreat: attempt ended by the preempt (the runner names the mode)", ev ~= nil and ev:find("msg=\"mode=", 1, true) ~= nil, ev)
+	check("retreat: no restart afterwards", #events(lines, "state_start") == 1, #events(lines, "state_start"))
 end
 
 finish()

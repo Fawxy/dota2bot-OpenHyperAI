@@ -107,6 +107,8 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.NAME = "farm"
 --- Shadow (slice 2) scores, kept so ownership changes nothing but who executes the trip.
 local TRIP = 0.7
+local RETURN_REORDER = 0.5
+local RETURN_MOVED = 200
 --- Runs `g` until it ends or `stop()` says the trip it serves is over (OHA's Desire ended or redirected it).
 local ____until = __TS__Generator(function(g, stop)
     while true do
@@ -124,6 +126,8 @@ local body = __TS__Generator(function(bot, ctx)
     local V = Tasks.Verbs()
     local u = bot
     local s = FarmPattern.Settings()
+    local lastFront
+    local orderedAt = -math.huge
     while true do
         do
             local __continue7
@@ -148,7 +152,13 @@ local body = __TS__Generator(function(bot, ctx)
                 end
                 if trip.phase == "return" then
                     ctx.label("return")
-                    bot:Action_MoveToLocation(GetLaneFrontLocation(trip.team, trip.lane, 0))
+                    local front = GetLaneFrontLocation(trip.team, trip.lane, 0)
+                    local now = DotaTime()
+                    if lastFront == nil or now - orderedAt >= RETURN_REORDER or math.abs(front.x - lastFront.x) + math.abs(front.y - lastFront.y) > RETURN_MOVED then
+                        bot:Action_MoveToLocation(front)
+                        lastFront = front
+                        orderedAt = now
+                    end
                     coroutine.yield()
                     __continue7 = true
                     break

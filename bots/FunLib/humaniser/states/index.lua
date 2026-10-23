@@ -87,7 +87,18 @@ function lib()
     end
     if not installed then
         installed = true
-        l.States.SetOwned(function(b, state) return owns(b, state) end)
+        l.States.SetOwned(function(b, state)
+            local u = b
+            if not owns(u, state) then
+                return false
+            end
+            local ____temp_2 = state ~= Farm.NAME
+            if not ____temp_2 then
+                local ____opt_0 = FarmPattern.Live(u)
+                ____temp_2 = (____opt_0 and ____opt_0.sdk) == true
+            end
+            return ____temp_2
+        end)
     end
     return l
 end
@@ -194,8 +205,8 @@ local function lanePos(bot, l)
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
     local info = Laning.SpotInfo(bot)
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_9 = Telemetry.Event
+    local ____array_8 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -204,15 +215,15 @@ local function lanePos(bot, l)
         {"owned", cur.owned},
         {"running", cur.running}
     )
-    local ____cur_running_2
+    local ____cur_running_5
     if cur.running then
-        ____cur_running_2 = task and task.label
+        ____cur_running_5 = task and task.label
     else
-        ____cur_running_2 = nil
+        ____cur_running_5 = nil
     end
     __TS__SparseArrayPush(
-        ____array_5,
-        {"label", ____cur_running_2},
+        ____array_8,
+        {"label", ____cur_running_5},
         {
             "mode",
             bot:GetActiveMode()
@@ -224,9 +235,9 @@ local function lanePos(bot, l)
             LaneMetrics.HeroLost(bot)
         }
     )
-    ____Telemetry_Event_6(
+    ____Telemetry_Event_9(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_5)}
+        {__TS__SparseArraySpread(____array_8)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
@@ -262,8 +273,8 @@ function ____exports.Owns(bot, state)
 end
 --- Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body.
 local function stepFarm(bot, names)
-    local ____opt_7 = lib()
-    local cur = ____opt_7 and ____opt_7.States.Current(bot)
+    local ____opt_10 = lib()
+    local cur = ____opt_10 and ____opt_10.States.Current(bot)
     return cur ~= nil and names[cur.name] == true and ____exports.Step(bot, BotMode.Farm)
 end
 local FARM_STATES = {[Farm.NAME] = true}
@@ -292,8 +303,8 @@ function ____exports.BodyLastHits(bot)
     if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
         return false
     end
-    local ____opt_9 = Tasks.Loaded()
-    local cur = ____opt_9 and ____opt_9.States.Current(bot)
+    local ____opt_12 = Tasks.Loaded()
+    local cur = ____opt_12 and ____opt_12.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
@@ -304,8 +315,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_11 = Tasks.Loaded()
-    local cur = ____opt_11 and ____opt_11.States.Current(bot)
+    local ____opt_14 = Tasks.Loaded()
+    local cur = ____opt_14 and ____opt_14.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

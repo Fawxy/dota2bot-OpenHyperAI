@@ -118,9 +118,6 @@ function ended(bot, r, info)
     if a == nil or a.ended ~= nil then
         return
     end
-    if r.reason == "preempted" then
-        return
-    end
     a.ended = r.success and (r.message or "ok") or (r.message or r.reason)
     local now = DotaTime()
     lastEnd[pid] = now
@@ -211,9 +208,22 @@ local function laneOf(loc)
     end
     return best
 end
+local heroCache = {}
+--- GetUnitList per list once per frame (pre-flight M2: the scorer, commit check and target fn scan every frame).
+local function heroes(list)
+    local now = DotaTime()
+    local key = (tostring(GetTeam()) .. ":") .. tostring(list)
+    local c = heroCache[key]
+    if c ~= nil and c.at == now then
+        return c.list
+    end
+    local fresh = GetUnitList(list)
+    heroCache[key] = {at = now, list = fresh}
+    return fresh
+end
 local function heroesNear(list, loc, radius, except)
     local n = 0
-    for ____, u in ipairs(GetUnitList(list)) do
+    for ____, u in ipairs(heroes(list)) do
         if u ~= except and u:IsAlive() and not u:IsIllusion() and d2(
             u:GetLocation(),
             loc
@@ -224,8 +234,8 @@ local function heroesNear(list, loc, radius, except)
     return n
 end
 local function visibleUnit(pid)
-    for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
-        if u:GetPlayerID() == pid and u:CanBeSeen() and u:IsAlive() then
+    for ____, u in ipairs(heroes(UnitType.EnemyHeroes)) do
+        if u:GetPlayerID() == pid and not u:IsIllusion() and u:CanBeSeen() and u:IsAlive() then
             return u
         end
     end
@@ -245,7 +255,7 @@ function ____exports.BestTarget(bot)
     local best
     for ____, e in ipairs(LaneState.Enemies(bot, own)) do
         do
-            local __continue24
+            local __continue26
             repeat
                 local ____e_visible_0
                 if e.visible then
@@ -255,13 +265,13 @@ function ____exports.BestTarget(bot)
                 end
                 local u = ____e_visible_0
                 if u == nil or e.position ~= nil and e.position > 3 then
-                    __continue24 = true
+                    __continue26 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local lane = laneOf(loc)
                 if lane == nil or lane == own then
-                    __continue24 = true
+                    __continue26 = true
                     break
                 end
                 local eta = d2(
@@ -269,7 +279,7 @@ function ____exports.BestTarget(bot)
                     loc
                 ) * s.PathFactor / speed
                 if eta > s.MaxEta then
-                    __continue24 = true
+                    __continue26 = true
                     break
                 end
                 local hp = u:GetHealth() / math.max(
@@ -278,7 +288,7 @@ function ____exports.BestTarget(bot)
                 )
                 local setup = heroesNear(UnitType.AlliedHeroes, loc, s.AllyRadius, bot) > 0
                 if not setup and hp >= 0.5 then
-                    __continue24 = true
+                    __continue26 = true
                     break
                 end
                 local score = (1 - hp) * 2
@@ -301,9 +311,9 @@ function ____exports.BestTarget(bot)
                         eta = eta
                     }
                 end
-                __continue24 = true
+                __continue26 = true
             until true
-            if not __continue24 then
+            if not __continue26 then
                 break
             end
         end

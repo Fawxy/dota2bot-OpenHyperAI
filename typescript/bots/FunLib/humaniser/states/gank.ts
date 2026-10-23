@@ -103,16 +103,30 @@ function laneOf(loc: Vector): Lane | undefined {
     return best;
 }
 
+const heroCache: Record<string, { at: number; list: Unit[] } | undefined> = {};
+
+/** GetUnitList per list once per frame (pre-flight M2: the scorer, commit check and target fn scan every frame). */
+function heroes(list: UnitType): Unit[] {
+    const now = DotaTime();
+    // The lists are relative to the calling team.
+    const key = `${GetTeam()}:${list}`;
+    const c = heroCache[key];
+    if (c !== undefined && c.at === now) return c.list;
+    const fresh = GetUnitList(list);
+    heroCache[key] = { at: now, list: fresh };
+    return fresh;
+}
+
 function heroesNear(list: UnitType, loc: Vector, radius: number, except?: Unit): number {
     let n = 0;
-    for (const u of GetUnitList(list)) {
+    for (const u of heroes(list)) {
         if (u !== except && u.IsAlive() && !u.IsIllusion() && d2(u.GetLocation(), loc) <= radius) n++;
     }
     return n;
 }
 
 function visibleUnit(pid: number): Unit | undefined {
-    for (const u of GetUnitList(UnitType.EnemyHeroes)) if (u.GetPlayerID() === pid && u.CanBeSeen() && u.IsAlive()) return u;
+    for (const u of heroes(UnitType.EnemyHeroes)) if (u.GetPlayerID() === pid && !u.IsIllusion() && u.CanBeSeen() && u.IsAlive()) return u;
     return undefined;
 }
 
@@ -284,8 +298,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
 function ended(bot: Unit, r: Lib.Result, info: { label?: string; steps: number }): void {
     const pid = bot.GetPlayerID();
     const a = attempts[pid];
+    // A preempt (retreat, a fight) ends the attempt too: restarting would pull the bot back into a gank it just had to
+    // leave (pre-flight M6). The cooldown then keeps it in lane.
     if (a === undefined || a.ended !== undefined) return;
-    if (r.reason === "preempted") return;
     a.ended = r.success ? r.message ?? "ok" : r.message ?? r.reason;
     const now = DotaTime();
     lastEnd[pid] = now;

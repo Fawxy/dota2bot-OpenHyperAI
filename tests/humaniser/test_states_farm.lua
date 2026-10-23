@@ -159,4 +159,21 @@ do
 	check("enemy: no attack orders after the end", attacksAfter == 0, attacksAfter)
 end
 
+-- After laning, with no trip, the shadow score still picks `farm` for an owned core, but no task is started for it
+-- (pre-flight H1: owned only while an SDK trip runs; before, a task started and was cancelled every second).
+do
+	local H, core = world({ travel = 10, t = 900, camps = {} })
+	LANING = false
+	core.mode = BotMode.Farm
+	local lines = capture(function()
+		for _ = 1, 100 do
+			H.States.Tick(core)
+			H.Tasks.Tick(core)
+			T = T + 0.1
+		end
+	end)
+	check("after laning: farm chosen (shadow score)", find(lines, "to=farm") ~= nil or (H.States.Describe(core) or ""):sub(1, 4) == "farm", H.States.Describe(core))
+	check("after laning: no farm task started without a trip", find(lines, "ev=state_start") == nil, find(lines, "ev=state_start"))
+end
+
 finish()

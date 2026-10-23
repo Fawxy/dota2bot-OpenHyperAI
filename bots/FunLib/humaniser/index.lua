@@ -311,7 +311,8 @@ if Telemetry.GuardsEnabled() then
         SetLaneSpot = none,
         Describe = none,
         IsEnabled = no,
-        WisdomOwned = no
+        WisdomOwned = no,
+        Owns = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(

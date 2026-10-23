@@ -126,7 +126,13 @@ function lib(): ReturnType<typeof Tasks.Loaded> {
     if (l === undefined || l.States === undefined) return undefined;
     if (!installed) {
         installed = true;
-        l.States.SetOwned((b, state) => owns(b as unknown as Unit, state));
+        // `farm` is owned only while an SDK trip runs: a posture owned all game would start a task the farm mode
+        // never steps outside trips, and the runner would cancel and restart it every second (pre-flight H1).
+        l.States.SetOwned((b, state) => {
+            const u = b as unknown as Unit;
+            if (!owns(u, state)) return false;
+            return state !== Farm.NAME || FarmPattern.Live(u)?.sdk === true;
+        });
     }
     return l;
 }

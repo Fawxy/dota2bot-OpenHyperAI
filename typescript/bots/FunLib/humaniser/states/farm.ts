@@ -6,7 +6,7 @@
  * next camp or the walk back to the lane front.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
@@ -17,6 +17,8 @@ export const NAME = "farm";
 
 /** Shadow (slice 2) scores, kept so ownership changes nothing but who executes the trip. */
 const TRIP = 0.7;
+const RETURN_REORDER = 0.5;
+const RETURN_MOVED = 200;
 
 /** Runs `g` until it ends or `stop()` says the trip it serves is over (OHA's Desire ended or redirected it). */
 function* until(g: Lib.TaskBody, stop: () => boolean): Lib.TaskBody {
@@ -32,6 +34,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const V = Tasks.Verbs()!;
     const u = bot as unknown as Lib.TaskUnit;
     const s = FarmPattern.Settings();
+    let lastFront: Vector | undefined;
+    let orderedAt = -math.huge;
     while (true) {
         const trip = FarmPattern.Live(bot);
         if (trip === undefined || trip.sdk !== true) {
@@ -49,7 +53,14 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         }
         if (trip.phase === "return") {
             ctx.label("return");
-            bot.Action_MoveToLocation(GetLaneFrontLocation(trip.team, trip.lane, 0));
+            // Re-ordered when the front moves or every RETURN_REORDER s, not every frame (pre-flight L13).
+            const front = GetLaneFrontLocation(trip.team, trip.lane, 0);
+            const now = DotaTime();
+            if (lastFront === undefined || now - orderedAt >= RETURN_REORDER || math.abs(front.x - lastFront.x) + math.abs(front.y - lastFront.y) > RETURN_MOVED) {
+                bot.Action_MoveToLocation(front);
+                lastFront = front;
+                orderedAt = now;
+            }
             yield;
             continue;
         }
