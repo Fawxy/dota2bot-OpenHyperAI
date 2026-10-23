@@ -152,6 +152,11 @@ export function Focus(bot: Unit): LuaMultiReturn<[boolean, boolean, number | und
     return $multi(s.focus, s.focus && s.preSpawn, s.focus && !s.preSpawn ? s.target : undefined);
 }
 
+/** Whether the mid's rune claim was up at its latest refresh (by Tick); reads only, so it never moves the refresh. */
+export function Claiming(bot: Unit): boolean {
+    return IsOn(bot) && states[bot.GetPlayerID()]?.claim === true;
+}
+
 export function Tick(bot: Unit): void {
     if (!IsOn(bot)) return;
     const s = current(bot);

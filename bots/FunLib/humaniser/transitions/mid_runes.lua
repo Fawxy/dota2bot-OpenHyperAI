@@ -304,6 +304,15 @@ function ____exports.Focus(bot)
     end
     return ____s_focus_1, ____temp_2, ____temp_0
 end
+--- Whether the mid's rune claim was up at its latest refresh (by Tick); reads only, so it never moves the refresh.
+function ____exports.Claiming(bot)
+    local ____exports_IsOn_result_5 = ____exports.IsOn(bot)
+    if ____exports_IsOn_result_5 then
+        local ____opt_3 = states[bot:GetPlayerID()]
+        ____exports_IsOn_result_5 = (____opt_3 and ____opt_3.claim) == true
+    end
+    return ____exports_IsOn_result_5
+end
 function ____exports.Tick(bot)
     if not ____exports.IsOn(bot) then
         return
