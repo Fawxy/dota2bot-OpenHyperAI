@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ ba258aad42c194bde4245b19873980df9a094e73. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ ef0b2d1a8f4beeb2ab821d2ddce40f3737a86d56. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1656,16 +1656,42 @@ function ____exports.cooldownLeft(bot)
     end
     return math.max(0, since) < idle and idle - math.max(0, since) or 0
 end
+local ____math_atan2_57 = math.atan2
+if ____math_atan2_57 == nil then
+    ____math_atan2_57 = math.atan
+end
+local atan2 = ____math_atan2_57
+--- Hero turn rate (radians per 0.03 s; heroes 0.5-0.9) and the angle an attack can start within.
+local TURN_RATE = 0.6
+local TURN_SLACK = 0.2
+--- Seconds to turn to face the creep (0 without GetFacing).
+function ____exports.turnTime(bot, creep)
+    local ____this_59
+    ____this_59 = bot
+    local ____opt_58 = ____this_59.GetFacing
+    local facing = ____opt_58 and ____opt_58(____this_59)
+    if facing == nil or facing == nil then
+        return 0
+    end
+    local a = bot:GetLocation()
+    local b = creep:GetLocation()
+    local want = atan2(b.y - a.y, b.x - a.x)
+    local d = math.abs(want - facing * math.pi / 180) % (2 * math.pi)
+    if d > math.pi then
+        d = 2 * math.pi - d
+    end
+    return 0.03 * math.max(0, d - TURN_SLACK) / TURN_RATE
+end
 function ____exports.ownHitTime(bot, creep)
-    local ____temp_59 = bot:GetAttackPoint()
-    local ____this_58
-    ____this_58 = bot
-    local ____opt_57 = ____this_58.GetAttackSpeed
-    local t = ____temp_59 / (____opt_57 and ____opt_57(____this_58) or 1) + ____exports.cooldownLeft(bot)
+    local ____temp_62 = bot:GetAttackPoint()
     local ____this_61
     ____this_61 = bot
-    local ____opt_60 = ____this_61.GetAttackProjectileSpeed
-    local speed = ____opt_60 and ____opt_60(____this_61) or 0
+    local ____opt_60 = ____this_61.GetAttackSpeed
+    local t = ____temp_62 / (____opt_60 and ____opt_60(____this_61) or 1) + ____exports.cooldownLeft(bot) + ____exports.turnTime(bot, creep)
+    local ____this_64
+    ____this_64 = bot
+    local ____opt_63 = ____this_64.GetAttackProjectileSpeed
+    local speed = ____opt_63 and ____opt_63(____this_64) or 0
     local range = bot:GetAttackRange()
     if range > RANGED_ABOVE and speed > 0 then
         local d = dist(
@@ -1714,10 +1740,10 @@ local function believe(bot, creep, withError, margin)
         margin = MIN_MARGIN
     end
     local tHit = ____exports.ownHitTime(bot, creep)
-    local ____this_63
-    ____this_63 = creep
-    local ____opt_62 = ____this_63.GetHealthRegen
-    local regen = ____opt_62 and ____opt_62(____this_63) or 0
+    local ____this_66
+    ____this_66 = creep
+    local ____opt_65 = ____this_66.GetHealthRegen
+    local regen = ____opt_65 and ____opt_65(____this_66) or 0
     local hp = creep:GetHealth()
     local visible = hp + regen * tHit - ____exports.incomingDamage(
         bot,
@@ -1738,13 +1764,22 @@ local function believe(bot, creep, withError, margin)
             believed = visible + regen * r.shift - ____exports.incomingDps(bot, creep) * r.shift
         end
     end
+    local ____tHit_72 = tHit
+    local ____temp_73 = visible > 0
+    local ____believed_74 = believed
+    local ____physical_71 = physical
+    local ____creep_70 = creep
+    local ____temp_69 = bot:GetAttackDamage()
+    local ____this_68
+    ____this_68 = bot
+    local ____opt_67 = ____this_68.GetBaseDamageVariance
     return {
-        tHit = tHit,
-        survives = visible > 0,
-        hpAtHit = believed,
-        mine = physical(
-            creep,
-            bot:GetAttackDamage() * (1 + eps * width)
+        tHit = ____tHit_72,
+        survives = ____temp_73,
+        hpAtHit = ____believed_74,
+        mine = ____physical_71(
+            ____creep_70,
+            (____temp_69 - (____opt_67 and ____opt_67(____this_68) or 0)) * (1 + eps * width)
         )
     }
 end
@@ -1753,20 +1788,20 @@ local function due(b)
     return b.survives and b.hpAtHit <= b.mine
 end
 local function isRangedCreep(c)
-    local ____this_65
-    ____this_65 = c
-    local ____opt_64 = ____this_65.GetUnitName
-    local name = ____opt_64 and ____opt_64(____this_65)
+    local ____this_76
+    ____this_76 = c
+    local ____opt_75 = ____this_76.GetUnitName
+    local name = ____opt_75 and ____opt_75(____this_76)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_67
-    ____this_67 = c
-    local ____opt_66 = ____this_67.GetMaxHealth
-    local max = ____opt_66 and ____opt_66(____this_67)
+    local ____this_78
+    ____this_78 = c
+    local ____opt_77 = ____this_78.GetMaxHealth
+    local max = ____opt_77 and ____opt_77(____this_78)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -1792,16 +1827,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_69
-    ____this_69 = bot
-    local ____opt_68 = ____this_69.GetNearbyHeroes
-    local heroes = ____opt_68 and ____opt_68(____this_69, 1200, true, 0)
+    local ____this_80
+    ____this_80 = bot
+    local ____opt_79 = ____this_80.GetNearbyHeroes
+    local heroes = ____opt_79 and ____opt_79(____this_80, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_70 = h.GetAttackTarget
-        if (____opt_70 and ____opt_70(h)) == creep then
+        local ____opt_81 = h.GetAttackTarget
+        if (____opt_81 and ____opt_81(h)) == creep then
             return true
         end
     end
@@ -1824,14 +1859,14 @@ local function etaOf(bot, c, walkSpeed)
     if margin <= 0 then
         return {0, walk}
     end
-    local ____exports_incomingDps_result_75 = ____exports.incomingDps(bot, c)
-    local ____math_max_74 = math.max
-    local ____this_73
-    ____this_73 = c
-    local ____opt_72 = ____this_73.GetHealthRegen
-    local dps = ____exports_incomingDps_result_75 + ____math_max_74(
+    local ____exports_incomingDps_result_86 = ____exports.incomingDps(bot, c)
+    local ____math_max_85 = math.max
+    local ____this_84
+    ____this_84 = c
+    local ____opt_83 = ____this_84.GetHealthRegen
+    local dps = ____exports_incomingDps_result_86 + ____math_max_85(
         0,
-        -(____opt_72 and ____opt_72(____this_73) or 0)
+        -(____opt_83 and ____opt_83(____this_84) or 0)
     )
     if dps <= 0 then
         return nil
@@ -1858,13 +1893,13 @@ function ____exports.nextLastHit(bot, opts)
     local within = opts.within or 1
     local rangedBias = opts.rangedBias or 0.4
     local lhBias = opts.lastHitBias or 0.3
-    local ____math_max_78 = math.max
-    local ____this_77
-    ____this_77 = bot
-    local ____opt_76 = ____this_77.GetCurrentMovementSpeed
-    local speed = ____math_max_78(
+    local ____math_max_89 = math.max
+    local ____this_88
+    ____this_88 = bot
+    local ____opt_87 = ____this_88.GetCurrentMovementSpeed
+    local speed = ____math_max_89(
         100,
-        ____opt_76 and ____opt_76(____this_77) or 300
+        ____opt_87 and ____opt_87(____this_88) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -3825,19 +3860,40 @@ function ____exports.Forget(bot)
     cancelOurs(bot, s, "forgotten")
     bots[bot:GetPlayerID()] = nil
 end
+local priorFn
+--- A prior on every raw score (e.g. `Phase.Prior()`), applied before stickiness and the job-break check; undefined
+-- from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
+function ____exports.SetPrior(fn)
+    priorFn = fn
+end
 local function scoreOf(bot, spec)
     local ok, v = pcall(function() return spec.score(bot) end)
-    if ok then
+    if not ok then
+        local ____opt_0 = getAdapter()
+        if ____opt_0 ~= nil then
+            ____opt_0.log(
+                "states",
+                (("score " .. spec.name) .. " error: ") .. tostring(v)
+            )
+        end
+        return nil
+    end
+    local prior = priorFn
+    if v == nil or prior == nil then
         return v
     end
-    local ____opt_0 = getAdapter()
-    if ____opt_0 ~= nil then
-        ____opt_0.log(
+    local pok, pv = pcall(function() return prior(bot, spec.name, v) end)
+    if pok then
+        return pv
+    end
+    local ____opt_2 = getAdapter()
+    if ____opt_2 ~= nil then
+        ____opt_2.log(
             "states",
-            (("score " .. spec.name) .. " error: ") .. tostring(v)
+            (("prior " .. spec.name) .. " error: ") .. tostring(pv)
         )
     end
-    return nil
+    return v
 end
 local function jobActive(s)
     return s.current ~= nil and s.current.kind == "job" and s.owned and not s.jobEnded
@@ -3876,19 +3932,19 @@ local function select(bot, s, now)
     local curRaw
     for ____, spec in ipairs(s.specs) do
         do
-            local __continue28
+            local __continue32
             repeat
                 if (s.cooldownUntil[spec.name] or -math.huge) > now then
-                    __continue28 = true
+                    __continue32 = true
                     break
                 end
                 if spec == cur and s.jobEnded then
-                    __continue28 = true
+                    __continue32 = true
                     break
                 end
                 local raw = scoreOf(bot, spec)
                 if raw == nil then
-                    __continue28 = true
+                    __continue32 = true
                     break
                 end
                 if spec == cur then
@@ -3900,9 +3956,9 @@ local function select(bot, s, now)
                     best = spec
                     bestRaw = raw
                 end
-                __continue28 = true
+                __continue32 = true
             until true
-            if not __continue28 then
+            if not __continue32 then
                 break
             end
         end
@@ -4049,9 +4105,9 @@ local function maybeStart(bot, s, now)
                     r,
                     info
                 )
-                local ____opt_8 = spec.onEnd
-                if ____opt_8 ~= nil then
-                    ____opt_8(r, info)
+                local ____opt_10 = spec.onEnd
+                if ____opt_10 ~= nil then
+                    ____opt_10(r, info)
                 end
             end
         },
@@ -4112,6 +4168,503 @@ function ____exports.Current(bot)
         running = ours(bot, s),
         starts = s.starts
     }
+end
+return ____exports
+ end,
+["phase"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____adapter = require("adapter")
+local getAdapter = ____adapter.get
+local config = {
+    interval = 0.5,
+    margin = 0.1,
+    confirm = 2,
+    urgentConfirm = 1,
+    minDwell = 20,
+    blend = 4
+}
+function ____exports.configure(c)
+    for k, v in pairs(c) do
+        config[k] = v
+    end
+end
+local DOTA_DEFAULTS = {laningEnd = 600, transitionEnd = 900, lateFrom = 2100}
+local function t1Down(s)
+    local t = s.towers
+    return t == nil and 0 or 6 - t.ours.t1 - t.theirs.t1
+end
+local function anyBelow(s, tier)
+    local t = s.towers
+    return t ~= nil and (t.ours[tier] < 3 or t.theirs[tier] < 3)
+end
+--- The default Dota set. Scores are fixed levels except push (advantage) and defend (threat). Bias keys are the
+-- team plan's state names (laning, pull, stack, rotate, farm, gank).
+function ____exports.DotaPhases(opts)
+    local o = __TS__ObjectAssign({}, DOTA_DEFAULTS, opts or ({}))
+    local function laning(s)
+        return s.time < o.laningEnd and t1Down(s) == 0
+    end
+    return {
+        {
+            name = "laning",
+            score = function(s) return laning(s) and 0.6 or nil end
+        },
+        {
+            name = "transition",
+            score = function(s) return not laning(s) and s.time < o.transitionEnd and t1Down(s) < 4 and not anyBelow(s, "t2") and 0.5 or nil end,
+            bias = {
+                laning = 0.6,
+                pull = 0.7,
+                rotate = 1.1,
+                farm = 1.3,
+                gank = 1.2
+            }
+        },
+        {
+            name = "midgame",
+            score = function(s)
+                local ____laning_result_0
+                if laning(s) then
+                    ____laning_result_0 = nil
+                else
+                    ____laning_result_0 = 0.4
+                end
+                return ____laning_result_0
+            end,
+            bias = {
+                laning = 0.3,
+                pull = 0.5,
+                stack = 1.2,
+                farm = 1.4,
+                gank = 1.1
+            },
+            desire = {farm = 1.2}
+        },
+        {
+            name = "push",
+            score = function(s)
+                if laning(s) then
+                    return nil
+                end
+                if s.alive ~= nil and s.alive.ours < 3 then
+                    return nil
+                end
+                local adv = 0
+                if s.alive ~= nil then
+                    adv = adv + 0.15 * math.max(0, s.alive.ours - s.alive.theirs)
+                end
+                local nw = s.netWorth
+                if nw ~= nil and nw.theirs > 0 then
+                    adv = adv + math.min(
+                        0.3,
+                        math.max(0, (nw.ours - nw.theirs) / nw.theirs) * 1.5
+                    )
+                end
+                local w = s.waves
+                if w ~= nil and #w > 0 then
+                    local sum = 0
+                    for ____, f in ipairs(w) do
+                        sum = sum + f
+                    end
+                    adv = adv + 0.2 * math.max(0, sum / #w)
+                end
+                return adv >= 0.2 and math.min(1, 0.3 + adv) or nil
+            end,
+            bias = {
+                laning = 0.3,
+                pull = 0.3,
+                stack = 0.5,
+                farm = 0.6,
+                gank = 0.8
+            },
+            desire = {push = 1.5, farm = 0.6}
+        },
+        {
+            name = "defend",
+            urgent = true,
+            score = function(s)
+                local th = s.threat
+                if th == nil or th.heroes < 2 then
+                    return nil
+                end
+                if laning(s) and th.tier <= 1 and th.heroes < 3 then
+                    return nil
+                end
+                return math.min(1, 0.75 + 0.05 * (th.heroes - 2) + (th.tier >= 3 and 0.05 or 0))
+            end,
+            bias = {
+                laning = 0.5,
+                pull = 0.3,
+                stack = 0.3,
+                farm = 0.4,
+                gank = 0.5,
+                rotate = 0.6
+            },
+            desire = {defend = 1.6, farm = 0.5, push = 0.6}
+        },
+        {
+            name = "late",
+            score = function(s) return not laning(s) and (s.time >= o.lateFrom or anyBelow(s, "t3")) and 0.55 or nil end,
+            bias = {laning = 0.2, pull = 0.2, stack = 0.6, farm = 1.1},
+            desire = {push = 1.2, farm = 0.8}
+        }
+    }
+end
+local teams = {}
+function ____exports.Reset()
+    teams = {}
+end
+local function teamOf(team)
+    local t = teams[team]
+    if t == nil then
+        t = {
+            specs = ____exports.DotaPhases(),
+            since = 0,
+            pendingSince = 0,
+            released = false
+        }
+        teams[team] = t
+    end
+    return t
+end
+--- Sets a team's phases (default: `DotaPhases()`). The current phase is kept if a spec of that name remains.
+function ____exports.define(team, specs)
+    local t = teamOf(team)
+    t.specs = specs
+    local ____opt_1 = t.current
+    local name = ____opt_1 and ____opt_1.name
+    local ____temp_3
+    if name ~= nil then
+        ____temp_3 = __TS__ArrayFind(
+            specs,
+            function(____, s) return s.name == name end
+        )
+    else
+        ____temp_3 = nil
+    end
+    t.current = ____temp_3
+    t.previous = nil
+    t.pending = nil
+end
+local function log(msg)
+    local ____opt_4 = getAdapter()
+    if ____opt_4 ~= nil then
+        ____opt_4.log("phase", msg)
+    end
+end
+local function emit(fields)
+    local a = getAdapter()
+    if a == nil then
+        return
+    end
+    if a.event ~= nil then
+        a.event("phase", fields)
+        return
+    end
+    local parts = {"ev=phase"}
+    for ____, ____value in ipairs(fields) do
+        local k = ____value[1]
+        local v = ____value[2]
+        if v ~= nil then
+            parts[#parts + 1] = (k .. "=") .. tostring(v)
+        end
+    end
+    a.log(
+        "phase",
+        table.concat(parts, " ")
+    )
+end
+local function change(team, t, next, score, why, now)
+    local prev = t.current
+    t.previous = prev
+    t.current = next
+    t.since = now
+    t.score = score
+    t.pending = nil
+    t.released = false
+    local ____emit_11 = emit
+    local ____array_10 = __TS__SparseArrayNew(
+        {"team", team},
+        {"from", prev and prev.name or "none"},
+        {"to", next.name},
+        {"score", score},
+        {"why", why}
+    )
+    local ____opt_8 = t.order
+    __TS__SparseArrayPush(____array_10, {"order", ____opt_8 and ____opt_8.source})
+    ____emit_11({__TS__SparseArraySpread(____array_10)})
+end
+local function evaluate(team, t, snap, now)
+    local cur = t.current
+    local best
+    local bestRaw
+    local bestEff = -math.huge
+    local curRaw
+    for ____, spec in ipairs(t.specs) do
+        do
+            local __continue37
+            repeat
+                local ok, v = pcall(function() return spec.score(snap) end)
+                if not ok then
+                    log((("score " .. spec.name) .. " error: ") .. tostring(v))
+                end
+                local ____ok_12
+                if ok then
+                    ____ok_12 = v
+                else
+                    ____ok_12 = nil
+                end
+                local raw = ____ok_12
+                if raw == nil then
+                    __continue37 = true
+                    break
+                end
+                if spec == cur then
+                    curRaw = raw
+                end
+                local eff = spec == cur and raw + config.margin or raw
+                if eff > bestEff then
+                    bestEff = eff
+                    best = spec
+                    bestRaw = raw
+                end
+                __continue37 = true
+            until true
+            if not __continue37 then
+                break
+            end
+        end
+    end
+    if best == nil then
+        return
+    end
+    if cur == nil then
+        change(
+            team,
+            t,
+            best,
+            bestRaw,
+            "start",
+            now
+        )
+        return
+    end
+    if best == cur then
+        t.score = curRaw
+        t.pending = nil
+        return
+    end
+    local applies = curRaw ~= nil
+    local urgent = best.urgent == true
+    if applies and not urgent and not t.released and now - t.since < config.minDwell then
+        t.pending = nil
+        return
+    end
+    if t.pending ~= best then
+        t.pending = best
+        t.pendingSince = now
+    end
+    if now - t.pendingSince < (urgent and config.urgentConfirm or config.confirm) then
+        return
+    end
+    change(
+        team,
+        t,
+        best,
+        bestRaw,
+        t.released and "released" or (applies and "best" or "n/a"),
+        now
+    )
+end
+--- From the host's tick, per team (any frame rate). Re-evaluates at most every `interval`, calling `build` only
+-- then. Returns the current phase name (undefined until a phase applies).
+function ____exports.Tick(team, build)
+    local a = getAdapter()
+    if a == nil then
+        return nil
+    end
+    local t = teamOf(team)
+    local now = a.now()
+    if t.order ~= nil and now >= t.order["until"] then
+        t.order = nil
+        t.released = true
+        t.lastEval = nil
+    end
+    if t.order == nil and (t.lastEval == nil or now - t.lastEval >= config.interval) then
+        t.lastEval = now
+        local ok, snap = pcall(build)
+        if ok then
+            evaluate(team, t, snap, now)
+        else
+            log("snapshot error: " .. tostring(snap))
+        end
+    end
+    local ____opt_13 = t.current
+    return ____opt_13 and ____opt_13.name
+end
+--- Forces `phase` for `secs` (team orders bus, a human's call). False for an unknown phase name.
+function ____exports.Order(team, phase, secs, source)
+    local t = teamOf(team)
+    local spec = __TS__ArrayFind(
+        t.specs,
+        function(____, s) return s.name == phase end
+    )
+    local a = getAdapter()
+    if spec == nil or a == nil then
+        return false
+    end
+    local now = a.now()
+    t.order = {phase = spec, ["until"] = now + secs, source = source}
+    if t.current ~= spec then
+        change(
+            team,
+            t,
+            spec,
+            nil,
+            "order",
+            now
+        )
+    end
+    return true
+end
+function ____exports.ClearOrder(team)
+    local t = teams[team]
+    if t == nil or t.order == nil then
+        return
+    end
+    t.order = nil
+    t.released = true
+    t.lastEval = nil
+end
+function ____exports.Current(team)
+    local t = teams[team]
+    if t == nil or t.current == nil then
+        return nil
+    end
+    local ____t_current_name_19 = t.current.name
+    local ____t_since_20 = t.since
+    local ____t_score_21 = t.score
+    local ____opt_15 = t.order
+    local ____temp_22 = ____opt_15 and ____opt_15.source
+    local ____opt_17 = t.order
+    return {
+        name = ____t_current_name_19,
+        since = ____t_since_20,
+        score = ____t_score_21,
+        ordered = ____temp_22,
+        ["until"] = ____opt_17 and ____opt_17["until"]
+    }
+end
+local function blended(t, pick, key)
+    if t == nil or t.current == nil then
+        return 1
+    end
+    local function of(p)
+        if p == nil then
+            return 1
+        end
+        local m = pick(p)
+        if m == nil then
+            return 1
+        end
+        return m[key] or m["*"] or 1
+    end
+    local to = of(t.current)
+    if t.previous == nil or config.blend <= 0 then
+        return to
+    end
+    local ____opt_23 = getAdapter()
+    local now = ____opt_23 and ____opt_23.now() or t.since
+    local f = math.min(
+        1,
+        math.max(0, (now - t.since) / config.blend)
+    )
+    local from = of(t.previous)
+    return from + (to - from) * f
+end
+--- The current multiplier for a state's score (1 with no phase).
+function ____exports.Bias(team, state)
+    return blended(
+        teams[team],
+        function(p) return p.bias end,
+        state
+    )
+end
+--- The current multiplier for a host mode desire key (1 with no phase).
+function ____exports.Desire(team, key)
+    return blended(
+        teams[team],
+        function(p) return p.desire end,
+        key
+    )
+end
+--- A state score with the team's phase prior applied, clamped to [0, 1]; undefined stays undefined.
+function ____exports.Apply(team, state, raw)
+    if raw == nil then
+        return nil
+    end
+    return math.min(
+        1,
+        math.max(
+            0,
+            raw * ____exports.Bias(team, state)
+        )
+    )
+end
+--- A `States.SetPrior` function: the bot's team phase prior on every state score. Bots without GetTeam: raw.
+function ____exports.Prior()
+    return function(bot, state, raw)
+        local team = bot.GetTeam ~= nil and bot:GetTeam() or nil
+        return team == nil and raw or ____exports.Apply(team, state, raw)
+    end
 end
 return ____exports
  end,
@@ -4572,6 +5125,7 @@ return ____exports
 local ____exports = {}
 local Tasks = require("runner")
 local States = require("states")
+local Phase = require("phase")
 do
     local ____support = require("support")
     local Supported = ____support.Supported
@@ -4584,6 +5138,7 @@ do
 end
 ____exports.Tasks = Tasks
 ____exports.States = States
+____exports.Phase = Phase
 do
     local ____export = require("types")
     for ____exportKey, ____exportValue in pairs(____export) do
