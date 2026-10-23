@@ -66,26 +66,45 @@ function parseArgs(argv) {
 
 const LANING_COLS = ['lh', 'dn', 'kills', 'deaths', 'laningSec', 'retreatSec', 'retreatHealthySec', 'cautiousSec', 'commits', 'trades', 'pullsStarted', 'stacksStarted', 'rotations'];
 
-// Median position over 2:00-6:00. The bot line's pos is read at its first tick, before roles settle and before
-// a human's !pos swap, so the lane a bot actually played is shown beside it.
+// Rough map zones, close to research/replays.md's (OpenDota lane_pos): bases, then the three lane bands, then river.
+function zoneOf(x, y) {
+    if (x < -4500 && y < -4000) return 'base';
+    if (x > 4000 && y > 3500) return 'base';
+    if (Math.abs(x - y) < 2000) return 'mid';
+    if (x < -5000 || y > 5200) return 'top';
+    if (x > 5000 || y < -5200) return 'bot';
+    if (Math.abs(x + y) < 1600) return 'river';
+    return 'jungle';
+}
+
+// The lane a bot actually played: its most common lane zone over 2:00-6:00. The bot line's pos is read at its
+// first tick, before roles settle and before a human's !pos swap, so it is not trusted for this.
 function playedLane(bot) {
-    const s = bot.snaps.filter(x => x.t >= 120 && x.t <= 360 && x.alive === 1);
-    if (s.length === 0) return '-';
-    const med = xs => xs.slice().sort((a, b) => a - b)[xs.length >> 1];
-    const x = med(s.map(p => p.x));
-    const y = med(s.map(p => p.y));
-    if (Math.abs(x - y) < 3000) return Math.hypot(x, y) > 6500 ? 'base' : 'mid';
-    return y > x ? 'top' : 'bot';
+    const n = {};
+    for (const p of bot.snaps) if (p.t >= 120 && p.t <= 360 && p.alive === 1) {
+        const z = zoneOf(p.x, p.y);
+        if (z === 'top' || z === 'mid' || z === 'bot') n[z] = (n[z] || 0) + 1;
+    }
+    const best = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
+    return best || '-';
+}
+
+/** Share of alive snapshots from the first one to `until` in the played lane's zone (research: cores 78-84%, supports 64%). */
+function ownLaneShare(bot, until) {
+    const lane = playedLane(bot);
+    const s = bot.snaps.filter(p => p.t <= until && p.alive === 1);
+    if (s.length === 0 || lane === '-') return '-';
+    return ((100 * s.filter(p => zoneOf(p.x, p.y) === lane).length) / s.length).toFixed(0);
 }
 
 function laningTable(game, until) {
     const m = laningMetrics(game, { until });
     const team = t => (t === 2 ? 'rad' : t === 3 ? 'dire' : String(t));
     const bots = m.bots.slice().sort((a, b) => (a.team === b.team ? a.pid - b.pid : a.team - b.team));
-    const rows = [['team', 'pos@load', 'lane', 'player', ...LANING_COLS]];
+    const rows = [['team', 'pos@load', 'lane', 'player', 'ownLane%', ...LANING_COLS]];
     for (const b of bots) {
         const cells = LANING_COLS.map(k => (Number.isInteger(b[k]) ? b[k] : b[k].toFixed(1)));
-        rows.push([team(b.team), b.pos ?? '-', playedLane(game.bots[b.pid]), `${b.hero}[${b.pid}]`, ...cells]);
+        rows.push([team(b.team), b.pos ?? '-', playedLane(game.bots[b.pid]), `${b.hero}[${b.pid}]`, ownLaneShare(game.bots[b.pid], until), ...cells]);
     }
     const head = `laning metrics to ${Math.floor(until / 60)}:${String(until % 60).padStart(2, '0')}, build ${m.build}${m.complete ? '' : ' (game ends before this)'}`;
     return head + '\n' + report.table(rows);

@@ -442,10 +442,11 @@ local function botFields(bot, ctx)
 end
 local function maybeProfile(bot, s)
     if not Config.IsEnabled() then
-        if s.profileKey ~= nil then
+        local offKey = "off|" .. tostring(LaneConfig.PositionOf(bot))
+        if s.profileKey == offKey then
             return
         end
-        s.profileKey = "off"
+        s.profileKey = offKey
         ____exports.Event(
             "bot",
             {
@@ -482,7 +483,13 @@ local function maybeProfile(bot, s)
     end
     local p = Profile.Get(bot)
     local cfg = Config.Get().Profile
-    local key = string.format("%.3f|%.3f|%.3f", p.skill, p.noticeBase, p.reactBase)
+    local key = string.format(
+        "%.3f|%.3f|%.3f|%s",
+        p.skill,
+        p.noticeBase,
+        p.reactBase,
+        tostring(LaneConfig.PositionOf(bot))
+    )
     if key == s.profileKey then
         return
     end

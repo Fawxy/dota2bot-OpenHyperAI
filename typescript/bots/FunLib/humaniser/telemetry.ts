@@ -342,8 +342,9 @@ function botFields(bot: Unit, ctx: BotContext | undefined): [string, any][] {
 function maybeProfile(bot: Unit, s: BotState): void {
     // Profile.Get draws RandomFloat, which a humaniser-off game must not do; skill is read-only.
     if (!Config.IsEnabled()) {
-        if (s.profileKey !== undefined) return;
-        s.profileKey = "off";
+        const offKey = "off|" + tostring(LaneConfig.PositionOf(bot));
+        if (s.profileKey === offKey) return;
+        s.profileKey = offKey;
         Event("bot", [
             ["pid", bot.GetPlayerID()],
             ["hero", heroName(bot)],
@@ -359,7 +360,8 @@ function maybeProfile(bot: Unit, s: BotState): void {
     }
     const p = Profile.Get(bot);
     const cfg = Config.Get().Profile;
-    const key = string.format("%.3f|%.3f|%.3f", p.skill, p.noticeBase, p.reactBase);
+    // pos is part of the key: positions settle after the first tick (role assignment, a human's !pos swap).
+    const key = string.format("%.3f|%.3f|%.3f|%s", p.skill, p.noticeBase, p.reactBase, tostring(LaneConfig.PositionOf(bot)));
     if (key === s.profileKey) return;
     s.profileKey = key;
     Event("bot", [
