@@ -92,6 +92,7 @@ local function load(opts)
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
 		Intent = { Resolve = function(_, _, d) return d end },
+		States = { MayOwn = function() return false end, SetLaneSpot = function() end, Step = function() return false end },
 	}
 	local J = setmetatable({
 		GetPosition = function(u) return u.pos end,

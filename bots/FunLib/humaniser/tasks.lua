@@ -4,6 +4,7 @@ local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local attempted = false
 local lib
@@ -40,6 +41,8 @@ local adapter = {
     end,
     now = function() return DotaTime() end,
     log = function(tag, msg) return HDebug.Log(tag, msg) end,
+    event = function(name, fields) return Telemetry.Event(name, fields) end,
+    vector = function(x, y, z) return Vector(x, y, z) end,
     enabled = function() return ____exports.Enabled() end
 }
 local function loadBundle()
@@ -64,6 +67,10 @@ local function loadBundle()
         (rawPrint or print)((support .. "fail ") .. tostring(res))
     end
     return lib
+end
+--- The loaded bundle (loading it on first use), or undefined when tasks are off or it failed to load.
+function ____exports.Loaded()
+    return loadBundle()
 end
 --- True once the bundle has loaded and tasks are enabled.
 function ____exports.IsActive()

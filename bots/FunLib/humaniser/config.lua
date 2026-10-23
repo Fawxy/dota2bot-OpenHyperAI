@@ -1,4 +1,16 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.DEFAULTS = {
@@ -42,7 +54,14 @@ ____exports.DEFAULTS = {
     FarmPattern = {Enable = true},
     Trainer = {LastHit = {Enable = true}},
     Telemetry = {Enable = false},
-    Tasks = {Enable = true, Demo = false, Stack = false}
+    Tasks = {Enable = true, Demo = false, Stack = false},
+    States = {
+        Enable = false,
+        Shadow = true,
+        Own = {laning = {2}},
+        Teams = "allies",
+        LanePosEvery = 2
+    }
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
@@ -69,6 +88,18 @@ local cached
 function ____exports.Get()
     if cached == nil then
         local merged = merge(____exports.DEFAULTS, Customize.Humaniser)
+        local ____opt_4 = Customize.Humaniser
+        if ____opt_4 ~= nil then
+            ____opt_4 = ____opt_4.States
+        end
+        local ____opt_result_6
+        if ____opt_4 ~= nil then
+            ____opt_result_6 = ____opt_4.Own
+        end
+        local own = ____opt_result_6
+        if own ~= nil then
+            merged.States = __TS__ObjectAssign({}, merged.States, {Own = own})
+        end
         if Customize.Enable == false then
             merged.Enable = false
             merged.Telemetry = ____exports.DEFAULTS.Telemetry

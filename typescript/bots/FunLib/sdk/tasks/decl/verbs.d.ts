@@ -56,3 +56,24 @@ export interface AttackConfirmOpts {
  * a new one picked and ordered the next frame, which restarts the `confirmFor` clock.
  */
 export declare function attackAndConfirm(bot: TaskUnit, pick: (this: void) => TaskTarget | undefined, opts: AttackConfirmOpts): TaskBody;
+export interface HoldOpts {
+    /** Distance from the target spot that counts as there. Default 100. */
+    tolerance?: number;
+    /** Seconds between picks of a new spot while the point stays put. Default 1. */
+    repath?: number;
+    /** Fraction of `repath` the interval varies by, uniformly (0.3 = +-15%). Default 0.3. */
+    jitter?: number;
+    /** Each spot is the point plus a random offset of up to this many units. Default 50. */
+    scatter?: number;
+    /** Adapter hold tag reported every frame the bot stands still. */
+    hold?: string;
+    deadline?: number;
+    interruptIf?: (this: void) => boolean;
+}
+/**
+ * Posture verb: keeps the bot within `tolerance` of `point()` (re-read every frame) and never ends `ok` by itself.
+ * A new spot is picked when the point moves more than half the tolerance or every `repath` s (+jitter). An order
+ * is issued on every resume (walk to the spot, or stand on the bot's own location), so an order the host gave
+ * between resumes never sticks. `point()` returning undefined stands the bot still.
+ */
+export declare function holdAt(bot: TaskUnit, point: (this: void) => Vec | undefined, opts?: HoldOpts): TaskBody;

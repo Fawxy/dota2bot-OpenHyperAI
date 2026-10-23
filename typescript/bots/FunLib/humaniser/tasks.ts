@@ -11,6 +11,7 @@ import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Utils from "bots/FunLib/utils";
 
 type Bundle = typeof Lib;
@@ -40,6 +41,8 @@ const adapter: Lib.Adapter = {
     // DotaTime, the clock camp-job plans are timed in; the runner and verbs only ever use differences of it.
     now: () => DotaTime(),
     log: (tag, msg) => HDebug.Log(tag, msg),
+    event: (name, fields) => Telemetry.Event(name, fields as [string, any][]),
+    vector: (x, y, z) => Vector(x, y, z),
     enabled: () => Enabled(),
 };
 
@@ -59,6 +62,11 @@ function loadBundle(): Bundle | undefined {
         (rawPrint ?? print)(`${support}fail ${tostring(res)}`);
     }
     return lib;
+}
+
+/** The loaded bundle (loading it on first use), or undefined when tasks are off or it failed to load. */
+export function Loaded(): Bundle | undefined {
+    return loadBundle();
 }
 
 /** True once the bundle has loaded and tasks are enabled. */

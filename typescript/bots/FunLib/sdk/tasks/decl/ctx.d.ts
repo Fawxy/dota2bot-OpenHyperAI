@@ -17,6 +17,7 @@ export interface Ctx {
     must(this: void, g: TaskBody, message?: string): TaskBody;
     walkTo(this: void, ...a: Opt<typeof Verbs.walkTo>): TaskBody;
     walkPath(this: void, ...a: Opt<typeof Verbs.walkPath>): TaskBody;
+    holdAt(this: void, ...a: Opt<typeof Verbs.holdAt>): TaskBody;
     wait(this: void, ...a: Opt<typeof Verbs.wait>): TaskBody;
     waitUntil(this: void, ...a: Opt<typeof Verbs.waitUntil>): TaskBody;
     retreatTo(this: void, ...a: Opt<typeof Verbs.retreatTo>): TaskBody;

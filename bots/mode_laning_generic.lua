@@ -69,7 +69,9 @@ local function CoreLeaves(creep)
 	if bHumaniserOwned then return not CoreCanTake(creep) end
 	return not J.IsThereNonSelfCoreNearby(700)
 end
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest
+-- Behaviour states (team slice 1): the `laning` state's SDK body can replace PositionThink() below.
+local States = J.Humaniser.States
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot)
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
@@ -318,7 +320,8 @@ local function DenyThink()
 	return true
 end
 
-local function PositionThink()
+local function PositionTarget()
+	if botAssignedLane == nil then return nil end
 	local fLaneFrontAmount = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
 	local fLaneFrontAmount_enemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
 
@@ -330,10 +333,16 @@ local function PositionThink()
 	end
 
 	if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end
-	bot:Action_MoveToLocation(target_loc + RandomVector(50))
+	return target_loc
+end
+
+local function PositionThink()
+	local target_loc = PositionTarget()
+	if target_loc ~= nil then bot:Action_MoveToLocation(target_loc + RandomVector(50)) end
 end
 
 if bOwnsThink then
+	States.SetLaneSpot(bot, PositionTarget)
 	function Think()
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
@@ -360,7 +369,7 @@ if bOwnsThink then
 			local_mode_laning_generic.Think()
 		end
 
-		PositionThink()
+		if not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 	end
 end
 

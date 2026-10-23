@@ -68,6 +68,8 @@ export const DEFAULTS = {
     Telemetry: { Enable: false } as Record<string, any>,
     // tasks: coroutine task runner spike (see humaniser/tasks.ts). Stack: run camp stacks as a task (stack_task.ts).
     Tasks: { Enable: true, Demo: false, Stack: false } as Record<string, any>,
+    // Behaviour-state layer on the SDK's States (humaniser/states). Off: no selection, telemetry or tasks.
+    States: { Enable: false, Shadow: true, Own: { laning: [2] }, Teams: "allies", LanePosEvery: 2 } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
@@ -88,6 +90,9 @@ let cached: HumaniserConfig | undefined;
 export function Get(): HumaniserConfig {
     if (cached === undefined) {
         const merged = merge(DEFAULTS, Customize.Humaniser) as HumaniserConfig;
+        // A States.Own list replaces the default one, so removing a position in Customize really removes it.
+        const own = (Customize.Humaniser as any)?.States?.Own;
+        if (own !== undefined) merged.States = { ...merged.States, Own: own };
         // Customize.Enable = false turns off every custom setting, humaniser and telemetry included.
         if (Customize.Enable === false) {
             merged.Enable = false;

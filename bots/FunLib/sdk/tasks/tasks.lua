@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 03bfea6e9b3bb264fb4456cc2d8f3778437641c2. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ edeaef68a855042e47f5ca84247d1a09ef2daf52. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -628,6 +628,67 @@ ____exports.attackAndConfirm = __TS__Generator(function(bot, pick, opts)
         coroutine.yield()
     end
 end)
+local function scattered(p, r)
+    if r <= 0 then
+        return p
+    end
+    local a = math.random() * 2 * math.pi
+    local d = math.random() * r
+    local x = p.x + math.cos(a) * d
+    local y = p.y + math.sin(a) * d
+    local make = get().vector
+    return make ~= nil and make(x, y, p.z or 0) or ({x = x, y = y, z = p.z})
+end
+--- Posture verb: keeps the bot within `tolerance` of `point()` (re-read every frame) and never ends `ok` by itself.
+-- A new spot is picked when the point moves more than half the tolerance or every `repath` s (+jitter). An order
+-- is issued on every resume (walk to the spot, or stand on the bot's own location), so an order the host gave
+-- between resumes never sticks. `point()` returning undefined stands the bot still.
+____exports.holdAt = __TS__Generator(function(bot, point, opts)
+    if opts == nil then
+        opts = {}
+    end
+    local tolerance = opts.tolerance or 100
+    local repath = opts.repath or 1
+    local jitter = opts.jitter or 0.3
+    local scatter = opts.scatter or 50
+    local anchor
+    local spot
+    local nextPick = 0
+    while true do
+        if not bot:IsAlive() then
+            return fail("dead")
+        end
+        if opts.interruptIf ~= nil and opts.interruptIf() then
+            return fail("interrupted")
+        end
+        if expired(opts.deadline) then
+            return fail("timeout")
+        end
+        local t = now()
+        local p = point()
+        if p == nil then
+            anchor = nil
+            bot:Action_MoveToLocation(bot:GetLocation())
+            hold(bot, opts.hold)
+        else
+            if anchor == nil or t >= nextPick or dist(p, anchor) > tolerance / 2 then
+                anchor = p
+                spot = scattered(p, scatter)
+                nextPick = t + repath * (1 + jitter * (math.random() - 0.5))
+            end
+            if dist(
+                bot:GetLocation(),
+                spot
+            ) > tolerance then
+                bot:Action_MoveToLocation(spot)
+            else
+                bot:Action_MoveToLocation(bot:GetLocation())
+                hold(bot, opts.hold)
+            end
+        end
+        coroutine.yield()
+    end
+end)
 return ____exports
  end,
 ["verbs_cast"] = function(...) 
@@ -1202,6 +1263,7 @@ function ____exports.makeCtx(bot, c)
         must = must,
         walkTo = function(loc, opts) return Verbs.walkTo(bot, loc, opts) end,
         walkPath = function(points, opts) return Verbs.walkPath(bot, points, opts) end,
+        holdAt = function(point, opts) return Verbs.holdAt(bot, point, opts) end,
         wait = function(secs, opts) return Verbs.wait(bot, secs, opts) end,
         waitUntil = function(t, opts) return Verbs.waitUntil(bot, t, opts) end,
         retreatTo = function(opts) return Verbs.retreatTo(bot, opts) end,
@@ -1483,6 +1545,388 @@ function ____exports.Describe(bot)
         return (("- last=" .. l.name) .. " ") .. (l.result.success and "ok" or l.result.reason)
     end
     return "-"
+end
+return ____exports
+ end,
+["states"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local taskName, ours, cancelOurs
+local ____adapter = require("adapter")
+local getAdapter = ____adapter.get
+local Tasks = require("runner")
+function taskName(spec)
+    return "state:" .. spec.name
+end
+function ours(bot, s)
+    local t = Tasks.Current(bot)
+    return t ~= nil and s.current ~= nil and t.name == taskName(s.current)
+end
+function cancelOurs(bot, s, message)
+    if not ours(bot, s) then
+        return
+    end
+    s.cancelling = true
+    Tasks.Cancel(bot, "cancelled", message)
+    s.cancelling = false
+end
+local config = {
+    interval = 0.25,
+    sticky = 0.1,
+    minDwell = 3,
+    jobBreak = 0.9,
+    cooldown = 5,
+    restart = 1
+}
+function ____exports.configure(c)
+    for k, v in pairs(c) do
+        config[k] = v
+    end
+end
+local bots = {}
+local function ownedFn()
+    return false
+end
+--- Which states the SDK runs for which bot; read at every selection, so it may change during the game.
+function ____exports.SetOwned(fn)
+    ownedFn = fn
+end
+local function emit(name, fields)
+    local a = getAdapter()
+    if a == nil then
+        return
+    end
+    if a.event ~= nil then
+        a.event(name, fields)
+        return
+    end
+    local parts = {"ev=" .. name}
+    for ____, ____value in ipairs(fields) do
+        local k = ____value[1]
+        local v = ____value[2]
+        if v ~= nil then
+            parts[#parts + 1] = (k .. "=") .. tostring(v)
+        end
+    end
+    a.log(
+        "states",
+        table.concat(parts, " ")
+    )
+end
+--- Registers (or replaces) a bot's states. The current state is kept if a spec of that name remains.
+function ____exports.define(bot, specs)
+    local id = bot:GetPlayerID()
+    local s = bots[id]
+    if s == nil then
+        bots[id] = {
+            specs = specs,
+            since = 0,
+            owned = false,
+            forceSelect = true,
+            cooldownUntil = {},
+            jobEnded = false,
+            cancelling = false,
+            starts = 0
+        }
+        return
+    end
+    s.specs = specs
+    if s.current ~= nil then
+        local name = s.current.name
+        s.current = __TS__ArrayFind(
+            specs,
+            function(____, sp) return sp.name == name end
+        )
+    end
+end
+function ____exports.Forget(bot)
+    local s = bots[bot:GetPlayerID()]
+    if s == nil then
+        return
+    end
+    cancelOurs(bot, s, "forgotten")
+    bots[bot:GetPlayerID()] = nil
+end
+local function scoreOf(bot, spec)
+    local ok, v = pcall(function() return spec.score(bot) end)
+    if ok then
+        return v
+    end
+    local ____opt_0 = getAdapter()
+    if ____opt_0 ~= nil then
+        ____opt_0.log(
+            "states",
+            (("score " .. spec.name) .. " error: ") .. tostring(v)
+        )
+    end
+    return nil
+end
+local function jobActive(s)
+    return s.current ~= nil and s.current.kind == "job" and s.owned and not s.jobEnded
+end
+local function change(bot, s, next, score, why, now)
+    local prev = s.current
+    cancelOurs(bot, s, "state:" .. (next and next.name or "none"))
+    s.current = next
+    s.since = now
+    s.score = score
+    s.owned = next ~= nil and ownedFn(bot, next.name)
+    s.jobEnded = false
+    s.lastEnd = nil
+    emit(
+        "state",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"from", prev and prev.name or "none"},
+            {"to", next and next.name or "none"},
+            {"score", score},
+            {"owned", s.owned},
+            {"why", why}
+        }
+    )
+end
+local function select(bot, s, now)
+    s.lastSelect = now
+    s.forceSelect = false
+    local cur = s.current
+    local best
+    local bestRaw
+    local bestEff = -math.huge
+    local curRaw
+    for ____, spec in ipairs(s.specs) do
+        do
+            local __continue28
+            repeat
+                if (s.cooldownUntil[spec.name] or -math.huge) > now then
+                    __continue28 = true
+                    break
+                end
+                if spec == cur and s.jobEnded then
+                    __continue28 = true
+                    break
+                end
+                local raw = scoreOf(bot, spec)
+                if raw == nil then
+                    __continue28 = true
+                    break
+                end
+                if spec == cur then
+                    curRaw = raw
+                end
+                local eff = spec == cur and raw + config.sticky or raw
+                if eff > bestEff then
+                    bestEff = eff
+                    best = spec
+                    bestRaw = raw
+                end
+                __continue28 = true
+            until true
+            if not __continue28 then
+                break
+            end
+        end
+    end
+    if cur ~= nil and best ~= cur then
+        if jobActive(s) then
+            if best == nil or bestRaw < config.jobBreak then
+                return
+            end
+            change(
+                bot,
+                s,
+                best,
+                bestRaw,
+                "break",
+                now
+            )
+            return
+        end
+        local dwelling = cur.kind == "posture" and curRaw ~= nil and now - s.since < config.minDwell
+        if dwelling and best ~= nil and best.kind == "posture" then
+            return
+        end
+        local why = s.jobEnded and "ended" or (curRaw == nil and "n/a" or "best")
+        change(
+            bot,
+            s,
+            best,
+            bestRaw,
+            why,
+            now
+        )
+        return
+    end
+    if cur == nil then
+        if best ~= nil then
+            change(
+                bot,
+                s,
+                best,
+                bestRaw,
+                "start",
+                now
+            )
+        end
+        return
+    end
+    s.score = curRaw
+    local owned = ownedFn(bot, cur.name)
+    if owned ~= s.owned then
+        if not owned then
+            cancelOurs(bot, s, "disowned")
+        end
+        s.owned = owned
+        emit(
+            "state",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"from", cur.name},
+                {"to", cur.name},
+                {"score", curRaw},
+                {"owned", owned},
+                {"why", owned and "own" or "disown"}
+            }
+        )
+    end
+end
+local function ended(bot, s, spec, r, info)
+    emit(
+        "state_task",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"state", spec.name},
+            {"result", r.success and "ok" or "fail"},
+            {"reason", r.reason},
+            {"msg", r.message},
+            {"label", info.label},
+            {"steps", info.steps}
+        }
+    )
+    if s.cancelling or s.current ~= spec then
+        return
+    end
+    local now = getAdapter().now()
+    s.lastEnd = {at = now, reason = r.reason}
+    if spec.kind == "job" and r.reason ~= "preempted" and r.reason ~= "dead" then
+        s.jobEnded = true
+        s.forceSelect = true
+        if not r.success then
+            s.cooldownUntil[spec.name] = now + config.cooldown
+        end
+    end
+end
+local function maybeStart(bot, s, now)
+    local spec = s.current
+    if spec == nil or not s.owned or s.jobEnded or not bot:IsAlive() then
+        return
+    end
+    if Tasks.Current(bot) ~= nil then
+        return
+    end
+    local last = s.lastEnd
+    if last ~= nil then
+        local waited = now - last.at >= config.restart
+        local inHost = bot:GetActiveMode() == spec.host
+        local quickOk = last.reason == "preempted" or last.reason == "dead"
+        local canPull = (spec.floor or 0) > 0
+        if not (inHost and (quickOk or waited) or waited and canPull) then
+            return
+        end
+    end
+    local started = Tasks.task(
+        bot,
+        {
+            name = taskName(spec),
+            host = spec.host,
+            tier = spec.tier,
+            floor = spec.floor or 0,
+            preemptAfter = spec.preemptAfter or (spec.kind == "posture" and 3 or 0),
+            stallAfter = spec.stallAfter or math.huge,
+            onEnd = function(r, info) return ended(
+                bot,
+                s,
+                spec,
+                r,
+                info
+            ) end
+        },
+        spec.body
+    )
+    if not started then
+        return
+    end
+    s.starts = s.starts + 1
+    emit(
+        "state_start",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"state", spec.name},
+            {"n", s.starts},
+            {"gap", last ~= nil and now - last.at or nil},
+            {"after", last and last.reason}
+        }
+    )
+end
+--- Every frame from the host's global tick, before the runner's Tick. Selects at `interval`, starts and restarts.
+function ____exports.Tick(bot)
+    local a = getAdapter()
+    local s = bots[bot:GetPlayerID()]
+    if a == nil or s == nil or not a.enabled() then
+        return
+    end
+    local now = a.now()
+    if s.forceSelect or s.lastSelect == nil or now - s.lastSelect >= config.interval then
+        select(bot, s, now)
+    end
+    maybeStart(bot, s, now)
+end
+--- From the host mode's Think(): steps the current owned state's task when it runs on `host`; false otherwise.
+function ____exports.Step(bot, host)
+    local s = bots[bot:GetPlayerID()]
+    if s == nil or s.current == nil or not s.owned or s.current.host ~= host or not ours(bot, s) then
+        return false
+    end
+    return Tasks.Step(bot, host)
+end
+function ____exports.Current(bot)
+    local s = bots[bot:GetPlayerID()]
+    if s == nil or s.current == nil then
+        return nil
+    end
+    local c = s.current
+    return {
+        name = c.name,
+        kind = c.kind,
+        host = c.host,
+        since = s.since,
+        score = s.score,
+        owned = s.owned,
+        running = ours(bot, s),
+        starts = s.starts
+    }
 end
 return ____exports
  end,
@@ -1942,6 +2386,7 @@ return ____exports
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local Tasks = require("runner")
+local States = require("states")
 do
     local ____support = require("support")
     local Supported = ____support.Supported
@@ -1953,6 +2398,7 @@ do
     ____exports.init = init
 end
 ____exports.Tasks = Tasks
+____exports.States = States
 do
     local ____export = require("types")
     for ____exportKey, ____exportValue in pairs(____export) do

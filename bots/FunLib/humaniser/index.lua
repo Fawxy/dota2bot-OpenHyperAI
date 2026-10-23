@@ -22,6 +22,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -40,6 +41,7 @@ ____exports.FarmPattern = FarmPattern
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 ____exports.Tasks = Tasks
+____exports.States = States
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -190,6 +192,13 @@ local function drawOverlay(bot)
                 Tasks.Describe(bot) or "-"
             )
         end
+        if States.IsEnabled() then
+            HDebug.Text(
+                bot,
+                "state",
+                States.Describe(bot) or "-"
+            )
+        end
     end
     HDebug.Draw(bot)
 end
@@ -224,6 +233,7 @@ local function tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
+    States.Tick(bot)
     Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)
     drawOverlay(bot)
@@ -294,6 +304,14 @@ if Telemetry.GuardsEnabled() then
             FarmAllowedInLaning = no
         }
     )
+    Telemetry.GuardModule("States", States, {
+        Tick = none,
+        Step = no,
+        MayOwn = no,
+        SetLaneSpot = none,
+        Describe = none,
+        IsEnabled = no
+    })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(
         "AllyLastHit",

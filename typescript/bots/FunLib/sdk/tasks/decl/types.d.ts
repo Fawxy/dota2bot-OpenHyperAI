@@ -96,7 +96,11 @@ export interface Adapter {
     /** Game time in seconds. */
     now(this: void): number;
     log(this: void, tag: string, msg: string): void;
+    /** Structured telemetry: `fields` are ordered key/value pairs. Without it, events go to `log` as `ev=name k=v`. */
+    event?(this: void, name: string, fields: [string, unknown][]): void;
     enabled(this: void): boolean;
+    /** Builds a point verbs create themselves (e.g. holdAt's scattered spot); hosts whose move order needs a native vector supply it. */
+    vector?(this: void, x: number, y: number, z: number): Vec;
 }
 /** `host` is the mode id the task runs under. */
 export interface TaskOptions {
