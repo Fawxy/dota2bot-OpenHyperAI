@@ -202,11 +202,10 @@ local function isSupport(bot)
     local pos = LaneConfig.PositionOf(bot)
     return (pos == 4 or pos == 5) and bot:IsBot()
 end
-local function teammate(bot, pos, botsOnly)
-    local n = #GetTeamPlayers(bot:GetTeam())
+local function teammate(_bot, pos, botsOnly)
     do
         local i = 1
-        while i <= n do
+        while i <= LaneState.TEAM_SLOTS do
             local m = GetTeamMember(i)
             if m ~= nil and m ~= nil and m:IsAlive() and LaneConfig.PositionOf(m) == pos and (not botsOnly or m:IsBot()) then
                 return m
@@ -517,10 +516,9 @@ local function ours(bot, d)
     if od ~= nil and od.decision.go and od.decision.spawn == d.spawn and od.decision.side == d.side then
         n = n + 1
     end
-    local count = #GetTeamPlayers(bot:GetTeam())
     do
         local i = 1
-        while i <= count do
+        while i <= LaneState.TEAM_SLOTS do
             do
                 local __continue64
                 repeat

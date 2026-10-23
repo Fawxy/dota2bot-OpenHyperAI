@@ -144,11 +144,10 @@ end
 function usableUnit(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen() and u:GetLocation() ~= nil
 end
-function memberByPid(team, pid)
-    local count = #GetTeamPlayers(team)
+function memberByPid(_team, pid)
     do
         local i = 1
-        while i <= count do
+        while i <= LaneState.TEAM_SLOTS do
             local u = GetTeamMember(i)
             if u ~= nil and u ~= nil and not u:IsNull() and u:GetPlayerID() == pid then
                 return u

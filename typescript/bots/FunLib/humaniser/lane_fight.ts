@@ -307,9 +307,8 @@ function usableUnit(u: Unit | null | undefined): u is Unit {
     return u !== undefined && u !== null && !u.IsNull() && u.IsAlive() && u.CanBeSeen() && u.GetLocation() !== undefined;
 }
 
-function memberByPid(team: number, pid: number): Unit | undefined {
-    const count = GetTeamPlayers(team).length;
-    for (let i = 1; i <= count; i++) {
+function memberByPid(_team: number, pid: number): Unit | undefined {
+    for (let i = 1; i <= LaneState.TEAM_SLOTS; i++) {
         const u = GetTeamMember(i);
         if (u !== null && u !== undefined && !u.IsNull() && u.GetPlayerID() === pid) return u;
     }

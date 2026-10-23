@@ -336,11 +336,16 @@ export function TeamAmountAt(team: number, lane: Lane, loc: Vector): number {
     return teamAmountAt(team, lane, loc);
 }
 
-function heroesFor(team: number, lane: Lane, front: Vector): LaneHero[] {
+/**
+ * GetTeamMember slots to walk. Not GetTeamPlayers(team).length: in practice mode the bot-only team's GetTeamPlayers is
+ * empty while GetTeamMember still returns its heroes, which left that team with no allies in every lane read.
+ */
+export const TEAM_SLOTS = 5;
+
+function heroesFor(_team: number, lane: Lane, front: Vector): LaneHero[] {
     const result: LaneHero[] = [];
     const near = radii().AllyNearFront;
-    const count = GetTeamPlayers(team).length;
-    for (let i = 1; i <= count; i++) {
+    for (let i = 1; i <= TEAM_SLOTS; i++) {
         const unit = GetTeamMember(i);
         if (unit === null || unit === undefined || unit.IsIllusion()) continue;
         const alive = unit.IsAlive();

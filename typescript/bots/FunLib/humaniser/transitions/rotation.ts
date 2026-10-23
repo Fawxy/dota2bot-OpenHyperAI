@@ -63,9 +63,8 @@ function isSupport(bot: Unit): boolean {
     return (pos === 4 || pos === 5) && bot.IsBot();
 }
 
-function teammate(bot: Unit, pos: number, botsOnly: boolean): Unit | undefined {
-    const n = GetTeamPlayers(bot.GetTeam()).length;
-    for (let i = 1; i <= n; i++) {
+function teammate(_bot: Unit, pos: number, botsOnly: boolean): Unit | undefined {
+    for (let i = 1; i <= LaneState.TEAM_SLOTS; i++) {
         const m = GetTeamMember(i);
         if (m !== undefined && m !== null && m.IsAlive() && LaneConfig.PositionOf(m) === pos && (!botsOnly || m.IsBot())) return m;
     }
@@ -257,8 +256,7 @@ function ours(bot: Unit, d: RotationDecision): number {
     const other = teammate(bot, LaneConfig.PositionOf(bot) === 4 ? 5 : 4, true);
     const od = other !== undefined ? entries[other.GetPlayerID()] : undefined;
     if (od !== undefined && od.decision.go && od.decision.spawn === d.spawn && od.decision.side === d.side) n++;
-    const count = GetTeamPlayers(bot.GetTeam()).length;
-    for (let i = 1; i <= count; i++) {
+    for (let i = 1; i <= LaneState.TEAM_SLOTS; i++) {
         const m = GetTeamMember(i);
         if (m === undefined || m === null || m === mid || m === bot || m.IsBot() || !m.IsAlive()) continue;
         if (dist2D(m.GetLocation(), d.spot) <= cfg.ContestRadius) n++;

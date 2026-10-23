@@ -331,4 +331,18 @@ do
 	check("Forecast off: no foresight at any skill", S.ForesightOf(1) == 0, S.ForesightOf(1))
 end
 
+do
+	-- Practice mode: the bot-only team's GetTeamPlayers comes back empty while GetTeamMember still returns its heroes.
+	local _, bot, S = world()
+	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(0, -5100) })
+	partner.lane, partner.pos = Lane.Bot, 5
+	local realPlayers = GetTeamPlayers
+	GetTeamPlayers = function() return {} end
+	local s = S.ForBot(bot)
+	GetTeamPlayers = realPlayers
+	local byPid = {}
+	for _, h in ipairs(s.allies) do byPid[h.pid] = h end
+	check("allies come from team members when the player list is empty", byPid[1] ~= nil and byPid[2] ~= nil)
+end
+
 finish()

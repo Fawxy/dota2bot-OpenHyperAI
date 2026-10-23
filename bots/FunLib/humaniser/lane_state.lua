@@ -388,13 +388,15 @@ end
 function ____exports.TeamAmountAt(team, lane, loc)
     return teamAmountAt(team, lane, loc)
 end
-local function heroesFor(team, lane, front)
+--- GetTeamMember slots to walk. Not GetTeamPlayers(team).length: in practice mode the bot-only team's GetTeamPlayers is
+-- empty while GetTeamMember still returns its heroes, which left that team with no allies in every lane read.
+____exports.TEAM_SLOTS = 5
+local function heroesFor(_team, lane, front)
     local result = {}
     local near = radii().AllyNearFront
-    local count = #GetTeamPlayers(team)
     do
         local i = 1
-        while i <= count do
+        while i <= ____exports.TEAM_SLOTS do
             do
                 local __continue69
                 repeat
