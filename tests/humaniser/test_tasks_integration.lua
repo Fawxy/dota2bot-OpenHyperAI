@@ -132,6 +132,7 @@ do
 	function Creep:GetHealth() return self.hp end
 	function Creep:GetMaxHealth() return 100 end
 	function Creep:IsAlive() return true end
+	function Creep:IsNull() return false end
 
 	local function setup()
 		local H, bot = Fresh({ Enable = true, SkillOverride = 0, AllyLastHit = { Enable = true } }, { pid = 1, loc = Vector(-200, 0) })

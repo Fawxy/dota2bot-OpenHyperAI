@@ -150,13 +150,22 @@ function protectedHumans(bot: Unit): Unit[] {
  * The protected human nearest to `location` within ProtectRange, or undefined with the "free:" reason
  * explaining why etiquette does not apply.
  */
+/** A handle Dota no longer backs (IsNull), or a dead unit. Fakes without IsNull count as live. */
+function stale(u: Unit): boolean {
+    return ((u as any).IsNull !== undefined && u.IsNull()) || !u.IsAlive();
+}
+
 export function GetProtectedHuman(bot: Unit, location: Vector): LuaMultiReturn<[Unit | undefined, string]> {
     if (!Config.IsFeatureEnabled("AllyLastHit")) return $multi(undefined, "free: disabled");
     if (!inLaningPhase()) return $multi(undefined, "free: not-laning");
+    // A creep handle gone stale between the creep query and this call reads no location (G1: "Parameter type
+    // mismatch" here at 9-10 min); nothing to protect then.
+    if (location === undefined || location === null) return $multi(undefined, "free: no-location");
     const s = Settings();
     let nearest: Unit | undefined;
     let nearestDist = s.ProtectRange;
     for (const human of protectedHumans(bot)) {
+        if (stale(human)) continue;
         const dist = GetUnitToLocationDistance(human, location);
         if (dist <= nearestDist) {
             nearest = human;
@@ -234,6 +243,7 @@ function showOverlay(bot: Unit, tier: Tier, allowed: boolean, reason: string): v
 /** May `bot` take the last hit on `creep`? Allied creeps (denies) are always allowed. */
 export function MayLastHit(bot: Unit, creep: Unit): LuaMultiReturn<[boolean, string]> {
     if (!Config.IsFeatureEnabled("AllyLastHit")) return $multi(true, "free: disabled");
+    if (creep === undefined || creep === null || stale(creep)) return $multi(false, "skip: invalid");
     if (creep.GetTeam() === bot.GetTeam()) return $multi(true, "free: deny");
     const [human, freeReason] = GetProtectedHuman(bot, creep.GetLocation());
     if (human === undefined) return $multi(true, freeReason);
