@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 3735576ad135485c4c051552c776913358101d1d. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ c648c644cecb8c0b27e582249a581f9dd6d05d4c. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -1604,6 +1604,10 @@ local LAPSE_MAX = 0.4
 -- time, since bots think less often per game second at high timescales.
 local MIN_MARGIN = 0.034
 local MAX_MARGIN = 0.3
+--- Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s).
+local SEEN_AHEAD = 0.45
+--- An attack order may be given this long before the cooldown ends: Dota queues it and the swing starts on time.
+local COOLDOWN_QUEUE = 0.25
 --- Seconds after the predicted hit time before an unresolved swing counts as `missed`.
 local CONFIRM_SLACK = 0.5
 local function ok()
@@ -1745,11 +1749,10 @@ local function believe(bot, creep, withError, margin)
     local ____opt_65 = ____this_66.GetHealthRegen
     local regen = ____opt_65 and ____opt_65(____this_66) or 0
     local hp = creep:GetHealth()
-    local visible = hp + regen * tHit - ____exports.incomingDamage(
-        bot,
-        creep,
-        math.max(0, tHit - margin)
-    )
+    local relied = math.max(0, tHit - margin)
+    local dps = ____exports.incomingDps(bot, creep)
+    local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
+    local visible = certain - math.max(0, relied - SEEN_AHEAD) * dps
     local believed = visible
     local width = 0
     local eps = 0
@@ -1759,13 +1762,13 @@ local function believe(bot, creep, withError, margin)
         eps = r.eps
         if r.shift < 0 then
             local h = math.max(0, tHit - margin + r.shift)
-            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h)
+            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * dps
         elseif r.shift > 0 then
-            believed = visible + regen * r.shift - ____exports.incomingDps(bot, creep) * r.shift
+            believed = visible + regen * r.shift - dps * r.shift
         end
     end
     local ____tHit_72 = tHit
-    local ____temp_73 = visible > 0
+    local ____temp_73 = certain > 0
     local ____believed_74 = believed
     local ____physical_71 = physical
     local ____creep_70 = creep
@@ -2019,7 +2022,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
         ) > bot:GetAttackRange() then
             bot:Action_MoveToLocation(creep:GetLocation())
         else
-            if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= margin then
+            if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
                 local b = believe(bot, creep, true, margin)
                 if due(b) then
                     tHit = b.tHit
