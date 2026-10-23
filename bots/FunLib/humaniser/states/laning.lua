@@ -112,13 +112,19 @@ local FAR = 1200
 --- A last-hit attempt is dropped when it would take the bot this far from its spot.
 local LEASH = 900
 local DEFAULTS = {Spot = "oha", LastHit = {}, LastHitWithin = 1}
+local settings
+--- Read once: Customize is fixed for the game (tests reload the module with each config).
 function ____exports.Settings()
+    if settings ~= nil then
+        return settings
+    end
     local ____opt_0 = Config.Get().States
     if ____opt_0 ~= nil then
         ____opt_0 = ____opt_0.Laning
     end
     local s = ____opt_0
-    return {Spot = s and s.Spot or DEFAULTS.Spot, LastHit = s and s.LastHit or DEFAULTS.LastHit, LastHitWithin = s and s.LastHitWithin or DEFAULTS.LastHitWithin}
+    settings = {Spot = s and s.Spot or DEFAULTS.Spot, LastHit = s and s.LastHit or DEFAULTS.LastHit, LastHitWithin = s and s.LastHitWithin or DEFAULTS.LastHitWithin}
+    return settings
 end
 local spots = {}
 function ____exports.SetSpot(bot, fn)

@@ -32,13 +32,18 @@ export interface LaningSettings {
 
 const DEFAULTS: LaningSettings = { Spot: "oha", LastHit: [], LastHitWithin: 1 };
 
+let settings: LaningSettings | undefined;
+
+/** Read once: Customize is fixed for the game (tests reload the module with each config). */
 export function Settings(): LaningSettings {
+    if (settings !== undefined) return settings;
     const s = (Config.Get().States as any)?.Laning as Partial<LaningSettings> | undefined;
-    return {
+    settings = {
         Spot: s?.Spot ?? DEFAULTS.Spot,
         LastHit: s?.LastHit ?? DEFAULTS.LastHit,
         LastHitWithin: s?.LastHitWithin ?? DEFAULTS.LastHitWithin,
     };
+    return settings;
 }
 
 const spots: Record<number, ((this: void) => Vector | undefined) | undefined> = {};

@@ -18,8 +18,8 @@ function ____exports.Enabled()
     return Config.IsEnabled() and Config.Get().Tasks.Enable ~= false
 end
 --- An allied core (position 1-3, not the bot) within 1600 that can take the creep itself.
-local function CoreCanTake(bot, creep)
-    for ____, ally in ipairs(bot:GetNearbyHeroes(1600, false, BotMode.None)) do
+local function CoreCanTake(bot, creep, allies)
+    for ____, ally in ipairs(allies) do
         if ally ~= bot and ally:IsAlive() then
             local pos = LaneConfig.PositionOf(ally)
             if pos ~= nil and pos <= 3 and AllyLastHit.CoreCanReach(ally, creep) then
@@ -29,7 +29,9 @@ local function CoreCanTake(bot, creep)
     end
     return false
 end
-local function mayTake(bot, creep)
+--- One table per bot, cleared on a new frame (no allocation per frame).
+local filterCache = {}
+local function mayTake(bot, creep, f)
     local allowed, reason = AllyLastHit.MayLastHit(bot, creep)
     if not allowed then
         return false
@@ -38,9 +40,14 @@ local function mayTake(bot, creep)
         return true
     end
     local pos = LaneConfig.PositionOf(bot)
-    return pos == nil or pos <= 2 or not CoreCanTake(bot, creep)
+    if pos == nil or pos <= 2 then
+        return true
+    end
+    if f.allies == nil then
+        f.allies = bot:GetNearbyHeroes(1600, false, BotMode.None)
+    end
+    return not CoreCanTake(bot, creep, f.allies)
 end
-local filterCache = {}
 local adapter = {
     claim = function(bot, c)
         local ____Intent_Claim_6 = Intent.Claim
@@ -68,17 +75,23 @@ local adapter = {
     lastHitFilter = function(bot, creep)
         local pid = bot:GetPlayerID()
         local now = DotaTime()
-        local cache = filterCache[pid]
-        if cache == nil or cache.t ~= now then
-            cache = {t = now, by = {}}
-            filterCache[pid] = cache
+        local f = filterCache[pid]
+        if f == nil then
+            f = {t = now, by = {}}
+            filterCache[pid] = f
+        elseif f.t ~= now then
+            f.t = now
+            f.allies = nil
+            for k in pairs(f.by) do
+                f.by[k] = nil
+            end
         end
-        local by = cache.by
+        local by = f.by
         local hit = by[creep]
         if hit ~= nil then
             return hit
         end
-        local allowed = mayTake(bot, creep)
+        local allowed = mayTake(bot, creep, f)
         by[creep] = allowed
         return allowed
     end,

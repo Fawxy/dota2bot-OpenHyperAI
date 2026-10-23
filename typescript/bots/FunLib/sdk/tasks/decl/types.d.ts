@@ -18,6 +18,7 @@ export interface Vec {
  */
 export interface TaskUnit {
     GetPlayerID(): number;
+    GetTeam?(): number;
     GetLocation(): Vec;
     IsAlive(): boolean;
     GetActiveMode(): number;
@@ -71,6 +72,7 @@ export interface TaskAbility {
 export interface TaskAttacker {
     GetLocation(): Vec;
     IsAlive(): boolean;
+    GetTeam?(): number;
     IsNull?(): boolean;
     CanBeSeen?(): boolean;
     GetAttackTarget?(): unknown;

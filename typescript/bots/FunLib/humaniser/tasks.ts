@@ -28,8 +28,8 @@ export function Enabled(): boolean {
 }
 
 /** An allied core (position 1-3, not the bot) within 1600 that can take the creep itself. */
-function CoreCanTake(bot: Unit, creep: Unit): boolean {
-    for (const ally of bot.GetNearbyHeroes(1600, false, BotMode.None)) {
+function CoreCanTake(bot: Unit, creep: Unit, allies: Unit[]): boolean {
+    for (const ally of allies) {
         if (ally !== bot && ally.IsAlive()) {
             const pos = LaneConfig.PositionOf(ally);
             if (pos !== undefined && pos <= 3 && AllyLastHit.CoreCanReach(ally, creep)) return true;
@@ -38,16 +38,24 @@ function CoreCanTake(bot: Unit, creep: Unit): boolean {
     return false;
 }
 
-function mayTake(bot: Unit, creep: Unit): boolean {
+interface FilterFrame {
+    t: number;
+    by: LuaTable<object, boolean>;
+    allies?: Unit[];
+}
+/** One table per bot, cleared on a new frame (no allocation per frame). */
+const filterCache: Record<number, FilterFrame | undefined> = {};
+
+function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
     const [allowed, reason] = AllyLastHit.MayLastHit(bot, creep);
     if (!allowed) return false;
     // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
     if (string.sub(reason, 1, 5) === "take:") return true;
     const pos = LaneConfig.PositionOf(bot);
-    return pos === undefined || pos <= 2 || !CoreCanTake(bot, creep);
+    if (pos === undefined || pos <= 2) return true;
+    if (f.allies === undefined) f.allies = bot.GetNearbyHeroes(1600, false, BotMode.None);
+    return !CoreCanTake(bot, creep, f.allies);
 }
-
-const filterCache: Record<number, { t: number; by: LuaTable<object, boolean> } | undefined> = {};
 
 const adapter: Lib.Adapter = {
     claim: (bot, c) =>
@@ -64,15 +72,19 @@ const adapter: Lib.Adapter = {
         // nextLastHit asks for every creep every frame; one answer per bot, creep and frame.
         const pid = bot.GetPlayerID();
         const now = DotaTime();
-        let cache = filterCache[pid];
-        if (cache === undefined || cache.t !== now) {
-            cache = { t: now, by: new LuaTable<object, boolean>() };
-            filterCache[pid] = cache;
+        let f = filterCache[pid];
+        if (f === undefined) {
+            f = { t: now, by: new LuaTable<object, boolean>() };
+            filterCache[pid] = f;
+        } else if (f.t !== now) {
+            f.t = now;
+            f.allies = undefined;
+            for (const [k] of f.by) f.by.delete(k);
         }
-        const by = cache.by;
+        const by = f.by;
         const hit = by.get(creep);
         if (hit !== undefined) return hit;
-        const allowed = mayTake(bot as unknown as Unit, creep as unknown as Unit);
+        const allowed = mayTake(bot as unknown as Unit, creep as unknown as Unit, f);
         by.set(creep, allowed);
         return allowed;
     },

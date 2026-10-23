@@ -8,23 +8,28 @@ import { Unit } from "bots/ts_libs/dota";
 interface Track {
     hp: number;
     heroLost: number;
+    at: number;
 }
 const tracks: Record<number, Track | undefined> = {};
+/** Seconds back the damage source is looked up; widened at high timescales where frames are further apart. */
 const WINDOW = 0.3;
 
 export function Tick(bot: Unit): void {
     const pid = bot.GetPlayerID();
     const hp = bot.GetHealth();
+    const now = DotaTime();
     let t = tracks[pid];
     if (t === undefined) {
-        t = { hp, heroLost: 0 };
+        t = { hp, heroLost: 0, at: now };
         tracks[pid] = t;
         return;
     }
     const drop = t.hp - hp;
+    const w = math.min(2, math.max(WINDOW, 1.5 * (now - t.at)));
     t.hp = hp;
-    if (drop <= 0 || !bot.IsAlive() || !bot.WasRecentlyDamagedByAnyHero(WINDOW)) return;
-    const mixed = bot.WasRecentlyDamagedByCreep(WINDOW) || bot.WasRecentlyDamagedByTower(WINDOW);
+    t.at = now;
+    if (drop <= 0 || !bot.IsAlive() || !bot.WasRecentlyDamagedByAnyHero(w)) return;
+    const mixed = bot.WasRecentlyDamagedByCreep(w) || bot.WasRecentlyDamagedByTower(w);
     t.heroLost += mixed ? drop / 2 : drop;
 }
 
