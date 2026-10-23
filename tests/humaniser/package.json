@@ -6,7 +6,7 @@
         "syntax": "node syntax_check.js ../../bots",
         "test": "node run.js",
         "mining": "node ../../tools/replay-mining/test/run.js",
-        "hlog": "node --test ../../tools/hlog/test/hlog.test.js",
+        "hlog": "node --test ../../tools/hlog/test/hlog.test.js ../../tools/hlog/test/bars.test.js",
         "check": "npm run syntax && npm test && npm run mining && npm run hlog"
     },
     "devDependencies": {
