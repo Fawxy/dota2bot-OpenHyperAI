@@ -454,6 +454,7 @@ test('summary reports clash pulls', () => {
     )[0];
     const text = report.summary(game);
     assert.match(text, /clash pull: started 2 ok 1 weak 0 no-divert 0 lane-won 0 clash-lost 0 next-wave 0 wait-max 1 other 0 cleared-pred \+0\.5s/);
+    assert.doesNotMatch(text, /radiant_safe_small n=1 wave seen/);
 });
 test('summary reports take-pull outcomes and swings', () => {
     const game = parseLog(

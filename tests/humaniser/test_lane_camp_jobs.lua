@@ -1684,4 +1684,48 @@ do
 	check("... and the predicted clear, from the hit", e ~= nil and e.pred ~= nil and math.abs(e.pred - (job.clash.predAt - job.actualAggro)) < 0.01, e and tostring(e.pred))
 end
 
+do
+	-- Review: the front moves beyond ClashPullReach during the wait; the camp would leash before reaching the fight.
+	local H, support, _, lines, ours, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	for k = 0, 14 do
+		local t = 65 + k * 0.5
+		if k == 2 then
+			LANE_FRONT[2][Lane.Bot] = 0.5 + 800 / 14000
+			for _, c in ipairs(ours) do c.loc = Vector(c.loc.x + 800, c.loc.y) end
+			for _, c in ipairs(theirs) do c.loc = Vector(c.loc.x + 800, c.loc.y) end
+		end
+		setHp(theirs, 3000 - 300 * (t - 65))
+		frame(H, support, t)
+	end
+	check("no hit while the fight is beyond ClashPullReach", attacks() == 0 and kindOf(H, support) == "clash_pull", table.concat(lines, "\n"))
+end
+
+do
+	-- Review: farm out-bid every frame. One clash pull per cycle is registered, not one per pre-emption.
+	local H, support, _, lines = clashWorld(0.9)
+	support.mode = 7
+	for k = 0, 16 do T = 65 + k * 0.5 H.Lane.CampJobDesire(support) end
+	local starts = 0
+	for _, l in ipairs(lines) do if l:find("ev=lane_job_start ", 1, true) and l:find("kind=clash", 1, true) then starts = starts + 1 end end
+	check("a pre-empted clash pull is not registered again in its cycle", starts == 1, starts)
+end
+
+do
+	-- Review: "pulling in 5" only once the hit is predicted within that, not while the clash is still even.
+	local H, support, _, _, _, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	unit({ pid = 0, bot = false, lane = Lane.Top, loc = Vector(5000, 5000) })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local said = {}
+	H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
+	for k = 0, 6 do frame(H, support, 65 + k * 0.5) end
+	check("no telegraph while no clear is predicted", #said == 0, said[1])
+	for k = 0, 8 do
+		local t = 68.5 + k * 0.5
+		setHp(theirs, 3000 - 300 * (t - 68.5))
+		frame(H, support, t)
+	end
+	check("telegraphed once the hit comes near", #said == 1 and said[1] == "say_lane_pulling_in_5" and attacks() == 1, #said .. " " .. attacks())
+end
+
 finish()

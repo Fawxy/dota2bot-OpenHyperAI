@@ -223,7 +223,7 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, preContestRest, pendingModeEnd, leadPath, JOB_CLAIM_SOURCES
+local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, clashSkipped, preContestRest, pendingModeEnd, leadPath, JOB_CLAIM_SOURCES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -368,7 +368,8 @@ end
 function clashLead(data, spawner, fight)
     local path = leadPath(data.pull, fight)
     local speed = settings().PullTiming.NeutralSpeed[data.type] or 300
-    return path, PullTiming.WalkLength(spawner.location, path) / speed
+    local length = PullTiming.WalkLength(spawner.location, path)
+    return path, length / speed, length
 end
 function logJob(bot, job, grade)
     local data = Camps.ByIdx(
@@ -446,6 +447,9 @@ function abort(bot, job, reason, keepStack, extra, deferLog, keepCycle)
             commitTech(job.kind)
         )
         skipped[pid] = job.slot or job.baseAggro
+        if job.kind == "clash_pull" then
+            clashSkipped[pid] = cycleOf(DotaTime())
+        end
     elseif job.kind ~= "stack" then
         doneCycle[pid] = cycleOf(DotaTime())
     end
@@ -640,10 +644,10 @@ function laneAtMeet(meet)
     local r = settings().Radii.MeetBusy
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue297
+            local __continue298
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue297 = true
+                    __continue298 = true
                     break
                 end
                 if dist2D(
@@ -652,9 +656,9 @@ function laneAtMeet(meet)
                 ) <= r then
                     return true
                 end
-                __continue297 = true
+                __continue298 = true
             until true
-            if not __continue297 then
+            if not __continue298 then
                 break
             end
         end
@@ -669,17 +673,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue302
+            local __continue303
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue302 = true
+                    __continue303 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue302 = true
+                    __continue303 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -690,9 +694,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue302 = true
+                __continue303 = true
             until true
-            if not __continue302 then
+            if not __continue303 then
                 break
             end
         end
@@ -846,10 +850,10 @@ function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue330
+            local __continue331
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue330 = true
+                    __continue331 = true
                     break
                 end
                 if dist2D(
@@ -858,9 +862,9 @@ function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue330 = true
+                __continue331 = true
             until true
-            if not __continue330 then
+            if not __continue331 then
                 break
             end
         end
@@ -929,13 +933,13 @@ function tracePull(bot, job, now)
     local atMeet = 0
     for ____, c in ipairs(wave) do
         do
-            local __continue346
+            local __continue347
             repeat
                 if dist2D(
                     c:GetLocation(),
                     meet
                 ) > cfg.Radii.MeetWatch then
-                    __continue346 = true
+                    __continue347 = true
                     break
                 end
                 atMeet = atMeet + 1
@@ -943,9 +947,9 @@ function tracePull(bot, job, now)
                     tr.everDiverted[c] = true
                     tr.everN = tr.everN + 1
                 end
-                __continue346 = true
+                __continue347 = true
             until true
-            if not __continue346 then
+            if not __continue347 then
                 break
             end
         end
@@ -959,19 +963,19 @@ function tracePull(bot, job, now)
         local fighting = false
         for ____, c in ipairs(s and s.enemy.units or ({})) do
             do
-                local __continue352
+                local __continue353
                 repeat
                     if c:IsNull() or not c:IsAlive() then
-                        __continue352 = true
+                        __continue353 = true
                         break
                     end
                     local loc = c:GetLocation()
                     if loc ~= nil and dist2D(loc, meet) <= cfg.Radii.ClashFight then
                         fighting = true
                     end
-                    __continue352 = true
+                    __continue353 = true
                 until true
-                if not __continue352 then
+                if not __continue353 then
                     break
                 end
             end
@@ -1067,10 +1071,10 @@ function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue361
+            local __continue362
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue361 = true
+                    __continue362 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1080,9 +1084,9 @@ function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue361 = true
+                __continue362 = true
             until true
-            if not __continue361 then
+            if not __continue362 then
                 break
             end
         end
@@ -1122,19 +1126,19 @@ function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue376
+            local __continue377
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue376 = true
+                    __continue377 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue376 = true
+                __continue377 = true
             until true
-            if not __continue376 then
+            if not __continue377 then
                 break
             end
         end
@@ -1489,9 +1493,8 @@ function stepClashWait(bot, job, now)
         abort(bot, job, "no-lane")
         return false
     end
-    telegraph(bot, job, now)
     local fight = clashFight(s, spawner)
-    local path, walk = clashLead(data, spawner, fight)
+    local path, walk, length = clashLead(data, spawner, fight)
     job.meet = fight
     job.path = path
     clash.walk = walk
@@ -1522,7 +1525,13 @@ function stepClashWait(bot, job, now)
     local creep = campNeutral(bot, job)
     local lead = creep ~= nil and aggroLead(bot, creep) or cfg.Timing.AggroLeadDefault
     local pred = ____exports.ClearPrediction(clash.samples, now, cfg.Timing.ClashRateWindow)
-    if pred ~= nil and pred <= walk + lead and (creep ~= nil or there) and not clashCrowded(bot, fight) then
+    if pred ~= nil and pred - walk - lead <= cfg.Timing.PullTelegraphLead then
+        telegraph(bot, job, now)
+    else
+        pingPartner(bot, job)
+    end
+    local inReach = length <= cfg.Radii.ClashPullReach
+    if pred ~= nil and pred <= walk + lead and inReach and (creep ~= nil or there) and not clashCrowded(bot, fight) then
         clash.pred = pred
         clash.predAt = now + pred
         job.aggroAt = now + lead
@@ -1783,6 +1792,7 @@ local jobs = {}
 doneCycle = {}
 pendingStacks = {}
 skipped = {}
+clashSkipped = {}
 --- Gates of the bot's lane_plan events in its latest wave cycle.
 local planNoted = {}
 --- The core's view of its support leaving for a camp: when it started, and how it was known.
@@ -1794,6 +1804,7 @@ function ____exports.ResetCache()
     doneCycle = {}
     pendingStacks = {}
     skipped = {}
+    clashSkipped = {}
     planNoted = {}
     covering = {}
     preContestRest = {}
@@ -2860,7 +2871,7 @@ local function clashWanted(bot, s, data, now)
     if not LaneConfig.IsOn("ClashPull") or LaneConfig.SkillOf(bot) < cfg.Gates.ClashPull then
         return false
     end
-    if LanePlanner.Committed(bot) ~= nil or not ____exports.CampsUp(now) then
+    if LanePlanner.Committed(bot) ~= nil or not ____exports.CampsUp(now) or clashSkipped[bot:GetPlayerID()] == cycleOf(now) then
         return false
     end
     if #s.ally.units < cfg.Thresholds.ClashAllyMin or s.allyPower <= s.enemyPower then
@@ -2878,12 +2889,12 @@ local function clashWanted(bot, s, data, now)
     if not laneAtMeet(meet) or ____exports.StartBlocked(bot) ~= nil then
         return false
     end
-    local path = clashLead(
+    local ____, ____, length = clashLead(
         data,
         spawner,
         clashFight(s, spawner)
     )
-    if PullTiming.WalkLength(spawner.location, path) > cfg.Radii.ClashPullReach then
+    if length > cfg.Radii.ClashPullReach then
         return false
     end
     return travelTo(

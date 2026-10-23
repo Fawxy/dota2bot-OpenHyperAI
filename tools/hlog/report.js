@@ -237,7 +237,8 @@ function forecastSection(game) {
             `clash pull: started ${clash.filter(e => e.ev === 'lane_job_start').length} ok ${grade('ok')} weak ${grade('mistake:weak-pull')} no-divert ${grade('mistake:no-divert')} ${ends} other ${other} cleared-pred ${sec(gap)}`
         );
     }
-    const traces = game.events.filter(e => e.ev === 'lane_pull_trace');
+    // Clash pulls have no wave time and lead to the fight: they are on the `clash pull:` line, not the timed-pull study.
+    const traces = game.events.filter(e => e.ev === 'lane_pull_trace' && e.kind !== 'clash');
     if (traces.length > 0) {
         const byKey = new Map();
         for (const e of traces) byKey.set(e.key, [...(byKey.get(e.key) || []), e]);

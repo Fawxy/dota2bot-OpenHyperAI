@@ -178,6 +178,8 @@ let doneCycle: Record<number, number> = {};
 let pendingStacks: Record<number, PendingStack> = {};
 /** The aggro time of a job aborted before it acted, so the same attempt is not registered again. */
 let skipped: Record<number, number> = {};
+/** The cycle of a clash pull aborted before it acted (out-bid), so it is not registered again every frame. */
+let clashSkipped: Record<number, number> = {};
 /** Gates of the bot's lane_plan events in its latest wave cycle. */
 let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
 /** The core's view of its support leaving for a camp: when it started, and how it was known. */
@@ -192,6 +194,7 @@ export function ResetCache(): void {
     doneCycle = {};
     pendingStacks = {};
     skipped = {};
+    clashSkipped = {};
     planNoted = {};
     covering = {};
     preContestRest = {};
@@ -455,11 +458,12 @@ function clashFight(s: LaneState.LaneSnapshot, spawner: Camps.Spawner): Vector {
     return ClashPoint(s.frontLoc, spawner.location, settings().Radii.ClashStandOff);
 }
 
-/** The camp's lead path to the fight point and its walk there in seconds. */
-function clashLead(data: Camps.CampJobData, spawner: Camps.Spawner, fight: Vector): LuaMultiReturn<[Vector[], number]> {
+/** The camp's lead path to the fight point, its walk there in seconds, and the path's length from the camp. */
+function clashLead(data: Camps.CampJobData, spawner: Camps.Spawner, fight: Vector): LuaMultiReturn<[Vector[], number, number]> {
     const path = leadPath(data.pull!, fight);
     const speed = (settings().PullTiming.NeutralSpeed as Record<string, number>)[data.type] ?? 300;
-    return $multi(path, PullTiming.WalkLength(spawner.location, path) / speed);
+    const length = PullTiming.WalkLength(spawner.location, path);
+    return $multi(path, length / speed, length);
 }
 
 /**
@@ -807,6 +811,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         // Registered from a desire query that farm never acted on: the cycle stays free for another technique.
         LanePlanner.Release(bot, commitTech(job.kind));
         skipped[pid] = job.slot ?? job.baseAggro;
+        if (job.kind === "clash_pull") clashSkipped[pid] = cycleOf(DotaTime());
     } else if (job.kind !== "stack") {
         // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
         doneCycle[pid] = cycleOf(DotaTime());
@@ -1210,7 +1215,7 @@ function doubleFor(bot: Unit, camps: Camps.CampJobData[], now: number): { open: 
 function clashWanted(bot: Unit, s: LaneState.LaneSnapshot, data: Camps.CampJobData, now: number): boolean {
     const cfg = settings();
     if (!LaneConfig.IsOn("ClashPull") || LaneConfig.SkillOf(bot) < cfg.Gates.ClashPull) return false;
-    if (LanePlanner.Committed(bot) !== undefined || !CampsUp(now)) return false;
+    if (LanePlanner.Committed(bot) !== undefined || !CampsUp(now) || clashSkipped[bot.GetPlayerID()] === cycleOf(now)) return false;
     if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.allyPower <= s.enemyPower) return false;
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (spawner === undefined || data.pull === undefined) return false;
@@ -1218,8 +1223,8 @@ function clashWanted(bot: Unit, s: LaneState.LaneSnapshot, data: Camps.CampJobDa
     if (choice.tech !== "full_pull" && choice.tech !== "half_pull") return false;
     const meet = choice.tech === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
     if (!laneAtMeet(meet) || StartBlocked(bot) !== undefined) return false;
-    const [path] = clashLead(data, spawner, clashFight(s, spawner));
-    if (PullTiming.WalkLength(spawner.location, path) > cfg.Radii.ClashPullReach) return false;
+    const [, , length] = clashLead(data, spawner, clashFight(s, spawner));
+    if (length > cfg.Radii.ClashPullReach) return false;
     return travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0])) <= cfg.Timing.MaxTravel;
 }
 
@@ -1947,9 +1952,8 @@ function stepClashWait(bot: Unit, job: Job, now: number): boolean {
         abort(bot, job, "no-lane");
         return false;
     }
-    telegraph(bot, job, now);
     const fight = clashFight(s, spawner);
-    const [path, walk] = clashLead(data, spawner, fight);
+    const [path, walk, length] = clashLead(data, spawner, fight);
     job.meet = fight;
     job.path = path;
     clash.walk = walk;
@@ -1969,7 +1973,12 @@ function stepClashWait(bot: Unit, job: Job, now: number): boolean {
     const creep = campNeutral(bot, job);
     const lead = creep !== undefined ? aggroLead(bot, creep) : cfg.Timing.AggroLeadDefault;
     const pred = ClearPrediction(clash.samples, now, cfg.Timing.ClashRateWindow);
-    if (pred !== undefined && pred <= walk + lead && (creep !== undefined || there) && !clashCrowded(bot, fight)) {
+    // "Pulling in 5" only once the hit is that near; the partner ping goes out at once.
+    if (pred !== undefined && pred - walk - lead <= cfg.Timing.PullTelegraphLead) telegraph(bot, job, now);
+    else pingPartner(bot, job);
+    // A front that moved on since the start can put the fight beyond the camp's leash: hold the hit until it is back.
+    const inReach = length <= cfg.Radii.ClashPullReach;
+    if (pred !== undefined && pred <= walk + lead && inReach && (creep !== undefined || there) && !clashCrowded(bot, fight)) {
         clash.pred = pred;
         clash.predAt = now + pred;
         job.aggroAt = now + lead;
