@@ -37,6 +37,7 @@ function emptyBot(b) {
         dn: 0,
         kills: 0,
         deaths: 0,
+        laningSec: 0,
         retreatSec: 0,
         retreatHealthySec: 0,
         retreatBy: {},
@@ -76,6 +77,12 @@ function laningMetrics(game, { until = 600 } = {}) {
     const at = (pid, key) => (open[pid] = open[pid] || {})[key];
     const set = (pid, key, v) => ((open[pid] = open[pid] || {})[key] = v);
     const snapsOf = pid => (game.bots[pid] ? game.bots[pid].snaps : []);
+    const closeLaning = (pid, t) => {
+        const l = at(pid, 'laning');
+        if (l === undefined) return;
+        out[pid].laningSec += clip(l, t, until);
+        set(pid, 'laning', undefined);
+    };
     const closeRetreat = (pid, t) => {
         const r = at(pid, 'retreat');
         if (r === undefined) return;
@@ -91,6 +98,8 @@ function laningMetrics(game, { until = 600 } = {}) {
         if (m === undefined) continue;
         if (e.ev === 'mode') {
             closeRetreat(e.pid, e.t);
+            closeLaning(e.pid, e.t);
+            if (e.to === 'laning') set(e.pid, 'laning', e.t);
             if (e.to === 'retreat') set(e.pid, 'retreat', { t: e.t, src: sourceOf(e.by) });
         } else if (e.ev === 'tr_caution') {
             const c = at(e.pid, 'caution');
@@ -115,6 +124,7 @@ function laningMetrics(game, { until = 600 } = {}) {
     }
     for (const pid of Object.keys(out)) {
         closeRetreat(pid, until);
+        closeLaning(pid, until);
         const c = at(pid, 'caution');
         if (c !== undefined) out[pid].cautiousSec += clip(c, until, until);
     }

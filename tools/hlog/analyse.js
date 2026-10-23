@@ -9,6 +9,7 @@ const path = require('path');
 const { parseLog } = require('./parse');
 const { runChecks } = require('./checks');
 const report = require('./report');
+const { laningMetrics } = require('./metrics');
 
 const LOG_DIR = path.join(os.homedir(), 'Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota');
 const DEFAULT_LOG = path.join(LOG_DIR, 'console.log');
@@ -37,6 +38,7 @@ const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
   --ev mode,lasthit    limit the timeline to these event names
   --snaps              include 1 s snapshots in timelines
   --json               dump the parsed game as JSON
+  --laning [--until T] per-position laning metrics to T (default 10:00), as compare.js computes them
 
 default log: the newest console.<matchid>.log in ${LOG_DIR}, else ${DEFAULT_LOG}`;
 
@@ -51,7 +53,7 @@ function parseTime(s) {
 
 function parseArgs(argv) {
     const opts = { file: undefined };
-    const takesValue = new Set(['--game', '--mark', '--window', '--from', '--to', '--pid', '--ev']);
+    const takesValue = new Set(['--game', '--mark', '--window', '--from', '--to', '--pid', '--ev', '--until']);
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '-h' || a === '--help') opts.help = true;
@@ -60,6 +62,33 @@ function parseArgs(argv) {
         else opts.file = a;
     }
     return opts;
+}
+
+const LANING_COLS = ['lh', 'dn', 'kills', 'deaths', 'laningSec', 'retreatSec', 'retreatHealthySec', 'cautiousSec', 'commits', 'trades', 'pullsStarted', 'stacksStarted', 'rotations'];
+
+// Median position over 2:00-6:00. The bot line's pos is read at its first tick, before roles settle and before
+// a human's !pos swap, so the lane a bot actually played is shown beside it.
+function playedLane(bot) {
+    const s = bot.snaps.filter(x => x.t >= 120 && x.t <= 360 && x.alive === 1);
+    if (s.length === 0) return '-';
+    const med = xs => xs.slice().sort((a, b) => a - b)[xs.length >> 1];
+    const x = med(s.map(p => p.x));
+    const y = med(s.map(p => p.y));
+    if (Math.abs(x - y) < 3000) return Math.hypot(x, y) > 6500 ? 'base' : 'mid';
+    return y > x ? 'top' : 'bot';
+}
+
+function laningTable(game, until) {
+    const m = laningMetrics(game, { until });
+    const team = t => (t === 2 ? 'rad' : t === 3 ? 'dire' : String(t));
+    const bots = m.bots.slice().sort((a, b) => (a.team === b.team ? a.pid - b.pid : a.team - b.team));
+    const rows = [['team', 'pos@load', 'lane', 'player', ...LANING_COLS]];
+    for (const b of bots) {
+        const cells = LANING_COLS.map(k => (Number.isInteger(b[k]) ? b[k] : b[k].toFixed(1)));
+        rows.push([team(b.team), b.pos ?? '-', playedLane(game.bots[b.pid]), `${b.hero}[${b.pid}]`, ...cells]);
+    }
+    const head = `laning metrics to ${Math.floor(until / 60)}:${String(until % 60).padStart(2, '0')}, build ${m.build}${m.complete ? '' : ' (game ends before this)'}`;
+    return head + '\n' + report.table(rows);
 }
 
 function main(argv) {
@@ -90,6 +119,10 @@ function main(argv) {
     }
     if (opts.json) {
         console.log(JSON.stringify(game, null, 1));
+        return 0;
+    }
+    if (opts.laning) {
+        console.log(laningTable(game, opts.until !== undefined ? parseTime(opts.until) : 600));
         return 0;
     }
     const pids = opts.pid ? String(opts.pid).split(',').map(Number) : undefined;
