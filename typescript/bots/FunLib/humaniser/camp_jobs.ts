@@ -302,6 +302,9 @@ export interface HpSample {
     hp: number;
 }
 
+/** Seconds of HP history a clear prediction needs. */
+const CLASH_MIN_HISTORY = 1;
+
 /** Seconds until the latest HP reaches 0 at its drop rate over the last `window`; undefined under 1 s of it or unless falling. */
 export function ClearPrediction(samples: HpSample[], now: number, window: number): number | undefined {
     let first: HpSample | undefined;
@@ -311,7 +314,7 @@ export function ClearPrediction(samples: HpSample[], now: number, window: number
         if (first === undefined || smp.t < first.t) first = smp;
         if (last === undefined || smp.t > last.t) last = smp;
     }
-    if (first === undefined || last === undefined || last.t - first.t < 1) return undefined;
+    if (first === undefined || last === undefined || last.t - first.t < CLASH_MIN_HISTORY) return undefined;
     const rate = (first.hp - last.hp) / (last.t - first.t);
     if (rate <= 0) return undefined;
     return last.hp / rate;
@@ -1224,8 +1227,11 @@ function clashWanted(bot: Unit, s: LaneState.LaneSnapshot, data: Camps.CampJobDa
     const meet = choice.tech === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
     if (!laneAtMeet(meet) || StartBlocked(bot) !== undefined) return false;
     const [, walk, length] = clashLead(data, spawner, clashFight(s, spawner));
-    if (length > cfg.Radii.ClashPullReach || nextWaveSoon(s, walk, now)) return false;
-    return travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0])) <= cfg.Timing.MaxTravel;
+    if (length > cfg.Radii.ClashPullReach) return false;
+    const travel = travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]));
+    if (travel > cfg.Timing.MaxTravel) return false;
+    // A clash the next wave ends before the earliest possible hit would only spend the cycle.
+    return !nextWaveSoon(s, walk, now, now + math.max(travel, CLASH_MIN_HISTORY));
 }
 
 function schedule(bot: Unit): boolean {
@@ -1923,13 +1929,13 @@ function clashCrowded(bot: Unit, fight: Vector): boolean {
 }
 
 /** Why the clash no longer wants a pull, else undefined. With ours gone their creeps are out of sight, so that is a loss. */
-/** The next enemy wave reaches the front within the camp's walk plus `ClashWaveMargin`. */
-function nextWaveSoon(s: LaneState.LaneSnapshot, walk: number, now: number): boolean {
+/** The next enemy wave after `now` reaches the front within the camp's walk plus `ClashWaveMargin` of a hit at `hitAt`. */
+function nextWaveSoon(s: LaneState.LaneSnapshot, walk: number, now: number, hitAt = now): boolean {
     if (s.enemyArrivalSec === undefined) return false;
     const cycle = settings().Timing.WaveCycle;
     let next = math.floor(now / cycle) * cycle + s.enemyArrivalSec;
     if (next <= now) next += cycle;
-    return next - now <= walk + settings().Timing.ClashWaveMargin;
+    return next - hitAt <= walk + settings().Timing.ClashWaveMargin;
 }
 
 function clashEnd(s: LaneState.LaneSnapshot, job: Job, now: number): string | undefined {

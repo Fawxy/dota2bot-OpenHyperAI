@@ -1591,6 +1591,21 @@ do
 	frame(H, support, 78)
 	check("a clash the next enemy wave is about to reach starts no clash pull", kindOf(H, support) == nil and clashAbort(lines) == nil,
 		table.concat(lines, "\n"))
+
+	-- In game (1:05): started 0.5 s before the cutoff, so it ended next-wave before it could reach the stand and read
+	-- the clash. The earliest hit is after the walk to the stand and ClashMinHistory.
+	H, support, data, lines = clashWorld(0.9, { t = 56, theirs = 3, ourHp = 2000 })
+	frame(H, support, 56)
+	frame(H, support, 76.5)
+	check("a clash the next wave reaches before the earliest possible hit starts no clash pull", kindOf(H, support) == nil and clashAbort(lines) == nil,
+		table.concat(lines, "\n"))
+
+	-- The wave due at 1:26 lands between now and the earliest hit; it is not the following cycle's.
+	H, support, data, lines = clashWorld(0.9, { t = 56, theirs = 3, ourHp = 2000 })
+	frame(H, support, 56)
+	frame(H, support, 85.5)
+	check("a wave due before the earliest hit is not mistaken for the following cycle's", kindOf(H, support) == nil and clashAbort(lines) == nil,
+		table.concat(lines, "\n"))
 end
 
 do

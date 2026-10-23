@@ -223,7 +223,7 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, nextWaveSoon, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, clashSkipped, preContestRest, pendingModeEnd, leadPath, JOB_CLAIM_SOURCES
+local settings, dist2D, cycleOf, commitTech, isNeutral, inFight, travelTo, clashFight, clashLead, logJob, releaseClaims, close, abort, endStack, endContest, enemyHeroNear, desireOf, moveTo, arrived, pingPartner, telegraph, laneAtMeet, campNeutral, aggroConfirmed, neutralsInBox, boxInSight, noteStackAggro, settleStack, laneCreepsNear, sample, newTrace, tracePull, logTrace, contestTarget, enemyInLane, stepLookout, pulledCreeps, stepTake, stepContest, aggroLead, orderAggro, approachCamp, aggroLanded, usableItem, tangoTree, supply, awaitSupply, noteSupply, clashCrowded, nextWaveSoon, clashEnd, stepClashWait, step, round3, modeEndFields, PULL_KINDS, LOG_KIND, RANGED_ATTACK_RANGE, doneCycle, pendingStacks, skipped, clashSkipped, preContestRest, pendingModeEnd, CLASH_MIN_HISTORY, leadPath, JOB_CLAIM_SOURCES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -331,7 +331,7 @@ function ____exports.ClearPrediction(samples, now, window)
             end
         end
     end
-    if first == nil or last == nil or last.t - first.t < 1 then
+    if first == nil or last == nil or last.t - first.t < CLASH_MIN_HISTORY then
         return nil
     end
     local rate = (first.hp - last.hp) / (last.t - first.t)
@@ -644,10 +644,10 @@ function laneAtMeet(meet)
     local r = settings().Radii.MeetBusy
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue298
+            local __continue299
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue298 = true
+                    __continue299 = true
                     break
                 end
                 if dist2D(
@@ -656,9 +656,9 @@ function laneAtMeet(meet)
                 ) <= r then
                     return true
                 end
-                __continue298 = true
+                __continue299 = true
             until true
-            if not __continue298 then
+            if not __continue299 then
                 break
             end
         end
@@ -673,17 +673,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue303
+            local __continue304
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue303 = true
+                    __continue304 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue303 = true
+                    __continue304 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -694,9 +694,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue303 = true
+                __continue304 = true
             until true
-            if not __continue303 then
+            if not __continue304 then
                 break
             end
         end
@@ -850,10 +850,10 @@ function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue331
+            local __continue332
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue331 = true
+                    __continue332 = true
                     break
                 end
                 if dist2D(
@@ -862,9 +862,9 @@ function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue331 = true
+                __continue332 = true
             until true
-            if not __continue331 then
+            if not __continue332 then
                 break
             end
         end
@@ -933,13 +933,13 @@ function tracePull(bot, job, now)
     local atMeet = 0
     for ____, c in ipairs(wave) do
         do
-            local __continue347
+            local __continue348
             repeat
                 if dist2D(
                     c:GetLocation(),
                     meet
                 ) > cfg.Radii.MeetWatch then
-                    __continue347 = true
+                    __continue348 = true
                     break
                 end
                 atMeet = atMeet + 1
@@ -947,9 +947,9 @@ function tracePull(bot, job, now)
                     tr.everDiverted[c] = true
                     tr.everN = tr.everN + 1
                 end
-                __continue347 = true
+                __continue348 = true
             until true
-            if not __continue347 then
+            if not __continue348 then
                 break
             end
         end
@@ -963,19 +963,19 @@ function tracePull(bot, job, now)
         local fighting = false
         for ____, c in ipairs(s and s.enemy.units or ({})) do
             do
-                local __continue353
+                local __continue354
                 repeat
                     if c:IsNull() or not c:IsAlive() then
-                        __continue353 = true
+                        __continue354 = true
                         break
                     end
                     local loc = c:GetLocation()
                     if loc ~= nil and dist2D(loc, meet) <= cfg.Radii.ClashFight then
                         fighting = true
                     end
-                    __continue353 = true
+                    __continue354 = true
                 until true
-                if not __continue353 then
+                if not __continue354 then
                     break
                 end
             end
@@ -1071,10 +1071,10 @@ function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue362
+            local __continue363
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue362 = true
+                    __continue363 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -1084,9 +1084,9 @@ function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue362 = true
+                __continue363 = true
             until true
-            if not __continue362 then
+            if not __continue363 then
                 break
             end
         end
@@ -1126,19 +1126,19 @@ function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue377
+            local __continue378
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue377 = true
+                    __continue378 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue377 = true
+                __continue378 = true
             until true
-            if not __continue377 then
+            if not __continue378 then
                 break
             end
         end
@@ -1456,7 +1456,10 @@ function clashCrowded(bot, fight)
     end
     return n >= cfg.Thresholds.TakePullDangerEnemies
 end
-function nextWaveSoon(s, walk, now)
+function nextWaveSoon(s, walk, now, hitAt)
+    if hitAt == nil then
+        hitAt = now
+    end
     if s.enemyArrivalSec == nil then
         return false
     end
@@ -1465,7 +1468,7 @@ function nextWaveSoon(s, walk, now)
     if next <= now then
         next = next + cycle
     end
-    return next - now <= walk + settings().Timing.ClashWaveMargin
+    return next - hitAt <= walk + settings().Timing.ClashWaveMargin
 end
 function clashEnd(s, job, now)
     local cfg = settings()
@@ -1856,6 +1859,7 @@ function ____exports.CampsUp(time)
     local t = settings().Timing
     return math.floor(time / t.PullPeriod) * t.PullPeriod >= t.NeutralFirstSpawn
 end
+CLASH_MIN_HISTORY = 1
 local function noisy(v, noise)
     local r = RandomVector(noise)
     return Vector(v.x + r.x, v.y + r.y, v.z)
@@ -2898,16 +2902,25 @@ local function clashWanted(bot, s, data, now)
         spawner,
         clashFight(s, spawner)
     )
-    if length > cfg.Radii.ClashPullReach or nextWaveSoon(s, walk, now) then
+    if length > cfg.Radii.ClashPullReach then
         return false
     end
-    return travelTo(
+    local travel = travelTo(
         bot,
         standFor(
             spawner,
             leadPath(data.pull, data.pull.meetPoint)[1]
         )
-    ) <= cfg.Timing.MaxTravel
+    )
+    if travel > cfg.Timing.MaxTravel then
+        return false
+    end
+    return not nextWaveSoon(
+        s,
+        walk,
+        now,
+        now + math.max(travel, CLASH_MIN_HISTORY)
+    )
 end
 local function schedule(bot)
     local now = DotaTime()
