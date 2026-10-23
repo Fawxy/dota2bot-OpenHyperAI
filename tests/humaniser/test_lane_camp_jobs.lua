@@ -1435,8 +1435,8 @@ local function clashWorld(skill, opts)
 	local fx = opts.frontX or 0
 	if fx ~= 0 then LANE_FRONT[2][Lane.Bot] = 0.5 + fx / 14000 end
 	local ours, theirs = {}, {}
-	for i = 1, opts.ours or 3 do ours[i] = MakeCreep({ team = 2, x = fx - 100, y = -5000 + i * 50 }) end
-	for i = 1, opts.theirs or 2 do theirs[i] = MakeCreep({ team = 3, x = fx + 100, y = -5000 + i * 50 }) end
+	for i = 1, opts.ours or 3 do ours[i] = MakeCreep({ team = 2, x = fx - 100, y = -5000 + i * 50, hp = opts.ourHp, maxhp = opts.ourHp }) end
+	for i = 1, opts.theirs or 2 do theirs[i] = MakeCreep({ team = 3, x = fx + 100, y = -5000 + i * 50, hp = opts.theirHp, maxhp = opts.theirHp }) end
 	local atMeet = MakeCreep({ team = 2, x = data.pull.meetPoint.x, y = data.pull.meetPoint.y })
 	return H, support, data, lines, ours, theirs, atMeet, stand
 end
@@ -1497,6 +1497,160 @@ do
 	check("no second clash pull in the cycle", kindOf(H, support) == nil)
 	frame(H, support, 90.5)
 	check("a new cycle may clash again", kindOf(H, support) == "clash_pull")
+end
+
+local function clashAbort(lines)
+	for _, l in ipairs(lines) do if l:find("ev=lane_job_abort ", 1, true) and l:find("kind=clash", 1, true) then return l:match("reason=(%S+)") end end
+end
+local function setHp(creeps, total) for _, c in ipairs(creeps) do c.hp = total / #creeps end end
+local function attacks() return #ActionsOf(5, "AttackUnit") end
+
+do
+	-- Their two creeps lose 300 HP/s from 3,000; ours are far stronger. The camp walks ~6.0 s to the fight and the hit
+	-- lands 0.3 s after its order, so the hit is due once 3,000 - 300 (t - 65) <= 300 * (walk + 0.3): first at 1:09.
+	local H, support, _, lines, _, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local job, early, hitAt = nil, false, nil
+	for k = 0, 12 do
+		local t = 65 + k * 0.5
+		setHp(theirs, 3000 - 300 * (t - 65))
+		frame(H, support, t)
+		job = job or H.Lane.CampJobs.Current(support)
+		if hitAt == nil and attacks() > 0 then hitAt = t end
+		if hitAt == nil and job and (3000 - 300 * (t - 65)) / 300 <= job.clash.walk + 0.3 and t >= 66 then early = t end
+	end
+	check("precondition: a clash pull with a ~6 s camp walk", job ~= nil and job.kind == "clash_pull" and math.abs(job.clash.walk - 6.0) < 0.1,
+		job and job.clash and job.clash.walk)
+	check("the camp is hit on the first frame its clear prediction is within walk + lead", hitAt == 69 and early == false, tostring(hitAt) .. " " .. tostring(early))
+	check("... and the prediction is kept", job.clash.pred ~= nil and job.clash.pred <= job.clash.walk + 0.3 and job.clash.pred > job.clash.walk + 0.3 - 0.5)
+	check("a clash pull has no wave time to wait for", job.waveAt == nil)
+
+	-- Falling fast enough from the start: still no hit until a second of HP history exists.
+	H, support, _, lines, _, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 750 })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local at = {}
+	for k = 0, 2 do
+		local t = 65 + k * 0.5
+		setHp(theirs, 1500 - 600 * (t - 65))
+		frame(H, support, t)
+		at[k] = attacks()
+	end
+	check("no hit before a second of HP history", at[0] == 0 and at[1] == 0 and at[2] == 1, at[0] .. at[1] .. at[2])
+end
+
+do
+	-- Ends before the hit: no attack on the camp, the reason on lane_job_abort.
+	local function run(opts, step)
+		local H, support, data, lines, ours, theirs = clashWorld(0.9, opts)
+		MakeNeutral({ x = SMALL.x, y = SMALL.y })
+		frame(H, support, opts.t or 65)
+		local job = H.Lane.CampJobs.Current(support)
+		local t = opts.t or 65
+		while t < (opts.untilT or 70) and clashAbort(lines) == nil do
+			t = t + 0.5
+			if step then step(t, ours, theirs) end
+			frame(H, support, t)
+		end
+		return clashAbort(lines), job, t, lines
+	end
+	local why, job = run({}, function(t, ours) if t >= 66 then for _, c in ipairs(ours) do c.hp = 100 end end end)
+	check("ours losing the clash ends it clash-lost", job.kind == "clash_pull" and why == "clash-lost" and attacks() == 0, tostring(why))
+	why = run({}, function(t, ours, theirs)
+		if t >= 66 then for _, c in ipairs(ours) do if not c.removed then RemoveCreep(c) end end for _, c in ipairs(theirs) do c.unseen = true end end
+	end)
+	check("ours all dead, theirs out of sight: clash-lost, not lane-won", why == "clash-lost" and attacks() == 0, tostring(why))
+	why = run({}, function(t, _, theirs) if t >= 66 then for _, c in ipairs(theirs) do c.hp = 0 end end end)
+	check("their creeps dying before the hit ends it lane-won", why == "lane-won" and attacks() == 0, tostring(why))
+	local tEnd
+	why, _, tEnd = run({ untilT = 85 })
+	check("no hit for 15 s at the stand ends it wait-max", why == "wait-max" and tEnd == 80 and attacks() == 0, tostring(why) .. " " .. tostring(tEnd))
+	check("... with no enemy arrivals recorded, never next-wave", why ~= "next-wave")
+end
+
+do
+	-- Their three creeps reached our front at cycle second 26 of the cycle before, so the next wave is due at 1:26.
+	-- With the camp's ~6.0 s walk plus the 3 s margin, the clash pull gives up from 1:17.
+	local H, support, data, lines, ours, theirs = clashWorld(0.9, { t = 56, theirs = 3, ourHp = 2000 })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	frame(H, support, 56)
+	check("precondition: no clash before the camps spawn", kindOf(H, support) == nil)
+	local t, why = 65, nil
+	frame(H, support, t)
+	local job = H.Lane.CampJobs.Current(support)
+	while t < 80 and why == nil do
+		t = t + 0.5
+		frame(H, support, t)
+		why = clashAbort(lines)
+	end
+	check("the next enemy wave due within walk + margin ends it next-wave", job ~= nil and job.kind == "clash_pull" and why == "next-wave" and t == 77,
+		tostring(why) .. " " .. t)
+end
+
+do
+	-- Two visible enemy heroes at the fight hold the hit; one does not. jobWorld's enemy pid 10 already stands at our
+	-- front (the default location), so `n` more join it.
+	local function crowd(n)
+		local H, support, _, lines, _, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+		MakeNeutral({ x = SMALL.x, y = SMALL.y })
+		for k = 0, 10 do
+			local t = 65 + k * 0.5
+			setHp(theirs, 3000 - 300 * (t - 65))
+			frame(H, support, t)
+			-- After the start: enemy heroes at our front already keep the planner from asking for a pull.
+			if k == 0 then for i = 1, n do unit({ pid = 10 + i, team = 3, pos = i == 1 and 5 or 1, loc = Vector(-200 + 50 * i, -5100) }) end end
+		end
+		return H.Lane.CampJobs.Current(support), lines
+	end
+	local job, lines = crowd(1)
+	check("two enemy heroes at the fight: no hit while due", attacks() == 0 and job ~= nil and job.phase == "wait", table.concat(lines, "\n"))
+	job = crowd(0)
+	check("one enemy hero at the fight: the hit goes", attacks() == 1 and job.phase == "aggro")
+end
+
+do
+	-- After the hit the fight point is fixed: the front moving on does not move the lead.
+	local H, support, _, lines, ours, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	local neutral = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	local t = 65
+	while attacks() == 0 and t < 72 do
+		setHp(theirs, 3000 - 300 * (t - 65))
+		frame(H, support, t)
+		t = t + 0.5
+	end
+	local job = H.Lane.CampJobs.Current(support)
+	local meet = Vector(job.meet.x, job.meet.y)
+	check("precondition: hit", attacks() == 1)
+	LANE_FRONT[2][Lane.Bot] = 0.5 + 500 / 14000
+	neutral.target = support
+	frame(H, support, t)
+	frame(H, support, t + 0.5)
+	local last = job.path[#job.path]
+	check("the lead ends at the hit's fight point", job.phase == "lead" and near(job.meet.x, meet.x) and near(last.x, meet.x) and near(last.y, meet.y),
+		job.phase .. " " .. job.meet.x .. " " .. meet.x)
+
+	-- The camp reaches the fight with the enemy wave gone: all three of ours turn on it.
+	for _, c in ipairs(theirs) do c.hp = 0 end
+	for _ = 1, 4 do teleport(support) t = t + 0.5 frame(H, support, t) end
+	neutral.loc = Vector(meet.x, meet.y)
+	for _, c in ipairs(ours) do c.target = neutral end
+	for _ = 1, 20 do t = t + 0.5 frame(H, support, t) end
+	local graded
+	for _, l in ipairs(lines) do if l:find("ev=lane_job ", 1, true) and l:find("kind=clash", 1, true) then graded = l end end
+	check("a clash pull diverting its wave grades as a full pull", job.phase == "done" and graded ~= nil and graded:find("grade=ok", 1, true) ~= nil,
+		tostring(graded) .. " " .. job.phase)
+end
+
+do
+	-- The camp was farmed: the hit comes due with nothing in the box, and the job ends mistake:no-camp.
+	local H, support, _, lines, _, theirs = clashWorld(0.9, { ourHp = 2000, theirHp = 1500 })
+	local t = 65
+	while clashAbort(lines) == nil and t < 75 do
+		setHp(theirs, 3000 - 300 * (t - 65))
+		frame(H, support, t)
+		teleport(support)
+		t = t + 0.5
+	end
+	check("a hit due on an empty camp ends mistake:no-camp", clashAbort(lines) == "mistake:no-camp" and attacks() == 0, tostring(clashAbort(lines)))
 end
 
 finish()

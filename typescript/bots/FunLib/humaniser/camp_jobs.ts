@@ -1891,10 +1891,89 @@ function noteSupply(bot: Unit, job: Job, item: SupplyItem | undefined, state: st
     ]);
 }
 
+/** Visible enemy heroes at the fight would meet the camp and the support leading it there. */
+function clashCrowded(bot: Unit, fight: Vector): boolean {
+    const cfg = settings();
+    let n = 0;
+    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
+        if (e.visible && dist2D(e.location, fight) <= cfg.Radii.TakePullDanger) n++;
+    }
+    return n >= cfg.Thresholds.TakePullDangerEnemies;
+}
+
+/** Why the clash no longer wants a pull, else undefined. With ours gone their creeps are out of sight, so that is a loss. */
+function clashEnd(s: LaneState.LaneSnapshot, job: Job, now: number): string | undefined {
+    const cfg = settings();
+    const clash = job.clash!;
+    if (s.ally.units.length < cfg.Thresholds.ClashAllyMin || s.allyPower <= s.enemyPower) return "clash-lost";
+    if (s.enemy.units.length === 0) return "lane-won";
+    if (s.enemyArrivalSec !== undefined) {
+        const cycle = cfg.Timing.WaveCycle;
+        let next = math.floor(now / cycle) * cycle + s.enemyArrivalSec;
+        if (next <= now) next += cycle;
+        if (next - now <= clash.walk + cfg.Timing.ClashWaveMargin) return "next-wave";
+    }
+    if (clash.waitFrom !== undefined && now - clash.waitFrom >= cfg.Timing.ClashWaitMax) return "wait-max";
+    return undefined;
+}
+
+/**
+ * A clash pull before its hit: wait at the stand, following the fight point, and hit once the enemy creeps there are
+ * predicted to die by the time the camp walks in. The fight point and lead are fixed from the hit.
+ */
+function stepClashWait(bot: Unit, job: Job, now: number): boolean {
+    const cfg = settings();
+    const clash = job.clash!;
+    const s = LaneState.ForBot(bot);
+    const data = Camps.ByIdx(job.campIdx, bot.GetTeam());
+    const spawner = Camps.SpawnerByIdx(job.campIdx);
+    if (s === undefined || data === undefined || data.pull === undefined || spawner === undefined) {
+        abort(bot, job, "no-lane");
+        return false;
+    }
+    telegraph(bot, job, now);
+    const fight = clashFight(s, spawner);
+    const [path, walk] = clashLead(data, spawner, fight);
+    job.meet = fight;
+    job.path = path;
+    clash.walk = walk;
+    let hp = 0;
+    for (const c of s.enemy.units) if (!c.IsNull() && c.IsAlive()) hp += c.GetHealth();
+    clash.samples = clash.samples.filter((p) => now - p.t <= cfg.Timing.ClashRateWindow);
+    clash.samples.push({ t: now, hp });
+    const there = arrived(bot, job.stand);
+    if (there) clash.waitFrom ??= now;
+    const end = clashEnd(s, job, now);
+    if (end !== undefined) {
+        abort(bot, job, end);
+        return false;
+    }
+    // Keeps the timeout (JobMaxAfterAggro) counting from now until the hit sets the real aggro time.
+    job.aggroAt = now;
+    const creep = campNeutral(bot, job);
+    const lead = creep !== undefined ? aggroLead(bot, creep) : cfg.Timing.AggroLeadDefault;
+    const pred = ClearPrediction(clash.samples, now, cfg.Timing.ClashRateWindow);
+    if (pred !== undefined && pred <= walk + lead && (creep !== undefined || there) && !clashCrowded(bot, fight)) {
+        clash.pred = pred;
+        job.aggroAt = now + lead;
+        job.baseAggro = job.aggroAt;
+        job.plannedSec = job.aggroAt % cfg.Timing.PullPeriod;
+        if (creep !== undefined) return orderAggro(bot, job, creep);
+        // Nothing in sight from the stand: the full pull's approach and no-camp handling.
+        job.phase = "aggro";
+        return step(bot, job);
+    }
+    if (!there) return moveTo(bot, job.stand);
+    job.phase = "wait";
+    Intent.Hold(bot, "lane:job_wait");
+    return true;
+}
+
 function step(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     const cfg = settings();
     if (job.kind === "contest") return stepContest(bot, job, now);
+    if (job.kind === "clash_pull" && (job.phase === "travel" || job.phase === "wait")) return stepClashWait(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
         if (job.kind !== "stack" && supply(bot, job, now)) return true;
