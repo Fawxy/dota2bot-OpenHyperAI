@@ -164,6 +164,8 @@ function approxThreat(game, pid, t) {
     return '-';
 }
 
+const isEscape = e => (e.to === 'retreat' || e.to === 'evasive' || (e.to === 'farm' && Number(e.d) >= 1.1)) && e.th !== '-';
+
 function modeMetrics(events, until, maxT, game) {
     const sw = events.filter(e => e.ev === 'mode' && e.t >= 0).sort((a, b) => a.t - b.t);
     let blips = 0;
@@ -216,6 +218,8 @@ function modeMetrics(events, until, maxT, game) {
         unjustifiedPerMin: minutes > 0 ? unjustified / minutes : undefined,
         unjustifiedApprox: approx,
         cuts: cutSeen ? count(sw, e => isTrue(e.cut)) : undefined,
+        // Cutting a swing to escape (retreat, evasive, farm's run at 1.1+) under threat is correct play; the rest is not.
+        cutsHarmful: cutSeen ? count(sw, e => isTrue(e.cut) && !isEscape(e)) : undefined,
         dithers: ditherSeen ? dithers : undefined,
         dithersPerMin: ditherSeen && minutes > 0 ? dithers / minutes : undefined,
         idleEpisodes: idle.length,

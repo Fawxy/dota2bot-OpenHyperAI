@@ -627,6 +627,15 @@ local function inWindup(bot, s, now)
     )
     return now - s.swingAt < bot:GetAttackPoint() / speed
 end
+--- The bot is in an attack wind-up or a cast point (tracked per frame by Tick; false with telemetry off).
+function ____exports.InWindup(bot)
+    local s = states[bot:GetPlayerID()]
+    return s ~= nil and ____exports.IsEnabled() and inWindup(
+        bot,
+        s,
+        DotaTime()
+    )
+end
 --- Tracks the attack wind-up start and move reversals; emits ev=dither for 2+ reversals in 3 s with no threat.
 local function trackMotion(bot, s, now)
     local act = bot:GetAnimActivity()
@@ -802,15 +811,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue113
+                local __continue114
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue113 = true
+                        __continue114 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue113 = true
+                        __continue114 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -847,9 +856,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue113 = true
+                    __continue114 = true
                 until true
-                if not __continue113 then
+                if not __continue114 then
                     break
                 end
             end

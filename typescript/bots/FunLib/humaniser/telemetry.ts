@@ -466,6 +466,12 @@ function inWindup(bot: Unit, s: BotState, now: number): boolean {
     return now - s.swingAt < (bot as unknown as AttackPointUnit).GetAttackPoint() / speed;
 }
 
+/** The bot is in an attack wind-up or a cast point (tracked per frame by Tick; false with telemetry off). */
+export function InWindup(bot: Unit): boolean {
+    const s = states[bot.GetPlayerID()];
+    return s !== undefined && IsEnabled() && inWindup(bot, s, DotaTime());
+}
+
 /** Tracks the attack wind-up start and move reversals; emits ev=dither for 2+ reversals in 3 s with no threat. */
 function trackMotion(bot: Unit, s: BotState, now: number): void {
     const act = bot.GetAnimActivity();

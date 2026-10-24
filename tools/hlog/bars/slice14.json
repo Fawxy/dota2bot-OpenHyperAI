@@ -6,7 +6,7 @@
  "bars": [
   { "id": "lua errors", "metric": "game.errors.lua", "max": 0 },
   { "id": "unjustified switches/min, median of allied bots", "select": { "team": "human" }, "metric": "modes.unjustifiedPerMin", "agg": "median", "max": 0.5 },
-  { "id": "cancelled swings per allied bot", "select": { "team": "human" }, "metric": "modes.cuts", "agg": "max", "max": 1 },
+  { "id": "cancelled swings per allied bot (escapes under threat excluded)", "select": { "team": "human" }, "metric": "modes.cutsHarmful", "agg": "max", "max": 1 },
   { "id": "dithering/min, worst allied bot", "select": { "team": "human" }, "metric": "modes.dithersPerMin", "agg": "max", "max": 1 },
   { "id": "no idle episode of 10 s+", "select": { "team": "human" }, "metric": "modes.idleLong", "agg": "max", "max": 0 },
   { "id": "idle episodes per bot", "select": { "team": "human" }, "metric": "modes.idleEpisodes", "agg": "max", "max": 2 },

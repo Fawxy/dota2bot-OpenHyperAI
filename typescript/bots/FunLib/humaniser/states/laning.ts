@@ -146,6 +146,9 @@ const lastBase: Record<number, number | undefined> = {};
  */
 export function Desire(bot: Unit, owned: boolean, score: number, reason?: string): number {
     const pid = bot.GetPlayerID();
+    // Never pull the bot back to lane in the middle of another mode's swing or cast (slice 14 run 3: fights cut by
+    // the return to laning once the interrupt's commitment ran out).
+    if (bot.GetActiveMode() !== BotMode.Laning && Telemetry.InWindup(bot)) return 0;
     if (reason !== "lasthit") {
         // Only real base scores: OHA's NONE exits (harassed, enemies at the ancient, high-ground push) say "not
         // now", and a spike right after one is a frame those checks passed.

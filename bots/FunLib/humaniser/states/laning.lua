@@ -234,6 +234,9 @@ local lastBase = {}
 -- the last base score where the body takes this bot's last hits: the body wants the creep, not another mode.
 function ____exports.Desire(bot, owned, score, reason)
     local pid = bot:GetPlayerID()
+    if bot:GetActiveMode() ~= BotMode.Laning and Telemetry.InWindup(bot) then
+        return 0
+    end
     if reason ~= "lasthit" then
         if score > 0 then
             lastBase[pid] = score
