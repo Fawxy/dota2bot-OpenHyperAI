@@ -145,6 +145,11 @@ test('slice 14 modes: a round trip under 2 s is a blip, a longer visit is not; i
     assert.strictEqual(bot.modes.blipsPerMin, 0.1);
     assert.deepStrictEqual([bot.modes.idleEpisodes, bot.modes.idleLong, bot.modes.idleMax, bot.modes.asides], [3, 2, 13, 1]);
     assert.strictEqual(bot.modes.layerSetPct, 50);
+    // No th field: estimated from snaps (nobody near, HP steady), so the one blip is unjustified.
+    assert.deepStrictEqual([bot.modes.unjustified, bot.modes.unjustifiedApprox, bot.modes.cuts], [1, true, undefined]);
+    const tagged = extra.map(l => l.replace('to=team_roam d=1.5 dwell=10', 'to=team_roam d=1.5 dwell=10 th=hero cut=1').replace('to=laning d=0.52 dwell=0.5', 'to=laning d=0.52 dwell=0.5 th=- cut=0'));
+    const t2 = metricsOf(gameLog({ extra: [...tagged, '[HEV] t=400 ev=dither pid=2 mode=laning n=2 th=-'] })).bots.find(b => b.pid === 2);
+    assert.deepStrictEqual([t2.modes.unjustified, t2.modes.unjustifiedApprox, t2.modes.cuts, t2.modes.dithers], [0, false, 1, 1]);
     const r = check([metricsOf(gameLog({ extra }))], { bars: [{ id: 'idle', select: { team: 'rad' }, metric: 'modes.idleLong', agg: 'max', max: 0 }] });
     assert.strictEqual(r.results[0].status, 'fail');
 });

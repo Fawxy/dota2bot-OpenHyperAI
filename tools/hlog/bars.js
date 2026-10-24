@@ -134,10 +134,54 @@ function jobMetrics(events) {
 // A blip is a round trip A -> B -> A whose visit to B lasted under BLIP_SECS.
 const BLIP_SECS = 2;
 const IDLE_LONG_SECS = 10;
-function modeMetrics(events, until, maxT) {
+// Without ev=mode's `th` (logs before slice 14's quality telemetry), the threat is estimated from snapshots: an enemy
+// hero within 1200 in the nearest snap, or the bot's HP falling 3+ points over the 1.5 s before (towers unseen, so
+// the estimate overcounts unjustified switches near towers).
+function approxThreat(game, pid, t) {
+    const snaps = game._snapsBy || (game._snapsBy = (() => {
+        const by = {};
+        for (const e of game.events) if (e.ev === 'snap') (by[e.pid] = by[e.pid] || []).push(e);
+        return by;
+    })());
+    const near = (list, at) => {
+        if (!list) return undefined;
+        let best;
+        for (const e of list) if (Math.abs(e.t - at) <= 1 && (!best || Math.abs(e.t - at) < Math.abs(best.t - at))) best = e;
+        return best;
+    };
+    const me = near(snaps[pid], t);
+    if (!me) return undefined;
+    const team = game.bots[pid] && game.bots[pid].team;
+    for (const [other, list] of Object.entries(snaps)) {
+        const ob = game.bots[other];
+        if (!ob || ob.team === team) continue;
+        const o = near(list, t);
+        if (o && Number(o.alive) === 1 && Math.hypot(o.x - me.x, o.y - me.y) <= 1200) return 'hero';
+    }
+    const before = near(snaps[pid], t - 1.5);
+    if (before && Number(before.hp) - Number(me.hp) >= 3) return 'hit';
+    if (Number(me.hp) < 30) return 'low';
+    return '-';
+}
+
+function modeMetrics(events, until, maxT, game) {
     const sw = events.filter(e => e.ev === 'mode' && e.t >= 0).sort((a, b) => a.t - b.t);
     let blips = 0;
-    for (let k = 1; k < sw.length; k++) if (sw[k].to === sw[k - 1].from && Number(sw[k].dwell) < BLIP_SECS) blips++;
+    let unjustified = 0;
+    let approx = false;
+    for (let k = 1; k < sw.length; k++) {
+        if (sw[k].to !== sw[k - 1].from || Number(sw[k].dwell) >= BLIP_SECS) continue;
+        blips++;
+        let th = sw[k - 1].th;
+        if (th === undefined && game) {
+            th = approxThreat(game, sw[k - 1].pid, sw[k - 1].t);
+            approx = true;
+        }
+        if (th === '-') unjustified++;
+    }
+    const cutSeen = sw.some(e => e.cut !== undefined);
+    const dithers = events.filter(e => e.ev === 'dither').length;
+    const ditherSeen = cutSeen;
     const end = Math.min(until, maxT);
     const minutes = end / 60;
     // An episode logs phase=start at the threshold and phase=end when it ends; one still open at the end of the log
@@ -166,6 +210,14 @@ function modeMetrics(events, until, maxT) {
         swPerMin: minutes > 0 ? sw.length / minutes : undefined,
         blips,
         blipsPerMin: minutes > 0 ? blips / minutes : undefined,
+        // Harmful switches (slice 14 bar): a blip into a mode with nothing to justify it, a switch during an attack
+        // wind-up or cast point, and visible back-and-forth walking with no threat.
+        unjustified,
+        unjustifiedPerMin: minutes > 0 ? unjustified / minutes : undefined,
+        unjustifiedApprox: approx,
+        cuts: cutSeen ? count(sw, e => isTrue(e.cut)) : undefined,
+        dithers: ditherSeen ? dithers : undefined,
+        dithersPerMin: ditherSeen && minutes > 0 ? dithers / minutes : undefined,
         idleEpisodes: idle.length,
         idleLong: count(secs, x => x >= IDLE_LONG_SECS),
         idleMax: secs.length ? Math.max(...secs) : 0,
@@ -220,7 +272,7 @@ function collect(game, { until = 600, file } = {}) {
                 pushedLines: count(ownedPos, e => typeof e.pushed === 'number' && e.pushed > 0),
             },
             states: stateFields(states[m.pid]),
-            modes: modeMetrics(events, until, game.maxT),
+            modes: modeMetrics(events, until, game.maxT, game),
             jobs: jobMetrics(events),
         });
     }

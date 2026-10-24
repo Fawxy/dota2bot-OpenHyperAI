@@ -1,6 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
 local Team = ____dota.Team
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -286,7 +287,9 @@ local function stateFor(pid)
             denies = -1,
             decisions = weakKeys(),
             markCursor = {},
-            ended = false
+            ended = false,
+            reversals = {},
+            ditherUntil = -math.huge
         }
         states[pid] = s
     end
@@ -576,6 +579,124 @@ local function trackCounters(unit, s, human, now)
     local target = unit:GetAttackTarget()
     s.prevTarget = target ~= nil and target ~= nil and target or nil
 end
+local ACTIVITY_ATTACK = 1503
+local ACTIVITY_ATTACK2 = 1504
+local THREAT_HERO_RADIUS = 1200
+local THREAT_TOWER_RADIUS = 900
+local THREAT_HIT_SECS = 1.5
+local THREAT_LOW_HP = 0.3
+--- What could justify leaving the current mode right now (team slice 14): "hero" (a visible enemy hero within 1200),
+-- "tower" (an enemy tower within 900), "hit" (damaged by a hero or tower in the last 1.5 s), "low" (HP < 30%),
+-- comma-joined, or "-" for none. Logged with every mode switch and dither so a check can tell a justified short
+-- retreat from a flip.
+function ____exports.Threat(bot)
+    local out = {}
+    for ____, h in ipairs(bot:GetNearbyHeroes(THREAT_HERO_RADIUS, true, BotMode.None) or ({})) do
+        if h:IsAlive() and h:CanBeSeen() then
+            out[#out + 1] = "hero"
+            break
+        end
+    end
+    for ____, t in ipairs(bot:GetNearbyTowers(THREAT_TOWER_RADIUS, true) or ({})) do
+        if t:IsAlive() then
+            out[#out + 1] = "tower"
+            break
+        end
+    end
+    if bot:WasRecentlyDamagedByAnyHero(THREAT_HIT_SECS) or bot:WasRecentlyDamagedByTower(THREAT_HIT_SECS) then
+        out[#out + 1] = "hit"
+    end
+    if bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ) < THREAT_LOW_HP then
+        out[#out + 1] = "low"
+    end
+    return #out > 0 and table.concat(out, ",") or "-"
+end
+local function inWindup(bot, s, now)
+    if bot:IsCastingAbility() then
+        return true
+    end
+    if s.swingAt == nil then
+        return false
+    end
+    local speed = math.max(
+        0.1,
+        bot:GetAttackSpeed()
+    )
+    return now - s.swingAt < bot:GetAttackPoint() / speed
+end
+--- Tracks the attack wind-up start and move reversals; emits ev=dither for 2+ reversals in 3 s with no threat.
+local function trackMotion(bot, s, now)
+    local act = bot:GetAnimActivity()
+    if act == ACTIVITY_ATTACK or act == ACTIVITY_ATTACK2 then
+        if s.swingAt == nil then
+            s.swingAt = now
+        end
+        s.lastSwingAt = now
+    else
+        s.swingAt = nil
+    end
+    if not bot:IsAlive() then
+        s.moveLoc = nil
+        s.moveDir = nil
+        return
+    end
+    if s.moveAt ~= nil and now - s.moveAt < 0.5 then
+        return
+    end
+    local loc = bot:GetLocation()
+    local prev = s.moveLoc
+    s.moveAt = now
+    s.moveLoc = loc
+    if prev == nil then
+        return
+    end
+    local dx = loc.x - prev.x
+    local dy = loc.y - prev.y
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len < 100 then
+        return
+    end
+    local dir = {dx / len, dy / len}
+    local last = s.moveDir
+    s.moveDir = dir
+    if last == nil or dir[1] * last[1] + dir[2] * last[2] > -0.5 then
+        return
+    end
+    if s.lastSwingAt ~= nil and now - s.lastSwingAt < 3 then
+        return
+    end
+    local ____s_reversals_5 = s.reversals
+    ____s_reversals_5[#____s_reversals_5 + 1] = now
+    while #s.reversals > 0 and s.reversals[1] < now - 3 do
+        table.remove(s.reversals, 1)
+    end
+    if #s.reversals < 2 or now < s.ditherUntil then
+        return
+    end
+    local th = ____exports.Threat(bot)
+    if th ~= "-" then
+        return
+    end
+    s.ditherUntil = now + 3
+    ____exports.Event(
+        "dither",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "mode",
+                HDebug.ModeName(bot:GetActiveMode())
+            },
+            {"n", #s.reversals},
+            {"th", th}
+        }
+    )
+end
 local function trackMode(bot, s, now, provider)
     local mode = bot:GetActiveMode()
     if mode == s.mode then
@@ -609,7 +730,15 @@ local function trackMode(bot, s, now, provider)
                 bot:GetActiveModeDesire()
             },
             {"dwell", dwell},
-            {"by", ctx and ctx.by}
+            {"by", ctx and ctx.by},
+            {
+                "th",
+                ____exports.Threat(bot)
+            },
+            {
+                "cut",
+                inWindup(bot, s, now)
+            }
         }
     )
 end
@@ -673,15 +802,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue88
+                local __continue113
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue88 = true
+                        __continue113 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue88 = true
+                        __continue113 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -718,9 +847,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue88 = true
+                    __continue113 = true
                 until true
-                if not __continue88 then
+                if not __continue113 then
                     break
                 end
             end
@@ -752,6 +881,9 @@ function ____exports.Tick(bot, provider)
     end
     maybeProfile(bot, s)
     trackMode(bot, s, now, provider)
+    if state == GameState.GameInProgress then
+        trackMotion(bot, s, now)
+    end
     trackCounters(bot, s, false, now)
     reportMarks(bot, s, provider)
     if now - s.snapAt >= ____exports.Get().SnapshotInterval then

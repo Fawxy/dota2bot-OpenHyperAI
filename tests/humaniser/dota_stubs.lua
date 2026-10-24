@@ -74,6 +74,14 @@ function Unit:DistanceFromFountain() return self.fountainDist or 8000 end
 function Unit:GetLastHits() return self.lastHits or 0 end
 function Unit:GetAttackRange() return self.range or 150 end
 function Unit:Action_MoveToLocation(loc) self.moves = self.moves or {} table.insert(self.moves, loc) end
+-- Telemetry's mode-switch quality (team slice 14): threat, attack wind-up and motion.
+function Unit:GetAnimActivity() return self.anim or 0 end
+function Unit:GetAttackSpeed() return 1 end
+function Unit:GetAttackPoint() return self.attackPoint or 0.3 end
+function Unit:GetNearbyHeroes() return {} end
+function Unit:GetNearbyTowers() return {} end
+function Unit:WasRecentlyDamagedByAnyHero() return false end
+function Unit:WasRecentlyDamagedByTower() return false end
 ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
 function GetAncient() return ANCIENT end
 

@@ -7,7 +7,7 @@
  * Events emitted from a team-wide context (order posts, pings, commands) repeat once per module instance;
  * tools/hlog de-duplicates them.
  */
-import { GameState, Team, Unit } from "bots/ts_libs/dota";
+import { BotMode, GameState, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -71,6 +71,14 @@ interface BotState {
     decisions: LuaTable<Unit, Decision>;
     markCursor: Record<number, number>;
     ended: boolean;
+    // Mode-switch quality (team slice 14): the attack wind-up in progress, and the move-reversal detector.
+    swingAt?: number;
+    lastSwingAt?: number;
+    moveAt?: number;
+    moveLoc?: Vector;
+    moveDir?: [number, number];
+    reversals: number[];
+    ditherUntil: number;
 }
 
 interface MarkRecord {
@@ -254,7 +262,7 @@ const states: Record<number, BotState> = {};
 function stateFor(pid: number): BotState {
     let s = states[pid];
     if (s === undefined) {
-        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false };
+        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false, reversals: [], ditherUntil: -math.huge };
         states[pid] = s;
     }
     return s;
@@ -414,6 +422,93 @@ function trackCounters(unit: Unit, s: BotState, human: boolean, now: number): vo
     s.prevTarget = target !== null && target !== undefined ? target : undefined;
 }
 
+const ACTIVITY_ATTACK = 1503;
+const ACTIVITY_ATTACK2 = 1504;
+const THREAT_HERO_RADIUS = 1200;
+const THREAT_TOWER_RADIUS = 900;
+const THREAT_HIT_SECS = 1.5;
+const THREAT_LOW_HP = 0.3;
+
+/**
+ * What could justify leaving the current mode right now (team slice 14): "hero" (a visible enemy hero within 1200),
+ * "tower" (an enemy tower within 900), "hit" (damaged by a hero or tower in the last 1.5 s), "low" (HP < 30%),
+ * comma-joined, or "-" for none. Logged with every mode switch and dither so a check can tell a justified short
+ * retreat from a flip.
+ */
+export function Threat(bot: Unit): string {
+    const out: string[] = [];
+    for (const h of bot.GetNearbyHeroes(THREAT_HERO_RADIUS, true, BotMode.None) ?? []) {
+        if (h.IsAlive() && h.CanBeSeen()) {
+            out.push("hero");
+            break;
+        }
+    }
+    for (const t of bot.GetNearbyTowers(THREAT_TOWER_RADIUS, true) ?? []) {
+        if (t.IsAlive()) {
+            out.push("tower");
+            break;
+        }
+    }
+    if (bot.WasRecentlyDamagedByAnyHero(THREAT_HIT_SECS) || bot.WasRecentlyDamagedByTower(THREAT_HIT_SECS)) out.push("hit");
+    if (bot.GetHealth() / math.max(1, bot.GetMaxHealth()) < THREAT_LOW_HP) out.push("low");
+    return out.length > 0 ? out.join(",") : "-";
+}
+
+/** ts_libs does not declare GetAttackPoint yet (seconds from swing start to the hit, at base attack speed). */
+interface AttackPointUnit {
+    GetAttackPoint(): number;
+}
+
+function inWindup(bot: Unit, s: BotState, now: number): boolean {
+    if (bot.IsCastingAbility()) return true;
+    if (s.swingAt === undefined) return false;
+    const speed = math.max(0.1, bot.GetAttackSpeed());
+    return now - s.swingAt < (bot as unknown as AttackPointUnit).GetAttackPoint() / speed;
+}
+
+/** Tracks the attack wind-up start and move reversals; emits ev=dither for 2+ reversals in 3 s with no threat. */
+function trackMotion(bot: Unit, s: BotState, now: number): void {
+    const act = bot.GetAnimActivity();
+    if (act === ACTIVITY_ATTACK || act === ACTIVITY_ATTACK2) {
+        if (s.swingAt === undefined) s.swingAt = now;
+        s.lastSwingAt = now;
+    } else s.swingAt = undefined;
+    if (!bot.IsAlive()) {
+        s.moveLoc = undefined;
+        s.moveDir = undefined;
+        return;
+    }
+    if (s.moveAt !== undefined && now - s.moveAt < 0.5) return;
+    const loc = bot.GetLocation();
+    const prev = s.moveLoc;
+    s.moveAt = now;
+    s.moveLoc = loc;
+    if (prev === undefined) return;
+    const dx = loc.x - prev.x;
+    const dy = loc.y - prev.y;
+    const len = math.sqrt(dx * dx + dy * dy);
+    // A leg is a real walk (100+ units in 0.5 s), not an idle shuffle; a reversal turns by more than 120 degrees.
+    if (len < 100) return;
+    const dir: [number, number] = [dx / len, dy / len];
+    const last = s.moveDir;
+    s.moveDir = dir;
+    if (last === undefined || dir[0] * last[0] + dir[1] * last[1] > -0.5) return;
+    // Walking in for a swing and back out is last hitting, not dithering.
+    if (s.lastSwingAt !== undefined && now - s.lastSwingAt < 3) return;
+    s.reversals.push(now);
+    while (s.reversals.length > 0 && s.reversals[0] < now - 3) s.reversals.shift();
+    if (s.reversals.length < 2 || now < s.ditherUntil) return;
+    const th = Threat(bot);
+    if (th !== "-") return;
+    s.ditherUntil = now + 3;
+    Event("dither", [
+        ["pid", bot.GetPlayerID()],
+        ["mode", HDebug.ModeName(bot.GetActiveMode())],
+        ["n", s.reversals.length],
+        ["th", th],
+    ]);
+}
+
 function trackMode(bot: Unit, s: BotState, now: number, provider: ContextProvider | undefined): void {
     const mode = bot.GetActiveMode();
     if (mode === s.mode) return;
@@ -430,6 +525,9 @@ function trackMode(bot: Unit, s: BotState, now: number, provider: ContextProvide
         ["d", bot.GetActiveModeDesire()],
         ["dwell", dwell],
         ["by", ctx?.by],
+        ["th", Threat(bot)],
+        // Switched during an attack wind-up or a cast point: the new mode's Think will likely cancel it.
+        ["cut", inWindup(bot, s, now)],
     ]);
 }
 
@@ -515,6 +613,7 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
     if (s.ended) return;
     maybeProfile(bot, s);
     trackMode(bot, s, now, provider);
+    if (state === GameState.GameInProgress) trackMotion(bot, s, now);
     trackCounters(bot, s, false, now);
     reportMarks(bot, s, provider);
     if (now - s.snapAt >= Get().SnapshotInterval) {
