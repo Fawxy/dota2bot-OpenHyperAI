@@ -25,6 +25,15 @@ export interface StateSpec {
         label?: string;
         steps: number;
     }) => void;
+    /**
+     * Mode authority (`Modes`): the host mode's desire while this state is current, from the host's own score for
+     * that mode and its reason tag. Default: the host's score. Undefined also means the host's score.
+     */
+    desire?: (this: void, bot: TaskUnit, score: number, reason?: string) => number | undefined;
+    /** Mode authority: true for another mode's score this state replaces (that score reads as 0 while current). */
+    refuses?: (this: void, bot: TaskUnit, mode: number, reason?: string) => boolean;
+    /** Mode authority: true while the body is mid-action; the host mode then holds at least `Modes` `commit`. */
+    committed?: (this: void, bot: TaskUnit) => boolean;
 }
 export interface StatesConfig {
     /** Seconds between selections. */
@@ -56,6 +65,8 @@ export declare function SetPrior(fn: Prior | undefined): void;
 export declare function Tick(bot: TaskUnit): void;
 /** From the host mode's Think(): steps the current owned state's task when it runs on `host`; false otherwise. */
 export declare function Step(bot: TaskUnit, host: number): boolean;
+/** The current state's spec (chosen, owned or not), for the mode authority. */
+export declare function CurrentSpec(bot: TaskUnit): StateSpec | undefined;
 export declare function Current(bot: TaskUnit): {
     name: string;
     kind: StateKind;

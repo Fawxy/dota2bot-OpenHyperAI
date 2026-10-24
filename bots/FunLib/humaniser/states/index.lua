@@ -34,11 +34,12 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ownList, ownTeam, owns, lib, installed
+local modesOn, ownList, ownTeam, owns, lib, installModes, MODES_DEFAULTS, MODE_IDS, modesSettings, installed
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
+local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -51,6 +52,48 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
+function ____exports.Modes()
+    if modesSettings ~= nil then
+        return modesSettings
+    end
+    local ____opt_2 = Config.Raw()
+    if ____opt_2 ~= nil then
+        ____opt_2 = ____opt_2.States
+    end
+    local ____opt_result_4
+    if ____opt_2 ~= nil then
+        ____opt_result_4 = ____opt_2.Modes
+    end
+    local ____opt_result_4_5 = ____opt_result_4
+    if ____opt_result_4_5 == nil then
+        ____opt_result_4_5 = {}
+    end
+    local c = ____opt_result_4_5
+    local out = {}
+    for k, v in pairs(MODES_DEFAULTS) do
+        local ____k_7 = k
+        local ____c_k_6 = c[k]
+        if ____c_k_6 == nil then
+            ____c_k_6 = v
+        end
+        out[____k_7] = ____c_k_6
+    end
+    modesSettings = out
+    return modesSettings
+end
+function modesOn(bot)
+    local m = ____exports.Modes()
+    if m.Enable ~= true or not ____exports.IsEnabled() or not ownTeam(bot) then
+        return false
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    for ____, p in ipairs(m.Positions) do
+        if p == pos then
+            return true
+        end
+    end
+    return false
+end
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -92,15 +135,38 @@ function lib()
             if not owns(u, state) then
                 return false
             end
-            local ____temp_2 = state ~= Farm.NAME
-            if not ____temp_2 then
-                local ____opt_0 = FarmPattern.Live(u)
-                ____temp_2 = (____opt_0 and ____opt_0.sdk) == true
+            local ____temp_10 = state ~= Farm.NAME
+            if not ____temp_10 then
+                local ____opt_8 = FarmPattern.Live(u)
+                ____temp_10 = (____opt_8 and ____opt_8.sdk) == true
             end
-            return ____temp_2
+            return ____temp_10
         end)
+        installModes(l)
     end
     return l
+end
+function installModes(l)
+    local m = ____exports.Modes()
+    local ids = {}
+    for ____, name in ipairs(m.Own) do
+        local id = MODE_IDS[name]
+        if id ~= nil then
+            ids[#ids + 1] = id
+        end
+    end
+    l.Modes.SetOwned(ids)
+    l.Modes.SetEnabled(function(b) return modesOn(b) end)
+    l.Modes.configure({
+        hold = m.Hold,
+        interruptDwell = m.InterruptDwell,
+        commit = m.Commit,
+        idleAfter = m.IdleAfter,
+        idleBackoff = m.IdleBackoff
+    })
+    if m.Enable == true then
+        Intent.SetAuthority(function(bot, mode, raw, reason) return l.Modes.Decide(bot, mode, raw, reason) end)
+    end
 end
 --- First thing in a host mode's Think() step it replaces: true when the state's body acted this frame.
 function ____exports.Step(bot, mode)
@@ -111,6 +177,27 @@ function ____exports.Step(bot, mode)
     return l ~= nil and l.States.Step(bot, mode)
 end
 local LANE_POS_EVERY = 2
+MODES_DEFAULTS = {
+    Enable = false,
+    Own = {"laning", "farm"},
+    Positions = {
+        1,
+        2,
+        3,
+        4,
+        5
+    },
+    Hold = 0.08,
+    InterruptDwell = 1.5,
+    Commit = 0.75,
+    IdleAfter = 3,
+    IdleBackoff = 5
+}
+MODE_IDS = {laning = BotMode.Laning, farm = BotMode.Farm, rune = BotMode.Rune, roam = BotMode.Roam}
+--- Tests reload Customize between cases.
+function ____exports.ResetModes()
+    modesSettings = nil
+end
 local function shadowTeam(bot)
     return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
@@ -151,7 +238,7 @@ function ____exports.Registered()
 end
 ____exports.Register(
     Laning.NAME,
-    function(bot) return Laning.Spec(bot) end
+    function(bot) return Laning.Spec(bot, owns) end
 )
 for ____, ____value in ipairs(Shadow.SPECS) do
     local name = ____value[1]
@@ -205,8 +292,8 @@ local function lanePos(bot, l)
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
     local info = Laning.SpotInfo(bot)
-    local ____Telemetry_Event_9 = Telemetry.Event
-    local ____array_8 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_17 = Telemetry.Event
+    local ____array_16 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -215,15 +302,15 @@ local function lanePos(bot, l)
         {"owned", cur.owned},
         {"running", cur.running}
     )
-    local ____cur_running_5
+    local ____cur_running_13
     if cur.running then
-        ____cur_running_5 = task and task.label
+        ____cur_running_13 = task and task.label
     else
-        ____cur_running_5 = nil
+        ____cur_running_13 = nil
     end
     __TS__SparseArrayPush(
-        ____array_8,
-        {"label", ____cur_running_5},
+        ____array_16,
+        {"label", ____cur_running_13},
         {
             "mode",
             bot:GetActiveMode()
@@ -235,9 +322,9 @@ local function lanePos(bot, l)
             LaneMetrics.HeroLost(bot)
         }
     )
-    ____Telemetry_Event_9(
+    ____Telemetry_Event_17(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_8)}
+        {__TS__SparseArraySpread(____array_16)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
@@ -264,6 +351,7 @@ function ____exports.Tick(bot)
         )
     end
     l.States.Tick(bot)
+    l.Modes.Tick(bot)
     LaneMetrics.Tick(bot)
     lanePos(bot, l)
 end
@@ -273,8 +361,8 @@ function ____exports.Owns(bot, state)
 end
 --- Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body.
 local function stepFarm(bot, names)
-    local ____opt_10 = lib()
-    local cur = ____opt_10 and ____opt_10.States.Current(bot)
+    local ____opt_18 = lib()
+    local cur = ____opt_18 and ____opt_18.States.Current(bot)
     return cur ~= nil and names[cur.name] == true and ____exports.Step(bot, BotMode.Farm)
 end
 local FARM_STATES = {[Farm.NAME] = true}
@@ -303,20 +391,22 @@ function ____exports.BodyLastHits(bot)
     if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
         return false
     end
-    local ____opt_12 = Tasks.Loaded()
-    local cur = ____opt_12 and ____opt_12.States.Current(bot)
+    local ____opt_20 = Tasks.Loaded()
+    local cur = ____opt_20 and ____opt_20.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
---- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
--- skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
--- that never landed, `missed` with the creep alive seconds later).
-function ____exports.BodyBusy(bot)
-    if not ____exports.BodyLastHits(bot) then
+--- mode_laning_generic.lua hands over its own laning steps (everything its Think does but PositionThink); the
+-- laning body runs them on its hold and walk frames, so none can re-order a last-hit swing (team slice 14).
+function ____exports.SetLaneAssist(bot, fn)
+    Laning.SetAssist(bot, fn)
+end
+--- Whether the layer decides this bot's mode desires now (overlay, tests).
+function ____exports.ModesAsserting(bot)
+    if not ____exports.IsEnabled() then
         return false
     end
-    local ____opt_14 = Tasks.Current(bot)
-    local label = ____opt_14 and ____opt_14.label
-    return label == "lasthit" or label == "deny"
+    local l = Tasks.Loaded()
+    return l ~= nil and l.Modes ~= nil and l.Modes.Asserting(bot)
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
@@ -326,8 +416,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_16 = Tasks.Loaded()
-    local cur = ____opt_16 and ____opt_16.States.Current(bot)
+    local ____opt_22 = Tasks.Loaded()
+    local cur = ____opt_22 and ____opt_22.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

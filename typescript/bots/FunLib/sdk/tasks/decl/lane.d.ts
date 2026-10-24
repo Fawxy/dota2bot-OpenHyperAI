@@ -21,6 +21,8 @@ export interface LaneFarmOpts {
     label?: (this: void, label: string) => void;
     /** Called after every last-hit or deny attempt. */
     onAttempt?: (this: void, target: LaneTarget, result: Result, contested: boolean) => void;
+    /** holdAt's `assist`, offered on hold and walk frames only: never during a last-hit or deny attempt. */
+    assist?: (this: void) => boolean;
     deadline?: number;
     interruptIf?: (this: void) => boolean;
 }

@@ -115,6 +115,11 @@ export function Now(): number {
     return DotaTime() + (typeof offset === "number" ? offset : 0);
 }
 
+/** Customize.Humaniser as written (no defaults merged), for settings whose lists must replace, not merge. */
+export function Raw(): any {
+    return Customize.Humaniser;
+}
+
 export function IsEnabled(): boolean {
     return Get().Enable === true;
 }

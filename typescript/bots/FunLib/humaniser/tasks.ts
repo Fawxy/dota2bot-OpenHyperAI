@@ -103,6 +103,7 @@ const adapter: Lib.Adapter = {
     event: (name, fields) => Telemetry.Event(name, fields as [string, any][]),
     vector: (x, y, z) => Vector(x, y, z),
     enabled: () => Enabled(),
+    idle: (bot) => Intent.IsIdle(bot as unknown as Unit),
 };
 
 function loadBundle(): Bundle | undefined {

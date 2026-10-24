@@ -1,0 +1,19 @@
+{
+ "schema": "hlog-bars/1",
+ "name": "slice 14: the state layer owns mode desires (Modes on, LANE arm; baseline G4b)",
+ "until": "10:00",
+ "minRuns": 2,
+ "bars": [
+  { "id": "lua errors", "metric": "game.errors.lua", "max": 0 },
+  { "id": "blips/min median (allied bots)", "select": { "team": "human" }, "metric": "modes.blipsPerMin", "agg": "median", "max": 1.5 },
+  { "id": "blips/min max (allied bots)", "select": { "team": "human" }, "metric": "modes.blipsPerMin", "agg": "max", "max": 3 },
+  { "id": "no idle episode of 10 s+", "select": { "team": "human" }, "metric": "modes.idleLong", "agg": "max", "max": 0 },
+  { "id": "idle episodes per bot", "select": { "team": "human" }, "metric": "modes.idleEpisodes", "agg": "max", "max": 2 },
+  { "id": "layer set pos 2's switches", "select": { "team": "human", "pos": 2 }, "metric": "modes.layerSetPct", "min": 30 },
+  { "id": "lh@10 (G4b 41)", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh10", "min": 41, "over": "median" },
+  { "id": "lh@5 (G4b 28)", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.lh5", "min": 28, "over": "median" },
+  { "id": "dn@10", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.dn10", "min": 3 },
+  { "id": "deaths (G4b 0, +1)", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.deaths", "max": 1, "over": "median" },
+  { "id": "body last-hit success (G4b 67% to 10:00)", "select": { "team": "human", "pos": 2 }, "metric": "laneEval.bodyLhPct", "min": 67, "over": "median" }
+ ]
+}

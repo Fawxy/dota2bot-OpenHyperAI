@@ -127,6 +127,10 @@ function ____exports.Now()
     local offset = ____opt_7
     return DotaTime() + (type(offset) == "number" and offset or 0)
 end
+--- Customize.Humaniser as written (no defaults merged), for settings whose lists must replace, not merge.
+function ____exports.Raw()
+    return Customize.Humaniser
+end
 function ____exports.IsEnabled()
     return ____exports.Get().Enable == true
 end

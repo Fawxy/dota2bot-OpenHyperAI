@@ -2,12 +2,17 @@
  * `laning` state: go to the lane and hold a lane position (slice 1), stand like a high-MMR laner (slice 3,
  * `States.Laning.Spot = 'sdk'`), and last-hit and deny through the SDK verbs (slice 4, positions in
  * `States.Laning.LastHit`). OHA's spot (its PositionThink target) is handed over by mode_laning_generic.lua
- * through SetSpot. Where the body owns last hits, the Lua Think skips LastHitThink/DenyThink for the bot; its
- * techniques and harass still run first, so the body is resumed only on frames where none of those acted.
+ * through SetSpot. While the body runs it owns the laning Think's frame (team slice 14): OHA's own laning steps
+ * (aggro draws, techniques, harass, and its last hits where the body does not take them) run inside the body
+ * through the `assist` hook, on hold and walk frames only, never during a last-hit or deny attempt.
+ * For the mode authority the state flattens OHA's last-hit spike (reason `lasthit`) where the body takes the last
+ * hits, refuses team_roam's last-hit score there, and is committed during an attempt.
  */
 import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
+import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -114,6 +119,46 @@ export function OwnsLastHit(bot: Unit): boolean {
     return false;
 }
 
+type Assist = (this: void) => boolean;
+const assists: Record<number, Assist | undefined> = {};
+
+/** mode_laning_generic.lua hands over its own laning steps; true from it means one of them acted this frame. */
+export function SetAssist(bot: Unit, fn: Assist): void {
+    assists[bot.GetPlayerID()] = Telemetry.GuardsEnabled() ? Telemetry.Guard("States.laneAssist", fn, () => false) : fn;
+}
+
+// An error in OHA's steps must not end the body: it is reported (Guard) or logged, and the frame stays the body's.
+function assist(bot: Unit): boolean {
+    const fn = assists[bot.GetPlayerID()];
+    if (fn === undefined) return false;
+    const [ok, acted] = pcall(fn);
+    if (!ok) HDebug.Log("states", `lane assist error: ${tostring(acted)}`);
+    return ok && acted === true;
+}
+
+/** OHA's laning desire before 9:00 (mode_laning_generic), for a last-hit spike seen before any base score. */
+const LANING_BASE = 0.446;
+const lastBase: Record<number, number | undefined> = {};
+
+/**
+ * Host desire while laning is current: OHA's laning score, except that its last-hit spike (0.9) is replaced by
+ * the last base score where the body takes this bot's last hits: the body wants the creep, not another mode.
+ */
+export function Desire(bot: Unit, owned: boolean, score: number, reason?: string): number {
+    const pid = bot.GetPlayerID();
+    if (reason !== "lasthit") {
+        lastBase[pid] = score;
+        return score;
+    }
+    return owned && OwnsLastHit(bot) ? (lastBase[pid] ?? LANING_BASE) : score;
+}
+
+/** The body is in a last-hit or deny attempt (its swing must not lose the laning mode). */
+export function Attempting(bot: Unit): boolean {
+    const t = Tasks.Current(bot);
+    return t !== undefined && t.name === "state:" + NAME && (t.label === "lasthit" || t.label === "deny");
+}
+
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const sdk = Settings().Spot === "sdk";
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in
@@ -128,6 +173,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         near: NEAR,
         far: FAR,
         leash: LEASH,
+        assist: () => assist(bot),
         onAttempt: (t, res, contested) =>
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
@@ -142,7 +188,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     });
 }
 
-export function Spec(bot: Unit): Lib.StateSpec {
+export function Spec(bot: Unit, owns: (bot: Unit, state: string) => boolean): Lib.StateSpec {
+    const takesLastHits = (): boolean => OwnsLastHit(bot) && owns(bot, NAME);
     return {
         name: NAME,
         kind: "posture",
@@ -153,5 +200,8 @@ export function Spec(bot: Unit): Lib.StateSpec {
         preemptAfter: 3,
         score: () => (Phase.IsLaningFor(bot) ? 0.5 : undefined),
         body: (ctx) => body(bot, ctx),
+        desire: (_b, score, reason) => Desire(bot, owns(bot, NAME), score, reason),
+        refuses: (_b, mode, reason) => mode === BotMode.TeamRoam && reason === "lasthit" && takesLastHits(),
+        committed: () => takesLastHits() && Attempting(bot),
     };
 }

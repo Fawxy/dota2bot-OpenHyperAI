@@ -402,11 +402,27 @@ function noteConflict(s: BotState, mode: number, key: string): void {
     s.conflicts[key] = (s.conflicts[key] ?? 0) + 1;
 }
 
+/** How the state layer's mode authority (team slice 14) treated a raw desire: pass it, set it, or suppress it. */
+export type AuthorityHow = "pass" | "set" | "suppress";
+export type Authority = (this: void, bot: Unit, mode: number, raw: number, reason?: string) => { desire: number; how: AuthorityHow };
+
+let authority: Authority | undefined;
+
+/**
+ * Installs the mode authority: it sees every mode's raw desire (and the mode file's reason tag) before the claims,
+ * and may replace it. Claims still apply after it (survival caps, human orders, job floors, the task's own claim);
+ * scale claims and this module's stickiness only apply to desires it passed, since it brings its own hysteresis.
+ */
+export function SetAuthority(fn: Authority | undefined): void {
+    authority = fn;
+}
+
 /**
  * Applies this bot's claims to a mode's raw desire. Call at the end of every GetDesire().
- * Non-numbers (nil = use Valve's desire) pass through untouched.
+ * Non-numbers (nil = use Valve's desire) pass through untouched. `reason` is an optional tag for why the mode
+ * scored what it did (e.g. "lasthit"), read only by the mode authority.
  */
-export function Resolve(bot: Unit, mode: number, raw: any): any {
+export function Resolve(bot: Unit, mode: number, raw: any, reason?: string): any {
     // mode is nil when a BOT_MODE_* global is missing in this game build (BOT_MODE_OUTPOST is unverified).
     if (mode === undefined || !IsActive() || sharesPlayerID(bot)) return raw;
     noteCadence(stateFor(bot), mode, GameTime());
@@ -438,9 +454,20 @@ export function Resolve(bot: Unit, mode: number, raw: any): any {
         }
     }
 
-    const scaled = raw * math.min(math.max(scale, 1 - cfg.ScaleClamp), 1 + cfg.ScaleClamp);
+    let how: AuthorityHow = "pass";
+    let base: number = raw;
+    if (authority !== undefined) {
+        const fn = authority;
+        const [ok, res] = pcall(() => fn(bot, mode, raw, reason));
+        if (!ok) HDebug.Log("intent", `authority error: ${tostring(res)}`);
+        else if (res.how !== "pass" && type(res.desire) === "number") {
+            how = res.how;
+            base = res.desire;
+        }
+    }
+    const scaled = how === "pass" ? raw * math.min(math.max(scale, 1 - cfg.ScaleClamp), 1 + cfg.ScaleClamp) : base;
     let desire = scaled;
-    let by = desire !== raw ? "scale" : "raw";
+    let by = how !== "pass" ? "states" : desire !== raw ? "scale" : "raw";
     let setter: string | undefined;
     let conflicted = false;
     if (ordered !== undefined) {
@@ -469,7 +496,7 @@ export function Resolve(bot: Unit, mode: number, raw: any): any {
     // already as strong: stickiness must never be what keeps a bot in a fight it wants out of.
     const retreat = s.samples[BotMode.Retreat];
     const retreatContends = mode !== BotMode.Retreat && retreat !== undefined && now - retreat.time <= SAMPLE_FRESH && retreat.resolved >= desire;
-    if (mode === s.mode && desire > 0 && !capped && !unstuck && !retreatContends && now - s.priorityAt > cfg.ClaimTTL) {
+    if (how === "pass" && mode === s.mode && desire > 0 && !capped && !unstuck && !retreatContends && now - s.priorityAt > cfg.ClaimTTL) {
         const bonus = stickyBonus(s, mode, now);
         if (bonus > 0) {
             desire += bonus;
@@ -571,6 +598,23 @@ function nearLaneFront(bot: Unit, radius: number): boolean {
         if (Utils.GetLocationToLocationDistance(loc, GetLaneFrontLocation(team, lane, 0)) <= radius) return true;
     }
     return false;
+}
+
+/**
+ * The stuck detector's idle test without its timers: game running, alive, no action queued, not busy, not in base,
+ * not on a deliberate Hold, and not a laner parked at the lane front. For the state layer's idle watchdog.
+ */
+export function IsIdle(bot: Unit): boolean {
+    if (!IsActive() || sharesPlayerID(bot)) return false;
+    if (GetGameState() !== GameState.GameInProgress || DotaTime() <= 0 || !bot.IsAlive()) return false;
+    const cfg = Get().Stuck;
+    const actor = bot as Unit & ActorBot;
+    if (!isIdle(actor) || isBusyOrSafe(actor, cfg)) return false;
+    const s = states[bot.GetPlayerID()];
+    if (s !== undefined && GameTime() <= s.holdUntil) return false;
+    const mode = bot.GetActiveMode();
+    if (mode === BotMode.None) return false;
+    return !(mode === BotMode.Laning && nearLaneFront(bot, cfg.LaneFrontRadius));
 }
 
 function checkStuck(bot: Unit, s: BotState, mode: number, now: number): void {

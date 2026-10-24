@@ -61,6 +61,10 @@ local function SetStickyTarget(t)
     targetLockUntil = DotaTime() + TARGET_LOCK_SEC
 end
 
+-- Why GetDesireHelper scored what it did, for the state layer's mode authority (team slice 14): 'lasthit' for its
+-- last-hit branch, which a laning body taking the bot's last hits refuses.
+local sDesireReason = nil
+
 local function CapForLanePush(desire)
     -- keep "team roam" from overpowering laning/pushing micro
     if J.IsInLaningPhase() or J.IsPushing(bot) then
@@ -74,12 +78,13 @@ function GetDesire()
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 
+    sDesireReason = nil
     local res = GetDesireHelper()
     res = CapForLanePush(res)
     res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
-    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
+    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res, sDesireReason)
 end
 function GetDesireHelper()
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
@@ -128,6 +133,7 @@ function GetDesireHelper()
 
 	hTargetCreep = X.GetLastHitCreep()
 	if J.IsValid(hTargetCreep) and J.CanBeAttacked(hTargetCreep) then
+		sDesireReason = 'lasthit'
 		return 1.5
 	end
 

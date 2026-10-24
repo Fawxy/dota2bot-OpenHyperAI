@@ -387,9 +387,17 @@ local function noteConflict(s, mode, key)
     s.lastConflict[mode] = key
     s.conflicts[key] = (s.conflicts[key] or 0) + 1
 end
+local authority
+--- Installs the mode authority: it sees every mode's raw desire (and the mode file's reason tag) before the claims,
+-- and may replace it. Claims still apply after it (survival caps, human orders, job floors, the task's own claim);
+-- scale claims and this module's stickiness only apply to desires it passed, since it brings its own hysteresis.
+function ____exports.SetAuthority(fn)
+    authority = fn
+end
 --- Applies this bot's claims to a mode's raw desire. Call at the end of every GetDesire().
--- Non-numbers (nil = use Valve's desire) pass through untouched.
-function ____exports.Resolve(bot, mode, raw)
+-- Non-numbers (nil = use Valve's desire) pass through untouched. `reason` is an optional tag for why the mode
+-- scored what it did (e.g. "lasthit"), read only by the mode authority.
+function ____exports.Resolve(bot, mode, raw, reason)
     if mode == nil or not ____exports.IsActive() or sharesPlayerID(bot) then
         return raw
     end
@@ -412,11 +420,11 @@ function ____exports.Resolve(bot, mode, raw)
     local unstuck = false
     for key, claim in pairs(s.claims) do
         do
-            local __continue69
+            local __continue70
             repeat
                 if claim.expires < now then
                     s.claims[key] = nil
-                    __continue69 = true
+                    __continue70 = true
                     break
                 end
                 if claim.unsticks == true and claim.mode ~= mode then
@@ -439,19 +447,34 @@ function ____exports.Resolve(bot, mode, raw)
                         ordered[#ordered + 1] = claim
                     end
                 end
-                __continue69 = true
+                __continue70 = true
             until true
-            if not __continue69 then
+            if not __continue70 then
                 break
             end
         end
     end
-    local scaled = raw * math.min(
+    local how = "pass"
+    local base = raw
+    if authority ~= nil then
+        local fn = authority
+        local ok, res = pcall(function() return fn(bot, mode, raw, reason) end)
+        if not ok then
+            HDebug.Log(
+                "intent",
+                "authority error: " .. tostring(res)
+            )
+        elseif res.how ~= "pass" and type(res.desire) == "number" then
+            how = res.how
+            base = res.desire
+        end
+    end
+    local scaled = how == "pass" and raw * math.min(
         math.max(scale, 1 - cfg.ScaleClamp),
         1 + cfg.ScaleClamp
-    )
+    ) or base
     local desire = scaled
-    local by = desire ~= raw and "scale" or "raw"
+    local by = how ~= "pass" and "states" or (desire ~= raw and "scale" or "raw")
     local setter
     local conflicted = false
     if ordered ~= nil then
@@ -463,14 +486,14 @@ function ____exports.Resolve(bot, mode, raw)
         end
         for ____, claim in ipairs(ordered) do
             do
-                local __continue81
+                local __continue86
                 repeat
                     if claim.tier == "SURVIVAL" and riskAllowed then
-                        __continue81 = true
+                        __continue86 = true
                         break
                     end
                     if claim.onlyLifted == true and desire <= scaled then
-                        __continue81 = true
+                        __continue86 = true
                         break
                     end
                     local value = desire
@@ -489,9 +512,9 @@ function ____exports.Resolve(bot, mode, raw)
                         by = claim.source
                         desire = value
                     end
-                    __continue81 = true
+                    __continue86 = true
                 until true
-                if not __continue81 then
+                if not __continue86 then
                     break
                 end
             end
@@ -502,7 +525,7 @@ function ____exports.Resolve(bot, mode, raw)
     end
     local retreat = s.samples[BotMode.Retreat]
     local retreatContends = mode ~= BotMode.Retreat and retreat ~= nil and now - retreat.time <= SAMPLE_FRESH and retreat.resolved >= desire
-    if mode == s.mode and desire > 0 and not capped and not unstuck and not retreatContends and now - s.priorityAt > cfg.ClaimTTL then
+    if how == "pass" and mode == s.mode and desire > 0 and not capped and not unstuck and not retreatContends and now - s.priorityAt > cfg.ClaimTTL then
         local bonus = stickyBonus(s, mode, now)
         if bonus > 0 then
             desire = desire + bonus
@@ -637,6 +660,30 @@ local function nearLaneFront(bot, radius)
         end
     end
     return false
+end
+--- The stuck detector's idle test without its timers: game running, alive, no action queued, not busy, not in base,
+-- not on a deliberate Hold, and not a laner parked at the lane front. For the state layer's idle watchdog.
+function ____exports.IsIdle(bot)
+    if not ____exports.IsActive() or sharesPlayerID(bot) then
+        return false
+    end
+    if GetGameState() ~= GameState.GameInProgress or DotaTime() <= 0 or not bot:IsAlive() then
+        return false
+    end
+    local cfg = ____exports.Get().Stuck
+    local actor = bot
+    if not isIdle(actor) or isBusyOrSafe(actor, cfg) then
+        return false
+    end
+    local s = states[bot:GetPlayerID()]
+    if s ~= nil and GameTime() <= s.holdUntil then
+        return false
+    end
+    local mode = bot:GetActiveMode()
+    if mode == BotMode.None then
+        return false
+    end
+    return not (mode == BotMode.Laning and nearLaneFront(bot, cfg.LaneFrontRadius))
 end
 local function checkStuck(bot, s, mode, now)
     local cfg = ____exports.Get().Stuck

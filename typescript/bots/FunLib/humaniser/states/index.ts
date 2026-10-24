@@ -7,6 +7,7 @@ import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
+import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -35,6 +36,59 @@ export interface StatesSettings {
 }
 
 const LANE_POS_EVERY = 2;
+
+/** `States.Modes` (team slice 14): the layer as the authority over mode desires (SDK `Modes`). */
+export interface ModesSettings {
+    Enable: boolean;
+    /** Mode names the layer decides outright (suppressed unless they host the current state). */
+    Own: string[];
+    /** Positions (J.GetPosition) of the allowed team whose modes the layer decides. */
+    Positions: number[];
+    Hold: number;
+    InterruptDwell: number;
+    Commit: number;
+    IdleAfter: number;
+    IdleBackoff: number;
+}
+
+const MODES_DEFAULTS: ModesSettings = {
+    Enable: false,
+    Own: ["laning", "farm"],
+    Positions: [1, 2, 3, 4, 5],
+    Hold: 0.08,
+    InterruptDwell: 1.5,
+    Commit: 0.75,
+    IdleAfter: 3,
+    IdleBackoff: 5,
+};
+
+/** Names accepted in Modes.Own: the modes that host a state of this layer. */
+const MODE_IDS: Record<string, BotMode> = { laning: BotMode.Laning, farm: BotMode.Farm, rune: BotMode.Rune, roam: BotMode.Roam };
+
+let modesSettings: ModesSettings | undefined;
+
+// Read from Customize directly: Config's deep merge would mix a shorter Own/Positions list with the default one.
+export function Modes(): ModesSettings {
+    if (modesSettings !== undefined) return modesSettings;
+    const c = (Config.Raw()?.States?.Modes ?? {}) as Partial<ModesSettings>;
+    const out: any = {};
+    for (const [k, v] of pairs(MODES_DEFAULTS)) out[k] = (c as any)[k] ?? v;
+    modesSettings = out as ModesSettings;
+    return modesSettings;
+}
+
+/** Tests reload Customize between cases. */
+export function ResetModes(): void {
+    modesSettings = undefined;
+}
+
+function modesOn(bot: Unit): boolean {
+    const m = Modes();
+    if (m.Enable !== true || !IsEnabled() || !ownTeam(bot)) return false;
+    const pos = LaneConfig.PositionOf(bot);
+    for (const p of m.Positions) if (p === pos) return true;
+    return false;
+}
 
 export function Settings(): StatesSettings {
     return Config.Get().States as StatesSettings;
@@ -101,7 +155,7 @@ export function Registered(): string[] {
     return registry.map((r) => r.name);
 }
 
-Register(Laning.NAME, (bot) => Laning.Spec(bot));
+Register(Laning.NAME, (bot) => Laning.Spec(bot, owns));
 for (const [name, make] of Shadow.SPECS) Register(name, make);
 // Owned job states (team slices 7-9) replace the shadow specs of the same name; unowned bots keep the shadow scores.
 Register(CampJob.PULL, (bot) => CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore));
@@ -133,8 +187,23 @@ function lib(): ReturnType<typeof Tasks.Loaded> {
             if (!owns(u, state)) return false;
             return state !== Farm.NAME || FarmPattern.Live(u)?.sdk === true;
         });
+        installModes(l);
     }
     return l;
+}
+
+function installModes(l: NonNullable<ReturnType<typeof Tasks.Loaded>>): void {
+    const m = Modes();
+    const ids: number[] = [];
+    for (const name of m.Own) {
+        const id = MODE_IDS[name];
+        if (id !== undefined) ids.push(id);
+    }
+    l.Modes.SetOwned(ids);
+    l.Modes.SetEnabled((b) => modesOn(b as unknown as Unit));
+    l.Modes.configure({ hold: m.Hold, interruptDwell: m.InterruptDwell, commit: m.Commit, idleAfter: m.IdleAfter, idleBackoff: m.IdleBackoff });
+    // Off: no authority at all, so Intent resolves exactly as before; the switch and idle counters still run.
+    if (m.Enable === true) Intent.SetAuthority((bot, mode, raw, reason) => l.Modes.Decide(bot as unknown as Lib.TaskUnit, mode, raw, reason));
 }
 
 function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): void {
@@ -175,6 +244,7 @@ export function Tick(bot: Unit): void {
         );
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
+    l.Modes.Tick(bot as unknown as Lib.TaskUnit);
     LaneMetrics.Tick(bot);
     lanePos(bot, l);
 }
@@ -230,14 +300,18 @@ export function BodyLastHits(bot: Unit): boolean {
 }
 
 /**
- * True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
- * skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
- * that never landed, `missed` with the creep alive seconds later).
+ * mode_laning_generic.lua hands over its own laning steps (everything its Think does but PositionThink); the
+ * laning body runs them on its hold and walk frames, so none can re-order a last-hit swing (team slice 14).
  */
-export function BodyBusy(bot: Unit): boolean {
-    if (!BodyLastHits(bot)) return false;
-    const label = Tasks.Current(bot)?.label;
-    return label === "lasthit" || label === "deny";
+export function SetLaneAssist(bot: Unit, fn: (this: void) => boolean): void {
+    Laning.SetAssist(bot, fn);
+}
+
+/** Whether the layer decides this bot's mode desires now (overlay, tests). */
+export function ModesAsserting(bot: Unit): boolean {
+    if (!IsEnabled()) return false;
+    const l = Tasks.Loaded();
+    return l !== undefined && l.Modes !== undefined && l.Modes.Asserting(bot as unknown as Lib.TaskUnit);
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */

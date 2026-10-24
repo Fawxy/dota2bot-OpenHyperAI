@@ -107,7 +107,8 @@ local adapter = {
     log = function(tag, msg) return HDebug.Log(tag, msg) end,
     event = function(name, fields) return Telemetry.Event(name, fields) end,
     vector = function(x, y, z) return Vector(x, y, z) end,
-    enabled = function() return ____exports.Enabled() end
+    enabled = function() return ____exports.Enabled() end,
+    idle = function(bot) return Intent.IsIdle(bot) end
 }
 local function loadBundle()
     if not ____exports.Enabled() then

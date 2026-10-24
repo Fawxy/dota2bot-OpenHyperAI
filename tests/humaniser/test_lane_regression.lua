@@ -268,8 +268,8 @@ end
 local laningSrc, farmSrc = source("mode_laning_generic.lua"), source("mode_farm_generic.lua")
 for _, line in ipairs({
 	"if bLaneLaning and not bTrainerSelfTest then",
-	"if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return end",
-	"if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end",
+	"if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return true end",
+	"if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return true end",
 	"if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end",
 	"denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)",
 	"if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end",
@@ -278,8 +278,9 @@ for _, line in ipairs({
 }) do
 	check("laning mode guard: " .. line, laningSrc:find(line, 1, true) ~= nil)
 end
-check("laning mode: Think() is defined only when 04, 07, the 14 self-test or the state layer owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot)\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tStates.SetLaneSpot(bot, PositionTarget)\n\tfunction Think()", 1, true) ~= nil)
-check("laning mode: the state layer replaces only PositionThink", laningSrc:find("\t\tif not States.Step(bot, BOT_MODE_LANING) then PositionThink() end\n", 1, true) ~= nil)
+check("laning mode: Think() is defined only when 04, 07, the 14 self-test or the state layer owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot)\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tStates.SetLaneSpot(bot, PositionTarget)\n\tStates.SetLaneAssist(bot, LaningSteps)\n\tfunction Think()", 1, true) ~= nil)
+-- Team slice 14: the running body owns the frame; OHA's steps run inside it (assist), PositionThink only without it.
+check("laning mode: the state body steps first, then OHA's steps, then PositionThink", laningSrc:find("\t\tif States.Step(bot, BOT_MODE_LANING) then return end\n\t\tif LaningSteps() then return end\n\t\tPositionThink()\n", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
 	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do
 	check("farm mode hook: " .. call, farmSrc:find(call, 1, true) ~= nil)

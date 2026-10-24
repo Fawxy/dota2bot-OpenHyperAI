@@ -190,7 +190,7 @@ if (Telemetry.GuardsEnabled()) {
         Target: none,
     });
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none, FarmAllowedInLaning: no });
-    Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no });
+    Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, SetLaneAssist: none, ModesAsserting: no });
     Telemetry.GuardModule("Phase", Phase, { Tick: none, Describe: none, IsEnabled: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });

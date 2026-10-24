@@ -130,6 +130,32 @@ function jobMetrics(events) {
     };
 }
 
+// Team slice 14: mode switches from OHA's ev=mode (every switch, both arms of a test) and the SDK's idle watchdog.
+// A blip is a round trip A -> B -> A whose visit to B lasted under BLIP_SECS.
+const BLIP_SECS = 2;
+const IDLE_LONG_SECS = 10;
+function modeMetrics(events, until, maxT) {
+    const sw = events.filter(e => e.ev === 'mode' && e.t >= 0).sort((a, b) => a.t - b.t);
+    let blips = 0;
+    for (let k = 1; k < sw.length; k++) if (sw[k].to === sw[k - 1].from && Number(sw[k].dwell) < BLIP_SECS) blips++;
+    const minutes = Math.min(until, maxT) / 60;
+    const idle = events.filter(e => e.ev === 'mode_idle');
+    const secs = idle.map(e => Number(e.secs)).filter(x => !Number.isNaN(x));
+    const set = sw.filter(e => typeof e.by === 'string' && / by states/.test(e.by)).length;
+    return {
+        switches: sw.length,
+        swPerMin: minutes > 0 ? sw.length / minutes : undefined,
+        blips,
+        blipsPerMin: minutes > 0 ? blips / minutes : undefined,
+        idleEpisodes: idle.length,
+        idleLong: count(secs, x => x >= IDLE_LONG_SECS),
+        idleMax: secs.length ? Math.max(...secs) : 0,
+        asides: count(idle, e => isTrue(e.aside)),
+        stuck: count(events, e => e.ev === 'stuck'),
+        layerSetPct: ratio(set, sw.length),
+    };
+}
+
 function stateFields(r) {
     if (r === undefined) return undefined;
     return {
@@ -175,6 +201,7 @@ function collect(game, { until = 600, file } = {}) {
                 pushedLines: count(ownedPos, e => typeof e.pushed === 'number' && e.pushed > 0),
             },
             states: stateFields(states[m.pid]),
+            modes: modeMetrics(events, until, game.maxT),
             jobs: jobMetrics(events),
         });
     }

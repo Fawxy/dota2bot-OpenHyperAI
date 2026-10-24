@@ -74,7 +74,11 @@ local States = J.Humaniser.States
 local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot)
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
+-- Why GetDesire scored what it did, for the state layer's mode authority (team slice 14): 'lasthit' for the spike below.
+local sDesireReason = nil
+
 function GetDesire()
+	sDesireReason = nil
 	PickOneAnnouncer()
 	AnnounceMessages()
 
@@ -148,6 +152,7 @@ function GetDesire()
 				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
 				then
+					sDesireReason = 'lasthit'
 					return 0.9
 				end
 			end
@@ -170,7 +175,10 @@ end
 
 -- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
 local GetDesireRaw = GetDesire
-function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_LANING, GetDesireRaw()) end
+function GetDesire()
+	local nRaw = GetDesireRaw()
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_LANING, nRaw, sDesireReason)
+end
 
 function GetFurthestEnemyAttackRange(enemyList)
 	local attackRange = 0
@@ -341,40 +349,47 @@ local function PositionThink()
 	if target_loc ~= nil then bot:Action_MoveToLocation(target_loc + RandomVector(50)) end
 end
 
+-- OHA's laning steps, all but the final PositionThink; true when one of them acted this frame.
+local function LaningSteps()
+	-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
+	bHoldingForLastHit = false
+	if bLaneLaning and not bTrainerSelfTest then
+		-- Aggro draws wait for a creep that is dying or about to be.
+		local sLastHit = LastHitState()
+		if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return true end
+	end
+	-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
+	-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
+	-- slice 4), it takes them and the denies itself.
+	if not States.BodyLastHits(bot) then
+		if LastHitThink() then return true end
+		if DenyThink() then return true end
+		if bHoldingForLastHit then
+			bot:Action_MoveToLocation(bot:GetLocation())
+			return true
+		end
+	end
+	if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return true end
+
+	if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
+		if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return true end
+	elseif bHumaniserLaning and HarassThink() then return true end
+
+	if local_mode_laning_generic then
+		local_mode_laning_generic.Think()
+	end
+	return false
+end
+
 if bOwnsThink then
 	States.SetLaneSpot(bot, PositionTarget)
+	States.SetLaneAssist(bot, LaningSteps)
 	function Think()
-		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
-		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
-		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
-		bHoldingForLastHit = false
-		if bLaneLaning and not bTrainerSelfTest then
-			-- Aggro draws wait for a creep that is dying or about to be.
-			local sLastHit = LastHitState()
-			if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return end
-		end
-		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
-		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
-		-- slice 4), it takes them and the denies itself in its Step below.
-		if not States.BodyLastHits(bot) then
-			if LastHitThink() then return end
-			if DenyThink() then return end
-			if bHoldingForLastHit then
-				bot:Action_MoveToLocation(bot:GetLocation())
-				return
-			end
-		end
-		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
-
-		if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
-			if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return end
-		elseif bHumaniserLaning and HarassThink() then return end
-
-		if local_mode_laning_generic then
-			local_mode_laning_generic.Think()
-		end
-
-		if not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+		-- While the laning state's SDK body runs it owns the frame (team slice 14): LaningSteps run inside it on its
+		-- hold and walk frames only, so nothing re-orders a last-hit or deny swing.
+		if States.Step(bot, BOT_MODE_LANING) then return end
+		if LaningSteps() then return end
+		PositionThink()
 	end
 end
 

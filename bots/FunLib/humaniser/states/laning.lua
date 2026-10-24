@@ -101,6 +101,8 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
+local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
@@ -202,6 +204,47 @@ function ____exports.OwnsLastHit(bot)
     end
     return false
 end
+local assists = {}
+--- mode_laning_generic.lua hands over its own laning steps; true from it means one of them acted this frame.
+function ____exports.SetAssist(bot, fn)
+    assists[bot:GetPlayerID()] = Telemetry.GuardsEnabled() and Telemetry.Guard(
+        "States.laneAssist",
+        fn,
+        function() return false end
+    ) or fn
+end
+local function assist(bot)
+    local fn = assists[bot:GetPlayerID()]
+    if fn == nil then
+        return false
+    end
+    local ok, acted = pcall(fn)
+    if not ok then
+        HDebug.Log(
+            "states",
+            "lane assist error: " .. tostring(acted)
+        )
+    end
+    return ok and acted == true
+end
+--- OHA's laning desire before 9:00 (mode_laning_generic), for a last-hit spike seen before any base score.
+local LANING_BASE = 0.446
+local lastBase = {}
+--- Host desire while laning is current: OHA's laning score, except that its last-hit spike (0.9) is replaced by
+-- the last base score where the body takes this bot's last hits: the body wants the creep, not another mode.
+function ____exports.Desire(bot, owned, score, reason)
+    local pid = bot:GetPlayerID()
+    if reason ~= "lasthit" then
+        lastBase[pid] = score
+        return score
+    end
+    return owned and ____exports.OwnsLastHit(bot) and (lastBase[pid] or LANING_BASE) or score
+end
+--- The body is in a last-hit or deny attempt (its swing must not lose the laning mode).
+function ____exports.Attempting(bot)
+    local t = Tasks.Current(bot)
+    return t ~= nil and t.name == "state:" .. ____exports.NAME and (t.label == "lasthit" or t.label == "deny")
+end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk"
     local hold = sdk and ({
@@ -228,6 +271,7 @@ local body = __TS__Generator(function(bot, ctx)
             near = NEAR,
             far = FAR,
             leash = LEASH,
+            assist = function() return assist(bot) end,
             onAttempt = function(t, res, contested) return Telemetry.Event(
                 "lh",
                 {
@@ -250,7 +294,10 @@ local body = __TS__Generator(function(bot, ctx)
         }
     ))
 end)
-function ____exports.Spec(bot)
+function ____exports.Spec(bot, owns)
+    local function takesLastHits()
+        return ____exports.OwnsLastHit(bot) and owns(bot, ____exports.NAME)
+    end
     return {
         name = ____exports.NAME,
         kind = "posture",
@@ -258,7 +305,15 @@ function ____exports.Spec(bot)
         floor = 0,
         preemptAfter = 3,
         score = function() return Phase.IsLaningFor(bot) and 0.5 or nil end,
-        body = function(ctx) return body(bot, ctx) end
+        body = function(ctx) return body(bot, ctx) end,
+        desire = function(_b, score, reason) return ____exports.Desire(
+            bot,
+            owns(bot, ____exports.NAME),
+            score,
+            reason
+        ) end,
+        refuses = function(_b, mode, reason) return mode == BotMode.TeamRoam and reason == "lasthit" and takesLastHits() end,
+        committed = function() return takesLastHits() and ____exports.Attempting(bot) end
     }
 end
 return ____exports

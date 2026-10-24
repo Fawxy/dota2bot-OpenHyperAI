@@ -67,6 +67,12 @@ export interface HoldOpts {
     step?: [number, number];
     /** How far the point must move to force a new spot before `repath`. Default tolerance / 2. */
     follow?: number;
+    /**
+     * Called each frame before the verb's own order, after its exits: true means the host acted for the bot this
+     * frame (a lane technique, a harass), so the verb gives the frame up without ordering. The host's steps run
+     * only when the body lets them, never in the middle of another verb.
+     */
+    assist?: (this: void) => boolean;
     deadline?: number;
     interruptIf?: (this: void) => boolean;
 }

@@ -201,7 +201,7 @@ do
 	end)
 	check("body: owns last hits while running", H.States.BodyLastHits(bot) == true)
 	check("body: attacked the dying creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == c)
-	check("body: busy while the swing is in flight (OHA's steps stand back)", H.States.BodyBusy(bot) == true)
+	check("body: attempting while the swing is in flight (the laning mode is held)", require("bots/FunLib/humaniser/states/laning").Attempting(bot) == true)
 	silenced(function()
 		c.alive, c.hp = false, 0
 		bot.lastHits = 1
@@ -224,8 +224,34 @@ do
 		for _ = 1, 6 do frame(H, bot) end
 	end)
 	check("unlisted: BodyLastHits false", H.States.BodyLastHits(bot) == false)
-	check("unlisted: never busy", H.States.BodyBusy(bot) == false)
 	check("unlisted: body never attacked", bot.attacks == nil)
+end
+
+-- Team slice 14: the body owns the laning Think's frame. OHA's own laning steps (here a harass that re-orders the
+-- bot every frame it gets) run inside it on hold frames, and never during the swing, so the swing lands.
+do
+	local H, bot, c, events
+	local during, calls = 0, 0
+	silenced(function()
+		H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Laning = { LastHit = { 2 } } })
+		events = {}
+		require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+		H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+		H.States.SetLaneAssist(bot, function()
+			calls = calls + 1
+			local cur = H.Tasks.Current(bot)
+			if cur ~= nil and (cur.label == "lasthit" or cur.label == "deny") then during = during + 1 end
+			bot:Action_MoveToLocation(Vector(-300, 400))
+			return true
+		end)
+		for _ = 1, 4 do frame(H, bot) end
+		c = creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
+		for _ = 1, 3 do frame(H, bot) end
+	end)
+	check("assist: OHA's steps had the hold frames", calls >= 3, calls)
+	check("assist: never called during the attempt", during == 0, during)
+	check("assist: the body attacked the dying creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == c)
+	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
 end
 
 -- Listed but the state is not owned (pos 2 not in Own): OHA keeps its last hits.

@@ -175,6 +175,12 @@ export interface Adapter {
      * add the bot's remaining attack cooldown to its own hit time.
      */
     attackClock?(this: void): number;
+    /**
+     * True when the host sees the bot doing nothing it should be doing: no action queued, not channelling, casting
+     * or standing still on purpose (`hold`), and not somewhere idling is normal (e.g. its base). Feeds the `Modes`
+     * idle watchdog; without it no bot is ever idle.
+     */
+    idle?(this: void, bot: TaskUnit): boolean;
 }
 /** `host` is the mode id the task runs under. */
 export interface TaskOptions {

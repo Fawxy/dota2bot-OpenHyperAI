@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ c648c644cecb8c0b27e582249a581f9dd6d05d4c. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ beaef32fe11122444fb2498f9accb25f9e4ef671. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -666,46 +666,60 @@ ____exports.holdAt = __TS__Generator(function(bot, point, opts)
     local spot
     local nextPick = 0
     while true do
-        if not bot:IsAlive() then
-            return fail("dead")
-        end
-        if opts.interruptIf ~= nil and opts.interruptIf() then
-            return fail("interrupted")
-        end
-        if expired(opts.deadline) then
-            return fail("timeout")
-        end
-        local t = now()
-        local p = point()
-        if p == nil then
-            anchor = nil
-            bot:Action_MoveToLocation(bot:GetLocation())
-            hold(bot, opts.hold)
-        else
-            if anchor == nil or t >= nextPick or dist(p, anchor) > follow then
-                local step = opts.step
-                local here = bot:GetLocation()
-                spot = step ~= nil and dist(here, p) <= scatter + tolerance and stepped(
-                    here,
-                    p,
-                    scatter,
-                    step[1],
-                    step[2]
-                ) or scattered(p, scatter)
-                anchor = p
-                nextPick = t + repath * (1 + jitter * (random() - 0.5))
+        do
+            local __continue57
+            repeat
+                if not bot:IsAlive() then
+                    return fail("dead")
+                end
+                if opts.interruptIf ~= nil and opts.interruptIf() then
+                    return fail("interrupted")
+                end
+                if expired(opts.deadline) then
+                    return fail("timeout")
+                end
+                if opts.assist ~= nil and opts.assist() then
+                    coroutine.yield()
+                    __continue57 = true
+                    break
+                end
+                local t = now()
+                local p = point()
+                if p == nil then
+                    anchor = nil
+                    bot:Action_MoveToLocation(bot:GetLocation())
+                    hold(bot, opts.hold)
+                else
+                    if anchor == nil or t >= nextPick or dist(p, anchor) > follow then
+                        local step = opts.step
+                        local here = bot:GetLocation()
+                        spot = step ~= nil and dist(here, p) <= scatter + tolerance and stepped(
+                            here,
+                            p,
+                            scatter,
+                            step[1],
+                            step[2]
+                        ) or scattered(p, scatter)
+                        anchor = p
+                        nextPick = t + repath * (1 + jitter * (random() - 0.5))
+                    end
+                    if dist(
+                        bot:GetLocation(),
+                        spot
+                    ) > tolerance then
+                        bot:Action_MoveToLocation(spot)
+                    else
+                        bot:Action_MoveToLocation(bot:GetLocation())
+                        hold(bot, opts.hold)
+                    end
+                end
+                coroutine.yield()
+                __continue57 = true
+            until true
+            if not __continue57 then
+                break
             end
-            if dist(
-                bot:GetLocation(),
-                spot
-            ) > tolerance then
-                bot:Action_MoveToLocation(spot)
-            else
-                bot:Action_MoveToLocation(bot:GetLocation())
-                hold(bot, opts.hold)
-            end
         end
-        coroutine.yield()
     end
 end)
 return ____exports
@@ -3307,26 +3321,36 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 end
                 passAt = get().now()
                 label(atSpot and "hold" or "walk")
-                local r = __TS__DelegatedYield(holdAt(
-                    bot,
-                    spot,
+                local ____holdAt_12 = holdAt
+                local ____bot_10 = bot
+                local ____spot_11 = spot
+                local ____temp_9 = opts.hold or ({})
+                local ____opts_assist_7 = opts.assist
+                if ____opts_assist_7 == nil then
+                    local ____opt_5 = opts.hold
+                    ____opts_assist_7 = ____opt_5 and ____opt_5.assist
+                end
+                local r = __TS__DelegatedYield(____holdAt_12(
+                    ____bot_10,
+                    ____spot_11,
                     __TS__ObjectAssign(
                         {},
-                        opts.hold or ({}),
+                        ____temp_9,
                         {
+                            assist = ____opts_assist_7,
                             deadline = opts.deadline,
                             interruptIf = function()
                                 if stop() then
                                     return true
                                 end
                                 local d = spot() ~= nil and away() or nil
-                                local ____atSpot_5
+                                local ____atSpot_8
                                 if atSpot then
-                                    ____atSpot_5 = (d or 0) > far
+                                    ____atSpot_8 = (d or 0) > far
                                 else
-                                    ____atSpot_5 = (d or math.huge) <= near
+                                    ____atSpot_8 = (d or math.huge) <= near
                                 end
-                                if ____atSpot_5 then
+                                if ____atSpot_8 then
                                     return true
                                 end
                                 return pick()
@@ -3350,15 +3374,15 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 target = nil
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_8 = t.creep
-                local ____temp_9 = t.eta + 1.5
-                local ____opts_deadline_10 = opts.deadline
-                local ____opt_6 = opts.hold
+                local ____t_creep_15 = t.creep
+                local ____temp_16 = t.eta + 1.5
+                local ____opts_deadline_17 = opts.deadline
+                local ____opt_13 = opts.hold
                 local o = {
-                    target = ____t_creep_8,
-                    maxWait = ____temp_9,
-                    deadline = ____opts_deadline_10,
-                    hold = ____opt_6 and ____opt_6.hold,
+                    target = ____t_creep_15,
+                    maxWait = ____temp_16,
+                    deadline = ____opts_deadline_17,
+                    hold = ____opt_13 and ____opt_13.hold,
                     interruptIf = function() return stop() or away() > leash end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
@@ -4163,6 +4187,11 @@ function ____exports.Step(bot, host)
     end
     return Tasks.Step(bot, host)
 end
+--- The current state's spec (chosen, owned or not), for the mode authority.
+function ____exports.CurrentSpec(bot)
+    local ____opt_14 = bots[bot:GetPlayerID()]
+    return ____opt_14 and ____opt_14.current
+end
 function ____exports.Current(bot)
     local s = bots[bot:GetPlayerID()]
     if s == nil or s.current == nil then
@@ -4679,6 +4708,314 @@ function ____exports.Prior()
 end
 return ____exports
  end,
+["modes"] = function(...) 
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____adapter = require("adapter")
+local getAdapter = ____adapter.get
+local States = require("states")
+local config = {
+    hold = 0.08,
+    interruptDwell = 1.5,
+    commit = 0.75,
+    idleAfter = 3,
+    idleBackoff = 5,
+    idleMove = 50,
+    blip = 2,
+    summaryEvery = 60
+}
+function ____exports.configure(c)
+    for k, v in pairs(c) do
+        config[k] = v
+    end
+end
+local owned = {}
+--- Modes the layer decides outright: suppressed unless they host the current state. Replaces the previous list.
+function ____exports.SetOwned(modes)
+    owned = {}
+    for ____, m in ipairs(modes) do
+        owned[m] = true
+    end
+end
+local function enabledFn()
+    return false
+end
+--- Whether the authority applies to this bot (kill switch, team, position); read on every call.
+function ____exports.SetEnabled(fn)
+    enabledFn = fn
+end
+local bots = {}
+local function stateOf(bot)
+    local id = bot:GetPlayerID()
+    local m = bots[id]
+    if m == nil then
+        m = {
+            since = 0,
+            switches = 0,
+            blips = 0,
+            idles = 0,
+            asides = 0,
+            idleCounted = false,
+            idleAside = false,
+            asideUntil = -math.huge
+        }
+        bots[id] = m
+    end
+    return m
+end
+function ____exports.Forget(bot)
+    bots[bot:GetPlayerID()] = nil
+end
+local function emit(name, fields)
+    local a = getAdapter()
+    if a == nil then
+        return
+    end
+    if a.event ~= nil then
+        a.event(name, fields)
+        return
+    end
+    local parts = {"ev=" .. name}
+    for ____, ____value in ipairs(fields) do
+        local k = ____value[1]
+        local v = ____value[2]
+        if v ~= nil then
+            parts[#parts + 1] = (k .. "=") .. tostring(v)
+        end
+    end
+    a.log(
+        "modes",
+        table.concat(parts, " ")
+    )
+end
+local function safe(what, fn)
+    local ok, v = pcall(fn)
+    if ok then
+        return v
+    end
+    local ____opt_0 = getAdapter()
+    if ____opt_0 ~= nil then
+        ____opt_0.log(
+            "modes",
+            (what .. " error: ") .. tostring(v)
+        )
+    end
+    return nil
+end
+--- The current state when the layer decides this bot's modes now, else undefined.
+local function asserted(bot)
+    local a = getAdapter()
+    if a == nil or not a.enabled() then
+        return nil
+    end
+    if safe(
+        "enabled",
+        function() return enabledFn(bot) end
+    ) ~= true then
+        return nil
+    end
+    local m = bots[bot:GetPlayerID()]
+    if m ~= nil and a.now() < m.asideUntil then
+        return nil
+    end
+    return States.CurrentSpec(bot)
+end
+--- Whether the layer decides this bot's mode desires now.
+function ____exports.Asserting(bot)
+    return asserted(bot) ~= nil
+end
+--- The final desire for `mode` from the host's own `score` for it; call at the end of every mode's scoring.
+function ____exports.Decide(bot, mode, score, reason)
+    local spec = asserted(bot)
+    if spec == nil then
+        return {desire = score, how = "pass"}
+    end
+    if mode == spec.host then
+        local want = spec.desire
+        local ____temp_2
+        if want ~= nil then
+            ____temp_2 = safe(
+                "desire " .. spec.name,
+                function() return want(bot, score, reason) end
+            )
+        else
+            ____temp_2 = nil
+        end
+        local d = ____temp_2 or score
+        local committed = spec.committed
+        if committed ~= nil and safe(
+            "committed " .. spec.name,
+            function() return committed(bot) end
+        ) == true then
+            d = math.max(d, config.commit)
+        end
+        local active = bot:GetActiveMode()
+        local m = stateOf(bot)
+        if active == mode then
+            d = d + config.hold
+        elseif m.prev == mode and m.mode == active and getAdapter().now() - m.since < config.interruptDwell then
+            d = d - config.hold
+        end
+        return {
+            desire = math.max(d, 0),
+            how = "set"
+        }
+    end
+    if owned[mode] == true then
+        return {desire = 0, how = "suppress"}
+    end
+    local refuses = spec.refuses
+    if refuses ~= nil and safe(
+        "refuses " .. spec.name,
+        function() return refuses(bot, mode, reason) end
+    ) == true then
+        return {desire = 0, how = "suppress"}
+    end
+    return {desire = score, how = "pass"}
+end
+local function dist(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+local function endIdle(bot, m, now)
+    if m.idleCounted then
+        local ____emit_6 = emit
+        local ____array_5 = __TS__SparseArrayNew(
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"mode", m.idleMode},
+            {"secs", now - m.idleSince}
+        )
+        local ____opt_3 = States.CurrentSpec(bot)
+        __TS__SparseArrayPush(____array_5, {"state", ____opt_3 and ____opt_3.name}, {"aside", m.idleAside})
+        ____emit_6(
+            "mode_idle",
+            {__TS__SparseArraySpread(____array_5)}
+        )
+    end
+    m.idleSince = nil
+    m.idleAnchor = nil
+    m.idleMode = nil
+    m.idleCounted = false
+    m.idleAside = false
+end
+local function watchIdle(bot, m, mode, now)
+    local a = getAdapter()
+    local probe = a.idle
+    local idle = probe ~= nil and bot:IsAlive() and safe(
+        "idle",
+        function() return probe(bot) end
+    ) == true
+    if not idle then
+        endIdle(bot, m, now)
+        return
+    end
+    local here = bot:GetLocation()
+    if m.idleSince == nil or m.idleMode ~= mode or dist(here, m.idleAnchor) > config.idleMove then
+        endIdle(bot, m, now)
+        m.idleSince = now
+        m.idleAnchor = here
+        m.idleMode = mode
+        return
+    end
+    if m.idleCounted or now - m.idleSince < config.idleAfter then
+        return
+    end
+    m.idleCounted = true
+    m.idles = m.idles + 1
+    local spec = asserted(bot)
+    if spec ~= nil and spec.host == mode then
+        m.asideUntil = now + config.idleBackoff
+        m.asides = m.asides + 1
+        m.idleAside = true
+    end
+end
+--- Every frame from the host's global tick: switch and blip counts, the idle watchdog, periodic `ev=modes`.
+function ____exports.Tick(bot)
+    local a = getAdapter()
+    if a == nil or not a.enabled() then
+        return
+    end
+    local m = stateOf(bot)
+    local now = a.now()
+    local mode = bot:GetActiveMode()
+    if m.mode ~= mode then
+        if m.mode ~= nil then
+            m.switches = m.switches + 1
+            if mode == m.prev and now - m.since < config.blip then
+                m.blips = m.blips + 1
+            end
+            m.prev = m.mode
+        end
+        m.mode = mode
+        m.since = now
+    end
+    watchIdle(bot, m, mode, now)
+    if m.summaryAt == nil then
+        m.summaryAt = now
+    elseif now - m.summaryAt >= config.summaryEvery then
+        m.summaryAt = now
+        emit(
+            "modes",
+            {
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {
+                    "on",
+                    ____exports.Asserting(bot)
+                },
+                {"sw", m.switches},
+                {"blips", m.blips},
+                {"idle", m.idles},
+                {"aside", m.asides}
+            }
+        )
+    end
+end
+function ____exports.Stats(bot)
+    local m = stateOf(bot)
+    return {
+        switches = m.switches,
+        blips = m.blips,
+        idles = m.idles,
+        asides = m.asides,
+        asserting = ____exports.Asserting(bot),
+        mode = m.mode
+    }
+end
+return ____exports
+ end,
 ["combinators"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
@@ -5137,6 +5474,7 @@ local ____exports = {}
 local Tasks = require("runner")
 local States = require("states")
 local Phase = require("phase")
+local Modes = require("modes")
 do
     local ____support = require("support")
     local Supported = ____support.Supported
@@ -5150,6 +5488,7 @@ end
 ____exports.Tasks = Tasks
 ____exports.States = States
 ____exports.Phase = Phase
+____exports.Modes = Modes
 do
     local ____export = require("types")
     for ____exportKey, ____exportValue in pairs(____export) do
