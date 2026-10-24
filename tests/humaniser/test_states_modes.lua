@@ -66,6 +66,31 @@ do
 	check("on: retreat passes", near(H.Intent.Resolve(bot, RETREAT, 0.7), 0.7))
 end
 
+-- Owned farm still lets through farm's run escape (Medusa's gaze, danger near the enemy fountain), and passes
+-- while OHA's laning says 0 (harassed: suppressing farm then would leave the bot without a mode).
+do
+	local H, bot = ready(ON)
+	check("escape: farm's run passes while laning", near(H.Intent.Resolve(bot, FARM, 1.1, "run"), 1.1))
+	H.Intent.Resolve(bot, LANING, 0)
+	check("laning at 0: farm passes", near(H.Intent.Resolve(bot, FARM, 0.4), 0.4))
+end
+
+-- A harassed laner (OHA's laning NONE) followed by a last-hit spike keeps its real base score, not the 0.
+do
+	local H, bot = ready(ON)
+	H.Intent.Resolve(bot, LANING, 0.446)
+	H.Intent.Resolve(bot, LANING, 0)
+	local spike = H.Intent.Resolve(bot, LANING, 0.9, "lasthit")
+	check("after NONE: spike flattened to the last real base", near(spike, 0.446 + 0.08), spike)
+end
+
+-- Only owned states decide: a laner whose laning state is shadowed (OHA runs it) is left to OHA's arbitration.
+do
+	local H, bot = ready({ Enable = true, Own = { laning = { 1 } }, Laning = { LastHit = { 2 } }, Modes = { Enable = true } })
+	check("shadow state: not asserting", H.States.ModesAsserting(bot) == false)
+	check("shadow state: farm passes", near(H.Intent.Resolve(bot, FARM, 0.62), 0.62))
+end
+
 -- OHA keeps the bot's last hits (LastHit lists no position): its spike passes as the host desire and team_roam's
 -- last-hit score is not refused, since those are how OHA's own last hits get the frame.
 do

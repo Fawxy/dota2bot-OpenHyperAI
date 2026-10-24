@@ -1,10 +1,6 @@
 /** @noSelfInFile */
 import { TaskAbility, TaskBody, TaskTarget, TaskUnit, Vec } from "./types";
-export interface StopOpts {
-    /** Absolute game time (`now()` clock); the verb fails `timeout` once it is reached. */
-    deadline?: number;
-    interruptIf?: (this: void) => boolean;
-}
+import { StopOpts } from "./verbs";
 export interface CastOpts extends StopOpts {
     /** Unit target (`Action_UseAbilityOnEntity`). Takes precedence over `at`. */
     target?: TaskTarget;

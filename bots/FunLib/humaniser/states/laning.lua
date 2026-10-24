@@ -235,7 +235,9 @@ local lastBase = {}
 function ____exports.Desire(bot, owned, score, reason)
     local pid = bot:GetPlayerID()
     if reason ~= "lasthit" then
-        lastBase[pid] = score
+        if score > 0 then
+            lastBase[pid] = score
+        end
         return score
     end
     return owned and ____exports.OwnsLastHit(bot) and (lastBase[pid] or LANING_BASE) or score

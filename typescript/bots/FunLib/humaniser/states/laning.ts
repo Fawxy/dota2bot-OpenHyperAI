@@ -147,7 +147,9 @@ const lastBase: Record<number, number | undefined> = {};
 export function Desire(bot: Unit, owned: boolean, score: number, reason?: string): number {
     const pid = bot.GetPlayerID();
     if (reason !== "lasthit") {
-        lastBase[pid] = score;
+        // Only real base scores: OHA's NONE exits (harassed, enemies at the ancient, high-ground push) say "not
+        // now", and a spike right after one is a frame those checks passed.
+        if (score > 0) lastBase[pid] = score;
         return score;
     }
     return owned && OwnsLastHit(bot) ? (lastBase[pid] ?? LANING_BASE) : score;

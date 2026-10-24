@@ -65,13 +65,18 @@ local runMode = false;
 
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
+-- Why GetDesireHelper scored what it did, for the state layer's mode authority (team slice 14): 'run' for the
+-- escape below, which passes even where the layer owns farm.
+local sDesireReason = nil
+
 function GetDesire()
 	-- local cacheKey = 'GetFarmDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.4)
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
+	sDesireReason = nil
 	local res = GetDesireHelper()
 	-- J.Utils.SetCachedVars(cacheKey, res)
-	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_FARM, res)
+	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_FARM, res, sDesireReason)
 end
 
 function GetDesireHelper()
@@ -93,6 +98,7 @@ function GetDesireHelper()
 		if runTime ~= 0
 			and DotaTime() < runTime + shouldRunTime
 		then
+			sDesireReason = 'run'
 			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
 		else
 			runTime = 0;
@@ -110,6 +116,7 @@ function GetDesireHelper()
 				preferedCamp = nil;
 				bot:Action_ClearActions(true);
 			end
+			sDesireReason = 'run'
 			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
 		end
 	end

@@ -231,9 +231,10 @@ Customize.Humaniser = {
         Rotate = { Power = false },
         -- Modes (team slice 14): the layer decides mode desires for allowed bots (Teams, Positions). The current
         -- state's host mode gets the state's desire with a hysteresis band; Own modes (laning, farm) are suppressed
-        -- unless they host the current state; every other mode passes OHA's score. Enable = false: OHA's own
-        -- arbitration, unchanged (switch/idle counters still logged). docs/team/slices/14-mode-ownership.md.
-        Modes = { Enable = false, Own = { 'laning', 'farm' }, Positions = { 1, 2, 3, 4, 5 } } },
+        -- unless they host the current state; every other mode passes OHA's score. Only owned states decide
+        -- (Shadow = true: shadowed ones too). Enable = false: OHA's own arbitration, unchanged (switch and idle
+        -- counters still logged). docs/team/slices/14-mode-ownership.md.
+        Modes = { Enable = false, Own = { 'laning', 'farm' }, Positions = { 1, 2, 3, 4, 5 }, Shadow = false } },
     -- Team game phase (humaniser/states/phase, team slice 12; needs Tasks.Enable): laning, transition, midgame,
     -- push, defend, late per team, logged as ev=phase. Priors = false is shadow (behaviour unchanged); true makes
     -- the phase multiply every state score (docs/team/slices/12-game-phase.md). Enable = false: nothing runs.

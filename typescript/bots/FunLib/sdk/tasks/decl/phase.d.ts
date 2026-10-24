@@ -74,8 +74,8 @@ export interface DotaPhaseOptions {
     lateFrom: number;
 }
 /**
- * The default Dota set. Scores are fixed levels except push (advantage) and defend (threat). Bias keys are the
- * team plan's state names (laning, pull, stack, rotate, farm, gank).
+ * The default Dota set. Scores are fixed levels except push (advantage) and defend (threat). Bias keys are
+ * state names (laning, pull, stack, rotate, farm, gank).
  */
 export declare function DotaPhases(opts?: Partial<DotaPhaseOptions>): PhaseSpec[];
 export declare function Reset(): void;

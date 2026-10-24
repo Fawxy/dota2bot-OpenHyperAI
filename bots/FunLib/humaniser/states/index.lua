@@ -155,14 +155,15 @@ function installModes(l)
             ids[#ids + 1] = id
         end
     end
-    l.Modes.SetOwned(ids)
+    l.Modes.SetOwned(ids, {pass = m.Pass})
     l.Modes.SetEnabled(function(b) return modesOn(b) end)
     l.Modes.configure({
         hold = m.Hold,
         interruptDwell = m.InterruptDwell,
         commit = m.Commit,
         idleAfter = m.IdleAfter,
-        idleBackoff = m.IdleBackoff
+        idleBackoff = m.IdleBackoff,
+        shadow = m.Shadow
     })
     if m.Enable == true then
         Intent.SetAuthority(function(bot, mode, raw, reason) return l.Modes.Decide(bot, mode, raw, reason) end)
@@ -191,7 +192,9 @@ MODES_DEFAULTS = {
     InterruptDwell = 1.5,
     Commit = 0.75,
     IdleAfter = 3,
-    IdleBackoff = 5
+    IdleBackoff = 5,
+    Shadow = false,
+    Pass = {"run"}
 }
 MODE_IDS = {laning = BotMode.Laning, farm = BotMode.Farm, rune = BotMode.Rune, roam = BotMode.Roam}
 --- Tests reload Customize between cases.

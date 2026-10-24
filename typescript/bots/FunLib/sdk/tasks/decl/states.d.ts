@@ -65,8 +65,11 @@ export declare function SetPrior(fn: Prior | undefined): void;
 export declare function Tick(bot: TaskUnit): void;
 /** From the host mode's Think(): steps the current owned state's task when it runs on `host`; false otherwise. */
 export declare function Step(bot: TaskUnit, host: number): boolean;
-/** The current state's spec (chosen, owned or not), for the mode authority. */
+/** The current state's spec (chosen, owned or not) and whether it is owned, for the mode authority. */
 export declare function CurrentSpec(bot: TaskUnit): StateSpec | undefined;
+export declare function CurrentOwned(bot: TaskUnit): boolean;
+/** Selects on the next Tick instead of waiting for `interval` (e.g. a suppressed mode's score just rose). */
+export declare function Poke(bot: TaskUnit): void;
 export declare function Current(bot: TaskUnit): {
     name: string;
     kind: StateKind;

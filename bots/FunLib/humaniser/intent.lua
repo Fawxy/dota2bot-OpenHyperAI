@@ -662,7 +662,8 @@ local function nearLaneFront(bot, radius)
     return false
 end
 --- The stuck detector's idle test without its timers: game running, alive, no action queued, not busy, not in base,
--- not on a deliberate Hold, and not a laner parked at the lane front. For the state layer's idle watchdog.
+-- not on a deliberate Hold, and not a laner parked at the lane front. In any mode, no mode included: for the state
+-- layer's idle watchdog, whose suppression could leave a bot without one.
 function ____exports.IsIdle(bot)
     if not ____exports.IsActive() or sharesPlayerID(bot) then
         return false
@@ -680,9 +681,6 @@ function ____exports.IsIdle(bot)
         return false
     end
     local mode = bot:GetActiveMode()
-    if mode == BotMode.None then
-        return false
-    end
     return not (mode == BotMode.Laning and nearLaneFront(bot, cfg.LaneFrontRadius))
 end
 local function checkStuck(bot, s, mode, now)

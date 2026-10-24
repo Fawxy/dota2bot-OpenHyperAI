@@ -1,2 +1,2 @@
-// Vendored from dota-bot-sdk packages/lua-tasks @ beaef32fe11122444fb2498f9accb25f9e4ef671. Do not edit; run npm run vendor.
+// Vendored from dota-bot-sdk packages/lua-tasks @ a9ee9cee8a0f991849498edfc6f2a357e71be295. Do not edit; run npm run vendor.
 export * from "./decl/index";

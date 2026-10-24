@@ -17,6 +17,8 @@ export interface ModesConfig {
     blip: number;
     /** Seconds between `ev=modes` summary lines per bot. */
     summaryEvery: number;
+    /** Assert for a current state that is chosen but not owned (shadow) too. */
+    shadow: boolean;
 }
 export declare function configure(c: Partial<ModesConfig>): void;
 export type ModeHow = "pass" | "set" | "suppress";
@@ -25,8 +27,13 @@ export interface Decision {
     /** pass: the host's own score; set: the layer's host desire; suppress: 0 by the layer. */
     how: ModeHow;
 }
-/** Modes the layer decides outright: suppressed unless they host the current state. Replaces the previous list. */
-export declare function SetOwned(modes: number[]): void;
+/**
+ * Modes the layer decides outright: suppressed unless they host the current state. `pass`: reason tags whose score
+ * an owned mode still passes (e.g. a flight from lethal danger). Replaces the previous lists.
+ */
+export declare function SetOwned(modes: number[], opts?: {
+    pass?: string[];
+}): void;
 /** Whether the authority applies to this bot (kill switch, team, position); read on every call. */
 export declare function SetEnabled(fn: (this: void, bot: TaskUnit) => boolean): void;
 export declare function Forget(bot: TaskUnit): void;

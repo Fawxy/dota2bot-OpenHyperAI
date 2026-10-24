@@ -49,6 +49,10 @@ export interface ModesSettings {
     Commit: number;
     IdleAfter: number;
     IdleBackoff: number;
+    /** Also decide for a current state that is only shadowed (OHA runs its behaviour). */
+    Shadow: boolean;
+    /** Reason tags an owned mode's score always passes with (mode files' escapes from danger). */
+    Pass: string[];
 }
 
 const MODES_DEFAULTS: ModesSettings = {
@@ -60,6 +64,9 @@ const MODES_DEFAULTS: ModesSettings = {
     Commit: 0.75,
     IdleAfter: 3,
     IdleBackoff: 5,
+    Shadow: false,
+    // mode_farm_generic's run (Medusa's gaze, danger near the enemy fountain): 1.1 from farm, owned.
+    Pass: ["run"],
 };
 
 /** Names accepted in Modes.Own: the modes that host a state of this layer. */
@@ -199,9 +206,9 @@ function installModes(l: NonNullable<ReturnType<typeof Tasks.Loaded>>): void {
         const id = MODE_IDS[name];
         if (id !== undefined) ids.push(id);
     }
-    l.Modes.SetOwned(ids);
+    l.Modes.SetOwned(ids, { pass: m.Pass });
     l.Modes.SetEnabled((b) => modesOn(b as unknown as Unit));
-    l.Modes.configure({ hold: m.Hold, interruptDwell: m.InterruptDwell, commit: m.Commit, idleAfter: m.IdleAfter, idleBackoff: m.IdleBackoff });
+    l.Modes.configure({ hold: m.Hold, interruptDwell: m.InterruptDwell, commit: m.Commit, idleAfter: m.IdleAfter, idleBackoff: m.IdleBackoff, shadow: m.Shadow });
     // Off: no authority at all, so Intent resolves exactly as before; the switch and idle counters still run.
     if (m.Enable === true) Intent.SetAuthority((bot, mode, raw, reason) => l.Modes.Decide(bot as unknown as Lib.TaskUnit, mode, raw, reason));
 }

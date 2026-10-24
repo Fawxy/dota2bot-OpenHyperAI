@@ -20,3 +20,4 @@ types	../../../../typescript/bots/FunLib/sdk/tasks	decl/types.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs_all.d.ts
 types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs_cast.d.ts
+types	../../../../typescript/bots/FunLib/sdk/tasks	decl/verbs_util.d.ts

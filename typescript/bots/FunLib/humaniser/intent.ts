@@ -602,7 +602,8 @@ function nearLaneFront(bot: Unit, radius: number): boolean {
 
 /**
  * The stuck detector's idle test without its timers: game running, alive, no action queued, not busy, not in base,
- * not on a deliberate Hold, and not a laner parked at the lane front. For the state layer's idle watchdog.
+ * not on a deliberate Hold, and not a laner parked at the lane front. In any mode, no mode included: for the state
+ * layer's idle watchdog, whose suppression could leave a bot without one.
  */
 export function IsIdle(bot: Unit): boolean {
     if (!IsActive() || sharesPlayerID(bot)) return false;
@@ -613,7 +614,6 @@ export function IsIdle(bot: Unit): boolean {
     const s = states[bot.GetPlayerID()];
     if (s !== undefined && GameTime() <= s.holdUntil) return false;
     const mode = bot.GetActiveMode();
-    if (mode === BotMode.None) return false;
     return !(mode === BotMode.Laning && nearLaneFront(bot, cfg.LaneFrontRadius));
 }
 

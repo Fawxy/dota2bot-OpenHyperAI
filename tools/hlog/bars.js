@@ -138,9 +138,28 @@ function modeMetrics(events, until, maxT) {
     const sw = events.filter(e => e.ev === 'mode' && e.t >= 0).sort((a, b) => a.t - b.t);
     let blips = 0;
     for (let k = 1; k < sw.length; k++) if (sw[k].to === sw[k - 1].from && Number(sw[k].dwell) < BLIP_SECS) blips++;
-    const minutes = Math.min(until, maxT) / 60;
-    const idle = events.filter(e => e.ev === 'mode_idle');
-    const secs = idle.map(e => Number(e.secs)).filter(x => !Number.isNaN(x));
+    const end = Math.min(until, maxT);
+    const minutes = end / 60;
+    // An episode logs phase=start at the threshold and phase=end when it ends; one still open at the end of the log
+    // (or past `until`) has no end line, so its length runs to the end of the window.
+    const idleEv = events.filter(e => e.ev === 'mode_idle').sort((a, b) => a.t - b.t);
+    const idle = [];
+    let open;
+    for (const e of idleEv) {
+        if (e.phase === 'start') {
+            if (open) idle.push(open);
+            open = { start: e.t - Number(e.secs || 0), secs: undefined, aside: false };
+        } else {
+            const ep = open || { start: e.t - Number(e.secs || 0) };
+            ep.secs = Number(e.secs);
+            ep.aside = isTrue(e.aside);
+            idle.push(ep);
+            open = undefined;
+        }
+    }
+    if (open) idle.push(open);
+    for (const ep of idle) if (ep.secs === undefined || Number.isNaN(ep.secs)) ep.secs = Math.max(0, end - ep.start);
+    const secs = idle.map(ep => ep.secs);
     const set = sw.filter(e => typeof e.by === 'string' && / by states/.test(e.by)).length;
     return {
         switches: sw.length,
@@ -150,7 +169,7 @@ function modeMetrics(events, until, maxT) {
         idleEpisodes: idle.length,
         idleLong: count(secs, x => x >= IDLE_LONG_SECS),
         idleMax: secs.length ? Math.max(...secs) : 0,
-        asides: count(idle, e => isTrue(e.aside)),
+        asides: count(idle, ep => ep.aside === true),
         stuck: count(events, e => e.ev === 'stuck'),
         layerSetPct: ratio(set, sw.length),
     };

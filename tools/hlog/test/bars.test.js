@@ -132,14 +132,18 @@ test('slice 14 modes: a round trip under 2 s is a blip, a longer visit is not; i
         '[HEV] t=10.5 ev=mode pid=2 from=team_roam to=laning d=0.52 dwell=0.5 by="laning 0.52 by states"',
         '[HEV] t=40 ev=mode pid=2 from=laning to=retreat d=0.8 dwell=29.5 by="retreat 0.80 by raw"',
         '[HEV] t=45 ev=mode pid=2 from=retreat to=laning d=0.52 dwell=5 by="laning 0.52 by states"',
-        '[HEV] t=200 ev=mode_idle pid=2 mode=17 secs=12.5 state=farm aside=1',
-        '[HEV] t=300 ev=mode_idle pid=2 mode=1 secs=3.2 state=laning aside=0',
+        '[HEV] t=190.5 ev=mode_idle pid=2 phase=start mode=17 secs=3 state=farm asserting=1',
+        '[HEV] t=200 ev=mode_idle pid=2 phase=end mode=17 secs=12.5 state=farm aside=1',
+        '[HEV] t=300 ev=mode_idle pid=2 phase=start mode=1 secs=3 state=laning asserting=0',
+        '[HEV] t=300.2 ev=mode_idle pid=2 phase=end mode=1 secs=3.2 state=laning aside=0',
+        // Still idle when the log ends: no end line, so it runs to the end of the window (600).
+        '[HEV] t=590 ev=mode_idle pid=2 phase=start mode=0 secs=3 state=laning asserting=1',
     ];
     const bot = metricsOf(gameLog({ extra })).bots.find(b => b.pid === 2);
     assert.strictEqual(bot.modes.switches, 4);
     assert.strictEqual(bot.modes.blips, 1);
     assert.strictEqual(bot.modes.blipsPerMin, 0.1);
-    assert.deepStrictEqual([bot.modes.idleEpisodes, bot.modes.idleLong, bot.modes.idleMax, bot.modes.asides], [2, 1, 12.5, 1]);
+    assert.deepStrictEqual([bot.modes.idleEpisodes, bot.modes.idleLong, bot.modes.idleMax, bot.modes.asides], [3, 2, 13, 1]);
     assert.strictEqual(bot.modes.layerSetPct, 50);
     const r = check([metricsOf(gameLog({ extra }))], { bars: [{ id: 'idle', select: { team: 'rad' }, metric: 'modes.idleLong', agg: 'max', max: 0 }] });
     assert.strictEqual(r.results[0].status, 'fail');

@@ -1,5 +1,5 @@
 /** @noSelfInFile */
-import { Reason, Result, TaskAbility, TaskBody, TaskTarget, TaskUnit } from "./types";
+import { Reason, Result, TaskBody, TaskUnit } from "./types";
 import * as Verbs from "./verbs_all";
 type Opt<F> = F extends (bot: TaskUnit, ...rest: infer R) => TaskBody ? R : never;
 /** What a task body receives: the bot, task controls, and every verb bound to the bot. */
@@ -31,8 +31,8 @@ export interface Ctx {
     /** Laner posture: hold the spot, break off for last hits and denies; phases go to this task's label. */
     laneFarm(this: void, ...a: Opt<typeof Verbs.laneFarm>): TaskBody;
     deny(this: void, ...a: Opt<typeof Verbs.deny>): TaskBody;
-    attackAndConfirm(this: void, pick: (this: void) => TaskTarget | undefined, opts: Verbs.AttackConfirmOpts): TaskBody;
-    cast(this: void, ability: TaskAbility | undefined, opts?: Verbs.CastOpts): TaskBody;
+    attackAndConfirm(this: void, ...a: Opt<typeof Verbs.attackAndConfirm>): TaskBody;
+    cast(this: void, ...a: Opt<typeof Verbs.cast>): TaskBody;
     useItem(this: void, ...a: Opt<typeof Verbs.useItem>): TaskBody;
     pickUpRune(this: void, ...a: Opt<typeof Verbs.pickUpRune>): TaskBody;
     /** Job verbs: phases are reported through this task's `label`/`urgent`. */
