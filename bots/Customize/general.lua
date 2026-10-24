@@ -225,8 +225,8 @@ Customize.Humaniser = {
     -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
     -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);
     -- LastHit: positions whose last hits and denies the laning body takes over (slice 4).
-    States = { Enable = true, Shadow = true, Own = { laning = { 2 }, stack = { 4, 5 }, rotate = { 4 } }, Teams = 'allies', ShadowTeams = 'all',
-        Laning = { Spot = 'oha', LastHit = {} },
+    States = { Enable = true, Shadow = true, Own = { laning = { 1, 2, 3, 4, 5 }, stack = { 4, 5 }, pull = { 5 }, rotate = { 4 }, farm = { 1, 2, 3 }, gank = { 2, 4 } }, Teams = 'allies', ShadowTeams = 'all',
+        Laning = { Spot = 'sdk', LastHit = { 1, 2, 3, 4, 5 } },
         -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
         Rotate = { Power = false },
         -- Modes (team slice 14): the layer decides mode desires for allowed bots (Teams, Positions). The current
@@ -234,7 +234,7 @@ Customize.Humaniser = {
         -- unless they host the current state; every other mode passes OHA's score. Only owned states decide
         -- (Shadow = true: shadowed ones too). Enable = false: OHA's own arbitration, unchanged (switch and idle
         -- counters still logged). docs/team/slices/14-mode-ownership.md.
-        Modes = { Enable = false, Own = { 'laning', 'farm' }, Positions = { 1, 2, 3, 4, 5 }, Shadow = false } },
+        Modes = { Enable = true, Own = { 'laning', 'farm' }, Positions = { 1, 2, 3, 4, 5 }, Shadow = false } },
     -- Team game phase (humaniser/states/phase, team slice 12; needs Tasks.Enable): laning, transition, midgame,
     -- push, defend, late per team, logged as ev=phase. Priors = false is shadow (behaviour unchanged); true makes
     -- the phase multiply every state score (docs/team/slices/12-game-phase.md). Enable = false: nothing runs.
