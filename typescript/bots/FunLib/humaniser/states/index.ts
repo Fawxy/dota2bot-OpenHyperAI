@@ -60,7 +60,7 @@ const MODES_DEFAULTS: ModesSettings = {
     Own: ["laning", "farm"],
     Positions: [1, 2, 3, 4, 5],
     Hold: 0.08,
-    InterruptDwell: 1.5,
+    InterruptDwell: 2.5,
     Commit: 0.75,
     IdleAfter: 3,
     IdleBackoff: 5,

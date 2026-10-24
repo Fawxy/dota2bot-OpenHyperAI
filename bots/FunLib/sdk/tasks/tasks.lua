@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ 60b2c8b16ff6680f4178f8578c992644e58d5a78. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ b9da7320aad0749c27693114fed6749a202e964d. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -4801,7 +4801,7 @@ local ____verbs_util = require("verbs_util")
 local dist = ____verbs_util.dist
 local config = {
     hold = 0.08,
-    interruptDwell = 1.5,
+    interruptDwell = 2.5,
     commit = 0.75,
     idleAfter = 3,
     idleBackoff = 5,
@@ -4988,8 +4988,11 @@ function ____exports.Decide(bot, mode, score, reason)
     end
     m.passed[mode] = score
     local held = m.held
-    if held ~= nil and held.mode == mode and now < held["until"] and score < held.floor then
-        return {desire = held.floor, how = "set"}
+    if held ~= nil and held.mode == mode and now < held["until"] then
+        return {
+            desire = math.max(score, held.floor) + config.hold,
+            how = "set"
+        }
     end
     return {desire = score, how = "pass"}
 end
@@ -5097,7 +5100,7 @@ function ____exports.Tick(bot)
         end
         m.held = nil
         local spec = asserted(bot)
-        if spec ~= nil and m.mode == spec.host and owned[mode] ~= true then
+        if spec ~= nil and mode ~= spec.host and owned[mode] ~= true then
             local floor = m.passed[mode]
             if floor ~= nil and floor > 0 then
                 m.held = {mode = mode, floor = floor, ["until"] = now + config.interruptDwell}
