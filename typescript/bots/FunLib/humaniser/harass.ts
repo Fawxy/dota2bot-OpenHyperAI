@@ -180,7 +180,7 @@ export function IsLastHitAttempt(enemy: Unit, ourCreeps: Unit[]): Unit | undefin
     const target = enemy.GetAttackTarget();
     if (target !== null && target !== undefined && h.WillKillTarget !== undefined && h.GetAttackProDelayTime !== undefined) {
         for (const creep of ourCreeps ?? []) {
-            if (creep === target && creep.IsAlive() && h.WillKillTarget(creep, dmg, DamageType.Physical, h.GetAttackProDelayTime(enemy, creep))) return creep;
+            if (creep === target && !creep.IsNull() && creep.IsAlive() && h.WillKillTarget(creep, dmg, DamageType.Physical, h.GetAttackProDelayTime(enemy, creep))) return creep;
         }
     }
     const cfg = settings();
@@ -189,7 +189,8 @@ export function IsLastHitAttempt(enemy: Unit, ourCreeps: Unit[]): Unit | undefin
     let best: Unit | undefined;
     let bestDist = math.huge;
     for (const creep of ourCreeps ?? []) {
-        if (!creep.IsAlive() || creep.GetHealth() > dmg) continue;
+        // The creep list is gathered in GetDesire; a creep that died since is an invalid handle by Think.
+        if (creep.IsNull() || !creep.IsAlive() || creep.GetHealth() > dmg) continue;
         const loc = creep.GetLocation();
         const d = dist2D(here, loc);
         if (dist2D(ahead, loc) <= d - cfg.Thresholds.ApproachEpsilon && d < bestDist) {

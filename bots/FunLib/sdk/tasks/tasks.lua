@@ -1,4 +1,4 @@
--- Vendored from dota-bot-sdk packages/lua-tasks @ a9ee9cee8a0f991849498edfc6f2a357e71be295. Do not edit; run npm run vendor.
+-- Vendored from dota-bot-sdk packages/lua-tasks @ 60b2c8b16ff6680f4178f8578c992644e58d5a78. Do not edit; run npm run vendor.
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 
 local ____modules = {}
@@ -4854,7 +4854,8 @@ local function stateOf(bot)
             asides = 0,
             idleCounted = false,
             idleAside = false,
-            asideUntil = -math.huge
+            asideUntil = -math.huge,
+            passed = {}
         }
         bots[id] = m
     end
@@ -4985,6 +4986,11 @@ function ____exports.Decide(bot, mode, score, reason)
     ) == true then
         return {desire = 0, how = "suppress"}
     end
+    m.passed[mode] = score
+    local held = m.held
+    if held ~= nil and held.mode == mode and now < held["until"] and score < held.floor then
+        return {desire = held.floor, how = "set"}
+    end
     return {desire = score, how = "pass"}
 end
 local function endIdle(bot, m, now)
@@ -5088,6 +5094,14 @@ function ____exports.Tick(bot)
                 m.blips = m.blips + 1
             end
             m.prev = m.mode
+        end
+        m.held = nil
+        local spec = asserted(bot)
+        if spec ~= nil and m.mode == spec.host and owned[mode] ~= true then
+            local floor = m.passed[mode]
+            if floor ~= nil and floor > 0 then
+                m.held = {mode = mode, floor = floor, ["until"] = now + config.interruptDwell}
+            end
         end
         m.mode = mode
         m.since = now

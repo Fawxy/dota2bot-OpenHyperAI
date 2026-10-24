@@ -362,7 +362,7 @@ function ____exports.IsLastHitAttempt(enemy, ourCreeps)
     local target = enemy:GetAttackTarget()
     if target ~= nil and target ~= nil and h.WillKillTarget ~= nil and h.GetAttackProDelayTime ~= nil then
         for ____, creep in ipairs(ourCreeps or ({})) do
-            if creep == target and creep:IsAlive() and h.WillKillTarget(
+            if creep == target and not creep:IsNull() and creep:IsAlive() and h.WillKillTarget(
                 creep,
                 dmg,
                 DamageType.Physical,
@@ -381,7 +381,7 @@ function ____exports.IsLastHitAttempt(enemy, ourCreeps)
         do
             local __continue33
             repeat
-                if not creep:IsAlive() or creep:GetHealth() > dmg then
+                if creep:IsNull() or not creep:IsAlive() or creep:GetHealth() > dmg then
                     __continue33 = true
                     break
                 end

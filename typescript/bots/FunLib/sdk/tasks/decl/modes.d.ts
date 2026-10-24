@@ -3,7 +3,10 @@ import { TaskUnit } from "./types";
 export interface ModesConfig {
     /** Bonus the host mode gets while the bot is in it; a rival must beat the host's desire by this to take over. */
     hold: number;
-    /** Seconds after another mode took over during which the host gives way by `hold`. */
+    /**
+     * Seconds the layer commits to an interrupt: after another mode took over from the host, that mode keeps at least
+     * the desire it took over with, and the host gives way by `hold`.
+     */
     interruptDwell: number;
     /** Desire the host mode holds at least while the current state's body is committed. */
     commit: number;
