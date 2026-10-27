@@ -1,0 +1,18 @@
+id: fight.killcheck.core-solo-margin.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos1, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  heroes:
+    - {pid: 1, pos: 1, at: [-800, -5000], burst: 550, range: 1200}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 500}
+expect:
+  # Margin 1.1: enough for a support, not for a core that loses farm when a dive fails.
+  mustNot: ["kill"]
+notes: F7 - one threshold for every position; Magnus made 12 kill commits for 3 kills in the evidence game.

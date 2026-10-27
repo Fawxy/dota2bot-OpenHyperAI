@@ -1,0 +1,20 @@
+id: fight.killcheck.distant-ally-not-counted.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  heroes:
+    - {pid: 1, pos: 5, at: [-800, -5000], burst: 2000, range: 1200}
+    # An ally in the lane but 1,500 from the target, and a second enemy beside it.
+    - {pid: 2, pos: 1, at: [-1200, -5000]}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 450}
+    - {pid: 7, side: enemy, at: [400, -5000]}
+expect:
+  must: ["noKill(outnumbered)"]
+notes: F7 - allies anywhere in the lane were counted, so a bot alone against two enemies read the fight as even.

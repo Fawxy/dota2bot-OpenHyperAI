@@ -1,0 +1,17 @@
+id: fight.killcheck.support-solo-margin.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: pass}   # guard: the same margin still passes for a support
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  heroes:
+    - {pid: 1, pos: 5, at: [-800, -5000], burst: 550, range: 1200}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 500}
+expect:
+  must: ["kill"]
+notes: Positive control for the core-margin fixture - the world is a kill at margin 1.1, so only the position decides.

@@ -1,0 +1,23 @@
+id: fight.killcheck.creep-damage-on-bot.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  heroes:
+    - {pid: 1, pos: 5, at: [-800, -5000], burst: 2000, range: 1200, health: 600, maxHealth: 600}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 450}
+  # Four enemy creeps by the target, 40 damage a second each: 480 over the survive window leaves the bot under 30%.
+  creeps:
+    - {id: 1, side: enemy, x: 350, dmg: 40, aspd: 1}
+    - {id: 2, side: enemy, x: 400, dmg: 40, aspd: 1}
+    - {id: 3, side: enemy, x: 450, dmg: 40, aspd: 1}
+    - {id: 4, side: enemy, x: 500, dmg: 40, aspd: 1}
+expect:
+  must: ["noKill(survive)"]
+notes: F7 - the kill check counted no creep, tower or enemy-hero damage on the bot, so it dove into a creep wave to die.
