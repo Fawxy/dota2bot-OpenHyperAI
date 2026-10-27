@@ -73,6 +73,48 @@ function stats(xs) {
     return { n, mean, sd };
 }
 
+// t(0.975) for df 1-30 (standard tables).
+const T975_TABLE = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16, 2.145, 2.131,
+    2.12, 2.11, 2.101, 2.093, 2.086, 2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
+/** Two-sided 0.05 t critical value for any df >= 1: the table, interpolated in 1/df for Welch's fractional df; above 30 a
+ *  Cornish-Fisher expansion (within 0.001 there). */
+function t975(df) {
+    if (df < 30) {
+        const lo = Math.max(1, Math.floor(df)), hi = lo + 1;
+        const w = (1 / lo - 1 / df) / (1 / lo - 1 / hi);
+        return T975_TABLE[lo - 1] + w * (T975_TABLE[hi - 1] - T975_TABLE[lo - 1]);
+    }
+    const z = 1.959964;
+    return z + (z ** 3 + z) / (4 * df) + (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * df ** 2) +
+        (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3);
+}
+
+/** ON - OFF for one seed: Welch 95% CI. Returns { delta, se, df, lo, hi }. */
+function welch(off, on) {
+    const vOff = off.sd ** 2 / off.n, vOn = on.sd ** 2 / on.n;
+    const se = Math.sqrt(vOff + vOn);
+    const delta = on.mean - off.mean;
+    if (!(se > 0)) return { delta, se, df: NaN, lo: delta, hi: delta };
+    const df = (vOff + vOn) ** 2 / (vOff ** 2 / (off.n - 1) + vOn ** 2 / (on.n - 1));
+    const h = t975(df) * se;
+    return { delta, se, df, lo: delta - h, hi: delta + h };
+}
+
+/** Seeds pooled with equal weight (a stratified mean of the per-seed deltas), Satterthwaite df. */
+function pooled(perSeed) {
+    const rows = perSeed.filter(r => Number.isFinite(r.delta) && Number.isFinite(r.se));
+    const k = rows.length;
+    if (!k) return { delta: NaN, se: NaN, df: NaN, lo: NaN, hi: NaN };
+    const delta = rows.reduce((a, r) => a + r.delta, 0) / k;
+    const v = rows.reduce((a, r) => a + r.se ** 2, 0);
+    const se = Math.sqrt(v) / k;
+    if (!(se > 0)) return { delta, se, df: NaN, lo: delta, hi: delta };
+    const dfs = rows.filter(r => r.se > 0);
+    const df = v ** 2 / dfs.reduce((a, r) => a + r.se ** 4 / r.df, 0);
+    const h = t975(df) * se;
+    return { delta, se, df, lo: delta - h, hi: delta + h };
+}
+
 function readManifest(file) {
     return fs
         .readFileSync(file, 'utf8')
@@ -104,8 +146,17 @@ function main(argv) {
         for (const key of Object.keys(gs[0].flat)) {
             const off = stats(gs.filter(g => g.arm === 'off').map(g => g.flat[key]));
             const on = stats(gs.filter(g => g.arm === 'on').map(g => g.flat[key]));
-            (table[key] = table[key] || {})[seed] = { off, on, mde: mde(off.sd, n), delta: on.mean - off.mean };
+            (table[key] = table[key] || {})[seed] = { off, on, mde: mde(off.sd, n), ...welch(off, on) };
         }
+    }
+    for (const bySeed of Object.values(table)) {
+        const rows = Object.values(bySeed);
+        // Pooled OFF SD: root mean square of the per-seed SDs (equal weights, as the pooled delta).
+        const sds = rows.map(r => r.off.sd).filter(Number.isFinite);
+        const sd = sds.length ? Math.sqrt(sds.reduce((a, s) => a + s * s, 0) / sds.length) : NaN;
+        const off = stats(rows.map(r => r.off.mean)), on = stats(rows.map(r => r.on.mean));
+        bySeed.all = { off: { n: rows.reduce((a, r) => a + r.off.n, 0), mean: off.mean, sd }, on: { n: rows.reduce((a, r) => a + r.on.n, 0), mean: on.mean },
+            mde: mde(sd, n * rows.length), ...pooled(rows) };
     }
     if (argv.includes('--json')) {
         console.log(JSON.stringify({ games, table }, null, 1));
@@ -114,14 +165,14 @@ function main(argv) {
     console.log('gate:');
     for (const g of games) console.log(`  ${g.label.padEnd(16)} ${g.problems.length ? g.problems.join('; ') : 'ok'}`);
     const f = x => (Number.isFinite(x) ? x.toFixed(1) : '-');
-    console.log(`\nmetric | seed | OFF mean | OFF SD | n | MDE (N=${n}) | ON mean | ON-OFF (exploratory)`);
+    console.log(`\nmetric | seed | OFF mean | OFF SD | n | MDE (N=${n} per seed) | ON mean | ON-OFF | 95% CI (Welch; all = seeds pooled)`);
     for (const [key, bySeed] of Object.entries(table)) {
         for (const [seed, r] of Object.entries(bySeed)) {
-            console.log(`${key} | ${seed} | ${f(r.off.mean)} | ${f(r.off.sd)} | ${r.off.n} | ${f(r.mde)} | ${f(r.on.mean)} | ${f(r.delta)}`);
+            console.log(`${key} | ${seed} | ${f(r.off.mean)} | ${f(r.off.sd)} | ${r.off.n} | ${f(r.mde)} | ${f(r.on.mean)} | ${f(r.delta)} | ${f(r.lo)} to ${f(r.hi)}`);
         }
     }
 }
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde };
+module.exports = { flatten, gate, stats, mde, t975, welch, pooled };
