@@ -158,15 +158,13 @@ test('times accept seconds or m:ss', () => {
 
 /** Runs a scripted Lua session from the offline harness and returns the [HEV] lines it left in HLOG_LINES. */
 function luaSession(file) {
-    const { lua, lauxlib, lualib, to_luastring } = require(path.join(HARNESS, 'node_modules/fengari'));
-    const L = lauxlib.luaL_newstate();
-    lualib.luaL_openlibs(L);
-    const prelude = `package.path = "${ROOT}/?.lua;" .. package.path\nunpack = unpack or table.unpack\nHARNESS_DIR = "${HARNESS}"\n`;
-    lauxlib.luaL_dostring(L, to_luastring(prelude));
-    const status = lauxlib.luaL_dofile(L, to_luastring(path.join(HARNESS, file)));
-    assert.strictEqual(status, 0, status !== 0 ? lua.lua_tojsstring(L, -1) : '');
-    lauxlib.luaL_dostring(L, to_luastring('return table.concat(HLOG_LINES, "\\n")'));
-    return lua.lua_tojsstring(L, -1);
+    // The offline harness's own state: its prelude writes paths with forward slashes, which Lua strings need on Windows.
+    const { newState, doFile, doString, getGlobal } = require(path.join(HARNESS, 'harness'));
+    const L = newState(ROOT);
+    const err = doFile(L, path.join(HARNESS, file));
+    assert.strictEqual(err, null, err || '');
+    doString(L, 'HLOG_OUT = table.concat(HLOG_LINES, "\\n")');
+    return getGlobal(L, 'HLOG_OUT');
 }
 
 test('real Lua telemetry from a scripted session analyses cleanly', () => {
