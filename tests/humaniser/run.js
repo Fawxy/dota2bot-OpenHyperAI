@@ -4,8 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
-const here = __dirname;
-const root = path.resolve(here, '../..');
+// Forward slashes: these paths are pasted into Lua strings, where Windows backslashes read as escapes.
+const here = __dirname.split(path.sep).join('/');
+const root = path.resolve(here, '../..').split(path.sep).join('/');
 const files = process.argv.length > 2 ? process.argv.slice(2) : fs.readdirSync(here).filter(f => /^test_.*\.lua$/.test(f)).map(f => path.join(here, f));
 
 let failed = false;
@@ -17,7 +18,8 @@ for (const file of files) {
     lua.lua_pushjsfunction(L, L => {
         const file = lua.lua_tojsstring(L, 1);
         if (!fs.existsSync(file)) return 0;
-        lua.lua_pushstring(L, to_luastring(fs.readFileSync(file, 'utf8')));
+        // LF only: Windows checkouts (core.autocrlf) have CRLF, and source pins match on "\n".
+        lua.lua_pushstring(L, to_luastring(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')));
         return 1;
     });
     lua.lua_setglobal(L, to_luastring('READ_FILE'));
