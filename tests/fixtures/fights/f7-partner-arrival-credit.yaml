@@ -1,0 +1,21 @@
+id: fight.killcheck.partner-arrival-credit.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  partners: [2]
+  heroes:
+    # The support is in range of the target (1,100 away); the melee partner is 1,000 away at 300 speed.
+    - {pid: 1, pos: 5, at: [-800, -5000], burst: 300, range: 1200}
+    - {pid: 2, pos: 1, at: [-700, -5000], burst: 300, range: 150, speed: 300}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 500}
+expect:
+  # The partner reaches attack range after 2.8 s of the 5 s window, so only ~43% of its burst lands: no kill.
+  mustNot: ["kill"]
+notes: F7 (23/10/2026) - the full 5 s burst was credited at any distance up to 1,200, so bots committed to kills a partner could not reach.

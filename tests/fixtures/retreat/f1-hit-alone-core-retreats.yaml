@@ -1,0 +1,23 @@
+id: retreat.caution.hit-alone-core-retreats.001
+source: log
+ref: {log: console.9057308756.log, finding: F1}
+status: active
+decision: retreat_desire
+control: {commit: d0cd961, outcome: pass}   # guard: the pre-fix scale also raised retreat here
+conditions: {phase: laning, role: pos1, skill: [0.2, 1.0]}
+world:
+  t: 300
+  subject: 1
+  retreatBase: 0.5
+  heroes:
+    # The support is in another lane, so the core is alone against two visible enemy laners; one hit it 0.9 s ago.
+    - {pid: 1, pos: 1, lane: bot, hitAgo: 0.9}
+    - {pid: 5, pos: 5, lane: top}
+    - {pid: 2, pos: 2, lane: mid, bot: false, at: [0, 0]}
+    - {pid: 10, side: enemy}
+    - {pid: 11, side: enemy}
+expect:
+  must: ["fact.caution > 0", "desire.retreat > fact.base"]
+notes: >
+  F1 review focus 1: removing the standing scale must not leave a core standing in a losing trade; a cautious core that
+  is being hit still retreats harder.

@@ -1,0 +1,19 @@
+id: lane.aggro.no-draw-over-kill-creep.001
+source: log
+ref: {log: console.9057308756.log, finding: F6}
+status: active
+decision: lane_prethink
+control: {commit: 0243ae6, outcome: fail}
+conditions: {phase: laning, role: pos1, skill: 0.8}
+world:
+  t: 95
+  subject: 1
+  # Solo Radiant safe-lane core at 1:35 with the wave at the default front: the planner wants an aggro draw.
+  heroes:
+    - {pid: 1, pos: 1, at: [-200, -5000]}
+    - {pid: 6, side: enemy, pos: 3, at: [300, -5000]}
+  creeps: [{id: 1, side: ally, x: -100}]
+  frames: [{lastHit: kill}]
+expect:
+  mustNot: ["attack(hero#6)", "commit(aggro_pull)"]
+notes: F6 (23/10/2026) - aggro pulls started with a creep dying in range; the draw must wait for the last hit (kill).

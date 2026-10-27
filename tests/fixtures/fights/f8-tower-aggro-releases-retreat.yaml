@@ -1,0 +1,21 @@
+id: fight.commit.tower-aggro-releases-retreat.001
+source: log
+ref: {log: console.9057308756.log, finding: F8}
+status: active
+decision: lane_fight
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  burst: 1000
+  botX: 0
+  steps:
+    - {play: 0.7}
+    # Mid-commit the chase reaches the enemy T1, which takes aggro on the bot. Retreat bids 1.0, above the commit's
+    # focus cap (CommitFloor 1.06 / 1.1 - 0.01 = 0.954); it is scored a few frames later, while the commit is still held.
+    - {towerAggro: true, retreat: 1.0}
+    - {play: 0.1}
+expect:
+  must: ["committing", "desire.retreat >= fact.retreatBase"]
+notes: >
+  F8 (23/10/2026) - retreat stayed capped while a tower targeted the bot, so committed bots died under towers. The
+  commit's focus cap must not hold retreat down under tower fire, even before the commit has ended.

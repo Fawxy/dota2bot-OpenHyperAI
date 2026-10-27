@@ -123,7 +123,8 @@ test('gen_camps preserves seeds', () => {
 });
 
 test('condebug summary', () => {
-    const rows = summarise(fs.readFileSync(fixture('console.log'), 'utf8').split('\n'));
+    // CRLF on Windows checkouts (core.autocrlf).
+    const rows = summarise(fs.readFileSync(fixture('console.log'), 'utf8').split(/\r?\n/));
     const find = (camp, kind) => rows.find((r) => r.camp === camp && r.kind === kind);
 
     const half = find(12, 'half');

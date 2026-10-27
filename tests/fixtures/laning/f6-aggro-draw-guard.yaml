@@ -1,0 +1,19 @@
+id: lane.aggro.draw-with-nothing-to-hit.001
+source: log
+ref: {log: console.9057308756.log, finding: F6}
+status: active
+decision: lane_prethink
+control: {commit: 0243ae6, outcome: pass}   # guard: the world does produce a draw, before and after the fix
+conditions: {phase: laning, role: pos1, skill: 0.8}
+world:
+  t: 95
+  subject: 1
+  heroes:
+    - {pid: 1, pos: 1, at: [-200, -5000]}
+    - {pid: 6, side: enemy, pos: 3, at: [300, -5000]}
+  creeps: [{id: 1, side: ally, x: -100}]
+expect:
+  must: ["attack(hero#6)", "commit(aggro_pull)"]
+notes: >
+  Positive control for the two F6 no-draw fixtures: with nothing to last-hit the same world starts the draw, so their
+  mustNot cannot pass just because no draw was ever wanted.

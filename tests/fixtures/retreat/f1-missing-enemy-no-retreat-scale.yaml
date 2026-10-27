@@ -1,0 +1,23 @@
+id: retreat.caution.missing-enemy-no-scale.001
+source: log
+ref: {log: console.9057308756.log, finding: F1}
+status: active
+decision: retreat_desire
+control: {commit: d0cd961, outcome: fail}
+conditions: {phase: laning, role: pos1, skill: [0.2, 1.0]}
+world:
+  t: 300
+  subject: 1
+  # Creep aggro in lane: OHA's laning-phase retreat desire sits at 0.75-0.9, under laning's last-hit bid of 0.9.
+  retreatBase: 0.85
+  heroes:
+    - {pid: 1, pos: 1, lane: bot}
+    - {pid: 5, pos: 5, lane: bot}
+    - {pid: 2, pos: 2, lane: mid, bot: false, at: [0, 0]}
+    - {pid: 10, side: enemy, unseen: 7}
+expect:
+  # The missing enemy makes the core cautious (stand further back), but an untouched core keeps OHA's desire.
+  must: ["fact.caution > 0", "desire.retreat <= fact.base"]
+notes: >
+  F1 (23/10/2026): caution's retreat x1.3 (any enemy laner unseen 4-6 s, held up to 60 s) lifted creep-aggro retreat
+  over laning's 0.9, so cores backed out of lane and lost CS. Troll 12 last hits in the evidence game.

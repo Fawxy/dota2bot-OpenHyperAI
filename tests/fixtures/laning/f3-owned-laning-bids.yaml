@@ -1,0 +1,18 @@
+id: lane.lasthit.owned-laning-bids.001
+source: log
+ref: {log: console.9057308756.log, finding: F3}
+status: active
+decision: laning_mode
+control: {commit: 0243ae6, outcome: fail}
+conditions: {phase: laning, role: pos3}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 3, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+expect:
+  # Laning's pending-last-hit bid must reach the top of the creep-aggro retreat band (0.75-0.9), or retreat wins.
+  must: ["desire.laning >= 0.9"]
+notes: >
+  F3 (23/10/2026): laning bid 0.9 for a pending last hit only in upstream's two special cases, not for every bot whose
+  Think() OHA owns, so a pos 3 with a killable creep lost the frame to other modes.

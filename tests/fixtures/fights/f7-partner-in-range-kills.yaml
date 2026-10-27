@@ -1,0 +1,22 @@
+id: fight.killcheck.partner-in-range-kills.001
+source: log
+ref: {log: console.9057308756.log, finding: F7}
+status: active
+decision: kill_check
+control: {commit: 47378fb, outcome: pass}   # guard: a partner in range is credited, before and after the fix
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  t: 100
+  subject: 1
+  target: 6
+  partners: [2]
+  heroes:
+    # The partner-arrival world, with the partner able to hit the target from where it stands.
+    - {pid: 1, pos: 5, at: [-800, -5000], burst: 300, range: 1200}
+    - {pid: 2, pos: 1, at: [-700, -5000], burst: 300, range: 1200, speed: 300}
+    - {pid: 6, side: enemy, at: [300, -5000], health: 500}
+expect:
+  must: ["kill"]
+notes: >
+  Positive control for partner-arrival-credit: the same world gives a kill when the partner's whole burst lands, so that
+  fixture's "no kill" comes from the arrival time, not from partners being ignored.

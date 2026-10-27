@@ -7,10 +7,13 @@
         "test": "node run.js",
         "mining": "node ../../tools/replay-mining/test/run.js",
         "hlog": "node --test ../../tools/hlog/test/hlog.test.js ../../tools/hlog/test/bars.test.js",
-        "check": "npm run syntax && npm test && npm run mining && npm run hlog"
+        "check": "npm run syntax && npm test && npm run fixtures && npm run mining && npm run hlog",
+        "fixtures": "node --test fixtures.test.js && node fixtures.js",
+        "fixtures:controls": "node fixtures.js --controls"
     },
     "devDependencies": {
         "fengari": "0.1.4",
-        "luaparse": "0.3.1"
+        "luaparse": "0.3.1",
+        "yaml": "2.5.1"
     }
 }

@@ -1,0 +1,17 @@
+id: transition.trip.missing-enemy-blocks.001
+source: log
+ref: {log: console.9057308756.log, finding: F9}
+status: active
+decision: core_trip
+control: {commit: d0cd961, outcome: fail}
+conditions: {phase: laning, role: pos1, skill: [0.5, 1.0]}
+world:
+  t: 445
+  pos: 1
+  camps: [{type: small}]
+  transitions: {Enable: true}
+  # The enemy offlaner went out of sight 10 s ago: a fresh missing enemy.
+  enemies: [{pid: 11, unseen: 10}]
+expect:
+  must: ["noTrip(enemy-missing)"]
+notes: F9 - pulls, stacks and core jungle trips ignored missing enemies, so a core walked into the jungle a gank had just left for.

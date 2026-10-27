@@ -1,0 +1,14 @@
+id: transition.trip.mid-trips-between-runes.001
+source: log
+ref: {log: console.9057308756.log, finding: F9}
+status: active
+decision: core_trip
+control: {commit: d0cd961, outcome: pass}   # guard: the same mid trips when no rune is due
+conditions: {phase: laning, role: pos2, skill: [0.5, 1.0]}
+world:
+  t: 380
+  pos: 2
+  camps: [{type: small}]
+expect:
+  must: ["trip(camp#1)"]
+notes: Positive control for the rune fixture - at 6:20 the same world starts the trip.

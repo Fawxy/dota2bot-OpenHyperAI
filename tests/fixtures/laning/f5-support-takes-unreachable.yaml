@@ -1,0 +1,18 @@
+id: lane.lasthit.support-takes-unreachable.001
+source: log
+ref: {log: console.9057308756.log, finding: F5}
+status: active
+decision: laning_mode
+control: {commit: 0243ae6, outcome: pass}   # guard: true before the fix too
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  allies: [{id: 2, pos: 1, x: 1500, y: 0, range: 600}]
+expect:
+  must: ["lastHit(creep#1)"]
+notes: >
+  F5 counterpart - when no core can reach the creep, the support takes it rather than lose the gold. (Tests
+  mode_laning_generic; the reach rule CoreCanReach is the world's stub.)

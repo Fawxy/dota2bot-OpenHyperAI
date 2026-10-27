@@ -1,0 +1,18 @@
+id: lane.lasthit.hold-capped.001
+source: log
+ref: {log: console.9057308756.log, finding: F4}
+status: active
+decision: laning_mode
+control: {commit: 849782a, outcome: fail}   # the cap came in be21c85, after the hold (47378fb)
+conditions: {phase: laning, role: pos1}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 1, x: 0, y: 0, range: 150, dmg: 50}
+  # Nobody else hits the creep, so it never turns killable; the hold must end.
+  creeps: [{id: 1, team: enemy, hp: 60, x: 100, y: 0}]
+  frames: [{t: 120}, {t: 121.6}]
+expect:
+  must: ["lastHit(creep#1)"]
+  mustNot: ["hold"]
+notes: F4 final review fix - the hold is capped (HoldMax); a bot must not stand forever next to a creep nobody damages.
