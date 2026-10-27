@@ -38,3 +38,8 @@ test('a wrong position, build, missing state layer or early stop is reported', (
     assert.match(s, /ev=state 0/);
     assert.match(s, /stopped at t=900/);
 });
+
+test('an extra --set key fails the arm (an Enable=false on ON is a different arm)', () => {
+    const p = checkGame(log({ set: 'Humaniser.States.Teams=all,Humaniser.Lane.OwnLaningThink=all,Humaniser.Enable=false', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' });
+    assert.match(p.join('; '), /has extra Humaniser\.Enable=false/);
+});

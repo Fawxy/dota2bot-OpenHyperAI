@@ -1,6 +1,6 @@
 // Validity check for a dotactl batch manifest (WO-016 rule, WO-021): per game, the lineup (heroes and positions per team,
 // master docs/team/lineups.md), the build stamp, every --set key of the game's arm, that the arm's state layer ran or did not,
-// and that the game reached --until. Prints ok or the problems per game; exit 1 if any game has a problem.
+// and that the game reached --until. The arm's --set keys must match exactly (none missing, none extra). Prints ok or the problems per game; exit 1 if any game has a problem.
 // Usage: node lineup_check.js <manifest> <build> [--lineups <json>] [--arms <json>] [--until 1200]
 'use strict';
 
@@ -41,6 +41,9 @@ function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, 
         const given = set.split(/[,\s]+/).filter(Boolean);
         const missing = spec.set.filter(k => !given.includes(k));
         if (missing.length) p.push(`${arm} arm: --set lacks ${missing.join(', ')} (set="${set}")`);
+        // The arm's --set line exactly (WO-016): an extra key, such as an Enable=false on ON, is a different arm.
+        const extra = given.filter(k => !spec.set.includes(k));
+        if (extra.length) p.push(`${arm} arm: --set has extra ${extra.join(', ')} (set="${set}")`);
         if (spec.states !== states > 0) p.push(`${arm} arm: ev=state ${states}`);
     }
     const stop = text.match(/\[DOTACTL\] t=([\d.]+) ev=stop/);
@@ -49,7 +52,7 @@ function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, 
 }
 
 function main(argv) {
-    const opt = k => (argv.join(' ').match(new RegExp(`--${k} (\\S+)`)) || [])[1];
+    const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
     const [manifest, build] = argv;
     if (!manifest || !build) {
         console.error('usage: node lineup_check.js <manifest> <build> [--lineups <json>] [--arms <json>] [--until 1200]');

@@ -22,3 +22,14 @@ test('a replay becomes [HEV] bot and snap lines, with no snapshots while dead', 
     assert.strictEqual(g.bots[1].snaps.length, 4);
     assert.strictEqual(g.bots[0].snaps[1].deaths, 1);
 });
+
+test('rows stop at the ancient kill unless --until is given', () => {
+    const nd = [
+        { k: 'meta', gameStart: 100, players: [{ team: 2, heroId: 1 }] },
+        ...[0, 1, 2, 3].map(t => ({ k: 's', t, p: [row(10 + t, 1, 0)] })),
+        { k: 'log', tgt: 'npc_dota_badguys_fort', ts: 101.6 },
+    ].map(o => JSON.stringify(o)).join('\n');
+    const heroes = { 1: { id: 1, name: 'npc_dota_hero_antimage' } };
+    assert.deepStrictEqual(parseLog(replayToHlog(nd, heroes).join('\n'))[0].bots[0].snaps.map(s => s.t), [0, 1]);
+    assert.strictEqual(parseLog(replayToHlog(nd, heroes, 3).join('\n'))[0].bots[0].snaps.length, 4);
+});

@@ -55,7 +55,7 @@ function sameExceptTime(a, b) {
 }
 
 function newGame(index) {
-    return { index, events: [], errors: [], squelched: false, squelches: 0, starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
+    return { index, events: [], errors: [], squelched: false, squelches: 0, errorSquelches: 0, starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
 }
 
 function dedupe(game) {
@@ -120,6 +120,7 @@ function buildModel(game) {
 function parseLog(text) {
     const games = [];
     let game;
+    let lastConsole; // the last non-[HEV] line's kind: a squelch notice right after an error line censors the error count
     for (const line of text.split(/\r?\n/)) {
         const p = parseLine(line);
         if (p === undefined) continue;
@@ -149,8 +150,10 @@ function parseLog(text) {
         else if (p.line === 'squelch') {
             game.squelched = true;
             game.squelches++;
+            if (lastConsole === 'error') game.errorSquelches++;
         }
         else game.errors.push({ text: p.text, t: game.maxT });
+        lastConsole = p.line;
     }
     return games.filter(g => g.events.length > 0 || g.errors.length > 0).map((g, i) => buildModel({ ...g, index: i + 1 }));
 }

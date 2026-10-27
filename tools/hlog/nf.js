@@ -40,8 +40,10 @@ function flatten(m) {
     // Beside the role keys above: the same metrics by lineup position (ev=bot pos=), and how many slots the two disagree on.
     out.lua_error_ours = m.lua_error_ours;
     out.console_errors = m.console_errors;
+    out.console_squelches = m.console_squelches;
     out.console_censored = m.console_censored ? 1 : 0;
-    for (const r of [1, 2, 3, 4, 5]) out[`lh_at_10_lpos${r}`] = ((m.lh_at_10_lpos[`r${r}`] ?? 0) + (m.lh_at_10_lpos[`d${r}`] ?? 0)) / 2;
+    // No ?? 0 here: a team without trusted positions leaves the key undefined, which the gate reports as missing.
+    for (const r of [1, 2, 3, 4, 5]) out[`lh_at_10_lpos${r}`] = (m.lh_at_10_lpos[`r${r}`] + m.lh_at_10_lpos[`d${r}`]) / 2;
     const lexits = ['r1', 'r3', 'd1', 'd3'].map(k => m.core_lane_exit_time_lpos[k]).filter(v => v !== undefined);
     out.core_lane_exit_time_lpos = lexits.length ? lexits.reduce((a, b) => a + b, 0) / lexits.length : undefined;
     out.role_mismatch = m.role_mismatch;

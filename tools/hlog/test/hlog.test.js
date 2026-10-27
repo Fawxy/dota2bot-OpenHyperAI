@@ -609,9 +609,11 @@ test('stateMetrics: agreement leaves out interrupts and (for agreeLong) mode bli
     assert.deepStrictEqual(r.disagree, { 'laning/farm': 6 });
 });
 
-test('squelch notices are counted per game', () => {
+test('squelch notices are counted per game; only one right after an error line censors errors', () => {
     const notice = '10/22 06:59:03 [VScript] Message count limit of 10 hit. Subsequent duplicate messages will be squelched.';
-    const g = parseLog([...header(0), ...snaps(2, 0, 5), notice, notice].join('\n'))[0];
+    const error = '10/22 06:59:03 [VScript] Script Runtime Error: error in error handling';
+    const g = parseLog([...header(0), ...snaps(2, 0, 5), error, notice, notice].join('\n'))[0];
     assert.strictEqual(g.squelched, true);
     assert.strictEqual(g.squelches, 2);
+    assert.strictEqual(g.errorSquelches, 1);
 });

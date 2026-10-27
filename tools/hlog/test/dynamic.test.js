@@ -155,30 +155,46 @@ test('dynamicMetrics: roles by last hits and home lane, deaths before 10:00, ste
 });
 
 test('dynamicMetrics: lineup-position keys from ev=bot pos= sit beside the role keys; mismatches are counted', () => {
-    // Behaviour roles: 0 mid (2), 1 safe (1), 2 off (3). The lineup says 1 is pos 3 and 2 is pos 1 (swapped), 0 is pos 2.
+    // Behaviour roles: 0 mid (2), 1 safe (1), 2 off (3), 3 and 4 supports. The lineup swaps 1 and 2 (pos 3 and pos 1).
     const rad = [
         bot(0, 2, t => ({ p: MID, lh: Math.floor(t / 10) })),
         bot(1, 2, t => ({ p: BOT, lh: Math.floor(t / 8) })),
         bot(2, 2, t => ({ p: TOP, lh: Math.floor(t / 20) })),
+        bot(3, 2, t => ({ p: BOT, lh: Math.floor(t / 60) })),
+        bot(4, 2, t => ({ p: TOP, lh: Math.floor(t / 100) })),
     ];
-    [[0, 2], [1, 3], [2, 1]].forEach(([i, pos]) => (rad[i].profiles = [{ ev: 'bot', pos: 5 }, { ev: 'bot', pos }]));
+    [[0, 2], [1, 3], [2, 1], [3, 4], [4, 5]].forEach(([i, pos]) => (rad[i].profiles = [{ ev: 'bot', pos: 5 }, { ev: 'bot', pos }]));
     const m = D.dynamicMetrics(game(rad));
-    assert.deepStrictEqual(m.lpos, { 0: 2, 1: 3, 2: 1 });
+    assert.deepStrictEqual(m.lpos, { 0: 2, 1: 3, 2: 1, 3: 4, 4: 5 });
     assert.strictEqual(m.lh_at_10.r1, 75); // role key unchanged
     assert.strictEqual(m.lh_at_10_lpos.r1, 30);
     assert.strictEqual(m.lh_at_10_lpos.r3, 75);
     assert.strictEqual(m.role_mismatch, 2);
 });
 
-test('dynamicMetrics: our pcall errors, console errors and the squelch flag are separate keys', () => {
+test('dynamicMetrics: a team whose positions are not exactly 1-5 gets no lpos keys and a warning', () => {
+    // Pre-Dire-fix logs: every Dire bot says pos=1.
+    const dire = [0, 1, 2, 3, 4].map(i => bot(5 + i, 3, t => ({ p: MID, lh: Math.floor(t / (10 + i)) })));
+    dire.forEach(b => (b.profiles = [{ ev: 'bot', pos: 1 }]));
+    const m = D.dynamicMetrics(game(dire));
+    assert.deepStrictEqual(m.lpos, {});
+    assert.deepStrictEqual(m.lh_at_10_lpos, {});
+    assert.strictEqual(m.role_mismatch, 0);
+    assert.ok(m.warnings.some(w => /team 3: lineup positions 1,1,1,1,1 are not 1-5/.test(w)), m.warnings.join('; '));
+});
+
+test('dynamicMetrics: our pcall errors, console errors and the censoring flag are separate keys', () => {
     const g = game([bot(0, 2, () => ({ p: MID }))], [{ ev: 'lua_error', t: 5, pid: 0 }]);
     g.errors = [{ text: 'Script Runtime Error: error in error handling' }, { text: 'stack traceback:' }];
     g.squelched = true;
     g.squelches = 2;
+    g.errorSquelches = 1;
     const m = D.dynamicMetrics(g);
     assert.strictEqual(m.lua_error, 3); // NF-001 meaning kept: ours plus every console error line
     assert.strictEqual(m.lua_error_ours, 1);
     assert.strictEqual(m.console_errors, 1);
     assert.strictEqual(m.console_squelches, 2);
     assert.strictEqual(m.console_censored, true);
+    g.errorSquelches = 0; // squelched repeats of a non-error message do not censor error counts
+    assert.strictEqual(D.dynamicMetrics(g).console_censored, false);
 });

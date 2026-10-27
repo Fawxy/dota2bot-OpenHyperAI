@@ -324,6 +324,14 @@ function dynamicMetrics(game) {
         const p = (game.bots[s.pid]?.profiles || []).filter(e => typeof e.pos === 'number').pop();
         if (p) lpos[s.pid] = p.pos;
     }
+    // A team whose positions are not exactly 1-5 (e.g. a pre-Dire-fix log, all Dire pos=1) gets no lpos keys.
+    for (const t of [2, 3]) {
+        const ps = team(t).map(s => lpos[s.pid]).sort().join();
+        if (ps !== '1,2,3,4,5') {
+            warnings.push(`team ${t}: lineup positions ${ps || 'none'} are not 1-5; no lpos keys`);
+            team(t).forEach(s => delete lpos[s.pid]);
+        }
+    }
     const byLpos = f => Object.fromEntries(Object.values(S).filter(s => lpos[s.pid]).map(s => [`${s.team === 2 ? 'r' : 'd'}${lpos[s.pid]}`, f(s)]));
     return {
         end,
@@ -344,7 +352,8 @@ function dynamicMetrics(game) {
         console_errors: game.errors.filter(e => /script runtime error/i.test(e.text)).length,
         // Dota squelches a console message after 10 identical copies, so with a notice the console counts are lower bounds.
         console_squelches: game.squelches || 0,
-        console_censored: game.squelched === true,
+        // Censored only by a notice right after an error line: Dota squelches any repeated message, errors or not.
+        console_censored: (game.errorSquelches || 0) > 0,
         lpos,
         lh_at_10_lpos: byLpos(s => counterAt(s, 'lh', 600)),
         core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
