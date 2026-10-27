@@ -6,12 +6,13 @@
 const fs = require('fs');
 const { parseLog } = require('./parse');
 const { laningMetrics } = require('./metrics');
-const { dynamicMetrics } = require('./dynamic');
+const { dynamicMetrics, deathTimes, series } = require('./dynamic');
 
 // Two-sided 0.05, power 0.8, two-sample t: (t_crit + t_power) * SD * sqrt(2 / N), df = 2N - 2.
 const T975 = { 4: 2.776, 6: 2.447, 8: 2.306, 10: 2.228, 18: 2.101, 38: 2.024 };
 const T80 = { 4: 0.941, 6: 0.906, 8: 0.889, 10: 0.879, 18: 0.862, 38: 0.851 };
 function mde(sd, n) {
+    if (!(sd > 0)) return NaN; // not estimable from a zero or missing SD
     const df = 2 * n - 2;
     const k = Object.keys(T975).map(Number).reduce((a, b) => (Math.abs(b - df) < Math.abs(a - df) ? b : a));
     return (T975[k] + T80[k]) * sd * Math.sqrt(2 / n);
@@ -33,6 +34,7 @@ function flatten(m) {
         lua_error: m.lua_error,
     };
     for (const r of [1, 2, 3, 4, 5]) out[`lh_at_10_pos${r}`] = ((m.lh_at_10[`r${r}`] ?? 0) + (m.lh_at_10[`d${r}`] ?? 0)) / 2;
+    // Cores that never leave their lane are left out of the mean; nf.js gate reports them.
     const exits = ['r1', 'r3', 'd1', 'd3'].map(k => m.core_lane_exit_time[k]).filter(v => v !== undefined);
     out.core_lane_exit_time = exits.length ? exits.reduce((a, b) => a + b, 0) / exits.length : undefined;
     return out;
@@ -41,17 +43,23 @@ function flatten(m) {
 /** Output gate for one game: deaths vs kills, lh_at_10 vs laningMetrics, missing metrics. Returns problem strings. */
 function gate(game, m, flat) {
     const problems = [];
-    let kills = 0, deaths = 0;
+    // Deaths found by deathTimes (counter increments plus bots dead at the end) against hero kills on the scoreboard. Deaths to
+    // towers, creeps and neutrals credit no kill, so deaths may exceed kills; only kills above deaths point at a detector miss.
+    let kills = 0;
     for (const b of Object.values(game.bots)) {
-        const last = b.snaps.filter(s => typeof s.deaths === 'number').pop();
-        if (last) [kills, deaths] = [kills + (last.kills || 0), deaths + last.deaths];
+        const last = b.snaps.filter(s => typeof s.kills === 'number').pop();
+        if (last) kills += last.kills;
     }
+    const deaths = deathTimes(series(game)).length;
     if (deaths > 0 && Math.abs(kills - deaths) / deaths > 0.1) problems.push(`hero kills ${kills} vs deaths ${deaths} differ by > 10%`);
-    const lane = laningMetrics(game, { until: 600 });
+    const lane = Object.fromEntries(laningMetrics(game, { until: 600 }).bots.map(b => [b.pid, b]));
     for (const [role, pid] of Object.entries(m.pids)) {
-        if (lane[pid] && lane[pid].lh !== m.lh_at_10[role]) problems.push(`lh_at_10 ${role}: ${m.lh_at_10[role]} vs laningMetrics ${lane[pid].lh}`);
+        if (!lane[pid]) problems.push(`lh_at_10 ${role}: no laningMetrics row`);
+        else if (lane[pid].lh !== m.lh_at_10[role]) problems.push(`lh_at_10 ${role}: ${m.lh_at_10[role]} vs laningMetrics ${lane[pid].lh}`);
     }
     if (m.bots !== 10) problems.push(`${m.bots} bots with snapshots`);
+    for (const k of ['r1', 'r3', 'd1', 'd3']) if (m.core_lane_exit_time[k] === undefined) problems.push(`${k} never left lane`);
+    problems.push(...m.warnings);
     for (const [k, v] of Object.entries(flat)) if (v === undefined || Number.isNaN(v)) problems.push(`${k} missing`);
     return problems;
 }

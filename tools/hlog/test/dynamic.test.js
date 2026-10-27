@@ -5,12 +5,15 @@ const D = require('../dynamic');
 
 // Map points: Radiant safe lane (bot) near its T1, mid near the Radiant T2, top near the Radiant T2, Radiant base, jungle.
 const BOT = [-360, -6256], MID = [-1544, -1408], TOP = [-6501, -872], BASE = [-5920, -5352], JUNGLE = [-2500, 2500];
+const FOUNTAIN = [-6850, -6461];
 
-/** A bot with one snapshot per second from `from` to `to`; `at(t)` returns { p: [x, y], alive?, deaths?, lh? }. */
+/** A bot with one snapshot per second from `from` to `to`; `at(t)` returns { p: [x, y], deaths?, lh? }, or null for no
+ *  snapshot (a dead bot logs none, as in real logs). */
 function bot(pid, team, at, from = 0, to = 700) {
     const snaps = [];
     for (let t = from; t <= to; t++) {
         const s = at(t);
+        if (!s) continue;
         snaps.push({ ev: 'snap', t, pid, x: s.p[0], y: s.p[1], alive: s.alive === false ? 0 : 1, deaths: s.deaths || 0, lh: s.lh || 0 });
     }
     return { pid, hero: `h${pid}`, team, snaps, profiles: [] };
@@ -22,6 +25,7 @@ test('lane labels follow the tower polylines and the bases', () => {
     assert.strictEqual(D.laneLabel(MID), 'mid');
     assert.strictEqual(D.laneLabel(TOP), 'top');
     assert.strictEqual(D.laneLabel(BASE), 'base');
+    assert.strictEqual(D.laneLabel(FOUNTAIN), 'base');
     assert.strictEqual(D.laneLabel(JUNGLE), 'other');
 });
 
@@ -33,9 +37,27 @@ test('an encounter needs the pair apart for 5 s first; onsets within 3 s merge',
     assert.strictEqual(D.encounters(S, 0, 60), 2);
 });
 
-test('a dead hero cannot start an encounter', () => {
-    const S = D.series(game([bot(0, 2, () => ({ p: MID })), bot(5, 3, t => ({ p: MID, alive: t < 100 ? false : true }))]));
-    assert.strictEqual(D.encounters(S, 0, 90), 0);
+test('a dead hero (snapshot gap across a deaths increment) cannot start an encounter', () => {
+    // Dire dies mid at 10 (no snapshots 11-39), respawns in fountain at 40. Radiant reaches mid at 30.
+    const dire = bot(5, 3, t => (t <= 10 ? { p: MID } : t < 40 ? null : { p: [7020, 6345], deaths: 1 }), 0, 60);
+    const rad = bot(0, 2, t => ({ p: t < 30 ? [6000, -6000] : MID }), 0, 60);
+    const S = D.series(game([rad, dire]));
+    assert.strictEqual(S[5].sec[20].alive, 0);
+    assert.strictEqual(D.encounters(S, 0, 60), 0);
+});
+
+test('encounter onsets join the encounter only within 3 s of its first onset', () => {
+    // Three Dire heroes reach the Radiant hero at 10, 12 and 14: 10 and 12 are one encounter, 14 starts another.
+    const far = [6000, 6000];
+    const dire = [10, 12, 14].map((t0, k) => bot(5 + k, 3, t => ({ p: t >= t0 ? [MID[0] + 300, MID[1]] : far }), 0, 30));
+    const S = D.series(game([bot(0, 2, () => ({ p: MID }), 0, 30), ...dire]));
+    assert.strictEqual(D.encounters(S, 0, 30), 2);
+});
+
+test('pairs already together at the window start do not open an encounter', () => {
+    const S = D.series(game([bot(0, 2, () => ({ p: MID })), bot(5, 3, () => ({ p: MID }))]));
+    assert.strictEqual(D.encounters(S, 0, 700), 1);
+    assert.strictEqual(D.encounters(S, 600, 700), 0);
 });
 
 test('fights are runs of 3+ deaths with <= 15 s between deaths', () => {
@@ -44,9 +66,12 @@ test('fights are runs of 3+ deaths with <= 15 s between deaths', () => {
     assert.strictEqual(D.fights([{ t: 100 }, { t: 101 }], 0, 600), 0);
 });
 
-test('death times come from deaths counter increments', () => {
-    const S = D.series(game([bot(0, 2, t => ({ p: MID, deaths: t >= 50 ? (t >= 80 ? 2 : 1) : 0 }))]));
-    assert.deepStrictEqual(D.deathTimes(S).map(d => d.t), [50, 80]);
+test('a death is dated before its snapshot gap; a bot dead at the end adds a death', () => {
+    // Dies at 50 (gap to 70), dies again at 100 and stays dead past the other bot's last snapshot (200).
+    const a = bot(0, 2, t => (t <= 50 ? { p: MID } : t < 70 ? null : t <= 100 ? { p: MID, deaths: 1 } : null), 0, 200);
+    const S = D.series(game([a, bot(1, 2, () => ({ p: MID }), 0, 200)]));
+    assert.deepStrictEqual(D.deathTimes(S).map(d => d.t), [50, 100]);
+    assert.strictEqual(S[0].sec[150].alive, 0);
 });
 
 test('a rotation is 10+ s in another lane region before 10:00; shorter trips do not count', () => {
@@ -57,6 +82,14 @@ test('a rotation is 10+ s in another lane region before 10:00; shorter trips do 
     const s2 = D.series(game([bot(0, 2, trip(400, 408))]))[0];
     s2.home = 'bot';
     assert.strictEqual(D.rotations(s2, 600), 0);
+    // 5 s top, 3 s jungle, 6 s top: the short jungle stretch keeps the run open (11 lane seconds).
+    const s3 = D.series(game([bot(0, 2, t => ({ p: t >= 400 && t < 405 ? TOP : t >= 405 && t < 408 ? JUNGLE : t >= 408 && t < 414 ? TOP : BOT }))]))[0];
+    s3.home = 'bot';
+    assert.strictEqual(D.rotations(s3, 600), 1);
+    // 6 s top then 6 s mid: a lane change closes the run, neither reaches 10 s.
+    const s4 = D.series(game([bot(0, 2, t => ({ p: t >= 400 && t < 406 ? TOP : t >= 406 && t < 412 ? MID : BOT }))]))[0];
+    s4.home = 'bot';
+    assert.strictEqual(D.rotations(s4, 600), 0);
 });
 
 test('lane exit is the first minute from 5:00 with under half of the next minute in the home lane', () => {
@@ -66,23 +99,38 @@ test('lane exit is the first minute from 5:00 with under half of the next minute
     const stay = D.series(game([bot(0, 2, () => ({ p: BOT }), 0, 900)]))[0];
     stay.home = 'bot';
     assert.strictEqual(D.laneExit(stay, 900), undefined);
+    // A 40 s base trip in the 6:00 minute is not a lane exit.
+    const shop = D.series(game([bot(0, 2, t => ({ p: t >= 360 && t < 400 ? BASE : BOT }), 0, 900)]))[0];
+    shop.home = 'bot';
+    assert.strictEqual(D.laneExit(shop, 900), undefined);
 });
 
-test('a teleport-sized jump landing by an ally is a TP join; a respawn jump is not', () => {
+test('a teleport-sized jump landing by an ally is a TP join; a respawn or a TP to base is not', () => {
     const ally = bot(1, 2, () => ({ p: TOP }), 600, 700);
     const tp = bot(0, 2, t => ({ p: t < 650 ? BOT : TOP }), 600, 700);
     let S = D.series(game([tp, ally]));
     assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 1);
-    const respawn = bot(0, 2, t => ({ p: t < 650 ? BOT : TOP, alive: !(t >= 640 && t < 650) }), 600, 700);
-    S = D.series(game([respawn, ally]));
+    // Dies on bot at 640, respawns at 660 in fountain next to an ally standing there.
+    const inFountain = bot(1, 2, () => ({ p: FOUNTAIN }), 600, 700);
+    const respawn = bot(0, 2, t => (t <= 640 ? { p: BOT } : t < 660 ? null : { p: FOUNTAIN, deaths: 1 }), 600, 700);
+    S = D.series(game([respawn, inFountain]));
+    assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 0);
+    const toBase = bot(0, 2, t => ({ p: t < 650 ? TOP : FOUNTAIN }), 600, 700);
+    S = D.series(game([toBase, inFountain]));
     assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 0);
 });
 
-test('standing still outside base for 10+ s is one idle episode; in base it is not', () => {
+test('standing still outside base for 10+ s is one idle episode; in base, fountain or dead it is not', () => {
     const s = D.series(game([bot(0, 2, t => ({ p: t >= 100 && t < 120 ? JUNGLE : [JUNGLE[0] + (t % 2) * 500, JUNGLE[1]] }))]))[0];
     assert.strictEqual(D.idles(s, 0, 200), 1);
     const b = D.series(game([bot(0, 2, () => ({ p: BASE }))]))[0];
     assert.strictEqual(D.idles(b, 0, 200), 0);
+    const f = D.series(game([bot(0, 2, () => ({ p: FOUNTAIN }))]))[0];
+    assert.strictEqual(D.idles(f, 0, 200), 0);
+    // Dies in the jungle at 50, respawns at 90 in fountain, then keeps moving.
+    const moving = t => ({ p: [JUNGLE[0] + (t % 2) * 500, JUNGLE[1]] });
+    const d = D.series(game([bot(0, 2, t => (t <= 50 ? moving(t) : t < 90 ? null : { ...moving(t), deaths: 1 }), 0, 200)]))[0];
+    assert.strictEqual(D.idles(d, 0, 200), 0);
 });
 
 test('dynamicMetrics: roles by last hits and home lane, deaths before 10:00, steals near a core', () => {

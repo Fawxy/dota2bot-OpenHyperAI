@@ -1,15 +1,18 @@
 // Dynamic-game metrics (GOALS O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
-// bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry and the encounter rule
-// follow the replay moment index (research/replay-index.md) so bot and replay moments compare.
+// bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry, the encounter rule and the
+// rotation rule follow the replay moment index (research/replay-index/moments.js) so bot and replay moments compare.
 'use strict';
 
 const C = {
     R_AWARE: 1200, // heroes within this many units count as meeting
     GAP_ENC: 5, // an encounter needs the pair apart for this many seconds first
-    MERGE_ENC: 3, // onsets this close (s) are one encounter
+    MERGE_ENC: 3, // an onset this close (s) to an encounter's first onset joins it
     LANE_R: 1100, // distance from a lane polyline that still counts as that lane
     BASE_R: 1800, // within this of an ancient counts as base
+    FOUNTAIN_R: 1200, // within this of a fountain counts as base too (fountains lie just outside BASE_R)
+    DEAD_GAP: 2.5, // bots log no snapshot while dead: a longer gap across a deaths increment is a death
     ROT_MIN_S: 10, // seconds in another lane region before 10:00 that make a rotation
+    ROT_GAP: 8, // seconds of river or jungle that keep a rotation run open
     FIGHT_GAP: 15, // seconds between consecutive deaths in one fight (OpenDota teamfight convention)
     FIGHT_MIN_DEATHS: 3,
     TP_JUMP: 2500, // units moved within TP_WINDOW seconds while alive: a teleport
@@ -28,6 +31,8 @@ const TOWERS = [
     [3, 3552, 5776], [3, 4272, 3759], [3, 5280, 4432], [3, 6269, -2240],
 ];
 const ANCIENT = { 2: [-5920, -5352], 3: [5528, 5000] };
+// Mean respawn position over 321 deaths in the nf0 batch (all within 400 units).
+const FOUNTAIN = { 2: [-6850, -6461], 3: [7020, 6345] };
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -56,7 +61,7 @@ function segDist(p, a, b) {
 
 /** 'base' | 'top' | 'mid' | 'bot' | 'other' for a map point. */
 function laneLabel(p) {
-    for (const t of [2, 3]) if (dist(p, ANCIENT[t]) < C.BASE_R) return 'base';
+    for (const t of [2, 3]) if (dist(p, ANCIENT[t]) < C.BASE_R || dist(p, FOUNTAIN[t]) < C.FOUNTAIN_R) return 'base';
     let best = 'other', bd = C.LANE_R;
     for (const [L, P] of Object.entries(POLY)) {
         for (let i = 0; i + 1 < P.length; i++) {
@@ -67,19 +72,32 @@ function laneLabel(p) {
     return best;
 }
 
-/** Per bot: snapshots resampled to whole seconds (latest snap at or before each second), from first to last snap. */
+/** True when the gap after snapshot i is dead time: bots log no snapshot while dead, so a gap > DEAD_GAP that crosses a
+ *  deaths increment, or that runs to the end of the game (`last`), is a death. */
+function deadAfter(snaps, i, last) {
+    const a = snaps[i], b = snaps[i + 1];
+    if (!b) return last - a.t > C.DEAD_GAP;
+    return b.t - a.t > C.DEAD_GAP && typeof b.deaths === 'number' && b.deaths > (a.deaths || 0);
+}
+
+/** Per bot: snapshots resampled to whole seconds up to the last snapshot of any bot. Each second holds the latest snap at or
+ *  before it, or during a death gap (deadAfter) a copy of it with alive=0. */
 function series(game) {
     const out = {};
-    for (const b of Object.values(game.bots)) {
+    const bots = Object.values(game.bots).filter(b => b.team !== undefined && b.snaps.some(s => typeof s.x === 'number'));
+    const last = Math.max(...bots.map(b => Math.max(...b.snaps.map(s => s.t))));
+    for (const b of bots) {
         const snaps = b.snaps.filter(s => typeof s.x === 'number').sort((a, c) => a.t - c.t);
-        if (snaps.length === 0 || b.team === undefined) continue;
         const sec = {};
-        let i = 0;
-        for (let t = Math.ceil(snaps[0].t); t <= Math.floor(snaps[snaps.length - 1].t); t++) {
+        let i = 0, dead;
+        for (let t = Math.ceil(snaps[0].t); t <= Math.floor(last); t++) {
             while (i + 1 < snaps.length && snaps[i + 1].t <= t) i++;
-            sec[t] = snaps[i];
+            if (t > snaps[i].t && deadAfter(snaps, i, last)) {
+                if (!dead || dead.from !== snaps[i]) dead = { ...snaps[i], alive: 0, from: snaps[i] };
+                sec[t] = dead;
+            } else sec[t] = snaps[i];
         }
-        out[b.pid] = { pid: b.pid, hero: b.hero, team: b.team, sec, snaps };
+        out[b.pid] = { pid: b.pid, hero: b.hero, team: b.team, sec, snaps, last };
     }
     return out;
 }
@@ -111,8 +129,9 @@ function modalLane(s, a, b) {
 }
 
 /** Roles by behaviour: per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
- *  off-lane core pos 3), the other two supports (more last hits = pos 4). Avoids the bots-mode Dire pos= artefact. */
-function roles(S) {
+ *  off-lane core pos 3), the other two supports (more last hits = pos 4). Avoids the bots-mode Dire pos= artefact.
+ *  Fallbacks (no mid core, no safe-lane core) are reported in `warnings`. */
+function roles(S, warnings = []) {
     const out = {};
     for (const team of [2, 3]) {
         const bots = Object.values(S).filter(s => s.team === team);
@@ -121,50 +140,60 @@ function roles(S) {
         const cores = bots.slice(0, 3), sups = bots.slice(3);
         const safe = team === 2 ? 'bot' : 'top';
         const mid = cores.find(s => s.home === 'mid') || cores[0];
+        if (mid && mid.home !== 'mid') warnings.push(`team ${team}: no core plays mid; pos 2 = top farmer ${mid.hero}`);
         const rest = cores.filter(s => s !== mid);
         const p1 = rest.find(s => s.home === safe) || rest[0];
+        if (p1 && p1.home !== safe) warnings.push(`team ${team}: no core plays the safe lane; pos 1 = ${p1.hero}`);
         const p3 = rest.find(s => s !== p1);
         [[mid, 2], [p1, 1], [p3, 3], [sups[0], 4], [sups[1], 5]].forEach(([s, r]) => s && (out[s.pid] = r));
     }
     return out;
 }
 
-/** Encounter onsets: an opposing pair, both alive, comes within R_AWARE after >= GAP_ENC s apart; onsets within MERGE_ENC merge. */
+/** Encounters with onset in [from, to): an opposing pair, both alive, comes within R_AWARE after >= GAP_ENC s apart; an onset
+ *  within MERGE_ENC s of the current encounter's first onset joins it (moments.js rule). The scan starts at 0, so pairs already
+ *  together at `from` do not open an encounter. */
 function encounters(S, from, to) {
     const rad = Object.values(S).filter(s => s.team === 2), dire = Object.values(S).filter(s => s.team === 3);
     const onsets = [];
     for (const a of rad) {
         for (const b of dire) {
-            let apart = C.GAP_ENC, near = false;
-            for (let t = from; t < to; t++) {
+            let apart = C.GAP_ENC;
+            for (let t = 0; t < to; t++) {
                 const sa = a.sec[t], sb = b.sec[t];
                 const close = alive(sa) && alive(sb) && dist(pos(sa), pos(sb)) <= C.R_AWARE;
-                if (close && !near && apart >= C.GAP_ENC) onsets.push(t);
+                if (close && apart >= C.GAP_ENC && t >= from) onsets.push(t);
                 if (close) apart = 0;
                 else apart++;
-                near = close;
             }
         }
     }
     onsets.sort((x, y) => x - y);
-    let n = 0, last = -Infinity;
+    let n = 0, first = -Infinity;
     for (const t of onsets) {
-        if (t - last > C.MERGE_ENC) n++;
-        last = t;
+        if (t - first > C.MERGE_ENC) {
+            n++;
+            first = t;
+        }
     }
     return n;
 }
 
-/** Death times of every hero (a deaths counter increment), sorted. */
+/** Death times of every hero, sorted. A deaths increment after a gap > DEAD_GAP is dated at the last snapshot before the gap
+ *  (the death, not the respawn); a bot dead at the end of the game adds one death at its last snapshot. */
 function deathTimes(S) {
     const out = [];
     for (const s of Object.values(S)) {
+        const snaps = s.snaps;
         let prev = 0;
-        for (const snap of s.snaps) {
-            if (typeof snap.deaths !== 'number') continue;
-            for (let k = prev; k < snap.deaths; k++) out.push({ t: snap.t, team: s.team });
-            prev = snap.deaths;
+        for (let i = 0; i < snaps.length; i++) {
+            if (typeof snaps[i].deaths !== 'number') continue;
+            const t = i > 0 && snaps[i].t - snaps[i - 1].t > C.DEAD_GAP ? snaps[i - 1].t : snaps[i].t;
+            for (let k = prev; k < snaps[i].deaths; k++) out.push({ t, team: s.team });
+            prev = snaps[i].deaths;
         }
+        const lastSnap = snaps[snaps.length - 1];
+        if (s.last - lastSnap.t > C.DEAD_GAP) out.push({ t: lastSnap.t, team: s.team });
     }
     return out.sort((a, b) => a.t - b.t);
 }
@@ -185,23 +214,33 @@ function fights(deaths, from, to) {
     return n;
 }
 
-/** Rotation episodes before `until`: >= ROT_MIN_S consecutive seconds in a lane region other than the home lane. */
+/** Rotations before `until` (moments.js rule): from 1:00, a run of >= ROT_MIN_S seconds in one lane region other than home;
+ *  up to ROT_GAP s of river or jungle keep the run open (not counted), and another lane, base or death closes it. */
 function rotations(s, until) {
     if (!s.home) return 0;
-    let n = 0, run = 0;
-    for (let t = 90; t < until; t++) {
+    let n = 0, run = null, gap = 0;
+    const close = () => {
+        if (run && run.n >= C.ROT_MIN_S) n++;
+        run = null;
+        gap = 0;
+    };
+    for (let t = 60; t <= until; t++) {
         const snap = s.sec[t];
-        const L = alive(snap) ? laneLabel(pos(snap)) : 'dead';
-        const away = L === 'top' || L === 'mid' || L === 'bot' ? L !== s.home : false;
-        if (away) {
-            run++;
-            if (run === C.ROT_MIN_S) n++;
-        } else run = 0;
+        const L = t < until && alive(snap) ? laneLabel(pos(snap)) : 'x';
+        if ((L === 'top' || L === 'mid' || L === 'bot') && L !== s.home) {
+            if (run && run.L !== L) close();
+            if (!run) run = { L, n: 0 };
+            run.n++;
+            gap = 0;
+        } else if (run && L === 'other' && ++gap <= C.ROT_GAP) {
+            // a short river or jungle stretch keeps the run open
+        } else close();
     }
     return n;
 }
 
-/** First whole minute >= 5:00 after which under half of the next 60 s is spent alive in the home lane; undefined if never. */
+/** First whole minute >= 5:00 after which under half of the next 60 s (alive and outside base) is in the home lane;
+ *  undefined if never. */
 function laneExit(s, until) {
     if (!s.home) return undefined;
     for (let t = 300; t + 60 <= until; t += 60) {
@@ -209,15 +248,17 @@ function laneExit(s, until) {
         for (let u = t; u < t + 60; u++) {
             const snap = s.sec[u];
             if (!alive(snap)) continue;
+            const L = laneLabel(pos(snap));
+            if (L === 'base') continue;
             seen++;
-            if (laneLabel(pos(snap)) === s.home) inLane++;
+            if (L === s.home) inLane++;
         }
         if (seen > 0 && inLane / seen < 0.5) return t;
     }
     return undefined;
 }
 
-/** Teleport-like jumps (>= TP_JUMP within TP_WINDOW while alive) landing within TP_JOIN_R of an alive ally. */
+/** Teleport-like jumps (>= TP_JUMP within TP_WINDOW, alive throughout) landing outside base within TP_JOIN_R of an alive ally. */
 function tpJoins(S, s, from, to) {
     let n = 0;
     for (let t = from; t < to; t++) {
@@ -226,7 +267,7 @@ function tpJoins(S, s, from, to) {
         // The jump must not start at a respawn (dead at any second in the window).
         let dead = false;
         for (let u = t - C.TP_WINDOW; u <= t; u++) if (!alive(s.sec[u])) dead = true;
-        if (dead) continue;
+        if (dead || laneLabel(pos(b)) === 'base') continue;
         const ally = Object.values(S).some(o => o !== s && o.team === s.team && alive(o.sec[t]) && dist(pos(o.sec[t]), pos(b)) <= C.TP_JOIN_R);
         if (ally) n++;
         t += C.TP_WINDOW; // one jump counts once
@@ -234,7 +275,7 @@ function tpJoins(S, s, from, to) {
     return n;
 }
 
-/** Support last hits (from ev=lasthit) before `until` while an allied core is within STEAL_R. */
+/** Support last hits (from ev=lasthit; any unit, not only creeps) before `until` while an allied core is within STEAL_R. */
 function steals(game, S, role, until) {
     let n = 0;
     for (const e of game.events) {
@@ -247,7 +288,7 @@ function steals(game, S, role, until) {
     return n;
 }
 
-/** Idle episodes: alive, outside base, within IDLE_R of one spot for >= IDLE_S seconds (each episode counted once). */
+/** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
 function idles(s, from, to) {
     let n = 0, anchor, start;
     for (let t = from; t < to; t++) {
@@ -264,15 +305,15 @@ function idles(s, from, to) {
     return n;
 }
 
-/** All dynamic metrics for one parsed game. `end` defaults to the last whole minute of snapshots. */
+/** All dynamic metrics for one parsed game. `end` is the last whole minute of snapshots. */
 function dynamicMetrics(game) {
     const S = series(game);
-    const last = Math.max(...Object.values(S).map(s => s.snaps[s.snaps.length - 1].t));
-    const end = Math.floor(last / 60) * 60;
-    const role = roles(S);
+    const end = Math.floor(Object.values(S)[0].last / 60) * 60;
+    const warnings = [];
+    const role = roles(S, warnings);
     const deaths = deathTimes(S);
     const team = t => Object.values(S).filter(s => s.team === t);
-    const perTeam = f => ({ 2: f(team(2)), 3: f(team(3)) });
+    const perTeam = f => ({ 2: f(team(2), 2), 3: f(team(3), 3) });
     const sum = (arr, f) => arr.reduce((a, s) => a + f(s), 0);
     const byRole = f => Object.fromEntries(Object.values(S).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
     const errors = game.events.filter(e => e.ev === 'lua_error').length + game.errors.length;
@@ -282,7 +323,7 @@ function dynamicMetrics(game) {
         roles: byRole(s => s.hero),
         pids: byRole(s => s.pid),
         lh_at_10: byRole(s => counterAt(s, 'lh', 600)),
-        deaths_before_10: perTeam(ts => sum(ts, s => counterAt(s, 'deaths', 600))),
+        deaths_before_10: perTeam((ts, t) => deaths.filter(d => d.t < 600 && d.team === t).length),
         encounters_per_10min: { before10: encounters(S, 0, 600), after10: end > 600 ? (encounters(S, 600, end) * 600) / (end - 600) : undefined },
         fights_per_10min: { before10: fights(deaths, 0, 600), after10: end > 600 ? (fights(deaths, 600, end) * 600) / (end - 600) : undefined },
         rotation_attempts_per_team_10: perTeam(ts => sum(ts, s => rotations(s, 600))),
@@ -291,6 +332,7 @@ function dynamicMetrics(game) {
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
         lua_error: errors,
+        warnings,
     };
 }
 
