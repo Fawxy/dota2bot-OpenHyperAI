@@ -1,7 +1,7 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 -- hero_selection.lua needs the whole pick environment, so only X.BestRolesByHero is lifted out of its source.
-local f = io.open("bots/hero_selection.lua", "r")
+local f = io.open(HARNESS_DIR .. "/../../bots/hero_selection.lua", "r")
 local src = f:read("*a")
 f:close()
 local body = src:match("(function X%.BestRolesByHero.-\n%end\n)")
