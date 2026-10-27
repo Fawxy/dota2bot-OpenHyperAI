@@ -153,3 +153,32 @@ test('dynamicMetrics: roles by last hits and home lane, deaths before 10:00, ste
     assert.strictEqual(m.ally_creep_steals[2], 2);
     assert.strictEqual(m.lh_at_10.r1, 75);
 });
+
+test('dynamicMetrics: lineup-position keys from ev=bot pos= sit beside the role keys; mismatches are counted', () => {
+    // Behaviour roles: 0 mid (2), 1 safe (1), 2 off (3). The lineup says 1 is pos 3 and 2 is pos 1 (swapped), 0 is pos 2.
+    const rad = [
+        bot(0, 2, t => ({ p: MID, lh: Math.floor(t / 10) })),
+        bot(1, 2, t => ({ p: BOT, lh: Math.floor(t / 8) })),
+        bot(2, 2, t => ({ p: TOP, lh: Math.floor(t / 20) })),
+    ];
+    [[0, 2], [1, 3], [2, 1]].forEach(([i, pos]) => (rad[i].profiles = [{ ev: 'bot', pos: 5 }, { ev: 'bot', pos }]));
+    const m = D.dynamicMetrics(game(rad));
+    assert.deepStrictEqual(m.lpos, { 0: 2, 1: 3, 2: 1 });
+    assert.strictEqual(m.lh_at_10.r1, 75); // role key unchanged
+    assert.strictEqual(m.lh_at_10_lpos.r1, 30);
+    assert.strictEqual(m.lh_at_10_lpos.r3, 75);
+    assert.strictEqual(m.role_mismatch, 2);
+});
+
+test('dynamicMetrics: our pcall errors, console errors and the squelch flag are separate keys', () => {
+    const g = game([bot(0, 2, () => ({ p: MID }))], [{ ev: 'lua_error', t: 5, pid: 0 }]);
+    g.errors = [{ text: 'Script Runtime Error: error in error handling' }, { text: 'stack traceback:' }];
+    g.squelched = true;
+    g.squelches = 2;
+    const m = D.dynamicMetrics(g);
+    assert.strictEqual(m.lua_error, 3); // NF-001 meaning kept: ours plus every console error line
+    assert.strictEqual(m.lua_error_ours, 1);
+    assert.strictEqual(m.console_errors, 1);
+    assert.strictEqual(m.console_squelches, 2);
+    assert.strictEqual(m.console_censored, true);
+});

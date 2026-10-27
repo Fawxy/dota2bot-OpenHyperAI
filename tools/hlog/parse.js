@@ -55,7 +55,7 @@ function sameExceptTime(a, b) {
 }
 
 function newGame(index) {
-    return { index, events: [], errors: [], squelched: false, starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
+    return { index, events: [], errors: [], squelched: false, squelches: 0, starts: {}, summaries: [], maxT: -Infinity, minT: Infinity };
 }
 
 function dedupe(game) {
@@ -146,7 +146,10 @@ function parseLog(text) {
             }
             game.starts[p.pid] = p;
         } else if (p.line === 'summary') game.summaries.push(p);
-        else if (p.line === 'squelch') game.squelched = true;
+        else if (p.line === 'squelch') {
+            game.squelched = true;
+            game.squelches++;
+        }
         else game.errors.push({ text: p.text, t: game.maxT });
     }
     return games.filter(g => g.events.length > 0 || g.errors.length > 0).map((g, i) => buildModel({ ...g, index: i + 1 }));

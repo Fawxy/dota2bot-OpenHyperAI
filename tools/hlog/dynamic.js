@@ -316,7 +316,15 @@ function dynamicMetrics(game) {
     const perTeam = f => ({ 2: f(team(2), 2), 3: f(team(3), 3) });
     const sum = (arr, f) => arr.reduce((a, s) => a + f(s), 0);
     const byRole = f => Object.fromEntries(Object.values(S).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
-    const errors = game.events.filter(e => e.ev === 'lua_error').length + game.errors.length;
+    const ours = game.events.filter(e => e.ev === 'lua_error').length;
+    const errors = ours + game.errors.length;
+    // Lineup position: pos= of the last ev=bot line (a role change re-emits it). Trusted only where pos= is (lineups.md).
+    const lpos = {};
+    for (const s of Object.values(S)) {
+        const p = (game.bots[s.pid]?.profiles || []).filter(e => typeof e.pos === 'number').pop();
+        if (p) lpos[s.pid] = p.pos;
+    }
+    const byLpos = f => Object.fromEntries(Object.values(S).filter(s => lpos[s.pid]).map(s => [`${s.team === 2 ? 'r' : 'd'}${lpos[s.pid]}`, f(s)]));
     return {
         end,
         bots: Object.values(S).length,
@@ -332,6 +340,15 @@ function dynamicMetrics(game) {
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
         lua_error: errors,
+        lua_error_ours: ours,
+        console_errors: game.errors.filter(e => /script runtime error/i.test(e.text)).length,
+        // Dota squelches a console message after 10 identical copies, so with a notice the console counts are lower bounds.
+        console_squelches: game.squelches || 0,
+        console_censored: game.squelched === true,
+        lpos,
+        lh_at_10_lpos: byLpos(s => counterAt(s, 'lh', 600)),
+        core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
+        role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
         warnings,
     };
 }
