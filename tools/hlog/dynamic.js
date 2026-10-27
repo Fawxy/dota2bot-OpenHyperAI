@@ -280,6 +280,7 @@ function dynamicMetrics(game) {
         end,
         bots: Object.values(S).length,
         roles: byRole(s => s.hero),
+        pids: byRole(s => s.pid),
         lh_at_10: byRole(s => counterAt(s, 'lh', 600)),
         deaths_before_10: perTeam(ts => sum(ts, s => counterAt(s, 'deaths', 600))),
         encounters_per_10min: { before10: encounters(S, 0, 600), after10: end > 600 ? (encounters(S, 600, end) * 600) / (end - 600) : undefined },
