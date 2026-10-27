@@ -44,7 +44,8 @@ function flatten(m) {
 function gate(game, m, flat) {
     const problems = [];
     // Deaths found by deathTimes (counter increments plus bots dead at the end) against hero kills on the scoreboard. Deaths to
-    // towers, creeps and neutrals credit no kill, so deaths may exceed kills; only kills above deaths point at a detector miss.
+    // towers, creeps and neutrals credit no kill, so deaths above kills are expected; the check flags a gap either way, and only
+    // kills above deaths would suggest a missed death.
     let kills = 0;
     for (const b of Object.values(game.bots)) {
         const last = b.snaps.filter(s => typeof s.kills === 'number').pop();
