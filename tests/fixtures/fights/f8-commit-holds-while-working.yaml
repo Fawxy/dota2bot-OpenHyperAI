@@ -1,0 +1,15 @@
+id: fight.commit.holds-while-working.001
+source: log
+ref: {log: console.9057308756.log, finding: F8}
+status: active
+decision: lane_fight
+control: {commit: 47378fb, outcome: pass}   # guard: a working commit is kept, before and after the fix
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  burst: 1000
+  botX: 0
+  steps: [{play: 2.9}]
+expect:
+  must: ["committing"]
+  mustNot: ["commitEnd"]
+notes: Positive control for the abandon fixture - the same world with the burst kept commits and stays committed.

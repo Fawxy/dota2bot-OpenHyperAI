@@ -1,0 +1,18 @@
+id: fight.commit.tower-aggro-releases-retreat.001
+source: log
+ref: {log: console.9057308756.log, finding: F8}
+status: active
+decision: lane_fight
+control: {commit: 47378fb, outcome: fail}
+conditions: {phase: laning, role: pos5, skill: 1.0}
+world:
+  burst: 1000
+  botX: 0
+  steps:
+    - {play: 0.7}
+    # Mid-commit the chase reaches the enemy T1, which takes aggro on the bot.
+    - {towerAggro: true, retreat: 0.85}
+    - {play: 1.0}
+expect:
+  must: ["commitEnd(tower-aggro)", "desire.retreat >= 0.85"]
+notes: F8 - retreat stayed capped while a tower targeted the bot, so committed bots died under towers.

@@ -1,0 +1,14 @@
+id: transition.trip.mid-keeps-power-rune.001
+source: log
+ref: {log: console.9057308756.log, finding: F9}
+status: active
+decision: core_trip
+control: {commit: d0cd961, outcome: fail}
+conditions: {phase: laning, role: pos2, skill: [0.5, 1.0]}
+world:
+  t: 465
+  pos: 2
+  camps: [{type: small}]
+expect:
+  must: ["noTrip(rune)"]
+notes: F9 (23/10/2026) - a mid's jungle trip (0.62) could beat the power-rune floor (0.60); at 7:45 the 8:00 rune comes first.
