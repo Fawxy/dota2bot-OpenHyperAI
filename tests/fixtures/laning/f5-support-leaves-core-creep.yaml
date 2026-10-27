@@ -1,0 +1,19 @@
+id: lane.lasthit.support-leaves-core-creep.001
+source: log
+ref: {log: console.9057308756.log, finding: F5}
+status: active
+decision: laning_mode
+control: {commit: 0243ae6, outcome: fail}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  # A bot core 800 from the support but within its attack range + buffer of the creep.
+  allies: [{id: 2, pos: 1, x: 800, y: 0, range: 600}]
+expect:
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  F5: a support judged "a core is near" from its own position, not the creep's, so it took hits a bot core about 800
+  away could reach.

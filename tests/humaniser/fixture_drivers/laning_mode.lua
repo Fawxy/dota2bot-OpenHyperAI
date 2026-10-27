@@ -1,0 +1,60 @@
+-- Driver: mode_laning_generic GetDesire then Think, in the stub world of laning_mode_world.lua (skill-independent).
+-- world: t, owned, humanPos5, bot {pos, x, y, range, dmg}, creeps [{id, team = enemy|ally, hp, x, y}],
+--        allies [{id, pos, x, y, range}] (allied bot heroes), frames [{t, creeps = {[id] = {hp}}, allies = {[id] = {x, y}}}]
+-- Observation (last frame): lastHit/deny(creep#id) for AttackUnit on an enemy/allied creep, move(creep#id) for
+-- MoveToUnit, hold for MoveToLocation at the bot's spot, move for any other MoveToLocation, attempt(creep#id) for a
+-- counted last-hit attempt; desire.laning = GetDesire().
+dofile(HARNESS_DIR .. "/laning_mode_world.lua")
+
+return function(fx)
+	local w = fx.world
+	local byId, enemies, allyCreeps = {}, {}, {}
+	for _, c in ipairs(w.creeps or {}) do
+		local u = LaningCreep({ hp = c.hp, loc = Vector(c.x or 0, c.y or 0) })
+		u.fixtureId = "creep#" .. c.id
+		byId[c.id] = u
+		table.insert(c.team == "ally" and allyCreeps or enemies, u)
+	end
+	local allies, allyById = {}, {}
+	for _, a in ipairs(w.allies or {}) do
+		local h = LaningHero({ pos = a.pos, pid = a.id, loc = Vector(a.x or 0, a.y or 0), range = a.range })
+		allyById[a.id] = h
+		table.insert(allies, h)
+	end
+	local b = w.bot or {}
+	local frames = w.frames or { {} }
+	local bot, attempts, desire
+	for i, f in ipairs(frames) do
+		for id, s in pairs(f.creeps or {}) do byId[tonumber(id)].hp = s.hp end
+		for id, s in pairs(f.allies or {}) do allyById[tonumber(id)].loc = Vector(s.x, s.y) end
+		local t = f.t or w.t or 120
+		if i == 1 then
+			bot, attempts = LaningLoad({ t = t, pos = b.pos, range = b.range, dmg = b.dmg, loc = Vector(b.x or 0, b.y or 0),
+				owned = w.owned == true, humanPos5 = w.humanPos5 == true, enemyCreeps = enemies, allyCreeps = allyCreeps, allies = allies })
+		else
+			DotaTime = function() return t end
+			GameTime = DotaTime
+		end
+		bot.actions = {}
+		for k in pairs(attempts) do attempts[k] = nil end
+		desire = GetDesire()
+		Think()
+	end
+	local obs = { actions = {}, desire = { laning = desire } }
+	local here = bot:GetLocation()
+	for _, a in ipairs(bot.actions) do
+		local target = a.args[1]
+		if a.name == "AttackUnit" then
+			local ally = false
+			for _, c in ipairs(allyCreeps) do if c == target then ally = true end end
+			table.insert(obs.actions, { verb = ally and "deny" or "lastHit", target = target and target.fixtureId })
+		elseif a.name == "MoveToUnit" then
+			table.insert(obs.actions, { verb = "move", target = target and target.fixtureId })
+		elseif a.name == "MoveToLocation" then
+			local still = target ~= nil and math.abs(target.x - here.x) < 1 and math.abs(target.y - here.y) < 1
+			table.insert(obs.actions, { verb = still and "hold" or "move" })
+		end
+	end
+	for _, c in ipairs(attempts) do table.insert(obs.actions, { verb = "attempt", target = c.fixtureId }) end
+	return obs
+end

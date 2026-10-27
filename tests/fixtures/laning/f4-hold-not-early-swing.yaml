@@ -1,0 +1,16 @@
+id: lane.lasthit.hold-not-early-swing.001
+source: log
+ref: {log: console.9057308756.log, finding: F4}
+status: active
+decision: laning_mode
+control: {commit: 0243ae6, outcome: fail}
+conditions: {phase: laning, role: pos1}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 1, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 60, x: 100, y: 0}]
+expect:
+  must: ["hold"]
+  mustNot: ["lastHit(creep#1)", "attempt(creep#1)"]
+notes: F4, with nothing to deny - the bot waits in range instead of swinging early.

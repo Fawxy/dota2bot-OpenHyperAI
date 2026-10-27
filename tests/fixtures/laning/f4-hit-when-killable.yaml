@@ -1,0 +1,19 @@
+id: lane.lasthit.hit-when-killable.001
+source: log
+ref: {log: console.9057308756.log, finding: F4}
+status: active
+decision: laning_mode
+control: {commit: 0243ae6, outcome: pass}   # guard: true before the fix too
+conditions: {phase: laning, role: pos1}
+world:
+  t: 120
+  owned: true
+  bot: {pos: 1, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 60, x: 100, y: 0}]
+  # Frame 1 holds; on frame 2 the creep is killable.
+  frames: [{t: 120}, {t: 120.1, creeps: {1: {hp: 45}}}]
+expect:
+  must: ["lastHit(creep#1)"]
+notes: >
+  F4 review focus 4: after the hold, a ranged or melee core in range must take the creep the frame it becomes killable,
+  not stand through the kill.

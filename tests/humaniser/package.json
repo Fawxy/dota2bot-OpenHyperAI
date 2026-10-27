@@ -11,6 +11,7 @@
     },
     "devDependencies": {
         "fengari": "0.1.4",
-        "luaparse": "0.3.1"
+        "luaparse": "0.3.1",
+        "yaml": "2.5.1"
     }
 }
