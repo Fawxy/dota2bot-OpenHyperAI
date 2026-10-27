@@ -15,5 +15,6 @@ world:
 expect:
   mustNot: ["lastHit(creep#1)"]
 notes: >
+  (Tests mode_laning_generic asking about the core from the creep; the reach rule CoreCanReach is the world's stub.)
   F5: a support judged "a core is near" from its own position, not the creep's, so it took hits a bot core about 800
   away could reach.

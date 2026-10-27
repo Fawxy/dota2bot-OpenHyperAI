@@ -15,6 +15,16 @@ const DRIVER_DIR = path.join(__dirname, 'fixture_drivers');
 const REQUIRED = ['id', 'source', 'ref', 'status', 'decision', 'world', 'expect'];
 const SOURCES = ['replay', 'log', 'playtest', 'evidence-card'];
 const STATUSES = ['active', 'quarantined', 'retired'];
+// Each driver's action verbs (tests/fixtures/README.md). A term with another verb is a schema error, so a misspelled
+// verb in mustNot cannot pass by never matching.
+const VERBS = {
+    laning_mode: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
+    retreat_desire: [],
+    lane_prethink: ['attack', 'move', 'commit'],
+    kill_check: ['kill', 'noKill'],
+    lane_fight: ['commitEnd', 'committing'],
+    core_trip: ['noTrip', 'trip'],
+};
 
 function listFixtures(dir) {
     if (!fs.existsSync(dir)) return [];
@@ -24,6 +34,11 @@ function listFixtures(dir) {
         return /\.ya?ml$/.test(e.name) ? [p] : [];
     });
 }
+
+// Expectation terms. An action term `verb` or `verb(target)` holds when some observed action matches. A comparison
+// `<value> <op> <value>` compares numbers, where a value is a number literal, `desire.<mode>` or `fact.<name>`.
+const CMP = /^\s*([\w.#-]+)\s*(<=|>=|==|!=|<|>)\s*([\w.#-]+)\s*$/;
+const ACTION = /^\s*(\w+)(?:\(([^)]*)\))?\s*$/;
 
 /** Schema problems for one parsed fixture (empty when valid). */
 function validate(fx) {
@@ -36,6 +51,16 @@ function validate(fx) {
     if (fx.expect && !fx.expect.must && !fx.expect.mustNot) p.push('expect has neither must nor mustNot');
     if (fx.control && !(/^[0-9a-f]{7,40}$/.test(fx.control.commit || '') && ['pass', 'fail'].includes(fx.control.outcome)))
         p.push('control needs {commit: <sha>, outcome: pass|fail}');
+    const sk = fx.conditions && fx.conditions.skill;
+    if (Array.isArray(sk) && !(sk.length === 2 && sk.every(x => typeof x === 'number' && x >= 0 && x <= 1) && sk[0] <= sk[1]))
+        p.push('conditions.skill must be [lo, hi] within 0-1');
+    const verbs = VERBS[fx.decision];
+    for (const t of [...((fx.expect && fx.expect.must) || []), ...((fx.expect && fx.expect.mustNot) || [])]) {
+        if (CMP.test(t)) continue;
+        const m = String(t).match(ACTION);
+        if (!m) p.push(`cannot parse term "${t}"`);
+        else if (verbs && !verbs.includes(m[1])) p.push(`verb ${m[1]} is not one of ${fx.decision}'s (${verbs.join(', ') || 'none'})`);
+    }
     return p;
 }
 
@@ -50,10 +75,18 @@ function skills(fx) {
 /** JSON value as a Lua literal. */
 function toLua(v) {
     if (v === null || v === undefined) return 'nil';
-    if (typeof v === 'boolean' || typeof v === 'number') return String(v);
-    if (typeof v === 'string') return JSON.stringify(v);
+    if (typeof v === 'boolean') return String(v);
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'nil';
+    // Lua decimal escapes for anything outside printable ASCII, and for quote and backslash.
+    if (typeof v === 'string') return luaString(v);
     if (Array.isArray(v)) return `{${v.map(toLua).join(', ')}}`;
-    return `{${Object.entries(v).map(([k, x]) => `[${JSON.stringify(k)}] = ${toLua(x)}`).join(', ')}}`;
+    return `{${Object.entries(v).map(([k, x]) => `[${luaString(k)}] = ${toLua(x)}`).join(', ')}}`;
+}
+
+/** A Lua string literal: UTF-8 bytes, with decimal escapes for anything outside printable ASCII and for " and \. */
+function luaString(s) {
+    const bytes = Buffer.from(String(s), 'utf8').toString('latin1');
+    return `"${bytes.replace(/[^\x20-\x7e]|["\\]/g, c => '\\' + c.charCodeAt(0))}"`;
 }
 
 /** Runs the driver once. Returns { obs } or { error }. */
@@ -62,13 +95,12 @@ function observe(fx, skill, root) {
     let err = doString(L, `FIXTURE = ${toLua(fx)}\nSKILL = ${skill === null ? 'nil' : skill}\n`);
     if (err === null) err = doFile(L, path.join(__dirname, 'fixture_run.lua'));
     if (err !== null) return { error: err };
-    return { obs: JSON.parse(getGlobal(L, 'OBS_JSON')) };
+    try {
+        return { obs: JSON.parse(getGlobal(L, 'OBS_JSON')) };
+    } catch (e) {
+        return { error: `observation is not JSON: ${e.message}` };
+    }
 }
-
-// Expectation terms. An action term `verb` or `verb(target)` holds when some observed action matches. A comparison
-// `<value> <op> <value>` compares numbers, where a value is a number literal, `desire.<mode>` or `fact.<name>`.
-const CMP = /^\s*([\w.#-]+)\s*(<=|>=|==|!=|<|>)\s*([\w.#-]+)\s*$/;
-const ACTION = /^\s*(\w+)(?:\(([^)]*)\))?\s*$/;
 
 function value(tok, obs) {
     if (/^-?\d+(\.\d+)?$/.test(tok)) return Number(tok);
@@ -119,29 +151,36 @@ function runFixture(fx, root) {
     return skills(fx).map(skill => {
         const r = observe(fx, skill, root);
         const problems = r.error ? [`error: ${r.error}`] : judge(fx, r.obs);
-        return { skill, error: !!r.error, problems, seen: r.obs ? describe(r.obs) : undefined };
+        // A term on a value the driver never observed is an error too: the fixture did not reach its decision.
+        const error = !!r.error || problems.some(p => /not observed|unknown value|cannot parse/.test(p));
+        return { skill, error, problems, seen: r.obs ? describe(r.obs) : undefined };
     });
 }
 
 /** bots/ of `commit`, exported once into the temp directory. */
 function controlRoot(commit) {
     const dir = path.join(os.tmpdir(), `fixture-control-${commit}`);
-    if (!fs.existsSync(path.join(dir, 'bots'))) {
+    // The marker is written after a complete extract, so an interrupted one is redone.
+    if (!fs.existsSync(path.join(dir, '.complete'))) {
+        fs.rmSync(dir, { recursive: true, force: true });
         fs.mkdirSync(dir, { recursive: true });
         const repo = path.resolve(__dirname, '../..');
         execSync(`git -C "${repo}" archive ${commit} bots | tar -x -C "${dir.split(path.sep).join('/')}"`, { stdio: 'inherit', shell: 'bash' });
+        fs.writeFileSync(path.join(dir, '.complete'), commit);
     }
     return dir;
 }
 
-/** Negative control: each fixture with `control: {commit, outcome}` must fail (or, for a guard, pass) on that commit's bots/. */
-function controls(fixtures) {
-    let bad = 0;
+/** Negative control: each fixture with `control: {commit, outcome}` must fail on behaviour (a guard: pass) on that commit's bots/. */
+function controls(fixtures, invalid) {
+    let bad = invalid;
     for (const { fx } of fixtures) {
         if (!fx.control || fx.status !== 'active') continue;
         const runs = runFixture(fx, controlRoot(fx.control.commit));
         const passed = runs.every(r => !r.problems.length);
-        const ok = (fx.control.outcome === 'pass') === passed;
+        // A bug fixture must fail on behaviour: failing by error proves only that the old code lacked something.
+        const errored = runs.some(r => r.error);
+        const ok = fx.control.outcome === 'pass' ? passed : !passed && !errored;
         const how = passed ? 'passes' : runs.some(r => r.error) ? 'fails (by error)' : 'fails';
         if (!ok) bad++;
         console.log(`${ok ? 'ok  ' : 'BAD '} ${fx.id}: ${how} at ${fx.control.commit}, expected ${fx.control.outcome}`);
@@ -171,7 +210,17 @@ function main(argv) {
         if (fx.status === 'retired') continue;
         loaded.push({ fx, rel });
     }
-    if (argv.includes('--controls')) return controls(loaded);
+    const seen = new Map();
+    for (const { fx, rel } of loaded) {
+        if (seen.has(fx.id)) {
+            invalid++;
+            results.push({ id: fx.id, file: rel, status: 'invalid', problems: [`duplicate id (also ${seen.get(fx.id)})`] });
+        } else seen.set(fx.id, rel);
+    }
+    if (argv.includes('--controls')) {
+        for (const r of results) console.log(`INVALID ${r.file}: ${r.problems.join('; ')}`);
+        return controls(loaded, invalid);
+    }
     for (const { fx, rel } of loaded) {
         const runs = runFixture(fx, root);
         results.push({ id: fx.id, file: rel, status: fx.status, pass: runs.every(r => !r.problems.length), runs });

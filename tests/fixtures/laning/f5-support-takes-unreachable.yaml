@@ -13,4 +13,6 @@ world:
   allies: [{id: 2, pos: 1, x: 1500, y: 0, range: 600}]
 expect:
   must: ["lastHit(creep#1)"]
-notes: F5 counterpart - when no core can reach the creep, the support takes it rather than lose the gold.
+notes: >
+  F5 counterpart - when no core can reach the creep, the support takes it rather than lose the gold. (Tests
+  mode_laning_generic; the reach rule CoreCanReach is the world's stub.)

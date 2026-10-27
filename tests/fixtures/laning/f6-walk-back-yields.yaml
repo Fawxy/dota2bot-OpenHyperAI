@@ -15,6 +15,7 @@ world:
   # The draw starts, then 0.5 s into the 1.5 s walk-back a creep becomes killable.
   frames: [{t: 95}, {t: 95.5, lastHit: kill}]
 expect:
-  must: ["fact.acted == 0"]
+  # Still committed to the draw (it did start on frame 1), but the frame goes to the last hit.
+  must: ["fact.acted == 0", "commit(aggro_pull)"]
   mustNot: ["move"]
 notes: F6 - the aggro walk-back held the frame for 1.5 s with a creep dying in range; it must hand the frame to the last hit.

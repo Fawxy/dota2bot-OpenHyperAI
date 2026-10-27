@@ -4,7 +4,7 @@
 --        {play = seconds} | {burst = n} (the bot's estimated damage from now) | {towerAggro = true} (the bot and the
 --        enemy stand under the enemy T1, which targets the bot) | {retreat = d} (OHA's retreat desire before claims).
 -- Observation: commitEnd(<reason>) for each commit that ended, committing while a commit claim is held at the end;
--- desire.retreat, desire.roam from the last scoring round.
+-- desire.retreat, desire.roam from a scoring round after the last step; fact.retreatBase = OHA's retreat desire then.
 dofile(HARNESS_DIR .. "/lane_fight_world.lua")
 
 return function(fx, skill)
@@ -25,7 +25,7 @@ return function(fx, skill)
 		if s.play then LaneFightPlay(W, s.play) end
 	end
 	LaneFightScore(W)
-	local obs = { actions = {}, desire = { retreat = W.last.retreat, roam = W.last.roam } }
+	local obs = { actions = {}, desire = { retreat = W.last.retreat, roam = W.last.roam }, fact = { retreatBase = W.retreat } }
 	for _, l in ipairs(W.lines) do
 		if l:find("ev=lanefight_end", 1, true) and l:find("phase=commit", 1, true) then
 			table.insert(obs.actions, { verb = "commitEnd", target = l:match("reason=([%w%-]+)") })

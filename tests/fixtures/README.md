@@ -21,13 +21,15 @@ node fixtures.js --root <dir>   # run against the bots/ under <dir> instead of t
 | `decision` | the driver, `tests/humaniser/fixture_drivers/<decision>.lua` |
 | `control` | `{commit, outcome: fail|pass}`: the commit just before the fix the fixture encodes, and what the fixture does there |
 | `conditions.skill` | `[lo, hi]` runs at lo, the midpoint and hi; a number runs once; none runs once at the driver default |
-| `world` | the driver's input (each driver's header lists its fields) |
+| `world` | the driver's input (each driver's header lists its fields). YAML map keys arrive as strings (`{1: {hp: 45}}` gives `["1"]`); drivers convert with `tonumber` |
 | `expect` | `must` (all hold), `mustNot` (none holds); `acceptable` is documentation only |
 | `tolerance.value` | for `==`/`<=`/`>=` on numbers (default 1e-6) |
 
 ## Expectation terms
 - **Action** `verb` or `verb(target)`: some observed action has that verb (and target). Targets are `creep#<id>`,
-  `hero#<pid>`, a technique (`aggro_pull`) or a reason (`survive`, `margin`, `rune`).
+  `hero#<pid>`, a technique (`aggro_pull`) or a reason (`survive`, `margin`, `rune`). A verb not in the driver's list
+  (the table below, `VERBS` in fixtures.js) makes the fixture invalid, so a misspelled `mustNot` cannot pass by never
+  matching. Targets are not checked; spell reasons as the code logs them.
 - **Comparison** `a <op> b` with `<op>` one of `< <= > >= == !=`, where `a` and `b` are numbers, `desire.<mode>` or
   `fact.<name>`. A value the driver did not observe is an error (the term fails).
 
@@ -38,7 +40,7 @@ does produce the action when the condition is absent; otherwise it passes when t
 ## Drivers and their verbs
 | decision | runs | verbs and values |
 |---|---|---|
-| `laning_mode` | `mode_laning_generic` GetDesire + Think, stub humaniser (`laning_mode_world.lua`) | `lastHit(creep#)`, `deny(creep#)`, `hold`, `move`, `attempt(creep#)`; `desire.laning` |
+| `laning_mode` | `mode_laning_generic` GetDesire + Think, stub humaniser (`laning_mode_world.lua`): tests the mode file's own logic; `CoreCanReach`, `WillKill` and `MayLastHit` are stubs | `lastHit(creep#)`, `deny(creep#)`, `hold`, `move`, `attempt(creep#)`; `desire.laning` |
 | `retreat_desire` | Transitions caution tick, then Intent.Resolve on retreat (hook H3), `lane_world.lua` | `desire.retreat`, `fact.base`, `fact.caution` |
 | `lane_prethink` | `Lane.PreThink` (block, pulls, aggro draws, tower swap) over frames | `attack(<id>)`, `move`, `commit(<tech>)`; `fact.acted` |
 | `kill_check` | `LaneFight.KillCheck.Check` | `kill`, `noKill(<reason>)`; `fact.margin` |
@@ -50,7 +52,15 @@ worlds are the hand-built test worlds the unit tests already use, so a driver ad
 
 ## Negative controls
 `npm run fixtures:controls` exports `bots/` at each fixture's `control.commit` (cached in the temp directory) and runs the
-fixture there. A fixture that encodes a bug must fail before its fix (`outcome: fail`), and it should fail on behaviour,
-not with an error (the output says "fails (by error)" otherwise). A guard or positive control passes before and after
+fixture there. A fixture that encodes a bug must fail before its fix (`outcome: fail`) on behaviour: a failure by error,
+including a term on a value the old code never produced, is `BAD`, because it only shows the old code lacked something. A guard or positive control passes before and after
 (`outcome: pass`). Any other result is reported as `BAD` and exits 1. Controls are run when a fixture is added or its
-driver changes; they are not part of `npm run check` because they need git.
+driver changes; they are not part of `npm run check` because they need git. Duplicate ids and invalid fixtures fail both
+modes.
+
+## Coverage of the 23/10/2026 findings
+Covered: F1 caution scale (2), F3 (1), F4 (4), F5 (2), F6 (4), F7 arrival credit, damage on the bot, core margin, local
+allies (6), F8 abandon, tower aggro (4), F9 missing enemy, mid rune (3). Not covered yet: F2 (attack-mode claims that reach
+no mode; nothing to observe offline), F1 `lane:cover` x1.25 stacking, F7 full-window regen and the missing-enemy margin,
+F8 followers joining at margin 0.8, F9 pulls or stacks after a rune rotation, rotation re-checks, a core taking its
+support's pull camp. "F1-F9 100%" (GOALS E.3) means 100% of these fixtures, not of every sub-finding.

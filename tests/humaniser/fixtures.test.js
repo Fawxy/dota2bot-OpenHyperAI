@@ -51,3 +51,19 @@ test('skills: a range gives lo, midpoint and hi; a number itself; none one defau
 test('toLua: tables keep string keys, arrays stay arrays', () => {
     assert.strictEqual(toLua({ a: [1, 'x'], b: null, c: true }), '{["a"] = {1, "x"}, ["b"] = nil, ["c"] = true}');
 });
+
+test('validate: action verbs must be the driver\'s, and a skill range two ordered numbers in 0-1', () => {
+    const ok = { id: 'a', source: 'log', ref: {}, status: 'active', decision: 'laning_mode', world: {}, expect: { mustNot: ['deny(creep#2)'] } };
+    assert.deepStrictEqual(validate(ok), []);
+    assert.ok(validate({ ...ok, expect: { mustNot: ['deyn(creep#2)'] } }).some(p => /verb deyn/.test(p)));
+    assert.deepStrictEqual(validate({ ...ok, expect: { must: ['desire.laning >= 0.9'] } }), []);
+    assert.ok(validate({ ...ok, conditions: { skill: [1, 0.2] } }).some(p => /skill/.test(p)));
+    assert.ok(validate({ ...ok, conditions: { skill: [0.2] } }).some(p => /skill/.test(p)));
+});
+
+test('toLua: quotes, backslashes, control and non-ASCII characters become Lua decimal escapes; non-finite numbers nil', () => {
+    assert.strictEqual(toLua('a"b\\c\n'), String.raw`"a\34b\92c\10"`);
+    assert.strictEqual(toLua('é'), String.raw`"\195\169"`);
+    assert.strictEqual(toLua(Infinity), 'nil');
+    assert.strictEqual(toLua(NaN), 'nil');
+});

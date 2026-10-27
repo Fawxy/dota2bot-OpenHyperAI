@@ -3,7 +3,7 @@ source: log
 ref: {log: console.9057308756.log, finding: F4}
 status: active
 decision: laning_mode
-control: {commit: 0243ae6, outcome: pass}   # guard: true before the fix too
+control: {commit: 849782a, outcome: fail}   # the cap came in be21c85, after the hold (47378fb)
 conditions: {phase: laning, role: pos1}
 world:
   t: 120
