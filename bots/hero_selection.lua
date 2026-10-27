@@ -1053,12 +1053,24 @@ function X.BestRolesByHero(heroNames, weights)
 	return best, bestScore
 end
 
+-- True only when both teams report five players and all are bots. A practice game's bot-only team can see an empty
+-- player list for the other team, so an empty list counts as "maybe a human" and keeps OHA's slot order there.
+local function IsAllBotGame()
+	for _, t in pairs({ TEAM_RADIANT, TEAM_DIRE }) do
+		local ids = GetTeamPlayers(t)
+		if #ids ~= 5 then return false end
+		for _, id in pairs(ids) do
+			if not IsPlayerBot(id) then return false end
+		end
+	end
+	return true
+end
+
 local function AssignRolesByHero(team)
 	if RoleByHeroDone[team] then return end
 	if not (Customize and Customize.Overrides and Customize.Overrides.RoleByHero) then return end
-	if Utils.IsHumanPlayerInTeam(GetTeam()) then return end
+	if not IsAllBotGame() then return end
 	local ids = GetTeamPlayers(GetTeam())
-	if #ids ~= 5 then return end
 	local names = {}
 	for i, id in pairs(ids) do
 		local name = GetSelectedHeroName(id)
@@ -1068,6 +1080,8 @@ local function AssignRolesByHero(team)
 	local roles, score = X.BestRolesByHero(names, HeroPositionMap)
 	for i = 1, 5 do Role.RoleAssignment[team][i] = roles[i] end
 	if GetTeam() == TEAM_RADIANT then CorrectRadiantAssignedLanes = false else CorrectDireAssignedLanes = false end
+	-- AllPickHeros shuffles an all-bot team's roles and lanes once; mark it done so it cannot undo this assignment.
+	ShuffledPickOrder[team] = true
 	RoleByHeroDone[team] = true
 	local parts = {}
 	for i = 1, 5 do parts[i] = string.gsub(names[i], 'npc_dota_hero_', '')..'='..roles[i] end
