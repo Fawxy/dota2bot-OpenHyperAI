@@ -66,6 +66,8 @@ interface BotState {
     lastHits: number;
     denies: number;
     prevTarget?: Unit;
+    // Read while the target was live (BACKLOG 0.14): by the frame that sees the last hit it may be a removed entity.
+    prevTargetName?: string;
     profileKey?: string;
     // Etiquette decisions by creep handle; weak so dead creeps are collected.
     decisions: LuaTable<Unit, Decision>;
@@ -390,14 +392,17 @@ function trackCounters(unit: Unit, s: BotState, human: boolean, now: number): vo
     const lh = stats.GetLastHits();
     const dn = stats.GetDenies();
     if (s.lastHits >= 0 && lh > s.lastHits) {
-        const creep = s.prevTarget ?? unit.GetAttackTarget() ?? undefined;
+        const current = unit.GetAttackTarget() ?? undefined;
+        const creep = s.prevTarget ?? current;
+        // Never call into prevTarget here: the engine may have removed the killed creep already.
+        const creepName = s.prevTarget !== undefined ? s.prevTargetName : current?.GetUnitName();
         const d = creep !== undefined ? s.decisions.get(creep) : undefined;
         const fresh = d !== undefined && now - d.at <= Get().DecisionMaxAge;
         Event("lasthit", [
             ["pid", unit.GetPlayerID()],
             ["human", human],
             ["n", lh - s.lastHits],
-            ["creep", creep !== undefined ? creep.GetUnitName() : undefined],
+            ["creep", creepName],
             ["dec", fresh ? d!.reason : undefined],
             ["decAge", fresh ? now - d!.at : undefined],
         ]);
@@ -412,6 +417,7 @@ function trackCounters(unit: Unit, s: BotState, human: boolean, now: number): vo
     s.denies = dn;
     const target = unit.GetAttackTarget();
     s.prevTarget = target !== null && target !== undefined ? target : undefined;
+    s.prevTargetName = s.prevTarget?.GetUnitName();
 }
 
 function trackMode(bot: Unit, s: BotState, now: number, provider: ContextProvider | undefined): void {

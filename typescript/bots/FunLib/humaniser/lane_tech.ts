@@ -290,6 +290,12 @@ function towerDrop(bot: Unit, s: LaneState.LaneSnapshot, allyCreeps: Unit[]): bo
         drops[pid] = drop;
         noteStart(bot, "tower_drop", "tower aggro");
     }
+    // A drop outlives the bot leaving lane (PreThink stops before here), so its tower may have fallen and been removed
+    // since: any call on that handle raises (ER-001 b04_B_on_5, BACKLOG 0.14).
+    if (drop.tower.IsNull() || !drop.tower.IsAlive()) {
+        delete drops[pid];
+        return false;
+    }
     const exit = radii.TowerAggro + radii.TowerExitMargin;
     const towerLoc = drop.tower.GetLocation();
     const here = bot.GetLocation();

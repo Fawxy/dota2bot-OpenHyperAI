@@ -104,6 +104,35 @@ do
 	check("stale decision not attributed", lh[2] and field(lh[2], "dec") == nil, lh[2])
 end
 
+-- ER-001 b04_C_off_1 t=340.4 (BACKLOG 0.14): the killed creep's handle was removed before the frame that saw the last hit, so
+-- reading its name raised "Invalid object passed to GetUnitName" every frame and stopped that bot's counters and snapshots.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1 })
+	local c = creep("npc_dota_creep_badguys_melee")
+	c.IsNull = function() return c.removed == true end
+	c.GetUnitName = function()
+		if c.removed then error("Invalid object passed to GetUnitName.") end
+		return "npc_dota_creep_badguys_melee"
+	end
+	H.Telemetry.Tick(b)
+	b.target = c
+	T = 0.1
+	H.Telemetry.NoteLastHitDecision(b, c, false, "skip: core")
+	H.Telemetry.Tick(b)
+	c.removed, b.lh, b.target = true, 1, nil
+	T = 0.2
+	local ok, err = pcall(H.Telemetry.Tick, b)
+	check("a removed last-hit creep does not raise", ok, err)
+	local lh = events("lasthit")
+	check("its last hit is still logged with the name read while it lived", #lh == 1 and field(lh[1], "creep") == "npc_dota_creep_badguys_melee", lh[1])
+	check("and its decision", lh[1] and field(lh[1], "dec") == "skip: core", lh[1])
+	b.lh = 2
+	T = 0.3
+	ok, err = pcall(H.Telemetry.Tick, b)
+	check("the next last hit is counted once", ok and #events("lasthit") == 2 and field(events("lasthit")[2], "n") == "1", err)
+end
+
 -- Human allies' last hits are tracked by the team's lowest-PID bot only.
 do
 	local H = fresh()
