@@ -30,5 +30,14 @@ freshCustomize(nil)
 Config = require("bots/FunLib/humaniser/config")
 LaneConfig = require("bots/FunLib/humaniser/lane_config")
 check("no offset: still laning at 0:30", Config.Now() == 30 and LaneConfig.InLaningPhase() == true)
+
+-- Numeric parts index arrays, so a lineup can be locked one position at a time.
+local lineup = {}
+for i = 1, 5 do lineup["Radiant_Heros." .. i] = "npc_dota_hero_r" .. i end
+lineup["Dire_Heros.2"] = "npc_dota_hero_d2"
+local l = freshCustomize(lineup)
+check("numeric part sets the array slot", l.Radiant_Heros[1] == "npc_dota_hero_r1" and l.Radiant_Heros[5] == "npc_dota_hero_r5")
+check("all five slots are counted", #l.Radiant_Heros == 5 and l.Radiant_Heros["1"] == nil)
+check("unset slots keep their default", l.Dire_Heros[1] == "Random" and l.Dire_Heros[2] == "npc_dota_hero_d2")
 package.preload["bots.Customize.override"] = nil
 finish()

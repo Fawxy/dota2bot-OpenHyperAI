@@ -80,7 +80,9 @@ function GetTeamPlayers(nTeam, bypass)
 				end
 			end
 		end
-		direTeamPlaters = nIDs
+		-- Cache only a full team: in bots mode the first calls (hero selection) can see an empty list, and caching
+		-- that left every Dire bot without a role (log probe_role_s8_b, 28/10/2026).
+		if #nIDs == 5 then direTeamPlaters = nIDs end
 	end
 	-- Utils.SetCachedVars(cacheKey, nIDs)
 	return nIDs

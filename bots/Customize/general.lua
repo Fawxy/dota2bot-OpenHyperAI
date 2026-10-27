@@ -237,10 +237,12 @@ Customize.Humaniser = {
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
-Customize.Overrides = { ClockOffset = 0 }
+-- RoleByHero: all-bot teams take positions by hero weight, not slot order (dota_bot_populate lineups; hero_selection.lua).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
+-- Numeric parts index arrays, so "Radiant_Heros.1" sets Customize.Radiant_Heros[1] (lineup lock).
 do
     local path = GetScriptDirectory() == 'bots' and 'bots.Customize.override' or GetScriptDirectory()..'/Customize/override'
     local ok, overrides = pcall(require, path)
@@ -248,10 +250,12 @@ do
         for key, value in pairs(overrides) do
             local node, rest = Customize, tostring(key)
             for part in rest:gmatch('([^.]+)%.') do
+                part = tonumber(part) or part
                 if type(node[part]) ~= 'table' then node[part] = {} end
                 node = node[part]
             end
-            node[rest:match('([^.]+)$')] = value
+            local last = rest:match('([^.]+)$')
+            node[tonumber(last) or last] = value
             print('[Customize] override '..rest..' = '..tostring(value))
         end
     end
