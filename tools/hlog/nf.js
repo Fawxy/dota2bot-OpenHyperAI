@@ -37,6 +37,16 @@ function flatten(m) {
     // Cores that never leave their lane are left out of the mean; nf.js gate reports them.
     const exits = ['r1', 'r3', 'd1', 'd3'].map(k => m.core_lane_exit_time[k]).filter(v => v !== undefined);
     out.core_lane_exit_time = exits.length ? exits.reduce((a, b) => a + b, 0) / exits.length : undefined;
+    // Beside the role keys above: the same metrics by lineup position (ev=bot pos=), and how many slots the two disagree on.
+    out.lua_error_ours = m.lua_error_ours;
+    out.console_errors = m.console_errors;
+    out.console_squelches = m.console_squelches;
+    out.console_censored = m.console_censored ? 1 : 0;
+    // No ?? 0 here: a team without trusted positions leaves the key undefined, which the gate reports as missing.
+    for (const r of [1, 2, 3, 4, 5]) out[`lh_at_10_lpos${r}`] = (m.lh_at_10_lpos[`r${r}`] + m.lh_at_10_lpos[`d${r}`]) / 2;
+    const lexits = ['r1', 'r3', 'd1', 'd3'].map(k => m.core_lane_exit_time_lpos[k]).filter(v => v !== undefined);
+    out.core_lane_exit_time_lpos = lexits.length ? lexits.reduce((a, b) => a + b, 0) / lexits.length : undefined;
+    out.role_mismatch = m.role_mismatch;
     return out;
 }
 
@@ -164,6 +174,13 @@ function main(argv) {
     }
     console.log('gate:');
     for (const g of games) console.log(`  ${g.label.padEnd(16)} ${g.problems.length ? g.problems.join('; ') : 'ok'}`);
+    console.log('\nconsole censoring (Dota squelch notice seen; lua_error and console_errors means are then lower bounds):');
+    for (const [seed, gs] of Object.entries(groups)) {
+        for (const arm of ['off', 'on']) {
+            const a = gs.filter(g => g.arm === arm);
+            console.log(`  seed ${seed} ${arm}: ${a.filter(g => g.flat.console_censored).length}/${a.length} censored`);
+        }
+    }
     const f = x => (Number.isFinite(x) ? x.toFixed(1) : '-');
     console.log(`\nmetric | seed | OFF mean | OFF SD | n | MDE (N=${n} per seed) | ON mean | ON-OFF | 95% CI (Welch; all = seeds pooled)`);
     for (const [key, bySeed] of Object.entries(table)) {
