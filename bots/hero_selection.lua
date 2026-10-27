@@ -1025,6 +1025,55 @@ end
 -- Lane assignment plumbing
 --==============================================================================
 
+-- Test harness (BACKLOG 0.3): dota_bot_populate gives all-bot games random heroes in slot order, and roles follow the slot,
+-- so a support could play carry. With Customize.Overrides.RoleByHero, an all-bot team's slots get the positions that
+-- maximise the summed HeroPositionMap weights (all 120 orders), once all five heroes are known; lanes then follow the
+-- roles through CorrectPotentialLaneAssignment. Teams with a human keep OHA's slot order and !pos.
+local RoleByHeroDone = {}
+
+function X.BestRolesByHero(heroNames, weights)
+	local best, bestScore = nil, -1
+	local roles, used = {}, {}
+	local function walk(slot, score)
+		if slot > #heroNames then
+			if score > bestScore then best, bestScore = { unpack(roles) }, score end
+			return
+		end
+		local w = weights[heroNames[slot]] or {}
+		for pos = 1, 5 do
+			if not used[pos] then
+				used[pos] = true
+				roles[slot] = pos
+				walk(slot + 1, score + (w[pos] or 0))
+				used[pos] = false
+			end
+		end
+	end
+	walk(1, 0)
+	return best, bestScore
+end
+
+local function AssignRolesByHero(team)
+	if RoleByHeroDone[team] then return end
+	if not (Customize and Customize.Overrides and Customize.Overrides.RoleByHero) then return end
+	if Utils.IsHumanPlayerInTeam(GetTeam()) then return end
+	local ids = GetTeamPlayers(GetTeam())
+	if #ids ~= 5 then return end
+	local names = {}
+	for i, id in pairs(ids) do
+		local name = GetSelectedHeroName(id)
+		if name == nil or name == '' then return end
+		names[i] = name
+	end
+	local roles, score = X.BestRolesByHero(names, HeroPositionMap)
+	for i = 1, 5 do Role.RoleAssignment[team][i] = roles[i] end
+	if GetTeam() == TEAM_RADIANT then CorrectRadiantAssignedLanes = false else CorrectDireAssignedLanes = false end
+	RoleByHeroDone[team] = true
+	local parts = {}
+	for i = 1, 5 do parts[i] = string.gsub(names[i], 'npc_dota_hero_', '')..'='..roles[i] end
+	print('[HEV] t='..string.format('%.0f', DotaTime())..' ev=role_by_hero team='..GetTeam()..' score='..score..' roles="'..table.concat(parts, ',')..'"')
+end
+
 function UpdateLaneAssignments()
 	local team = GetTeam() == TEAM_RADIANT and 'TEAM_RADIANT' or 'TEAM_DIRE'
 
@@ -1044,6 +1093,7 @@ function UpdateLaneAssignments()
 		InstallChatCallback(function (attr) SelectHeroChatCallback(attr.player_id, attr.string, attr.team_only); end);
 	end
 
+	AssignRolesByHero(team)
 	CorrectPotentialLaneAssignment()
 	return tLaneAssignList[team]
 end
