@@ -1722,4 +1722,6 @@ end
 X.GetDesire = GetDesire
 X.Think = Think
 
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_team_roam.GetDesire', GetDesire), E('mode_team_roam.Think', Think), E('mode_team_roam.OnStart', OnStart), E('mode_team_roam.OnEnd', OnEnd) end
 return X

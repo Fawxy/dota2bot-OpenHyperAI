@@ -211,3 +211,5 @@ function X.IsEnemyCloserToWardLocation(vLocation)
 
 	return false
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think = E('mode_ward.GetDesire', GetDesire), E('mode_ward.Think', Think) end

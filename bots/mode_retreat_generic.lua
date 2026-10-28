@@ -780,4 +780,6 @@ function X.ConsiderCompleteItem()
     return 0
 end
 
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire = E('mode_retreat.GetDesire', GetDesire) end
 return X

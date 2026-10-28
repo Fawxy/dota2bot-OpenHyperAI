@@ -19,3 +19,5 @@ function MinionThink(hMinionUnit)
 
 	BotBuild.MinionThink(hMinionUnit)
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; MinionThink = E('bot.MinionThink', MinionThink) end

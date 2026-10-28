@@ -214,6 +214,8 @@ Customize.Humaniser = {
         MarkAck = true, -- the team's lowest-PID bot replies "mark N saved" in team chat
         -- Run humaniser entry points under xpcall; an error prints "ev=lua_error where=... msg=... tb=..."
         -- (repeats every LuaErrorRepeat s with a count) and the hook falls back to its feature-off value.
+        -- Also wraps the OHA entry points (mode, item and ability thinks) under pcall: an error escaping one prints
+        -- ev=lua_error where=oha.<file>.<fn> and is raised again unchanged (H.1, slice 1).
         LuaErrors = true,
         LuaErrorRepeat = 10,
     },

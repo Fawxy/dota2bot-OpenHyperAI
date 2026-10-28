@@ -114,3 +114,5 @@ function Think()
 
 	bot:Action_MoveToLocation(assembleLoc)
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnEnd = E('mode_assemble.GetDesire', GetDesire), E('mode_assemble.Think', Think), E('mode_assemble.OnEnd', OnEnd) end

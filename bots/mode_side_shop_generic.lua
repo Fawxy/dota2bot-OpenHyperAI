@@ -512,3 +512,5 @@ function X.DidHumanPingedOrAtLocation()
 
     return false
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think = E('mode_side_shop.GetDesire', GetDesire), E('mode_side_shop.Think', Think) end

@@ -246,6 +246,26 @@ export function Guard<F extends AnyFn>(where: string, fn: F, fallback?: AnyFn): 
     }) as unknown as F;
 }
 
+/**
+ * An OHA entry point (mode GetDesire/Think/OnStart/OnEnd, item and ability thinks) under pcall, for H.1. An error is
+ * reported as ev=lua_error where=oha.<where> (rate-limited like Guard) and raised again unchanged, so OHA behaves as
+ * before. pcall, not xpcall: with no handler a stack overflow keeps its own message ("<file>:<line>: stack overflow")
+ * instead of Dota's "error in error handling". Returns fn unchanged when it is nil or guards are off.
+ */
+export function Entry<F extends AnyFn>(where: string, fn: F | undefined): F | undefined {
+    if (fn === undefined || !GuardsEnabled()) return fn;
+    const name = `oha.${where}`;
+    const fail = (err: any): never => {
+        pcall(reportError, name, err, undefined);
+        return error(err, 0);
+    };
+    const finish = (ok: boolean, ...res: any[]): any => {
+        if (ok) return $multi(...res);
+        return fail(...(res as [any]));
+    };
+    return ((...args: any[]) => finish(...(pcall(fn, ...args) as unknown as [boolean, any]))) as unknown as F;
+}
+
 /** Replaces each named export of a module table with a Guard()ed one. Lua callers resolve exports at call time. */
 export function GuardModule(name: string, mod: any, fallbacks: Record<string, AnyFn>): void {
     for (const [k, fallback] of pairs(fallbacks)) {
