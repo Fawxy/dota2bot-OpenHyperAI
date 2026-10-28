@@ -406,7 +406,26 @@ function ____exports.Curve(name, skill)
     local c = ____exports.Settings().Curves[name]
     return c[1] + (c[2] - c[1]) * clamp01(skill)
 end
+local rngSource
+--- Set by tasks.ts (which imports this module, so the source is injected rather than required): returns the SDK Skill
+-- once the tasks bundle is loaded, else undefined. Without one, draws fall back to RandomFloat (tasks off).
+function ____exports.SetRng(source)
+    rngSource = source
+end
+local function rng()
+    local ____temp_2
+    if rngSource ~= nil then
+        ____temp_2 = rngSource()
+    else
+        ____temp_2 = nil
+    end
+    return ____temp_2
+end
 function ____exports.Gauss()
+    local r = rng()
+    if r ~= nil then
+        return r.gauss()
+    end
     local u1 = RandomFloat(0.000001, 1)
     local u2 = RandomFloat(0.000001, 1)
     return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
@@ -415,7 +434,8 @@ function ____exports.Jitter(skill)
     return ____exports.Gauss() * ____exports.Curve("JitterSigma", skill)
 end
 function ____exports.Roll(chance)
-    return RandomFloat(0, 1) < chance
+    local r = rng()
+    return (r ~= nil and r.random() or RandomFloat(0, 1)) < chance
 end
 function ____exports.SkillOf(bot)
     return Profile.Get(bot).skill
@@ -438,12 +458,12 @@ function ____exports.InLaningPhase()
     if Config.Now() ~= DotaTime() then
         return Config.Now() < 600
     end
-    local ____temp_2
+    local ____temp_3
     if helpers.IsInLaningPhase ~= nil then
-        ____temp_2 = helpers.IsInLaningPhase()
+        ____temp_3 = helpers.IsInLaningPhase()
     else
-        ____temp_2 = DotaTime() < 600
+        ____temp_3 = DotaTime() < 600
     end
-    return ____temp_2
+    return ____temp_3
 end
 return ____exports

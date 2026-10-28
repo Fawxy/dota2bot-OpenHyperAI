@@ -201,4 +201,38 @@ do
 	check("broken bundle: no claim", noTaskClaim(H, bot))
 end
 
+-- WO-022: tasks.ts registers the bundle's Skill as the LaneConfig draw source; with tasks off nothing loads.
+do
+	local H = Fresh({ Enable = true })
+	local C = H.Lane.Config
+	local lines = capture(function()
+		check("Skill wiring: Roll loads the bundle", C.Roll(1.1) == true)
+	end)
+	check("Skill wiring: bundle loaded on the first draw", package.loaded[BUNDLE] ~= nil and #taskLines(lines) == 1, table.concat(lines, " | "))
+	local skill = H.Tasks.Loaded().Skill
+	local realRandom, realGauss = skill.random, skill.gauss
+	skill.random, skill.gauss = function() return 0.9 end, function() return -0.75 end
+	check("Skill wiring: Roll draws from Skill.random", C.Roll(0.5) == false)
+	check("Skill wiring: Gauss returns Skill.gauss", C.Gauss() == -0.75)
+	skill.random, skill.gauss = realRandom, realGauss
+end
+
+do
+	local H = Fresh({ Enable = true, Tasks = { Enable = false } })
+	local C = H.Lane.Config
+	local seq, i = { 0.1, math.exp(-2), 1.0 }, 0
+	local realRandomFloat = RandomFloat
+	RandomFloat = function() i = i + 1; return seq[i] end
+	local roll, g
+	local lines = capture(function()
+		roll = C.Roll(0.5)
+		g = C.Gauss()
+	end)
+	RandomFloat = realRandomFloat
+	check("tasks off: Roll falls back to RandomFloat", roll == true)
+	check("tasks off: Gauss falls back to RandomFloat Box-Muller", math.abs(g - 2) < 1e-6, g)
+	check("tasks off: bundle not loaded", package.loaded[BUNDLE] == nil)
+	check("tasks off: no support line", #taskLines(lines) == 0, table.concat(lines, " | "))
+end
+
 finish()

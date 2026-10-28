@@ -136,6 +136,10 @@ end
 function ____exports.Loaded()
     return loadBundle()
 end
+LaneConfig.SetRng(function()
+    local ____opt_7 = loadBundle()
+    return ____opt_7 and ____opt_7.Skill
+end)
 --- True once the bundle has loaded and tasks are enabled.
 function ____exports.IsActive()
     return lib ~= nil and ____exports.Enabled()
@@ -150,20 +154,20 @@ function ____exports.Step(bot, mode)
     return l ~= nil and l.Tasks.Step(bot, mode)
 end
 function ____exports.Tick(bot)
-    local ____opt_7 = loadBundle()
-    if ____opt_7 ~= nil then
-        ____opt_7.Tasks.Tick(bot)
+    local ____opt_9 = loadBundle()
+    if ____opt_9 ~= nil then
+        ____opt_9.Tasks.Tick(bot)
     end
 end
 --- Never loads the bundle: no task can be running before one was started.
 function ____exports.Current(bot)
-    local ____IsActive_result_9
+    local ____IsActive_result_11
     if ____exports.IsActive() then
-        ____IsActive_result_9 = lib.Tasks.Current(bot)
+        ____IsActive_result_11 = lib.Tasks.Current(bot)
     else
-        ____IsActive_result_9 = nil
+        ____IsActive_result_11 = nil
     end
-    return ____IsActive_result_9
+    return ____IsActive_result_11
 end
 function ____exports.Cancel(bot, reason, message)
     if ____exports.IsActive() then
@@ -181,11 +185,11 @@ function ____exports.Label(bot, label)
     end
 end
 function ____exports.Describe(bot)
-    local ____opt_14 = loadBundle()
-    return ____opt_14 and ____opt_14.Tasks.Describe(bot)
+    local ____opt_16 = loadBundle()
+    return ____opt_16 and ____opt_16.Tasks.Describe(bot)
 end
 function ____exports.Verbs()
-    local ____opt_16 = loadBundle()
-    return ____opt_16 and ____opt_16.Verbs
+    local ____opt_18 = loadBundle()
+    return ____opt_18 and ____opt_18.Verbs
 end
 return ____exports

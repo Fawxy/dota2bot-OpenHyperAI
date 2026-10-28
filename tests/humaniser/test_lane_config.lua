@@ -108,6 +108,22 @@ do
 	check("roll above chance", not C.Roll(0.3))
 end
 
+-- WO-022: Roll and Gauss draw from the injected Skill source; RandomFloat only without one (tasks off).
+do
+	local C = LaneFresh({ Enable = true }).Lane.Config
+	local skill = { random = function() return 0.9 end, gauss = function() return 1.25 end }
+	C.SetRng(function() return skill end)
+	SetRandomSequence({ 0.1 })
+	check("roll uses the Skill source", not C.Roll(0.5))
+	check("gauss uses the Skill source", C.Gauss() == 1.25)
+	C.SetRng(function() return nil end)
+	SetRandomSequence({ 0.1 })
+	check("roll falls back while tasks are off", C.Roll(0.5))
+	C.SetRng(nil)
+	SetRandomSequence({ 0.1 })
+	check("roll falls back with no source", C.Roll(0.5))
+end
+
 do
 	local H = LaneFresh({ Enable = true })
 	local C = H.Lane.Config

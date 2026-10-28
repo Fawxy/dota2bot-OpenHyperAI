@@ -128,6 +128,9 @@ export function Loaded(): Bundle | undefined {
     return loadBundle();
 }
 
+// LaneConfig.Roll / Gauss draw from the SDK Skill model (loading the bundle if needed); RandomFloat while tasks are off.
+LaneConfig.SetRng(() => loadBundle()?.Skill);
+
 /** True once the bundle has loaded and tasks are enabled. */
 export function IsActive(): boolean {
     return lib !== undefined && Enabled();
