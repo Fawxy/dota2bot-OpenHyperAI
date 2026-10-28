@@ -450,7 +450,29 @@ export function Curve(name: CurveName, skill: number): number {
     return c[0] + (c[1] - c[0]) * clamp01(skill);
 }
 
+/** Uniform [0, 1) and standard-normal draws: the SDK Skill model. */
+export interface Rng {
+    random: (this: void) => number;
+    gauss: (this: void) => number;
+}
+
+let rngSource: ((this: void) => Rng | undefined) | undefined;
+
+/**
+ * Set by tasks.ts (which imports this module, so the source is injected rather than required): returns the SDK Skill
+ * once the tasks bundle is loaded, else undefined. Without one, draws fall back to RandomFloat (tasks off).
+ */
+export function SetRng(source: ((this: void) => Rng | undefined) | undefined): void {
+    rngSource = source;
+}
+
+function rng(): Rng | undefined {
+    return rngSource !== undefined ? rngSource() : undefined;
+}
+
 export function Gauss(): number {
+    const r = rng();
+    if (r !== undefined) return r.gauss();
     const u1 = RandomFloat(1e-6, 1);
     const u2 = RandomFloat(1e-6, 1);
     return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2);
@@ -461,7 +483,8 @@ export function Jitter(skill: number): number {
 }
 
 export function Roll(chance: number): boolean {
-    return RandomFloat(0, 1) < chance;
+    const r = rng();
+    return (r !== undefined ? r.random() : RandomFloat(0, 1)) < chance;
 }
 
 export function SkillOf(bot: Unit): number {

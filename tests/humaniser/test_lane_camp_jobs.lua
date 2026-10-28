@@ -328,7 +328,12 @@ do
 	H.Lane.Camps.ResetCache()
 	local bot = unit({ pid = 5, pos = 4, lane = Lane.Top, loc = Vector(-1600, 5900) })
 	local lines = capture(function() H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 }) end)
-	check("job start notes unverified data", lines[1] ~= nil and lines[1]:find("key=radiant_off_large data=unverified", 1, true), lines[1])
+	-- Any line: the first Roll may load the tasks bundle (WO-022), which prints its support line first.
+	local noted = false
+	for _, l in ipairs(lines) do
+		if l:find("key=radiant_off_large data=unverified", 1, true) then noted = true end
+	end
+	check("job start notes unverified data", noted, lines[1])
 end
 
 do
