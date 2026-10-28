@@ -36,6 +36,8 @@ export const DEFAULTS = {
     LuaErrors: true,
     // A repeating (where, msg) error is reported again at most this often, with its running count.
     LuaErrorRepeat: 10,
+    // ev=creep_death (BACKLOG 1.12, WO-025): enemy lane creep deaths near own heroes are logged until this game time.
+    CreepDeathUntil: 720,
 };
 
 export type TelemetryConfig = typeof DEFAULTS;
@@ -754,7 +756,155 @@ function trackHero(this: void, unit: Unit, s: BotState, now: number, slow: boole
     s.aegis = aegis;
 }
 
+// Lane creep deaths (BACKLOG 1.12, WO-025): who got each enemy lane creep that died near the team, and what each own core
+// was doing. Read from what was seen last frame, never through a dead creep's handle (BACKLOG 0.14).
+interface CreepSeen {
+    kind: string;
+    x: number;
+    y: number;
+    hp: number;
+}
+interface CreepDeath {
+    creep: Unit;
+    seen: CreepSeen;
+    by?: string;
+}
+interface CreepTrack {
+    creeps: LuaTable<Unit, CreepSeen>;
+    lastHits: Record<number, number>;
+    denies: Record<number, number>;
+    // Per core pid: last frame's attack target, and the target when its last attack started.
+    target: Record<number, Unit | undefined>;
+    attackAt: Record<number, number>;
+    attackOn: Record<number, Unit | undefined>;
+}
+const creepTracks: Record<number, CreepTrack> = {};
+/** A creep that vanishes above this health share left vision; it did not die. */
+const DEATH_MAX_HP = 0.5;
+/** Deaths are logged only this close to an own hero (vision), and cores are described only this close to the death. */
+const DEATH_NEAR = 1500;
+/** A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance. */
+const KILLER_NEAR = 1200;
+
+function creepKind(name: string): string | undefined {
+    const lane = string.find(name, "creep_goodguys", 1, true)[0] !== undefined || string.find(name, "creep_badguys", 1, true)[0] !== undefined;
+    if (string.find(name, "siege", 1, true)[0] !== undefined) return "siege";
+    if (!lane) return undefined;
+    return string.find(name, "ranged", 1, true)[0] !== undefined ? "ranged" : "melee";
+}
+
+function deathDistance(u: Unit, d: CreepDeath): number {
+    const loc = u.GetLocation();
+    return math.sqrt((loc.x - d.seen.x) ** 2 + (loc.y - d.seen.y) ** 2);
+}
+
+/** Gives each counter rise the nearest unclaimed death. */
+function claimDeaths(deaths: CreepDeath[], unit: Unit, n: number, by: string): void {
+    for (let k = 0; k < n; k++) {
+        let best: CreepDeath | undefined;
+        let bestD = KILLER_NEAR;
+        for (const d of deaths) {
+            const dist = deathDistance(unit, d);
+            if (d.by === undefined && dist <= bestD) {
+                best = d;
+                bestD = dist;
+            }
+        }
+        if (best === undefined) return;
+        best.by = by;
+    }
+}
+
+function rise(counts: Record<number, number>, pid: number, value: number): number {
+    const prev = counts[pid];
+    counts[pid] = value;
+    return prev !== undefined && value > prev ? value - prev : 0;
+}
+
+function trackCreepDeaths(this: void, bot: Unit, now: number): void {
+    if (now < 0 || now > Get().CreepDeathUntil) return;
+    const team = bot.GetTeam();
+    if (!firstThisFrame("creeps", team, now)) return;
+    let c = creepTracks[team];
+    if (c === undefined) {
+        c = { creeps: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {} };
+        creepTracks[team] = c;
+    }
+    const heroes = teamHeroes(team);
+    const live = new LuaTable<Unit, boolean>();
+    for (const u of GetUnitList(UnitType.EnemyCreeps) ?? []) {
+        if (u !== null && u !== undefined && u.IsAlive()) live.set(u, true);
+    }
+    const deaths: CreepDeath[] = [];
+    for (const [creep, seen] of c.creeps) {
+        if (live.get(creep) === true) continue;
+        c.creeps.delete(creep);
+        if (seen.hp > DEATH_MAX_HP) continue;
+        const d: CreepDeath = { creep, seen };
+        for (const h of heroes) {
+            if (deathDistance(h, d) <= DEATH_NEAR) {
+                deaths.push(d);
+                break;
+            }
+        }
+    }
+    for (const h of heroes) {
+        const n = rise(c.lastHits, h.GetPlayerID(), (h as unknown as StatsUnit).GetLastHits());
+        if (n > 0) claimDeaths(deaths, h, n, tostring(h.GetPlayerID()));
+    }
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e === null || e === undefined || !e.IsAlive()) continue;
+        const [ok, dn] = pcall(() => (e as unknown as StatsUnit).GetDenies());
+        const n = ok && type(dn) === "number" ? rise(c.denies, e.GetPlayerID(), dn as number) : 0;
+        if (n > 0) claimDeaths(deaths, e, n, "deny");
+    }
+    const cores: [Unit, number][] = [];
+    for (const h of heroes) {
+        const pos = LaneConfig.PositionOf(h);
+        if (pos !== undefined && pos >= 1 && pos <= 3) cores.push([h, pos]);
+    }
+    for (const d of deaths) {
+        const fields: [string, any][] = [
+            ["team", team],
+            ["kind", d.seen.kind],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+        ];
+        for (const [core, pos] of cores) {
+            const dist = deathDistance(core, d);
+            if (dist > DEATH_NEAR) continue;
+            const pid = core.GetPlayerID();
+            fields.push([`p${pos}d`, math.floor(dist)]);
+            fields.push([`p${pos}r`, core.GetAttackRange()]);
+            fields.push([`p${pos}t`, c.target[pid] === d.creep]);
+            if (c.attackOn[pid] === d.creep) fields.push([`p${pos}a`, now - c.attackAt[pid]]);
+        }
+        Event("creep_death", fields);
+    }
+    // This frame's state, read for next frame's deaths.
+    for (const [core] of cores) {
+        const pid = core.GetPlayerID();
+        const target = core.GetAttackTarget() ?? undefined;
+        const at = core.GetLastAttackTime();
+        c.target[pid] = target;
+        if (c.attackAt[pid] === undefined || at > c.attackAt[pid]) {
+            c.attackAt[pid] = at;
+            c.attackOn[pid] = target;
+        }
+    }
+    for (const u of GetUnitList(UnitType.EnemyCreeps) ?? []) {
+        if (u === null || u === undefined || !u.IsAlive()) continue;
+        const kind = creepKind(u.GetUnitName());
+        if (kind === undefined) continue;
+        const loc = u.GetLocation();
+        c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
+    }
+}
+
 const guardedWorld = Guard("Telemetry.World", trackWorld);
+const guardedCreeps = Guard("Telemetry.Creeps", trackCreepDeaths);
 const guardedHero = Guard("Telemetry.Hero", trackHero);
 
 function snapHumans(bot: Unit, now: number): void {
@@ -810,6 +960,7 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
     const slow = now - s.snapAt >= Get().SnapshotInterval;
     guardedHero(bot, s, now, slow);
     guardedWorld(bot, now);
+    guardedCreeps(bot, now);
     if (slow) {
         s.snapAt = now;
         const fields: [string, any][] = [["pid", bot.GetPlayerID()]];
