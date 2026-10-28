@@ -246,6 +246,19 @@ do
 	check("human smoke via the team loop", #sm == 1 and field(sm[1], "pid") == "2", sm[1])
 end
 
+-- Human snapshots come from the per-frame team job: logged while the lowest-PID bot is dead, once with two bots per frame.
+do
+	local H = fresh()
+	MakeUnit({ pid = 1, alive = false })
+	local b3 = MakeUnit({ pid = 3 })
+	local b4 = MakeUnit({ pid = 4 })
+	MakeUnit({ pid = 2, bot = false })
+	tick(H, { b3, b4 }, 300)
+	local n = 0
+	for _, l in ipairs(events("snap")) do if field(l, "pid") == "2" then n = n + 1 end end
+	check("one human snap per frame without the lowest-PID bot", n == 1, n)
+end
+
 -- A tracker error is reported as Telemetry.* lua_error and does not stop snapshots.
 do
 	local H = fresh()
