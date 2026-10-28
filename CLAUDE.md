@@ -3,24 +3,26 @@
 ## Role in the master project (read first)
 
 This repo is the **host and baseline** of the `dota-bots-humaniser` master project, not the product. Rules for every session are in
-the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../../`); roadmap `docs/team/PLAN.md`, goals
-`docs/team/GOALS.md`, status `docs/team/BACKLOG.md` there.
+the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../../`); open work `docs/team/ROADMAP.md`, goals
+`docs/team/GOALS.md`, plan `docs/proposals/2026-10-29-development-approach.md` there.
 
 - **Goal:** dynamic bot games with high-MMR/pro elements (map movement, encounters judged sensibly, support jobs, rotations,
-  objective follow-ups, awareness of the human teammate). Mechanical is fine; human imitation is not the aim. End state: our own bot script on the `lua-tasks`
-  SDK with **no OHA code left**.
-- **Until then** OHA plays every behaviour we have not replaced, and is the baseline: each replacement sits behind a kill switch whose
-  OFF arm is OHA. Our code lives in `typescript/bots/FunLib/humaniser/`.
+  objective follow-ups, awareness of the human teammate). Mechanical is fine; human imitation is not the aim. End state: our own bot script on our `lua-tasks`
+  engine with **no OHA code left**.
+- **Until then** OHA plays every behaviour we have not replaced, and is the baseline. Each slice **replaces** one OHA decision end
+  to end behind a kill switch `Ours.<Feature>` whose OFF arm is OHA; we never scale OHA's desires. Our code lives in
+  `typescript/bots/FunLib/humaniser/`.
 - **Change OHA behaviour code only** to fix bugs that block or distort tests, to keep tests valid (telemetry, the
   `Customize/override.lua` loader) or to add a hook. Do not improve OHA behaviour we will replace. The patch-update tasks below
   are maintenance of the host and do not change this.
-- **Process:** work in a `worktrees/oha-<slice>` worktree off `team-bots`; load skill `behaviour-areas` before changing behaviour (hook
-  points: master `docs/team/OWNERSHIP.md`, one combiner per hook point). Games run only through dotactl (skill `dotactl`). A
-  slice is done only with a reviewed Eval Report; verdict words are PASS, PROVISIONAL, FAIL, UNTESTED. Merge into `team-bots` with
+- **Process:** work in a `worktrees/oha-<slice>` worktree off `team-bots`; load the master skill `bot-structure` before changing bot
+  code (hook points: master `docs/team/OWNERSHIP.md`). Games run only through dotactl (skill `dotactl`). A behaviour slice is done
+  only with a reviewed Eval Report; verdict words are PASS, PROVISIONAL, FAIL, UNTESTED. Merge into `team-bots` with
   `git merge --no-ff`, citing the review report and an `ER-nnn` id or a `No ER: <reason>` line (git hook), then push `team-bots` to
   `origin` (fast-forward only).
-- **Jitter** goes through the SDK `Skill` model, never host-side randomness. SDK paths (`repos/dota-bot-sdk/packages/lua-tasks/**`, `docs/SDK_API.md`, `docs/contracts/**`) are
-  edited only from an `sdk-*` worktree; the vendored copy under `bots/FunLib/sdk/tasks` is updated by a separate re-vendor step (E0/E1 and a health run), not as part of a behaviour change.
+- **Jitter** goes through the engine's `Skill` model, never host-side randomness. Engine changes follow the master skill
+  `engine-change`: until slice 0b the engine is the SDK repo (protected paths, edited from an `sdk-*` worktree) and its vendored copy
+  under `bots/FunLib/sdk/tasks` is updated by a re-vendor in the slice that needs it; slice 0b moves the engine into this repo.
 
 ## Project Overview
 
