@@ -198,3 +198,71 @@ test('dynamicMetrics: our pcall errors, console errors and the censoring flag ar
     g.errorSquelches = 0; // squelched repeats of a non-error message do not censor error counts
     assert.strictEqual(D.dynamicMetrics(g).console_censored, false);
 });
+
+// World events (slice 23).
+const ev = (name, t, f) => ({ ev: name, t, ...f });
+
+test('world metrics: rune shares by the mid, sentries, smokes merged, events absent read undefined', () => {
+    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 800), bot(2, 2, () => ({ p: BOT }), 0, 800), bot(6, 3, () => ({ p: [6000, 6000] }), 0, 800)]));
+    const role = { 1: 2, 2: 4, 6: 2 };
+    const events = [
+        ev('rune_pickup', 120, { pid: 1, team: 2, kind: 'water' }),
+        ev('rune_pickup', 240, { pid: 2, team: 2, kind: 'water' }),
+        ev('rune_pickup', 360, { pid: 1, team: 2, kind: 'power' }),
+        ev('ward_place', 50, { pid: 2, team: 2, kind: 'sentry' }),
+        ev('ward_place', 40, { pid: 2, team: 2, kind: 'obs' }),
+        ev('smoke_use', 500, { pid: 1, team: 2 }),
+        ev('smoke_use', 501, { pid: 2, team: 2 }),
+        ev('smoke_use', 600, { pid: 1, team: 2 }),
+    ];
+    const m = D.worldMetrics(game([], events), S, role, [], 800);
+    assert.strictEqual(m.mid_water_rune_pct[2], 0.5);
+    assert.strictEqual(m.mid_power_rune_pct[2], 1);
+    assert.strictEqual(m.mid_power_rune_pct[3], undefined);
+    assert.strictEqual(m.power_rune_pickups[2], 1);
+    assert.strictEqual(m.first_sentry_time.r4, 50);
+    assert.deepStrictEqual(m.sentry_by_90s, { 2: 1, 3: 0 });
+    assert.strictEqual(m.smoke_uses_per_team[2], 2);
+    const none = D.worldMetrics(game([], []), S, role, [], 800);
+    assert.strictEqual(none.mid_power_rune_pct, undefined);
+    assert.strictEqual(none.first_t1_time, undefined);
+});
+
+test('world metrics: tp joins need distance, the 10:00-30:00 window and an ally at the landing', () => {
+    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 1900), bot(2, 2, () => ({ p: BOT }), 0, 1900)]));
+    const tp = (t, x, y, d) => ev('tp', t, { pid: 2, team: 2, x, y, dist: d });
+    const events = [tp(700, MID[0] + 300, MID[1], 5000), tp(800, MID[0], MID[1], 500), tp(500, MID[0], MID[1], 5000), tp(900, 6000, 6000, 5000)];
+    assert.strictEqual(D.worldMetrics(game([], events), S, {}, [], 1900).tp_joins_per_team_ev[2], 1);
+});
+
+test('world metrics: first T1, cash-in after a 3+ kill burst, Roshan de-duplicated and followed by a tower', () => {
+    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 2000)]));
+    // Radiant kills three Dire heroes at 900-920; a Dire tower falls at 1000 (cash-in). A later burst at 1500 has no tower.
+    const deaths = [900, 910, 920].map(t => ({ t, team: 3 })).concat([1500, 1505, 1510].map(t => ({ t, team: 3 })));
+    const events = [
+        ev('building_fall', 700, { team: 2, kind: 'tower', tier: 2 }),
+        ev('building_fall', 650, { team: 3, kind: 'tower', tier: 1 }),
+        ev('building_fall', 1000, { team: 3, kind: 'tower', tier: 2 }),
+        ev('roshan_kill', 1200, { team: 2, at: 1199.5 }),
+        ev('roshan_kill', 1200.2, { team: 3, at: 1199.5 }),
+        ev('aegis', 1203, { pid: 1, team: 2 }),
+        ev('building_fall', 1300, { team: 2, kind: 'rax', id: 1 }),
+        ev('building_fall', 1400, { team: 3, kind: 'tower', tier: 3 }),
+    ];
+    const m = D.worldMetrics(game([], events), S, {}, deaths, 2000);
+    assert.strictEqual(m.first_t1_time, 650);
+    assert.strictEqual(m.cash_in_kills_pct[2], 0.5);
+    assert.strictEqual(m.cash_in_kills_pct[3], undefined);
+    assert.strictEqual(m.first_roshan_time, 1200);
+    // The Radiant aegis team's own rax at 1300 does not count; the Dire tower at 1400 does.
+    assert.strictEqual(m.towers_after_roshan_240, 1);
+});
+
+test('wisdom proxy: a hero 3 s within 300 of the shrine by fill + 15 s takes it', () => {
+    const SH = [-7948, 768];
+    // Takes the 7:00 fill at 7:10-7:13; reaches the 14:00 fill at 14:20 (too late).
+    const at = t => ({ p: (t >= 430 && t < 433) || (t >= 860 && t < 870) ? [SH[0] + 100, SH[1]] : TOP });
+    const S = D.series(game([bot(1, 2, at, 0, 900)]));
+    assert.strictEqual(D.wisdom(S, 2, 900), 0.5);
+    assert.strictEqual(D.wisdom(S, 2, 400), undefined);
+});
