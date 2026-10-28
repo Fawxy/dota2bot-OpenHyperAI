@@ -1,5 +1,27 @@
 # Dota 2 Bot Scripts - Claude Code Guide
 
+## Role in the master project (read first)
+
+This repo is the **host and baseline** of the `dota-bots-humaniser` master project, not the product. Rules for every session are in
+the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../../`); roadmap `docs/team/PLAN.md`, goals
+`docs/team/GOALS.md`, status `docs/team/BACKLOG.md` there.
+
+- **Goal:** dynamic bot games with high-MMR/pro elements (map movement, encounters judged sensibly, support jobs, rotations,
+  objective follow-ups, awareness of the human teammate). Mechanical is fine; human imitation is not the aim. End state: our own bot script on the `lua-tasks`
+  SDK with **no OHA code left**.
+- **Until then** OHA plays every behaviour we have not replaced, and is the baseline: each replacement sits behind a kill switch whose
+  OFF arm is OHA. Our code lives in `typescript/bots/FunLib/humaniser/`.
+- **Change OHA behaviour code only** to fix bugs that block or distort tests, to keep tests valid (telemetry, the
+  `Customize/override.lua` loader) or to add a hook. Do not improve OHA behaviour we will replace. The patch-update tasks below
+  are maintenance of the host and do not change this.
+- **Process:** work in a `worktrees/oha-<slice>` worktree off `team-bots`; load skill `behaviour-areas` before changing behaviour (hook
+  points: master `docs/team/OWNERSHIP.md`, one combiner per hook point). Games run only through dotactl (skill `dotactl`). A
+  slice is done only with a reviewed Eval Report; verdict words are PASS, PROVISIONAL, FAIL, UNTESTED. Merge into `team-bots` with
+  `git merge --no-ff`, citing the review report and an `ER-nnn` id or a `No ER: <reason>` line (git hook), then push `team-bots` to
+  `origin` (fast-forward only).
+- **Jitter** goes through the SDK `Skill` model, never host-side randomness. SDK paths (`repos/dota-bot-sdk/packages/lua-tasks/**`, `docs/SDK_API.md`, `docs/contracts/**`) are
+  edited only from an `sdk-*` worktree; the vendored copy under `bots/FunLib/sdk/tasks` is updated by a separate re-vendor step (E0/E1 and a health run), not as part of a behaviour change.
+
 ## Project Overview
 
 This is the **dota2bot-OpenHyperAI** project -- Lua bot scripts for Dota 2 that run in custom lobbies. Currently supports Patch 7.41 through 7.41f with 127 heroes.
