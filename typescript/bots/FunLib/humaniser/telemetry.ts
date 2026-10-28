@@ -7,7 +7,8 @@
  * Events emitted from a team-wide context (order posts, pings, commands) repeat once per module instance;
  * tools/hlog de-duplicates them.
  */
-import { Barracks, GameState, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Barracks, GameState, Lane, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -333,11 +334,50 @@ function pct(v: number, max: number): number {
     return max > 0 ? math.floor((100 * v) / max + 0.5) : 0;
 }
 
+// Lane-front fields (slice 2b, old request H4). Engine lane amounts are in the calling script's team frame (console.9055745679,
+// LaneState refresh), so the log carries absolute amounts, 0 at Radiant's ancient, whichever team's script wrote the line.
+const LANES: [Lane, string][] = [[Lane.Top, "top"], [Lane.Mid, "mid"], [Lane.Bot, "bot"]];
+
+function absAlong(lane: Lane, loc: Vector): { amount: number; distance: number } {
+    const r = GetAmountAlongLane(lane, loc);
+    return { amount: Camps.ToTeamAmount(Team.Radiant, r.amount), distance: r.distance };
+}
+
+/** ln (nearest lane), s (absolute amount along it) and ld (distance from it) for one hero. */
+function laneFields(loc: Vector): [string, any][] {
+    let best: { amount: number; distance: number } | undefined;
+    let name = "";
+    for (const [lane, n] of LANES) {
+        const r = absAlong(lane, loc);
+        if (best === undefined || r.distance < best.distance) {
+            best = r;
+            name = n;
+        }
+    }
+    return [
+        ["ln", name],
+        ["s", best!.amount],
+        ["ld", math.floor(best!.distance)],
+    ];
+}
+
+/** One ev=front per team: the team's wave front per lane, absolute amount and map position. */
+function trackFront(team: number): void {
+    const fields: [string, any][] = [["team", team]];
+    for (const [lane, n] of LANES) {
+        const loc = GetLaneFrontLocation(team, lane, 0);
+        fields.push([n, absAlong(lane, loc).amount]);
+        fields.push([`${n}x`, math.floor(loc.x)]);
+        fields.push([`${n}y`, math.floor(loc.y)]);
+    }
+    Event("front", fields);
+}
+
 function unitFields(unit: Unit): [string, any][] {
     const loc = unit.GetLocation();
     const stats = unit as unknown as StatsUnit;
     const target = unit.GetAttackTarget();
-    return [
+    const fields: [string, any][] = [
         ["x", math.floor(loc.x)],
         ["y", math.floor(loc.y)],
         ["alive", unit.IsAlive()],
@@ -351,6 +391,8 @@ function unitFields(unit: Unit): [string, any][] {
         ["deaths", GetHeroDeaths !== undefined ? GetHeroDeaths(unit.GetPlayerID()) : undefined],
         ["tgt", target !== null && target !== undefined ? target.GetUnitName() : undefined],
     ];
+    for (const f of laneFields(loc)) fields.push(f);
+    return fields;
 }
 
 function botFields(bot: Unit, ctx: BotContext | undefined): [string, any][] {
@@ -647,6 +689,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
     if (now - w.slowAt < Get().SnapshotInterval) return;
     w.slowAt = now;
     trackWards(team, w);
+    trackFront(team);
     for (const [id, tier] of TOWER_TIERS) trackBuilding(team, w, "tower", id, GetTower(team, id), tier);
     for (const id of BARRACKS) trackBuilding(team, w, "rax", id, GetBarracks(team, id));
     const killedAt = GetRoshanKillTime();

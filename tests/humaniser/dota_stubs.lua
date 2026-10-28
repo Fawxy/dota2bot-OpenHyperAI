@@ -76,6 +76,9 @@ function Unit:GetAttackRange() return self.range or 150 end
 function Unit:Action_MoveToLocation(loc) self.moves = self.moves or {} table.insert(self.moves, loc) end
 ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
 function GetAncient() return ANCIENT end
+-- Lane geometry for telemetry's lane-front fields; lane_world.lua replaces these with a lane model.
+function GetAmountAlongLane() return { amount = 0.5, distance = 0 } end
+function GetLaneFrontLocation() return Vector(0, 0) end
 
 function MakeUnit(o)
 	local u = setmetatable({

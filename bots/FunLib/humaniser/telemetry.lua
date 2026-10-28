@@ -3,10 +3,12 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Barracks = ____dota.Barracks
 local GameState = ____dota.GameState
+local Lane = ____dota.Lane
 local Rune = ____dota.Rune
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
@@ -386,11 +388,63 @@ end
 local function pct(v, max)
     return max > 0 and math.floor(100 * v / max + 0.5) or 0
 end
+local LANES = {{Lane.Top, "top"}, {Lane.Mid, "mid"}, {Lane.Bot, "bot"}}
+local function absAlong(lane, loc)
+    local r = GetAmountAlongLane(lane, loc)
+    return {
+        amount = Camps.ToTeamAmount(Team.Radiant, r.amount),
+        distance = r.distance
+    }
+end
+--- ln (nearest lane), s (absolute amount along it) and ld (distance from it) for one hero.
+local function laneFields(loc)
+    local best
+    local name = ""
+    for ____, ____value in ipairs(LANES) do
+        local lane = ____value[1]
+        local n = ____value[2]
+        local r = absAlong(lane, loc)
+        if best == nil or r.distance < best.distance then
+            best = r
+            name = n
+        end
+    end
+    return {
+        {"ln", name},
+        {"s", best.amount},
+        {
+            "ld",
+            math.floor(best.distance)
+        }
+    }
+end
+--- One ev=front per team: the team's wave front per lane, absolute amount and map position.
+local function trackFront(team)
+    local fields = {{"team", team}}
+    for ____, ____value in ipairs(LANES) do
+        local lane = ____value[1]
+        local n = ____value[2]
+        local loc = GetLaneFrontLocation(team, lane, 0)
+        fields[#fields + 1] = {
+            n,
+            absAlong(lane, loc).amount
+        }
+        fields[#fields + 1] = {
+            n .. "x",
+            math.floor(loc.x)
+        }
+        fields[#fields + 1] = {
+            n .. "y",
+            math.floor(loc.y)
+        }
+    end
+    ____exports.Event("front", fields)
+end
 local function unitFields(unit)
     local loc = unit:GetLocation()
     local stats = unit
     local target = unit:GetAttackTarget()
-    return {
+    local fields = {
         {
             "x",
             math.floor(loc.x)
@@ -442,6 +496,10 @@ local function unitFields(unit)
             target ~= nil and target ~= nil and target:GetUnitName() or nil
         }
     }
+    for ____, f in ipairs(laneFields(loc)) do
+        fields[#fields + 1] = f
+    end
+    return fields
 end
 local function botFields(bot, ctx)
     local fields = unitFields(bot)
@@ -780,7 +838,7 @@ local function trackRunes(team, w, now)
     end
     for ____, r in ipairs(RUNES) do
         do
-            local __continue103
+            local __continue113
             repeat
                 local seen = w.runes[r]
                 if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
@@ -790,11 +848,11 @@ local function trackRunes(team, w, now)
                             loc = GetRuneSpawnLocation(r)
                         }
                     end
-                    __continue103 = true
+                    __continue113 = true
                     break
                 end
                 if seen == nil or not seen.up then
-                    __continue103 = true
+                    __continue113 = true
                     break
                 end
                 seen.up = false
@@ -803,7 +861,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
-                    __continue103 = true
+                    __continue113 = true
                     break
                 end
                 local ____, enemyD = nearest(
@@ -811,7 +869,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if enemyD < d then
-                    __continue103 = true
+                    __continue113 = true
                     break
                 end
                 local power = r == Rune.Power1 or r == Rune.Power2
@@ -835,9 +893,9 @@ local function trackRunes(team, w, now)
                         }
                     }
                 )
-                __continue103 = true
+                __continue113 = true
             until true
-            if not __continue103 then
+            if not __continue113 then
                 break
             end
         end
@@ -846,17 +904,17 @@ end
 local function trackWards(team, w)
     for ____, ward in ipairs(GetUnitList(UnitType.AlliedWards)) do
         do
-            local __continue111
+            local __continue121
             repeat
                 if w.wards[ward] == true then
-                    __continue111 = true
+                    __continue121 = true
                     break
                 end
                 w.wards[ward] = true
                 local name = ward:GetUnitName()
                 local kind = (string.find(name, "observer")) ~= nil and "obs" or ((string.find(name, "sentry")) ~= nil and "sentry" or nil)
                 if kind == nil then
-                    __continue111 = true
+                    __continue121 = true
                     break
                 end
                 local loc = ward:GetLocation()
@@ -883,9 +941,9 @@ local function trackWards(team, w)
                         }
                     }
                 )
-                __continue111 = true
+                __continue121 = true
             until true
-            if not __continue111 then
+            if not __continue121 then
                 break
             end
         end
@@ -921,6 +979,7 @@ local function trackWorld(bot, now)
     end
     w.slowAt = now
     trackWards(team, w)
+    trackFront(team)
     for ____, ____value in ipairs(TOWER_TIERS) do
         local id = ____value[1]
         local tier = ____value[2]
@@ -1060,15 +1119,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue137
+                local __continue147
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue137 = true
+                        __continue147 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue137 = true
+                        __continue147 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1107,9 +1166,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue137 = true
+                    __continue147 = true
                 until true
-                if not __continue137 then
+                if not __continue147 then
                     break
                 end
             end
