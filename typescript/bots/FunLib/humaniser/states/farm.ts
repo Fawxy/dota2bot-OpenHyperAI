@@ -2,10 +2,11 @@
  * `farm` state (team slice 10): a core's between-waves farm trip (FarmPattern) executed by an SDK body. OHA still
  * decides every trip (StartGate, the camp plan priced against the next wave, chaining, stacks through camp jobs, the
  * stop rules in Desire) and keeps its bookkeeping (pace learning, cleared camps, trip telemetry). The body replaces
- * FarmPattern's step(): `Verbs.clearCamp` on the planned camp (deadline = the plan's leaveBy), then OHA picks the
+ * FarmPattern's step(): `JobVerbs.clearCamp` on the planned camp (deadline = the plan's leaveBy), then OHA picks the
  * next camp or the walk back to the lane front.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
+import type * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
@@ -31,7 +32,7 @@ function* until(g: Lib.TaskBody, stop: () => boolean): Lib.TaskBody {
 }
 
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
-    const V = Tasks.Verbs()!;
+    const V = Tasks.Jobs()!;
     const u = bot as unknown as Lib.TaskUnit;
     const s = FarmPattern.Settings();
     let lastFront: Vector | undefined;
@@ -70,7 +71,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             continue;
         }
         const camp = trip.campIdx;
-        const hooks: Lib.Verbs.JobHooks = {
+        const hooks: JobVerbs.JobHooks = {
             label: (l) => {
                 ctx.label(l);
                 if (l === "farm") trip.phase = "farm";

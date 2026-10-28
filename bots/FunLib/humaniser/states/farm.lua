@@ -123,7 +123,7 @@ local ____until = __TS__Generator(function(g, stop)
     end
 end)
 local body = __TS__Generator(function(bot, ctx)
-    local V = Tasks.Verbs()
+    local V = Tasks.Jobs()
     local u = bot
     local s = FarmPattern.Settings()
     local lastFront

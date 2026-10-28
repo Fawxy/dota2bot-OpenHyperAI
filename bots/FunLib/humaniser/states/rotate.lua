@@ -263,8 +263,8 @@ local function spawnNow(now)
 end
 --- When to leave lane for `spawn`: the SDK's skill-scaled arrival, less the walk (path factor on the straight line).
 function ____exports.LeaveAt(bot, spawn)
-    local V = Tasks.Verbs()
-    if V == nil then
+    local J = Tasks.Jobs()
+    if J == nil then
         return nil
     end
     local u = bot
@@ -273,7 +273,7 @@ function ____exports.LeaveAt(bot, spawn)
         bot,
         ____exports.ShrineFor(bot:GetTeam())
     )
-    return V.runeArriveBy(u, plan) - d * PATH_FACTOR / math.max(
+    return J.runeArriveBy(u, plan) - d * PATH_FACTOR / math.max(
         1,
         bot:GetCurrentMovementSpeed()
     )
@@ -462,7 +462,7 @@ local body = __TS__Generator(function(bot, ctx)
         end,
         urgent = ctx.urgent
     }
-    return __TS__DelegatedYield(Tasks.Verbs().runeRun(
+    return __TS__DelegatedYield(Tasks.Jobs().runeRun(
         bot,
         planFor(bot, spawn),
         hooks

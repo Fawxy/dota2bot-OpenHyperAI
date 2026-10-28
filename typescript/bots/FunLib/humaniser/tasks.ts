@@ -10,6 +10,7 @@ import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -116,6 +117,7 @@ function loadBundle(): Bundle | undefined {
     if (ok && type(res) === "table") {
         lib = res as Bundle;
         lib.init(adapter);
+        JobVerbs.Bind(lib, adapter);
         (rawPrint ?? print)(support + "ok");
     } else {
         (rawPrint ?? print)(`${support}fail ${tostring(res)}`);
@@ -174,4 +176,9 @@ export function Describe(bot: Unit): string | undefined {
 
 export function Verbs(): Bundle["Verbs"] | undefined {
     return loadBundle()?.Verbs;
+}
+
+/** The job verbs (bot code on the engine's verbs), or undefined when tasks are off or the bundle failed to load. */
+export function Jobs(): typeof JobVerbs | undefined {
+    return loadBundle() !== undefined ? JobVerbs : undefined;
 }

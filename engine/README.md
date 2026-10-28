@@ -7,9 +7,9 @@ attack, cast, ...) check that their orders actually took effect.
 New to it? Start with [Write your first task](docs/first-task.md). A complete plain-bot-script example is in
 [`examples/generic/`](examples/generic/README.md).
 
-This README covers the stable core. `States`, `Phase`, the lane verbs (`lastHit`, `deny`, `laneFarm`,
-`nextLastHit`) and the job verbs (`stack`, `pull`, `runeRun`, `clearCamp`, `gank`) are exported but still
-changing, so they are not documented here.
+This README covers the stable core. `States` and the lane verbs (`lastHit`, `deny`, `laneFarm`, `nextLastHit`) are
+exported but still changing, so they are not documented here. The job verbs (`stack`, `pull`, `runeRun`, `clearCamp`,
+`gank`) are bot code since slice 0b (`humaniser/job_verbs`).
 
 ## Build
 ```sh

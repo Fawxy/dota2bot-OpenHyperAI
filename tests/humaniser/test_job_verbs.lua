@@ -1,8 +1,16 @@
--- Job verbs (stack, pull, runeRun) driven through the runner against the frame simulator.
-local T = dofile("test/helpers.lua")
-local Sim = dofile("test/sim.lua")
-local tasks = dofile("dist/tasks_test.lua")
-local R, V = tasks.Tasks, tasks.Verbs
+-- Job verbs (humaniser/job_verbs: stack, pull, runeRun, clearCamp, gank) driven through the engine's runner against
+-- the engine's frame simulator. Moved from the engine's test_jobs.lua in slice 0b, unchanged but for the calls.
+local T = dofile(BOTS_ROOT .. "/engine/test/helpers.lua")
+local Sim = dofile(BOTS_ROOT .. "/engine/test/sim.lua")
+local tasks = dofile(BOTS_ROOT .. "/bots/FunLib/engine/tasks.lua")
+local Jobs = require("bots/FunLib/humaniser/job_verbs")
+local R = tasks.Tasks
+local V = Jobs
+-- job.stack(ctx, plan) and friends before slice 0b: the job with this task's label and urgent as its hooks.
+local job = {}
+for _, name in ipairs({ "stack", "pull", "runeRun", "clearCamp", "gank" }) do
+    job[name] = function(ctx, plan) return Jobs[name](ctx.bot, plan, { label = ctx.label, urgent = ctx.urgent }) end
+end
 
 local HOST = 7
 local DT = 0.1
@@ -13,6 +21,7 @@ local function world(adapterOpts, botOpts)
     sim.claims = {}
     a.claim = function(_, c) sim.claims[#sim.claims + 1] = { t = sim.t, c = c } end
     tasks.init(a)
+    Jobs.Bind(tasks, a)
     local o = { x = 0, y = 0, speed = 300 }
     for k, v in pairs(botOpts or {}) do o[k] = v end
     local bot = sim:addBot(o)
@@ -86,7 +95,7 @@ do
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
     local p = stackPlan()
-    start(bot, function(ctx) return ctx.stack(p) end)
+    start(bot, function(ctx) return job.stack(ctx, p) end)
     local r, t, labels = run(sim, bot)
     T.eq("stack: ok", r.reason, "ok")
     T.eq("stack: phases", table.concat(labels, ","), "travel,wait,aggro,exit")
@@ -108,7 +117,7 @@ do
     -- Auto lead: the order goes the wind-up early, so the hit lands on the aggro second, not one wind-up late.
     local sim, bot = world(nil, { attackPoint = 0.5 })
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.stack(stackPlan{ aggroLead = "auto" }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ aggroLead = "auto" }) end)
     local r, _, _, hit = run(sim, bot, { n })
     T.eq("stack lead: ok", r.reason, "ok")
     T.check("stack lead: hit lands at the aggro second", hit[1] ~= nil and math.abs(hit[1] - 5) <= DT + 1e-9)
@@ -118,7 +127,7 @@ do
     -- A ranged bot leads by the projectile flight too.
     local sim, bot = world(nil, { attackPoint = 0.3, range = 600, projectileSpeed = 900 })
     local n = sim:addNeutral{ x = 1100, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.stack(stackPlan{ aggroLead = "auto", camp = { stand = { x = 600, y = 0 }, box = box(1150, 0, 100) } }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ aggroLead = "auto", camp = { stand = { x = 600, y = 0 }, box = box(1150, 0, 100) } }) end)
     local r, _, _, hit = run(sim, bot, { n })
     T.eq("stack ranged lead: ok", r.reason, "ok")
     T.check("stack ranged lead: lands within a frame of the aggro second", hit[1] ~= nil and math.abs(hit[1] - 5) <= 2 * DT + 1e-9)
@@ -128,7 +137,7 @@ do
     -- Idle neutrals stand just outside the spawn box: inside the default 300 margin they are still the camp.
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.stack(stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1000, 0, 100) } }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1000, 0, 100) } }) end)
     local r = run(sim, bot)
     T.eq("stack margin: neutral 200 outside the box is the camp", r.reason, "ok")
     T.eq("stack margin: it was hit", n.attackTarget, bot)
@@ -138,7 +147,7 @@ do
     -- Outside the margin it is not the camp (a neighbouring camp's creep): no-camp, and it is left alone.
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.stack(stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1000, 0, 100), margin = 100 } }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1000, 0, 100), margin = 100 } }) end)
     local r = run(sim, bot)
     T.eq("stack outside margin: no_target", r.reason, "no_target")
     T.eq("stack outside margin: message", r.message, "mistake:no-camp")
@@ -150,7 +159,7 @@ do
     local sim, bot = world()
     sim:addNeutral{ x = 1500, y = 0, hp = 500 }
     sim:at(0.5, function() bot.blocked = true end)
-    start(bot, function(ctx) return ctx.stack(stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1500, 0, 100) } }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(1500, 0, 100) } }) end)
     local r, t = run(sim, bot)
     T.eq("stack late: timeout", r.reason, "timeout")
     T.eq("stack late: message", r.message, "late")
@@ -160,7 +169,7 @@ end
 do
     -- Camp farmed: nothing in the box within noCampAfter -> no-camp after searching towards the origin.
     local sim, bot = world()
-    start(bot, function(ctx) return ctx.stack(stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(750, 0, 100), origin = { x = 750, y = 0 } } }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = { stand = { x = 600, y = 0 }, box = box(750, 0, 100), origin = { x = 750, y = 0 } } }) end)
     local r, t = run(sim, bot)
     T.eq("stack no camp: no_target", r.reason, "no_target")
     T.eq("stack no camp: message", r.message, "mistake:no-camp")
@@ -173,7 +182,7 @@ do
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
     sim:at(3.5, function() bot.loc.x = 300 end)
-    start(bot, function(ctx) return ctx.stack(stackPlan()) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan()) end)
     local r, _, _, hit = run(sim, bot, { n })
     T.eq("stack pushed: ok", r.reason, "ok")
     T.check("stack pushed: hit by aggroAt + attack point", hit[1] ~= nil and hit[1] <= 5 + 0.3 + DT)
@@ -184,7 +193,7 @@ do
     local sim, bot = world()
     bot.whiff = true
     sim:addNeutral{ x = 700, y = 0, hp = 500, passive = true }
-    start(bot, function(ctx) return ctx.stack(stackPlan()) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan()) end)
     local r = run(sim, bot)
     T.eq("stack whiff: missed", r.reason, "missed")
     T.eq("stack whiff: message", r.message, "mistake:no-aggro")
@@ -195,7 +204,7 @@ do
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
     local info
-    start(bot, function(ctx) return ctx.stack(stackPlan{ timingError = 0.7, onAggro = function(i) info = i end }) end)
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ timingError = 0.7, onAggro = function(i) info = i end }) end)
     run(sim, bot)
     T.check("onAggro called", info ~= nil)
     T.eq("onAggro planned", info and info.planned, 5)
@@ -213,7 +222,7 @@ do
         for _ = 1, 40 do
             local sim, bot = world({ skill = function() return skill end, random = rnd })
             local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-            start(bot, function(ctx) return ctx.stack(stackPlan{ aggroAt = 8, exitUntil = 14, timingError = "auto", aggroLead = 0 }) end)
+            start(bot, function(ctx) return job.stack(ctx, stackPlan{ aggroAt = 8, exitUntil = 14, timingError = "auto", aggroLead = 0 }) end)
             local _, _, _, hit = run(sim, bot, { n })
             if hit[1] then out[#out + 1] = hit[1] - 0.3 end
         end
@@ -241,7 +250,7 @@ end
 do
     local sim, bot = world()
     local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.pull(pullPlan{ watchUntil = 9, watchSec = 0.5 }) end)
+    start(bot, function(ctx) return job.pull(ctx, pullPlan{ watchUntil = 9, watchSec = 0.5 }) end)
     local r, t, labels, hit = run(sim, bot, { n })
     T.eq("pull: ok", r.reason, "ok")
     T.eq("pull: phases", table.concat(labels, ","), "travel,wait,aggro,lead,watch")
@@ -256,7 +265,7 @@ do
     local sim, bot = world()
     sim:addNeutral{ x = 700, y = 0, hp = 500 }
     sim:at(6, function() bot.blocked = true end)
-    start(bot, function(ctx) return ctx.pull(pullPlan()) end)
+    start(bot, function(ctx) return job.pull(ctx, pullPlan()) end)
     local r = run(sim, bot)
     T.check("pull lead blocked: fails", not r.success)
     T.eq("pull lead blocked: message", r.message, "lead")
@@ -271,7 +280,7 @@ do
     local hard = sim:addNeutral{ x = 700, y = 800, hp = 900 }
     local small = sim:addNeutral{ x = 700, y = 0, hp = 500 }
     local ordered = {}
-    start(bot, function(ctx) return ctx.pull(pullPlan{ aggroAt = 7, first = HARD }) end)
+    start(bot, function(ctx) return job.pull(ctx, pullPlan{ aggroAt = 7, first = HARD }) end)
     local r, _, labels, hit = run(sim, bot, { hard, small })
     for _, a in ipairs(bot.actions) do if a.kind == "attack" then ordered[#ordered + 1] = a.target end end
     T.eq("double: ok", r.reason, "ok")
@@ -286,7 +295,7 @@ do
     -- Hard camp gone: no-camp, and the small camp is never touched.
     local sim, bot = world(nil, { x = 600, y = 500 })
     local small = sim:addNeutral{ x = 700, y = 0, hp = 500 }
-    start(bot, function(ctx) return ctx.pull(pullPlan{ aggroAt = 7, first = HARD }) end)
+    start(bot, function(ctx) return job.pull(ctx, pullPlan{ aggroAt = 7, first = HARD }) end)
     local r = run(sim, bot)
     T.eq("double no hard camp: no_target", r.reason, "no_target")
     T.check("double no hard camp: small camp untouched", small.attackTarget == nil)
@@ -308,7 +317,7 @@ do
     local sim, bot = runeWorld()
     sim:at(8, function() sim.runes[RUNE].status = Sim.RUNE_STATUS_AVAILABLE end)
     local arrivedAt
-    start(bot, function(ctx) return ctx.runeRun({ at = { x = 850, y = 0 }, spawnAt = 8, rune = RUNE }) end)
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 850, y = 0 }, spawnAt = 8, rune = RUNE }) end)
     local r, _, labels
     for _ = 1, 400 do
         if R.Current(bot) == nil then break end
@@ -353,7 +362,7 @@ do
     -- Blocked on the way: not there by spawnAt + lateBy -> timeout "late".
     local sim, bot = runeWorld()
     sim:at(1, function() bot.blocked = true end)
-    start(bot, function(ctx) return ctx.runeRun({ at = { x = 850, y = 0 }, spawnAt = 5, rune = RUNE, lateBy = 2 }) end)
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 850, y = 0 }, spawnAt = 5, rune = RUNE, lateBy = 2 }) end)
     local r, t = run(sim, bot)
     T.eq("rune late: timeout", r.reason, "timeout")
     T.eq("rune late: message", r.message, "late")
@@ -364,7 +373,7 @@ end
 do
     -- Never spawns (taken before we saw it / wrong spot): gives up with no_target after the grace window.
     local sim, bot = runeWorld()
-    start(bot, function(ctx) return ctx.runeRun({ at = { x = 850, y = 0 }, spawnAt = 5, rune = RUNE }) end)
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 850, y = 0 }, spawnAt = 5, rune = RUNE }) end)
     local r, t = run(sim, bot)
     T.eq("rune never: no_target", r.reason, "no_target")
     T.check("rune never: retried through the grace window", t >= 5 + 2 - 1e-9 and t <= 5 + 2 + 3 * DT)
@@ -375,7 +384,7 @@ do
     -- Shrine: stand within radius for `channel` s from the activation; pushed out, the count restarts.
     local sim, bot = world()
     sim:at(6, function() bot.loc.x = 300 end)
-    start(bot, function(ctx) return ctx.runeRun({ at = { x = 900, y = 0 }, spawnAt = 5, channel = 3, radius = 300 }) end)
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 900, y = 0 }, spawnAt = 5, channel = 3, radius = 300 }) end)
     local r, t, labels = run(sim, bot)
     T.eq("shrine: ok", r.reason, "ok")
     T.eq("shrine: phases", table.concat(labels, ","), "travel,wait,channel")
@@ -387,7 +396,7 @@ do
     -- Shrine with host confirmation that never comes: missed.
     local sim, bot = world()
     start(bot, function(ctx)
-        return ctx.runeRun({ at = { x = 900, y = 0 }, spawnAt = 5, channel = 3, confirmed = function() return false end })
+        return job.runeRun(ctx, { at = { x = 900, y = 0 }, spawnAt = 5, channel = 3, confirmed = function() return false end })
     end)
     local r = run(sim, bot)
     T.eq("shrine unconfirmed: missed", r.reason, "missed")
@@ -401,7 +410,7 @@ do
     local b = sim:addNeutral{ x = 640, y = 0, hp = 60 }
     local far = sim:addNeutral{ x = 2000, y = 0, hp = 100 }
     local engagedAt
-    start(bot, function(ctx) return ctx.clearCamp({ at = { x = 620, y = 0 }, onEngage = function(t) engagedAt = t end }) end)
+    start(bot, function(ctx) return job.clearCamp(ctx, { at = { x = 620, y = 0 }, onEngage = function(t) engagedAt = t end }) end)
     local r, t, labels = run(sim, bot)
     T.eq("clear: ok", r.reason, "ok")
     T.eq("clear: cleared", r.message, "cleared")
@@ -418,7 +427,7 @@ end
 do
     -- Nothing at the camp: arrives, looks for emptyAfter, ends ok "empty".
     local sim, bot = world()
-    start(bot, function(ctx) return ctx.clearCamp({ at = { x = 600, y = 0 } }) end)
+    start(bot, function(ctx) return job.clearCamp(ctx, { at = { x = 600, y = 0 } }) end)
     local r, t = run(sim, bot)
     T.eq("clear empty: ok", r.reason, "ok")
     T.eq("clear empty: empty", r.message, "empty")
@@ -429,7 +438,7 @@ do
     -- Past the deadline mid-fight: timeout "late", the camp left unfinished.
     local sim, bot = world(nil, { damage = 10, autoAttack = true })
     local n = sim:addNeutral{ x = 300, y = 0, hp = 1000, passive = true }
-    start(bot, function(ctx) return ctx.clearCamp({ at = { x = 300, y = 0 }, deadline = 4 }) end)
+    start(bot, function(ctx) return job.clearCamp(ctx, { at = { x = 300, y = 0 }, deadline = 4 }) end)
     local r, t = run(sim, bot)
     T.eq("clear late: timeout", r.reason, "timeout")
     T.eq("clear late: message", r.message, "late")
@@ -444,7 +453,7 @@ do
         local a = sim:addNeutral{ x = 100, y = 0, hp = 100 }
         local b = sim:addNeutral{ x = 120, y = 0, hp = 300 }
         local diedAt
-        start(bot, function(ctx) return ctx.clearCamp({ at = { x = 110, y = 0 } }) end)
+        start(bot, function(ctx) return job.clearCamp(ctx, { at = { x = 110, y = 0 } }) end)
         for _ = 1, 200 do
             if R.Current(bot) == nil then break end
             frame(sim, bot)
@@ -465,7 +474,7 @@ do
     local target = sim:addHero{ team = 3, x = 1500, y = 0, hp = 300 }
     local telegraphedAt, eta, engagedAt
     start(bot, function(ctx)
-        return ctx.gank({
+        return job.gank(ctx, {
             target = function() return target end,
             path = { { x = 600, y = 300 } },
             engageRange = 200,
@@ -491,7 +500,7 @@ do
     local sim, bot = world(nil, { speed = 300 })
     local target = sim:addHero{ team = 3, x = 900, y = 0, hp = 300 }
     sim:at(1, function() target.hidden = true end)
-    start(bot, function(ctx) return ctx.gank({ target = function() return target end, path = {} }) end)
+    start(bot, function(ctx) return job.gank(ctx, { target = function() return target end, path = {} }) end)
     local r, t = run(sim, bot)
     T.eq("gank lost: interrupted", r.reason, "interrupted")
     T.eq("gank lost: escaped", r.message, "escaped")
@@ -502,7 +511,7 @@ do
     -- Engaged but the fight drags on: fail timeout "no-kill" after engageFor.
     local sim, bot = world(nil, { damage = 1, autoAttack = true, range = 150 })
     local target = sim:addHero{ team = 3, x = 100, y = 0, hp = 5000 }
-    start(bot, function(ctx) return ctx.gank({ target = function() return target end, path = {}, engageFor = 4 }) end)
+    start(bot, function(ctx) return job.gank(ctx, { target = function() return target end, path = {}, engageFor = 4 }) end)
     local r, t = run(sim, bot)
     T.eq("gank long: timeout", r.reason, "timeout")
     T.eq("gank long: message", r.message, "no-kill")
@@ -513,7 +522,7 @@ do
     -- Not engaged by the deadline (target out of reach): fail timeout "late".
     local sim, bot = world(nil, { speed = 300 })
     local target = sim:addHero{ team = 3, x = 6000, y = 0, hp = 300 }
-    start(bot, function(ctx) return ctx.gank({ target = function() return target end, path = {}, deadline = 5 }) end)
+    start(bot, function(ctx) return job.gank(ctx, { target = function() return target end, path = {}, deadline = 5 }) end)
     local r, t = run(sim, bot)
     T.eq("gank far: late", r.message, "late")
     T.check("gank far: at the deadline", t >= 5 and t <= 5.2)
@@ -524,7 +533,7 @@ do
     local sim, bot = world(nil, { speed = 300 })
     local target = sim:addHero{ team = 3, x = 3000, y = 0, hp = 300 }
     start(bot, function(ctx)
-        return ctx.gank({ target = function() return target end, path = {}, commit = function() if sim.t >= 2 then return "tower" end end })
+        return job.gank(ctx, { target = function() return target end, path = {}, commit = function() if sim.t >= 2 then return "tower" end end })
     end)
     local r, t = run(sim, bot)
     T.eq("gank commit: interrupted", r.reason, "interrupted")
@@ -537,7 +546,7 @@ do
         local sim, bot = world({ profile = function() return { react = react, jitter = 0 } end }, { damage = 1000, autoAttack = true, range = 150 })
         local target = sim:addHero{ team = 3, x = 100, y = 0, hp = 100 }
         local engagedAt
-        start(bot, function(ctx) return ctx.gank({ target = function() return target end, path = {}, onEngage = function(t) engagedAt = t end }) end)
+        start(bot, function(ctx) return job.gank(ctx, { target = function() return target end, path = {}, onEngage = function(t) engagedAt = t end }) end)
         run(sim, bot)
         for _, a in ipairs(bot.actions) do if a.kind == "attack" then return a.t - engagedAt end end
     end
@@ -551,7 +560,7 @@ do
     local sim, bot = world(nil, { x = 500, damage = 40, autoAttack = true, secondsPerAttack = 0.5, range = 2000 })
     local n = sim:addNeutral{ x = 600, y = 0, hp = 200 }
     sim:at(0.3, function() n.loc.x = 1500 end)
-    start(bot, function(ctx) return ctx.clearCamp({ at = { x = 600, y = 0 }, radius = 300 }) end)
+    start(bot, function(ctx) return job.clearCamp(ctx, { at = { x = 600, y = 0 }, radius = 300 }) end)
     local r = run(sim, bot)
     T.eq("clear chase: cleared", r.message, "cleared")
     T.check("clear chase: only once the chasing neutral is dead", not n.alive)
@@ -565,7 +574,7 @@ do
         local n = sim:addNeutral{ x = 1300, y = 0, hp = 500 }
         local camp = { stand = { x = 600, y = 0 }, box = box(1300, 0, 100), origin = { x = 1300, y = 0 } }
         if withApproach then camp.approach = { x = 1150, y = 0 } end
-        start(bot, function(ctx) return ctx.stack(stackPlan{ camp = camp, aggroAt = 6, exitUntil = 10 }) end)
+        start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = camp, aggroAt = 6, exitUntil = 10 }) end)
         for _ = 1, 400 do
             n.hidden = math.abs(bot.loc.x - n.loc.x) > 400
             if R.Current(bot) == nil then break end
@@ -583,3 +592,4 @@ end
 
 print("jobs [" .. T.runtime() .. "]")
 T.finish()
+FINISHED = true

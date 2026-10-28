@@ -35,12 +35,6 @@ export interface Ctx {
     cast(this: void, ...a: Opt<typeof Verbs.cast>): TaskBody;
     useItem(this: void, ...a: Opt<typeof Verbs.useItem>): TaskBody;
     pickUpRune(this: void, ...a: Opt<typeof Verbs.pickUpRune>): TaskBody;
-    /** Job verbs: phases are reported through this task's `label`/`urgent`. */
-    stack(this: void, plan: Verbs.StackPlan): TaskBody;
-    pull(this: void, plan: Verbs.PullPlan): TaskBody;
-    runeRun(this: void, plan: Verbs.RunePlan): TaskBody;
-    clearCamp(this: void, plan: Verbs.ClearPlan): TaskBody;
-    gank(this: void, plan: Verbs.GankPlan): TaskBody;
 }
 export interface CtxControls {
     startedAt: number;

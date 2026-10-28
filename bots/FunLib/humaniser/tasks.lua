@@ -5,6 +5,7 @@ local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local JobVerbs = require(GetScriptDirectory().."/FunLib/humaniser/job_verbs")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -125,7 +126,8 @@ local function loadBundle()
     local rawPrint = Utils.RawPrint
     if ok and type(res) == "table" then
         lib = res
-        lib.init(adapter);
+        lib.init(adapter)
+        JobVerbs.Bind(lib, adapter);
         (rawPrint or print)(support .. "ok")
     else
         (rawPrint or print)((support .. "fail ") .. tostring(res))
@@ -191,5 +193,9 @@ end
 function ____exports.Verbs()
     local ____opt_18 = loadBundle()
     return ____opt_18 and ____opt_18.Verbs
+end
+--- The job verbs (bot code on the engine's verbs), or undefined when tasks are off or the bundle failed to load.
+function ____exports.Jobs()
+    return loadBundle() ~= nil and JobVerbs or nil
 end
 return ____exports

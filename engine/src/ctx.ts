@@ -40,12 +40,6 @@ export interface Ctx {
     cast(this: void, ...a: Opt<typeof Verbs.cast>): TaskBody;
     useItem(this: void, ...a: Opt<typeof Verbs.useItem>): TaskBody;
     pickUpRune(this: void, ...a: Opt<typeof Verbs.pickUpRune>): TaskBody;
-    /** Job verbs: phases are reported through this task's `label`/`urgent`. */
-    stack(this: void, plan: Verbs.StackPlan): TaskBody;
-    pull(this: void, plan: Verbs.PullPlan): TaskBody;
-    runeRun(this: void, plan: Verbs.RunePlan): TaskBody;
-    clearCamp(this: void, plan: Verbs.ClearPlan): TaskBody;
-    gank(this: void, plan: Verbs.GankPlan): TaskBody;
 }
 
 export interface CtxControls {
@@ -56,7 +50,6 @@ export interface CtxControls {
 
 export function makeCtx(bot: TaskUnit, c: CtxControls): Ctx {
     const now = (): number => get()!.now();
-    const hooks: Verbs.JobHooks = { label: c.label, urgent: c.urgent };
     return {
         bot,
         now,
@@ -84,10 +77,5 @@ export function makeCtx(bot: TaskUnit, c: CtxControls): Ctx {
         cast: (ability, opts) => Verbs.cast(bot, ability, opts),
         useItem: (name, opts) => Verbs.useItem(bot, name, opts),
         pickUpRune: (rune, opts) => Verbs.pickUpRune(bot, rune, opts),
-        stack: (plan) => Verbs.stack(bot, plan, hooks),
-        pull: (plan) => Verbs.pull(bot, plan, hooks),
-        runeRun: (plan) => Verbs.runeRun(bot, plan, hooks),
-        clearCamp: (plan) => Verbs.clearCamp(bot, plan, hooks),
-        gank: (plan) => Verbs.gank(bot, plan, hooks),
     };
 }

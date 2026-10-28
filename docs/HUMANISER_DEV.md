@@ -1173,6 +1173,73 @@ Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, 
 - **Overlay** (Debug): `task: <name> step=<n>`, or `- last=<name> <ok|reason>` once it ends.
 - **Offline:** `tests/humaniser/test_tasks_integration.lua`.
 
+### Job verbs (`job_verbs.ts`)
+Generic, skill-scaled bodies for the support clock (knowledge.md §2.1-2.3). Each takes its geometry and times
+as a plan; the host (OHA `camp_jobs`/`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
+decides *when* to start; the verb executes. `JobVerbs.*(bot, plan, hooks?)` report phases through `{ label?, urgent? }`
+(pass the task's `ctx.label`/`ctx.urgent`); `Tasks.Jobs()` returns the module once the engine bundle has loaded (it is
+bound to the bundle and its adapter by `JobVerbs.Bind`). Moved from the engine's `jobs.ts` in slice 0b; tests
+`tests/humaniser/test_job_verbs.lua`. Defaults are OHA's `lane_config` values, so OHA data passes through unchanged.
+
+**Camp** `{ stand, box?, origin?, margin? = 300, search? = 700, pick?, confirmed? }`. `campNeutral(bot, camp)`:
+the nearest alive, visible neutral (`GetNearbyNeutralCreeps`) inside the box grown by `margin` (OHA
+`Radii.BoxMargin`). This is the fix for the `CampNeutral` known issue below: pass the spawner's `min`/`max` as
+`box` rather than OHA's strict-box `pick`. While nothing is seen at the aggro second the bot walks to `origin`.
+
+**Aggro (shared by stack and pull).** `aggroAt` is when the hit should **land** (OHA's `baseAggro`, the camp's
+second, with no host jitter). The verb draws one `Skill.timingError(bot)` per job (Gaussian, sigma
+`lerp(1.5, 0.2, skill)` s = OHA `Curves.JitterSigma`, clamped at 2.5 sigma; override with `timingError`, 0 =
+exact) and orders the attack `aggroLead(bot, target)` early (walk into range + wind-up + projectile flight,
+`ownHitTime`; 0.4 s without `GetAttackPoint`, at most 1.5 s; override with `aggroLead`). A neutral already in
+sight is hit from wherever the bot is (OHA's travel rule); otherwise the bot waits at `stand` (hold `job_wait`)
+and walks back if pushed off. The hit is confirmed by `attackAndConfirm` (hold `job_aggro`). Failures use OHA's
+messages: `timeout`/`late` (not at the stand by aggroAt + err + `startLate` 2 s), `no_target`/`mistake:no-camp`
+(nothing in the box by + `noCampAfter` 1 s), `missed`/`mistake:no-aggro` (hit not seen within `confirmFor` 2 s).
+`onAggro({ camp, planned, error, orderedAt, confirmedAt })` fires on each confirmed hit (OHA `NoteStackAggro`).
+O2 found the hit landing 1.1 s after the planned second (order at the second, then wind-up and walk); the lead
+removes that.
+
+**`stack(bot, { camp, aggroAt, exitPath, exitUntil, ...aggro })`**: the v0.2 port of `stack_task.ts`, promoted
+from `Testing.stack` (removed): urgent travel/wait/aggro, then `exit` along `exitPath` and hold (`stack_exit`)
+until `exitUntil`. Labels `travel, wait, aggro, exit`.
+
+**`pull(bot, { camp, aggroAt, lead, first?, watchSec? = 8, watchUntil?, leadDeadline?, ...aggro })`**: full,
+half and double pulls are one body; the kind lives in the data (full :15/:45 small, :18/:48 hard; half +2 s or
+`halfMeetPoint`). `first = { camp, aggroAt }` makes a double: the hard camp is hit at its own second, then the
+graded camp at `aggroAt` (one error for both, as OHA). Then `lead` (walk `lead` to the meet point, stuck after
+3 s, deadline aggroAt + 15; failure message `lead`), then `watch` at the meet point for `watchSec` and until
+`watchUntil` (hold `job_watch`). Urgent until the lead is done. Labels `travel, wait, aggro[, travel, wait,
+aggro], lead, watch`. The divert grade stays OHA's (`MeasureDivert`/`Grade`).
+
+**`runeRun(bot, { at, spawnAt, rune? | channel?, runeAt?, early? = 4, tolerance? = 150, lateBy? = 5,
+pickupFor? = 10, radius? = 300, confirmed?, timingError? })`**: walk to `at` (fails `timeout`/`late` after
+spawnAt + lateBy), wait (hold `rune_wait`) until the spawn plus one `Skill.react` delay, then either
+`pickUpRune(rune)` (retried for 2 s while the rune is not yet reported) or, for a shrine (`channel`, wisdom: 3 s
+within 300), stand in range for `channel` s, restarting the count when pushed out (`confirmed` false at the end:
+`missed`). Labels `travel, wait, pickup|channel`. **Skill-scaled arrival:** `runeArriveBy(bot, plan)` =
+spawnAt - `early * lerp(0.25, 1, skill)` + one timing error (drawn once per bot and spawn, so repeated calls
+agree); `runeLeaveAt(bot, plan)` subtracts the straight walk at the current speed. The host starts the task at
+`runeLeaveAt` (skill 1 arrives ~4 s early, skill 0.2 ~1.6 s and sometimes late).
+
+**`clearCamp(bot, { at, radius? = 700, arrive? = 300, search? = 1600, deadline?, emptyAfter? = 0.5,
+reorder? = 1, pick?, onEngage? })`** (slice 10): walk to the camp centre, attack its neutrals (the current target
+kept while alive, else the lowest HP one, or the host's `pick`), one order per target (re-given every `reorder` s),
+one `Skill.react` delay before each new target after a kill. ok `cleared` (it fought) or `empty` (nothing seen for
+`emptyAfter` s at the camp); `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a
+neutral is in attack range + 100 (`onEngage` fires once, there).
+
+**`gank(bot, { target, path, engageRange? = 700, telegraph?: { lead, fn }, commit?, lostGrace? = 2,
+engageFor? = 8, deadline?, reorder? = 1, onEngage? })`** (slice 11): walk the host's approach waypoints, then chase
+the target (re-read every frame through `target()`) into `engageRange` and attack it, the first order one
+`Skill.react` after reaching range. `telegraph.fn(eta)` fires once when the remaining path ETA falls to `lead` s.
+ok `kill` when the target dies; `interrupted` "escaped" (out of sight `lostGrace` s), `timeout` "no-kill" (fighting
+`engageFor` s), `timeout` "late" (not engaged by `deadline`), or `interrupted` with the host's `commit()` message.
+Labels `travel`, `engage`; urgent while engaged.
+
+UNVERIFIED in-game: `GetNearbyNeutralCreeps(radius)` (one argument) sees idle neutrals at 700 from the stand;
+the lead estimate against a real attack order that walks into range; rune status before the spawn (treated as
+not there until seen available, then retried for 2 s).
+
 ### In-game: check first
 1. **`coroutine` is present in Dota's bot VM.** Expected console line: `[H:tasks] support coroutine=table bundle=ok`. `coroutine=nil` means the bundle loaded but every task reports `unsupported`.
 2. **The luaBundle `require` shim works in Dota.** The same line shows `bundle=ok`. If it shows `bundle=fail <err>`, record the error here: no task code can run.

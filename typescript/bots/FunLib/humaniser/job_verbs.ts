@@ -1,9 +1,33 @@
-import { get } from "./adapter";
-import { Reason, Result, TaskAttacker, TaskBody, TaskCreep, TaskUnit, Vec } from "./types";
-import * as Skill from "./skill";
-import { ownHitTime } from "./lasthit";
-import { attackAndConfirm, walkPath, walkTo, waitUntil } from "./verbs";
-import { pickUpRune } from "./verbs_cast";
+/**
+ * Job verbs: camp stack, pull (full, half, double), rune or shrine run, camp clear and gank, each one task body that
+ * executes a plan the caller made. Bot code since slice 0b (moved out of the engine's `jobs`, unchanged): the engine
+ * keeps the atomic verbs, `Skill` and the hit-timing facts these bodies are built from. The engine is reached through
+ * the loaded bundle (`Bind`, from humaniser/tasks), never a static require, so a bundle that fails to load cannot
+ * break the humaniser.
+ */
+import type * as Lib from "bots/FunLib/engine/tasks";
+
+type Bundle = typeof Lib;
+type Reason = Lib.Reason;
+type Result = Lib.Result;
+type TaskAttacker = Lib.TaskAttacker;
+type TaskBody = Lib.TaskBody;
+type TaskCreep = Lib.TaskCreep;
+type TaskUnit = Lib.TaskUnit;
+type Vec = Lib.Vec;
+
+let engine: Bundle | undefined;
+let host: Lib.Adapter | undefined;
+
+/** The loaded bundle and the adapter it was initialised with: the clock and hold these bodies use. */
+export function Bind(lib: Bundle, adapter: Lib.Adapter): void {
+    engine = lib;
+    host = adapter;
+}
+
+function E(): Bundle {
+    return engine!;
+}
 
 // Default distances (units) and times (s) for camp jobs; every one can be overridden per plan.
 const ARRIVE = 100;
@@ -36,7 +60,7 @@ function fail(reason: Reason, message?: string): Result {
 }
 
 function now(): number {
-    return get()!.now();
+    return host!.now();
 }
 
 function dist(a: Vec, b: Vec): number {
@@ -46,11 +70,10 @@ function dist(a: Vec, b: Vec): number {
 }
 
 function hold(bot: TaskUnit, tag: string): void {
-    const a = get()!;
-    if (a.hold !== undefined) a.hold(bot, tag);
+    if (host!.hold !== undefined) host!.hold(bot, tag);
 }
 
-/** Task controls a job reports its phases through; `ctx` binds its own. */
+/** Task controls a job reports its phases through (pass the task's `ctx.label` and `ctx.urgent`). */
 export interface JobHooks {
     label?: (this: void, label: string) => void;
     urgent?: (this: void, on: boolean) => void;
@@ -147,7 +170,7 @@ export function aggroLead(bot: TaskUnit, target: TaskAttacker): number {
     if (bot.GetAttackPoint === undefined) return AGGRO_LEAD_DEFAULT;
     const d = dist(bot.GetLocation(), target.GetLocation());
     const walk = math.max(0, d - bot.GetAttackRange()) / math.max(1, bot.GetCurrentMovementSpeed?.() ?? 300);
-    const hit = ownHitTime(bot, target as Parameters<typeof ownHitTime>[1]);
+    const hit = E().Verbs.ownHitTime(bot, target as TaskCreep);
     return math.max(0, math.min(AGGRO_LEAD_MAX, walk + hit));
 }
 
@@ -198,7 +221,7 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
         if (n !== undefined) target = n;
         return n;
     };
-    const hit = yield* attackAndConfirm(bot, pick, {
+    const hit = yield* E().Verbs.attackAndConfirm(bot, pick, {
         findFor: math.max(0, at + (o.noCampAfter ?? NO_CAMP_AFTER) - now()),
         confirmFor: o.confirmFor ?? AGGRO_CONFIRM,
         searchAt: camp.origin ?? camp.stand,
@@ -222,20 +245,20 @@ export interface StackPlan extends AggroOpts {
 }
 
 /**
- * Camp stack (the SDK's original stack example as a verb): travel, wait at the stand point, a confirmed hit landing on
+ * Camp stack: travel, wait at the stand point, a confirmed hit landing on
  * the aggro second (+ skill error), walk off along `exitPath`, stay out until `exitUntil`. Labels `travel`, `wait`,
  * `aggro`, `exit`; urgent until the hit lands.
  */
 export function* stack(bot: TaskUnit, p: StackPlan, h: JobHooks = {}): TaskBody {
-    const err = p.timingError ?? Skill.timingError(bot);
+    const err = p.timingError ?? E().Skill.timingError(bot);
     h.urgent?.(true);
     const r = yield* aggroCamp(bot, p.camp, p.aggroAt, err, p, h);
     if (!r.success) return r;
     h.urgent?.(false);
     h.label?.("exit");
     const arrive = p.arrive ?? ARRIVE;
-    yield* walkPath(bot, p.exitPath, { tolerance: arrive, timeout: math.huge, stuckSecs: math.huge, deadline: p.exitUntil });
-    const held = yield* waitUntil(bot, p.exitUntil, { hold: "stack_exit" });
+    yield* E().Verbs.walkPath(bot, p.exitPath, { tolerance: arrive, timeout: math.huge, stuckSecs: math.huge, deadline: p.exitUntil });
+    const held = yield* E().Verbs.waitUntil(bot, p.exitUntil, { hold: "stack_exit" });
     return held.success ? ok() : held;
 }
 
@@ -262,7 +285,7 @@ export interface PullPlan extends AggroOpts {
  * `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done. Grading the divert is the host's.
  */
 export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
-    const err = p.timingError ?? Skill.timingError(bot);
+    const err = p.timingError ?? E().Skill.timingError(bot);
     h.urgent?.(true);
     if (p.first !== undefined) {
         const r = yield* aggroCamp(bot, p.first.camp, p.first.aggroAt, err, p, h);
@@ -274,7 +297,7 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;
     if (p.lead.length > 0) {
-        const led = yield* walkPath(bot, p.lead, {
+        const led = yield* E().Verbs.walkPath(bot, p.lead, {
             tolerance: arrive,
             timeout: math.huge,
             stuckSecs: 3,
@@ -330,10 +353,10 @@ export function runeArriveBy(bot: TaskUnit, p: RunePlan): number {
     let err = p.timingError;
     if (err === undefined) {
         const key = `${bot.GetPlayerID()}:${p.spawnAt}`;
-        err = arrivalErrors[key] ?? Skill.timingError(bot);
+        err = arrivalErrors[key] ?? E().Skill.timingError(bot);
         arrivalErrors[key] = err;
     }
-    return p.spawnAt - (p.early ?? RUNE_EARLY) * Skill.lerp(RUNE_EARLY_LOW, 1, Skill.of(bot)) + err;
+    return p.spawnAt - (p.early ?? RUNE_EARLY) * E().Skill.lerp(RUNE_EARLY_LOW, 1, E().Skill.of(bot)) + err;
 }
 
 /** When to start `runeRun` to arrive by `runeArriveBy`, from the straight-line walk at the current speed. */
@@ -351,7 +374,7 @@ export function runeLeaveAt(bot: TaskUnit, p: RunePlan): number {
 export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody {
     const tolerance = p.tolerance ?? 150;
     h.label?.("travel");
-    const walked = yield* walkTo(bot, p.at, {
+    const walked = yield* E().Verbs.walkTo(bot, p.at, {
         tolerance,
         timeout: math.huge,
         stuckSecs: math.huge,
@@ -360,7 +383,7 @@ export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody
     if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
 
     h.label?.("wait");
-    const go = math.max(p.spawnAt, now()) + Skill.react(bot);
+    const go = math.max(p.spawnAt, now()) + E().Skill.react(bot);
     while (now() < go) {
         if (!bot.IsAlive()) return fail("dead");
         if (dist(bot.GetLocation(), p.at) > tolerance) bot.Action_MoveToLocation(p.at);
@@ -394,7 +417,7 @@ export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody
     h.label?.("pickup");
     const graceUntil = go + RUNE_GRACE;
     while (true) {
-        const r = yield* pickUpRune(bot, p.rune, {
+        const r = yield* E().Verbs.pickUpRune(bot, p.rune, {
             at: p.runeAt,
             deadline: giveUp,
             timeout: math.max(0, giveUp - now()),
@@ -496,7 +519,7 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
         if (target !== undefined && camp.indexOf(target) < 0) {
             // Killed (or lost): a human takes a moment to pick the next one.
             target = undefined;
-            nextOrderAt = t + Skill.react(bot);
+            nextOrderAt = t + E().Skill.react(bot);
         }
         if (camp.length === 0) {
             if (dist(bot.GetLocation(), p.at) > arrive) {
@@ -626,7 +649,7 @@ export function* gank(bot: TaskUnit, p: GankPlan, h: JobHooks = {}): TaskBody {
         } else if (visible(target)) {
             if (engagedAt === undefined) {
                 engagedAt = t;
-                attackAt = t + Skill.react(bot);
+                attackAt = t + E().Skill.react(bot);
                 h.label?.("engage");
                 h.urgent?.(true);
                 p.onEngage?.(t);

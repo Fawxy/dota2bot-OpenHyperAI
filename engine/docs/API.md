@@ -1,4 +1,4 @@
-# SDK API (lua-tasks v0.2): design
+# Engine API (lua-tasks v0.2): design
 
 Date: 23/10/2026. Status: work packages 1-4 built and tested offline (fengari + LuaJIT); runner and `attackAndConfirm` verified in-game; cast/item/rune and SimpleHost checks outstanding. Supersedes nothing; extends `packages/lua-tasks` without breaking the
 OHA integration (`task`, `Step`, `Tick`, `Cancel`, `Urgent`, `Label`, `Verbs.*` keep their signatures).
@@ -7,10 +7,9 @@ OHA integration (`task`, `Step`, `Tick`, `Cancel`, `Urgent`, `Label`, `Verbs.*` 
 This document describes what is built. The project goal changed after it was written: the end state is a bot script on this SDK
 with no OHA code left, and the SDK holds only the kernel, engine facts (each citing a source) and atomic actions (master
 `CLAUDE.md` hard rule 3). Nothing below is removed by this note; the sections stay accurate until their replacement lands.
-Scheduled to move to the bot repo (master `BACKLOG.md` 3.2, skill `sdk-change` migration list): the job verbs (`stack`, `pull`,
-`runeRun`, `clearCamp`, `gank`), `Phase.DotaPhases`, the `nextLastHit`
-biases, and OHA-sourced defaults and wording. The helpers `campNeutral`, `aggroLead`, `runeArriveBy` and `runeLeaveAt` stay for now; the 1.2 and 3.2 designs
-split them between SDK facts (e.g. `runeLeaveAt` onto the travel ETA) and bot policy. Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
+Slice 0b (29/10/2026) moved this package into the bot repo as `engine/`, moved the job verbs (with `campNeutral`, `aggroLead`,
+`runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Still scheduled to move to bot code:
+the `nextLastHit` biases (slice 5). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
 incoming damage (2.2), per-patch camp and rune data. Jitter stays in `Skill`. Public verbs and facts will get contracts under
 `docs/contracts/`. Where this document names OHA files or values (the friction table, the Adapter table, the job verbs), read them
 as the current host's source, not as SDK vocabulary.
@@ -152,83 +151,19 @@ UNVERIFIED in-game: the wind-up formula's units (attack point as a cycle fractio
 at landing for ranged heroes, projectile `location`/`caster` fields, and `GetNearbyTowers` returning towers
 whose `GetAttackTarget` is the creep.
 
-## Job verbs: stack, pull, runeRun (team slices 7-9)
-Generic, skill-scaled bodies for the support clock (knowledge.md §2.1-2.3). Each takes its geometry and times
-as a plan; the host (OHA `camp_jobs`/`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
-decides *when* to start; the verb executes. `ctx.stack/pull/runeRun(plan)` report phases through the task's
-`label`/`urgent`; `Verbs.*(bot, plan, hooks?)` take `{ label?, urgent? }` explicitly. Source `src/jobs.ts`,
-tests `test/test_jobs.lua`. Defaults are OHA's `lane_config` values, so OHA data passes through unchanged.
-
-**Camp** `{ stand, box?, origin?, margin? = 300, search? = 700, pick?, confirmed? }`. `campNeutral(bot, camp)`:
-the nearest alive, visible neutral (`GetNearbyNeutralCreeps`) inside the box grown by `margin` (OHA
-`Radii.BoxMargin`). This is the fix for the `CampNeutral` known issue below: pass the spawner's `min`/`max` as
-`box` rather than OHA's strict-box `pick`. While nothing is seen at the aggro second the bot walks to `origin`.
-
-**Aggro (shared by stack and pull).** `aggroAt` is when the hit should **land** (OHA's `baseAggro`, the camp's
-second, with no host jitter). The verb draws one `Skill.timingError(bot)` per job (Gaussian, sigma
-`lerp(1.5, 0.2, skill)` s = OHA `Curves.JitterSigma`, clamped at 2.5 sigma; override with `timingError`, 0 =
-exact) and orders the attack `aggroLead(bot, target)` early (walk into range + wind-up + projectile flight,
-`ownHitTime`; 0.4 s without `GetAttackPoint`, at most 1.5 s; override with `aggroLead`). A neutral already in
-sight is hit from wherever the bot is (OHA's travel rule); otherwise the bot waits at `stand` (hold `job_wait`)
-and walks back if pushed off. The hit is confirmed by `attackAndConfirm` (hold `job_aggro`). Failures use OHA's
-messages: `timeout`/`late` (not at the stand by aggroAt + err + `startLate` 2 s), `no_target`/`mistake:no-camp`
-(nothing in the box by + `noCampAfter` 1 s), `missed`/`mistake:no-aggro` (hit not seen within `confirmFor` 2 s).
-`onAggro({ camp, planned, error, orderedAt, confirmedAt })` fires on each confirmed hit (OHA `NoteStackAggro`).
-O2 found the hit landing 1.1 s after the planned second (order at the second, then wind-up and walk); the lead
-removes that.
-
-**`stack(bot, { camp, aggroAt, exitPath, exitUntil, ...aggro })`**: the v0.2 port of `stack_task.ts`, promoted
-from `Testing.stack` (removed): urgent travel/wait/aggro, then `exit` along `exitPath` and hold (`stack_exit`)
-until `exitUntil`. Labels `travel, wait, aggro, exit`.
-
-**`pull(bot, { camp, aggroAt, lead, first?, watchSec? = 8, watchUntil?, leadDeadline?, ...aggro })`**: full,
-half and double pulls are one body; the kind lives in the data (full :15/:45 small, :18/:48 hard; half +2 s or
-`halfMeetPoint`). `first = { camp, aggroAt }` makes a double: the hard camp is hit at its own second, then the
-graded camp at `aggroAt` (one error for both, as OHA). Then `lead` (walk `lead` to the meet point, stuck after
-3 s, deadline aggroAt + 15; failure message `lead`), then `watch` at the meet point for `watchSec` and until
-`watchUntil` (hold `job_watch`). Urgent until the lead is done. Labels `travel, wait, aggro[, travel, wait,
-aggro], lead, watch`. The divert grade stays OHA's (`MeasureDivert`/`Grade`).
-
-**`runeRun(bot, { at, spawnAt, rune? | channel?, runeAt?, early? = 4, tolerance? = 150, lateBy? = 5,
-pickupFor? = 10, radius? = 300, confirmed?, timingError? })`**: walk to `at` (fails `timeout`/`late` after
-spawnAt + lateBy), wait (hold `rune_wait`) until the spawn plus one `Skill.react` delay, then either
-`pickUpRune(rune)` (retried for 2 s while the rune is not yet reported) or, for a shrine (`channel`, wisdom: 3 s
-within 300), stand in range for `channel` s, restarting the count when pushed out (`confirmed` false at the end:
-`missed`). Labels `travel, wait, pickup|channel`. **Skill-scaled arrival:** `runeArriveBy(bot, plan)` =
-spawnAt - `early * lerp(0.25, 1, skill)` + one timing error (drawn once per bot and spawn, so repeated calls
-agree); `runeLeaveAt(bot, plan)` subtracts the straight walk at the current speed. The host starts the task at
-`runeLeaveAt` (skill 1 arrives ~4 s early, skill 0.2 ~1.6 s and sometimes late).
-
-**`clearCamp(bot, { at, radius? = 700, arrive? = 300, search? = 1600, deadline?, emptyAfter? = 0.5,
-reorder? = 1, pick?, onEngage? })`** (slice 10): walk to the camp centre, attack its neutrals (the current target
-kept while alive, else the lowest HP one, or the host's `pick`), one order per target (re-given every `reorder` s),
-one `Skill.react` delay before each new target after a kill. ok `cleared` (it fought) or `empty` (nothing seen for
-`emptyAfter` s at the camp); `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a
-neutral is in attack range + 100 (`onEngage` fires once, there).
-
-**`gank(bot, { target, path, engageRange? = 700, telegraph?: { lead, fn }, commit?, lostGrace? = 2,
-engageFor? = 8, deadline?, reorder? = 1, onEngage? })`** (slice 11): walk the host's approach waypoints, then chase
-the target (re-read every frame through `target()`) into `engageRange` and attack it, the first order one
-`Skill.react` after reaching range. `telegraph.fn(eta)` fires once when the remaining path ETA falls to `lead` s.
-ok `kill` when the target dies; `interrupted` "escaped" (out of sight `lostGrace` s), `timeout` "no-kill" (fighting
-`engageFor` s), `timeout` "late" (not engaged by `deadline`), or `interrupted` with the host's `commit()` message.
-Labels `travel`, `engage`; urgent while engaged.
-
-UNVERIFIED in-game: `GetNearbyNeutralCreeps(radius)` (one argument) sees idle neutrals at 700 from the stand;
-the lead estimate against a real attack order that walks into range; rune status before the spawn (treated as
-not there until seen available, then retried for 2 s).
+## Job verbs
+Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (reference in the bot's
+`docs/HUMANISER_DEV.md`, "Job verbs"). They are built from the verbs, `ownHitTime` and `Skill` below.
 
 ## Work packages
 1. Core: `ctx`, `must`/`abort`, `deadline`, combinators (`Flow`). Done.
 2. Cast/item verbs: `cast`, `useItem`, `pickUpRune` with effect confirmation. Done (`verbs_cast.ts`).
 3. `SimpleHost`: adapter and mode-file glue for non-OHA bots, `body(fn)` for Lua-authored bodies, and
    `examples/generic/`. Done.
-4. O2 stack body ported to v0.2 (now `Verbs.stack`, WP6; tested in `test_jobs.lua`). Done offline; the OHA copy
-   (`stack_task.ts`) still uses v0.1 until the in-game stack check passes.
+4. O2 stack body ported to v0.2 (later `Verbs.stack`, WP6). Moved to bot code in slice 0b.
 5. Skill/profile on the adapter and `ctx` (S3), `lastHit` v2 and `deny` (S4). Done offline
    (`test_lasthit.lua`); in-game check pending (slice 4).
-6. Job verbs `stack` (promotes WP4's `Testing.stack`), `pull`, `runeRun`, `campNeutral`, `aggroLead`,
-   `runeArriveBy/LeaveAt`, `Skill.timingError`. Done offline (`test_jobs.lua`); in-game pending (slices 7-9).
+6. Job verbs and `Skill.timingError`. The job verbs moved to bot code in slice 0b; `Skill.timingError` stays.
 
 ## Public surface (bundle `tasks.lua`)
 | Export | What |
@@ -238,9 +173,6 @@ not there until seen available, then retried for 2 s).
 | `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves |
 | `Skill.of/profile/react/jitter/lastHitError/random` | skill and human-timing helpers read through the adapter |
 | `Verbs.cast/useItem/pickUpRune` | ability, item and rune verbs |
-| `Verbs.stack/pull/runeRun` (and `ctx.*`) | job verbs: camp stack, full/half/double pull, rune or shrine run |
-| `Verbs.clearCamp/gank` (and `ctx.*`) | farm a camp; a planned gank (approach, telegraph, chase, attack) |
-| `Verbs.campNeutral/aggroLead/runeArriveBy/runeLeaveAt` | job helpers: box+margin pick, order-to-hit lead, skill-scaled rune timing |
 | `Skill.timingError/timingSigma/gauss` | skill-scaled timing error for timed actions |
 | `Flow.watch/withTimeout/retry/race/until` | combinators |
 | `must`, `abort` | failure propagation |

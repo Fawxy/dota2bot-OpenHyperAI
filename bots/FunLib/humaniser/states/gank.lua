@@ -483,7 +483,7 @@ local body = __TS__Generator(function(bot, ctx)
         1,
         bot:GetCurrentMovementSpeed()
     )
-    return __TS__DelegatedYield(Tasks.Verbs().gank(
+    return __TS__DelegatedYield(Tasks.Jobs().gank(
         bot,
         {
             target = function() return target() end,

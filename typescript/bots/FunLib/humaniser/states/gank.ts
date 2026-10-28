@@ -267,7 +267,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const flank = skill >= SETTINGS.FlankSkill;
     const path = flank ? [FlankPoint(bot.GetLocation(), t0.GetLocation(), attempt.lane) as unknown as Lib.Vec] : [];
     const eta = (GetUnitToUnitDistance(bot, t0) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
-    return yield* Tasks.Verbs()!.gank(
+    return yield* Tasks.Jobs()!.gank(
         bot as unknown as Lib.TaskUnit,
         {
             target: () => target() as unknown as Lib.TaskAttacker | undefined,

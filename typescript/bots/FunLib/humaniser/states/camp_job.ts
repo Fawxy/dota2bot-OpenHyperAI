@@ -1,11 +1,12 @@
 /**
- * `stack` and `pull` states (team slices 7-8): camp jobs executed by the SDK job verbs (`Verbs.stack`, `Verbs.pull`)
+ * `stack` and `pull` states (team slices 7-8): camp jobs executed by the job verbs (`JobVerbs.stack`, `JobVerbs.pull`)
  * instead of camp_jobs' step(). OHA still decides and plans every job (LanePlanner, Stacking, CampJobs.Start) and keeps
  * its bookkeeping: continue checks, preempt and mode-end aborts in Desire/OnEnd, grading, stack outcomes and telemetry.
  * The body only executes the plan: travel, wait, aggro on the second, lead or walk off, watch. Jobs not owned (or
  * contests and takes) run on step() as before.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
+import type * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
@@ -50,7 +51,7 @@ function R(): LaneConfig.LaneSettings["Radii"] {
     return LaneConfig.Settings().Radii;
 }
 
-function campOf(bot: Unit, idx: number, stand: Vector, opts: { confirmAny: boolean }): Lib.Verbs.Camp {
+function campOf(bot: Unit, idx: number, stand: Vector, opts: { confirmAny: boolean }): JobVerbs.Camp {
     const sp = Camps.SpawnerByIdx(idx);
     // step()'s approachCamp: blind at the stand point StandApproachLead s before the aggro, move in to StandApproach.
     let approach: Lib.Vec | undefined;
@@ -82,7 +83,7 @@ function onLabel(bot: Unit, job: Job, label: string): void {
     if (label === "aggro" && job.kind === "stack") job.stackBefore = Exec.NeutralsInBox(bot, job.activeCamp);
 }
 
-function landed(bot: Unit, job: Job, info: Lib.Verbs.AggroInfo): void {
+function landed(bot: Unit, job: Job, info: JobVerbs.AggroInfo): void {
     job.aggroOrderedAt = gameTimeOf(info.orderedAt);
     job.aggroTarget = info.target as unknown as Unit | undefined;
     const now = DotaTime();
@@ -101,7 +102,7 @@ function landed(bot: Unit, job: Job, info: Lib.Verbs.AggroInfo): void {
     if (job.kind === "stack") Exec.NoteStackAggro(bot, job, now);
 }
 
-function stackPlan(bot: Unit, job: Job): Lib.Verbs.StackPlan {
+function stackPlan(bot: Unit, job: Job): JobVerbs.StackPlan {
     return {
         camp: campOf(bot, job.campIdx, job.stand, { confirmAny: true }),
         // OHA's aggroAt already holds its skill jitter (LaneConfig.Jitter, the same curve as the SDK's timingError).
@@ -118,7 +119,7 @@ function stackPlan(bot: Unit, job: Job): Lib.Verbs.StackPlan {
     };
 }
 
-function pullPlan(bot: Unit, job: Job): Lib.Verbs.PullPlan {
+function pullPlan(bot: Unit, job: Job): JobVerbs.PullPlan {
     const chain = job.chain;
     const small = chain !== undefined ? chain.stand : job.stand;
     return {
@@ -193,9 +194,9 @@ function* body(bot: Unit, state: string, ctx: Lib.Ctx): Lib.TaskBody {
         return ctx.fail("interrupted", "legacy-resume");
     }
     started[pid] = job;
-    const V = Tasks.Verbs()!;
+    const V = Tasks.Jobs()!;
     const u = bot as unknown as Lib.TaskUnit;
-    const hooks: Lib.Verbs.JobHooks = {
+    const hooks: JobVerbs.JobHooks = {
         label: (l) => {
             ctx.label(l);
             onLabel(bot, job, l);

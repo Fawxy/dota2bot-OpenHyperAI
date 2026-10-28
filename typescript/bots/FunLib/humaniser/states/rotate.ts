@@ -11,6 +11,7 @@
  * The decision, its re-checks (lane can spare, contested) and the hold rules stay OHA's.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
+import type * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
@@ -95,7 +96,7 @@ export function ShrineFor(team: number): Vector {
     return Vector(s[0], s[1], s[2]);
 }
 
-function planFor(bot: Unit, spawn: number): Lib.Verbs.RunePlan {
+function planFor(bot: Unit, spawn: number): JobVerbs.RunePlan {
     return {
         at: ShrineFor(bot.GetTeam()) as unknown as Lib.Vec,
         spawnAt: spawn,
@@ -114,12 +115,12 @@ function spawnNow(now: number): number {
 
 /** When to leave lane for `spawn`: the SDK's skill-scaled arrival, less the walk (path factor on the straight line). */
 export function LeaveAt(bot: Unit, spawn: number): number | undefined {
-    const V = Tasks.Verbs();
-    if (V === undefined) return undefined;
+    const J = Tasks.Jobs();
+    if (J === undefined) return undefined;
     const u = bot as unknown as Lib.TaskUnit;
     const plan = planFor(bot, spawn);
     const d = GetUnitToLocationDistance(bot, ShrineFor(bot.GetTeam()));
-    return V.runeArriveBy(u, plan) - (d * PATH_FACTOR) / math.max(1, bot.GetCurrentMovementSpeed());
+    return J.runeArriveBy(u, plan) - (d * PATH_FACTOR) / math.max(1, bot.GetCurrentMovementSpeed());
 }
 
 function danger(bot: Unit): string | undefined {
@@ -262,7 +263,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     if (doneFor[pid] === spawn && (trips[pid] === undefined || trips[pid]!.ended !== undefined)) return ctx.fail("no_target", "done");
     if (trips[pid] === undefined || trips[pid]!.ended !== undefined) trips[pid] = { team: bot.GetTeam(), spawn, startedAt: now };
     const trip = trips[pid]!;
-    const hooks: Lib.Verbs.JobHooks = {
+    const hooks: JobVerbs.JobHooks = {
         label: (l) => {
             ctx.label(l);
             if (l === "wait" || (l === "channel" && trip.arrivedAt === undefined)) trip.arrivedAt = DotaTime();
@@ -270,7 +271,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         },
         urgent: ctx.urgent,
     };
-    return yield* Tasks.Verbs()!.runeRun(bot as unknown as Lib.TaskUnit, planFor(bot, spawn), hooks);
+    return yield* Tasks.Jobs()!.runeRun(bot as unknown as Lib.TaskUnit, planFor(bot, spawn), hooks);
 }
 
 function ended(bot: Unit, r: Lib.Result, info: { label?: string; steps: number }): void {

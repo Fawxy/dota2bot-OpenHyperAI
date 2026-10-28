@@ -158,10 +158,10 @@ end
 -- ctx.urgent reaches the claims.
 do
     local sim, bot = world()
-    local neutral = sim:addCreep{ x = 700, y = 0, hp = 500 }
-    local p = { camp = { stand = { x = 600, y = 0 }, pick = function() return neutral end }, aggroAt = 5,
-        exitPath = { { x = 0, y = 0 } }, exitUntil = 9, timingError = 0 }
-    start(sim, bot, function(ctx) return ctx.stack(p) end)
+    start(sim, bot, function(ctx)
+        ctx.urgent(true)
+        return ctx.walkTo({ x = 600, y = 0 })
+    end)
     frame(sim, bot)
     T.eq("urgent claim posted while travelling", sim.claims[#sim.claims].c.urgent, true)
 end
@@ -266,7 +266,7 @@ do
     T.eq("stepped exactly until done", n, 3)
 end
 
--- The stack job itself (formerly Testing.stack) is covered in test_jobs.lua.
+-- The stack job itself (formerly Testing.stack) is bot code since slice 0b (tests/humaniser/test_job_verbs.lua).
 
 print("SDK [" .. T.runtime() .. "]")
 T.finish()
