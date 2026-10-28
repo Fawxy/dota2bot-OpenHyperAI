@@ -333,7 +333,7 @@ do
 	for _, l in ipairs(lines) do
 		if l:find("key=radiant_off_large data=unverified", 1, true) then noted = true end
 	end
-	check("job start notes unverified data", noted, lines[1])
+	check("job start notes unverified data", noted, table.concat(lines, " | "))
 end
 
 do
