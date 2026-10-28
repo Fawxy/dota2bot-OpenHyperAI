@@ -483,7 +483,6 @@ function ancientDown(team: Team): boolean {
 // World and hero events (BACKLOG 0.6, slice 23). Each team's lowest-PID bot reports its own team's rune pickups, wards and
 // building losses, so a ten-bot game logs each event once per team. Reads only, never an action.
 declare function GetRuneStatus(this: void, rune: number): number;
-declare function GetRuneType(this: void, rune: number): number;
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRoshanKillTime(this: void): number;
 declare const RUNE_STATUS_AVAILABLE: number;
@@ -502,12 +501,13 @@ const POWER_FROM = 360;
 const RUNE_TAKER_R = 400;
 /** judgement: ward cast range 500 plus movement since the cast. */
 const WARD_OWNER_R = 800;
+/** Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this. */
+const RUNES_FROM = 1;
 /** A teleport's landing spot is read this long after its modifier ends. */
 const TP_SETTLE = 0.1;
 
 interface RuneSeen {
     up: boolean;
-    type: number;
     loc: Vector;
 }
 
@@ -544,11 +544,11 @@ function nearest(units: Unit[], loc: Vector): LuaMultiReturn<[Unit | undefined, 
 }
 
 function trackRunes(team: number, w: WorldState, now: number): void {
+    if (now < RUNES_FROM) return;
     for (const r of RUNES) {
         const seen = w.runes[r];
         if (GetRuneStatus(r) === RUNE_STATUS_AVAILABLE) {
-            if (seen === undefined || !seen.up) w.runes[r] = { up: true, type: GetRuneType(r), loc: GetRuneSpawnLocation(r) };
-            else seen.type = GetRuneType(r);
+            if (seen === undefined || !seen.up) w.runes[r] = { up: true, loc: GetRuneSpawnLocation(r) };
             continue;
         }
         if (seen === undefined || !seen.up) continue;
@@ -564,7 +564,6 @@ function trackRunes(team: number, w: WorldState, now: number): void {
             ["team", team],
             ["rune", r],
             ["kind", power ? (now < POWER_FROM ? "water" : "power") : "bounty"],
-            ["type", seen.type],
             ["x", math.floor(seen.loc.x)],
             ["y", math.floor(seen.loc.y)],
         ]);

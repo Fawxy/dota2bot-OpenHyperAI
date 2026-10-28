@@ -13,7 +13,6 @@ function UnitMeta:FindItemSlot(name) return (self.items or {})[name] and 0 or -1
 RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = 0, 1, 2
 RUNES, RUNE_SPOTS = {}, {}
 function GetRuneStatus(r) return RUNES[r] or RUNE_STATUS_MISSING end
-function GetRuneType(r) return 3 end
 function GetRuneSpawnLocation(r) return RUNE_SPOTS[r] or Vector(9000, 9000) end
 ROSHAN_AT = 0
 function GetRoshanKillTime() return ROSHAN_AT end
@@ -62,7 +61,6 @@ do
 	check("one water pickup", #e == 1, #e)
 	check("taker is the nearest own hero", e[1] and field(e[1], "pid") == "2", e[1])
 	check("water before 6:00", e[1] and field(e[1], "kind") == "water", e[1])
-	check("rune type kept from the last available frame", e[1] and field(e[1], "type") == "3", e[1])
 	tick(H, { logger, mid }, 122)
 	check("reported once", #events("rune_pickup") == 1, #events("rune_pickup"))
 	RUNES[Rune.Power1] = RUNE_STATUS_AVAILABLE
@@ -71,6 +69,19 @@ do
 	tick(H, { logger, mid }, 361)
 	local p = events("rune_pickup")[2]
 	check("power from 6:00", p and field(p, "kind") == "power", p)
+end
+
+-- Rune status is stale across 0:00: nothing is tracked before 1 s.
+do
+	local H = fresh()
+	local a = MakeUnit({ pid = 1, loc = Vector(-1650, 1150) })
+	RUNE_SPOTS[Rune.Power1] = Vector(-1700, 1100)
+	RUNES[Rune.Power1] = RUNE_STATUS_AVAILABLE
+	tick(H, { a }, -5)
+	RUNES[Rune.Power1] = RUNE_STATUS_MISSING
+	tick(H, { a }, 0.2)
+	tick(H, { a }, 1.5)
+	check("no pickup across 0:00", #events("rune_pickup") == 0, #events("rune_pickup"))
 end
 
 -- No own hero near (fog or an enemy far away took it), or an enemy hero nearer: not this team's pickup.

@@ -712,6 +712,8 @@ local POWER_FROM = 360
 local RUNE_TAKER_R = 400
 --- judgement: ward cast range 500 plus movement since the cast.
 local WARD_OWNER_R = 800
+--- Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this.
+local RUNES_FROM = 1
 --- A teleport's landing spot is read this long after its modifier ends.
 local TP_SETTLE = 0.1
 local worlds = {}
@@ -743,26 +745,26 @@ local function nearest(units, loc)
     return best, bestD
 end
 local function trackRunes(team, w, now)
+    if now < RUNES_FROM then
+        return
+    end
     for ____, r in ipairs(RUNES) do
         do
-            local __continue94
+            local __continue95
             repeat
                 local seen = w.runes[r]
                 if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
                     if seen == nil or not seen.up then
                         w.runes[r] = {
                             up = true,
-                            type = GetRuneType(r),
                             loc = GetRuneSpawnLocation(r)
                         }
-                    else
-                        seen.type = GetRuneType(r)
                     end
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 if seen == nil or not seen.up then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 seen.up = false
@@ -771,7 +773,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 local ____, enemyD = nearest(
@@ -779,7 +781,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if enemyD < d then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 local power = r == Rune.Power1 or r == Rune.Power2
@@ -793,7 +795,6 @@ local function trackRunes(team, w, now)
                         {"team", team},
                         {"rune", r},
                         {"kind", power and (now < POWER_FROM and "water" or "power") or "bounty"},
-                        {"type", seen.type},
                         {
                             "x",
                             math.floor(seen.loc.x)
@@ -804,9 +805,9 @@ local function trackRunes(team, w, now)
                         }
                     }
                 )
-                __continue94 = true
+                __continue95 = true
             until true
-            if not __continue94 then
+            if not __continue95 then
                 break
             end
         end
