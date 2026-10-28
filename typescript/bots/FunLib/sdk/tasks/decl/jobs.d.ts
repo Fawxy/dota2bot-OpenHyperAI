@@ -9,7 +9,7 @@ export interface Box {
     min: Vec;
     max: Vec;
 }
-/** One neutral camp as the host knows it (OHA: `GetNeutralSpawners()` box plus camp data). */
+/** One neutral camp as the host knows it (e.g. a `GetNeutralSpawners()` box plus the host's camp data). */
 export interface Camp {
     /** Where the bot waits to hit the camp. */
     stand: Vec;
@@ -18,17 +18,17 @@ export interface Camp {
     /** Spawner origin, walked towards when nothing is seen from the stand point. */
     origin?: Vec;
     /**
-     * A closer stand point (OHA: StandApproach from the origin), taken `approachLead` s before the aggro when nothing
+     * A closer stand point, taken `approachLead` s before the aggro when nothing
      * is in sight from `stand` (trees, night vision), so the camp is seen in time to hit it on its second.
      */
     approach?: Vec;
-    /** Box margin: idle neutrals stand just outside the box. Default 300 (OHA `Radii.BoxMargin`). */
+    /** Box margin: idle neutrals stand just outside the box. Default 300. */
     margin?: number;
     /** `GetNearbyNeutralCreeps` radius. Default 700. */
     search?: number;
     /** Host override of the neutral to hit. */
     pick?: (this: void) => TaskAttacker | undefined;
-    /** Extra proof the aggro landed (OHA: a neutral targets the bot), passed to `attackAndConfirm`. */
+    /** Extra proof the aggro landed (e.g. a neutral targets the bot), passed to `attackAndConfirm`. */
     confirmed?: (this: void) => boolean;
 }
 export interface AggroInfo {
@@ -55,7 +55,7 @@ export interface AggroOpts {
     timingError?: number;
     /** Seconds before the hit the order goes out; default estimated per target (`aggroLead`). */
     aggroLead?: number;
-    /** Seconds before the aggro the bot moves to `camp.approach` when it sees nothing. Default 3 (OHA StandApproachLead). */
+    /** Seconds before the aggro the bot moves to `camp.approach` when it sees nothing. Default 3. */
     approachLead?: number;
     onAggro?: (this: void, info: AggroInfo) => void;
 }
@@ -68,15 +68,15 @@ export declare function campNeutral(bot: TaskUnit, camp: Camp): TaskAttacker | u
 export declare function aggroLead(bot: TaskUnit, target: TaskAttacker): number;
 export interface StackPlan extends AggroOpts {
     camp: Camp;
-    /** When the hit should land (OHA: `baseAggro`, the camp's stack second; no host jitter, the SDK adds it). */
+    /** When the hit should land (the camp's stack second, without jitter: the verb adds the skill error). */
     aggroAt: number;
     /** Walked after the hit, out of the box. */
     exitPath: Vec[];
-    /** Absolute time the walk-off ends (OHA: next :00 + `StackExitUntil`). */
+    /** Absolute time the walk-off ends (just after the next :00 spawn check). */
     exitUntil: number;
 }
 /**
- * Camp stack (v0.2 port of OHA's O2 `stack_task.ts`): travel, wait at the stand point, a confirmed hit landing on
+ * Camp stack (the SDK's original stack example as a verb): travel, wait at the stand point, a confirmed hit landing on
  * the aggro second (+ skill error), walk off along `exitPath`, stay out until `exitUntil`. Labels `travel`, `wait`,
  * `aggro`, `exit`; urgent until the hit lands.
  */
@@ -84,7 +84,7 @@ export declare function stack(bot: TaskUnit, p: StackPlan, h?: JobHooks): TaskBo
 export interface PullPlan extends AggroOpts {
     /** The camp whose hit is graded (a double's small camp). */
     camp: Camp;
-    /** When its hit should land (OHA: the camp's full or half pull second, e.g. :15/:45 or :17/:47). */
+    /** When its hit should land (the camp's full or half pull second, e.g. :15/:45 or :17/:47). */
     aggroAt: number;
     /** Walked after the hit, to the meet point with the wave (last point). */
     lead: Vec[];
@@ -95,7 +95,7 @@ export interface PullPlan extends AggroOpts {
     };
     /** Watch at the meet point at least this long. Default 8. */
     watchSec?: number;
-    /** And until this time (OHA: wave arrival + `WatchAfterWave`). */
+    /** And until this time (e.g. a little after the wave arrives). */
     watchUntil?: number;
     /** Absolute time the lead must be done by. Default aggroAt + 15. */
     leadDeadline?: number;

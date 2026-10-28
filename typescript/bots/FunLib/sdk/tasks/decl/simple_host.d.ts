@@ -1,7 +1,7 @@
 /** @noSelfInFile */
 import { Ctx } from "./ctx";
 import { TaskFactory } from "./runner";
-import { Adapter, Result, TaskBody, TaskUnit } from "./types";
+import { Adapter, Result, TaskBody, TaskUnit, Vec } from "./types";
 export interface InstallOptions {
     /** Game clock in seconds. Default `DotaTime`. */
     now?: (this: void) => number;
@@ -11,9 +11,14 @@ export interface InstallOptions {
     enabled?: (this: void) => boolean;
     /** Seconds a claim stays live without being re-posted. Default 1. */
     claimTTL?: number;
+    /** Builds the points verbs make themselves. Default: the script's global `Vector`, when it has one. */
+    vector?: (this: void, x: number, y: number, z: number) => Vec;
 }
 export declare const adapter: Adapter;
-/** Installs the host as the runner's adapter. Returns false (and installs nothing) without a clock. */
+/**
+ * Installs the host as the runner's adapter. Returns false (and installs nothing) without a clock. Points verbs
+ * build themselves are made with `opts.vector`, else the script's `Vector`, as Dota's move orders require.
+ */
 export declare function install(o?: InstallOptions): boolean;
 /** Kill switch. Off: the next `desire` call cancels the running task (`cancelled`/`disabled`). */
 export declare function SetEnabled(on: boolean): void;

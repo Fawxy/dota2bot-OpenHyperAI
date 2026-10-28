@@ -46,7 +46,7 @@ export interface NextLastHitOpts {
  * The lane creep the bot should go for next, if any becomes killable within `within` seconds of the bot reaching
  * attack range: an enemy creep to last-hit (the adapter's `lastHitFilter` applies) or an allied creep to deny.
  * Exact prediction, no skill error (the verbs apply that when they swing): eta is when the creep becomes
- * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Priority (knowledge.md 1.2): ranged last hit, ranged deny,
+ * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Priority: ranged last hit, ranged deny,
  * melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
  */
 export declare function nextLastHit(bot: TaskUnit, opts?: NextLastHitOpts): LaneTarget | undefined;

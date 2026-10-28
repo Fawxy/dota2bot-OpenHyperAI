@@ -1,6 +1,6 @@
 /** @noSelfInFile */
 import { SkillProfile, TaskUnit } from "./types";
-/** Last-hit error half-width (fraction of own damage) at skill 0 and 1: OHA LastHitSkill ErrorLow/ErrorHigh. */
+/** Last-hit error half-width (fraction of own damage) at skill 0 and 1. */
 export declare const LAST_HIT_ERROR_LOW = 0.15;
 export declare const LAST_HIT_ERROR_HIGH = 0.02;
 /** Seconds of swing-timing error per unit of last-hit error: 0.02 -> 0.04 s, 0.15 -> 0.3 s. */
@@ -21,7 +21,7 @@ export declare function react(bot: TaskUnit): number;
 /** Half-width of the per-creep damage-estimate error: the host's `lastHitError`, else lerped from skill. */
 export declare function lastHitError(bot: TaskUnit): number;
 export declare function lapseChance(bot: TaskUnit): number;
-/** Gaussian sigma (s) of a timed action's error at skill 0 and 1: OHA lane_config Curves.JitterSigma. */
+/** Gaussian sigma (s) of a timed action's error at skill 0 and 1. */
 export declare const TIMING_SIGMA_LOW = 1.5;
 export declare const TIMING_SIGMA_HIGH = 0.2;
 /** Draws past this many sigmas are clamped, so one roll can never wreck a job outright. */

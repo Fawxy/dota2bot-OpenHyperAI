@@ -13,7 +13,7 @@ export interface Vec {
     z?: number;
 }
 /**
- * Minimal structural bot handle; no Dota/OHA imports. Members are methods (not `this: void`)
+ * Minimal structural bot handle; no Dota or host imports. Members are methods (not `this: void`)
  * so they compile to `unit:Method(...)`, matching Dota's bot unit API.
  */
 export interface TaskUnit {
@@ -132,7 +132,7 @@ export interface TaskHero {
     GetAttackRange?(): number;
     GetAttackProjectileSpeed?(): number;
 }
-/** Human timing profile (OHA `Profile.Get`): `react` s base reaction, `jitter` fraction, `lapse` chance. */
+/** Human timing profile: `react` s base reaction, `jitter` fraction, `lapse` chance per creep. */
 export interface SkillProfile {
     react: number;
     jitter: number;
@@ -163,10 +163,10 @@ export interface Adapter {
     enabled(this: void): boolean;
     /** Builds a point verbs create themselves (e.g. holdAt's scattered spot); hosts whose move order needs a native vector supply it. */
     vector?(this: void, x: number, y: number, z: number): Vec;
-    /** Execution skill in [0, 1] (OHA `Difficulty.GetSkill`). Absent: 1. Read every time a verb needs it. */
+    /** Execution skill in [0, 1], e.g. from the bot difficulty. Absent: 1. Read every time a verb needs it. */
     skill?(this: void, bot: TaskUnit): number;
     profile?(this: void, bot: TaskUnit): SkillProfile;
-    /** Last-hit error half-width (OHA `LastHitSkill.ErrorWidth`, pressure included); overrides the skill lerp. */
+    /** Last-hit error half-width (a host may widen it under pressure); overrides the skill lerp. */
     lastHitError?(this: void, bot: TaskUnit): number;
     /** Uniform [0, 1); defaults to `math.random`. */
     random?(this: void): number;
