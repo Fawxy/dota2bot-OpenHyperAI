@@ -3,4 +3,6 @@
  "bars":[{"id":"H1a","metric":"lua_ours","rule":"each","arms":["on","off"],"max":0},
   {"id":"H1b","metric":"lua_oha","rule":"each","arms":["on","off"],"max":0},
   {"id":"H1c","metric":"console","rule":"mean","cmp":"on<=off"},
-  {"id":"H1d","metric":"bundle_fail","rule":"each","max":0}]}
+  {"id":"H1c squelch","metric":"squelch","rule":"each","arms":["on","off"],"max":0},
+  {"id":"H1d","metric":"bundle_fail","rule":"each","max":0},
+  {"id":"H1d ok","metric":"bundle_ok","rule":"each","min":1}]}

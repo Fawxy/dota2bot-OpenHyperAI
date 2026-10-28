@@ -12,7 +12,8 @@
 //
 // Manifest: ~/.dotactl/batches/<name>.manifest, one `status=ok|fail label=... seed= arm= lineup= log=...` line per game.
 // Resumable: a label already `status=ok` is skipped. `--build` goes to the first game this run starts. A failed game is retried
-// once, then the batch stops (exit 1). The curfew stops it (exit 2). Labels are <name>_<lineup>_<arm>_<rep>.
+// once (with `--build` again if that game was the build), then the batch stops (exit 1). The curfew stops it (exit 3); a
+// usage error is exit 2. Labels are <name>_<lineup>_<arm>_<rep>.
 'use strict';
 
 const fs = require('fs');
@@ -47,7 +48,8 @@ function plan(spec) {
 
 /** dotactl run arguments for one game. */
 function runArgs(spec, game, build) {
-    const args = ['run', '--worktree', spec.worktree];
+    // dotactl resolves a bare name under repos/, so pass the worktree as an absolute path (a name means worktrees/<name>).
+    const args = ['run', '--worktree', path.isAbsolute(spec.worktree) ? spec.worktree : path.resolve(MASTER, 'worktrees', spec.worktree)];
     if (build) args.push('--build');
     args.push('--mode', spec.mode || 'bots', '--seed', String(game.seed), '--timescale', String(spec.timescale || 8),
         '--until', String(spec.until), '--no-analyse', '--label', game.label);
@@ -66,7 +68,12 @@ function main(argv) {
         process.exit(2);
     }
     const spec = JSON.parse(fs.readFileSync(specFile, 'utf8'));
-    for (const k of ['name', 'worktree', 'build', 'lineups', 'arms', 'until']) if (spec[k] === undefined) throw new Error(`spec lacks ${k}`);
+    for (const k of ['name', 'worktree', 'build', 'lineups', 'arms', 'until']) {
+        if (spec[k] === undefined) {
+            console.error(`spec lacks ${k}`);
+            process.exit(2);
+        }
+    }
     const dotactl = path.resolve(MASTER, spec.dotactl || 'repos/dotactl/dotactl.js');
     const manifest = path.join(BATCHES, `${spec.name}.manifest`);
     const games = plan(spec);
@@ -77,20 +84,20 @@ function main(argv) {
     fs.mkdirSync(BATCHES, { recursive: true });
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '');
     const done = () => new Set(readManifest(manifest).map(g => g.label));
-    let first = true;
+    let built = false;
     for (const game of games) {
         if (done().has(game.label)) continue;
         for (let attempt = 1; ; attempt++) {
-            const r = spawnSync(process.execPath, [dotactl, ...runArgs(spec, game, first)], { cwd: MASTER, encoding: 'utf8', maxBuffer: 1 << 26 });
-            first = false;
+            const r = spawnSync(process.execPath, [dotactl, ...runArgs(spec, game, !built)], { cwd: MASTER, encoding: 'utf8', maxBuffer: 1 << 26 });
             const out = `${r.stdout || ''}${r.stderr || ''}`;
             fs.writeFileSync(path.join(BATCHES, `${spec.name}-last.out`), out);
             if (/closed by the user/i.test(out)) {
                 console.log('curfew: stopping');
-                process.exit(2);
+                process.exit(3);
             }
             const log = ((out.match(/^log: (.+)$/m) || [])[1] || '').trim().replace(/\\/g, '/');
             if (r.status === 0 && log) {
+                built = true;
                 fs.appendFileSync(manifest, manifestLine('ok', game, `log="${log}"`) + '\n');
                 console.log(`ok ${game.label} ${(out.match(/lineup: .*/) || [''])[0].slice(0, 120)}`);
                 break;

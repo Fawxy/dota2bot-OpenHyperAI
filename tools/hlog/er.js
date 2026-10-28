@@ -97,6 +97,8 @@ function bar(b, games, table) {
     if (b.rule === 'each') {
         const arms = b.arms || ['on'];
         const sel = games.filter(g => arms.includes(g.arm));
+        // No game of the bar's arms (a typo, or a batch without that arm) is a missing value, never a pass.
+        if (!sel.length) return { value: `no games of arm ${arms.join('+')}`, result: 'not met' };
         const bad = sel.filter(g => {
             const v = val(g, b.metric);
             return !(Number.isFinite(v) && (b.max === undefined || v <= b.max) && (b.min === undefined || v >= b.min) && (b.eq === undefined || v === b.eq));
@@ -107,6 +109,7 @@ function bar(b, games, table) {
     if (b.rule === 'mean') {
         const m = arm => stats(games.filter(g => g.arm === arm).map(g => val(g, b.metric))).mean;
         const on = m('on'), off = m('off');
+        // NaN (an arm with no games or no values) compares false either way, so it is not met.
         const ok = b.cmp === 'on>=off' ? on >= off : on <= off;
         return { value: `ON ${f1(on)}, OFF ${f1(off)}`, result: ok ? 'met' : 'not met' };
     }
@@ -150,10 +153,15 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
     }
 
     out.push('\n## Validity');
+    // Games failing lineup_check stay in the health and gap tables (they show what happened) and leave the deltas, gate,
+    // G monitors and bars.
+    let used = games;
     if (spec.build && spec.arms) {
         const until = spec.until ? require('./batch').seconds(spec.until) : 1200;
         const bad = games.map(g => [g.label, checkGame(g.text, { lineup: g.lineup, arm: g.arm, build: spec.build, until, arms: spec.arms })]).filter(([, p]) => p.length);
         out.push(`lineup_check (build ${spec.build}): ${games.length - bad.length}/${games.length} ok` + bad.map(([l, p]) => `\n- ${l}: ${p.join('; ')}`).join(''));
+        if (bad.length) out.push(`Excluded from deltas, gate, G monitors and bars: ${bad.map(([l]) => l).join(', ')}.`);
+        used = games.filter(g => !bad.some(([l]) => l === g.label));
     } else out.push('lineup_check not run: the spec names no build and arms.');
 
     out.push('\n## Health\n' + head(['game', 'arm', 'our `lua_error`', '`oha.*` max n', 'console `Script Runtime Error`', 'squelch', '`bundle=ok` / `fail`', 'hlog `snapshot_gaps`', '`frozen_bots` warn', 'hlog `intent_health`']));
@@ -183,7 +191,7 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
         for (const e of g.gaps.early) out.push(`- ${g.label}: stops early: ${e}`);
     }
 
-    const table = arms.includes('on') && arms.includes('off') ? noiseTable(games, n) : undefined;
+    const table = arms.includes('on') && arms.includes('off') ? noiseTable(used, n) : undefined;
     if (table) {
         out.push(`\n## Metric deltas, pooled over seeds (nf.js; N per arm in the OFF/ON n columns)\n` +
             head(['metric', 'OFF mean', 'OFF SD', 'ON mean', 'ON-OFF', '95% CI', `MDE (N=${n} per seed)`]));
@@ -194,12 +202,12 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
         }
     } else out.push('\n## Metric deltas\nNot computed: the manifest lacks an ON or an OFF arm.');
 
-    const flagged = games.filter(g => g.problems.length);
-    out.push(`\n## nf.js gate\n${games.length - flagged.length}/${games.length} ok` + flagged.map(g => `\n- ${g.label}: ${g.problems.join('; ')}`).join(''));
+    const flagged = used.filter(g => g.problems.length);
+    out.push(`\n## nf.js gate\n${used.length - flagged.length}/${used.length} ok` + flagged.map(g => `\n- ${g.label}: ${g.problems.join('; ')}`).join(''));
 
     out.push('\n## G monitors (no bar)\n' + head(['monitor', ...arms.map(a => `${a.toUpperCase()} mean [min, max]`), 'note']));
     for (const [name, f] of G_MONITORS) {
-        const per = arms.map(a => games.filter(g => g.arm === a).map(f).filter(Number.isFinite));
+        const per = arms.map(a => used.filter(g => g.arm === a).map(f).filter(Number.isFinite));
         const cells = per.map(v => (v.length ? `${f1(stats(v).mean)} [${f1(Math.min(...v))}, ${f1(Math.max(...v))}] (${v.length})` : '-'));
         const off = per[arms.indexOf('off')], on = per[arms.indexOf('on')];
         let note = '';
@@ -214,7 +222,7 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
     if (spec.bars && spec.bars.length) {
         out.push('\n## Bar results (pre-registered)\n' + head(['id', 'metric', 'rule', 'value', 'result']));
         for (const b of spec.bars) {
-            const r = b.rule === 'delta' && !table ? { value: 'no paired arms', result: 'not met' } : bar(b, games, table || {});
+            const r = b.rule === 'delta' && !table ? { value: 'no paired arms', result: 'not met' } : bar(b, used, table || {});
             const rule = b.rule === 'delta' ? `delta: met ${JSON.stringify(b.met)}${b.notMet ? `, not met ${JSON.stringify(b.notMet)}` : ''}`
                 : b.rule === 'mean' ? `mean ${b.cmp}` : `each ${(b.arms || ['on']).join('+')} ${['min', 'max', 'eq'].filter(k => b[k] !== undefined).map(k => `${k} ${b[k]}`).join(' ')}`;
             out.push(row([b.id, `\`${b.metric}\``, rule, r.value, `**${r.result}**`]));

@@ -122,3 +122,91 @@ test('er gaps: a gap with a death, one without, and an early stop with and witho
     assert.strictEqual(r.other.length, 5);
     assert.match(r.early.join(), /lion\[2\] last t=12 hp=50, enemy kills did not rise/);
 });
+
+// batch.js main against a fake dotactl: FAKE_PLAN lists one outcome per call (ok, fail, curfew, badlineup); the child gets a temp
+// home, so the manifest and the bank stay out of the real ~/.dotactl.
+const { spawnSync } = require('child_process');
+const FAKE = `'use strict';
+const fs = require('fs'), path = require('path');
+const { LINEUPS, SEEDS } = require(${JSON.stringify(path.resolve(__dirname, '../lineup_check'))});
+const dir = process.env.FAKE_DIR, args = process.argv.slice(2);
+const opt = k => args[args.indexOf(k) + 1];
+const n = fs.existsSync(path.join(dir, 'n')) ? Number(fs.readFileSync(path.join(dir, 'n'), 'utf8')) : 0;
+fs.writeFileSync(path.join(dir, 'n'), String(n + 1));
+fs.appendFileSync(path.join(dir, 'calls.jsonl'), JSON.stringify(args) + '\\n');
+const what = JSON.parse(process.env.FAKE_PLAN)[n] || 'ok';
+if (what === 'curfew') { console.log('testing is closed by the user'); process.exit(1); }
+if (what === 'fail') { console.log('console down'); process.exit(1); }
+const lineup = Object.keys(SEEDS).find(k => String(SEEDS[k]) === opt('--seed'));
+const sets = args.filter((a, i) => args[i - 1] === '--set');
+const bots = [];
+for (const team of [2, 3]) LINEUPS[lineup][team].forEach((h, i) => bots.push({ pid: bots.length, hero: what === 'badlineup' && !bots.length ? 'axe' : h, team, pos: i + 1 }));
+const log = path.join(dir, opt('--label') + '-' + n + '.log');
+fs.writeFileSync(log, [\`10/29 10:00:00 [DOTACTL] ev=start worktree=w mode=bots timescale=8 seed=\${opt('--seed')}\${sets.length ? \` set="\${sets.join(',')}"\` : ''}\`,
+    ...bots.map(b => \`10/29 10:00:02 [VScript] [HEV] t=-90.000 ev=bot pid=\${b.pid} hero=\${b.hero} team=\${b.team} schema=2 build=abc1234 pos=\${b.pos}\`),
+    ...(sets.length ? [] : ['10/29 10:00:03 [VScript] [HEV] t=0.000 ev=state pid=0 state=lane']),
+    \`10/29 10:09:00 [DOTACTL] t=\${Number(opt('--until').split(':')[0]) * 60 + 0.5} ev=stop\`].join('\\n'));
+console.log('log: ' + log);
+`;
+
+function runBatch(spec, fakePlan, dir) {
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'fake.js'), FAKE);
+    const file = path.join(dir, 'spec.json');
+    fs.writeFileSync(file, JSON.stringify({ ...spec, dotactl: path.join(dir, 'fake.js') }));
+    const r = spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js'), file], { encoding: 'utf8',
+        env: { ...process.env, HOME: home, USERPROFILE: home, FAKE_DIR: dir, FAKE_PLAN: JSON.stringify(fakePlan) } });
+    const read = f => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean) : []);
+    return { status: r.status, out: r.stdout + r.stderr, calls: read(path.join(dir, 'calls.jsonl')).map(JSON.parse),
+        manifest: read(path.join(home, '.dotactl', 'batches', `${spec.name}.manifest`)),
+        bank: read(path.join(home, '.dotactl', 'bank.jsonl')).map(JSON.parse) };
+}
+
+const BSPEC = { ...SPEC, name: 'bt', lineups: ['A', 'B'], until: '1:00' };
+
+test('batch main: a failed game is retried once, --build only until the first success, valid games banked', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const r = runBatch(BSPEC, ['fail', 'ok', 'fail', 'ok', 'ok', 'ok'], dir);
+    assert.strictEqual(r.status, 0, r.out);
+    assert.deepStrictEqual(r.calls.map(a => a.includes('--build')), [true, true, false, false, false, false],
+        'the retried first game builds again');
+    assert.deepStrictEqual(r.calls.map(a => a[a.indexOf('--label') + 1]), ['bt_A_on_1', 'bt_A_on_1', 'bt_A_off_1', 'bt_A_off_1', 'bt_B_off_2', 'bt_B_on_2']);
+    assert.ok(r.calls.every(a => path.isAbsolute(a[a.indexOf('--worktree') + 1])), 'worktree passed as an absolute path');
+    assert.strictEqual(r.manifest.filter(l => l.startsWith('status=fail')).length, 2);
+    assert.deepStrictEqual(r.bank.map(e => e.label).sort(), ['bt_A_off_1', 'bt_A_on_1', 'bt_B_off_2', 'bt_B_on_2']);
+});
+
+test('batch main: two failures stop the batch (exit 1); a re-run resumes after the ok games', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const r = runBatch(BSPEC, ['ok', 'fail', 'fail'], dir);
+    assert.strictEqual(r.status, 1, r.out);
+    assert.strictEqual(r.bank.length, 0);
+    fs.unlinkSync(path.join(dir, 'calls.jsonl'));
+    fs.unlinkSync(path.join(dir, 'n'));
+    const again = runBatch(BSPEC, [], dir);
+    assert.strictEqual(again.status, 0, again.out);
+    assert.deepStrictEqual(again.calls.map(a => a[a.indexOf('--label') + 1]), ['bt_A_off_1', 'bt_B_off_2', 'bt_B_on_2']);
+    assert.ok(again.calls[0].includes('--build'), 'the first game of a resumed run builds');
+    assert.strictEqual(again.bank.length, 4);
+});
+
+test('batch main: the curfew stops it with exit 3; a usage error is exit 2', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const r = runBatch(BSPEC, ['ok', 'curfew'], dir);
+    assert.strictEqual(r.status, 3, r.out);
+    assert.strictEqual(r.calls.length, 2);
+    assert.strictEqual(r.bank.length, 0);
+    assert.strictEqual(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js')]).status, 2);
+    const bad = path.join(dir, 'bad.json');
+    fs.writeFileSync(bad, JSON.stringify({ name: 'x' }));
+    assert.strictEqual(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js'), bad]).status, 2);
+});
+
+test('batch main: a game that fails lineup_check is not banked and the batch exits 1', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const r = runBatch(BSPEC, ['ok', 'badlineup', 'ok', 'ok'], dir);
+    assert.strictEqual(r.status, 1, r.out);
+    assert.match(r.out, /check bt_A_off_1 +axe team 2 pos 1/);
+    assert.deepStrictEqual(r.bank.map(e => e.label).sort(), ['bt_A_on_1', 'bt_B_off_2', 'bt_B_on_2']);
+});
