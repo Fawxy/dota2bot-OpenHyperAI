@@ -5,6 +5,7 @@
 'use strict';
 
 const fs = require('fs');
+const { readManifest } = require('./manifest');
 
 // Lineups A/B/C (seeds 30, 8, 25): heroes by position 1-5, Radiant (2) and Dire (3).
 const LINEUPS = {
@@ -12,6 +13,8 @@ const LINEUPS = {
     B: { 2: ['sven', 'lion', 'tiny', 'warlock', 'witch_doctor'], 3: ['skeleton_king', 'oracle', 'bristleback', 'lich', 'omniknight'] },
     C: { 2: ['nevermore', 'necrolyte', 'windrunner', 'lich', 'lion'], 3: ['skeleton_king', 'dragon_knight', 'axe', 'bane', 'witch_doctor'] },
 };
+// Seeds that give each lineup in `--mode bots` (lineups.md).
+const SEEDS = { A: 30, B: 8, C: 25 };
 // Per arm: every --set the arm passes, and whether ev=state lines (the state layer) must appear.
 const ARMS = {
     off: { set: ['Humaniser.Enable=false', 'Humaniser.States.Enable=false'], states: false },
@@ -62,10 +65,9 @@ function main(argv) {
     const arms = opt('arms') ? JSON.parse(fs.readFileSync(opt('arms'), 'utf8')) : ARMS;
     const until = Number(opt('until') || 1200);
     let bad = 0;
-    for (const line of fs.readFileSync(manifest, 'utf8').split(/\r?\n/).filter(l => /status=ok/.test(l))) {
-        const label = line.match(/label="([^"]*)"/)[1], log = line.match(/log="([^"]*)"/)[1];
-        const p = checkGame(fs.readFileSync(log, 'utf8'), { lineup: line.match(/lineup=(\w)/)[1], arm: line.match(/arm=(\w+)/)[1], build, until, lineups, arms });
-        console.log(`${label.padEnd(14)} ${p.length ? p.join('; ') : 'ok'}`);
+    for (const g of readManifest(manifest)) {
+        const p = checkGame(fs.readFileSync(g.log, 'utf8'), { lineup: g.lineup, arm: g.arm, build, until, lineups, arms });
+        console.log(`${g.label.padEnd(14)} ${p.length ? p.join('; ') : 'ok'}`);
         if (p.length) bad++;
     }
     process.exit(bad ? 1 : 0);
@@ -73,4 +75,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { checkGame, LINEUPS, ARMS };
+module.exports = { checkGame, LINEUPS, SEEDS, ARMS };

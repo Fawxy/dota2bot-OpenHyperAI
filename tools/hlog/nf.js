@@ -7,6 +7,7 @@ const fs = require('fs');
 const { parseLog } = require('./parse');
 const { laningMetrics } = require('./metrics');
 const { dynamicMetrics, deathTimes, series } = require('./dynamic');
+const { readManifest } = require('./manifest');
 
 // Two-sided 0.05, power 0.8, two-sample t: (t_crit + t_power) * SD * sqrt(2 / N), df = 2N - 2.
 const T975 = { 4: 2.776, 6: 2.447, 8: 2.306, 10: 2.228, 18: 2.101, 38: 2.024 };
@@ -125,30 +126,15 @@ function pooled(perSeed) {
     return { delta, se, df, lo: delta - h, hi: delta + h };
 }
 
-function readManifest(file) {
-    return fs
-        .readFileSync(file, 'utf8')
-        .split(/\r?\n/)
-        .filter(l => /status=ok/.test(l))
-        .map(l => ({
-            label: l.match(/label="([^"]*)"/)[1],
-            seed: Number(l.match(/seed=(\d+)/)[1]),
-            arm: l.match(/arm=(\w+)/)[1],
-            log: l.match(/log="([^"]*)"/)[1],
-        }));
+/** One manifest game with its parsed game: the flat metrics and the gate's problems. */
+function nfGame(g, game) {
+    const m = dynamicMetrics(game);
+    const flat = flatten(m);
+    return { ...g, flat, problems: gate(game, m, flat), monitors: { first_t1_time: m.first_t1_time, first_roshan_time: m.first_roshan_time } };
 }
 
-function main(argv) {
-    const file = argv[0];
-    const n = Number((argv.join(' ').match(/--n (\d+)/) || [])[1] || 5);
-    const games = [];
-    for (const g of readManifest(file)) {
-        const parsed = parseLog(fs.readFileSync(g.log, 'utf8'));
-        const game = parsed[parsed.length - 1];
-        const m = dynamicMetrics(game);
-        const flat = flatten(m);
-        games.push({ ...g, flat, problems: gate(game, m, flat) });
-    }
+/** Per metric, per seed and pooled ('all'): OFF and ON stats, the MDE at n per arm and seed, and the Welch delta. */
+function noiseTable(games, n) {
     const groups = {};
     for (const g of games) (groups[`${g.seed}`] = groups[`${g.seed}`] || []).push(g);
     const table = {};
@@ -168,6 +154,19 @@ function main(argv) {
         bySeed.all = { off: { n: rows.reduce((a, r) => a + r.off.n, 0), mean: off.mean, sd }, on: { n: rows.reduce((a, r) => a + r.on.n, 0), mean: on.mean },
             mde: mde(sd, n * rows.length), ...pooled(rows) };
     }
+    return table;
+}
+
+function main(argv) {
+    const file = argv[0];
+    const n = Number((argv.join(' ').match(/--n (\d+)/) || [])[1] || 5);
+    const games = readManifest(file).map(g => {
+        const parsed = parseLog(fs.readFileSync(g.log, 'utf8'));
+        return nfGame(g, parsed[parsed.length - 1]);
+    });
+    const groups = {};
+    for (const g of games) (groups[`${g.seed}`] = groups[`${g.seed}`] || []).push(g);
+    const table = noiseTable(games, n);
     if (argv.includes('--json')) {
         console.log(JSON.stringify({ games, table }, null, 1));
         return;
@@ -192,4 +191,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde, t975, welch, pooled };
+module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable };
