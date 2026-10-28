@@ -1,0 +1,6 @@
+{"schema":"er-spec/1","build":"b2d2ba9","until":"20:00",
+ "arms":{"on":{"set":[],"states":true},"off":{"set":["Humaniser.Enable=false","Humaniser.States.Enable=false"],"states":false}},
+ "bars":[{"id":"H1a","metric":"lua_ours","rule":"each","arms":["on","off"],"max":0},
+  {"id":"H1b","metric":"lua_oha","rule":"each","arms":["on","off"],"max":0},
+  {"id":"H1c","metric":"console","rule":"mean","cmp":"on<=off"},
+  {"id":"H1d","metric":"bundle_fail","rule":"each","max":0}]}

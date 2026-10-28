@@ -1,0 +1,8 @@
+{"schema":"er-spec/1","build":"9fe23e6","until":"20:00",
+ "arms":{"off":{"set":["Humaniser.Enable=false","Humaniser.States.Enable=false"],"states":false},"on":{"set":["Humaniser.States.Teams=all","Humaniser.Lane.OwnLaningThink=all"],"states":true}},
+ "bars":[{"id":"H1","metric":"lua_ours","rule":"each","arms":["on"],"max":0},
+  {"id":"H2","metric":"lua_error","rule":"delta","met":{"lo":{"le":0}}},
+  {"id":"H3","metric":"idle_10s","rule":"delta","met":{"lo":{"le":0}}},
+  {"id":"G1","metric":"lh_at_10_pos1","rule":"delta","met":{"lo":{"gt":-5}},"notMet":{"hi":{"lt":-5}}},
+  {"id":"G1","metric":"lh_at_10_pos2","rule":"delta","met":{"lo":{"gt":-5}},"notMet":{"hi":{"lt":-5}}},
+  {"id":"G1","metric":"lh_at_10_pos3","rule":"delta","met":{"lo":{"gt":-5}},"notMet":{"hi":{"lt":-5}}}]}

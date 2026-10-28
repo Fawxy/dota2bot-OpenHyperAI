@@ -1,0 +1,3 @@
+{"name":"s1","worktree":"oha-health","build":"b2d2ba9","lineups":["A","B","C","A","B"],
+ "arms":{"on":{"set":[],"states":true},"off":{"set":["Humaniser.Enable=false","Humaniser.States.Enable=false"],"states":false}},
+ "until":"20:00","timescale":8,"mode":"bots"}
