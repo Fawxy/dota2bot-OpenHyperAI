@@ -2087,7 +2087,7 @@ end)
 -- everyone else's incoming damage and kills: `creepHP + regen * t - incoming(t) <= ownDamage`, where t is the
 -- own hit time (wind-up, cooldown, projectile travel) and incoming counts attack projectiles in flight and
 -- wind-ups of creeps, heroes and towers targeting the creep. The belief carries a per-creep error from the
--- bot's skill (see SDK_API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
+-- bot's skill (see docs/API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
 -- Ok once the bot's last-hit count rises.
 ____exports.lastHit = __TS__Generator(function(bot, opts)
     if opts == nil then
@@ -2804,7 +2804,7 @@ local bots = {}
 local function ownedFn()
     return false
 end
---- Which states the SDK runs for which bot; read at every selection, so it may change during the game.
+--- Which states the engine runs for which bot; read at every selection, so it may change during the game.
 function ____exports.SetOwned(fn)
     ownedFn = fn
 end

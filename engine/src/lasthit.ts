@@ -510,7 +510,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                 const b = believe(bot, creep, true, margin);
                 if (due(b)) {
                     tHit = b.tHit;
-                    // In-game calibration (SDK_API "UNVERIFIED"): what the swing was based on.
+                    // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
                     diag = string.format("hp=%d pred=%d mine=%d t=%.2f m=%.2f", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin);
                     bot.Action_AttackUnit(creep, true);
                     break;
@@ -547,7 +547,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
  * everyone else's incoming damage and kills: `creepHP + regen * t - incoming(t) <= ownDamage`, where t is the
  * own hit time (wind-up, cooldown, projectile travel) and incoming counts attack projectiles in flight and
  * wind-ups of creeps, heroes and towers targeting the creep. The belief carries a per-creep error from the
- * bot's skill (see SDK_API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
+ * bot's skill (see docs/API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
  * Ok once the bot's last-hit count rises.
  */
 export function* lastHit(bot: TaskUnit, opts: LastHitOpts = {}): TaskBody {

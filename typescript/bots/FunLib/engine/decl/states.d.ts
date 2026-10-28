@@ -41,7 +41,7 @@ export interface StatesConfig {
     restart: number;
 }
 export declare function configure(c: Partial<StatesConfig>): void;
-/** Which states the SDK runs for which bot; read at every selection, so it may change during the game. */
+/** Which states the engine runs for which bot; read at every selection, so it may change during the game. */
 export declare function SetOwned(fn: (this: void, bot: TaskUnit, state: string) => boolean): void;
 /** Registers (or replaces) a bot's states. The current state is kept if a spec of that name remains. */
 export declare function define(bot: TaskUnit, specs: StateSpec[]): void;

@@ -67,7 +67,7 @@ export interface LastHitOpts {
  * everyone else's incoming damage and kills: `creepHP + regen * t - incoming(t) <= ownDamage`, where t is the
  * own hit time (wind-up, cooldown, projectile travel) and incoming counts attack projectiles in flight and
  * wind-ups of creeps, heroes and towers targeting the creep. The belief carries a per-creep error from the
- * bot's skill (see SDK_API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
+ * bot's skill (see docs/API.md): misses are early swings (`missed`) or late ones (`taken_by_other`/`denied`).
  * Ok once the bot's last-hit count rises.
  */
 export declare function lastHit(bot: TaskUnit, opts?: LastHitOpts): TaskBody;

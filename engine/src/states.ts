@@ -77,7 +77,7 @@ interface BotStates {
 const bots: Record<number, BotStates | undefined> = {};
 let ownedFn: (this: void, bot: TaskUnit, state: string) => boolean = () => false;
 
-/** Which states the SDK runs for which bot; read at every selection, so it may change during the game. */
+/** Which states the engine runs for which bot; read at every selection, so it may change during the game. */
 export function SetOwned(fn: (this: void, bot: TaskUnit, state: string) => boolean): void {
     ownedFn = fn;
 }
