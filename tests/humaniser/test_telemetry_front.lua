@@ -62,4 +62,22 @@ for _, caller in ipairs({ 2, 3 }) do
 	check(tag .. "front again after the interval", #events("front", "team", tostring(caller)) == 2, #events("front"))
 end
 
+-- A failing lane read drops only the lane fields and the front event, reported under their own guards (review L1, L2).
+do
+	local H = fresh()
+	CURRENT_TEAM = 2
+	local hero = MakeUnit({ pid = 5, team = 2, loc = Vector(0, 0) })
+	local keep = GetAmountAlongLane
+	GetAmountAlongLane = function() error("boom") end
+	T = 100
+	H.Telemetry.Tick(hero)
+	GetAmountAlongLane = keep
+	local s = events("snap", "pid", "5")[1]
+	check("snap still logged without lane fields", s ~= nil and field(s, "ln") == nil and field(s, "hp") ~= nil, s)
+	local where = {}
+	for _, l in ipairs(events("lua_error")) do where[field(l, "where")] = true end
+	check("errors under Telemetry.Lane and Telemetry.Front", where["Telemetry.Lane"] and where["Telemetry.Front"], table.concat(lines, "\n"))
+	check("no ev=front", #events("front") == 0, #events("front"))
+end
+
 finish()

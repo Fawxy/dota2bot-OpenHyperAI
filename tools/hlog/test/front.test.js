@@ -22,3 +22,10 @@ test('front: latest ev=front per team and ev=snap per hero at or before each clo
     assert.match(format([b]), /== 1:30\nfront team 2 \(t=61\): top 0.3 \(-2800,5000\)/);
     assert.deepStrictEqual(frontsAt(LOG, [30])[0].fronts, {});
 });
+
+test('front: a log with two games reads one game at a time', () => {
+    const two = LOG + '\n' + LOG.replace(/top=0\.250/, 'top=0.111');
+    assert.strictEqual(frontsAt(two, [60], 1)[0].fronts[2].top, 0.25);
+    assert.strictEqual(frontsAt(two, [60], 2)[0].fronts[2].top, 0.111);
+    assert.deepStrictEqual(frontsAt(two, [60], 3)[0].heroes, []);
+});

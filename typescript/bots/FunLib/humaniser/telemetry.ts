@@ -373,6 +373,10 @@ function trackFront(team: number): void {
     Event("front", fields);
 }
 
+// Own guards, so a failure reads as where=Telemetry.Lane|Telemetry.Front and drops only these fields or this event.
+const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
+const guardedFront = Guard("Telemetry.Front", trackFront);
+
 function unitFields(unit: Unit): [string, any][] {
     const loc = unit.GetLocation();
     const stats = unit as unknown as StatsUnit;
@@ -391,7 +395,7 @@ function unitFields(unit: Unit): [string, any][] {
         ["deaths", GetHeroDeaths !== undefined ? GetHeroDeaths(unit.GetPlayerID()) : undefined],
         ["tgt", target !== null && target !== undefined ? target.GetUnitName() : undefined],
     ];
-    for (const f of laneFields(loc)) fields.push(f);
+    for (const f of guardedLaneFields(loc)) fields.push(f);
     return fields;
 }
 
@@ -689,7 +693,6 @@ function trackWorld(this: void, bot: Unit, now: number): void {
     if (now - w.slowAt < Get().SnapshotInterval) return;
     w.slowAt = now;
     trackWards(team, w);
-    trackFront(team);
     for (const [id, tier] of TOWER_TIERS) trackBuilding(team, w, "tower", id, GetTower(team, id), tier);
     for (const id of BARRACKS) trackBuilding(team, w, "rax", id, GetBarracks(team, id));
     const killedAt = GetRoshanKillTime();
@@ -699,6 +702,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
             ["at", killedAt],
         ]);
     w.roshanAt = killedAt;
+    guardedFront(team);
 }
 
 /** Smoke, teleport and aegis edges for one hero (bot or human). */

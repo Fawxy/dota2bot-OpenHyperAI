@@ -1,10 +1,10 @@
 // Lane fronts and heroes' places along their lanes at given clocks (slice 2b), from ev=front and ev=snap. The table slice 3
 // checks against `--shot` screenshots. Amounts are absolute: 0 = Radiant's ancient, 1 = Dire's.
-// Usage: node front.js <log> [--at 4:00,6:00,8:00]
+// Usage: node front.js <log> [--at 4:00,6:00,8:00] [--game N]   (N defaults to 1; a log can hold several games)
 'use strict';
 
 const fs = require('fs');
-const { parseLine } = require('./parse');
+const { parseLog } = require('./parse');
 
 const LANES = ['top', 'mid', 'bot'];
 
@@ -14,12 +14,9 @@ function seconds(clock) {
 }
 
 /** Per clock: { t, fronts: { team: ev=front fields }, heroes: [{ pid, hero, team, ln, s, ld, x, y, t }] }, latest at or before t. */
-function frontsAt(text, clocks) {
-    const events = [];
-    for (const line of text.split(/\r?\n/)) {
-        const p = parseLine(line);
-        if (p && p.line === 'event') events.push(p.e);
-    }
+function frontsAt(text, clocks, gameNo = 1) {
+    const game = parseLog(text)[gameNo - 1];
+    const events = game ? game.events : [];
     const heroes = {};
     for (const e of events) if (e.ev === 'bot' || e.ev === 'player') heroes[e.pid] = { hero: e.hero, team: e.team };
     return clocks.map(t => {
@@ -59,8 +56,14 @@ if (require.main === module) {
         console.error('usage: node front.js <log> [--at 4:00,6:00,8:00]');
         process.exit(2);
     }
-    const at = argv.includes('--at') ? argv[argv.indexOf('--at') + 1] : '4:00,6:00,8:00';
-    console.log(format(frontsAt(fs.readFileSync(argv[0], 'utf8'), at.split(',').map(seconds))));
+    const opt = (k, d) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : d);
+    const at = opt('--at', '4:00,6:00,8:00');
+    const clocks = String(at).split(',').map(seconds);
+    if (at === undefined || clocks.some(c => !Number.isFinite(c))) {
+        console.error(`bad --at: ${at}`);
+        process.exit(2);
+    }
+    console.log(format(frontsAt(fs.readFileSync(argv[0], 'utf8'), clocks, Number(opt('--game', 1)))));
 }
 
 module.exports = { frontsAt, format };

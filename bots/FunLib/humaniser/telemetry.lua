@@ -440,6 +440,12 @@ local function trackFront(team)
     end
     ____exports.Event("front", fields)
 end
+local guardedLaneFields = ____exports.Guard(
+    "Telemetry.Lane",
+    laneFields,
+    function() return {} end
+)
+local guardedFront = ____exports.Guard("Telemetry.Front", trackFront)
 local function unitFields(unit)
     local loc = unit:GetLocation()
     local stats = unit
@@ -496,7 +502,7 @@ local function unitFields(unit)
             target ~= nil and target ~= nil and target:GetUnitName() or nil
         }
     }
-    for ____, f in ipairs(laneFields(loc)) do
+    for ____, f in ipairs(guardedLaneFields(loc)) do
         fields[#fields + 1] = f
     end
     return fields
@@ -838,7 +844,7 @@ local function trackRunes(team, w, now)
     end
     for ____, r in ipairs(RUNES) do
         do
-            local __continue113
+            local __continue114
             repeat
                 local seen = w.runes[r]
                 if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
@@ -848,11 +854,11 @@ local function trackRunes(team, w, now)
                             loc = GetRuneSpawnLocation(r)
                         }
                     end
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 if seen == nil or not seen.up then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 seen.up = false
@@ -861,7 +867,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 local ____, enemyD = nearest(
@@ -869,7 +875,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if enemyD < d then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 local power = r == Rune.Power1 or r == Rune.Power2
@@ -893,9 +899,9 @@ local function trackRunes(team, w, now)
                         }
                     }
                 )
-                __continue113 = true
+                __continue114 = true
             until true
-            if not __continue113 then
+            if not __continue114 then
                 break
             end
         end
@@ -904,17 +910,17 @@ end
 local function trackWards(team, w)
     for ____, ward in ipairs(GetUnitList(UnitType.AlliedWards)) do
         do
-            local __continue121
+            local __continue122
             repeat
                 if w.wards[ward] == true then
-                    __continue121 = true
+                    __continue122 = true
                     break
                 end
                 w.wards[ward] = true
                 local name = ward:GetUnitName()
                 local kind = (string.find(name, "observer")) ~= nil and "obs" or ((string.find(name, "sentry")) ~= nil and "sentry" or nil)
                 if kind == nil then
-                    __continue121 = true
+                    __continue122 = true
                     break
                 end
                 local loc = ward:GetLocation()
@@ -941,9 +947,9 @@ local function trackWards(team, w)
                         }
                     }
                 )
-                __continue121 = true
+                __continue122 = true
             until true
-            if not __continue121 then
+            if not __continue122 then
                 break
             end
         end
@@ -979,7 +985,6 @@ local function trackWorld(bot, now)
     end
     w.slowAt = now
     trackWards(team, w)
-    trackFront(team)
     for ____, ____value in ipairs(TOWER_TIERS) do
         local id = ____value[1]
         local tier = ____value[2]
@@ -1006,6 +1011,7 @@ local function trackWorld(bot, now)
         ____exports.Event("roshan_kill", {{"team", team}, {"at", killedAt}})
     end
     w.roshanAt = killedAt
+    guardedFront(team)
 end
 --- Smoke, teleport and aegis edges for one hero (bot or human).
 local function trackHero(unit, s, now, slow)
@@ -1119,15 +1125,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue147
+                local __continue148
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue147 = true
+                        __continue148 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue147 = true
+                        __continue148 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1166,9 +1172,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue147 = true
+                    __continue148 = true
                 until true
-                if not __continue147 then
+                if not __continue148 then
                     break
                 end
             end
