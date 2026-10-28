@@ -477,7 +477,7 @@ Some Lua files in `bots/FunLib/` are **generated from TypeScript** via TSTL. Whe
 | `FunLib/aba_buff.lua` | `typescript/bots/FunLib/aba_buff.ts` |
 | `Customize/general.lua` | `typescript/bots/Customize/general.ts` |
 | `ts_libs/dota/heroes.lua` | `typescript/bots/ts_libs/dota/heroes.ts` |
-| `FunLib/sdk/tasks/tasks.lua` (tasks) | **Vendored**, not built here: dota-bot-sdk `packages/lua-tasks`, with declarations in `typescript/bots/FunLib/sdk/tasks/`. Do not edit; regenerate from the SDK with `npm run vendor` (see HUMANISER_DEV.md, "Task runner (spike)") |
+| `FunLib/engine/tasks.lua` (tasks) | **Engine bundle**, built from `engine/src` by `npm run build:engine`, with declarations in `typescript/bots/FunLib/engine/decl/`. Do not edit the output (see HUMANISER_DEV.md, "Task runner (spike)") |
 
 ### Pure Lua Files (edit directly)
 

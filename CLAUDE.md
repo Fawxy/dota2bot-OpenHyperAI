@@ -21,8 +21,8 @@ the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../.
   `git merge --no-ff`, citing the review report and an `ER-nnn` id or a `No ER: <reason>` line (git hook), then push `team-bots` to
   `origin` (fast-forward only).
 - **Jitter** goes through the engine's `Skill` model, never host-side randomness. Engine changes follow the master skill
-  `engine-change`: until slice 0b the engine is the SDK repo (protected paths, edited from an `sdk-*` worktree) and its vendored copy
-  under `bots/FunLib/sdk/tasks` is updated by a re-vendor in the slice that needs it; slice 0b moves the engine into this repo.
+  `engine-change`: the engine is `engine/` in this repo (lua-tasks, built into `bots/FunLib/engine`); a merge that changes it
+  cites an `sdk-reviewer` report (git hook).
 
 ## Project Overview
 

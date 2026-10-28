@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/TypeScriptToLua/TypeScriptToLua/master/tsconfig-schema.json",
+  "tstl": {
+    "luaTarget": "5.1",
+    "noImplicitSelf": true,
+    "luaLibImport": "inline",
+    "luaBundle": "tasks.lua",
+    "luaBundleEntry": "src/index.ts"
+  },
+  "compilerOptions": {
+    "lib": ["ES2020"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2020",
+    "strict": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "rootDir": "./src",
+    "outDir": "../bots/FunLib/engine",
+    "declaration": true,
+    "declarationDir": "../typescript/bots/FunLib/engine/decl",
+    "types": ["@typescript-to-lua/language-extensions", "lua-types/5.1"]
+  },
+  "files": ["src/index.ts"]
+}

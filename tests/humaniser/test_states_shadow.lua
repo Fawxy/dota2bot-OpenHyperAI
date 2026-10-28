@@ -11,7 +11,7 @@ local W -- the OHA decisions the scorers read, set per test
 local function Fresh(states, o)
 	ResetWorld()
 	T = 10
-	package.loaded["bots/FunLib/sdk/tasks/tasks"] = nil
+	package.loaded["bots/FunLib/engine/tasks"] = nil
 	o = o or {}
 	local H = FreshHumaniser({ Enable = true, Lane = { Enable = false }, Transitions = { Enable = false }, Telemetry = { Enable = true, LuaErrors = o.guards == true }, States = states })
 	W = { laning = true }

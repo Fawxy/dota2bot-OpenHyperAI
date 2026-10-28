@@ -3,7 +3,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- clearCamp executes it in place of FarmPattern's step(), OHA chains the next camp or walks the core back.
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 
 local FRONT = Vector(0, -5000)
 local SMALL = Vector(0, -6200)

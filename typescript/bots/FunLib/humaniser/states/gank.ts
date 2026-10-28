@@ -8,7 +8,7 @@
  * research/replays.md: mid gets a rotation kill before 10:00 in 32% of pub games (first ~7:50), pos 4/5 18-22%.
  * The body is the SDK's `gank` verb; the host mode is roam (upstream OHA's own roam ganks stay as they are).
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
@@ -267,7 +267,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const flank = skill >= SETTINGS.FlankSkill;
     const path = flank ? [FlankPoint(bot.GetLocation(), t0.GetLocation(), attempt.lane) as unknown as Lib.Vec] : [];
     const eta = (GetUnitToUnitDistance(bot, t0) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
-    return yield* Tasks.Verbs()!.gank(
+    return yield* Tasks.Jobs()!.gank(
         bot as unknown as Lib.TaskUnit,
         {
             target: () => target() as unknown as Lib.TaskAttacker | undefined,

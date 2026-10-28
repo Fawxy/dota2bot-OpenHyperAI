@@ -4,7 +4,7 @@
  * bodies exist only because a spec needs one. A later slice replaces a spec by registering an owned one of
  * the same name (States.Register).
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";

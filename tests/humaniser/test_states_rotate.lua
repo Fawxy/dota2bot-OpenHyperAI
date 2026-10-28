@@ -3,7 +3,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- its own Shrine of Wisdom as it fills at 7:00, through the SDK's runeRun (shrine mode), hosted by the rune mode.
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 
 local SHRINE = Vector(-7948.152344, 768.207825, 256)
 local TOP, MID, BOT = Vector(-6000, 5000), Vector(0, 0), Vector(0, -5000)

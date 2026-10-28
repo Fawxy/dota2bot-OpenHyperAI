@@ -3,7 +3,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- stack/pull verbs execute it in place of camp_jobs' step(), and OHA's bookkeeping (outcome, grade, aborts) stays.
 local dota = require("bots/ts_libs/dota/index")
 local Lane, FARM, LANING = dota.Lane, dota.BotMode.Farm, dota.BotMode.Laning
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 
 local FRONT = Vector(0, -5000)
 local SMALL = Vector(-1600, -6200)

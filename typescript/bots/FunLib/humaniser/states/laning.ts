@@ -5,7 +5,7 @@
  * through SetSpot. Where the body owns last hits, the Lua Think skips LastHitThink/DenyThink for the bot; its
  * techniques and harass still run first, so the body is resumed only on frames where none of those acted.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";

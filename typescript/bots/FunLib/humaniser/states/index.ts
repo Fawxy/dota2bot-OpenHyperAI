@@ -3,7 +3,7 @@
  * the states (scorers read OHA's own decisions; bodies replace one OHA step each), ownership by position, the
  * host Think() hook and telemetry. Off (Enable = false) means no selection, no telemetry and no tasks.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";

@@ -217,10 +217,10 @@ Customize.Humaniser = {
         LuaErrors = true,
         LuaErrorRepeat = 10,
     },
-    -- tasks: coroutine task runner spike (FunLib/sdk/tasks, vendored). Demo gates the GATHER demo task.
+    -- tasks: the engine's coroutine task runner (FunLib/engine, built from engine/). Demo gates the GATHER demo task.
     Tasks = { Enable = true, Demo = false },
-    -- Behaviour states (humaniser/states, on the SDK's States; needs Tasks.Enable). Enable = false restores OHA
-    -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions the SDK body runs
+    -- Behaviour states (humaniser/states, on the engine's States; needs Tasks.Enable). Enable = false restores OHA
+    -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions our body runs
     -- (replaces the default list). Teams: who may own ('allies' = allies of a human, or 'all'); ShadowTeams: who
     -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
     -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);
@@ -229,10 +229,6 @@ Customize.Humaniser = {
         Laning = { Spot = 'oha', LastHit = {} },
         -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
         Rotate = { Power = false } },
-    -- Team game phase (humaniser/states/phase, team slice 12; needs Tasks.Enable): laning, transition, midgame,
-    -- push, defend, late per team, logged as ev=phase. Priors = false is shadow (behaviour unchanged); true makes
-    -- the phase multiply every state score (docs/team/slices/12-game-phase.md). Enable = false: nothing runs.
-    Phase = { Enable = true, Priors = false },
 }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,

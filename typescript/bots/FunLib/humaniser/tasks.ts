@@ -1,15 +1,16 @@
 /**
- * OHA integration for the vendored lua-tasks runner (bots/FunLib/sdk/tasks, from dota-bot-sdk).
+ * OHA integration for the engine's task runner (bundle bots/FunLib/engine/tasks.lua, built from engine/).
  *
  * The bundle is required lazily under pcall, only once the humaniser and Tasks.Enable are on: a static require
  * would let a bundle that fails to load in Dota's VM break the whole humaniser module, even with Enable = false.
  * Claims go through Intent without `until`, so ClaimTTL applies and a task that stops stepping loses its claim.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -109,13 +110,14 @@ function loadBundle(): Bundle | undefined {
     if (!Enabled()) return undefined;
     if (attempted) return lib;
     attempted = true;
-    const [ok, res] = pcall(require, GetScriptDirectory() + "/FunLib/sdk/tasks/tasks");
+    const [ok, res] = pcall(require, GetScriptDirectory() + "/FunLib/engine/tasks");
     const support = `[H:tasks] support coroutine=${type(coroutine)} bundle=`;
     // Always printed (not gated on Debug): the first in-game check is whether the bundle loads at all.
     const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;
     if (ok && type(res) === "table") {
         lib = res as Bundle;
         lib.init(adapter);
+        JobVerbs.Bind(lib, adapter);
         (rawPrint ?? print)(support + "ok");
     } else {
         (rawPrint ?? print)(`${support}fail ${tostring(res)}`);
@@ -174,4 +176,9 @@ export function Describe(bot: Unit): string | undefined {
 
 export function Verbs(): Bundle["Verbs"] | undefined {
     return loadBundle()?.Verbs;
+}
+
+/** The job verbs (bot code on the engine's verbs), or undefined when tasks are off or the bundle failed to load. */
+export function Jobs(): typeof JobVerbs | undefined {
+    return loadBundle() !== undefined ? JobVerbs : undefined;
 }

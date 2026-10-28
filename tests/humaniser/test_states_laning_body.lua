@@ -2,7 +2,7 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 -- Team slices 3 and 4: the laning state's own spot (lane_spot.ts: creep and tower rings, ranged inset, side
 -- shift) and its SDK last hits (laning.ts body + BodyLastHits gating the Lua Think's own).
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 local LANING = 1
 BOT_MODE_LANING = LANING
 

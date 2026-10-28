@@ -285,7 +285,7 @@ local body = __TS__Generator(function(bot, state, ctx)
         return ctx.fail("interrupted", "legacy-resume")
     end
     started[pid] = job
-    local V = Tasks.Verbs()
+    local V = Tasks.Jobs()
     local u = bot
     local hooks = {
         label = function(l)

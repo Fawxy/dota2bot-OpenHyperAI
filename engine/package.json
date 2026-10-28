@@ -1,0 +1,27 @@
+{
+  "name": "lua-tasks-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The bot's engine: coroutine task runner, game facts and atomic actions (TSTL -> Lua 5.1/LuaJIT). Builds into bots/FunLib/engine.",
+  "scripts": {
+    "build": "node scripts/clean.js && tstl -p tsconfig.json && tstl -p tsconfig.test.json",
+    "syntax": "node test/syntax_check.js ../bots/FunLib/engine dist examples",
+    "test:fengari": "node test/run_fengari.js",
+    "test:luajit": "sh test/run_luajit.sh",
+    "pretest": "npm run build",
+    "test": "npm run syntax && npm run test:fengari && npm run test:luajit"
+  },
+  "devDependencies": {
+    "@typescript-to-lua/language-extensions": "1.19.0",
+    "fengari": "0.1.4",
+    "lua-types": "2.13.1",
+    "luaparse": "0.3.1",
+    "typescript": "5.5.4",
+    "typescript-to-lua": "1.26.2"
+  },
+  "overrides": {
+    "typescript-to-lua": {
+      "typescript": "$typescript"
+    }
+  }
+}
