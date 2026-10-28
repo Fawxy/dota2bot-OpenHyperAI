@@ -7,7 +7,7 @@
  * Events emitted from a team-wide context (order posts, pings, commands) repeat once per module instance;
  * tools/hlog de-duplicates them.
  */
-import { GameState, Team, Unit } from "bots/ts_libs/dota";
+import { Barracks, GameState, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -73,6 +73,11 @@ interface BotState {
     decisions: LuaTable<Unit, Decision>;
     markCursor: Record<number, number>;
     ended: boolean;
+    // Hero events (BACKLOG 0.6): last frame's modifier and item edges.
+    smoked: boolean;
+    aegis: boolean;
+    tpFrom?: [number, number, number];
+    tpEndAt?: number;
 }
 
 interface MarkRecord {
@@ -256,7 +261,7 @@ const states: Record<number, BotState> = {};
 function stateFor(pid: number): BotState {
     let s = states[pid];
     if (s === undefined) {
-        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false };
+        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false, smoked: false, aegis: false };
         states[pid] = s;
     }
     return s;
@@ -475,6 +480,207 @@ function ancientDown(team: Team): boolean {
     return ancient === undefined || ancient === null || !ancient.IsAlive() || ancient.GetHealth() <= 0;
 }
 
+// World and hero events (BACKLOG 0.6, slice 23). Each team's lowest-PID bot reports its own team's rune pickups, wards and
+// building losses, so a ten-bot game logs each event once per team. Reads only, never an action.
+declare function GetRuneStatus(this: void, rune: number): number;
+declare function GetRuneType(this: void, rune: number): number;
+declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
+declare function GetRoshanKillTime(this: void): number;
+declare const RUNE_STATUS_AVAILABLE: number;
+
+const RUNES = [Rune.Power1, Rune.Power2, Rune.Bounty1, Rune.Bounty2, Rune.Bounty3, Rune.Bounty4];
+const TOWER_TIERS: [number, number][] = [
+    [Tower.Top1, 1], [Tower.Mid1, 1], [Tower.Bot1, 1],
+    [Tower.Top2, 2], [Tower.Mid2, 2], [Tower.Bot2, 2],
+    [Tower.Top3, 3], [Tower.Mid3, 3], [Tower.Bot3, 3],
+    [Tower.Base1, 4], [Tower.Base2, 4],
+];
+const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
+/** RUNE_RULES power.first (transitions/runes): power spots hold water runes before it. */
+const POWER_FROM = 360;
+/** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
+const RUNE_TAKER_R = 400;
+/** judgement: ward cast range 500 plus movement since the cast. */
+const WARD_OWNER_R = 800;
+/** A teleport's landing spot is read this long after its modifier ends. */
+const TP_SETTLE = 0.1;
+
+interface RuneSeen {
+    up: boolean;
+    type: number;
+    loc: Vector;
+}
+
+interface WorldState {
+    runes: Record<number, RuneSeen>;
+    wards: LuaTable<Unit, boolean>;
+    buildings: Record<string, boolean>;
+    roshanAt?: number;
+    slowAt: number;
+}
+const worlds: Record<number, WorldState> = {};
+
+function teamHeroes(team: number): Unit[] {
+    const heroes: Unit[] = [];
+    const n = GetTeamPlayers(team).length;
+    for (let i = 1; i <= n; i++) {
+        const m = GetTeamMember(i);
+        if (m !== null && m !== undefined && m.IsAlive()) heroes.push(m);
+    }
+    return heroes;
+}
+
+function nearest(units: Unit[], loc: Vector): LuaMultiReturn<[Unit | undefined, number]> {
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const u of units) {
+        const d = GetUnitToLocationDistance(u, loc);
+        if (d < bestD) {
+            best = u;
+            bestD = d;
+        }
+    }
+    return $multi(best, bestD);
+}
+
+function trackRunes(team: number, w: WorldState, now: number): void {
+    for (const r of RUNES) {
+        const seen = w.runes[r];
+        if (GetRuneStatus(r) === RUNE_STATUS_AVAILABLE) {
+            if (seen === undefined || !seen.up) w.runes[r] = { up: true, type: GetRuneType(r), loc: GetRuneSpawnLocation(r) };
+            else seen.type = GetRuneType(r);
+            continue;
+        }
+        if (seen === undefined || !seen.up) continue;
+        // Gone or out of sight. Without an own hero next to it, either the enemy took it (their logger reports it) or fog.
+        seen.up = false;
+        const [taker, d] = nearest(teamHeroes(team), seen.loc);
+        if (taker === undefined || d > RUNE_TAKER_R) continue;
+        const [, enemyD] = nearest(GetUnitList(UnitType.EnemyHeroes), seen.loc);
+        if (enemyD < d) continue;
+        const power = r === Rune.Power1 || r === Rune.Power2;
+        Event("rune_pickup", [
+            ["pid", taker.GetPlayerID()],
+            ["team", team],
+            ["rune", r],
+            ["kind", power ? (now < POWER_FROM ? "water" : "power") : "bounty"],
+            ["type", seen.type],
+            ["x", math.floor(seen.loc.x)],
+            ["y", math.floor(seen.loc.y)],
+        ]);
+    }
+}
+
+function trackWards(team: number, w: WorldState): void {
+    for (const ward of GetUnitList(UnitType.AlliedWards)) {
+        if (w.wards.get(ward) === true) continue;
+        w.wards.set(ward, true);
+        const name = ward.GetUnitName();
+        const kind = string.find(name, "observer")[0] !== undefined ? "obs" : string.find(name, "sentry")[0] !== undefined ? "sentry" : undefined;
+        // Hero summons in the ward list (serpent wards and the like) answer no KR.
+        if (kind === undefined) continue;
+        const loc = ward.GetLocation();
+        const [owner, d] = nearest(teamHeroes(team), loc);
+        Event("ward_place", [
+            ["pid", owner !== undefined && d <= WARD_OWNER_R ? owner.GetPlayerID() : undefined],
+            ["team", team],
+            ["kind", kind],
+            ["x", math.floor(loc.x)],
+            ["y", math.floor(loc.y)],
+        ]);
+    }
+}
+
+function trackBuilding(team: number, w: WorldState, kind: string, id: number, u: Unit | null, tier?: number): void {
+    const key = `${kind}${id}`;
+    const alive = u !== null && u !== undefined && u.IsAlive();
+    const known = w.buildings[key];
+    w.buildings[key] = alive;
+    if (known === true && !alive)
+        Event("building_fall", [
+            ["team", team],
+            ["kind", kind],
+            ["id", id],
+            ["tier", tier],
+        ]);
+}
+
+function trackWorld(this: void, bot: Unit, now: number): void {
+    const team = bot.GetTeam();
+    if (bot.GetPlayerID() !== lowestBotPID(team)) return;
+    let w = worlds[team];
+    if (w === undefined) {
+        w = { runes: {}, wards: weakKeys(), buildings: {}, slowAt: -math.huge };
+        worlds[team] = w;
+    }
+    // Every frame: a rune's taker walks out of range within a second.
+    trackRunes(team, w, now);
+    if (now - w.slowAt < Get().SnapshotInterval) return;
+    w.slowAt = now;
+    trackWards(team, w);
+    for (const [id, tier] of TOWER_TIERS) trackBuilding(team, w, "tower", id, GetTower(team, id), tier);
+    for (const id of BARRACKS) trackBuilding(team, w, "rax", id, GetBarracks(team, id));
+    const killedAt = GetRoshanKillTime();
+    if (w.roshanAt !== undefined && killedAt > w.roshanAt)
+        Event("roshan_kill", [
+            ["team", team],
+            ["at", killedAt],
+        ]);
+    w.roshanAt = killedAt;
+}
+
+/** Smoke, teleport and aegis edges for one hero (bot or human). */
+function trackHero(this: void, unit: Unit, s: BotState, now: number, slow: boolean): void {
+    const smoked = unit.HasModifier("modifier_smoke_of_deceit");
+    if (smoked && !s.smoked) {
+        const loc = unit.GetLocation();
+        Event("smoke_use", [
+            ["pid", unit.GetPlayerID()],
+            ["team", unit.GetTeam()],
+            ["x", math.floor(loc.x)],
+            ["y", math.floor(loc.y)],
+        ]);
+    }
+    s.smoked = smoked;
+    const teleporting = unit.HasModifier("modifier_teleporting");
+    if (teleporting) {
+        if (s.tpFrom === undefined) {
+            const loc = unit.GetLocation();
+            s.tpFrom = [loc.x, loc.y, now];
+        }
+        s.tpEndAt = undefined;
+    } else if (s.tpFrom !== undefined) {
+        if (s.tpEndAt === undefined) s.tpEndAt = now;
+        else if (now - s.tpEndAt >= TP_SETTLE) {
+            const [fx, fy, at] = s.tpFrom;
+            const loc = unit.GetLocation();
+            Event("tp", [
+                ["pid", unit.GetPlayerID()],
+                ["team", unit.GetTeam()],
+                ["fx", math.floor(fx)],
+                ["fy", math.floor(fy)],
+                ["x", math.floor(loc.x)],
+                ["y", math.floor(loc.y)],
+                ["dur", s.tpEndAt - at],
+                ["dist", math.floor(math.sqrt((loc.x - fx) ** 2 + (loc.y - fy) ** 2))],
+            ]);
+            s.tpFrom = undefined;
+            s.tpEndAt = undefined;
+        }
+    }
+    if (!slow) return;
+    const aegis = unit.FindItemSlot("item_aegis") >= 0;
+    if (aegis && !s.aegis)
+        Event("aegis", [
+            ["pid", unit.GetPlayerID()],
+            ["team", unit.GetTeam()],
+        ]);
+    s.aegis = aegis;
+}
+
+const guardedWorld = Guard("Telemetry.World", trackWorld);
+const guardedHero = Guard("Telemetry.Hero", trackHero);
+
 function snapHumans(bot: Unit, now: number): void {
     const team = bot.GetTeam();
     if (bot.GetPlayerID() !== lowestBotPID(team)) return;
@@ -494,7 +700,9 @@ function snapHumans(bot: Unit, now: number): void {
             ]);
         }
         trackCounters(member, hs, true, now);
-        if (now - hs.snapAt >= Get().SnapshotInterval) {
+        const slow = now - hs.snapAt >= Get().SnapshotInterval;
+        guardedHero(member, hs, now, slow);
+        if (slow) {
             hs.snapAt = now;
             const fields: [string, any][] = [
                 ["pid", member.GetPlayerID()],
@@ -523,7 +731,10 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
     trackMode(bot, s, now, provider);
     trackCounters(bot, s, false, now);
     reportMarks(bot, s, provider);
-    if (now - s.snapAt >= Get().SnapshotInterval) {
+    const slow = now - s.snapAt >= Get().SnapshotInterval;
+    guardedHero(bot, s, now, slow);
+    guardedWorld(bot, now);
+    if (slow) {
         s.snapAt = now;
         const fields: [string, any][] = [["pid", bot.GetPlayerID()]];
         for (const f of botFields(bot, provider !== undefined ? provider(bot) : undefined)) fields.push(f);
