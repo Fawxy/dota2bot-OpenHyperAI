@@ -771,9 +771,12 @@ interface CreepDeath {
 }
 interface CreepTrack {
     creeps: LuaTable<Unit, CreepSeen>;
+    // Handles logged as deaths: one seen alive again was a creep that left vision (ev=creep_revive, the WO-025 G2 gate).
+    dead: LuaTable<Unit, CreepSeen>;
     lastHits: Record<number, number>;
     denies: Record<number, number>;
-    // Per core pid: last frame's attack target, and the target when its last attack started.
+    // Per core pid: last frame's attack target, and the target when its last attack started (attackAt on the GameTime
+    // clock, as GetLastAttackTime is).
     target: Record<number, Unit | undefined>;
     attackAt: Record<number, number>;
     attackOn: Record<number, Unit | undefined>;
@@ -827,13 +830,26 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {} };
+        c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {} };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes(team);
+    const gameNow = GameTime();
+    const alive: Unit[] = [];
     const live = new LuaTable<Unit, boolean>();
     for (const u of GetUnitList(UnitType.EnemyCreeps) ?? []) {
-        if (u !== null && u !== undefined && u.IsAlive()) live.set(u, true);
+        if (u === null || u === undefined || !u.IsAlive()) continue;
+        alive.push(u);
+        live.set(u, true);
+        const back = c.dead.get(u);
+        if (back !== undefined) {
+            c.dead.delete(u);
+            Event("creep_revive", [
+                ["team", team],
+                ["kind", back.kind],
+                ["hp", back.hp],
+            ]);
+        }
     }
     const deaths: CreepDeath[] = [];
     for (const [creep, seen] of c.creeps) {
@@ -853,7 +869,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         if (n > 0) claimDeaths(deaths, h, n, tostring(h.GetPlayerID()));
     }
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (e === null || e === undefined || !e.IsAlive()) continue;
+        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
         const [ok, dn] = pcall(() => (e as unknown as StatsUnit).GetDenies());
         const n = ok && type(dn) === "number" ? rise(c.denies, e.GetPlayerID(), dn as number) : 0;
         if (n > 0) claimDeaths(deaths, e, n, "deny");
@@ -879,9 +895,10 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             fields.push([`p${pos}d`, math.floor(dist)]);
             fields.push([`p${pos}r`, core.GetAttackRange()]);
             fields.push([`p${pos}t`, c.target[pid] === d.creep]);
-            if (c.attackOn[pid] === d.creep) fields.push([`p${pos}a`, now - c.attackAt[pid]]);
+            if (c.attackOn[pid] === d.creep) fields.push([`p${pos}a`, gameNow - c.attackAt[pid]]);
         }
         Event("creep_death", fields);
+        c.dead.set(d.creep, d.seen);
     }
     // This frame's state, read for next frame's deaths.
     for (const [core] of cores) {
@@ -894,8 +911,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             c.attackOn[pid] = target;
         }
     }
-    for (const u of GetUnitList(UnitType.EnemyCreeps) ?? []) {
-        if (u === null || u === undefined || !u.IsAlive()) continue;
+    for (const u of alive) {
         const kind = creepKind(u.GetUnitName());
         if (kind === undefined) continue;
         const loc = u.GetLocation();

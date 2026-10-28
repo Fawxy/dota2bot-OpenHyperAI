@@ -36,6 +36,9 @@ local function events(name)
 	return r
 end
 local function field(line, key) return line:match(" " .. key .. '="([^"]*)"') or line:match(" " .. key .. "=(%S+)") end
+-- GetLastAttackTime runs on GameTime, which leads DotaTime by the pre-game and hero selection.
+local LEAD = 150
+function GameTime() return T + LEAD end
 local function tick(H, units, t)
 	T = t
 	for _, u in ipairs(units) do H.Telemetry.Tick(u) end
@@ -68,7 +71,7 @@ do
 	local a = creep("npc_dota_creep_badguys_melee", Vector(120, 0), 20)
 	local b = creep("npc_dota_creep_badguys_ranged", Vector(150, 50), 30)
 	tick(H, { core, sup }, 60)
-	core.target, core.attackAt = b, 60.1
+	core.target, core.attackAt = b, 60.1 + LEAD
 	tick(H, { core, sup }, 60.2)
 	-- Frame 1: the core kills a.
 	kill(a)
@@ -128,6 +131,30 @@ do
 	kill(late)
 	tick(H, { core }, 721.1)
 	check("nothing after CreepDeathUntil", #events("creep_death") == 2, #events("creep_death"))
+end
+
+-- A creep logged dead and seen again had left vision: ev=creep_revive. Illusions' deny counters are ignored.
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	core.pos = 1
+	local ill = MakeUnit({ pid = 6, team = 3, loc = Vector(100, 0) })
+	function ill:IsIllusion() return true end
+	ENEMIES = { ill }
+	local c = creep("npc_dota_creep_badguys_melee", Vector(100, 0), 10)
+	tick(H, { core }, 200)
+	for i, u in ipairs(CREEPS) do if u == c then table.remove(CREEPS, i) end end
+	ill.dn = 1
+	tick(H, { core }, 200.1)
+	local e = events("creep_death")
+	check("a vanished low creep is logged dead", #e == 1, #e)
+	check("an illusion's deny rise is not a deny", e[1] and field(e[1], "by") == "none", e[1])
+	table.insert(CREEPS, c)
+	tick(H, { core }, 200.2)
+	local r = events("creep_revive")
+	check("seen again: one creep_revive", #r == 1 and field(r[1], "kind") == "melee", r[1])
+	tick(H, { core }, 200.3)
+	check("revive logged once", #events("creep_revive") == 1, #events("creep_revive"))
 end
 
 finish()
