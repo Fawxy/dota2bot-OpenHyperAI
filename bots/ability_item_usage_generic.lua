@@ -8444,4 +8444,6 @@ X.BuybackUsageThink = BuybackUsageThink
 X.AbilityUsageThink = AbilityUsageThink
 X.ItemUsageThink = ItemUsageThink
 
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; AbilityUsageThink, ItemUsageThink, CourierUsageThink, BuybackUsageThink, AbilityLevelUpThink = E('ability_item_usage.AbilityUsageThink', AbilityUsageThink), E('ability_item_usage.ItemUsageThink', ItemUsageThink), E('ability_item_usage.CourierUsageThink', CourierUsageThink), E('ability_item_usage.BuybackUsageThink', BuybackUsageThink), E('ability_item_usage.AbilityLevelUpThink', AbilityLevelUpThink) end
 return X

@@ -215,6 +215,40 @@ do
 	check("overflow reported once", #e == 1 and field(e[1], "where") == "Test.Deep", e[1])
 end
 
+-- Entry (OHA entry points, H.1): returns pass through; an error is reported under oha.<where> and raised again unchanged.
+do
+	local H = fresh()
+	local f = H.Telemetry.Entry("mode_test.GetDesire", function(a) return a * 2, "second" end)
+	local x, y = f(4)
+	check("entry passes returns", x == 8 and y == "second", tostring(x) .. " " .. tostring(y))
+	check("entry quiet without error", #events("lua_error") == 0, #events("lua_error"))
+	check("entry keeps nil", H.Telemetry.Entry("mode_test.Think", nil) == nil)
+
+	local obj = { tag = "original" }
+	local g = H.Telemetry.Entry("mode_test.Think", function() error(obj) end)
+	local ok, err = pcall(g)
+	local e = events("lua_error")
+	check("entry rethrows", not ok)
+	check("entry rethrows the same error object", err == obj, tostring(err))
+	check("entry reports where=oha.<where>", e[1] and field(e[1], "where") == "oha.mode_test.Think", e[1])
+
+	-- A stack overflow is reported with its own message, not as "error in error handling".
+	local function deep(n) return 1 + deep(n + 1) end
+	local d = H.Telemetry.Entry("mode_test.Deep", function() return deep(0) end)
+	local okd, errd = pcall(d)
+	e = events("lua_error")
+	check("entry overflow rethrown", not okd)
+	check("entry overflow message kept", e[2] and (field(e[2], "msg") or ""):find("overflow", 1, true) ~= nil, e[2])
+	check("entry overflow message raised", type(errd) == "string" and errd:find("overflow", 1, true) ~= nil, tostring(errd))
+end
+
+-- Entry is a no-op with telemetry off.
+do
+	local H = fresh({ Enable = false })
+	local fn = function() end
+	check("entry off returns fn", H.Telemetry.Entry("mode_test.Think", fn) == fn)
+end
+
 -- Rate limit per (where, msg): repeats are counted and reported again after LuaErrorRepeat with the running count.
 do
 	local H = fresh({ Enable = true, LuaErrorRepeat = 10 })

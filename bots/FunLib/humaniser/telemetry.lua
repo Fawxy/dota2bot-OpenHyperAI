@@ -268,6 +268,27 @@ function ____exports.Guard(where, fn, fallback)
         )
     end
 end
+--- An OHA entry point (mode GetDesire/Think/OnStart/OnEnd, item and ability thinks) under pcall, for H.1. An error is
+-- reported as ev=lua_error where=oha.<where> (rate-limited like Guard) and raised again unchanged, so OHA behaves as
+-- before. pcall, not xpcall: with no handler a stack overflow keeps its own message ("<file>:<line>: stack overflow")
+-- instead of Dota's "error in error handling". Returns fn unchanged when it is nil or guards are off.
+function ____exports.Entry(where, fn)
+    if fn == nil or not ____exports.GuardsEnabled() then
+        return fn
+    end
+    local name = "oha." .. where
+    local function fail(err)
+        pcall(reportError, name, err, nil)
+        return error(err, 0)
+    end
+    local function finish(ok, ...)
+        if ok then
+            return ...
+        end
+        return fail(...)
+    end
+    return function(...) return finish(pcall(fn, ...)) end
+end
 --- Replaces each named export of a module table with a Guard()ed one. Lua callers resolve exports at call time.
 function ____exports.GuardModule(name, mod, fallbacks)
     for k, fallback in pairs(fallbacks) do
@@ -759,7 +780,7 @@ local function trackRunes(team, w, now)
     end
     for ____, r in ipairs(RUNES) do
         do
-            local __continue97
+            local __continue103
             repeat
                 local seen = w.runes[r]
                 if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
@@ -769,11 +790,11 @@ local function trackRunes(team, w, now)
                             loc = GetRuneSpawnLocation(r)
                         }
                     end
-                    __continue97 = true
+                    __continue103 = true
                     break
                 end
                 if seen == nil or not seen.up then
-                    __continue97 = true
+                    __continue103 = true
                     break
                 end
                 seen.up = false
@@ -782,7 +803,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
-                    __continue97 = true
+                    __continue103 = true
                     break
                 end
                 local ____, enemyD = nearest(
@@ -790,7 +811,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if enemyD < d then
-                    __continue97 = true
+                    __continue103 = true
                     break
                 end
                 local power = r == Rune.Power1 or r == Rune.Power2
@@ -814,9 +835,9 @@ local function trackRunes(team, w, now)
                         }
                     }
                 )
-                __continue97 = true
+                __continue103 = true
             until true
-            if not __continue97 then
+            if not __continue103 then
                 break
             end
         end
@@ -825,17 +846,17 @@ end
 local function trackWards(team, w)
     for ____, ward in ipairs(GetUnitList(UnitType.AlliedWards)) do
         do
-            local __continue105
+            local __continue111
             repeat
                 if w.wards[ward] == true then
-                    __continue105 = true
+                    __continue111 = true
                     break
                 end
                 w.wards[ward] = true
                 local name = ward:GetUnitName()
                 local kind = (string.find(name, "observer")) ~= nil and "obs" or ((string.find(name, "sentry")) ~= nil and "sentry" or nil)
                 if kind == nil then
-                    __continue105 = true
+                    __continue111 = true
                     break
                 end
                 local loc = ward:GetLocation()
@@ -862,9 +883,9 @@ local function trackWards(team, w)
                         }
                     }
                 )
-                __continue105 = true
+                __continue111 = true
             until true
-            if not __continue105 then
+            if not __continue111 then
                 break
             end
         end
@@ -1039,15 +1060,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue131
+                local __continue137
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue131 = true
+                        __continue137 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue131 = true
+                        __continue137 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1086,9 +1107,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue131 = true
+                    __continue137 = true
                 until true
-                if not __continue131 then
+                if not __continue137 then
                     break
                 end
             end

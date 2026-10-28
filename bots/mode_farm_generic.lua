@@ -605,21 +605,10 @@ function Think()
 	if GameTime() >= (bot._farm_repick_at or 0) then
 		bot._farm_repick_at = GameTime() + 1.0
 
-		local old = preferedCamp
-		if old then
-			local oldDist = old and GetUnitToLocationDistance(bot, old.cattr.location) or 9e9
-	
-			local avail = J.Role['availableCampTable']
-			local nearest = ClosestCamp(avail)
-	
-			if nearest then
-				local newDist = GetUnitToLocationDistance(bot, nearest.cattr.location)
-				-- switch if we save >800 units or ETA improves a lot and danger isn’t worse
-				if newDist + 200 < oldDist and not J.Site.IsCampDangerous(bot, nearest) then
-					preferedCamp = nearest
-				end
-			end
-		else
+		-- Slice 1 (H.1): OHA's switch to a nearer camp called J.Site.IsCampDangerous, which was never defined (upstream
+		-- 9cd63ca), so it raised on every nearer camp ("error in error handling" on the console) and never switched. Its
+		-- effective behaviour is kept without the error: an existing preferred camp stays.
+		if not preferedCamp then
 			preferedCamp = ClosestCamp(availableCamp);
 		end
 	end
@@ -1234,3 +1223,5 @@ function X.IsThereT3Detroyed()
 	end	
 	return false;
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_farm.GetDesire', GetDesire), E('mode_farm.Think', Think), E('mode_farm.OnStart', OnStart), E('mode_farm.OnEnd', OnEnd) end

@@ -175,3 +175,5 @@ function X.IsStronger(bot, enemy)
 	local EPower = enemy:GetEstimatedDamageToTarget(true, bot, 4.0, DAMAGE_TYPE_ALL);
 	return EPower > BPower;
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_secret_shop.GetDesire', GetDesire), E('mode_secret_shop.Think', Think), E('mode_secret_shop.OnStart', OnStart), E('mode_secret_shop.OnEnd', OnEnd) end

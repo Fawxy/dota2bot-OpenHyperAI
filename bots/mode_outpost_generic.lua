@@ -181,3 +181,5 @@ function IsSuitableToCaptureOutpost()
 
 	return true
 end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_outpost.GetDesire', GetDesire), E('mode_outpost.Think', Think), E('mode_outpost.OnStart', OnStart), E('mode_outpost.OnEnd', OnEnd) end

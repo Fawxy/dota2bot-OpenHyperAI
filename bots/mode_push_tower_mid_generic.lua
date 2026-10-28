@@ -9,3 +9,5 @@ function GetDesire()
     return bot.PushLaneDesire[LANE_MID]
 end
 function Think() Push.PushThink(bot, LANE_MID) end
+-- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think = E('mode_push_tower_mid.GetDesire', GetDesire), E('mode_push_tower_mid.Think', Think) end
