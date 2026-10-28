@@ -219,8 +219,8 @@ Customize.Humaniser = {
     },
     -- tasks: the engine's coroutine task runner (FunLib/engine, built from engine/). Demo gates the GATHER demo task.
     Tasks = { Enable = true, Demo = false },
-    -- Behaviour states (humaniser/states, on the SDK's States; needs Tasks.Enable). Enable = false restores OHA
-    -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions the SDK body runs
+    -- Behaviour states (humaniser/states, on the engine's States; needs Tasks.Enable). Enable = false restores OHA
+    -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions our body runs
     -- (replaces the default list). Teams: who may own ('allies' = allies of a human, or 'all'); ShadowTeams: who
     -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
     -- Laning: Spot 'oha' (OHA's PositionThink target) or 'sdk' (creep/tower rings, idle steps; slice 3);

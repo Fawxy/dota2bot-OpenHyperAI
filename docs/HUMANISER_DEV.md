@@ -1174,7 +1174,7 @@ Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, 
 - **Offline:** `tests/humaniser/test_tasks_integration.lua`.
 
 ### Job verbs (`job_verbs.ts`)
-Generic, skill-scaled bodies for the support clock (knowledge.md §2.1-2.3). Each takes its geometry and times
+Generic, skill-scaled bodies for the support clock. Each takes its geometry and times
 as a plan; the host (OHA `camp_jobs`/`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
 decides *when* to start; the verb executes. `JobVerbs.*(bot, plan, hooks?)` report phases through `{ label?, urgent? }`
 (pass the task's `ctx.label`/`ctx.urgent`); `Tasks.Jobs()` returns the module once the engine bundle has loaded (it is
@@ -1183,7 +1183,7 @@ bound to the bundle and its adapter by `JobVerbs.Bind`). Moved from the engine's
 
 **Camp** `{ stand, box?, origin?, margin? = 300, search? = 700, pick?, confirmed? }`. `campNeutral(bot, camp)`:
 the nearest alive, visible neutral (`GetNearbyNeutralCreeps`) inside the box grown by `margin` (OHA
-`Radii.BoxMargin`). This is the fix for the `CampNeutral` known issue below: pass the spawner's `min`/`max` as
+`Radii.BoxMargin`). This is the fix for the `CampNeutral` known issue (`engine/docs/API.md`, "In-game checks outstanding"): pass the spawner's `min`/`max` as
 `box` rather than OHA's strict-box `pick`. While nothing is seen at the aggro second the bot walks to `origin`.
 
 **Aggro (shared by stack and pull).** `aggroAt` is when the hit should **land** (OHA's `baseAggro`, the camp's

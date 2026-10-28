@@ -1,6 +1,6 @@
 # Engine API (lua-tasks v0.2): design
 
-Date: 23/10/2026. Status: work packages 1-4 built and tested offline (fengari + LuaJIT); runner and `attackAndConfirm` verified in-game; cast/item/rune and SimpleHost checks outstanding. Supersedes nothing; extends `packages/lua-tasks` without breaking the
+Date: 23/10/2026. Status: work packages 1-4 built and tested offline (fengari + LuaJIT); runner and `attackAndConfirm` verified in-game; cast/item/rune and SimpleHost checks outstanding. Supersedes nothing; extends lua-tasks (now `engine/` in the bot repo) without breaking the
 OHA integration (`task`, `Step`, `Tick`, `Cancel`, `Urgent`, `Label`, `Verbs.*` keep their signatures).
 
 ## Direction (aligned 28/10/2026 to the master `docs/team/PLAN.md`)
@@ -212,7 +212,7 @@ error in a body ends the task with `error` and is logged (`stack_task.lua` diag 
 Found while testing (OHA, not SDK): `CampJobs.CampNeutral` needs the neutral strictly inside the spawn box,
 but idle neutrals stand just outside it, and from camp 1's stand point the box is out of sight; 22 natural
 stack attempts over 3 games ended `mistake:no-camp`. The spike passed with a pick using `Radii.BoxMargin`.
-The job verbs' default `campNeutral` applies the margin (300) itself; OHA should pass the box, not its pick.
+The job verbs' `campNeutral` (bot code since slice 0b, `humaniser/job_verbs`) applies the margin (300) itself; the caller should pass the box, not its pick.
 
 Runner and combat:
 1. Done (above).

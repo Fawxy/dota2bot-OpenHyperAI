@@ -4,8 +4,8 @@ Runs a lua-tasks task in a bot script that is not OHA: 30 s into the game each b
 waits 3 s and walks back, hosted on the farm mode.
 
 ## Install
-1. In `packages/lua-tasks`: `npm run build`.
-2. Copy `dist/tasks.lua` and `examples/generic/mode_farm_generic.lua` into
+1. In `engine/`: `npm run build`.
+2. Copy `../bots/FunLib/engine/tasks.lua` and `examples/generic/mode_farm_generic.lua` into
    `<Steam>/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots/`.
 3. Start a lobby with bots using the local dev script, with `-console` in the launch options.
 

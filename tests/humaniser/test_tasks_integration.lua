@@ -1,7 +1,7 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
--- OHA integration of the vendored lua-tasks bundle (humaniser/tasks.ts). Bodies are the bundle's own verbs,
--- since the TS test bodies live in the SDK's test bundle.
+-- OHA integration of the engine bundle (bots/FunLib/engine/tasks.lua; humaniser/tasks.ts). Bodies are the bundle's own verbs,
+-- since the TS test bodies live in the engine's test bundle.
 local BUNDLE = "bots/FunLib/engine/tasks"
 local ASSEMBLE, RETREAT = BOT_MODE_ASSEMBLE, BOT_MODE_RETREAT
 local RAW = 0.1
