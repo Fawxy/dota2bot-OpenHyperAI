@@ -537,7 +537,15 @@ local function trackCounters(unit, s, human, now)
     local lh = stats:GetLastHits()
     local dn = stats:GetDenies()
     if s.lastHits >= 0 and lh > s.lastHits then
-        local creep = s.prevTarget or unit:GetAttackTarget() or nil
+        local current = unit:GetAttackTarget() or nil
+        local creep = s.prevTarget or current
+        local ____temp_7
+        if s.prevTarget ~= nil then
+            ____temp_7 = s.prevTargetName
+        else
+            ____temp_7 = current and current:GetUnitName()
+        end
+        local creepName = ____temp_7
         local d = creep ~= nil and s.decisions[creep] or nil
         local fresh = d ~= nil and now - d.at <= ____exports.Get().DecisionMaxAge
         ____exports.Event(
@@ -549,10 +557,7 @@ local function trackCounters(unit, s, human, now)
                 },
                 {"human", human},
                 {"n", lh - s.lastHits},
-                {
-                    "creep",
-                    creep ~= nil and creep:GetUnitName() or nil
-                },
+                {"creep", creepName},
                 {"dec", fresh and d.reason or nil},
                 {"decAge", fresh and now - d.at or nil}
             }
@@ -575,6 +580,9 @@ local function trackCounters(unit, s, human, now)
     s.denies = dn
     local target = unit:GetAttackTarget()
     s.prevTarget = target ~= nil and target ~= nil and target or nil
+    local ____s_10 = s
+    local ____opt_8 = s.prevTarget
+    ____s_10.prevTargetName = ____opt_8 and ____opt_8:GetUnitName()
 end
 local function trackMode(bot, s, now, provider)
     local mode = bot:GetActiveMode()

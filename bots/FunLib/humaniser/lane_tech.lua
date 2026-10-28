@@ -492,6 +492,10 @@ local function towerDrop(bot, s, allyCreeps)
         drops[pid] = drop
         noteStart(bot, "tower_drop", "tower aggro")
     end
+    if drop.tower:IsNull() or not drop.tower:IsAlive() then
+        __TS__Delete(drops, pid)
+        return false
+    end
     local exit = radii.TowerAggro + radii.TowerExitMargin
     local towerLoc = drop.tower:GetLocation()
     local here = bot:GetLocation()
@@ -631,19 +635,19 @@ local function drawTarget(bot, enemies)
     local candidates = {}
     for ____, e in ipairs(enemies or ({})) do
         do
-            local __continue96
+            local __continue97
             repeat
                 if not isUsable(e) or e:GetTeam() == team or underEnemyTower(
                     team,
                     e:GetLocation()
                 ) then
-                    __continue96 = true
+                    __continue97 = true
                     break
                 end
                 candidates[#candidates + 1] = e
-                __continue96 = true
+                __continue97 = true
             until true
-            if not __continue96 then
+            if not __continue97 then
                 break
             end
         end
@@ -707,10 +711,10 @@ local function trySwap(bot, s, enemies, reason, lastHit)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue103
+            local __continue104
             repeat
                 if not h.alive or h.pid == pid or h.position == nil or h.position < 1 or h.position > 3 or h.hp >= t.TowerSwapAllyHP then
-                    __continue103 = true
+                    __continue104 = true
                     break
                 end
                 local tower = towerTargeting(
@@ -719,7 +723,7 @@ local function trySwap(bot, s, enemies, reason, lastHit)
                     settings().Radii.TowerAggro
                 )
                 if tower == nil then
-                    __continue103 = true
+                    __continue104 = true
                     break
                 end
                 local candidates = {}
@@ -734,7 +738,7 @@ local function trySwap(bot, s, enemies, reason, lastHit)
                     t.EnemyTowerRange
                 )
                 if hero == nil then
-                    __continue103 = true
+                    __continue104 = true
                     break
                 end
                 bot:Action_AttackUnit(hero, true)
@@ -751,7 +755,7 @@ local function trySwap(bot, s, enemies, reason, lastHit)
                 )
                 return true
             until true
-            if not __continue103 then
+            if not __continue104 then
                 break
             end
         end
@@ -963,10 +967,10 @@ local function zoneTarget(bot, s)
     local bestDist = math.huge
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue148
+            local __continue149
             repeat
                 if not e.visible or dist2D(e.location, s.frontLoc) > zone then
-                    __continue148 = true
+                    __continue149 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -974,9 +978,9 @@ local function zoneTarget(bot, s)
                     best = e.location
                     bestDist = d
                 end
-                __continue148 = true
+                __continue149 = true
             until true
-            if not __continue148 then
+            if not __continue149 then
                 break
             end
         end

@@ -406,4 +406,25 @@ do
 	check("enabled control: Think shoves", H.Lane.Think(bot, {}, creeps, {}) == true and #attacks(1) == 1)
 end
 
+-- ER-001 b04_B_on_5 pid 6 (BACKLOG 0.14): a tower drop started at t=571 was still held when the bot came back to lane at
+-- t=639, after that tower had fallen; reading the removed tower raised "Invalid object passed to IsBuilding" (OHA's
+-- GetLocation override) on every PreThink to 18:30.
+do
+	local H, bot, creep = aggroWorld(0.5, { x = 2200 })
+	local tower = TOWERS_W[3][dota.Tower.Bot1]
+	tower.target = bot
+	SetRandomSequence({ 0.99 })
+	check("precondition: the drop starts", H.Lane.PreThink(bot, { creep }, {}, {}) == true and #attacks(1) == 1)
+	tower.removed, tower.alive = true, false
+	tower.GetLocation = function(self) if self.removed then error("Invalid object passed to IsBuilding.") end return self.loc end
+	tower.IsAlive = function(self) if self.removed then error("Invalid object passed to IsAlive.") end return self.alive end
+	TOWERS_W[3][dota.Tower.Bot1] = nil
+	T = 95.1
+	local ok, res = pcall(H.Lane.PreThink, bot, { creep }, {}, {})
+	check("a held drop on a removed tower ends without raising", ok and res == false, res)
+	T = 95.2
+	ok, res = pcall(H.Lane.PreThink, bot, { creep }, {}, {})
+	check("and stays ended", ok and res == false, res)
+end
+
 finish()
