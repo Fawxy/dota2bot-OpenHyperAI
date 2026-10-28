@@ -89,7 +89,8 @@ end
 
 function ResetWorld() UNITS = { [2] = {}, [3] = {} } CHAT_CALLBACKS = {} CAST_CALLBACKS = {} T = 0 GAME_STATE = 8 end
 
-FAILS, PASSES = 0, 0
+-- A test file may load a world (which loads these stubs again) after its first checks: keep the counts.
+FAILS, PASSES = FAILS or 0, PASSES or 0
 function check(name, cond, detail)
 	if cond then PASSES = PASSES + 1 else FAILS = FAILS + 1 print("FAIL: " .. name .. (detail and (" -- " .. tostring(detail)) or "")) end
 end
