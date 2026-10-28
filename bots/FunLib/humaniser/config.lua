@@ -62,13 +62,6 @@ ____exports.DEFAULTS = {
         Teams = "allies",
         ShadowTeams = "allies",
         LanePosEvery = 2
-    },
-    Phase = {
-        Enable = false,
-        Priors = false,
-        Interval = 0.5,
-        SeenWindow = 3,
-        ThreatRadius = 900
     }
 }
 local function merge(defaults, overrides)

@@ -137,7 +137,7 @@ type Prior = (this: void, bot: TaskUnit, state: string, raw: number) => number |
 let priorFn: Prior | undefined;
 
 /**
- * A prior on every raw score (e.g. `Phase.Prior()`), applied before stickiness and the job-break check; undefined
+ * A prior on every raw score (e.g. a team-phase bias), applied before stickiness and the job-break check; undefined
  * from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
  */
 export function SetPrior(fn: Prior | undefined): void {

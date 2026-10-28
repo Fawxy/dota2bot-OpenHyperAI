@@ -180,7 +180,6 @@ Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (
 | `init`, `Supported` | adapter injection, coroutine probe |
 | `Verbs.holdAt` / `ctx.holdAt` | posture verb: keep near a moving point (tolerance, repath cadence + jitter, scatter, `hold` tag); never ends ok; scattered spots are built by the adapter's optional `vector(x, y, z)`. `step: [min, max]` makes each new spot an idle step of that length from the bot (kept within `scatter` of the point); `follow` (default tolerance/2) is how far the point must move to force a new spot before `repath` |
 | `States.define/configure/SetOwned/SetPrior/Tick/Step/Current/Forget` | behaviour states (below) |
-| `Phase.Tick/Current/Order/ClearOrder/Bias/Desire/Apply/Prior/define/configure/Reset`, `Phase.DotaPhases(opts)` | team game phase (below) |
 
 ## Behaviour states (`States`, team slice 1)
 A bot has at most one state; each is `{ name, kind: "posture"|"job", host, floor?, tier?, preemptAfter?,
@@ -196,20 +195,8 @@ has withdrawn it is left at once (`why=n/a`). It never replaces another task. `S
 host's Think. Events through the adapter's optional `event(name, fields)` (else `log`): `state` (pid from to
 score owned why=start|best|n/a|break|ended|own|disown), `state_start` (pid state n gap after), `state_task`
 (pid state result reason msg label steps). `States.SetPrior(fn(bot, state, raw))` multiplies/replaces every raw
-score before stickiness and the job-break check (e.g. `Phase.Prior()`); a failing prior is logged, the raw score kept.
-
-## Team game phase (`Phase`, team slice 12)
-Per team, one phase: `laning`, `transition`, `midgame`, `push`, `defend`, `late` (`Phase.DotaPhases({ laningEnd=600,
-transitionEnd=900, lateFrom=2100 })`; `define(team, specs)` replaces them). `Phase.Tick(team, build)` from the host's
-tick: every `interval` (0.5 s) it calls `build()` for a `PhaseSnapshot` (`time`, optional `towers.{ours,theirs}.{t1,t2,t3}`
-alive counts, `netWorth`, `levels`, `alive`, `enemiesSeen`, `threat.{heroes,tier}`, `waves` fronts -1..+1) and scores
-each spec. Commitment: the current phase gets `+margin` (0.1); a rival must stay best for `confirm` (2 s, also when
-the current stops applying); a phase is held `minDwell` (20 s) unless it stops applying or the rival is `urgent`
-(defend; `urgentConfirm` 1 s). `Order(team, phase, secs, source)` forces a phase (unknown name: false), `ClearOrder`
-ends it; afterwards the next change needs no dwell. A spec's `bias[state]` (or `"*"`) multiplies state scores
-(`Apply(team, state, raw)`, clamped to [0, 1]; `Prior()` for `States.SetPrior`), `desire[key]` host mode desires
-(`Desire(team, key)`); both blend from the previous phase's over `blend` (4 s). Event `phase` (team from to score
-why=start|best|n/a|released|order, order=source).
+score before stickiness and the job-break check (no consumer since `Phase` was deleted in slice 0b); a failing prior is
+logged, the raw score kept.
 
 ## In-game checks outstanding
 Verified on 23/10/2026 (match 9057344728, OHA O2 stack task): bundle loads, a task's claim wins its host

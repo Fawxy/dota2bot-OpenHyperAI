@@ -48,7 +48,7 @@ export declare function define(bot: TaskUnit, specs: StateSpec[]): void;
 export declare function Forget(bot: TaskUnit): void;
 type Prior = (this: void, bot: TaskUnit, state: string, raw: number) => number | undefined;
 /**
- * A prior on every raw score (e.g. `Phase.Prior()`), applied before stickiness and the job-break check; undefined
+ * A prior on every raw score (e.g. a team-phase bias), applied before stickiness and the job-break check; undefined
  * from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
  */
 export declare function SetPrior(fn: Prior | undefined): void;
