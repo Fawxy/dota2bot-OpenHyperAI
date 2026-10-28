@@ -253,7 +253,9 @@ do
 	local b3 = MakeUnit({ pid = 3 })
 	local b4 = MakeUnit({ pid = 4 })
 	MakeUnit({ pid = 2, bot = false })
+	-- The first frame logs ev=player; the first human snap follows one SnapshotInterval later.
 	tick(H, { b3, b4 }, 300)
+	tick(H, { b3, b4 }, 301.5)
 	local n = 0
 	for _, l in ipairs(events("snap")) do if field(l, "pid") == "2" then n = n + 1 end end
 	check("one human snap per frame without the lowest-PID bot", n == 1, n)
