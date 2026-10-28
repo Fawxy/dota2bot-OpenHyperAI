@@ -1,11 +1,14 @@
 /** @noSelfInFile */
 import { TaskBody, TaskTarget, TaskUnit, Vec } from "./types";
-export interface WalkOpts {
+import { StopOpts } from "./verbs_util";
+export type { StopOpts } from "./verbs_util";
+export interface WalkOpts extends StopOpts {
+    /** Distance from a waypoint that counts as reached. Default 150. */
     tolerance?: number;
+    /** Seconds for the whole walk. Default 10. */
     timeout?: number;
-    deadline?: number;
+    /** Seconds without progress (stuns excluded) before failing `stuck`. Default 1.5. */
     stuckSecs?: number;
-    interruptIf?: (this: void) => boolean;
 }
 export declare function walkTo(bot: TaskUnit, loc: Vec, opts?: WalkOpts): TaskBody;
 /**
@@ -14,22 +17,19 @@ export declare function walkTo(bot: TaskUnit, loc: Vec, opts?: WalkOpts): TaskBo
  * start of the walk; stuck detection restarts at each new waypoint and is disabled by `stuckSecs = math.huge`.
  */
 export declare function walkPath(bot: TaskUnit, points: Vec[], opts?: WalkOpts): TaskBody;
-export declare function wait(bot: TaskUnit, secs: number, opts?: {
-    deadline?: number;
-    interruptIf?: (this: void) => boolean;
-}): TaskBody;
-/** Finishes as soon as game time reaches `t`, on the first resume without yielding if it already has. */
-export declare function waitUntil(bot: TaskUnit, t: number, opts?: {
+export declare function wait(bot: TaskUnit, secs: number, opts?: StopOpts): TaskBody;
+export interface WaitUntilOpts extends StopOpts {
+    /** Adapter hold tag reported every frame while waiting. */
     hold?: string;
-    deadline?: number;
-    interruptIf?: (this: void) => boolean;
-}): TaskBody;
-export declare function retreatTo(bot: TaskUnit, opts: {
+}
+/** Finishes as soon as game time reaches `t`, on the first resume without yielding if it already has. */
+export declare function waitUntil(bot: TaskUnit, t: number, opts?: WaitUntilOpts): TaskBody;
+export interface RetreatOpts extends WalkOpts {
     safe: Vec;
-    tolerance?: number;
-    timeout?: number;
-}): TaskBody;
-export interface AttackConfirmOpts {
+}
+/** `walkTo(opts.safe)` with retreat defaults: tolerance 300, timeout 20, stuckSecs 3. */
+export declare function retreatTo(bot: TaskUnit, opts: RetreatOpts): TaskBody;
+export interface AttackConfirmOpts extends StopOpts {
     /** Seconds from the verb's start to keep calling `pick` before giving up with `no_target`. */
     findFor: number;
     /** Seconds from the latest attack order to see it land before giving up with `missed`. */
@@ -37,8 +37,6 @@ export interface AttackConfirmOpts {
     /** Walked towards while `pick` finds nothing. */
     searchAt?: Vec;
     hold?: string;
-    /** Absolute game time after which the verb fails `timeout` if not yet confirmed. */
-    deadline?: number;
     /** Extra host-specific confirmation, checked alongside the bot's own signals. */
     confirmed?: (this: void) => boolean;
 }
@@ -49,7 +47,7 @@ export interface AttackConfirmOpts {
  * a new one picked and ordered the next frame, which restarts the `confirmFor` clock.
  */
 export declare function attackAndConfirm(bot: TaskUnit, pick: (this: void) => TaskTarget | undefined, opts: AttackConfirmOpts): TaskBody;
-export interface HoldOpts {
+export interface HoldOpts extends StopOpts {
     /** Distance from the target spot that counts as there. Default 100. */
     tolerance?: number;
     /** Seconds between picks of a new spot while the point stays put. Default 1. */
@@ -67,8 +65,6 @@ export interface HoldOpts {
     step?: [number, number];
     /** How far the point must move to force a new spot before `repath`. Default tolerance / 2. */
     follow?: number;
-    deadline?: number;
-    interruptIf?: (this: void) => boolean;
 }
 /**
  * Posture verb: keeps the bot within `tolerance` of `point()` (re-read every frame) and never ends `ok` by itself.
