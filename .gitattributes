@@ -1,2 +1,6 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# LF in the repository and in every working copy, on every OS: the build (tstl, prettier, node) writes LF, so a CRLF
+# checkout on Windows showed every built file as changed. Windows scripts keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
