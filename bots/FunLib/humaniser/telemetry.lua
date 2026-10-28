@@ -1,8 +1,12 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Barracks = ____dota.Barracks
 local GameState = ____dota.GameState
+local Rune = ____dota.Rune
 local Team = ____dota.Team
+local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
@@ -286,7 +290,9 @@ local function stateFor(pid)
             denies = -1,
             decisions = weakKeys(),
             markCursor = {},
-            ended = false
+            ended = false,
+            smoked = false,
+            aegis = false
         }
         states[pid] = s
     end
@@ -671,9 +677,361 @@ local function ancientDown(team)
     local ancient = GetAncient(team)
     return ancient == nil or ancient == nil or not ancient:IsAlive() or ancient:GetHealth() <= 0
 end
+local RUNES = {
+    Rune.Power1,
+    Rune.Power2,
+    Rune.Bounty1,
+    Rune.Bounty2,
+    Rune.Bounty3,
+    Rune.Bounty4
+}
+local TOWER_TIERS = {
+    {Tower.Top1, 1},
+    {Tower.Mid1, 1},
+    {Tower.Bot1, 1},
+    {Tower.Top2, 2},
+    {Tower.Mid2, 2},
+    {Tower.Bot2, 2},
+    {Tower.Top3, 3},
+    {Tower.Mid3, 3},
+    {Tower.Bot3, 3},
+    {Tower.Base1, 4},
+    {Tower.Base2, 4}
+}
+local BARRACKS = {
+    Barracks.TopMelee,
+    Barracks.TopRanged,
+    Barracks.MidMelee,
+    Barracks.MidRanged,
+    Barracks.BotMelee,
+    Barracks.BotRanged
+}
+--- RUNE_RULES power.first (transitions/runes): power spots hold water runes before it.
+local POWER_FROM = 360
+--- judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement.
+local RUNE_TAKER_R = 400
+--- judgement: ward cast range 500 plus movement since the cast.
+local WARD_OWNER_R = 800
+--- Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this.
+local RUNES_FROM = 1
+--- A teleport's landing spot is read this long after its modifier ends.
+local TP_SETTLE = 0.1
+local worlds = {}
+local teamJobAt = {}
+local function firstThisFrame(job, team, now)
+    local key = job .. tostring(team)
+    if teamJobAt[key] == now then
+        return false
+    end
+    teamJobAt[key] = now
+    return true
+end
+local function teamHeroes(team)
+    local heroes = {}
+    local n = #GetTeamPlayers(team)
+    do
+        local i = 1
+        while i <= n do
+            local m = GetTeamMember(i)
+            if m ~= nil and m ~= nil and m:IsAlive() then
+                heroes[#heroes + 1] = m
+            end
+            i = i + 1
+        end
+    end
+    return heroes
+end
+local function nearest(units, loc)
+    local best
+    local bestD = math.huge
+    for ____, u in ipairs(units) do
+        local d = GetUnitToLocationDistance(u, loc)
+        if d < bestD then
+            best = u
+            bestD = d
+        end
+    end
+    return best, bestD
+end
+local function trackRunes(team, w, now)
+    if now < RUNES_FROM then
+        return
+    end
+    for ____, r in ipairs(RUNES) do
+        do
+            local __continue97
+            repeat
+                local seen = w.runes[r]
+                if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
+                    if seen == nil or not seen.up then
+                        w.runes[r] = {
+                            up = true,
+                            loc = GetRuneSpawnLocation(r)
+                        }
+                    end
+                    __continue97 = true
+                    break
+                end
+                if seen == nil or not seen.up then
+                    __continue97 = true
+                    break
+                end
+                seen.up = false
+                local taker, d = nearest(
+                    teamHeroes(team),
+                    seen.loc
+                )
+                if taker == nil or d > RUNE_TAKER_R then
+                    __continue97 = true
+                    break
+                end
+                local ____, enemyD = nearest(
+                    GetUnitList(UnitType.EnemyHeroes),
+                    seen.loc
+                )
+                if enemyD < d then
+                    __continue97 = true
+                    break
+                end
+                local power = r == Rune.Power1 or r == Rune.Power2
+                ____exports.Event(
+                    "rune_pickup",
+                    {
+                        {
+                            "pid",
+                            taker:GetPlayerID()
+                        },
+                        {"team", team},
+                        {"rune", r},
+                        {"kind", power and (now < POWER_FROM and "water" or "power") or "bounty"},
+                        {
+                            "x",
+                            math.floor(seen.loc.x)
+                        },
+                        {
+                            "y",
+                            math.floor(seen.loc.y)
+                        }
+                    }
+                )
+                __continue97 = true
+            until true
+            if not __continue97 then
+                break
+            end
+        end
+    end
+end
+local function trackWards(team, w)
+    for ____, ward in ipairs(GetUnitList(UnitType.AlliedWards)) do
+        do
+            local __continue105
+            repeat
+                if w.wards[ward] == true then
+                    __continue105 = true
+                    break
+                end
+                w.wards[ward] = true
+                local name = ward:GetUnitName()
+                local kind = (string.find(name, "observer")) ~= nil and "obs" or ((string.find(name, "sentry")) ~= nil and "sentry" or nil)
+                if kind == nil then
+                    __continue105 = true
+                    break
+                end
+                local loc = ward:GetLocation()
+                local owner, d = nearest(
+                    teamHeroes(team),
+                    loc
+                )
+                ____exports.Event(
+                    "ward_place",
+                    {
+                        {
+                            "pid",
+                            owner ~= nil and d <= WARD_OWNER_R and owner:GetPlayerID() or nil
+                        },
+                        {"team", team},
+                        {"kind", kind},
+                        {
+                            "x",
+                            math.floor(loc.x)
+                        },
+                        {
+                            "y",
+                            math.floor(loc.y)
+                        }
+                    }
+                )
+                __continue105 = true
+            until true
+            if not __continue105 then
+                break
+            end
+        end
+    end
+end
+local function trackBuilding(team, w, kind, id, u, tier)
+    local key = kind .. tostring(id)
+    local alive = u ~= nil and u ~= nil and u:IsAlive()
+    local known = w.buildings[key]
+    w.buildings[key] = alive
+    if known == true and not alive then
+        ____exports.Event("building_fall", {{"team", team}, {"kind", kind}, {"id", id}, {"tier", tier}})
+    end
+end
+local function trackWorld(bot, now)
+    local team = bot:GetTeam()
+    if not firstThisFrame("world", team, now) then
+        return
+    end
+    local w = worlds[team]
+    if w == nil then
+        w = {
+            runes = {},
+            wards = weakKeys(),
+            buildings = {},
+            slowAt = -math.huge
+        }
+        worlds[team] = w
+    end
+    trackRunes(team, w, now)
+    if now - w.slowAt < ____exports.Get().SnapshotInterval then
+        return
+    end
+    w.slowAt = now
+    trackWards(team, w)
+    for ____, ____value in ipairs(TOWER_TIERS) do
+        local id = ____value[1]
+        local tier = ____value[2]
+        trackBuilding(
+            team,
+            w,
+            "tower",
+            id,
+            GetTower(team, id),
+            tier
+        )
+    end
+    for ____, id in ipairs(BARRACKS) do
+        trackBuilding(
+            team,
+            w,
+            "rax",
+            id,
+            GetBarracks(team, id)
+        )
+    end
+    local killedAt = GetRoshanKillTime()
+    if w.roshanAt ~= nil and killedAt > w.roshanAt then
+        ____exports.Event("roshan_kill", {{"team", team}, {"at", killedAt}})
+    end
+    w.roshanAt = killedAt
+end
+--- Smoke, teleport and aegis edges for one hero (bot or human).
+local function trackHero(unit, s, now, slow)
+    local smoked = unit:HasModifier("modifier_smoke_of_deceit")
+    if smoked and not s.smoked then
+        local loc = unit:GetLocation()
+        ____exports.Event(
+            "smoke_use",
+            {
+                {
+                    "pid",
+                    unit:GetPlayerID()
+                },
+                {
+                    "team",
+                    unit:GetTeam()
+                },
+                {
+                    "x",
+                    math.floor(loc.x)
+                },
+                {
+                    "y",
+                    math.floor(loc.y)
+                }
+            }
+        )
+    end
+    s.smoked = smoked
+    local teleporting = unit:HasModifier("modifier_teleporting")
+    if teleporting then
+        if s.tpFrom == nil then
+            local loc = unit:GetLocation()
+            s.tpFrom = {loc.x, loc.y, now}
+        end
+        s.tpEndAt = nil
+    elseif s.tpFrom ~= nil then
+        if s.tpEndAt == nil then
+            s.tpEndAt = now
+        elseif now - s.tpEndAt >= TP_SETTLE then
+            local fx, fy, at = unpack(s.tpFrom)
+            local loc = unit:GetLocation()
+            ____exports.Event(
+                "tp",
+                {
+                    {
+                        "pid",
+                        unit:GetPlayerID()
+                    },
+                    {
+                        "team",
+                        unit:GetTeam()
+                    },
+                    {
+                        "fx",
+                        math.floor(fx)
+                    },
+                    {
+                        "fy",
+                        math.floor(fy)
+                    },
+                    {
+                        "x",
+                        math.floor(loc.x)
+                    },
+                    {
+                        "y",
+                        math.floor(loc.y)
+                    },
+                    {"dur", s.tpEndAt - at},
+                    {
+                        "dist",
+                        math.floor(math.sqrt((loc.x - fx) ^ 2 + (loc.y - fy) ^ 2))
+                    }
+                }
+            )
+            s.tpFrom = nil
+            s.tpEndAt = nil
+        end
+    end
+    if not slow then
+        return
+    end
+    local aegis = unit:FindItemSlot("item_aegis") >= 0
+    if aegis and not s.aegis then
+        ____exports.Event(
+            "aegis",
+            {
+                {
+                    "pid",
+                    unit:GetPlayerID()
+                },
+                {
+                    "team",
+                    unit:GetTeam()
+                }
+            }
+        )
+    end
+    s.aegis = aegis
+end
+local guardedWorld = ____exports.Guard("Telemetry.World", trackWorld)
+local guardedHero = ____exports.Guard("Telemetry.Hero", trackHero)
 local function snapHumans(bot, now)
     local team = bot:GetTeam()
-    if bot:GetPlayerID() ~= lowestBotPID(team) then
+    if not firstThisFrame("humans", team, now) then
         return
     end
     local players = GetTeamPlayers(team)
@@ -681,15 +1039,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue88
+                local __continue131
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue88 = true
+                        __continue131 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue88 = true
+                        __continue131 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -712,7 +1070,9 @@ local function snapHumans(bot, now)
                         )
                     end
                     trackCounters(member, hs, true, now)
-                    if now - hs.snapAt >= ____exports.Get().SnapshotInterval then
+                    local slow = now - hs.snapAt >= ____exports.Get().SnapshotInterval
+                    guardedHero(member, hs, now, slow)
+                    if slow then
                         hs.snapAt = now
                         local fields = {
                             {
@@ -726,9 +1086,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue88 = true
+                    __continue131 = true
                 until true
-                if not __continue88 then
+                if not __continue131 then
                     break
                 end
             end
@@ -762,7 +1122,10 @@ function ____exports.Tick(bot, provider)
     trackMode(bot, s, now, provider)
     trackCounters(bot, s, false, now)
     reportMarks(bot, s, provider)
-    if now - s.snapAt >= ____exports.Get().SnapshotInterval then
+    local slow = now - s.snapAt >= ____exports.Get().SnapshotInterval
+    guardedHero(bot, s, now, slow)
+    guardedWorld(bot, now)
+    if slow then
         s.snapAt = now
         local fields = {{
             "pid",

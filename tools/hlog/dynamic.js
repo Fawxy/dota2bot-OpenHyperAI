@@ -21,7 +21,21 @@ const C = {
     STEAL_R: 700, // EC-050/055; judgement
     IDLE_S: 10,
     IDLE_R: 100,
+    // World events (slice 23).
+    POWER_FROM: 360, // power spots hold water runes before 6:00 (RUNE_RULES)
+    WISDOM_FIRST: 420, // Shrines of Wisdom fill at 7:00, then every 7:00 (RUNE_RULES)
+    WISDOM_R: 300, // stand within 300 of the shrine for 3 s (Liquipedia 7.41; states/rotate.ts)
+    WISDOM_CHANNEL: 3,
+    WISDOM_LATE: 15, // EC-008: taken within 15 s
+    SENTRY_BY: 90, // EC-006: placed by 1:30
+    SMOKE_MERGE: 3, // smokes this close (s) on one team are one smoke (one cast covers the group)
+    TP_MOVED: 1000, // a tp ending closer than this to its start was cancelled
+    CASH_IN: 120, // EC-013: tower within 120 s of a 3+ kill burst
+    ROSH_FOLLOW: 240, // EC-014: tower within 240 s of Roshan
+    AEGIS_AFTER: 30, // an aegis picked up this soon after a Roshan kill names the killing team
 };
+// mode_rune_generic's shrine spots (states/rotate.ts SHRINE).
+const SHRINE = { 2: [-7948, 768], 3: [8029, -1126] };
 
 // 7.41 tower and ancient positions from three validated pro replays (research/replay-index, extractor meta).
 const TOWERS = [
@@ -358,8 +372,103 @@ function dynamicMetrics(game) {
         lh_at_10_lpos: byLpos(s => counterAt(s, 'lh', 600)),
         core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
         role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
+        // Lineup position where pos= is trusted (lpos), else the behavioural role.
+        ...worldMetrics(game, S, { ...role, ...lpos }, deaths, end),
         warnings,
     };
 }
 
-module.exports = { dynamicMetrics, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+/** World-event metrics (slice 23 definitions) from ev=rune_pickup, ward_place, smoke_use, tp, building_fall, roshan_kill and
+ *  aegis, plus the shrine proxy from snapshots. Logs without these events give undefined counts (pre-slice-23 builds), except
+ *  the snapshot-only wisdom proxy. */
+function worldMetrics(game, S, role, deaths, end) {
+    const of = ev => game.events.filter(e => e.ev === ev);
+    const has = ev => of(ev).length > 0;
+    const world = ['rune_pickup', 'ward_place', 'building_fall', 'tp'].some(has);
+    const perTeam = f => (world ? { 2: f(2), 3: f(3) } : undefined);
+    const share = (xs, pred) => (xs.length ? xs.filter(pred).length / xs.length : undefined);
+    const isMid = e => role[e.pid] === 2;
+    const runes = (team, kind) => of('rune_pickup').filter(e => e.team === team && e.kind === kind);
+    const wards = of('ward_place');
+    const falls = of('building_fall').sort((a, b) => a.t - b.t);
+    const t1 = falls.find(e => e.kind === 'tower' && e.tier === 1);
+    // Roshan: both loggers report a kill; one kill per distinct kill time. Timed by log time t (within 1 s of the kill):
+    // the time base of GetRoshanKillTime (`at`) is unverified.
+    const roshans = [];
+    for (const e of of('roshan_kill').sort((a, b) => a.t - b.t)) if (!roshans.some(r => r.at === e.at)) roshans.push(e);
+    const aegis = of('aegis');
+    const byRole = f => Object.fromEntries(Object.values(S).filter(s => role[s.pid] >= 4).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
+    return {
+        mid_power_rune_pct: perTeam(t => share(runes(t, 'power'), isMid)),
+        mid_water_rune_pct: perTeam(t => share(runes(t, 'water'), isMid)),
+        power_rune_pickups: perTeam(t => runes(t, 'power').length),
+        wisdom_rune_taken_within_15s: { 2: wisdom(S, 2, end), 3: wisdom(S, 3, end) },
+        first_sentry_time: world ? byRole(s => wards.find(e => e.kind === 'sentry' && e.pid === s.pid)?.t) : undefined,
+        sentry_by_90s: perTeam(t => (wards.some(e => e.kind === 'sentry' && e.team === t && e.t <= C.SENTRY_BY) ? 1 : 0)),
+        smoke_uses_per_team: perTeam(t => {
+            // From the horn (pregame smokes are not map movement); a smoke within SMOKE_MERGE s of a group's first joins it.
+            let n = 0, first = -Infinity;
+            for (const e of of('smoke_use').filter(e => e.team === t && e.t >= 0).sort((a, b) => a.t - b.t)) {
+                if (e.t - first > C.SMOKE_MERGE) {
+                    n++;
+                    first = e.t;
+                }
+            }
+            return n;
+        }),
+        tp_joins_per_team_ev: perTeam(t =>
+            of('tp').filter(e => {
+                if (e.team !== t || e.t < 600 || e.t >= 1800 || e.dist <= C.TP_MOVED) return false;
+                return Object.values(S).some(o => {
+                    if (o.pid === e.pid || o.team !== t) return false;
+                    for (let u = Math.floor(e.t) - 1; u <= Math.floor(e.t) + 1; u++) if (alive(o.sec[u]) && dist(pos(o.sec[u]), [e.x, e.y]) <= C.TP_JOIN_R) return true;
+                    return false;
+                });
+            }).length),
+        first_t1_time: world ? t1?.t : undefined,
+        cash_in_kills_pct: perTeam(t => {
+            // Bursts by team t: 3+ deaths of the other team, <= FIGHT_GAP s apart.
+            const bursts = [];
+            let run = [];
+            for (const d of deaths.filter(d => d.team !== t)) {
+                if (run.length && d.t - run[run.length - 1].t > C.FIGHT_GAP) {
+                    if (run.length >= C.FIGHT_MIN_DEATHS) bursts.push(run[run.length - 1].t);
+                    run = [];
+                }
+                run.push(d);
+            }
+            if (run.length >= C.FIGHT_MIN_DEATHS) bursts.push(run[run.length - 1].t);
+            const open = bursts.filter(b => b + C.CASH_IN <= end);
+            return share(open, b => falls.some(f => f.team !== t && f.t > b && f.t <= b + C.CASH_IN));
+        }),
+        first_roshan_time: world ? roshans[0]?.t : undefined,
+        towers_after_roshan_240: world
+            ? share(roshans.filter(r => r.t + C.ROSH_FOLLOW <= end), r => {
+                  const a = aegis.find(e => e.t >= r.t && e.t <= r.t + C.AEGIS_AFTER);
+                  return falls.some(f => f.t > r.t && f.t <= r.t + C.ROSH_FOLLOW && (a === undefined || f.team !== a.team));
+              })
+            : undefined,
+    };
+}
+
+/** Share of a shrine's fills (from WISDOM_FIRST every WISDOM_FIRST, up to end - WISDOM_LATE) that some hero takes: within
+ *  WISDOM_R of the shrine for WISDOM_CHANNEL consecutive seconds, the run starting by fill + WISDOM_LATE. Snapshot proxy. */
+function wisdom(S, shrineTeam, end) {
+    const fills = [];
+    for (let f = C.WISDOM_FIRST; f + C.WISDOM_LATE <= end; f += C.WISDOM_FIRST) fills.push(f);
+    if (!fills.length) return undefined;
+    const spot = SHRINE[shrineTeam];
+    const taken = f => {
+        for (let t0 = f; t0 <= f + C.WISDOM_LATE; t0++) {
+            const there = s => {
+                for (let u = t0; u < t0 + C.WISDOM_CHANNEL; u++) if (!alive(s.sec[u]) || dist(pos(s.sec[u]), spot) > C.WISDOM_R) return false;
+                return true;
+            };
+            if (Object.values(S).some(there)) return true;
+        }
+        return false;
+    };
+    return fills.filter(taken).length / fills.length;
+}
+
+module.exports = { dynamicMetrics, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
