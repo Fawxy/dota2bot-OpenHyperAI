@@ -5,7 +5,7 @@
  * default, shadow) nothing else reads the phase, so behaviour is unchanged. `Priors` on hands `Phase.Prior()` to
  * `States.SetPrior`, multiplying every state score by the team phase's bias. Enable = false: no ticks, no events.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { Lane, Tower, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Orders from "bots/FunLib/humaniser/orders";

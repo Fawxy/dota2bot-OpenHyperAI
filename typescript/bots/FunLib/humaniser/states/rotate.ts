@@ -10,7 +10,7 @@
  * body: to the spot, wait for the spawn, hold the rune for our mid while Rotation.HoldsRune says so, else pick it up.
  * The decision, its re-checks (lane can spare, contested) and the hold rules stay OHA's.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";

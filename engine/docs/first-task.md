@@ -4,7 +4,7 @@ Goal: shortly before 3:00 a bot walks to a bounty rune spot, waits for the spawn
 below 40% on the way, it gives up. This guide uses a plain Lua bot script and `SimpleHost`. Allow about 15 minutes.
 
 ## 1. Build and copy
-In `packages/lua-tasks`, run `npm install && npm run build`. Then copy `dist/tasks.lua` into
+In `engine/`, run `npm install && npm run build`. Then copy `../bots/FunLib/engine/tasks.lua` into
 `<Steam>/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots/`.
 
 ## 2. Pick a host mode
@@ -96,10 +96,10 @@ function bot:GetMaxHealth() return 1000 end
 Set `status = RUNE_STATUS_AVAILABLE` once your fake clock passes 180, and the task should end `ok`.
 
 ## 7. The same body in TypeScript
-With a TSTL project, vendor the SDK (`npm run vendor -- --lua <dir> --types <dir>`) and write the body as a
+In the bot's TypeScript, import the engine's types and write the body as a
 generator. `yield*` replaces `run`:
 ```ts
-import { Ctx, TaskBody, Vec } from "<vendored path>/tasks";
+import { Ctx, TaskBody, Vec } from "bots/FunLib/engine/tasks";
 
 function* runeTrip(ctx: Ctx, rune: number, at: Vec, spawnAt: number): TaskBody {
     ctx.label("walk");

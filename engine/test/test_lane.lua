@@ -1,7 +1,7 @@
 -- laneFarm: a laner holding its spot and breaking off for last hits and denies, on a small creep fight.
 local T = dofile("test/helpers.lua")
 local Sim = dofile("test/sim.lua")
-local tasks = dofile("dist/tasks.lua")
+local tasks = dofile("../bots/FunLib/engine/tasks.lua")
 local V = tasks.Verbs
 
 local DT = 1 / 30

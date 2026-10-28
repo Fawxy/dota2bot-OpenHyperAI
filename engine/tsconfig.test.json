@@ -7,7 +7,8 @@
   },
   "compilerOptions": {
     "declaration": false,
-    "declarationDir": null
+    "declarationDir": null,
+    "outDir": "./dist"
   },
   "files": ["src/test_entry.ts"]
 }

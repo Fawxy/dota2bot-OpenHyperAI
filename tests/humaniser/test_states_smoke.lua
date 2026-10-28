@@ -5,7 +5,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- tests do not visit; a scorer error is logged by the SDK ("score <name> error: ...") and counted here.
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 
 package.loaded[BUNDLE] = nil
 local all = { 1, 2, 3, 4, 5 }

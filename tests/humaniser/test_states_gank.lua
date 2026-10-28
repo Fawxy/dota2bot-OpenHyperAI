@@ -3,7 +3,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- through the SDK's gank verb, hosted by roam. Stub lanes: top y = 5000, mid y = 0, bot y = -5000; lane amount from x.
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 
 local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
 

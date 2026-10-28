@@ -1,7 +1,7 @@
 -- Verbs stepped directly (no runner) against the frame simulator.
 local T = dofile("test/helpers.lua")
 local Sim = dofile("test/sim.lua")
-local tasks = dofile("dist/tasks.lua")
+local tasks = dofile("../bots/FunLib/engine/tasks.lua")
 local V = tasks.Verbs
 
 local DT = 0.1

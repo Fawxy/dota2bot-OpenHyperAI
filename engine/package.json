@@ -1,17 +1,15 @@
 {
-  "name": "@dota-bot-sdk/lua-tasks",
+  "name": "lua-tasks-engine",
   "version": "0.0.0",
   "private": true,
-  "description": "Coroutine-based task runner for Dota 2 bot scripts (TSTL -> Lua 5.1/LuaJIT).",
+  "description": "The bot's engine: coroutine task runner, game facts and atomic actions (TSTL -> Lua 5.1/LuaJIT). Builds into bots/FunLib/engine.",
   "scripts": {
-    "build": "rm -rf dist && tstl -p tsconfig.json && tstl -p tsconfig.test.json",
-    "vendor": "node scripts/vendor.js",
-    "test:vendor": "sh test/test_vendor.sh",
-    "syntax": "node test/syntax_check.js dist examples",
+    "build": "node scripts/clean.js && tstl -p tsconfig.json && tstl -p tsconfig.test.json",
+    "syntax": "node test/syntax_check.js ../bots/FunLib/engine dist examples",
     "test:fengari": "node test/run_fengari.js",
     "test:luajit": "sh test/run_luajit.sh",
     "pretest": "npm run build",
-    "test": "npm run syntax && npm run test:fengari && npm run test:luajit && npm run test:vendor"
+    "test": "npm run syntax && npm run test:fengari && npm run test:luajit"
   },
   "devDependencies": {
     "@typescript-to-lua/language-extensions": "1.19.0",

@@ -1,7 +1,7 @@
 -- lastHit v2 and deny: incoming-damage prediction, own hit time, skill-scaled timing error.
 local T = dofile("test/helpers.lua")
 local Sim = dofile("test/sim.lua")
-local tasks = dofile("dist/tasks.lua")
+local tasks = dofile("../bots/FunLib/engine/tasks.lua")
 local V = tasks.Verbs
 
 -- About 30 frames per second, as in game: the swing decision is only as fine as the frame.

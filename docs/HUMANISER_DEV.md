@@ -1165,11 +1165,7 @@ Spelled out in the "Transitions (12)" checklist of [HUMANISER_TEST_PLAN.md](HUMA
 ## Task runner (spike)
 Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, ...) resumed once per frame from its host mode's `Think()`. OHA side: `FunLib/humaniser/tasks.lua` (TS: `tasks.ts`), exposed as `J.Humaniser.Tasks`.
 
-- **Vendored code:** `bots/FunLib/sdk/tasks/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/sdk/tasks/` (declarations) come from dota-bot-sdk `packages/lua-tasks`. Do not edit them. To update, from that package run
-  ```bash
-  npm run build && npm run vendor -- --lua <oha>/bots/FunLib/sdk/tasks --types <oha>/typescript/bots/FunLib/sdk/tasks
-  ```
-  and commit everything it writes. `VERSION` records the SDK commit (it must not end in `-dirty`); `.vendored` lists the files so the next run removes stale ones.
+- **Engine code:** `bots/FunLib/engine/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/engine/decl/` (declarations) are built from `engine/src` (lua-tasks, moved from dota-bot-sdk in slice 0b). Do not edit them; change `engine/src` (master skill `engine-change`), run `npm run build:engine` (`npm run build` builds the engine first) and commit the outputs. Engine tests: `npm test` in `engine/`.
 - **Loading:** the bundle is required lazily under `pcall`, only when the humaniser and `Tasks.Enable` are on, so a bundle that fails to load cannot break the rest of the humaniser. The first load attempt in each script context always prints one `[H:tasks] support ...` line (not gated on Debug).
 - **Adapter:** task claims are `Intent.Claim` floors (default `LANE_PLAN` 0.6, source `task:<name>`) without `until`, so `ClaimTTL` applies and a task that stops stepping loses its claim. `lastHit` candidates go through `AllyLastHit.MayLastHit`; a veto ends the task with `etiquette`. Logging goes through `HDebug.Log` (Debug only).
 - **API:** `Tasks.Start(bot, { name, host, tier?, floor? }, body)`, `Tasks.Step(bot, mode)` from the host mode's `Think()`, `Tasks.Tick(bot)` (run from `Humaniser.Tick`: cancels the task when the bot dies or leaves the host mode), `Tasks.Describe(bot)`, `Tasks.Verbs()`. All return false/nil when disabled or the bundle failed to load.

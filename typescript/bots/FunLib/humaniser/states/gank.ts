@@ -8,7 +8,7 @@
  * research/replays.md: mid gets a rotation kill before 10:00 in 32% of pub games (first ~7:50), pos 4/5 18-22%.
  * The body is the SDK's `gank` verb; the host mode is roam (upstream OHA's own roam ganks stay as they are).
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";

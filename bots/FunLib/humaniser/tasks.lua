@@ -119,7 +119,7 @@ local function loadBundle()
     attempted = true
     local ok, res = pcall(
         require,
-        GetScriptDirectory() .. "/FunLib/sdk/tasks/tasks"
+        GetScriptDirectory() .. "/FunLib/engine/tasks"
     )
     local support = ("[H:tasks] support coroutine=" .. type(coroutine)) .. " bundle="
     local rawPrint = Utils.RawPrint

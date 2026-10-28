@@ -276,7 +276,7 @@ do
     _G.BOT_MODE_FARM = FARM
     _G.require = function(name)
         T.eq("example requires the bundle next to it", name, "bots/tasks")
-        return dofile("dist/tasks.lua")
+        return dofile("../bots/FunLib/engine/tasks.lua")
     end
     _G.print = function(s) printed[#printed + 1] = s end
     dofile("examples/generic/mode_farm_generic.lua")

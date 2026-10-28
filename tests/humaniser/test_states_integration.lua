@@ -2,7 +2,7 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 -- Behaviour-state layer (humaniser/states) on the vendored SDK States: ownership by position and team,
 -- the laning body replacing PositionThink through Step, and the kill switch.
-local BUNDLE = "bots/FunLib/sdk/tasks/tasks"
+local BUNDLE = "bots/FunLib/engine/tasks"
 local LANING = 1
 BOT_MODE_LANING = LANING
 

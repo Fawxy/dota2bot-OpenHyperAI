@@ -34,7 +34,7 @@ end
 local function Fresh(phase, o)
 	ResetWorld()
 	T = 10
-	package.loaded["bots/FunLib/sdk/tasks/tasks"] = nil
+	package.loaded["bots/FunLib/engine/tasks"] = nil
 	o = o or {}
 	local H = FreshHumaniser({ Enable = true, Lane = { Enable = false }, Transitions = { Enable = false }, Telemetry = { Enable = true },
 		States = { Enable = true, Own = { laning = {} }, ShadowTeams = "all" }, Phase = phase })

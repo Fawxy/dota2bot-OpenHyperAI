@@ -5,7 +5,7 @@
  * The body only executes the plan: travel, wait, aggro on the second, lead or walk off, watch. Jobs not owned (or
  * contests and takes) run on step() as before.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";

@@ -5,7 +5,7 @@
  * FarmPattern's step(): `Verbs.clearCamp` on the planned camp (deadline = the plan's leaveBy), then OHA picks the
  * next camp or the walk back to the lane front.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";

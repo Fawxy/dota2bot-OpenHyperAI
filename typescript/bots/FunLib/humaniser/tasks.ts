@@ -1,11 +1,11 @@
 /**
- * OHA integration for the vendored lua-tasks runner (bots/FunLib/sdk/tasks, from dota-bot-sdk).
+ * OHA integration for the engine's task runner (bundle bots/FunLib/engine/tasks.lua, built from engine/).
  *
  * The bundle is required lazily under pcall, only once the humaniser and Tasks.Enable are on: a static require
  * would let a bundle that fails to load in Dota's VM break the whole humaniser module, even with Enable = false.
  * Claims go through Intent without `until`, so ClaimTTL applies and a task that stops stepping loses its claim.
  */
-import type * as Lib from "bots/FunLib/sdk/tasks/tasks";
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -109,7 +109,7 @@ function loadBundle(): Bundle | undefined {
     if (!Enabled()) return undefined;
     if (attempted) return lib;
     attempted = true;
-    const [ok, res] = pcall(require, GetScriptDirectory() + "/FunLib/sdk/tasks/tasks");
+    const [ok, res] = pcall(require, GetScriptDirectory() + "/FunLib/engine/tasks");
     const support = `[H:tasks] support coroutine=${type(coroutine)} bundle=`;
     // Always printed (not gated on Debug): the first in-game check is whether the bundle loads at all.
     const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;

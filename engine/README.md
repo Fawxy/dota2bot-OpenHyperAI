@@ -1,6 +1,6 @@
-# lua-tasks
+# lua-tasks (the bot's engine)
 
-Task runner and verbs for Dota 2 bot scripts, written in TypeScript and compiled to one Lua file (TSTL, Lua 5.1 /
+The bot's internal engine (moved from dota-bot-sdk in slice 0b): task runner and verbs for Dota 2 bot scripts, written in TypeScript and compiled to one Lua file (TSTL, Lua 5.1 /
 LuaJIT). You write a behaviour as one readable body. The runner resumes it once per frame, and verbs (walk,
 attack, cast, ...) check that their orders actually took effect.
 
@@ -14,11 +14,11 @@ changing, so they are not documented here.
 ## Build
 ```sh
 npm install
-npm run build      # dist/tasks.lua (the bundle), dist/types/*.d.ts, and dist/tasks_test.lua for the SDK's tests
+npm run build      # ../bots/FunLib/engine/tasks.lua (the bundle), ../typescript/bots/FunLib/engine/decl/*.d.ts, dist/tasks_test.lua
 npm test           # syntax check, then every test/test_*.lua under fengari and LuaJIT (needs `luajit` on PATH)
 ```
-- **Plain Lua bot script:** copy `dist/tasks.lua` into `<Steam>/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots/` and `require` it.
-- **TypeScript (TSTL) bot project:** `npm run vendor -- --lua <dir> --types <dir>` copies the bundle and its declarations. Put both at the same module path, then `import * as LuaTasks from "<that path>/tasks"`.
+The bot imports it as `bots/FunLib/engine/tasks` (types) and requires the bundle lazily (`humaniser/tasks`). The bot's
+`npm run build` builds the engine first. Commit the outputs with the source change.
 
 ## SimpleHost: plain bot scripts
 `SimpleHost` is a ready-made [Adapter](#the-adapter) for Valve's mode files. A task runs under one bot mode, its
@@ -178,7 +178,7 @@ A branch that is abandoned (the losers of `race`, or `g` when `watch`/`withTimeo
 Everything runs offline in plain Lua. Install SimpleHost with your own clock, give it a fake bot table, and drive
 frames yourself:
 ```lua
-local tasks = dofile("dist/tasks.lua")
+local tasks = dofile("../bots/FunLib/engine/tasks.lua")
 local Host, Tasks, FARM = tasks.SimpleHost, tasks.Tasks, 6
 local t = 0
 Host.install({ now = function() return t end })
