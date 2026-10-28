@@ -372,7 +372,8 @@ function dynamicMetrics(game) {
         lh_at_10_lpos: byLpos(s => counterAt(s, 'lh', 600)),
         core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
         role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
-        ...worldMetrics(game, S, role, deaths, end),
+        // Lineup position where pos= is trusted (lpos), else the behavioural role.
+        ...worldMetrics(game, S, { ...role, ...lpos }, deaths, end),
         warnings,
     };
 }
@@ -391,7 +392,8 @@ function worldMetrics(game, S, role, deaths, end) {
     const wards = of('ward_place');
     const falls = of('building_fall').sort((a, b) => a.t - b.t);
     const t1 = falls.find(e => e.kind === 'tower' && e.tier === 1);
-    // Roshan: both loggers report a kill; one kill per distinct kill time.
+    // Roshan: both loggers report a kill; one kill per distinct kill time. Timed by log time t (within 1 s of the kill):
+    // the time base of GetRoshanKillTime (`at`) is unverified.
     const roshans = [];
     for (const e of of('roshan_kill').sort((a, b) => a.t - b.t)) if (!roshans.some(r => r.at === e.at)) roshans.push(e);
     const aegis = of('aegis');
@@ -404,10 +406,13 @@ function worldMetrics(game, S, role, deaths, end) {
         first_sentry_time: world ? byRole(s => wards.find(e => e.kind === 'sentry' && e.pid === s.pid)?.t) : undefined,
         sentry_by_90s: perTeam(t => (wards.some(e => e.kind === 'sentry' && e.team === t && e.t <= C.SENTRY_BY) ? 1 : 0)),
         smoke_uses_per_team: perTeam(t => {
-            let n = 0, last = -Infinity;
-            for (const e of of('smoke_use').filter(e => e.team === t).sort((a, b) => a.t - b.t)) {
-                if (e.t - last > C.SMOKE_MERGE) n++;
-                last = e.t;
+            // From the horn (pregame smokes are not map movement); a smoke within SMOKE_MERGE s of a group's first joins it.
+            let n = 0, first = -Infinity;
+            for (const e of of('smoke_use').filter(e => e.team === t && e.t >= 0).sort((a, b) => a.t - b.t)) {
+                if (e.t - first > C.SMOKE_MERGE) {
+                    n++;
+                    first = e.t;
+                }
             }
             return n;
         }),

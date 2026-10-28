@@ -103,17 +103,42 @@ do
 	check("enemy nearer: left to the enemy logger", #events("rune_pickup") == 0, #events("rune_pickup"))
 end
 
--- Only the team's lowest-PID bot logs world events.
+-- The first bot of the team to tick in a frame logs world events, once; a dead lowest-PID bot (no Tick) delays nothing.
 do
 	local H = fresh()
+	local lo = MakeUnit({ pid = 1, loc = Vector(0, 0), alive = false })
 	local hi = MakeUnit({ pid = 3, loc = Vector(-1650, 1150) })
-	local lo = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	local other = MakeUnit({ pid = 4, loc = Vector(5000, 5000) })
 	RUNE_SPOTS[Rune.Power1] = Vector(-1700, 1100)
 	RUNES[Rune.Power1] = RUNE_STATUS_AVAILABLE
-	tick(H, { hi }, 400)
+	tick(H, { hi, other }, 400)
 	RUNES[Rune.Power1] = RUNE_STATUS_MISSING
-	tick(H, { hi }, 401)
-	check("a non-logger bot logs no pickup", #events("rune_pickup") == 0, #events("rune_pickup"))
+	tick(H, { hi, other }, 401)
+	local e = events("rune_pickup")
+	check("logged on time while the lowest-PID bot is dead", #e == 1 and field(e[1], "t") == "401", e[1])
+	local function ward() return { GetUnitName = function() return "npc_dota_observer_wards" end, GetLocation = function() return Vector(-1600, 1100) end } end
+	WARDS = { ward() }
+	tick(H, { hi, other }, 402)
+	check("two bots in one frame: one ward event", #events("ward_place") == 1, #events("ward_place"))
+end
+
+-- A rune that goes out of sight and comes back is re-armed and reported when taken.
+do
+	local H = fresh()
+	local a = MakeUnit({ pid = 1, loc = Vector(-1650, 1150) })
+	RUNE_SPOTS[Rune.Power2] = Vector(-1700, 1100)
+	RUNES[Rune.Power2] = RUNE_STATUS_AVAILABLE
+	a.loc = Vector(0, 0)
+	tick(H, { a }, 500)
+	RUNES[Rune.Power2] = RUNE_STATUS_UNKNOWN
+	tick(H, { a }, 501)
+	a.loc = Vector(-1650, 1150)
+	RUNES[Rune.Power2] = RUNE_STATUS_AVAILABLE
+	tick(H, { a }, 502)
+	RUNES[Rune.Power2] = RUNE_STATUS_MISSING
+	tick(H, { a }, 503)
+	local e = events("rune_pickup")
+	check("fog then pickup: one event at the pickup", #e == 1 and field(e[1], "t") == "503", e[1])
 end
 
 -- Wards: once each, owner by distance, hero summons skipped.
@@ -155,6 +180,20 @@ do
 	check("roshan kill time", r[1] and field(r[1], "at") == "1300", r[1])
 end
 
+-- Barracks fall like towers, without a tier.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1 })
+	local rax = building()
+	GetBarracks = function(team, id) if team == 2 and id == dota.Barracks.MidMelee then return rax end return nil end
+	tick(H, { b }, 900)
+	rax.dead = true
+	tick(H, { b }, 902)
+	local f = events("building_fall")
+	check("barracks fall", #f == 1 and field(f[1], "kind") == "rax" and field(f[1], "id") == tostring(dota.Barracks.MidMelee) and field(f[1], "tier") == nil, f[1])
+	GetBarracks = function() return nil end
+end
+
 -- A Roshan killed before telemetry first looks is not reported.
 do
 	local H = fresh()
@@ -189,6 +228,24 @@ do
 	check("aegis once", #events("aegis") == 1, #events("aegis"))
 end
 
+-- A cancelled teleport is logged with its short distance; a human's edges come through the team's snapshot loop.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	local human = MakeUnit({ pid = 2, bot = false, loc = Vector(100, 0) })
+	tick(H, { b }, 800)
+	b.modifiers["modifier_teleporting"] = 1
+	human.modifiers["modifier_smoke_of_deceit"] = 1
+	tick(H, { b }, 801)
+	b.modifiers["modifier_teleporting"] = nil
+	tick(H, { b }, 802)
+	tick(H, { b }, 802.5)
+	local tp = events("tp")
+	check("cancelled tp logged short", #tp == 1 and field(tp[1], "dist") == "0", tp[1])
+	local sm = events("smoke_use")
+	check("human smoke via the team loop", #sm == 1 and field(sm[1], "pid") == "2", sm[1])
+end
+
 -- A tracker error is reported as Telemetry.* lua_error and does not stop snapshots.
 do
 	local H = fresh()
@@ -200,6 +257,14 @@ do
 	local e = events("lua_error")
 	check("tracker error reported", e[1] and field(e[1], "where") == "Telemetry.World", e[1])
 	check("snapshot still logged", #events("snap") == 1, #events("snap"))
+	local saved2 = UnitMeta.HasModifier
+	UnitMeta.HasModifier = function() error("bang") end
+	tick(H, { b }, 11.5)
+	UnitMeta.HasModifier = saved2
+	local found = false
+	for _, l in ipairs(events("lua_error")) do if field(l, "where") == "Telemetry.Hero" then found = true end end
+	check("hero tracker error reported", found)
+	check("snapshot logged despite hero error", #events("snap") == 2, #events("snap"))
 end
 
 finish()

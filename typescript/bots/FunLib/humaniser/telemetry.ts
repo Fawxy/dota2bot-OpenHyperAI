@@ -480,8 +480,8 @@ function ancientDown(team: Team): boolean {
     return ancient === undefined || ancient === null || !ancient.IsAlive() || ancient.GetHealth() <= 0;
 }
 
-// World and hero events (BACKLOG 0.6, slice 23). Each team's lowest-PID bot reports its own team's rune pickups, wards and
-// building losses, so a ten-bot game logs each event once per team. Reads only, never an action.
+// World and hero events (BACKLOG 0.6, slice 23). The first bot of a team to tick in a frame reports its own team's rune
+// pickups, wards and building losses, so a ten-bot game logs each event once per team. Reads only, never an action.
 declare function GetRuneStatus(this: void, rune: number): number;
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRoshanKillTime(this: void): number;
@@ -519,6 +519,16 @@ interface WorldState {
     slowAt: number;
 }
 const worlds: Record<number, WorldState> = {};
+
+// Last frame each per-team job ran. Dota runs no script for a dead bot, so a fixed logger (lowest PID) would hold the team's
+// events until it respawns (review 2026-10-28 finding 1); a team's bots share this module (lane_eq: once per team and cycle).
+const teamJobAt: Record<string, number> = {};
+function firstThisFrame(job: string, team: number, now: number): boolean {
+    const key = `${job}${team}`;
+    if (teamJobAt[key] === now) return false;
+    teamJobAt[key] = now;
+    return true;
+}
 
 function teamHeroes(team: number): Unit[] {
     const heroes: Unit[] = [];
@@ -606,7 +616,7 @@ function trackBuilding(team: number, w: WorldState, kind: string, id: number, u:
 
 function trackWorld(this: void, bot: Unit, now: number): void {
     const team = bot.GetTeam();
-    if (bot.GetPlayerID() !== lowestBotPID(team)) return;
+    if (!firstThisFrame("world", team, now)) return;
     let w = worlds[team];
     if (w === undefined) {
         w = { runes: {}, wards: weakKeys(), buildings: {}, slowAt: -math.huge };
@@ -682,7 +692,7 @@ const guardedHero = Guard("Telemetry.Hero", trackHero);
 
 function snapHumans(bot: Unit, now: number): void {
     const team = bot.GetTeam();
-    if (bot.GetPlayerID() !== lowestBotPID(team)) return;
+    if (!firstThisFrame("humans", team, now)) return;
     const players = GetTeamPlayers(team);
     for (let i = 1; i <= players.length; i++) {
         if (IsPlayerBot(players[i - 1])) continue;

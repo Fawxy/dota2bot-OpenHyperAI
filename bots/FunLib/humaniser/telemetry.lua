@@ -717,6 +717,15 @@ local RUNES_FROM = 1
 --- A teleport's landing spot is read this long after its modifier ends.
 local TP_SETTLE = 0.1
 local worlds = {}
+local teamJobAt = {}
+local function firstThisFrame(job, team, now)
+    local key = job .. tostring(team)
+    if teamJobAt[key] == now then
+        return false
+    end
+    teamJobAt[key] = now
+    return true
+end
 local function teamHeroes(team)
     local heroes = {}
     local n = #GetTeamPlayers(team)
@@ -750,7 +759,7 @@ local function trackRunes(team, w, now)
     end
     for ____, r in ipairs(RUNES) do
         do
-            local __continue95
+            local __continue97
             repeat
                 local seen = w.runes[r]
                 if GetRuneStatus(r) == RUNE_STATUS_AVAILABLE then
@@ -760,11 +769,11 @@ local function trackRunes(team, w, now)
                             loc = GetRuneSpawnLocation(r)
                         }
                     end
-                    __continue95 = true
+                    __continue97 = true
                     break
                 end
                 if seen == nil or not seen.up then
-                    __continue95 = true
+                    __continue97 = true
                     break
                 end
                 seen.up = false
@@ -773,7 +782,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
-                    __continue95 = true
+                    __continue97 = true
                     break
                 end
                 local ____, enemyD = nearest(
@@ -781,7 +790,7 @@ local function trackRunes(team, w, now)
                     seen.loc
                 )
                 if enemyD < d then
-                    __continue95 = true
+                    __continue97 = true
                     break
                 end
                 local power = r == Rune.Power1 or r == Rune.Power2
@@ -805,9 +814,9 @@ local function trackRunes(team, w, now)
                         }
                     }
                 )
-                __continue95 = true
+                __continue97 = true
             until true
-            if not __continue95 then
+            if not __continue97 then
                 break
             end
         end
@@ -816,17 +825,17 @@ end
 local function trackWards(team, w)
     for ____, ward in ipairs(GetUnitList(UnitType.AlliedWards)) do
         do
-            local __continue103
+            local __continue105
             repeat
                 if w.wards[ward] == true then
-                    __continue103 = true
+                    __continue105 = true
                     break
                 end
                 w.wards[ward] = true
                 local name = ward:GetUnitName()
                 local kind = (string.find(name, "observer")) ~= nil and "obs" or ((string.find(name, "sentry")) ~= nil and "sentry" or nil)
                 if kind == nil then
-                    __continue103 = true
+                    __continue105 = true
                     break
                 end
                 local loc = ward:GetLocation()
@@ -853,9 +862,9 @@ local function trackWards(team, w)
                         }
                     }
                 )
-                __continue103 = true
+                __continue105 = true
             until true
-            if not __continue103 then
+            if not __continue105 then
                 break
             end
         end
@@ -872,7 +881,7 @@ local function trackBuilding(team, w, kind, id, u, tier)
 end
 local function trackWorld(bot, now)
     local team = bot:GetTeam()
-    if bot:GetPlayerID() ~= lowestBotPID(team) then
+    if not firstThisFrame("world", team, now) then
         return
     end
     local w = worlds[team]
@@ -1022,7 +1031,7 @@ local guardedWorld = ____exports.Guard("Telemetry.World", trackWorld)
 local guardedHero = ____exports.Guard("Telemetry.Hero", trackHero)
 local function snapHumans(bot, now)
     local team = bot:GetTeam()
-    if bot:GetPlayerID() ~= lowestBotPID(team) then
+    if not firstThisFrame("humans", team, now) then
         return
     end
     local players = GetTeamPlayers(team)
@@ -1030,15 +1039,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue129
+                local __continue131
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue129 = true
+                        __continue131 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue129 = true
+                        __continue131 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1077,9 +1086,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue129 = true
+                    __continue131 = true
                 until true
-                if not __continue129 then
+                if not __continue131 then
                     break
                 end
             end

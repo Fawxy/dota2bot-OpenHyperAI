@@ -214,6 +214,9 @@ test('world metrics: rune shares by the mid, sentries, smokes merged, events abs
         ev('smoke_use', 500, { pid: 1, team: 2 }),
         ev('smoke_use', 501, { pid: 2, team: 2 }),
         ev('smoke_use', 600, { pid: 1, team: 2 }),
+        ev('smoke_use', 602, { pid: 2, team: 2 }),
+        ev('smoke_use', 604, { pid: 1, team: 2 }),
+        ev('smoke_use', -50, { pid: 1, team: 2 }),
     ];
     const m = D.worldMetrics(game([], events), S, role, [], 800);
     assert.strictEqual(m.mid_water_rune_pct[2], 0.5);
@@ -222,7 +225,8 @@ test('world metrics: rune shares by the mid, sentries, smokes merged, events abs
     assert.strictEqual(m.power_rune_pickups[2], 1);
     assert.strictEqual(m.first_sentry_time.r4, 50);
     assert.deepStrictEqual(m.sentry_by_90s, { 2: 1, 3: 0 });
-    assert.strictEqual(m.smoke_uses_per_team[2], 2);
+    // 500/501 one group; 600/602 one group; 604 is 4 s after its group's first, so a new one; the pregame smoke is not counted.
+    assert.strictEqual(m.smoke_uses_per_team[2], 3);
     const none = D.worldMetrics(game([], []), S, role, [], 800);
     assert.strictEqual(none.mid_power_rune_pct, undefined);
     assert.strictEqual(none.first_t1_time, undefined);
