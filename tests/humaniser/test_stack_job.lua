@@ -209,6 +209,28 @@ do
 	check("run abort: farm released", H.StackJob.Desire(bot) == 0)
 end
 
+-- A start held back by the gate goes ahead only with MinSlack s to spare (probe s4p5: starts at 0 s slack missed the window).
+do
+	local function heldUntil(slackOf)
+		local H, bot = world({ t = 3 * 60 + 15 })
+		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+		local data, stand = H.StackJob.Nearest(RAD, SAFE_T1[RAD])
+		local walk = dist(bot.loc, stand) / bot:GetCurrentMovementSpeed()
+		local free = 3 * 60 + H.Lane.Stacking.AggroSec(data) - walk - slackOf(H)
+		local lines = stackLines(capture(function()
+			while T < 3 * 60 + 50 do
+				if T < free then bot.mode = dota.BotMode.Attack end
+				frame(H, bot)
+			end
+		end))
+		return lines
+	end
+	local lines = heldUntil(function(H) return H.StackJob.SETTINGS.MinSlack + 0.5 end)
+	check("busy until MinSlack + 0.5 s left: starts", #lines == 0 or field(lines[1], "res") ~= "skip", lines[1])
+	lines = heldUntil(function() return 1 end)
+	check("busy until 1 s left: skip busy", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "busy", lines[1])
+end
+
 
 -- Hook (source pin: mode_farm_generic has no test world): the stack job comes first in GetDesire and Think; OHA's run aborts it.
 do

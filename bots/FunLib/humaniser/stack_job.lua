@@ -268,7 +268,9 @@ ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
     LookFrom = 15,
     Lead = 5,
+    MinSlack = 3,
     ApproachLead = 6,
+    ApproachDist = 250,
     MinHpFraction = 0.5,
     EnemyRadius = 600,
     HitWithin = 3,
@@ -361,7 +363,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
     local start = minute * 60
     local o = sp.location
     local d = math.max(1, ((stand.x - o.x) ^ 2 + (stand.y - o.y) ^ 2) ^ 0.5)
-    local near = math.min(d, r.StandApproach)
+    local near = math.min(d, ____exports.SETTINGS.ApproachDist)
     local approach = Vector(o.x + (stand.x - o.x) * near / d, o.y + (stand.y - o.y) * near / d, o.z)
     return {
         camp = {
@@ -555,7 +557,7 @@ function ____exports.Desire(bot)
                 if now < aggroAt - walk - ____exports.SETTINGS.Lead then
                     return 0
                 end
-                if now > aggroAt - walk then
+                if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
                     return skip(gateWhy[pid] or "late")
                 end
                 local why = ____exports.Gate(bot)

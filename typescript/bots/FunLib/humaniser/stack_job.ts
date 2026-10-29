@@ -24,10 +24,13 @@ export const SETTINGS = {
     LookFrom: 15,
     /** Seconds of slack on the straight-line walk to the stand point: the path around trees and the camp ran ~6 s over (probe 4). */
     Lead: 5,
+    /** A start held back by the gate goes ahead only with this much slack left: starts at 0 s slack reached the stand point at
+     *  :54 and missed the window (probe s4p5, 5:5x on good_1 and evil_1). */
+    MinSlack: 3,
     /** Seconds before the hit the job steps in towards an unseen camp. */
     ApproachLead: 6,
     /** Distance from the camp origin the job steps in to when it sees nothing from the stand point. */
-    ApproachDist: 300,
+    ApproachDist: 250,
     MinHpFraction: 0.5,
     /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
     EnemyRadius: 600,
@@ -134,7 +137,8 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     const start = minute * 60;
     // Seen nothing from the stand point (trees, high ground, night): step in to ApproachDist from the origin. Not camp_jobs'
     // StandApproach (150): hit from 84-124 the neutral had moved 57-72 two seconds later and stayed in the box; hits from
-    // 389-450 drew it 300-600 out (probe s4p4). Lich saw evil_1 from 274 (probe 4).
+    // 389-450 drew it 300-600 out (probe s4p4). Lich saw evil_1 from 274 (probe 4). 250, not 300: witch doctor's evil_2
+    // stand point is 383 from the origin, so 300 lay inside the arrive radius and the bot never stepped in (probe s4p5).
     const o = sp.location;
     const d = math.max(1, ((stand.x - o.x) ** 2 + (stand.y - o.y) ** 2) ** 0.5);
     const near = math.min(d, SETTINGS.ApproachDist);
@@ -275,7 +279,7 @@ export function Desire(bot: Unit): number {
         const aggroAt = minute * 60 + Stacking.AggroSec(data);
         const walk = travel(bot, stand);
         if (now < aggroAt - walk - SETTINGS.Lead) return 0;
-        if (now > aggroAt - walk) return skip(gateWhy[pid] ?? "late");
+        if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
         const why = Gate(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;
