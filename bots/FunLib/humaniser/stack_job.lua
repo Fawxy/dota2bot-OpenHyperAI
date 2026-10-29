@@ -337,17 +337,27 @@ function ____exports.Nearest(team, loc)
     end
     return best, stand
 end
+--- An enemy hero in reach or hero damage just now: the gate's hero checks, also run every frame of a running job (the
+-- 1x probe s4p7: the pos5 was hit at 61% on the walk, kept going and died at the camp to two heroes). HP and mode are not
+-- checked mid-job: the camp's neutrals hit the bot by design, and the mode is ours.
+local function Threat(bot)
+    if #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) > 0 then
+        return "enemy-near"
+    end
+    if bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin) then
+        return "hit"
+    end
+    return nil
+end
 --- Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
 -- hero just now, or fighting or retreating.
 function ____exports.Gate(bot)
     if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
         return "low-hp"
     end
-    if #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) > 0 then
-        return "enemy-near"
-    end
-    if bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin) then
-        return "hit"
+    local threat = Threat(bot)
+    if threat ~= nil then
+        return threat
     end
     local mode = bot:GetActiveMode()
     if mode == BotMode.Attack or mode == BotMode.Retreat then
@@ -527,16 +537,21 @@ function ____exports.Desire(bot)
     local pid = bot:GetPlayerID()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
-        return ____exports.SETTINGS.Desire
+        local threat = Threat(bot)
+        if threat == nil then
+            return ____exports.SETTINGS.Desire
+        end
+        Tasks.Cancel(bot, "cancelled", threat)
+        return 0
     end
     local now = DotaTime()
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.SETTINGS.TriggerMinutes) do
         do
-            local __continue48
+            local __continue51
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue48 = true
+                    __continue51 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -591,7 +606,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue48 then
+            if not __continue51 then
                 break
             end
         end

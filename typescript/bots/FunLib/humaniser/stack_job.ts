@@ -118,12 +118,21 @@ export function Nearest(team: number, loc: Vector): LuaMultiReturn<[Camps.CampJo
     return $multi(best, stand);
 }
 
+/** An enemy hero in reach or hero damage just now: the gate's hero checks, also run every frame of a running job (the
+ *  1x probe s4p7: the pos5 was hit at 61% on the walk, kept going and died at the camp to two heroes). HP and mode are not
+ *  checked mid-job: the camp's neutrals hit the bot by design, and the mode is ours. */
+function Threat(bot: Unit): string | undefined {
+    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
+    if (bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin)) return "hit";
+    return undefined;
+}
+
 /** Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
  *  hero just now, or fighting or retreating. */
 export function Gate(bot: Unit): string | undefined {
     if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
-    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
-    if (bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin)) return "hit";
+    const threat = Threat(bot);
+    if (threat !== undefined) return threat;
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
     return undefined;
@@ -260,7 +269,12 @@ export function Desire(bot: Unit): number {
     if (!Applies(bot)) return 0;
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
-    if (running[pid] !== undefined) return SETTINGS.Desire;
+    if (running[pid] !== undefined) {
+        const threat = Threat(bot);
+        if (threat === undefined) return SETTINGS.Desire;
+        Tasks.Cancel(bot, "cancelled", threat);
+        return 0;
+    }
     const now = DotaTime();
     handled[pid] = handled[pid] ?? {};
     for (const minute of SETTINGS.TriggerMinutes) {
