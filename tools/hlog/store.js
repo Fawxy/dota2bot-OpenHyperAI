@@ -296,12 +296,25 @@ class Store {
             this.db.exec(`DROP VIEW IF EXISTS temp.${q(name)}`);
             const needs = [...sql.matchAll(/^-- needs: (\w+)\(([^)]*)\)/gm)];
             if (needs.some(([, tbl]) => !this.kinds.has(tbl))) continue;
+            this.ensure(sql);
             for (const [, tbl, list] of needs) for (const c of list.split(',').map(s => s.trim()).filter(Boolean)) this.addColumn(tbl, c);
             this.db.exec(`CREATE TEMP VIEW ${q(name)} AS ${sql.replace(/;\s*$/, '')}`);
         }
     }
 
+    /**
+     * `-- ensure: ev_x(a, b)` header lines (views and queries): a table the SQL reads but a log may not have (ev_player without
+     * a human, ev_front before slice 2b) is created empty with those columns, so the SQL runs and returns no rows from it.
+     */
+    ensure(sql) {
+        for (const [, tbl, list] of sql.matchAll(/^-- ensure: (\w+)\(([^)]*)\)/gm)) {
+            if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (game_id, seq, t)`);
+            for (const c of list.split(',').map(x => x.trim()).filter(Boolean)) this.addColumn(tbl, c);
+        }
+    }
+
     query(sql, ...args) {
+        if (sql.includes('-- ensure:')) this.ensure(sql);
         return this.db.prepare(sql).all(...args);
     }
 
