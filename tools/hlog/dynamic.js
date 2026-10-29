@@ -355,7 +355,7 @@ function stackCause(e) {
 
 function stackAttempts(game, until) {
     return game.events.filter(e => e.ev === 'stack' && e.t < until)
-        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1,
+        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, fresh: e.fresh, away: e.away, death: e.death === 1,
             vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59,
             hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59,
             arr: e.arr, hit0: e.hit0, exit: e.exit, hpa: e.hpa, hpe: e.hpe, hp59: e.hp59, casts: e.casts, n2: e.n2, n59: e.n59,

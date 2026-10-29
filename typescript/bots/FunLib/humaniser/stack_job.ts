@@ -121,6 +121,11 @@ export interface Attempt {
     /** The camp's neutrals at the hit, and each one 2 s after the hit and at :59.5 as name:dist:in|out:a|- (distance to
      *  the origin, inside the bare box, attacking the bot); "name:?" unseen, "name:dead". */
     campUnits?: Unit[];
+    /** Every neutral the bot saw from the start of the job until the :00 spawn check, and the most neutrals in the box after
+     *  it that are not among them: the spawn. Counting the box alone graded returning neutrals as a stack (s4solo3 11:0x and
+     *  12:0x: `after` rose by one with four neutrals inside the bare box at :59.5). */
+    seen?: Set<Unit>;
+    fresh?: number;
     n2?: string;
     n59?: string;
 }
@@ -256,7 +261,8 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
             stopped = true;
             if (DotaTime() >= outcomeAt) {
                 a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
-                if (a.after > (a.before ?? 0)) break;
+                a.fresh = math.max(a.fresh ?? 0, freshInBox(bot, a));
+                if (a.fresh > 0) break;
             }
         } else {
             bot.Action_MoveToLocation(sp.location);
@@ -296,7 +302,26 @@ function track(bot: Unit, a: Attempt): void {
         a.casts.push(`${name}@${sec(a)}`);
     }
     a.lastCast = name;
+    if (DotaTime() < a.minute * 60 + 60) {
+        a.seen = a.seen ?? new Set<Unit>();
+        for (const c of bot.GetNearbyNeutralCreeps(SEEN_SCAN, false) ?? []) {
+            if (c !== null && c !== undefined && c.IsAlive()) a.seen.add(c);
+        }
+    }
     sample59(bot, a);
+}
+
+/** Neutral scan radius for the seen set (the API's maximum). */
+const SEEN_SCAN = 1600;
+
+/** Visible neutrals in the box (with margin) the bot had not seen before the :00 spawn check. */
+function freshInBox(bot: Unit, a: Attempt): number {
+    const margin = LaneConfig.Settings().Radii.BoxMargin;
+    let n = 0;
+    for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(a.campIdx, c.GetLocation(), margin) && !(a.seen?.has(c) ?? false)) n++;
+    }
+    return n;
 }
 
 /** Visible neutrals in the camp's box (with margin) and the hit one: the units the stack has to pull. */
@@ -355,7 +380,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
     const sp = Camps.SpawnerByIdx(a.campIdx);
     // After a landed hit the box decides the result; before it, the attempt failed.
     const landed = a.aggro !== undefined;
-    const res = !landed ? "failed" : a.after !== undefined && a.after > (a.before ?? 0) ? "stacked" : "not_stacked";
+    const res = !landed ? "failed" : (a.fresh ?? 0) > 0 ? "stacked" : "not_stacked";
     log(bot, a.minute, [
         ["res", res],
         ["why", result.success ? "ok" : `${result.reason}${result.message !== undefined ? ":" + result.message : ""}`],
@@ -365,6 +390,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["aggro", a.aggro !== undefined ? math.floor(a.aggro * 10) / 10 : "?"],
         ["before", a.before ?? "?"],
         ["after", a.after ?? "?"],
+        ["fresh", a.fresh ?? "?"],
         ["away", math.floor((DotaTime() - a.startedAt) * 10) / 10],
         ["death", result.reason === "dead" || !bot.IsAlive() ? 1 : 0],
         ["cx", sp !== undefined ? math.floor(sp.location.x) : "?"],

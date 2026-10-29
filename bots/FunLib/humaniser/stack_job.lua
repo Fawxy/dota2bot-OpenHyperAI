@@ -253,6 +253,236 @@ do
     end
 end
 
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local Set
+do
+    Set = __TS__Class()
+    Set.name = "Set"
+    function Set.prototype.____constructor(self, values)
+        self[Symbol.toStringTag] = "Set"
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if values == nil then
+            return
+        end
+        local iterable = values
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                self:add(result.value)
+            end
+        else
+            local array = values
+            for ____, value in ipairs(array) do
+                self:add(value)
+            end
+        end
+    end
+    function Set.prototype.add(self, value)
+        local isNewValue = not self:has(value)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        if self.firstKey == nil then
+            self.firstKey = value
+            self.lastKey = value
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = value
+            self.previousKey[value] = self.lastKey
+            self.lastKey = value
+        end
+        return self
+    end
+    function Set.prototype.clear(self)
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Set.prototype.delete(self, value)
+        local contains = self:has(value)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[value]
+            local previous = self.previousKey[value]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[value] = nil
+            self.previousKey[value] = nil
+        end
+        return contains
+    end
+    function Set.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, key, key, self)
+        end
+    end
+    function Set.prototype.has(self, value)
+        return self.nextKey[value] ~= nil or self.lastKey == value
+    end
+    Set.prototype[Symbol.iterator] = function(self)
+        return self:values()
+    end
+    function Set.prototype.entries(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, key}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Set.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Set.prototype.values(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Set.prototype.union(self, other)
+        local result = __TS__New(Set, self)
+        for ____, item in __TS__Iterator(other) do
+            result:add(item)
+        end
+        return result
+    end
+    function Set.prototype.intersection(self, other)
+        local result = __TS__New(Set)
+        for ____, item in __TS__Iterator(self) do
+            if other:has(item) then
+                result:add(item)
+            end
+        end
+        return result
+    end
+    function Set.prototype.difference(self, other)
+        local result = __TS__New(Set, self)
+        for ____, item in __TS__Iterator(other) do
+            result:delete(item)
+        end
+        return result
+    end
+    function Set.prototype.symmetricDifference(self, other)
+        local result = __TS__New(Set, self)
+        for ____, item in __TS__Iterator(other) do
+            if self:has(item) then
+                result:delete(item)
+            else
+                result:add(item)
+            end
+        end
+        return result
+    end
+    function Set.prototype.isSubsetOf(self, other)
+        for ____, item in __TS__Iterator(self) do
+            if not other:has(item) then
+                return false
+            end
+        end
+        return true
+    end
+    function Set.prototype.isSupersetOf(self, other)
+        for ____, item in __TS__Iterator(other) do
+            if not self:has(item) then
+                return false
+            end
+        end
+        return true
+    end
+    function Set.prototype.isDisjointFrom(self, other)
+        for ____, item in __TS__Iterator(self) do
+            if other:has(item) then
+                return false
+            end
+        end
+        return true
+    end
+    Set[Symbol.species] = Set
+end
+
 local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     if fromIndex == nil then
         fromIndex = 0
@@ -274,7 +504,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local sec, hpPct, phase, campNeutrals, describe, targetDist, sample59
+local sec, hpPct, phase, freshInBox, campNeutrals, describe, targetDist, sample59, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -308,6 +538,32 @@ function phase(bot, a, l)
         a.hpe = hpPct(bot)
     end
 end
+function freshInBox(bot, a)
+    local margin = LaneConfig.Settings().Radii.BoxMargin
+    local n = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.StackCountScan,
+        false
+    ) or ({})) do
+        local ____temp_6 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+            a.campIdx,
+            c:GetLocation(),
+            margin
+        )
+        if ____temp_6 then
+            local ____opt_3 = a.seen
+            local ____temp_5 = ____opt_3 and ____opt_3:has(c)
+            if ____temp_5 == nil then
+                ____temp_5 = false
+            end
+            ____temp_6 = not ____temp_5
+        end
+        if ____temp_6 then
+            n = n + 1
+        end
+    end
+    return n
+end
 function campNeutrals(bot, campIdx, target)
     local out = {}
     local margin = LaneConfig.Settings().Radii.BoxMargin
@@ -333,11 +589,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue62
+            local __continue70
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue62 = true
+                    __continue70 = true
                     break
                 end
                 local name = (string.gsub(
@@ -347,7 +603,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue62 = true
+                    __continue70 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -357,9 +613,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue62 = true
+                __continue70 = true
             until true
-            if not __continue62 then
+            if not __continue70 then
                 break
             end
         end
@@ -426,8 +682,8 @@ function sample59(bot, a)
         0
     ) and 1 or 0
     a.vis59 = IsLocationVisible(sp.location) and 1 or 0
-    local ____opt_3 = data and data.stack
-    local path = ____opt_3 and ____opt_3.exitPath
+    local ____opt_7 = data and data.stack
+    local path = ____opt_7 and ____opt_7.exitPath
     a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
 end
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
@@ -638,7 +894,11 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
                     a.after or 0,
                     CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
                 )
-                if a.after > (a.before or 0) then
+                a.fresh = math.max(
+                    a.fresh or 0,
+                    freshInBox(bot, a)
+                )
+                if a.fresh > 0 then
                     break
                 end
             end
@@ -659,8 +919,18 @@ local function track(bot, a)
         ____a_casts_2[#____a_casts_2 + 1] = (name .. "@") .. tostring(sec(a))
     end
     a.lastCast = name
+    if DotaTime() < a.minute * 60 + 60 then
+        a.seen = a.seen or __TS__New(Set)
+        for ____, c in ipairs(bot:GetNearbyNeutralCreeps(SEEN_SCAN, false) or ({})) do
+            if c ~= nil and c ~= nil and c:IsAlive() then
+                a.seen:add(c)
+            end
+        end
+    end
     sample59(bot, a)
 end
+--- Neutral scan radius for the seen set (the API's maximum).
+SEEN_SCAN = 1600
 local function log(bot, minute, fields)
     Telemetry.Event(
         "stack",
@@ -699,7 +969,7 @@ local function finish(bot, a, result)
     look(bot, a)
     local sp = Camps.SpawnerByIdx(a.campIdx)
     local landed = a.aggro ~= nil
-    local res = not landed and "failed" or (a.after ~= nil and a.after > (a.before or 0) and "stacked" or "not_stacked")
+    local res = not landed and "failed" or ((a.fresh or 0) > 0 and "stacked" or "not_stacked")
     log(
         bot,
         a.minute,
@@ -718,6 +988,7 @@ local function finish(bot, a, result)
             },
             {"before", a.before or "?"},
             {"after", a.after or "?"},
+            {"fresh", a.fresh or "?"},
             {
                 "away",
                 math.floor((DotaTime() - a.startedAt) * 10) / 10
@@ -782,10 +1053,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue77
+            local __continue85
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue77 = true
+                    __continue85 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -840,7 +1111,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue77 then
+            if not __continue85 then
                 break
             end
         end

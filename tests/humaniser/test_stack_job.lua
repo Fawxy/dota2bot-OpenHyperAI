@@ -201,6 +201,21 @@ do
 	check("cast logged once with its second", (field(lines[1], "casts") or ""):match("^witch_doctor_paralyzing_cask@55%.%d$") ~= nil, lines[1])
 end
 
+-- Neutrals that walk back into the box after :00 are not a spawn (s4solo3 11:0x, 12:0x: after rose by one with the box
+-- occupied): the outcome counts only neutrals the bot had not seen before the spawn check.
+do
+	local phase = "in"
+	local lines = stackRun({ noSpawn = true, onFrame = function()
+		local shift = (phase == "in" and 700) or (phase == "out" and T >= 4 * 60 + 1 and -700) or nil
+		if shift == nil then return end
+		for i = 2, 3 do NEUTRALS[i].loc = Vector(NEUTRALS[i].loc.x + shift, NEUTRALS[i].loc.y) end
+		phase = phase == "in" and "out" or "back"
+	end })
+	local l = lines[1]
+	check("returning neutrals: before 1, after 3", field(l, "before") == "1" and field(l, "after") == "3", l)
+	check("returning neutrals: fresh 0, not stacked", field(l, "fresh") == "0" and field(l, "res") == "not_stacked", l)
+end
+
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
 do
 	local lines = stackRun({ noSpawn = true })
