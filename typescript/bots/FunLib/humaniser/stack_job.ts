@@ -48,6 +48,7 @@ export interface Attempt {
     near?: number;
     inbox?: number;
     dist?: number;
+    vis?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -112,6 +113,11 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     const r = LaneConfig.Settings().Radii;
     const t = LaneConfig.Settings().Timing;
     const start = minute * 60;
+    // Seen nothing from the stand point (trees, high ground, night): step in to StandApproach from the origin, as camp_jobs does.
+    const o = sp.location;
+    const d = math.max(1, ((stand.x - o.x) ** 2 + (stand.y - o.y) ** 2) ** 0.5);
+    const near = math.min(d, r.StandApproach);
+    const approach = Vector(o.x + ((stand.x - o.x) * near) / d, o.y + ((stand.y - o.y) * near) / d, o.z);
     return {
         camp: {
             stand: stand as unknown as Lib.Vec,
@@ -120,7 +126,9 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
             margin: r.BoxMargin,
             search: r.NeutralSearch,
             confirmed: () => CampJobs.Exec.NeutralTargets(bot),
+            approach: approach as unknown as Lib.Vec,
         },
+        approachLead: t.StandApproachLead,
         aggroAt: start + Stacking.AggroSec(data),
         exitPath: data.stack!.exitPath as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
@@ -179,6 +187,7 @@ function look(bot: Unit, a: Attempt): void {
     a.near = near;
     a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
     a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location));
+    a.vis = IsLocationVisible(sp.location) ? 1 : 0;
 }
 
 function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
@@ -204,6 +213,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["dist", a.dist ?? "?"],
         ["near", a.near ?? "?"],
         ["inbox", a.inbox ?? "?"],
+        ["vis", a.vis ?? "?"],
     ]);
 }
 

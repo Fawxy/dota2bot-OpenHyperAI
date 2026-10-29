@@ -358,6 +358,10 @@ function ____exports.Plan(bot, data, stand, minute, a)
     local r = LaneConfig.Settings().Radii
     local t = LaneConfig.Settings().Timing
     local start = minute * 60
+    local o = sp.location
+    local d = math.max(1, ((stand.x - o.x) ^ 2 + (stand.y - o.y) ^ 2) ^ 0.5)
+    local near = math.min(d, r.StandApproach)
+    local approach = Vector(o.x + (stand.x - o.x) * near / d, o.y + (stand.y - o.y) * near / d, o.z)
     return {
         camp = {
             stand = stand,
@@ -365,8 +369,10 @@ function ____exports.Plan(bot, data, stand, minute, a)
             origin = sp.location,
             margin = r.BoxMargin,
             search = r.NeutralSearch,
-            confirmed = function() return CampJobs.Exec.NeutralTargets(bot) end
+            confirmed = function() return CampJobs.Exec.NeutralTargets(bot) end,
+            approach = approach
         },
+        approachLead = t.StandApproachLead,
         aggroAt = start + Stacking.AggroSec(data),
         exitPath = data.stack.exitPath,
         exitUntil = start + 60 + t.StackExitUntil,
@@ -450,6 +456,7 @@ local function look(bot, a)
     a.near = near
     a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
     a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location))
+    a.vis = IsLocationVisible(sp.location) and 1 or 0
 end
 local function finish(bot, a, result)
     running[bot:GetPlayerID()] = nil
@@ -493,7 +500,8 @@ local function finish(bot, a, result)
             },
             {"dist", a.dist or "?"},
             {"near", a.near or "?"},
-            {"inbox", a.inbox or "?"}
+            {"inbox", a.inbox or "?"},
+            {"vis", a.vis or "?"}
         }
     )
 end

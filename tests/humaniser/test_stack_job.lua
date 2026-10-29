@@ -135,9 +135,14 @@ local function stackRun(o)
 	local camp = SPAWNERS[idxOf("good_1")].location
 	neutrals(camp, 3)
 	local lines = capture(function()
-		while T < 4 * 60 do frame(H, bot) end
+		-- blind: until the hit a neutral is seen only within 300 of the bot (trees or high ground between the stand point and the camp).
+		local function step()
+			if o.blind then local blind = T < 4 * 60 - 3 for _, n in ipairs(NEUTRALS) do n.unseen = blind and dist(bot.loc, n.loc) > 300 end end
+			frame(H, bot)
+		end
+		while T < 4 * 60 do step() end
 		if not o.noSpawn then neutrals(camp, 3) end
-		while T < 4 * 60 + 8 do frame(H, bot) end
+		while T < 4 * 60 + 8 do step() end
 	end)
 	return stackLines(lines), H, bot
 end
@@ -164,6 +169,14 @@ do
 	check("no spawn: not stacked", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "3", lines[1])
 	lines = stackRun({ fogged = function() return true end })
 	check("fogged: not stacked, after unknown", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "?", lines[1])
+end
+
+-- Camp unseen from the stand point (evil_1 in probe games 2-3: near=0 at 428 from the origin): the job steps in to
+-- StandApproach from the origin StandApproachLead s before the hit, as camp_jobs does, and still stacks.
+do
+	local lines = stackRun({ blind = true })
+	check("unseen from the stand: still stacked", field(lines[1], "res") == "stacked", lines[1])
+	check("unseen from the stand: hit inside the window", tonumber(field(lines[1], "aggro") or "99") <= 58, lines[1])
 end
 
 -- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
