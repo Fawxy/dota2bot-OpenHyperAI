@@ -1,0 +1,201 @@
+dofile(HARNESS_DIR .. "/lane_world.lua")
+-- Slice 4: StackJob (Ours.StackExecute), the pos5's stack on a placeholder trigger, with the humaniser off as in the
+-- slice's arms. E1 geometry and timing per camp on the 7.41 spawner origins, then the trigger, gate and outcome line.
+local dota = require("bots/ts_libs/dota/index")
+local FARM, LANING = dota.BotMode.Farm, dota.BotMode.Laning
+local RAD, DIRE = dota.Team.Radiant, dota.Team.Dire
+local BUNDLE = "bots/FunLib/engine/tasks"
+
+-- 7.41 spawner origins (test_lane_camps.lua's MAP_SPAWNERS, from maps/dota.vpk); boxes are 300 wide here.
+local MAP = {
+	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -2880, 7376 }, { "evil_12", DIRE, "medium", 2016, 7896 },
+	{ "evil_13", DIRE, "small", 8430, 1263 }, { "evil_14", DIRE, "medium", 336, 7696 }, { "evil_15", DIRE, "medium", -2596, 3850 },
+	{ "evil_2", DIRE, "small", -3911, 4829 }, { "evil_20", DIRE, "medium", -4208, 8336 }, { "evil_4", DIRE, "medium", 1224, 4176 },
+	{ "evil_5", DIRE, "large", 1064, 2580 }, { "evil_6", DIRE, "medium", -852, 4940 }, { "evil_7", DIRE, "large", 7928, -120 },
+	{ "evil_8", DIRE, "ancient", 4352, 48 }, { "evil_9", DIRE, "medium", 3392, -1408 },
+	{ "good_1", RAD, "small", 3978, -5027 }, { "good_11", RAD, "medium", -720, -7696 }, { "good_12", RAD, "medium", -2415, -8402 },
+	{ "good_13", RAD, "large", -8313, -553 }, { "good_14", RAD, "small", 2768, -8336 }, { "good_15", RAD, "medium", 1922, -3975 },
+	{ "good_16", RAD, "small", -8023, -1838 }, { "good_2", RAD, "large", 4649, -3699 }, { "good_20", RAD, "medium", 4416, -8432 },
+	{ "good_4", RAD, "medium", 186, -5197 }, { "good_5", RAD, "large", -1454, -3356 }, { "good_7", RAD, "medium", -4013, 992 },
+	{ "good_8", RAD, "ancient", -5015, -96 }, { "good_9", RAD, "medium", -1983, -4815 },
+}
+-- Where each team's safe-lane pos5 stands at the trigger: beside its T1 (MAP_TOWERS in test_lane_camps.lua).
+local SAFE_T1 = { [RAD] = Vector(4860, -6379), [DIRE] = Vector(-5275, 6036) }
+
+local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
+
+local function world(o)
+	o = o or {}
+	package.loaded[BUNDLE] = nil
+	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	if o.ours ~= nil then Customize.Ours = o.ours end
+	T = o.t or 200
+	CURRENT_TEAM = 2
+	FOGGED = o.fogged
+	SPAWNERS = {}
+	for _, s in ipairs(MAP) do
+		table.insert(SPAWNERS, { team = s[2], type = s[3], location = Vector(s[4], s[5], 0), min = Vector(s[4] - 150, s[5] - 150, 0),
+			max = Vector(s[4] + 150, s[5] + 150, 0), speed = 0 })
+	end
+	H.Lane.Camps.ResetCache()
+	H.StackJob.ResetCache()
+	local bot = MakeUnit({ pid = 5, team = 2, loc = o.at or SAFE_T1[RAD] })
+	bot.pos = o.pos or 5
+	return H, bot
+end
+
+local function idxOf(name) for i, s in ipairs(MAP) do if s[1] == name then return i end end end
+
+local function capture(fn)
+	local printed, old = {}, print
+	print = function(s) table.insert(printed, tostring(s)) end
+	local ok, err = pcall(fn)
+	print = old
+	if not ok then error(err, 0) end
+	return printed
+end
+
+local function stackLines(lines)
+	local r = {}
+	for _, l in ipairs(lines) do if l:find("ev=stack ", 1, true) then table.insert(r, l) end end
+	return r
+end
+
+local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
+
+-- One frame: farm's GetDesire, then its Think when farm wins. Moves arrive at once; a neutral hit turns on the bot.
+local function frame(H, bot, dt)
+	local n0 = #ACTIONS
+	if H.StackJob.Desire(bot) > 0 then
+		bot.mode = FARM
+		H.StackJob.Think(bot)
+	else
+		bot.mode = LANING
+	end
+	for i = #ACTIONS, n0 + 1, -1 do
+		local a = ACTIONS[i]
+		if a.pid == bot.pid and a.kind == "MoveToLocation" then bot.loc = Vector(a.args[1].x, a.args[1].y) break end
+	end
+	for i = n0 + 1, #ACTIONS do
+		local a = ACTIONS[i]
+		if a.pid == bot.pid and a.kind == "AttackUnit" and a.args[1].team == 4 then a.args[1].target = bot end
+	end
+	T = T + (dt or 0.1)
+end
+
+local function neutrals(at, n)
+	for i = 1, n do MakeNeutral({ x = at.x + i * 10, y = at.y }) end
+end
+
+-- E1: geometry and timing per camp, both teams.
+do
+	local H = world()
+	local C, S = H.Lane.Camps, H.Lane.Stacking
+	local R = H.Lane.Config.Settings().Radii
+	for _, team in ipairs({ RAD, DIRE }) do
+		local cands = H.StackJob.Candidates(team)
+		check("candidates found for team " .. team, #cands >= 8, #cands)
+		for _, data in ipairs(cands) do
+			local name = MAP[data.campIdx][1]
+			local sp = C.SpawnerByIdx(data.campIdx)
+			check(name .. ": own side, not ancient", sp.team == team and sp.type ~= "ancient")
+			local stand = S.StandPoint(sp, data)
+			check(name .. ": stand point outside the box", not C.InBox(data.campIdx, stand, 0))
+			check(name .. ": stand point within reach of the origin", dist(stand, sp.location) <= R.StandReach + 300, dist(stand, sp.location))
+			local exit = data.stack.exitPath[#data.stack.exitPath]
+			check(name .. ": exit ends outside the box and its margin", not C.InBox(data.campIdx, exit, R.BoxMargin))
+			local from, to = S.Window(data.campIdx)
+			local sec = S.AggroSec(data)
+			check(name .. ": hit second inside Valve's window", from ~= nil and sec >= from and sec <= to, tostring(sec) .. " vs " .. tostring(from) .. "-" .. tostring(to))
+		end
+	end
+	-- Nearest camp to each team's safe-lane pos5 spot.
+	local r = H.StackJob.Nearest(RAD, SAFE_T1[RAD])
+	check("radiant safe-lane pos5 stacks good_1", r and MAP[r.campIdx][1] == "good_1", r and MAP[r.campIdx][1])
+	local d = H.StackJob.Nearest(DIRE, SAFE_T1[DIRE])
+	check("dire safe-lane pos5 stacks evil_2", d and MAP[d.campIdx][1] == "evil_2", d and MAP[d.campIdx][1])
+end
+
+-- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
+do
+	local H, bot = world({ t = 233 })
+	bot.pos = 4
+	check("pos4: no job", H.StackJob.Desire(bot) == 0)
+	H, bot = world({ t = 233, ours = { StackExecute = false } })
+	local lines = capture(function() for _ = 1, 400 do frame(H, bot) end end)
+	check("switch off: no job and no line", #stackLines(lines) == 0 and bot.mode == LANING, #stackLines(lines))
+	check("switch off: Tasks stay off with the humaniser off", H.Tasks.Enabled() == false and package.loaded[BUNDLE] == nil)
+end
+
+-- A full stack at 3:5x on good_1: starts in time, hit inside the window, outcome stacked, away <= 25 s.
+local function stackRun(o)
+	o = o or {}
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged })
+	local camp = SPAWNERS[idxOf("good_1")].location
+	neutrals(camp, 3)
+	local lines = capture(function()
+		while T < 4 * 60 do frame(H, bot) end
+		if not o.noSpawn then neutrals(camp, 3) end
+		while T < 4 * 60 + 8 do frame(H, bot) end
+	end)
+	return stackLines(lines), H, bot
+end
+
+do
+	local lines, H = stackRun()
+	local l = lines[1]
+	check("one line for the minute", #lines == 1, #lines)
+	check("stacked", field(l, "res") == "stacked", l)
+	check("camp good_1", tonumber(field(l, "camp")) == idxOf("good_1"), l)
+	local from, to = H.Lane.Stacking.Window(idxOf("good_1"))
+	local aggro = tonumber(field(l, "aggro"))
+	check("hit inside the window (1 s slack for the confirm)", aggro ~= nil and aggro >= from - 0.5 and aggro <= to + 1, l)
+	check("before 3, after 6", field(l, "before") == "3" and field(l, "after") == "6", l)
+	local away = tonumber(field(l, "away"))
+	check("away at most 25 s", away ~= nil and away <= 25, l)
+	check("no death", field(l, "death") == "0", l)
+	check("started just in time (after 3:40)", tonumber(field(l, "start")) >= 220, l)
+end
+
+-- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
+do
+	local lines = stackRun({ noSpawn = true })
+	check("no spawn: not stacked", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "3", lines[1])
+	lines = stackRun({ fogged = function() return true end })
+	check("fogged: not stacked, after unknown", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "?", lines[1])
+end
+
+-- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
+do
+	local H, bot = world({ t = 3 * 60 + 15 })
+	MakeUnit({ pid = 10, team = 3, loc = Vector(SAFE_T1[RAD].x + 500, SAFE_T1[RAD].y) })
+	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
+	check("enemy near: one skip line", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "enemy-near", lines[1])
+
+	H, bot = world({ t = 3 * 60 + 15 })
+	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+	lines = stackLines(capture(function()
+		while T < 3 * 60 + 50 do frame(H, bot) end
+		H.StackJob.Abort(bot, "run")
+		frame(H, bot)
+	end))
+	check("run abort: failed, cancelled:run", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:run", lines[1])
+	check("run abort: farm released", H.StackJob.Desire(bot) == 0)
+end
+
+
+-- Hook (source pin: mode_farm_generic has no test world): the stack job comes first in GetDesire and Think; OHA's run aborts it.
+do
+	local function source(rel) return io.open(BOTS_ROOT .. '/' .. rel, 'r'):read('a') end
+	local function has(text, needle) return text:find(needle, 1, true) ~= nil end
+	local farm = source('bots/mode_farm_generic.lua')
+	local desire = farm:find('J.Humaniser.StackJob.Desire(bot)', 1, true)
+	check('farm: stack desire before the camp-job desire', desire ~= nil and desire < farm:find('J.Humaniser.Lane.CampJobDesire(bot)', 1, true))
+	check('farm: stack desire returned when owned', has(farm, 'if nStackDesire > 0 then return nStackDesire end'))
+	local think = farm:find('J.Humaniser.StackJob.Think(bot)', 1, true)
+	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
+	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.StackJob.Abort(bot, "run")'))
+end
+
+finish()

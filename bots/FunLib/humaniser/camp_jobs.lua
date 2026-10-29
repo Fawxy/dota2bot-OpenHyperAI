@@ -2736,6 +2736,7 @@ ____exports.Exec = {
     EndStack = endStack,
     NoteStackAggro = noteStackAggro,
     NeutralsInBox = neutralsInBox,
+    BoxInSight = boxInSight,
     Sample = sample,
     Supply = supply,
     Telegraph = telegraph,

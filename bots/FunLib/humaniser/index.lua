@@ -22,6 +22,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
+local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
@@ -44,6 +45,7 @@ ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 ____exports.Ours = Ours
 ____exports.Etiquette = Etiquette
+____exports.StackJob = StackJob
 ____exports.Tasks = Tasks
 ____exports.States = States
 local OVERLAY_REFRESH = 0.25
@@ -331,6 +333,7 @@ if Telemetry.GuardsEnabled() then
             LeavesTarget = no
         }
     )
+    Telemetry.GuardModule("StackJob", StackJob, {Desire = zero, Think = no, Abort = none})
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

@@ -5,11 +5,13 @@
 // Sections: arms (from the logs), validity (lineup_check, when the spec names build and arms), health per game, snapshot gaps,
 // metric deltas (nf.js, pooled over seeds; per seed with --per-seed), the nf.js gate, G monitors and the spec's bars.
 // Spec (`er-spec/1`): { "schema": "er-spec/1", "build": "b2d2ba9", "arms": {<lineup_check arms>}, "until": "20:00",
-//   "bars": [ { "id", "metric", "rule": "each" | "mean" | "delta", ... } ] }
+//   "bars": [ { "id", "metric", "rule": "each" | "mean" | "delta" | "pooled", ... } ] }
 //   each:  every game of `arms` (default ["on"]) within `min`/`max`/`eq` on a per-game metric (health keys or nf.js keys).
 //   mean:  `cmp` "on<=off" or "on>=off" on the per-arm means of a per-game metric.
 //   delta: pooled ON-OFF 95% CI of an nf.js metric; `met` and optional `notMet` are conditions on lo/hi/delta, e.g.
 //          { "lo": { "gt": -5 } }. Neither true: inconclusive (only when notMet is given; else not met).
+//   pooled: sum of per-game key `num` over the sum of `den` across the games of `arms` (default ["on"]) >= `min`; under
+//          `minDen` in the denominator it is not met (an S bar with too few attempts is UNTESTED, slice 4).
 'use strict';
 
 const fs = require('fs');
@@ -105,6 +107,14 @@ function bar(b, games, table) {
         });
         const value = bad.length ? `${sel.length - bad.length}/${sel.length} games; ${bad.map(g => `${g.label} ${val(g, b.metric)}`).join(', ')}` : `${sel.length}/${sel.length} games`;
         return { value, result: bad.length ? 'not met' : 'met' };
+    }
+    if (b.rule === 'pooled') {
+        // sum(num) / sum(den) over the bar's arms (default ON), met at >= min with at least minDen in the denominator.
+        const sel = games.filter(g => (b.arms || ['on']).includes(g.arm));
+        const num = sel.reduce((s, g) => s + (val(g, b.num) || 0), 0);
+        const den = sel.reduce((s, g) => s + (val(g, b.den) || 0), 0);
+        if (den < (b.minDen || 1)) return { value: `${num}/${den} (under ${b.minDen || 1})`, result: 'not met' };
+        return { value: `${num}/${den} = ${f1((100 * num) / den)}%`, result: num / den >= b.min ? 'met' : 'not met' };
     }
     if (b.rule === 'mean') {
         const m = arm => stats(games.filter(g => g.arm === arm).map(g => val(g, b.metric))).mean;
@@ -224,7 +234,8 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
         for (const b of spec.bars) {
             const r = b.rule === 'delta' && !table ? { value: 'no paired arms', result: 'not met' } : bar(b, used, table || {});
             const rule = b.rule === 'delta' ? `delta: met ${JSON.stringify(b.met)}${b.notMet ? `, not met ${JSON.stringify(b.notMet)}` : ''}`
-                : b.rule === 'mean' ? `mean ${b.cmp}` : `each ${(b.arms || ['on']).join('+')} ${['min', 'max', 'eq'].filter(k => b[k] !== undefined).map(k => `${k} ${b[k]}`).join(' ')}`;
+                : b.rule === 'mean' ? `mean ${b.cmp}`
+                : b.rule === 'pooled' ? `pooled ${b.num}/${b.den} >= ${b.min}, den >= ${b.minDen || 1}` : `each ${(b.arms || ['on']).join('+')} ${['min', 'max', 'eq'].filter(k => b[k] !== undefined).map(k => `${k} ${b[k]}`).join(' ')}`;
             out.push(row([b.id, `\`${b.metric}\``, rule, r.value, `**${r.result}**`]));
         }
     }

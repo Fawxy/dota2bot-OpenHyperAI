@@ -15,6 +15,7 @@ import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Utils from "bots/FunLib/utils";
@@ -26,6 +27,11 @@ let lib: Bundle | undefined;
 
 export function Enabled(): boolean {
     return Config.IsEnabled() && Config.Get().Tasks.Enable !== false;
+}
+
+/** A switch whose job runs on the bundle (StackJob, slice 4): it loads the bundle through `ForOurs` with the humaniser off. */
+function oursOn(): boolean {
+    return Ours.On("StackExecute");
 }
 
 /** An allied core (position 1-3, not the bot) within 1600 that can take the creep itself. */
@@ -89,12 +95,12 @@ const adapter: Lib.Adapter = {
         by.set(creep, allowed);
         return allowed;
     },
-    skill: (bot) => Difficulty.GetSkill(bot as unknown as Unit),
-    profile: (bot) => {
+    skill: bot => Difficulty.GetSkill(bot as unknown as Unit),
+    profile: bot => {
         const p = Profile.Get(bot as unknown as Unit);
         return { react: p.reactBase, jitter: p.jitter, aimError: p.aimError, lapse: p.lapseChance };
     },
-    lastHitError: (bot) => LastHitSkill.ErrorWidth(bot as unknown as Unit),
+    lastHitError: bot => LastHitSkill.ErrorWidth(bot as unknown as Unit),
     random: () => RandomFloat(0, 1),
     // GetLastAttackTime is on the GameTime clock.
     attackClock: () => GameTime(),
@@ -103,11 +109,11 @@ const adapter: Lib.Adapter = {
     log: (tag, msg) => HDebug.Log(tag, msg),
     event: (name, fields) => Telemetry.Event(name, fields as [string, any][]),
     vector: (x, y, z) => Vector(x, y, z),
-    enabled: () => Enabled(),
+    enabled: () => Enabled() || oursOn(),
 };
 
-function loadBundle(): Bundle | undefined {
-    if (!Enabled()) return undefined;
+function loadBundle(ours = false): Bundle | undefined {
+    if (!Enabled() && !(ours && oursOn())) return undefined;
     if (attempted) return lib;
     attempted = true;
     const [ok, res] = pcall(require, GetScriptDirectory() + "/FunLib/engine/tasks");
@@ -138,7 +144,7 @@ export function IsActive(): boolean {
     return lib !== undefined && Enabled();
 }
 
-export function Start(bot: Unit, opts: Lib.TaskOptions, body: (this: void) => Lib.TaskBody): boolean {
+export function Start(bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory): boolean {
     const l = loadBundle();
     return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
 }
@@ -182,3 +188,25 @@ export function Verbs(): Bundle["Verbs"] | undefined {
 export function Jobs(): typeof JobVerbs | undefined {
     return loadBundle() !== undefined ? JobVerbs : undefined;
 }
+
+/**
+ * The task calls for a job behind an Ours switch (StackJob): the same runner, loaded for the switch alone, so the job runs
+ * with the humaniser or its tasks off. The humaniser's own calls above stay gated on Enabled().
+ */
+export const ForOurs = {
+    Start: (bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory): boolean => {
+        const l = loadBundle(true);
+        return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
+    },
+    Step: (bot: Unit, mode: number): boolean => {
+        const l = loadBundle(true);
+        return l !== undefined && l.Tasks.Step(bot as unknown as Lib.TaskUnit, mode);
+    },
+    Tick: (bot: Unit): void => {
+        loadBundle(true)?.Tasks.Tick(bot as unknown as Lib.TaskUnit);
+    },
+    Cancel: (bot: Unit, reason: Lib.Reason, message?: string): void => {
+        lib?.Tasks.Cancel(bot as unknown as Lib.TaskUnit, reason, message);
+    },
+    Jobs: (): typeof JobVerbs | undefined => (loadBundle(true) !== undefined ? JobVerbs : undefined),
+};

@@ -327,6 +327,15 @@ function auditedSteals(game, S, lpos, until) {
     return cases;
 }
 
+/**
+ * Stack attempts (slice 4, KR S.2a) from ev=stack: one line per trigger minute, `res` stacked | not_stacked | failed (a job
+ * started) or skip (none started). Empty when the log has none (the OFF arm, older builds).
+ */
+function stackAttempts(game, until) {
+    return game.events.filter(e => e.ev === 'stack' && e.t < until)
+        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1 }));
+}
+
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
 function idles(s, from, to) {
     let n = 0, anchor, start;
@@ -386,6 +395,7 @@ function dynamicMetrics(game) {
         tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         audited_steals: auditedSteals(game, S, lpos, 600),
+        stacks: stackAttempts(game, end + 1),
         idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
         lua_error: errors,
         lua_error_ours: ours,
@@ -497,4 +507,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { dynamicMetrics, auditedSteals, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+module.exports = { dynamicMetrics, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };

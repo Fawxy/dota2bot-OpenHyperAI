@@ -106,6 +106,7 @@ function GetDesireHelper()
 				runTime = DotaTime(); 
 				runMode = true;
 				J.Humaniser.Lane.CampJobAbort(bot, "run")
+				J.Humaniser.StackJob.Abort(bot, "run")
 				J.Humaniser.FarmPattern.Abort(bot, "run")
 				preferedCamp = nil;
 				bot:Action_ClearActions(true);
@@ -113,6 +114,10 @@ function GetDesireHelper()
 			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
 		end
 	end
+
+	-- Slice 4 (Ours.StackExecute): the pos5's stack job owns farm mode while it runs.
+	local nStackDesire = J.Humaniser.StackJob.Desire(bot)
+	if nStackDesire > 0 then return nStackDesire end
 
 	local nLaneJobDesire = J.Humaniser.Lane.CampJobDesire(bot)
 	if nLaneJobDesire > 0 then return J.Humaniser.Lane.CampJobRawDesire(bot, nLaneJobDesire) end
@@ -498,6 +503,7 @@ end
 
 function Think()
 	if J.CanNotUseAction(bot) then return end
+	if not runMode and J.Humaniser.StackJob.Think(bot) then return end
 	if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end
 	if not runMode and J.Humaniser.FarmPattern.Think(bot) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end

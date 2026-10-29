@@ -36,6 +36,12 @@ function flatten(m) {
         audited_steals_laning: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning').length,
         // Slice 3's bar: steals whose swing started in a mode Ours.LeaveCoreCreep owns.
         audited_steals_ours: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning' || c.mode === 'team_roam').length,
+        // Slice 4 (S.2a): attempts are started jobs; skips are trigger minutes with none. 0 in a game without ev=stack.
+        stack_attempts: m.stacks.filter(s => s.res !== 'skip').length,
+        stack_stacked: m.stacks.filter(s => s.res === 'stacked').length,
+        stack_deaths: m.stacks.filter(s => s.death).length,
+        stack_away_max: Math.max(0, ...m.stacks.filter(s => s.res !== 'skip').map(s => s.away)),
+        stack_skips: m.stacks.filter(s => s.res === 'skip').length,
         idle_10s: m.idle_10s,
         lua_error: m.lua_error,
     };

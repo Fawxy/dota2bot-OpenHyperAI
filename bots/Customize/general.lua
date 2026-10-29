@@ -235,7 +235,8 @@ Customize.Humaniser = {
 
 -- Decisions taken over from OHA, one kill switch each (false = OHA's own decision). Defaults: FunLib/humaniser/ours.lua.
 -- LeaveCoreCreep (slice 3): pos4/pos5 leave a lane creep an allied core can take.
-Customize.Ours = { LeaveCoreCreep = true }
+-- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

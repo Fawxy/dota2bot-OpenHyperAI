@@ -293,3 +293,17 @@ test('auditedSteals: a support last hit counts when a logged core was attacking 
     assert.strictEqual(D.auditedSteals({ events: [] }, S, lpos, 600), undefined, 'no ev=creep_death: undefined, not 0');
     assert.strictEqual(D.auditedSteals({ events }, S, {}, 600), undefined, 'no lineup positions: undefined');
 });
+
+test('stackAttempts: one entry per ev=stack line before until; empty without any', () => {
+    const line = (t, f) => ({ ev: 'stack', t, pid: 4, min: 3, ...f });
+    const events = [
+        line(242, { res: 'stacked', why: 'ok', camp: 15, type: 'small', aggro: 55.4, before: 3, after: 6, away: 12.8, death: 0 }),
+        line(300, { min: 5, res: 'skip', why: 'enemy-near' }),
+        line(480, { min: 7, res: 'failed', why: 'dead', away: 9, death: 1 }),
+    ];
+    const a = D.stackAttempts({ events }, 400);
+    assert.deepStrictEqual(a.map(x => x.res), ['stacked', 'skip']);
+    assert.strictEqual(a[0].death, false);
+    assert.strictEqual(D.stackAttempts({ events }, 600)[2].death, true);
+    assert.deepStrictEqual(D.stackAttempts({ events: [] }, 600), []);
+});
