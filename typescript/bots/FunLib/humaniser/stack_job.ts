@@ -156,16 +156,30 @@ const exits: Record<number, Vector[]> = {};
  * stand north or north-west). North-west sees the camp (15 of 22 stacked, s4solo7) but drags the top lane's wave into it,
  * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. Matched by spawner origin
  * (7.41 map); other camps derive their walk-off.
+ * `sec`: a measured hit second in place of Stacking.AggroSec. evil_1 at 55 (the middle of Valve's 54-56): confirmed hits
+ * landed 54.2-55.7, and 19 of 20 that landed by 54.9 stacked against 8 of 27 from 55.0 on (s4solo7, s4solo8; both routes).
  */
-const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
+const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sec?: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },
     { x: -3911, y: 4829, dx: -1, dy: 0 },
-    { x: -4824, y: 3915, dx: 0, dy: 1 },
+    { x: -4824, y: 3915, dx: 0, dy: 1, sec: 54.4 },
 ];
 
-function setExit(sp: Camps.Spawner): Vector[] | undefined {
+function handSet(sp: Camps.Spawner): (typeof EXIT_DIRS)[number] | undefined {
     for (const e of EXIT_DIRS) {
-        if (math.abs(sp.location.x - e.x) > 200 || math.abs(sp.location.y - e.y) > 200) continue;
+        if (math.abs(sp.location.x - e.x) <= 200 && math.abs(sp.location.y - e.y) <= 200) return e;
+    }
+    return undefined;
+}
+
+/** The second of the minute the hit should land: the hand-set measured second, else Stacking.AggroSec. */
+export function HitSec(sp: Camps.Spawner, data: Camps.CampJobData): number {
+    return handSet(sp)?.sec ?? Stacking.AggroSec(data);
+}
+
+function setExit(sp: Camps.Spawner): Vector[] | undefined {
+    const e = handSet(sp);
+    if (e !== undefined) {
         const away = LaneConfig.Settings().Radii.StackExit;
         const c = Camps.BoxCenter(sp);
         const target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z);
@@ -280,7 +294,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
-        aggroAt: start + Stacking.AggroSec(data),
+        aggroAt: start + HitSec(sp, data),
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
@@ -523,7 +537,7 @@ export function Desire(bot: Unit): number {
             return 0;
         };
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
-        const aggroAt = minute * 60 + Stacking.AggroSec(data);
+        const aggroAt = minute * 60 + HitSec(Camps.SpawnerByIdx(data.campIdx)!, data);
         const walk = travel(bot, stand);
         if (now < aggroAt - walk - SETTINGS.Lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");

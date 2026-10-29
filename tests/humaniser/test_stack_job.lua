@@ -107,7 +107,7 @@ do
 			local exit = path[#path]
 			check(name .. ": exit ends outside the box and its margin", not C.InBox(data.campIdx, exit, R.BoxMargin))
 			local from, to = S.Window(data.campIdx)
-			local sec = S.AggroSec(data)
+			local sec = H.StackJob.HitSec(sp, data)
 			check(name .. ": hit second inside Valve's window", from ~= nil and sec >= from and sec <= to, tostring(sec) .. " vs " .. tostring(from) .. "-" .. tostring(to))
 		end
 	end
@@ -141,6 +141,11 @@ do
 	check("evil_1: walk-off north", dy > 800 and math.abs(dx) < 50, exit.x .. "," .. exit.y)
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
+	-- Measured hit second (s4solo7/8: hits confirmed from 55.0 on mostly missed); others keep Stacking.AggroSec.
+	check("evil_1: hit second 54.4", H.StackJob.HitSec(sp, data) == 54.4, H.StackJob.HitSec(sp, data))
+	local g = C.SpawnerByIdx(idxOf("good_2"))
+	local gd = C.ByIdx(g.idx, g.team)
+	check("good_2: hit second from Stacking.AggroSec", H.StackJob.HitSec(g, gd) == H.Lane.Stacking.AggroSec(gd))
 end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
