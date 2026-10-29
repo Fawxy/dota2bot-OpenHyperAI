@@ -497,4 +497,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { dynamicMetrics, auditedSteals, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+module.exports = { POLY, dynamicMetrics, auditedSteals, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
