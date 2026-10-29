@@ -284,7 +284,8 @@ class Store {
     }
 
     /**
-     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock.
+     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock
+     * (except a `-- ensure:` header that finds its table or column missing, which writes once).
      * A view's `-- needs: ev_x(a, b)` lines add those columns (NULL) first, so it still opens on logs from builds that
      * never wrote a field; a view whose tables no log has is skipped.
      */
@@ -296,12 +297,32 @@ class Store {
             this.db.exec(`DROP VIEW IF EXISTS temp.${q(name)}`);
             const needs = [...sql.matchAll(/^-- needs: (\w+)\(([^)]*)\)/gm)];
             if (needs.some(([, tbl]) => !this.kinds.has(tbl))) continue;
+            this.ensure(sql);
             for (const [, tbl, list] of needs) for (const c of list.split(',').map(s => s.trim()).filter(Boolean)) this.addColumn(tbl, c);
             this.db.exec(`CREATE TEMP VIEW ${q(name)} AS ${sql.replace(/;\s*$/, '')}`);
         }
     }
 
+    /**
+     * `-- ensure: ev_x(a, b)` header lines (views and queries): a table the SQL reads but a log may not have (ev_player without
+     * a human, ev_front before slice 2b) is created empty with those columns, so the SQL runs and returns no rows from it.
+     */
+    ensure(sql) {
+        for (const [, tbl, list] of sql.matchAll(/^-- ensure: (\w+)\(([^)]*)\)/gm)) {
+            const cols = list.split(',').map(x => x.trim()).filter(Boolean);
+            if (this.kinds.has(tbl) && cols.every(c => this.colsOf(tbl).has(c))) continue; // nothing to write: no lock taken
+            try {
+                if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (game_id, seq, t)`);
+                for (const c of cols) this.addColumn(tbl, c);
+            } catch (e) {
+                if (!/duplicate column name/.test(e.message)) throw e;
+                this.loadKinds(); // another process added it first
+            }
+        }
+    }
+
     query(sql, ...args) {
+        if (sql.includes('-- ensure:')) this.ensure(sql);
         return this.db.prepare(sql).all(...args);
     }
 
