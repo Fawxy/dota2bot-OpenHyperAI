@@ -2,7 +2,7 @@
 -- Params: file (absolute log path, as in games.file), game (default 1), t (seconds). Each row is the latest ev=front per team
 -- (kind 'front', who = team) or the latest ev=snap with a lane per hero (kind 'hero', who = pid) at or before t.
 -- Order matches front.js: fronts by team, heroes by pid.
--- `+game_id` in the subqueries: a plain column compared with a subquery value cannot use the game_id index, a unary plus lets it.
+-- `+game_id` in the subqueries: the ev_ game_id columns have no declared type and a subquery value has INTEGER affinity, so a plain comparison cannot use the game_id index; a unary plus lets it.
 -- ensure: ev_front(team, top, topx, topy, mid, midx, midy, bot, botx, boty)
 -- ensure: ev_snap(pid, ln, s, ld, x, y)
 WITH f AS (
