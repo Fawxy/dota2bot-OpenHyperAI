@@ -432,8 +432,29 @@ local function log(bot, minute, fields)
         }
     )
 end
+--- What the bot sees of the camp as the attempt ends, so a `no_target` reads as an empty camp or a wrong box from the log.
+local function look(bot, a)
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    if sp == nil or not bot:IsAlive() then
+        return
+    end
+    local near = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() then
+            near = near + 1
+        end
+    end
+    a.near = near
+    a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location))
+end
 local function finish(bot, a, result)
     running[bot:GetPlayerID()] = nil
+    look(bot, a)
+    local sp = Camps.SpawnerByIdx(a.campIdx)
     local landed = a.aggro ~= nil
     local res = not landed and "failed" or (a.after ~= nil and a.after > (a.before or 0) and "stacked" or "not_stacked")
     log(
@@ -461,7 +482,18 @@ local function finish(bot, a, result)
             {
                 "death",
                 (result.reason == "dead" or not bot:IsAlive()) and 1 or 0
-            }
+            },
+            {
+                "cx",
+                sp ~= nil and math.floor(sp.location.x) or "?"
+            },
+            {
+                "cy",
+                sp ~= nil and math.floor(sp.location.y) or "?"
+            },
+            {"dist", a.dist or "?"},
+            {"near", a.near or "?"},
+            {"inbox", a.inbox or "?"}
         }
     )
 end
@@ -479,10 +511,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.SETTINGS.TriggerMinutes) do
         do
-            local __continue43
+            local __continue48
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue43 = true
+                    __continue48 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -537,7 +569,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue43 then
+            if not __continue48 then
                 break
             end
         end

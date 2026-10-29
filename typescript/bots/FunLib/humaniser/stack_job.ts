@@ -44,6 +44,10 @@ export interface Attempt {
     before?: number;
     aggro?: number;
     after?: number;
+    /** At the end: visible neutrals within `NeutralSearch` of the bot, those inside the box, and the bot's distance to the origin. */
+    near?: number;
+    inbox?: number;
+    dist?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -164,8 +168,23 @@ function log(bot: Unit, minute: number, fields: [string, any][]): void {
     Telemetry.Event("stack", [["pid", bot.GetPlayerID()], ["min", minute], ...fields]);
 }
 
+/** What the bot sees of the camp as the attempt ends, so a `no_target` reads as an empty camp or a wrong box from the log. */
+function look(bot: Unit, a: Attempt): void {
+    const sp = Camps.SpawnerByIdx(a.campIdx);
+    if (sp === undefined || !bot.IsAlive()) return;
+    let near = 0;
+    for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.NeutralSearch, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen()) near++;
+    }
+    a.near = near;
+    a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location));
+}
+
 function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
     running[bot.GetPlayerID()] = undefined;
+    look(bot, a);
+    const sp = Camps.SpawnerByIdx(a.campIdx);
     // After a landed hit the box decides the result; before it, the attempt failed.
     const landed = a.aggro !== undefined;
     const res = !landed ? "failed" : a.after !== undefined && a.after > (a.before ?? 0) ? "stacked" : "not_stacked";
@@ -180,6 +199,11 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["after", a.after ?? "?"],
         ["away", math.floor((DotaTime() - a.startedAt) * 10) / 10],
         ["death", result.reason === "dead" || !bot.IsAlive() ? 1 : 0],
+        ["cx", sp !== undefined ? math.floor(sp.location.x) : "?"],
+        ["cy", sp !== undefined ? math.floor(sp.location.y) : "?"],
+        ["dist", a.dist ?? "?"],
+        ["near", a.near ?? "?"],
+        ["inbox", a.inbox ?? "?"],
     ]);
 }
 
