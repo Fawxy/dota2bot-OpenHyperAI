@@ -60,8 +60,10 @@ test('steals: the swing-start mode bm wins over the snapshot mode; swing is bs',
 });
 
 test('steals: the snapshot mode is the latest at or before the whole second of the death', () => {
-    // pid 5 snaps every 10 s from t=1 (mode laning from t=51): a death at 60.9 reads the t=51 snap, 50.9 the t=41 snap.
-    const cases = run(log([[50.9, 'by=5 p1d=100 p1r=150'], [60.9, 'by=5 p1d=100 p1r=150']]));
+    // pid 5 snaps every 10 s from t=1 (mode laning from t=51), plus one at 60.5 in mode 'late' (before the t=61 snap): a death at 60.9 is read at second 60,
+    // so it sees the t=51 snap, not the one at 60.5; 50.9 sees the t=41 snap.
+    const extra = [line(60.5, 'snap pid=5 x=0 y=0 alive=1 mode=late')];
+    const cases = run(log([[50.9, 'by=5 p1d=100 p1r=150'], [60.9, 'by=5 p1d=100 p1r=150']], { extra }));
     assert.deepStrictEqual(cases.map(c => c.snapMode), ['idle', 'laning']);
 });
 
@@ -108,8 +110,12 @@ test('steals: the query equals dynamic.js auditedSteals on a parsed log', () => 
     ]);
     const { parseLog } = require('../parse');
     const game = parseLog(text)[0];
-    const lpos = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 };
-    const want = D.auditedSteals(game, D.series(game), lpos, 600);
     const strip = o => JSON.parse(JSON.stringify(o));
-    assert.deepStrictEqual(strip(run(text)), strip(want));
+    const want = (g, until = 600) => D.auditedSteals(g, D.series(g), D.dynamicMetrics(g).lpos, until);
+    assert.ok(want(game).length > 0);
+    assert.deepStrictEqual(strip(run(text)), strip(want(game)));
+    // The lineup trust rule too: dynamicMetrics' lpos and the query's lineup agree on a team that is not trusted.
+    const four = log([[100, 'by=5 p1d=100 p1r=150']], { drop: 2 });
+    assert.strictEqual(want(parseLog(four)[0]), undefined);
+    assert.strictEqual(run(four), undefined);
 });

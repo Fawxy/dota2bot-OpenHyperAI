@@ -7,12 +7,13 @@
 --     no deaths or no lined heroes means "no audit possible" (steals.js says so; zero cases would be a result)
 -- Lineup is trusted per team only when its five heroes (every hero with a team and a located snap, humans too) hold positions 1-5
 -- once each (a pre-Dire-fix log, or a human on the team, leaves the team without positions), as dynamic.js `lpos`; the `lineup` view is not used.
+-- `+game_id` in gm: a plain column compared with a subquery value cannot use the game_id index, a unary plus on the value lets it.
 -- Constants: the 150 above, from dynamic.js `C.AUDIT_BUF`; test/steals.test.js pins the boundary.
 -- ensure: ev_creep_death(team, kind, by, p1d, p1r, p1t, p2d, p2r, p2t, p3d, p3r, p3t, bm, bs)
 -- ensure: ev_snap(pid, x, mode)
 -- ensure: ev_bot(pid, team, pos)
 -- ensure: ev_player(pid, team)
-WITH gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 tm AS (
     SELECT pid, team FROM (
         SELECT pid, team, row_number() OVER (PARTITION BY pid ORDER BY seq DESC) AS rn
