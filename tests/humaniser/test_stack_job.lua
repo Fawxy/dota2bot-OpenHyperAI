@@ -135,9 +135,10 @@ local function stackRun(o)
 	local camp = SPAWNERS[idxOf("good_1")].location
 	neutrals(camp, 3)
 	local lines = capture(function()
-		-- blind: until the hit a neutral is seen only within 300 of the bot (trees or high ground between the stand point and the camp).
+		-- blind: until the hit a neutral is seen only within 350 of the bot (trees or high ground; lich saw evil_1 from 274, not 428).
 		local function step()
-			if o.blind then local blind = T < 4 * 60 - 3 for _, n in ipairs(NEUTRALS) do n.unseen = blind and dist(bot.loc, n.loc) > 300 end end
+			if o.blind then local blind = T < 4 * 60 - 3 for _, n in ipairs(NEUTRALS) do n.unseen = blind and dist(bot.loc, n.loc) > 350 end end
+			if o.onFrame then o.onFrame(H, bot) end
 			frame(H, bot)
 		end
 		while T < 4 * 60 do step() end
@@ -176,7 +177,9 @@ end
 -- Camp unseen from the stand point (evil_1 in probe games 2-3: near=0 at 428 from the origin): the job steps in to
 -- StandApproach from the origin StandApproachLead s before the hit, as camp_jobs does, and still stacks.
 do
-	local lines = stackRun({ blind = true })
+	local held = false
+	local lines = stackRun({ blind = true, onFrame = function(H, bot) held = held or H.StackJob.HoldsRun(bot) end })
+	check("HoldsRun while the job runs (OHA's creep clause skipped)", held)
 	check("unseen from the stand: still stacked", field(lines[1], "res") == "stacked", lines[1])
 	check("unseen from the stand: hit inside the window", tonumber(field(lines[1], "aggro") or "99") <= 58, lines[1])
 end
@@ -218,6 +221,8 @@ do
 	local think = farm:find('J.Humaniser.StackJob.Think(bot)', 1, true)
 	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
 	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.StackJob.Abort(bot, "run")'))
+	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
+	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.StackJob.HoldsRun(bot) then"))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.StackJob.Abort(bot, "defend-ping")', 1, true)

@@ -666,6 +666,11 @@ function ____exports.Think(bot)
     sample59(bot, a)
     return Tasks.Step(bot, BotMode.Farm)
 end
+--- mode_farm_generic's ShouldRun: neutrals hitting the pos5 during its stack are not a reason to run; the job's exit is its
+-- retreat. OHA's creep clause (level < 5, hit by a creep, HP < 0.7) cancelled 5 of 9 attempts after the hit (probe s4p4).
+function ____exports.HoldsRun(bot)
+    return running[bot:GetPlayerID()] ~= nil
+end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
     if running[bot:GetPlayerID()] ~= nil then

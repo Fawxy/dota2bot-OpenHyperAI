@@ -26,6 +26,8 @@ export const SETTINGS = {
     Lead: 5,
     /** Seconds before the hit the job steps in towards an unseen camp. */
     ApproachLead: 6,
+    /** Distance from the camp origin the job steps in to when it sees nothing from the stand point. */
+    ApproachDist: 300,
     MinHpFraction: 0.5,
     /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
     EnemyRadius: 600,
@@ -130,10 +132,12 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     const r = LaneConfig.Settings().Radii;
     const t = LaneConfig.Settings().Timing;
     const start = minute * 60;
-    // Seen nothing from the stand point (trees, high ground, night): step in to StandApproach from the origin, as camp_jobs does.
+    // Seen nothing from the stand point (trees, high ground, night): step in to ApproachDist from the origin. Not camp_jobs'
+    // StandApproach (150): hit from 84-124 the neutral had moved 57-72 two seconds later and stayed in the box; hits from
+    // 389-450 drew it 300-600 out (probe s4p4). Lich saw evil_1 from 274 (probe 4).
     const o = sp.location;
     const d = math.max(1, ((stand.x - o.x) ** 2 + (stand.y - o.y) ** 2) ** 0.5);
-    const near = math.min(d, r.StandApproach);
+    const near = math.min(d, SETTINGS.ApproachDist);
     const approach = Vector(o.x + ((stand.x - o.x) * near) / d, o.y + ((stand.y - o.y) * near) / d, o.z);
     return {
         camp: {
@@ -331,6 +335,14 @@ export function Think(bot: Unit): boolean {
     if (a === undefined) return false;
     sample59(bot, a);
     return Tasks.Step(bot, BotMode.Farm);
+}
+
+/**
+ * mode_farm_generic's ShouldRun: neutrals hitting the pos5 during its stack are not a reason to run; the job's exit is its
+ * retreat. OHA's creep clause (level < 5, hit by a creep, HP < 0.7) cancelled 5 of 9 attempts after the hit (probe s4p4).
+ */
+export function HoldsRun(bot: Unit): boolean {
+    return running[bot.GetPlayerID()] !== undefined;
 }
 
 /** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */

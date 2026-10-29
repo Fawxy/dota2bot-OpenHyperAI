@@ -1037,7 +1037,8 @@ function X.ShouldRun(bot)
 	and J.GetHP(bot) < 0.7
 	and botTarget ~= nil
 	and J.GetHP(botTarget) > J.GetHP(bot) - 0.15
-	and not J.Humaniser.Lane.CampJobHoldsRetreat(bot) then
+	and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)
+	and not J.Humaniser.StackJob.HoldsRun(bot) then
 		return 2;
 	end
 
