@@ -53,6 +53,11 @@ local function CanTakeLastHit(creep)
 	return J.GetPosition(bot) <= 2 or not CoreCanTake(creep)
 end
 local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
+-- Ours.LeaveCoreCreep (slice 3): a support leaves a creep an allied core can take. Valve's C++ laning cannot be filtered, so
+-- the bot runs this file's Think() and our predicate replaces every other last-hit gate (AllyLastHit's included).
+local Etiquette = J.Humaniser.Etiquette
+local bEtiquette = Etiquette.Applies(bot)
+if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end
 -- The humaniser's own changes to this Think() (the hold, reach judged from the creep) apply only where it owns the
 -- laning; upstream's own cases keep upstream's behaviour with the humaniser off.
 -- Humaniser lane management (task 07): in-lane techniques run inside this Think(); also decided once at load.
@@ -71,7 +76,7 @@ local function CoreLeaves(creep)
 end
 -- Behaviour states (team slice 1): the `laning` state's SDK body can replace PositionThink() below.
 local States = J.Humaniser.States
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot)
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
@@ -346,6 +351,8 @@ if bOwnsThink then
 	function Think()
 		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
+		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
+		if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
 		if bLaneLaning and not bTrainerSelfTest then

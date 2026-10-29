@@ -792,7 +792,10 @@ do
 		"    res = CapForLanePush(res)\n    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)\n", 1, true) ~= nil
 		and src:find("    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)\n\n    -- J.Utils.SetCachedVars(cacheKey, res)\n    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)", 1, true) ~= nil)
 	check("team_roam Think hook: after ItemOpsThink, before the last-hit creep branch", src:find(
-		"    ItemOpsThink()\n    if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end\n\n\tif J.IsValid(hTargetCreep) then", 1, true) ~= nil)
+		"    ItemOpsThink()\n    if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end\n\n"
+		.. "\t-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.\n"
+		.. "\tif J.Humaniser.Etiquette.LeavesTarget(bot) then\n\t\tbot:Action_MoveToLocation(bot:GetLocation())\n\t\treturn\n\tend\n\n"
+		.. "\tif J.IsValid(hTargetCreep) then", 1, true) ~= nil)
 end
 
 finish()

@@ -208,8 +208,12 @@ function X.IsIntoAvoidZone(target)
 end
 
 function X.GetLastHitCreep()
+	-- Ours.LeaveCoreCreep (slice 3): for a support, our predicate per creep replaces the "no last hits near any core" exit
+	-- and the humaniser's AllyLastHit check below.
+	local Etiquette = J.Humaniser.Etiquette
+	local bEtiquette = Etiquette.Applies(bot)
 	if J.IsRetreating(bot)
-	or (not J.IsCore(bot) and J.IsThereCoreNearby(800))
+	or (not bEtiquette and not J.IsCore(bot) and J.IsThereCoreNearby(800))
 	or J.IsInTeamFight(bot, 1200)
 	then
 		return nil
@@ -223,7 +227,7 @@ function X.GetLastHitCreep()
 		and J.IsInRange(bot, creep, bot:GetAttackRange() + 300)
 		and not J.IsRoshan(creep)
 		and not J.IsTormentor(creep)
-		and J.Humaniser.AllyLastHit.MayLastHit(bot, creep)
+		and (bEtiquette and Etiquette.MayLastHit(bot, creep) or not bEtiquette and J.Humaniser.AllyLastHit.MayLastHit(bot, creep))
 		then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
 			if J.Humaniser.LastHitSkill.WillKill(bot, creep, bot:GetAttackDamage()-1, nDelay, false)
@@ -307,6 +311,12 @@ function Think()
 
     ItemOpsThink()
     if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end
+
+	-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.
+	if J.Humaniser.Etiquette.LeavesTarget(bot) then
+		bot:Action_MoveToLocation(bot:GetLocation())
+		return
+	end
 
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)

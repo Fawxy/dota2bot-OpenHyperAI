@@ -1,0 +1,24 @@
+id: lane.lasthit.ours-cancels-swing.001
+source: log
+ref: {log: "~/.dotactl/logs/2026-10-29T00-31-45-s3_A_on_1.log", t: 336.133, note: "s3 ON: pos5 jakiro in laning 1.6 s took a creep luna (pos1) was attacking"}
+status: active
+decision: laning_mode
+control: {commit: f5be4cb, outcome: pass}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  ours: true
+  # The support is already swinging at a creep (a swing started before the core came in, or an auto-attack).
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50, target: 1}
+  creeps: [{id: 1, team: enemy, hp: 300, x: 100, y: 0}]
+  allies: [{id: 2, pos: 1, x: 250, y: 0, range: 150}]
+expect:
+  # The stub's lane front is the bot's spot, so the position move reads as a hold.
+  must: ["hold"]
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  The core can take the creep, so the support's attack on it is overridden by a move order (Etiquette.LeavesTarget,
+  then PositionThink). The control passes: at f5be4cb the owned Think already reached PositionThink for this world, so
+  the fixture pins the override rather than separating the builds. The change that matters is team_roam's cancel
+  (source pin in test_etiquette.lua).

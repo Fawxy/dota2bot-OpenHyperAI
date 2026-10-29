@@ -1,0 +1,19 @@
+id: lane.lasthit.ours-leaves-approached-creep.001
+source: evidence-card
+ref: {card: EC-055, note: "walking in: AllyLastHit.CoreCanReach's approach rule"}
+status: active
+decision: laning_mode
+control: {commit: d6059fe, outcome: fail}
+conditions: {phase: laning, role: pos4}
+world:
+  t: 120
+  owned: true
+  ours: true
+  bot: {pos: 4, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  # 900 from the creep, out of reach, walking towards it (0.5 s ahead 100 nearer).
+  allies: [{id: 2, pos: 3, x: 1000, y: 0, range: 150, toward: {x: 900, y: 0}}]
+expect:
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  A core walking in to the creep will take it. Positive control: ours-takes-unreachable.

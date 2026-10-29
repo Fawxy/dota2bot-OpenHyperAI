@@ -36,7 +36,8 @@ ____exports.DEFAULTS = {
     DecisionMaxAge = 1,
     MarkAck = true,
     LuaErrors = true,
-    LuaErrorRepeat = 10
+    LuaErrorRepeat = 10,
+    CreepDeathUntil = 720
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
@@ -1113,7 +1114,290 @@ local function trackHero(unit, s, now, slow)
     end
     s.aegis = aegis
 end
+local creepTracks = {}
+--- A creep that vanishes above this health share left vision; it did not die.
+local DEATH_MAX_HP = 0.5
+--- Deaths are logged only this close to an own hero (vision), and cores are described only this close to the death.
+local DEATH_NEAR = 1500
+--- A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance.
+local KILLER_NEAR = 1200
+local function creepKind(name)
+    local lane = (string.find(name, "creep_goodguys", 1, true)) ~= nil or (string.find(name, "creep_badguys", 1, true)) ~= nil
+    if (string.find(name, "siege", 1, true)) ~= nil then
+        return "siege"
+    end
+    if not lane then
+        return nil
+    end
+    return (string.find(name, "ranged", 1, true)) ~= nil and "ranged" or "melee"
+end
+local function deathDistance(u, d)
+    local loc = u:GetLocation()
+    return math.sqrt((loc.x - d.seen.x) ^ 2 + (loc.y - d.seen.y) ^ 2)
+end
+--- Gives each counter rise the nearest unclaimed death.
+local function claimDeaths(deaths, unit, n, by)
+    do
+        local k = 0
+        while k < n do
+            local best
+            local bestD = KILLER_NEAR
+            for ____, d in ipairs(deaths) do
+                local dist = deathDistance(unit, d)
+                if d.by == nil and dist <= bestD then
+                    best = d
+                    bestD = dist
+                end
+            end
+            if best == nil then
+                return
+            end
+            best.by = by
+            k = k + 1
+        end
+    end
+end
+local function rise(counts, pid, value)
+    local prev = counts[pid]
+    counts[pid] = value
+    return prev ~= nil and value > prev and value - prev or 0
+end
+local function trackCreepDeaths(bot, now)
+    if now < 0 or now > ____exports.Get().CreepDeathUntil then
+        return
+    end
+    local team = bot:GetTeam()
+    if not firstThisFrame("creeps", team, now) then
+        return
+    end
+    local c = creepTracks[team]
+    if c == nil then
+        c = {
+            creeps = {},
+            dead = {},
+            lastHits = {},
+            denies = {},
+            target = {},
+            attackAt = {},
+            attackOn = {},
+            attackMode = {}
+        }
+        creepTracks[team] = c
+    end
+    local heroes = teamHeroes(team)
+    local gameNow = GameTime()
+    local alive = {}
+    local live = {}
+    for ____, u in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
+        do
+            local __continue161
+            repeat
+                if u == nil or u == nil or not u:IsAlive() then
+                    __continue161 = true
+                    break
+                end
+                alive[#alive + 1] = u
+                live[u] = true
+                local back = c.dead[u]
+                if back ~= nil then
+                    c.dead[u] = nil
+                    ____exports.Event("creep_revive", {{"team", team}, {"kind", back.kind}, {"hp", back.hp}})
+                end
+                __continue161 = true
+            until true
+            if not __continue161 then
+                break
+            end
+        end
+    end
+    local deaths = {}
+    for creep, seen in pairs(c.creeps) do
+        do
+            local __continue165
+            repeat
+                if live[creep] == true then
+                    __continue165 = true
+                    break
+                end
+                c.creeps[creep] = nil
+                if seen.hp > DEATH_MAX_HP then
+                    __continue165 = true
+                    break
+                end
+                local d = {creep = creep, seen = seen}
+                for ____, h in ipairs(heroes) do
+                    if deathDistance(h, d) <= DEATH_NEAR then
+                        deaths[#deaths + 1] = d
+                        break
+                    end
+                end
+                __continue165 = true
+            until true
+            if not __continue165 then
+                break
+            end
+        end
+    end
+    for ____, h in ipairs(heroes) do
+        local n = rise(
+            c.lastHits,
+            h:GetPlayerID(),
+            h:GetLastHits()
+        )
+        if n > 0 then
+            claimDeaths(
+                deaths,
+                h,
+                n,
+                tostring(h:GetPlayerID())
+            )
+        end
+    end
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue174
+            repeat
+                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                    __continue174 = true
+                    break
+                end
+                local ok, dn = pcall(function() return e:GetDenies() end)
+                local n = ok and type(dn) == "number" and rise(
+                    c.denies,
+                    e:GetPlayerID(),
+                    dn
+                ) or 0
+                if n > 0 then
+                    claimDeaths(deaths, e, n, "deny")
+                end
+                __continue174 = true
+            until true
+            if not __continue174 then
+                break
+            end
+        end
+    end
+    local cores = {}
+    for ____, h in ipairs(heroes) do
+        local pos = LaneConfig.PositionOf(h)
+        if pos ~= nil and pos >= 1 and pos <= 3 then
+            cores[#cores + 1] = {h, pos}
+        end
+    end
+    for ____, d in ipairs(deaths) do
+        local fields = {
+            {"team", team},
+            {"kind", d.seen.kind},
+            {
+                "x",
+                math.floor(d.seen.x)
+            },
+            {
+                "y",
+                math.floor(d.seen.y)
+            },
+            {"hp", d.seen.hp},
+            {"by", d.by or "none"}
+        }
+        local ____temp_15
+        if d.by ~= nil then
+            ____temp_15 = tonumber(d.by)
+        else
+            ____temp_15 = nil
+        end
+        local killer = ____temp_15
+        if killer ~= nil and c.attackOn[killer] == d.creep then
+            local mode = c.attackMode[killer]
+            if mode ~= nil then
+                fields[#fields + 1] = {
+                    "bm",
+                    HDebug.ModeName(mode)
+                }
+            end
+            fields[#fields + 1] = {"bs", gameNow - c.attackAt[killer]}
+        end
+        for ____, ____value in ipairs(cores) do
+            local core = ____value[1]
+            local pos = ____value[2]
+            do
+                local __continue185
+                repeat
+                    local dist = deathDistance(core, d)
+                    if dist > DEATH_NEAR then
+                        __continue185 = true
+                        break
+                    end
+                    local pid = core:GetPlayerID()
+                    fields[#fields + 1] = {
+                        ("p" .. tostring(pos)) .. "d",
+                        math.floor(dist)
+                    }
+                    fields[#fields + 1] = {
+                        ("p" .. tostring(pos)) .. "r",
+                        core:GetAttackRange()
+                    }
+                    fields[#fields + 1] = {
+                        ("p" .. tostring(pos)) .. "t",
+                        c.target[pid] == d.creep
+                    }
+                    if c.attackOn[pid] == d.creep then
+                        fields[#fields + 1] = {
+                            ("p" .. tostring(pos)) .. "a",
+                            gameNow - c.attackAt[pid]
+                        }
+                    end
+                    __continue185 = true
+                until true
+                if not __continue185 then
+                    break
+                end
+            end
+        end
+        ____exports.Event("creep_death", fields)
+        c.dead[d.creep] = d.seen
+    end
+    for ____, ____value in ipairs(cores) do
+        local core = ____value[1]
+        c.target[core:GetPlayerID()] = core:GetAttackTarget() or nil
+    end
+    for ____, h in ipairs(heroes) do
+        local pid = h:GetPlayerID()
+        local at = h:GetLastAttackTime()
+        if c.attackAt[pid] == nil or at > c.attackAt[pid] then
+            c.attackAt[pid] = at
+            c.attackOn[pid] = h:GetAttackTarget() or nil
+            c.attackMode[pid] = stateFor(pid).mode
+        end
+    end
+    for ____, u in ipairs(alive) do
+        do
+            local __continue195
+            repeat
+                local kind = creepKind(u:GetUnitName())
+                if kind == nil then
+                    __continue195 = true
+                    break
+                end
+                local loc = u:GetLocation()
+                c.creeps[u] = {
+                    kind = kind,
+                    x = loc.x,
+                    y = loc.y,
+                    hp = u:GetHealth() / math.max(
+                        1,
+                        u:GetMaxHealth()
+                    )
+                }
+                __continue195 = true
+            until true
+            if not __continue195 then
+                break
+            end
+        end
+    end
+end
 local guardedWorld = ____exports.Guard("Telemetry.World", trackWorld)
+local guardedCreeps = ____exports.Guard("Telemetry.Creeps", trackCreepDeaths)
 local guardedHero = ____exports.Guard("Telemetry.Hero", trackHero)
 local function snapHumans(bot, now)
     local team = bot:GetTeam()
@@ -1125,15 +1409,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue148
+                local __continue200
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue148 = true
+                        __continue200 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue148 = true
+                        __continue200 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1172,9 +1456,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue148 = true
+                    __continue200 = true
                 until true
-                if not __continue148 then
+                if not __continue200 then
                     break
                 end
             end
@@ -1211,6 +1495,7 @@ function ____exports.Tick(bot, provider)
     local slow = now - s.snapAt >= ____exports.Get().SnapshotInterval
     guardedHero(bot, s, now, slow)
     guardedWorld(bot, now)
+    guardedCreeps(bot, now)
     if slow then
         s.snapAt = now
         local fields = {{

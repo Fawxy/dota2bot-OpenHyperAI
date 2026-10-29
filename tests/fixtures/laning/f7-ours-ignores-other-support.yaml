@@ -1,0 +1,18 @@
+id: lane.lasthit.ours-ignores-other-support.001
+source: evidence-card
+ref: {card: EC-050}
+status: active
+decision: laning_mode
+control: {commit: d6059fe, outcome: pass}   # guard
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  ours: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  allies: [{id: 2, pos: 4, x: 200, y: 0, range: 150}]
+expect:
+  must: ["lastHit(creep#1)"]
+notes: >
+  Only cores (positions 1-3) keep a creep; another support beside it does not.

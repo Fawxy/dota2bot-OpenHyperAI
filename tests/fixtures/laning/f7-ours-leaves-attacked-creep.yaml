@@ -1,0 +1,19 @@
+id: lane.lasthit.ours-leaves-attacked-creep.001
+source: evidence-card
+ref: {card: EC-050, log: "~/.dotactl/logs/2026-10-28T07-43-14-b25_A_off_1.log", note: "audited steals with p<N>t=1"}
+status: active
+decision: laning_mode
+control: {commit: d6059fe, outcome: fail}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  ours: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  # A long-range core attacking the creep from beyond any reach radius.
+  allies: [{id: 2, pos: 2, x: 1500, y: 0, range: 150, target: 1}]
+expect:
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  The core is attacking this creep, so it is the core's. Positive control: ours-takes-unreachable (same place, not attacking).

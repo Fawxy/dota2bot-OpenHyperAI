@@ -103,4 +103,14 @@ do
 	check("a killable creep out of attack range reads as soon, not kill", bot.preThinkLastHit == "soon", tostring(bot.preThinkLastHit))
 end
 
+-- Ours.LeaveCoreCreep (slice 3): the switch alone makes a support own this Think(); off, it is Valve's (OHA) as before.
+do
+	LaningLoad({ pos = 5, ours = false })
+	check("switch off: a pos5 bot does not own the laning Think", Think == nil)
+	LaningLoad({ pos = 5, ours = true })
+	check("switch on: a pos5 bot owns the laning Think", Think ~= nil)
+	LaningLoad({ pos = 1, ours = true })
+	check("switch on: a pos1 bot is not taken over", Think == nil)
+end
+
 finish()

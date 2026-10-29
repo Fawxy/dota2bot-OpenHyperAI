@@ -19,6 +19,7 @@ const C = {
     TP_WINDOW: 2,
     TP_JOIN_R: 1200, // a teleport that lands this close to an ally joins them
     STEAL_R: 700, // EC-050/055; judgement
+    AUDIT_BUF: 150, // slice 3: a core within attack range + this of the creep could take it; judgement
     IDLE_S: 10,
     IDLE_R: 100,
     // World events (slice 23).
@@ -302,6 +303,30 @@ function steals(game, S, role, until) {
     return n;
 }
 
+/**
+ * Audited steals (slice 3, KR H.2) from ev=creep_death: a lane creep last-hit before `until` by an own pos4/pos5 (lineup
+ * position) while an own core logged on it was attacking it (p<N>t=1) or within its attack range + AUDIT_BUF. One case per
+ * creep, with the support's ev=snap mode. Undefined when the game has no ev=creep_death (older builds) or no lineup positions.
+ */
+function auditedSteals(game, S, lpos, until) {
+    const deaths = game.events.filter(e => e.ev === 'creep_death');
+    if (!deaths.length || !Object.keys(lpos).length) return undefined;
+    const cases = [];
+    for (const d of deaths) {
+        if (d.t >= until || !(lpos[d.by] >= 4)) continue;
+        const cores = Object.keys(d).map(k => k.match(/^p(\d+)d$/)).filter(Boolean).map(m => Number(m[1]));
+        const why = cores
+            .map(c => ({ core: c, d: d[`p${c}d`], r: d[`p${c}r`], attacking: d[`p${c}t`] === 1 }))
+            .filter(c => c.attacking || c.d <= c.r + C.AUDIT_BUF);
+        if (!why.length) continue;
+        const snap = S[d.by] ? at(S[d.by], d.t) : undefined;
+        // The mode when the killing swing started (`bm`, logged from build after f5be4cb); else the last snapshot's.
+        const snapMode = snap ? snap.mode : undefined;
+        cases.push({ t: d.t, team: d.team, pid: d.by, pos: lpos[d.by], mode: d.bm !== undefined ? d.bm : snapMode, snapMode, swing: d.bs, kind: d.kind, cores: why });
+    }
+    return cases;
+}
+
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
 function idles(s, from, to) {
     let n = 0, anchor, start;
@@ -360,6 +385,7 @@ function dynamicMetrics(game) {
         core_lane_exit_time: byRole(s => (role[s.pid] === 1 || role[s.pid] === 3 ? laneExit(s, end) : undefined)),
         tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
+        audited_steals: auditedSteals(game, S, lpos, 600),
         idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
         lua_error: errors,
         lua_error_ours: ours,
@@ -471,4 +497,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { dynamicMetrics, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+module.exports = { dynamicMetrics, auditedSteals, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };

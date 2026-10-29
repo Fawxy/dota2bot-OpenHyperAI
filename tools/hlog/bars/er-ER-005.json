@@ -1,0 +1,113 @@
+{
+ "schema": "er-spec/1",
+ "build": "392431c",
+ "until": "11:00",
+ "arms": {
+  "on": {
+   "set": [
+    "Humaniser.Enable=false",
+    "Humaniser.States.Enable=false"
+   ],
+   "states": false
+  },
+  "off": {
+   "set": [
+    "Humaniser.Enable=false",
+    "Humaniser.States.Enable=false",
+    "Ours.LeaveCoreCreep=false"
+   ],
+   "states": false
+  }
+ },
+ "bars": [
+  {
+   "id": "H2 steals in owned modes, before per-case classification (bar input)",
+   "metric": "audited_steals_ours",
+   "rule": "each",
+   "eq": 0
+  },
+  {
+   "id": "H2 laning steals (run 1's bar, reported)",
+   "metric": "audited_steals_laning",
+   "rule": "each",
+   "eq": 0
+  },
+  {
+   "id": "H2 all-mode steals (directional)",
+   "metric": "audited_steals",
+   "rule": "mean",
+   "cmp": "on<=off"
+  },
+  {
+   "id": "guard lh@10 pos1",
+   "metric": "lh_at_10_lpos1",
+   "rule": "delta",
+   "met": {
+    "lo": {
+     "gt": -6.8
+    }
+   },
+   "notMet": {
+    "delta": {
+     "lt": -6.8
+    }
+   }
+  },
+  {
+   "id": "guard lh@10 pos2",
+   "metric": "lh_at_10_lpos2",
+   "rule": "delta",
+   "met": {
+    "lo": {
+     "gt": -5.4
+    }
+   },
+   "notMet": {
+    "delta": {
+     "lt": -5.4
+    }
+   }
+  },
+  {
+   "id": "guard lh@10 pos3",
+   "metric": "lh_at_10_lpos3",
+   "rule": "delta",
+   "met": {
+    "lo": {
+     "gt": -7.3
+    }
+   },
+   "notMet": {
+    "delta": {
+     "lt": -7.3
+    }
+   }
+  },
+  {
+   "id": "support lh@10 pos4 in 4-10 (directional)",
+   "metric": "lh_at_10_lpos4",
+   "rule": "each",
+   "min": 4,
+   "max": 10
+  },
+  {
+   "id": "support lh@10 pos5 in 4-10 (directional)",
+   "metric": "lh_at_10_lpos5",
+   "rule": "each",
+   "min": 4,
+   "max": 10
+  },
+  {
+   "id": "H1 lua_ours",
+   "metric": "lua_ours",
+   "rule": "each",
+   "max": 0
+  },
+  {
+   "id": "H1 console",
+   "metric": "console",
+   "rule": "mean",
+   "cmp": "on<=off"
+  }
+ ]
+}

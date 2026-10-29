@@ -22,7 +22,9 @@ function GetUnitToUnitDistance(a, b) return dist(a:GetLocation(), b:GetLocation(
 
 function LaningCreep(o)
 	return {
-		hp = o.hp, loc = o.loc or Vector(0, 0), alive = true,
+		hp = o.hp, loc = o.loc or Vector(0, 0), alive = true, team = o.team or 3,
+		GetTeam = function(self) return self.team end,
+		IsCreep = function() return true end,
 		GetHealth = function(self) return self.hp end,
 		GetMaxHealth = function() return 550 end,
 		GetLocation = function(self) return self.loc end,
@@ -36,10 +38,13 @@ function LaningHero(o)
 	h.GetAttackRange = function(self) return self.range end
 	h.GetExtrapolatedLocation = function(self) return self.toward or self.loc end
 	h.GetPlayerID = function(self) return self.pid end
+	h.GetAttackTarget = function(self) return self.target end
+	h.IsAlive = function() return true end
+	h.IsIllusion = function() return false end
 	return h
 end
 
--- opts: pos, owned (Lane owns laning), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg.
+-- opts: pos, owned (Lane owns laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg.
 function LaningLoad(opts)
 	DotaTime = function() return opts.t or 120 end
 	GameTime = DotaTime
@@ -64,6 +69,18 @@ function LaningLoad(opts)
 	bot.Action_MoveToLocation = record("MoveToLocation")
 	bot.SetTarget = function() end
 	function GetBot() return bot end
+
+	-- The real Etiquette predicate (slice 3), on Ours.LeaveCoreCreep = opts.ours, positions from the world, over the bot
+	-- and its allied heroes as the team.
+	local team = { bot }
+	for _, a in ipairs(opts.allies or {}) do table.insert(team, a) end
+	function GetTeamMember(i) return team[i] end
+	package.loaded['bots/FunLib/humaniser/lane_config'] = { PositionOf = function(u) return u.pos end }
+	package.loaded['bots/FunLib/humaniser/ours'] = { On = function() return opts.ours == true end }
+	package.loaded['bots/FunLib/humaniser/etiquette'] = nil
+	-- A fixture's negative control runs an older bots/ without the module; the old mode file never reads it then.
+	local okEtiquette, Etiquette = pcall(require, 'bots/FunLib/humaniser/etiquette')
+	if not okEtiquette then Etiquette = { Applies = function() return false end } end
 
 	local attempts = {}
 	local humaniser = {
@@ -92,6 +109,7 @@ function LaningLoad(opts)
 			Choose = function(_, list) return list[1] end,
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
+		Etiquette = Etiquette,
 		Intent = { Resolve = function(_, _, d) return d end },
 		States = { MayOwn = function() return false end, SetLaneSpot = function() end, Step = function() return false end, BodyLastHits = function() return false end, BodyBusy = function() return false end },
 	}

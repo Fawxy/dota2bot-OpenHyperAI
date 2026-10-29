@@ -1,0 +1,20 @@
+id: lane.lasthit.ours-leaves-core-creep.001
+source: evidence-card
+ref: {card: EC-050, log: "~/.dotactl/logs/2026-10-28T07-47-25-b25_B_off_2.log", note: "audited steals with the core within range + 150"}
+status: active
+decision: laning_mode
+control: {commit: d6059fe, outcome: fail}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  ours: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  # Core 400 from the creep: inside its range + 300 (Etiquette), outside the old range + 150 reach.
+  allies: [{id: 2, pos: 1, x: 500, y: 0, range: 150}]
+expect:
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  Ours.LeaveCoreCreep: a support leaves a creep an allied core can take (EC-050: leave the core's definite kill). Before
+  slice 3 the owned laning took it (reach judged at range + 150). Positive control: ours-takes-unreachable.
