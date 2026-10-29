@@ -77,7 +77,8 @@ cd tests/humaniser && npm install && npm run check
 - `test` runs `tests/humaniser/test_*.lua` in fengari (Lua 5.3 in JS) against the stubs in `dota_stubs.lua`. `FreshHumaniser(cfg)` loads a new module instance with the given `Customize.Humaniser`. Two instances in one test stand in for "modules are not shared between bots".
   - Each file runs in its own child process, 4 at a time (`node run.js --jobs N [files...]`; name files to run only the
     ones a change touches). The harness caches each module's compiled chunk per Lua state, so `FreshHumaniser` re-runs
-    the chunk instead of parsing it again; a re-run still builds new module tables and closures. A test that needs a
+    the chunk instead of parsing it again; a re-run still builds new module tables (Lua 5.3 may reuse a closure that
+    captures nothing changed, so compare instances by their tables, not their functions). A test that needs a
     module's source changed on disk mid-file would see the old chunk (none does; `package.preload` still wins).
   - Cost (30/10/2026, 69 files): about 35 s and under 600 MB per process. Before: 260 s and 1.6 GB in one process
     (about 1,550 `FreshHumaniser` calls at 170 ms of parsing each). The slowest file is `test_states_smoke.lua`

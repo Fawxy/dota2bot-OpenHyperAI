@@ -24,12 +24,13 @@ function newState(root = path.resolve(__dirname, '../..')) {
     lua.lua_setglobal(L, to_luastring('READ_FILE'));
     const ioShim = `if io.open == nil then io.open = function(p, m) if m ~= nil and m ~= "r" then return nil end local t = READ_FILE(p) if t == nil then return nil end return { read = function() return t end, close = function() end } end end\n`;
     // Compile cache: FreshHumaniser clears package.loaded and re-requires about 1 MB of Lua per test case, and fengari's
-    // parser is slow. Re-running a cached chunk gives the same fresh module state (its locals and closures are per call).
+    // parser is slow. Re-running a cached chunk gives fresh module state (new locals and tables per call). Lua 5.3 may
+    // reuse a closure that captures nothing changed, so such a function can be the same object in two instances.
     const compileCache = `do local cache = {} table.insert(package.searchers, 2, function(name)
         local p = package.searchpath(name, package.path)
         if p == nil then return nil end
         local f = cache[p]
-        if f == nil then local err f, err = loadfile(p) if f == nil then error(err, 0) end cache[p] = f end
+        if f == nil then local err f, err = loadfile(p) if f == nil then error(string.format("error loading module '%s' from file '%s':\\n\\t%s", name, p, err), 0) end cache[p] = f end
         return f, p
     end) end\n`;
     const prelude = ioShim + compileCache + `package.path = "${slash(root)}/?.lua;" .. package.path\nunpack = unpack or table.unpack\nHARNESS_DIR = "${here}"\nBOTS_ROOT = "${slash(root)}"\n`;

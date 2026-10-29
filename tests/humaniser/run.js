@@ -58,7 +58,10 @@ if (args[0] === '--one') {
     if (j >= 0) {
         jobs = Number(args[j + 1]);
         args.splice(j, 2);
-        if (!(jobs >= 1)) throw new Error('--jobs needs a number >= 1');
+        if (!(jobs >= 1)) {
+            console.error('--jobs needs a number >= 1');
+            process.exit(1);
+        }
     }
     const files = args.length > 0 ? args.map(f => path.resolve(f)) : fs.readdirSync(here).filter(f => /^test_.*\.lua$/.test(f)).map(f => path.join(here, f));
     if (files.length === 0) process.exit(0);
