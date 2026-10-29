@@ -175,6 +175,25 @@ do
 	check("n2 sampled", (field(l, "n2") or "?") ~= "?", l)
 end
 
+-- Spells and items wait while the job runs (a cask before the hit drew the camp early, s4solo2); an enemy hero in reach
+-- lifts the hold; no job, no hold.
+do
+	local before, during, enemy = nil, false, nil
+	stackRun({ onFrame = function(H, bot)
+		if before == nil then before = H.StackJob.HoldsCasts(bot) end
+		if H.StackJob.HoldsRun(bot) and H.StackJob.HoldsCasts(bot) then during = true end
+		if H.StackJob.HoldsRun(bot) and enemy == nil and T >= 3 * 60 + 56 then
+			local e = MakeUnit({ pid = 12, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) })
+			enemy = H.StackJob.HoldsCasts(bot)
+			e.alive = false
+			for i, u in ipairs(UNITS[3]) do if u == e then table.remove(UNITS[3], i) break end end
+		end
+	end })
+	check("no job yet: casts free", before == false)
+	check("job running: casts held", during)
+	check("enemy hero in reach: hold lifted", enemy == false, tostring(enemy))
+end
+
 -- A spell cast while the job runs is logged with its second (witch doctor's cask, s4solo1 3:5x).
 do
 	local cask = { GetName = function() return "witch_doctor_paralyzing_cask" end }
@@ -309,8 +328,8 @@ do
 	local benchThink = farm:find('if J.Humaniser.StackJob.Bench(bot) then return end', 1, true)
 	check('farm: bench Think before the stack Think', benchThink ~= nil and benchThink < think)
 	local usage = source('bots/ability_item_usage_generic.lua')
-	local _, holds = usage:gsub('if J.Humaniser.StackJob.Benched%(bot%) then return end', '')
-	check('usage: a benched hero casts and uses no items', holds == 2, holds)
+	local _, holds = usage:gsub('if J.Humaniser.StackJob.HoldsCasts%(bot%) then return end', '')
+	check('usage: spells and items held for the stack job and the bench', holds == 2, holds)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
 	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.StackJob.HoldsRun(bot) then"))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.

@@ -498,6 +498,18 @@ export function HoldsRun(bot: Unit): boolean {
     return running[bot.GetPlayerID()] !== undefined;
 }
 
+/**
+ * ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
+ * branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
+ * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
+ * An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast.
+ */
+export function HoldsCasts(bot: Unit): boolean {
+    if (Benched(bot)) return true;
+    if (running[bot.GetPlayerID()] === undefined) return false;
+    return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
+}
+
 /** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */
 export function Abort(bot: Unit, why: string): void {
     if (running[bot.GetPlayerID()] !== undefined) Tasks.Cancel(bot, "cancelled", why);

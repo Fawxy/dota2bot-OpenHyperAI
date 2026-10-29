@@ -343,6 +343,7 @@ if Telemetry.GuardsEnabled() then
             HoldsRun = no,
             Benched = no,
             Bench = no,
+            HoldsCasts = no,
             Minutes = function() return StackJob.SETTINGS.TriggerMinutes end
         }
     )
