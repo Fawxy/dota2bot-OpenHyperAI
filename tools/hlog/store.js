@@ -284,7 +284,8 @@ class Store {
     }
 
     /**
-     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock.
+     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock
+     * (except a `-- ensure:` header that finds its table or column missing, which writes once).
      * A view's `-- needs: ev_x(a, b)` lines add those columns (NULL) first, so it still opens on logs from builds that
      * never wrote a field; a view whose tables no log has is skipped.
      */
@@ -308,8 +309,15 @@ class Store {
      */
     ensure(sql) {
         for (const [, tbl, list] of sql.matchAll(/^-- ensure: (\w+)\(([^)]*)\)/gm)) {
-            if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (game_id, seq, t)`);
-            for (const c of list.split(',').map(x => x.trim()).filter(Boolean)) this.addColumn(tbl, c);
+            const cols = list.split(',').map(x => x.trim()).filter(Boolean);
+            if (this.kinds.has(tbl) && cols.every(c => this.colsOf(tbl).has(c))) continue; // nothing to write: no lock taken
+            try {
+                if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (game_id, seq, t)`);
+                for (const c of cols) this.addColumn(tbl, c);
+            } catch (e) {
+                if (!/duplicate column name/.test(e.message)) throw e;
+                this.loadKinds(); // another process added it first
+            }
         }
     }
 

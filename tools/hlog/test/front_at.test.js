@@ -64,3 +64,31 @@ test('front_at: a human hero is named from ev=player, and the later of ev=bot / 
     assert.deepStrictEqual(heroes, [[0, 'luna'], [5, 'axe']]);
     s.db.close();
 });
+
+test('front_at: a log without ev=front still answers, and the empty table is filled by a later ingest', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-front-'));
+    const old = path.join(dir, 'old.log');
+    const fresh = path.join(dir, 'new.log');
+    fs.writeFileSync(old, [
+        '[HEV] t=-90 ev=bot pid=0 hero=luna team=2 schema=2 build=abc pos=1',
+        '[HEV] t=60 ev=snap pid=0 x=0 y=0 alive=1 hp=100 ln=top s=0.5 ld=10',
+        '[HEV] t=60 ev=snap pid=1 x=0 y=0 alive=1 hp=100',
+    ].join('\n') + '\n');
+    fs.writeFileSync(fresh, LOG + '\n');
+    const s = new Store(':memory:');
+    s.ingest(old);
+    s.refreshViews();
+    const a = at(s, old, 60);
+    assert.deepStrictEqual(a.map(r => [r.kind, r.who]), [['hero', 0]], 'no fronts, and the unlaned snap of pid 1 is skipped');
+    s.ingest(fresh);
+    s.refreshViews();
+    assert.strictEqual(at(s, fresh, 60).filter(r => r.kind === 'front').length, 2, 'the table made empty takes later rows');
+    assert.deepStrictEqual(at(s, old, 60).map(r => r.kind), ['hero']);
+    s.db.close();
+});
+
+test('front_at: a pid with no ev=bot or ev=player keeps its row with no hero name', () => {
+    const { s, f } = store('[HEV] t=60 ev=snap pid=3 x=0 y=0 alive=1 hp=100 ln=mid s=0.5 ld=10');
+    assert.deepStrictEqual(at(s, f, 60).map(r => [r.who, r.hero]), [[3, null]]);
+    s.db.close();
+});
