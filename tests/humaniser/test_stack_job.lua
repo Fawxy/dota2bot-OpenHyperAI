@@ -100,10 +100,11 @@ do
 			local name = MAP[data.campIdx][1]
 			local sp = C.SpawnerByIdx(data.campIdx)
 			check(name .. ": own side, not ancient", sp.team == team and sp.type ~= "ancient")
-			local stand = S.StandPoint(sp, data)
+			local stand = H.StackJob.Stand(sp, data)
 			check(name .. ": stand point outside the box", not C.InBox(data.campIdx, stand, 0))
 			check(name .. ": stand point within reach of the origin", dist(stand, sp.location) <= R.StandReach + 300, dist(stand, sp.location))
-			local exit = data.stack.exitPath[#data.stack.exitPath]
+			local path = H.StackJob.ExitPath(sp, data)
+			local exit = path[#path]
 			check(name .. ": exit ends outside the box and its margin", not C.InBox(data.campIdx, exit, R.BoxMargin))
 			local from, to = S.Window(data.campIdx)
 			local sec = S.AggroSec(data)

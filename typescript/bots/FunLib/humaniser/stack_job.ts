@@ -44,6 +44,10 @@ export const SETTINGS = {
     Desire: 0.92,
     /** Seconds in another mode before the job counts as preempted. */
     PreemptAfter: 1,
+    /** Stand and walk off on the camp's lane side, not away from the lane (user replay review, 30/10/2026: these camps pull
+     *  more easily towards the lane). Away from the lane, every evil_1 hit by lich and omniknight came from 80-185 inside the
+     *  camp, unseen from the stand point (s4solo4, s4solo4a: 0 of 15). */
+    ExitTowardLane: true,
     /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
     WatchUntil: 5,
 };
@@ -134,6 +138,19 @@ export interface Attempt {
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
+const exits: Record<number, Vector[]> = {};
+
+/** The walk-off after the hit: the camp data's path, or one derived towards the lane (ExitTowardLane). */
+export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
+    if (!SETTINGS.ExitTowardLane) return data.stack!.exitPath;
+    exits[sp.idx] = exits[sp.idx] ?? Camps.DeriveStackExit(sp, sp.team, true);
+    return exits[sp.idx];
+}
+
+/** Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side. */
+export function Stand(sp: Camps.Spawner, data: Camps.CampJobData): Vector {
+    return Camps.StandPoint(sp, ExitPath(sp, data)[0], LaneConfig.Settings().Radii.StandOffset);
+}
 const gateWhy: Record<number, string | undefined> = {};
 const running: Record<number, Attempt | undefined> = {};
 
@@ -141,6 +158,7 @@ export function ResetCache(): void {
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
     for (const k in running) delete running[k];
+    for (const k in exits) delete exits[k];
 }
 
 /** The switch is on and `bot` is OHA position 5. */
@@ -169,7 +187,7 @@ export function Nearest(team: number, loc: Vector): LuaMultiReturn<[Camps.CampJo
     let stand: Vector | undefined;
     for (const data of Candidates(team)) {
         const sp = Camps.SpawnerByIdx(data.campIdx)!;
-        const p = Stacking.StandPoint(sp, data);
+        const p = Stand(sp, data);
         if (stand === undefined || dist(loc, p) < dist(loc, stand)) {
             best = data;
             stand = p;
@@ -225,7 +243,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
         aggroAt: start + Stacking.AggroSec(data),
-        exitPath: data.stack!.exitPath as unknown as Lib.Vec[],
+        exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
         onAggro: info => {
@@ -509,7 +527,7 @@ function sample59(bot: Unit, a: Attempt): void {
     a.pulled59 = pulled;
     a.bot59 = Camps.InBox(a.campIdx, bot.GetLocation(), 0) ? 1 : 0;
     a.vis59 = IsLocationVisible(sp.location) ? 1 : 0;
-    const path = data?.stack?.exitPath;
+    const path = data !== undefined && data.stack !== undefined ? ExitPath(sp, data) : undefined;
     a.exit59 = path !== undefined && path.length > 0 ? math.floor(GetUnitToLocationDistance(bot, path[path.length - 1])) : undefined;
 }
 
