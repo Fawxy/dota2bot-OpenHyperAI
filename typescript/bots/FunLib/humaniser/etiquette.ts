@@ -31,7 +31,9 @@ export function Applies(bot: Unit): boolean {
     return pos === 4 || pos === 5;
 }
 
-/** Whether `core` can take `creep` itself: attacking it, in attack range + ReachBuffer, or walking to it. */
+/** Whether `core` can take `creep` itself: attacking it, in attack range + ReachBuffer, or walking to it.
+ *  CANDIDATE(core-can-reach): its approach test repeats `AllyLastHit.CoreCanReach`; share it when a third consumer appears
+ *  or when `AllyLastHit` is replaced. */
 export function CanTake(core: Unit, creep: Unit): boolean {
     if (core.GetAttackTarget() === creep) return true;
     const dist = GetUnitToUnitDistance(core, creep);

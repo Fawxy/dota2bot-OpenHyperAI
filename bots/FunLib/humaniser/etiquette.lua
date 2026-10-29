@@ -16,6 +16,8 @@ function ____exports.Applies(bot)
     return pos == 4 or pos == 5
 end
 --- Whether `core` can take `creep` itself: attacking it, in attack range + ReachBuffer, or walking to it.
+-- CANDIDATE(core-can-reach): its approach test repeats `AllyLastHit.CoreCanReach`; share it when a third consumer appears
+-- or when `AllyLastHit` is replaced.
 function ____exports.CanTake(core, creep)
     if core:GetAttackTarget() == creep then
         return true
