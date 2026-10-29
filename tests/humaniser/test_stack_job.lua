@@ -218,6 +218,10 @@ do
 	local think = farm:find('J.Humaniser.StackJob.Think(bot)', 1, true)
 	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
 	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.StackJob.Abort(bot, "run")'))
+	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
+	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
+	local abort = farm:find('J.Humaniser.StackJob.Abort(bot, "defend-ping")', 1, true)
+	check('farm: a defend ping aborts the job', ping ~= nil and abort ~= nil and abort > ping and abort - ping < 200, tostring(ping) .. ' ' .. tostring(abort))
 end
 
 finish()

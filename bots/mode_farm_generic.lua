@@ -85,6 +85,8 @@ function GetDesireHelper()
     J.Utils['GameStates'] = J.Utils['GameStates'] or {}
     J.Utils['GameStates']['defendPings'] = J.Utils['GameStates']['defendPings'] or { pingedTime = GameTime() }
     if GameTime() - J.Utils['GameStates']['defendPings'].pingedTime <= 5.0 then
+		-- Slice 4: a defend ping drops farm (OHA); end a running stack job with that reason instead of a stall.
+		J.Humaniser.StackJob.Abort(bot, "defend-ping")
 		return BOT_MODE_DESIRE_NONE
 	end
 

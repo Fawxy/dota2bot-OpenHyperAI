@@ -268,6 +268,7 @@ ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
     LookFrom = 15,
     Lead = 5,
+    ApproachLead = 6,
     MinHpFraction = 0.5,
     EnemyRadius = 600,
     HitWithin = 3,
@@ -372,7 +373,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
             confirmed = function() return CampJobs.Exec.NeutralTargets(bot) end,
             approach = approach
         },
-        approachLead = t.StandApproachLead,
+        approachLead = ____exports.SETTINGS.ApproachLead,
         aggroAt = start + Stacking.AggroSec(data),
         exitPath = data.stack.exitPath,
         exitUntil = start + 60 + t.StackExitUntil,

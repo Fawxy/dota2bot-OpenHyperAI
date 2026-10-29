@@ -24,6 +24,8 @@ export const SETTINGS = {
     LookFrom: 15,
     /** Seconds of slack on the straight-line walk to the stand point: the path around trees and the camp ran ~6 s over (probe 4). */
     Lead: 5,
+    /** Seconds before the hit the job steps in towards an unseen camp. */
+    ApproachLead: 6,
     MinHpFraction: 0.5,
     /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
     EnemyRadius: 600,
@@ -135,7 +137,9 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
             confirmed: () => CampJobs.Exec.NeutralTargets(bot),
             approach: approach as unknown as Lib.Vec,
         },
-        approachLead: t.StandApproachLead,
+        // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
+        // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
+        approachLead: SETTINGS.ApproachLead,
         aggroAt: start + Stacking.AggroSec(data),
         exitPath: data.stack!.exitPath as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
