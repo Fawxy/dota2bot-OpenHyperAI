@@ -781,7 +781,7 @@ function ____exports.Minutes()
 end
 local handled = {}
 exits = {}
-EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}}
+EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = -0.7071, dy = 0.7071}}
 --- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side.
 function ____exports.Stand(sp, data)
     return Camps.StandPoint(

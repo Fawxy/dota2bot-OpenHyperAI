@@ -147,11 +147,14 @@ const exits: Record<number, Vector[]> = {};
 /**
  * Walk-off directions set by hand for camps the user described (30/10/2026, watching s4solo5): the safe-lane easy camps run
  * along the lane towards the corner where it turns, not into it. good_1 (Radiant, origin 3978,-5027): east; evil_2 (Dire,
- * -3911,4829): west, the mirror. Matched by spawner origin (7.41 map); other camps derive their walk-off.
+ * -3911,4829): west, the mirror. evil_1 (Dire hard, -4824,3915): north-west; its derived lane-side stand lay south-west
+ * behind trees, ~350 from the origin with the camp never seen (s4solo6a/6c, 13 of 13 `mistake:no-camp`; user 30/10/2026:
+ * stand north or north-west). Matched by spawner origin (7.41 map); other camps derive their walk-off.
  */
 const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },
     { x: -3911, y: 4829, dx: -1, dy: 0 },
+    { x: -4824, y: 3915, dx: -0.7071, dy: 0.7071 },
 ];
 
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
