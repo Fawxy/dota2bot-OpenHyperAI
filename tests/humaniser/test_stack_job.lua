@@ -174,6 +174,13 @@ do
 	check("enemy near: one skip line", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "enemy-near", lines[1])
 
 	H, bot = world({ t = 3 * 60 + 15 })
+	MakeUnit({ pid = 11, team = 3, loc = Vector(SAFE_T1[RAD].x + 900, SAFE_T1[RAD].y) })
+	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+	lines = stackLines(capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end))
+	check("lane opponent at 900: the job starts", #lines == 0 and H.StackJob.Desire(bot) > 0)
+	check("attack mode: gate says busy", (function() bot.mode = dota.BotMode.Attack return H.StackJob.Gate(bot) == "busy" end)())
+
+	H, bot = world({ t = 3 * 60 + 15 })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function()
 		while T < 3 * 60 + 50 do frame(H, bot) end

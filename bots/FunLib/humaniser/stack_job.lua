@@ -269,9 +269,9 @@ ____exports.SETTINGS = {
     LookFrom = 15,
     Lead = 2,
     MinHpFraction = 0.5,
-    EnemyRadius = 1200,
-    HitWithin = 2,
-    Desire = 0.75,
+    EnemyRadius = 600,
+    HitWithin = 3,
+    Desire = 0.92,
     PreemptAfter = 1,
     WatchUntil = 5
 }
@@ -334,7 +334,8 @@ function ____exports.Nearest(team, loc)
     end
     return best, stand
 end
---- Why the pos5 may not leave now, else undefined: low HP, an enemy hero near, or hit by a hero just now.
+--- Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
+-- hero just now, or fighting or retreating.
 function ____exports.Gate(bot)
     if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
         return "low-hp"
@@ -344,6 +345,10 @@ function ____exports.Gate(bot)
     end
     if bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin) then
         return "hit"
+    end
+    local mode = bot:GetActiveMode()
+    if mode == BotMode.Attack or mode == BotMode.Retreat then
+        return "busy"
     end
     return nil
 end
@@ -474,10 +479,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.SETTINGS.TriggerMinutes) do
         do
-            local __continue42
+            local __continue43
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue42 = true
+                    __continue43 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -532,7 +537,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue42 then
+            if not __continue43 then
                 break
             end
         end

@@ -25,9 +25,11 @@ export const SETTINGS = {
     /** Seconds the bot arrives at the stand point before the hit. */
     Lead: 2,
     MinHpFraction: 0.5,
-    EnemyRadius: 1200,
-    HitWithin: 2,
-    Desire: 0.75,
+    /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
+    EnemyRadius: 600,
+    HitWithin: 3,
+    /** Above OHA's ward (0.83) and laning, below a serious retreat (0.94-1.1); s4 validation game. */
+    Desire: 0.92,
     /** Seconds in another mode before the job counts as preempted. */
     PreemptAfter: 1,
     /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
@@ -89,11 +91,14 @@ export function Nearest(team: number, loc: Vector): LuaMultiReturn<[Camps.CampJo
     return $multi(best, stand);
 }
 
-/** Why the pos5 may not leave now, else undefined: low HP, an enemy hero near, or hit by a hero just now. */
+/** Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
+ *  hero just now, or fighting or retreating. */
 export function Gate(bot: Unit): string | undefined {
     if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
     if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
     if (bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin)) return "hit";
+    const mode = bot.GetActiveMode();
+    if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
     return undefined;
 }
 
