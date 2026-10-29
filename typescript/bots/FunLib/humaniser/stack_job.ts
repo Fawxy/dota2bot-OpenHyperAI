@@ -24,8 +24,11 @@ export const SETTINGS = {
     TriggerMinutes: [3, 5, 7],
     /** Second of the trigger minute from which the trigger looks (a far camp starts early). */
     LookFrom: 15,
-    /** Seconds of slack on the straight-line walk to the stand point: the path around trees and the camp ran ~6 s over (probe 4). */
-    Lead: 5,
+    /** Seconds of slack on the straight-line walk to the stand point. 5 (probe 4: the path ran ~6 s over) was not enough for
+     *  omniknight from the Dire safe lane to evil_1: started at x:40-x:46, it never reached the stand (no `arr` in 9 of 10
+     *  attempts), swung on the way in from 70-180 inside the camp and stacked 0 of 10 (s4solo3). Witch doctor on good_2
+     *  reached its stand ~4 s early. 9 gives the long walks time to arrive and wait. */
+    Lead: 9,
     /** A start held back by the gate goes ahead only with this much slack left: starts at 0 s slack reached the stand point at
      *  :54 and missed the window (probe s4p5, 5:5x on good_1 and evil_1). */
     MinSlack: 3,
