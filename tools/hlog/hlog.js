@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Store, DB, LOGS } = require('./store');
+const { Store, DB, LOGS, q } = require('./store');
 
 const QUERIES = path.join(__dirname, 'queries');
 const CELL = 48;
@@ -60,7 +60,7 @@ function digest(store, file, gameNo) {
             `set=${g.set || '-'} scenario=${g.scenario || '-'} t=${fmt(g.min_t)}..${fmt(g.max_t)} stop=${fmt(g.stop_t) || '-'} ended=${g.ended}`);
         out.push(`  lineup: ${g.lineup || '?'} human=${g.human ?? '?'} pos=${g.human_pos ?? '-'} bots=${g.bots}`);
         const counts = store.tables().filter(t => t.startsWith('ev_'))
-            .map(t => [t.slice(3), store.query(`SELECT count(*) AS n FROM "${t}" WHERE game_id = ?`, g.game_id)[0].n])
+            .map(t => [t.slice(3), store.query(`SELECT count(*) AS n FROM ${q(t)} WHERE game_id = ?`, g.game_id)[0].n])
             .filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
         out.push(`  events ${g.events}: ${counts.map(([e, n]) => `${e}=${n}`).join(' ')}`);
         out.push(`  errors ${g.errors}, squelches ${g.squelches}`);
@@ -75,13 +75,13 @@ function digest(store, file, gameNo) {
 function schema(store, ev) {
     const rows = [];
     for (const t of store.tables().filter(t => ev === undefined || t === `ev_${ev}` || t === `dx_${ev}` || t === ev)) {
-        const n = store.query(`SELECT count(*) AS n FROM "${t}"`)[0].n;
+        const n = store.query(`SELECT count(*) AS n FROM ${q(t)}`)[0].n;
         if (ev === undefined) {
             rows.push({ table: t, rows: n, columns: store.colsOf(t).size });
             continue;
         }
         for (const [col, kind] of store.colsOf(t)) {
-            const r = store.query(`SELECT count("${col}") AS n, (SELECT "${col}" FROM "${t}" WHERE "${col}" IS NOT NULL LIMIT 1) AS ex FROM "${t}"`)[0];
+            const r = store.query(`SELECT count(${q(col)}) AS n, (SELECT ${q(col)} FROM ${q(t)} WHERE ${q(col)} IS NOT NULL LIMIT 1) AS ex FROM ${q(t)}`)[0];
             rows.push({ table: t, column: col, kind, non_null: r.n, of: n, example: r.ex });
         }
     }
@@ -93,19 +93,24 @@ function main(argv) {
     const valued = new Set(['--db', '--logs', '--p', '--game']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
-    const store = new Store(opt('db') || DB);
+    let store;
     const logs = opt('logs') || LOGS;
     const say = (rows, text) => console.log(argv.includes('--json') ? JSON.stringify(rows, null, 1) : text || table(rows, argv.includes('--wide')));
     const progress = (f, n) => process.stderr.write(`\ringested ${n}: ${path.basename(f)}   `);
     const sync = () => {
         if (argv.includes('--no-ingest') || !fs.existsSync(logs)) return;
-        const r = store.ingestAll([logs], progress);
+        report(store.ingestAll([logs], progress));
+    };
+    const report = r => {
         if (r.wrote) process.stderr.write('\n');
+        for (const f of r.failed) console.error(`skipped ${f.file}: ${f.error}`);
+        return r;
     };
     try {
+        store = new Store(opt('db') || DB);
         if (cmd === 'ingest') {
-            const r = store.ingestAll(rest.length ? rest : [logs], progress);
-            console.error(`${r.wrote ? '\n' : ''}ingested ${r.wrote}, pruned ${r.pruned.length}`);
+            const r = report(store.ingestAll(rest.length ? rest : [logs], progress));
+            console.error(`ingested ${r.wrote}, pruned ${r.pruned.length}, failed ${r.failed.length}`);
         } else if (cmd === 'q' && rest[0]) {
             sync();
             say(store.query(sqlOf(rest[0]), params(argv)));
@@ -130,7 +135,7 @@ function main(argv) {
         } else console.error(e.message);
         process.exitCode = 1;
     } finally {
-        store.close();
+        if (store) store.close();
     }
 }
 

@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Store } = require('../store');
+const { Store, INGEST_VERSION } = require('../store');
 
 const QUERY = fs.readFileSync(path.join(__dirname, '../queries/stack_attempts.sql'), 'utf8');
 
@@ -33,11 +33,13 @@ test('column kinds: numeric only while every value parses; ? and absent are NULL
     assert.deepStrictEqual(s.query('SELECT a, b, c, n2 FROM ev_probe ORDER BY t').map(r => ({ ...r })),
         [{ a: 1, b: null, c: 1, n2: 'a:1:in:2,b:3:out:4' }, { a: 2, b: null, c: 0, n2: null }]);
     assert.strictEqual(s.colsOf('ev_probe').get('a'), 'num');
-    // A later log with a non-numeric value turns the column to text, including the rows already stored.
+    // A later log with a non-numeric value marks the column text, but each value keeps its own type, so a view's
+    // numeric comparison still means what it says on the numeric rows (SQLite compares '1' > 0 as text, true).
     s.ingest(log(dir, 'b.log', [BOT, '[HEV] t=3 ev=probe pid=1 a=x7']));
     assert.strictEqual(s.colsOf('ev_probe').get('a'), 'text');
     assert.deepStrictEqual(s.query('SELECT a, typeof(a) AS k FROM ev_probe ORDER BY t').map(r => [r.a, r.k]),
-        [['1', 'text'], ['2', 'text'], ['x7', 'text']]);
+        [[1, 'integer'], [2, 'integer'], ['x7', 'text']]);
+    assert.deepStrictEqual(s.query('SELECT t FROM ev_probe WHERE a > 1 AND a < 100').map(r => r.t), [2]);
     // A build sha keeps its leading zero (parse.js STRING_KEYS).
     assert.strictEqual(s.query('SELECT build FROM games LIMIT 1')[0].build, '0123456');
 });
@@ -113,4 +115,68 @@ test('stack view: stackCause rules, and the view opens on logs that never wrote 
         ['not_stacked', 'unseen', 1],
         ['stacked', null, 1],
     ]);
+});
+
+test('[HEV] text quoted inside a [DOTACTL] cmd line is not an event and does not split the game', () => {
+    const s = new Store(':memory:', { views: null });
+    s.ingest(log(tmp(), 'a.log', [...FACTS, BOT,
+        '[HEV] t=100 ev=probe pid=1 a=1',
+        '10/30 08:02:00 [DOTACTL] t=100.5 ev=cmd cmd=status out="[HEV] t=0.3 ev=snap pid=1 x=0 | [HEV] t=0.3 ev=probe pid=1 a=9"',
+        '[HEV] t=101 ev=probe pid=1 a=2']));
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM games')[0].n, 1);
+    assert.deepStrictEqual(s.query('SELECT a FROM ev_probe ORDER BY seq').map(r => r.a), [1, 2]);
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM dx_cmd')[0].n, 1);
+});
+
+test('a log with two games: each gets its own events, both get the run facts', () => {
+    const s = new Store(':memory:', { views: null });
+    s.ingest(log(tmp(), 'a.log', [...FACTS, BOT, '[HEV] t=300 ev=probe pid=1 a=1', BOT, '[HEV] t=10 ev=probe pid=1 a=2']));
+    const games = s.query('SELECT game_id, game, seed FROM games ORDER BY game');
+    assert.deepStrictEqual(games.map(g => [g.game, g.seed]), [[1, 30], [2, 30]]);
+    assert.deepStrictEqual(s.query('SELECT a FROM ev_probe WHERE game_id = ?', games[1].game_id).map(r => r.a), [2]);
+});
+
+test('field names that differ only in case get their own columns; a failed ingest leaves the store usable', () => {
+    const dir = tmp();
+    const s = new Store(':memory:', { views: null });
+    s.ingest(log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 min=1 Min=2 T=3']));
+    assert.deepStrictEqual({ ...s.query('SELECT min, f_Min, f_T, t FROM ev_probe')[0] }, { min: 1, f_Min: 2, f_T: 3, t: 1 });
+    // A crash after this log created dx_ and ev_ tables: the rollback undoes them, and the next ingest must not trust the
+    // in-memory kinds that still name them.
+    const writeGame = s.writeGame;
+    s.writeGame = () => { throw new Error('boom'); };
+    const bad = log(dir, 'b.log', [...FACTS, BOT, '[HEV] t=1 ev=fresh pid=1 a=1']);
+    assert.deepStrictEqual(s.ingestAll([bad]).failed.map(f => f.error), ['boom']);
+    s.writeGame = writeGame;
+    assert.deepStrictEqual(s.ingestAll([bad]).failed, []);
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM ev_fresh')[0].n, 1);
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM dx_start')[0].n, 1);
+});
+
+test('same content under a new mtime is not re-ingested; manifests name their ok logs; an old store version is rebuilt', () => {
+    const dir = tmp();
+    const db = path.join(dir, 's.sqlite');
+    let s = new Store(db, { views: null });
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    const m = path.join(dir, 'b.manifest');
+    fs.writeFileSync(m, `status=ok label="x" seed=30 arm=on lineup=A log="${f}"\nstatus=fail label="y" log="${path.join(dir, 'gone.log')}"\n`);
+    assert.strictEqual(s.ingestAll([m]).wrote, 1);
+    fs.utimesSync(f, new Date(), new Date(Date.now() + 5000));
+    assert.strictEqual(s.ingest(f), false);
+    s.db.exec('PRAGMA user_version = 1');
+    s.close();
+    s = new Store(db, { views: null });
+    assert.strictEqual(s.query('PRAGMA user_version')[0].user_version, INGEST_VERSION);
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM logs')[0].n, 0);
+    assert.strictEqual(s.ingest(f), true);
+});
+
+test('stack view keeps stackCause results when a column also holds text and when why is only ever numeric', () => {
+    const s = new Store(':memory:');
+    s.ingestAll([log(tmp(), 'a.log', [BOT,
+        '[HEV] t=100 ev=stack pid=1 min=1 res=failed why=3',
+        '[HEV] t=160 ev=stack pid=1 min=2 res=not_stacked why=x box59=0 bot59=0 vis59=1 after=3',
+        '[HEV] t=220 ev=stack pid=1 min=3 res=stacked why=x box59=odd vis59=odd'])]);
+    assert.strictEqual(s.colsOf('ev_stack').get('box59'), 'text');
+    assert.deepStrictEqual(s.query('SELECT cause FROM stack_attempts ORDER BY t').map(r => r.cause), ['3', 'no-spawn', null]);
 });

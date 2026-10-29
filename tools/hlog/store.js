@@ -1,13 +1,15 @@
 // Log store: test logs ingested once into SQLite so a question about a game, or many, is one SQL query
 // (docs/proposals/2026-10-30-log-query-layer.md). Derived and disposable: the .log stays the evidence; delete the file to
 // rebuild. Tables:
-//   logs        one row per ingested file (size, mtime, sha1, ingest version: the cache key)
+//   logs        one row per ingested file (size, mtime, sha1: the cache key)
 //   games       one row per game parse.js splits a log into, with the run's dotactl facts copied in (seed, set, lineup, ...)
 //   ev_<name>   one per [HEV] ev= kind: game_id, seq (line order), t, then one column per field seen
 //   dx_<name>   one per [DOTACTL] ev= kind: log_id, seq, t, fields
 //   errors      game_id, t, text (Lua errors as parse.js counts them)
-//   columns     each column's kind (num | text); a column is num only while every value seen parses as a number
-// Views in views/*.sql hold derived logic once (an analyser's rules) and are re-created on every open.
+//   columns     each column's kind: num while every value seen is a number, else text. Metadata only: each value keeps its
+//               own type (integers INTEGER, other numbers REAL, the rest TEXT), so a view's `x > 0` means what it says on
+//               every row; a declared text kind is the exception and stores numbers as String(v)
+// Views in views/*.sql hold derived logic once (an analyser's rules); they are TEMP views, made per connection.
 'use strict';
 
 const crypto = require('crypto');
@@ -15,6 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseLog, parseFields } = require('./parse');
+const { readManifest } = require('./manifest');
 
 // node:sqlite is still flagged experimental on Node 22-24; its one-time warning is noise in every CLI call.
 const emitWarning = process.emitWarning;
@@ -24,41 +27,59 @@ const { DatabaseSync } = require('node:sqlite');
 const DB = path.join(os.homedir(), '.dotactl', 'hlog.sqlite');
 const LOGS = path.join(os.homedir(), '.dotactl', 'logs');
 const VIEWS = path.join(__dirname, 'views');
-// Bump when ingest changes what it writes: every log is re-ingested on its next use.
-const INGEST_VERSION = 1;
+// Bump when ingest changes what it writes or the tables' shape: the store is emptied and rebuilt on its next open.
+const INGEST_VERSION = 2;
 const KEEP_TEXT = new Set(['build', 'text', 'msg']); // parse.js STRING_KEYS: never read true/false as 1/0 there
 const RESERVED = new Set(['game_id', 'log_id', 'seq', 't']);
+const BUSY_MS = 30000;
 
-const q = name => `"${name.replace(/"/g, '""')}"`;
+const q = name => `"${String(name).replace(/"/g, '""')}"`;
 const tableName = (prefix, ev) => `${prefix}_${String(ev).replace(/\W/g, '_')}`;
-const colName = k => (RESERVED.has(k) ? `f_${k}` : k);
 
-/** One field value as stored: '?' and absent are NULL, true/false are 1/0, numbers stay numbers. */
+/** One field value as stored: '?' and absent are NULL, true/false are 1/0, integers bind as INTEGER. */
 function cell(k, v) {
     if (v === undefined || v === null || v === '?') return null;
     if (!KEEP_TEXT.has(k) && (v === 'true' || v === 'false')) return v === 'true' ? 1 : 0;
     return v;
 }
 
+const bind = v => (typeof v === 'number' && Number.isSafeInteger(v) ? BigInt(v) : v);
+
 class Store {
     /** `kinds` ({table: {col: 'num' | 'text'}}) overrides inference; typed event declarations will feed it. */
     constructor(file = DB, { kinds = {}, views = VIEWS } = {}) {
         if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-        this.db = new DatabaseSync(file);
+        this.db = new DatabaseSync(file, { timeout: BUSY_MS });
         this.declared = kinds;
         this.viewsDir = views;
-        this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
-            CREATE TABLE IF NOT EXISTS logs (log_id INTEGER PRIMARY KEY, file TEXT UNIQUE, size INTEGER, mtime REAL, hash TEXT, version INTEGER);
-            CREATE TABLE IF NOT EXISTS games (game_id INTEGER PRIMARY KEY, log_id INTEGER, file TEXT, game INTEGER, build TEXT,
+        this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL');
+        const version = this.db.prepare('PRAGMA user_version').get().user_version;
+        if (version !== INGEST_VERSION) this.rebuild();
+        this.loadKinds();
+        this.refreshViews();
+    }
+
+    rebuild() {
+        this.db.exec('BEGIN IMMEDIATE');
+        for (const { name } of this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()) {
+            this.db.exec(`DROP TABLE ${q(name)}`);
+        }
+        this.db.exec(`CREATE TABLE logs (log_id INTEGER PRIMARY KEY, file TEXT UNIQUE, size INTEGER, mtime REAL, hash TEXT);
+            CREATE TABLE games (game_id INTEGER PRIMARY KEY, log_id INTEGER, file TEXT, game INTEGER, build TEXT,
                 mode TEXT, seed INTEGER, "set" TEXT, scenario TEXT, worktree TEXT, timescale REAL, lineup TEXT, human TEXT,
                 human_pos INTEGER, stop_t REAL, min_t REAL, max_t REAL, ended INTEGER, bots INTEGER, events INTEGER,
                 errors INTEGER, squelches INTEGER);
-            CREATE TABLE IF NOT EXISTS errors (game_id INTEGER, t REAL, text TEXT);
-            CREATE TABLE IF NOT EXISTS columns (tbl TEXT, col TEXT, kind TEXT, PRIMARY KEY (tbl, col));
-            CREATE INDEX IF NOT EXISTS games_log ON games (log_id);`);
+            CREATE TABLE errors (game_id INTEGER, t REAL, text TEXT);
+            CREATE TABLE columns (tbl TEXT, col TEXT, kind TEXT, PRIMARY KEY (tbl, col));
+            CREATE INDEX games_log ON games (log_id);
+            CREATE INDEX errors_game ON errors (game_id);
+            PRAGMA user_version = ${INGEST_VERSION};
+            COMMIT`);
+    }
+
+    loadKinds() {
         this.kinds = new Map();
         for (const r of this.db.prepare('SELECT tbl, col, kind FROM columns').all()) this.colsOf(r.tbl).set(r.col, r.kind);
-        this.refreshViews();
     }
 
     colsOf(tbl) {
@@ -66,44 +87,61 @@ class Store {
         return this.kinds.get(tbl);
     }
 
+    /**
+     * SQLite column names are case-insensitive: a field that differs from a known column (or a key) only in case
+     * becomes f_<name>, first come first served.
+     */
+    columnFor(tbl, keys, k, taken) {
+        let name = RESERVED.has(k.toLowerCase()) ? `f_${k}` : k;
+        for (;;) {
+            const clash = [...keys, ...this.colsOf(tbl).keys(), ...taken.keys()].find(c => c.toLowerCase() === name.toLowerCase());
+            if (clash === undefined || clash === name) return name;
+            name = `f_${name}`;
+        }
+    }
+
     /** Creates the table or adds columns, settles each column's kind, then inserts all rows in one prepared statement. */
     write(tbl, keys, rows) {
         if (!rows.length) return;
-        const known = this.kinds.has(tbl);
+        if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (${keys.map(q).join(', ')})`);
         const cols = this.colsOf(tbl);
-        if (!known) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (${keys.map(q).join(', ')})`);
-        const seen = new Map();
+        const names = new Map(); // field -> column
+        const seen = new Map(); // column -> kind of this log's values
         for (const r of rows) for (const [k, v] of Object.entries(r)) {
             if (keys.includes(k)) continue;
-            if (!seen.has(k)) seen.set(k, undefined);
-            if (v !== null && seen.get(k) !== 'text') seen.set(k, typeof v === 'number' ? 'num' : 'text');
+            if (!names.has(k)) names.set(k, this.columnFor(tbl, keys, k, seen));
+            const c = names.get(k);
+            if (!seen.has(c)) seen.set(c, undefined);
+            if (v !== null && seen.get(c) !== 'text') seen.set(c, typeof v === 'number' ? 'num' : 'text');
         }
-        for (const [k, kind0] of seen) {
-            const decl = (this.declared[tbl] || {})[k];
-            const old = cols.get(k);
-            if (old === undefined) {
-                this.addColumn(tbl, k, decl || kind0 || 'num');
-                continue;
-            }
-            const kind = decl || (kind0 === 'text' ? 'text' : old);
-            if (kind === old) continue;
-            // Numbers are stored as REAL, and CAST(1.0 AS TEXT) is '1.0'; match String(v) as new rows get it.
-            const c = q(k);
-            if (kind === 'text') this.db.exec(`UPDATE ${q(tbl)} SET ${c} = CASE WHEN typeof(${c}) = 'real' AND ${c} = CAST(${c} AS INTEGER)
-                THEN CAST(CAST(${c} AS INTEGER) AS TEXT) ELSE CAST(${c} AS TEXT) END WHERE ${c} IS NOT NULL`);
-            cols.set(k, kind);
-            this.db.prepare('INSERT OR REPLACE INTO columns VALUES (?, ?, ?)').run(tbl, k, kind);
+        for (const [c, kind] of seen) {
+            const decl = (this.declared[tbl] || {})[c];
+            if (!cols.has(c)) this.addColumn(tbl, c, decl || kind || 'num');
+            else if (decl && cols.get(c) !== decl) this.setKind(tbl, c, decl);
+            else if (!decl && kind === 'text' && cols.get(c) === 'num') this.setKind(tbl, c, 'text');
         }
-        const names = [...keys, ...[...seen.keys()]];
-        const stmt = this.db.prepare(`INSERT INTO ${q(tbl)} (${names.map(q).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`);
-        for (const r of rows) stmt.run(...names.map(k => {
-            const v = r[k] === undefined ? null : r[k];
-            return v !== null && cols.get(k) === 'text' && typeof v === 'number' ? String(v) : v;
+        const all = [...keys, ...seen.keys()];
+        const fieldOf = new Map([...names].map(([k, c]) => [c, k]));
+        const asText = new Set(all.filter(c => (this.declared[tbl] || {})[c] === 'text'));
+        const stmt = this.db.prepare(`INSERT INTO ${q(tbl)} (${all.map(q).join(', ')}) VALUES (${all.map(() => '?').join(', ')})`);
+        for (const r of rows) stmt.run(...all.map(c => {
+            const v = r[fieldOf.get(c) || c];
+            if (v === undefined || v === null) return null;
+            return asText.has(c) && typeof v === 'number' ? String(v) : bind(v);
         }));
-        if (!known) {
-            const idx = seen.has('pid') ? [keys[0], 'pid', 't'] : [keys[0], 't'];
-            this.db.exec(`CREATE INDEX IF NOT EXISTS ${q(`${tbl}_idx`)} ON ${q(tbl)} (${idx.map(q).join(', ')})`);
-        }
+        const idx = cols.has('pid') ? [keys[0], 'pid', 't'] : [keys[0], 't'];
+        this.db.exec(`CREATE INDEX IF NOT EXISTS ${q(`${tbl}_${idx.length === 3 ? 'pid' : 't'}`)} ON ${q(tbl)} (${idx.map(q).join(', ')})`);
+    }
+
+    addColumn(tbl, col, kind = (this.declared[tbl] || {})[col] || 'num') {
+        if (this.colsOf(tbl).has(col)) return;
+        this.db.exec(`ALTER TABLE ${q(tbl)} ADD COLUMN ${q(col)}`);
+        this.setKind(tbl, col, kind);
+    }
+
+    setKind(tbl, col, kind) {
+        this.colsOf(tbl).set(col, kind);
+        this.db.prepare('INSERT OR REPLACE INTO columns VALUES (?, ?, ?)').run(tbl, col, kind);
     }
 
     tables() {
@@ -111,11 +149,12 @@ class Store {
     }
 
     drop(logId) {
-        const games = `SELECT game_id FROM games WHERE log_id = ${Number(logId)}`;
+        const id = Number(logId);
+        const games = `SELECT game_id FROM games WHERE log_id = ${id}`;
         for (const t of [...this.tables(), 'errors']) {
-            this.db.exec(t.startsWith('dx_') ? `DELETE FROM ${q(t)} WHERE log_id = ${Number(logId)}` : `DELETE FROM ${q(t)} WHERE game_id IN (${games})`);
+            this.db.exec(t.startsWith('dx_') ? `DELETE FROM ${q(t)} WHERE log_id = ${id}` : `DELETE FROM ${q(t)} WHERE game_id IN (${games})`);
         }
-        this.db.exec(`DELETE FROM games WHERE log_id = ${Number(logId)}; DELETE FROM logs WHERE log_id = ${Number(logId)}`);
+        this.db.exec(`DELETE FROM games WHERE log_id = ${id}; DELETE FROM logs WHERE log_id = ${id}`);
     }
 
     /** Ingests one log unless the cache says it is current. Returns true when it (re)wrote the log. */
@@ -123,29 +162,30 @@ class Store {
         file = path.resolve(file);
         const st = fs.statSync(file);
         const row = this.db.prepare('SELECT * FROM logs WHERE file = ?').get(file);
-        if (row && row.version === INGEST_VERSION && row.size === st.size && row.mtime === st.mtimeMs) return false;
+        if (row && row.size === st.size && row.mtime === st.mtimeMs) return false;
         const text = fs.readFileSync(file, 'utf8');
         const hash = crypto.createHash('sha1').update(text).digest('hex');
-        if (row && row.version === INGEST_VERSION && row.hash === hash) {
+        if (row && row.hash === hash) {
             this.db.prepare('UPDATE logs SET size = ?, mtime = ? WHERE log_id = ?').run(st.size, st.mtimeMs, row.log_id);
             return false;
         }
-        this.db.exec('BEGIN');
+        this.db.exec('BEGIN IMMEDIATE');
         try {
             if (row) this.drop(row.log_id);
-            const logId = Number(this.db.prepare('INSERT INTO logs (file, size, mtime, hash, version) VALUES (?, ?, ?, ?, ?)')
-                .run(file, st.size, st.mtimeMs, hash, INGEST_VERSION).lastInsertRowid);
+            const logId = Number(this.db.prepare('INSERT INTO logs (file, size, mtime, hash) VALUES (?, ?, ?, ?)')
+                .run(file, st.size, st.mtimeMs, hash).lastInsertRowid);
             const facts = this.writeFacts(logId, text);
             for (const g of parseLog(text)) this.writeGame(logId, file, g, facts);
             this.db.exec('COMMIT');
         } catch (e) {
             this.db.exec('ROLLBACK');
+            this.loadKinds(); // the rollback undid this log's CREATE/ALTER TABLE too
             throw e;
         }
         return true;
     }
 
-    /** [DOTACTL] lines into dx_<ev>; returns the run facts copied into games. */
+    /** [DOTACTL] lines into dx_<ev>; returns the run facts, which are per log and copied into every game of it. */
     writeFacts(logId, text) {
         const byEv = new Map();
         let seq = 0;
@@ -155,7 +195,7 @@ class Store {
             const f = parseFields(line.slice(i + 10));
             if (typeof f.ev !== 'string') continue;
             const r = { log_id: logId, seq: seq++, t: typeof f.t === 'number' ? f.t : null };
-            for (const [k, v] of Object.entries(f)) if (k !== 'ev' && k !== 't') r[colName(k)] = cell(k, v);
+            for (const [k, v] of Object.entries(f)) if (k !== 'ev' && k !== 't') r[k] = cell(k, v);
             if (!byEv.has(f.ev)) byEv.set(f.ev, []);
             byEv.get(f.ev).push(r);
         }
@@ -173,16 +213,16 @@ class Store {
 
     writeGame(logId, file, g, facts) {
         const bot = g.events.find(e => e.ev === 'bot' && e.build !== undefined);
-        const gameId = Number(this.db.prepare(`INSERT INTO games (log_id, file, game, build, mode, seed, "set", scenario, worktree,
-            timescale, lineup, human, human_pos, stop_t, min_t, max_t, ended, bots, events, errors, squelches)
-            VALUES (${Array(21).fill('?').join(', ')})`).run(logId, file, g.index, bot ? String(bot.build) : null,
-            ...['mode', 'seed', 'set', 'scenario', 'worktree', 'timescale', 'lineup', 'human', 'human_pos', 'stop_t'].map(k => facts[k] ?? null),
+        const factKeys = ['mode', 'seed', 'set', 'scenario', 'worktree', 'timescale', 'lineup', 'human', 'human_pos', 'stop_t'];
+        const gameId = Number(this.db.prepare(`INSERT INTO games (log_id, file, game, build, ${factKeys.map(q).join(', ')},
+            min_t, max_t, ended, bots, events, errors, squelches) VALUES (${Array(21).fill('?').join(', ')})`).run(logId, file, g.index,
+            bot ? String(bot.build) : null, ...factKeys.map(k => bind(facts[k] ?? null)),
             Number.isFinite(g.minT) ? g.minT : null, Number.isFinite(g.maxT) ? g.maxT : null, g.ended ? 1 : 0,
             Object.values(g.bots).filter(b => !b.human).length, g.events.length, g.errors.length, g.squelches).lastInsertRowid);
         const byEv = new Map();
         g.events.forEach((e, seq) => {
             const r = { game_id: gameId, seq, t: e.t };
-            for (const [k, v] of Object.entries(e)) if (k !== 'ev' && k !== 't') r[colName(k)] = cell(k, v);
+            for (const [k, v] of Object.entries(e)) if (k !== 'ev' && k !== 't') r[k] = cell(k, v);
             if (!byEv.has(e.ev)) byEv.set(e.ev, []);
             byEv.get(e.ev).push(r);
         });
@@ -194,41 +234,48 @@ class Store {
     /** Drops every log whose file is gone, so data voided under the bad-data rule cannot be queried. */
     prune() {
         const gone = this.db.prepare('SELECT log_id, file FROM logs').all().filter(r => !fs.existsSync(r.file));
+        if (!gone.length) return [];
+        this.db.exec('BEGIN IMMEDIATE');
         for (const r of gone) this.drop(r.log_id);
+        this.db.exec('COMMIT');
         return gone.map(r => r.file);
     }
 
-    /** Ingests files, directories (their *.log) and manifests (their status=ok logs); prunes first. */
+    /**
+     * Ingests files, directories (their *.log) and manifests (their status=ok logs); prunes first. A log that fails is
+     * reported and skipped, so one bad file does not stop every query.
+     */
     ingestAll(args, onLog = () => {}) {
         const pruned = this.prune();
         let wrote = 0;
-        for (const f of expand(args)) if (this.ingest(f)) onLog(f, ++wrote);
+        const failed = [];
+        for (const f of expand(args)) {
+            try {
+                if (this.ingest(f)) onLog(f, ++wrote);
+            } catch (e) {
+                failed.push({ file: f, error: e.message });
+            }
+        }
         if (wrote || pruned.length) this.refreshViews();
-        return { wrote, pruned };
+        return { wrote, pruned, failed };
     }
 
     /**
-     * Re-creates each view in views/*.sql. A view's `-- needs: ev_x(a, b)` lines add those columns (NULL) first, so a view
-     * still opens on logs from builds that never wrote a field; a view whose tables do not exist yet is skipped.
+     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock.
+     * A view's `-- needs: ev_x(a, b)` lines add those columns (NULL) first, so it still opens on logs from builds that
+     * never wrote a field; a view whose tables no log has is skipped.
      */
     refreshViews() {
         if (!this.viewsDir || !fs.existsSync(this.viewsDir)) return;
         for (const f of fs.readdirSync(this.viewsDir).filter(f => f.endsWith('.sql')).sort()) {
             const sql = fs.readFileSync(path.join(this.viewsDir, f), 'utf8');
             const name = path.basename(f, '.sql');
-            this.db.exec(`DROP VIEW IF EXISTS ${q(name)}`);
+            this.db.exec(`DROP VIEW IF EXISTS temp.${q(name)}`);
             const needs = [...sql.matchAll(/^-- needs: (\w+)\(([^)]*)\)/gm)];
             if (needs.some(([, tbl]) => !this.kinds.has(tbl))) continue;
             for (const [, tbl, list] of needs) for (const c of list.split(',').map(s => s.trim()).filter(Boolean)) this.addColumn(tbl, c);
-            this.db.exec(`CREATE VIEW ${q(name)} AS ${sql.replace(/;\s*$/, '')}`);
+            this.db.exec(`CREATE TEMP VIEW ${q(name)} AS ${sql.replace(/;\s*$/, '')}`);
         }
-    }
-
-    addColumn(tbl, col, kind = (this.declared[tbl] || {})[col] || 'num') {
-        if (this.colsOf(tbl).has(col)) return;
-        this.db.exec(`ALTER TABLE ${q(tbl)} ADD COLUMN ${q(col)}`);
-        this.colsOf(tbl).set(col, kind);
-        this.db.prepare('INSERT OR REPLACE INTO columns VALUES (?, ?, ?)').run(tbl, col, kind);
     }
 
     query(sql, ...args) {
@@ -244,10 +291,10 @@ function expand(args) {
     const out = [];
     for (const a of args) {
         if (fs.statSync(a).isDirectory()) out.push(...fs.readdirSync(a).filter(f => f.endsWith('.log')).sort().map(f => path.join(a, f)));
-        else if (/\.manifest$/.test(a)) out.push(...fs.readFileSync(a, 'utf8').split('\n').filter(l => /status=ok/.test(l)).map(l => l.match(/log="([^"]+)"/)[1]));
+        else if (/\.manifest$/.test(a)) out.push(...readManifest(a).map(g => g.log));
         else out.push(a);
     }
     return out;
 }
 
-module.exports = { Store, DB, LOGS, INGEST_VERSION };
+module.exports = { Store, DB, LOGS, INGEST_VERSION, q };
