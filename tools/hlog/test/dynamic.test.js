@@ -270,3 +270,24 @@ test('wisdom proxy: a hero 3 s within 300 of the shrine by fill + 15 s takes it'
     assert.strictEqual(D.wisdom(S, 2, 900), 0.5);
     assert.strictEqual(D.wisdom(S, 2, 400), undefined);
 });
+
+test('auditedSteals: a support last hit counts when a logged core was attacking the creep or within range + 150', () => {
+    const S = D.series(game([bot(0, 2, () => ({ p: BOT })), bot(3, 2, () => ({ p: BOT }))]));
+    S[3].sec[100].mode = 'laning';
+    const lpos = { 0: 1, 3: 5 };
+    const death = (t, by, f) => ({ ev: 'creep_death', t, team: 2, kind: 'melee', by, ...f });
+    const events = [
+        death(100.2, 3, { p1d: 300, p1r: 150 }), // in range + 150: counted, with the support's mode
+        death(110, 3, { p1d: 900, p1r: 150, p1t: 1 }), // attacking: counted
+        death(120, 3, { p1d: 301, p1r: 150 }), // just beyond: not
+        death(130, 3, {}), // no core logged: not
+        death(140, 0, { p1d: 50, p1r: 150 }), // the core's own last hit: not
+        death(610, 3, { p1d: 50, p1r: 150 }), // after until: not
+    ];
+    const cases = D.auditedSteals({ events }, S, lpos, 600);
+    assert.deepStrictEqual(cases.map(c => c.t), [100.2, 110]);
+    assert.strictEqual(cases[0].mode, 'laning');
+    assert.deepStrictEqual(cases[1].cores, [{ core: 1, d: 900, r: 150, attacking: true }]);
+    assert.strictEqual(D.auditedSteals({ events: [] }, S, lpos, 600), undefined, 'no ev=creep_death: undefined, not 0');
+    assert.strictEqual(D.auditedSteals({ events }, S, {}, 600), undefined, 'no lineup positions: undefined');
+});

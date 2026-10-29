@@ -1,0 +1,18 @@
+id: lane.lasthit.ours-takes-unreachable.001
+source: evidence-card
+ref: {card: EC-050, note: "some last hits are impossible for a carry"}
+status: active
+decision: laning_mode
+control: {commit: d6059fe, outcome: pass}   # guard: true before slice 3 too
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  owned: true
+  ours: true
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
+  creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
+  allies: [{id: 2, pos: 1, x: 1500, y: 0, range: 150}]
+expect:
+  must: ["lastHit(creep#1)"]
+notes: >
+  Positive control for the ours-leaves fixtures: the same world with no core able to take the creep; the support takes it.

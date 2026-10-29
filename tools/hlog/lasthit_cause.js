@@ -181,4 +181,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { lasthitCause, summarise, coreState, gamesFrom, C, GATE };
+module.exports = { lasthitCause, summarise, coreState, gamesFrom, logsFrom, C, GATE };

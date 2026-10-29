@@ -31,6 +31,9 @@ function flatten(m) {
         rotation_attempts_10: both(m.rotation_attempts_per_team_10),
         tp_joins: both(m.tp_joins_per_team),
         ally_creep_steals: both(m.ally_creep_steals),
+        // Slice 3 (H.2): both teams; undefined on logs without ev=creep_death.
+        audited_steals: m.audited_steals && m.audited_steals.length,
+        audited_steals_laning: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning').length,
         idle_10s: m.idle_10s,
         lua_error: m.lua_error,
     };
