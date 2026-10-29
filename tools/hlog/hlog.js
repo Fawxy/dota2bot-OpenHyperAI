@@ -57,7 +57,7 @@ function digest(store, file, gameNo) {
     const out = [];
     for (const g of games.filter(g => gameNo === undefined || g.game === gameNo)) {
         out.push(`${path.basename(g.file)} game ${g.game}: build=${g.build ?? '?'} mode=${g.mode ?? '?'} seed=${g.seed ?? '?'} ` +
-            `set=${g.set || '-'} scenario=${g.scenario || '-'} t=${fmt(g.min_t)}..${fmt(g.max_t)} stop=${fmt(g.stop_t) || '-'} ended=${g.ended}`);
+            `set=${g.set || '-'} scenario=${g.scenario || '-'} t=${fmt(g.min_t)}..${fmt(g.max_t)} stop=${fmt(g.stop_t) || '-'} game_end=${g.ended ? 'yes' : 'no'}`);
         out.push(`  lineup: ${g.lineup || '?'} human=${g.human ?? '?'} pos=${g.human_pos ?? '-'} bots=${g.bots}`);
         const counts = store.tables().filter(t => t.startsWith('ev_'))
             .map(t => [t.slice(3), store.query(`SELECT count(*) AS n FROM ${q(t)} WHERE game_id = ?`, g.game_id)[0].n])
@@ -96,13 +96,14 @@ function main(argv) {
     let store;
     const logs = opt('logs') || LOGS;
     const say = (rows, text) => console.log(argv.includes('--json') ? JSON.stringify(rows, null, 1) : text || table(rows, argv.includes('--wide')));
-    const progress = (f, n) => process.stderr.write(`\ringested ${n}: ${path.basename(f)}   `);
+    // A carriage-return progress line is noise in a captured log, so it prints on a terminal only.
+    const progress = process.stderr.isTTY ? (f, n) => process.stderr.write(`\ringested ${n}: ${path.basename(f)}   `) : undefined;
     const sync = () => {
         if (argv.includes('--no-ingest') || !fs.existsSync(logs)) return;
         report(store.ingestAll([logs], progress));
     };
     const report = r => {
-        if (r.wrote) process.stderr.write('\n');
+        if (r.wrote && process.stderr.isTTY) process.stderr.write('\n');
         for (const f of r.failed) console.error(`skipped ${f.file}: ${f.error}`);
         return r;
     };

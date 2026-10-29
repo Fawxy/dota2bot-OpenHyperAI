@@ -1,0 +1,619 @@
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+--- One declaration per humaniser ev= name: field -> value type. Data only (no imports, erasable syntax), so the compiler
+-- types Telemetry.Event from it and tools/hlog/gen_events.js reads it with Node to write EVENTS.md and the store's column kinds.
+-- Types: num (number), str (string), numstr (a string that holds a number, for example fmt() output), bool (printed 1/0),
+-- mixed (number or string, for example a ? placeholder). Only str forces a text column in the store.
+-- Every field may also be undefined or null (the formatter skips it). Add the event here before emitting it.
+-- Out of scope: engine ev=state* events and the dynamically named events (farm_pattern trips, the engine adapter in tasks.ts).
+____exports.UNIT = {
+    x = "num",
+    y = "num",
+    alive = "bool",
+    hp = "num",
+    mp = "num",
+    lvl = "num",
+    lh = "num",
+    dn = "num",
+    kills = "num",
+    deaths = "num",
+    tgt = "str",
+    ln = "str",
+    s = "num",
+    ld = "num"
+}
+____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
+    mode = "str",
+    d = "num",
+    act = "num",
+    gold = "num",
+    by = "str",
+    order = "str"
+})
+____exports.EVENTS = {
+    lua_error = {
+        pid = "mixed",
+        where = "str",
+        n = "num",
+        msg = "str",
+        tb = "str"
+    },
+    front = {
+        team = "num",
+        top = "num",
+        topx = "num",
+        topy = "num",
+        mid = "num",
+        midx = "num",
+        midy = "num",
+        bot = "num",
+        botx = "num",
+        boty = "num"
+    },
+    bot = {
+        pid = "num",
+        hero = "str",
+        team = "num",
+        schema = "num",
+        humaniser = "bool",
+        skill = "num",
+        ally = "bool",
+        build = "str",
+        pos = "num",
+        notice = "num",
+        react = "num",
+        ping = "num",
+        chat = "num",
+        jitter = "num",
+        lapse = "num",
+        lapseMax = "num",
+        minReact = "num",
+        deference = "num"
+    },
+    lasthit = {
+        pid = "num",
+        human = "bool",
+        n = "num",
+        creep = "str",
+        dec = "str",
+        decAge = "num"
+    },
+    deny = {pid = "num", human = "bool", n = "num"},
+    mode = {
+        pid = "num",
+        from = "str",
+        to = "str",
+        d = "num",
+        dwell = "num",
+        by = "str"
+    },
+    mark = {
+        n = "num",
+        by = "num",
+        team = "num",
+        text = "str",
+        at = "num"
+    },
+    mark_state = __TS__ObjectAssign({n = "num", pid = "num", hero = "str", competing = "str"}, ____exports.BOT),
+    rune_pickup = {
+        pid = "num",
+        team = "num",
+        rune = "num",
+        kind = "str",
+        x = "num",
+        y = "num"
+    },
+    ward_place = {
+        pid = "num",
+        team = "num",
+        kind = "str",
+        x = "num",
+        y = "num"
+    },
+    building_fall = {team = "num", kind = "str", id = "num", tier = "num"},
+    roshan_kill = {team = "num", at = "num"},
+    smoke_use = {pid = "num", team = "num", x = "num", y = "num"},
+    tp = {
+        pid = "num",
+        team = "num",
+        fx = "num",
+        fy = "num",
+        x = "num",
+        y = "num",
+        dur = "num",
+        dist = "num"
+    },
+    aegis = {pid = "num", team = "num"},
+    creep_revive = {team = "num", kind = "str", hp = "num"},
+    creep_death = {
+        team = "num",
+        kind = "str",
+        x = "num",
+        y = "num",
+        hp = "num",
+        by = "mixed",
+        bm = "str",
+        bs = "num",
+        p1d = "num",
+        p1r = "num",
+        p1t = "bool",
+        p1a = "num",
+        p2d = "num",
+        p2r = "num",
+        p2t = "bool",
+        p2a = "num",
+        p3d = "num",
+        p3r = "num",
+        p3t = "bool",
+        p3a = "num"
+    },
+    player = {pid = "num", hero = "str", team = "num", human = "bool"},
+    snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
+    game_end = {pid = "num", radiantAncient = "bool", direAncient = "bool"},
+    intent_cadence = {pid = "num", rf = "str", modes = "str", lapses = "str"},
+    thrash = {
+        pid = "num",
+        switches = "num",
+        window = "num",
+        mode = "str",
+        competing = "str"
+    },
+    stuck = {
+        pid = "num",
+        mode = "str",
+        d = "num",
+        raw = "num",
+        inMode = "num"
+    },
+    order_post = {
+        id = "num",
+        team = "num",
+        type = "str",
+        lane = "num",
+        issuer = "num",
+        responders = "str",
+        dur = "num",
+        kind = "str",
+        src = "str"
+    },
+    order_decline = {pid = "num", id = "num", type = "str", reason = "str"},
+    order_accept = {
+        pid = "num",
+        id = "num",
+        type = "str",
+        lane = "num",
+        kind = "str",
+        read = "num",
+        latency = "num"
+    },
+    ping = {
+        by = "num",
+        team = "num",
+        context = "str",
+        danger = "bool",
+        x = "num",
+        y = "num",
+        order = "str"
+    },
+    trainer = {
+        pid = "num",
+        selftest = "bool",
+        kind = "str",
+        creep = "str",
+        deny = "bool",
+        offset = "num",
+        window = "num",
+        pred = "num",
+        landed = "num"
+    },
+    cmd = {
+        by = "num",
+        team = "num",
+        name = "str",
+        args = "str",
+        only = "str",
+        text = "str"
+    },
+    lane_eq = {
+        team = "num",
+        lane = "num",
+        kind = "str",
+        eq = "num",
+        imb = "num",
+        feq = "num",
+        a = "num",
+        e = "num"
+    },
+    lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
+    lane_job_start = {
+        pid = "num",
+        kind = "str",
+        camp = "num",
+        key = "str",
+        data = "str",
+        aggroAt = "num",
+        forced = "bool",
+        core = "bool",
+        timing = "str",
+        pre = "num",
+        take = "num"
+    },
+    lane_cover = {
+        pid = "num",
+        state = "str",
+        partner = "num",
+        via = "str",
+        dur = "num",
+        kind = "str"
+    },
+    lane_job = {
+        pid = "num",
+        kind = "str",
+        camp = "num",
+        key = "str",
+        aggro = "num",
+        planned = "num",
+        divert = "num",
+        grade = "str"
+    },
+    lane_job_abort = {
+        pid = "num",
+        kind = "str",
+        camp = "num",
+        key = "str",
+        reason = "str",
+        phase = "str",
+        acted = "bool",
+        divert = "num",
+        to = "str",
+        toBy = "str",
+        toAge = "num",
+        logLag = "num",
+        pre = "num",
+        take = "num",
+        competing = "str",
+        hold = "str",
+        holdAge = "num",
+        focusAge = "num",
+        farmAge = "num",
+        partner = "num",
+        php = "num",
+        pnear = "num",
+        pclose = "num",
+        ploss = "num"
+    },
+    lane_job_end = {
+        pid = "num",
+        kind = "str",
+        camp = "num",
+        reason = "str",
+        pre = "num",
+        take = "num",
+        swings = "num"
+    },
+    lane_job_hold = {
+        pid = "num",
+        hold = "str",
+        kind = "str",
+        camp = "num",
+        phase = "str",
+        state = "str",
+        reason = "str",
+        hp = "num",
+        partner = "num",
+        php = "num",
+        pnear = "num",
+        pclose = "num",
+        ploss = "num"
+    },
+    lane_plan = {
+        pid = "num",
+        owner = "str",
+        eq = "num",
+        meet = "num",
+        want = "num",
+        front = "num",
+        efront = "num",
+        tower = "num",
+        etower = "num",
+        gate = "str",
+        camp = "num",
+        travel = "num",
+        timing = "str",
+        tech = "str",
+        reason = "str",
+        score = "num",
+        fscore = "num",
+        w = "num",
+        imb = "num",
+        feq = "num",
+        apow = "num",
+        epow = "num",
+        plan = "str",
+        pullOk = "bool",
+        partner = "bool",
+        laners = "num",
+        second = "num",
+        why = "str",
+        late = "num",
+        gap = "num"
+    },
+    lane_job_ping = {pid = "num", kind = "str", camp = "num", partner = "num"},
+    lane_stack = {
+        pid = "num",
+        camp = "num",
+        type = "str",
+        aggro = "num",
+        planned = "num",
+        before = "num",
+        after = "mixed",
+        grade = "str",
+        stacked = "bool",
+        assumed = "bool"
+    },
+    lane_job_supply = {
+        pid = "num",
+        item = "str",
+        state = "str",
+        kind = "str",
+        phase = "str",
+        hp = "num",
+        mp = "num",
+        reason = "str"
+    },
+    lane_signal = {
+        pid = "num",
+        kind = "str",
+        lane = "num",
+        camp = "num",
+        enemy = "num",
+        noticed = "bool",
+        inferred = "bool"
+    },
+    lane_enemy_role = {
+        team = "num",
+        lane = "num",
+        role = "str",
+        enemy = "num",
+        hero = "str",
+        members = "mixed"
+    },
+    lane_take_skip = {pid = "num", kind = "str", camp = "num", reason = "str"},
+    notice = {
+        pid = "num",
+        target = "str",
+        delay = "num",
+        due = "num",
+        reason = "str"
+    },
+    react = {pid = "num", who = "str", what = "str", delay = "num"},
+    lanefight_mem = {
+        pid = "num",
+        enemy = "num",
+        ability = "str",
+        remembered = "num",
+        reason = "str",
+        cls = "str",
+        cd = "num",
+        src = "str"
+    },
+    lanefight_watch = {
+        pid = "num",
+        polls = "num",
+        visible = "num",
+        casts = "num",
+        recorded = "num",
+        jumps = "num"
+    },
+    lanefight_window = {pid = "num", window = "str", target = "num", noticed = "num"},
+    lanefight_gate = {
+        pid = "num",
+        gate = "str",
+        target = "num",
+        margin = "num",
+        why = "str"
+    },
+    lanefight_start = {
+        pid = "num",
+        phase = "str",
+        target = "num",
+        margin = "num",
+        via = "str",
+        with = "num",
+        sync = "num",
+        window = "str",
+        human = "num"
+    },
+    lanefight_commit = {pid = "num", target = "num", margin = "mixed", role = "str"},
+    lanefight_end = {
+        pid = "num",
+        phase = "str",
+        reason = "str",
+        hits = "num",
+        took = "num"
+    },
+    lanefight_mistake = {
+        pid = "num",
+        kind = "str",
+        ability = "str",
+        target = "num",
+        after = "num"
+    },
+    lanefight_abandon = {
+        pid = "num",
+        why = "str",
+        since = "num",
+        mode = "str",
+        ally = "num",
+        amode = "str",
+        atk = "str",
+        dist = "num",
+        range = "num",
+        lastatk = "num"
+    },
+    lanefight_recheck = {
+        pid = "num",
+        reason = "str",
+        pass = "num",
+        margin = "num",
+        after = "num"
+    },
+    lanefight_abort = {pid = "num", phase = "str", reason = "str"},
+    lanefight_call = {pid = "num", target = "num", said = "num", pinged = "num"},
+    rune_skip = {
+        pid = "num",
+        spawn = "num",
+        target = "num",
+        status = "num",
+        raw = "num",
+        desire = "num",
+        laning = "str",
+        gate = "str"
+    },
+    tr_laning = {pid = "num", laning = "bool", why = "str"},
+    tr_lost = {
+        pid = "num",
+        lost = "bool",
+        reason = "str",
+        deaths = "num",
+        levelGap = "num"
+    },
+    tr_rotate = {
+        pid = "num",
+        spawn = "num",
+        go = "bool",
+        side = "str",
+        leaveAt = "num",
+        reason = "str",
+        enemies = "num",
+        ours = "num"
+    },
+    tr_rune_hold = {
+        pid = "num",
+        spawn = "num",
+        state = "str",
+        reason = "str",
+        mid = "num"
+    },
+    tr_caution = {
+        pid = "num",
+        level = "num",
+        alone = "bool",
+        missing = "num",
+        lane = "num"
+    },
+    tr_tp = {
+        team = "num",
+        enemy = "num",
+        x = "num",
+        y = "num",
+        remaining = "num"
+    },
+    tr_tp_react = {
+        pid = "num",
+        enemy = "num",
+        mode = "str",
+        lane = "num",
+        ["until"] = "num"
+    },
+    tr_ward = {pid = "num", lane = "num", result = "str", dist = "num"},
+    tr_ward_go = {pid = "num", key = "str", x = "num", y = "num"},
+    farm_gate = {
+        pid = "num",
+        why = "str",
+        lvl = "num",
+        hp = "numstr",
+        mode = "str",
+        lane = "num",
+        dist = "num",
+        left = "numstr",
+        camp = "num",
+        window = "numstr",
+        best = "numstr",
+        open = "num",
+        pace = "numstr"
+    },
+    lh = {
+        pid = "num",
+        kind = "str",
+        result = "str",
+        reason = "str",
+        ranged = "bool",
+        eta = "num",
+        contested = "bool",
+        msg = "str"
+    },
+    job_exec = {
+        pid = "num",
+        kind = "str",
+        camp = "num",
+        result = "str",
+        reason = "str",
+        msg = "str",
+        label = "str",
+        sdk = "num",
+        legacy = "num"
+    },
+    wisdom_gate = {pid = "num", spawn = "num", why = "str"},
+    rune_trip = {
+        pid = "num",
+        pos = "num",
+        spawn = "num",
+        side = "str",
+        result = "str",
+        msg = "str",
+        label = "str",
+        left = "num",
+        arrived = "num",
+        away = "num"
+    },
+    wisdom = {
+        pid = "num",
+        pos = "num",
+        spawn = "num",
+        result = "str",
+        reason = "str",
+        label = "str",
+        left = "num",
+        arrived = "num",
+        taken = "num",
+        away = "num"
+    },
+    gank = {
+        pid = "num",
+        pos = "num",
+        target = "num",
+        lane = "num",
+        score = "str",
+        result = "str",
+        msg = "str",
+        label = "str",
+        left = "num",
+        engaged = "num",
+        away = "num"
+    },
+    lane_pos = {
+        pid = "num",
+        d = "num",
+        owned = "bool",
+        running = "bool",
+        label = "str",
+        mode = "num",
+        spot = "str",
+        pushed = "num",
+        hph = "num"
+    }
+}
+return ____exports
