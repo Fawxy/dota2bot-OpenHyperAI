@@ -138,9 +138,9 @@ do
 	local data = C.ByIdx(sp.idx, sp.team)
 	local exit = H.StackJob.ExitPath(sp, data)[1]
 	local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
-	check("evil_1: walk-off north-west", dx < -500 and dy > 500 and math.abs(dx + dy) < 50, exit.x .. "," .. exit.y)
+	check("evil_1: walk-off north", dy > 800 and math.abs(dx) < 50, exit.x .. "," .. exit.y)
 	local stand = H.StackJob.Stand(sp, data)
-	check("evil_1: stands north-west of the camp", stand.x < sp.location.x and stand.y > sp.location.y, stand.x .. "," .. stand.y)
+	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
 end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
@@ -199,6 +199,23 @@ do
 	local _, kobolds = n59:gsub("kobold:%d+:in:", "")
 	check("n59: the three camp neutrals, still in the box (stubs do not move)", kobolds == 3, n59)
 	check("n2 sampled", (field(l, "n2") or "?") ~= "?", l)
+	check("no lane creeps near the camp: lane=0", field(l, "lane") == "0", l)
+end
+
+-- A wave dragged into the camp (user watching s4solo7ab: evil_1's north-west route pulled the top lane): two creeps of each
+-- team reach the camp after the hit, one stays on the lane.
+do
+	local placed = false
+	local lines = stackRun({ onFrame = function()
+		if placed or T < 3 * 60 + 58 then return end
+		placed = true
+		local c = SPAWNERS[idxOf("good_1")].location
+		for _, team in ipairs({ 2, 3 }) do
+			for i = 1, 2 do MakeCreep({ team = team, x = c.x + 100 * i, y = c.y + 200 }) end
+		end
+		MakeCreep({ team = 3, x = c.x + 1500, y = c.y })
+	end })
+	check("pull: four lane creeps near the camp, lane=4", field(lines[1] or "", "lane") == "4", lines[1])
 end
 
 -- Spells and items wait while the job runs (a cask before the hit drew the camp early, s4solo2); an enemy hero in reach

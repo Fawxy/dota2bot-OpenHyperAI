@@ -504,7 +504,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local setExit, sec, hpPct, phase, freshInBox, campNeutrals, describe, targetDist, sample59, exits, EXIT_DIRS, SEEN_SCAN
+local setExit, sec, hpPct, phase, laneNear, freshInBox, campNeutrals, describe, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -575,6 +575,21 @@ function phase(bot, a, l)
         a.hpe = hpPct(bot)
     end
 end
+function laneNear(bot, a)
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    if sp == nil then
+        return 0
+    end
+    local n = 0
+    for ____, enemy in ipairs({false, true}) do
+        for ____, c in ipairs(bot:GetNearbyLaneCreeps(SEEN_SCAN, enemy) or ({})) do
+            if c ~= nil and c ~= nil and c:IsAlive() and GetUnitToLocationDistance(c, sp.location) <= LANE_NEAR then
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
 function freshInBox(bot, a)
     local margin = LaneConfig.Settings().Radii.BoxMargin
     local n = 0
@@ -626,11 +641,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue82
+            local __continue90
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue82 = true
+                    __continue90 = true
                     break
                 end
                 local name = (string.gsub(
@@ -640,7 +655,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue82 = true
+                    __continue90 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -650,9 +665,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue82 = true
+                __continue90 = true
             until true
-            if not __continue82 then
+            if not __continue90 then
                 break
             end
         end
@@ -781,7 +796,7 @@ function ____exports.Minutes()
 end
 local handled = {}
 exits = {}
-EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = -0.7071, dy = 0.7071}}
+EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}}
 --- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side.
 function ____exports.Stand(sp, data)
     return Camps.StandPoint(
@@ -979,7 +994,14 @@ local function track(bot, a)
         end
     end
     sample59(bot, a)
+    if a.aggro ~= nil then
+        a.lane = math.max(
+            a.lane or 0,
+            laneNear(bot, a)
+        )
+    end
 end
+LANE_NEAR = 900
 --- Neutral scan radius for the seen set (the API's maximum).
 SEEN_SCAN = 1600
 local function log(bot, minute, fields)
@@ -1080,7 +1102,8 @@ local function finish(bot, a, result)
                 a.casts ~= nil and table.concat(a.casts, ",") or "-"
             },
             {"n2", a.n2 or "?"},
-            {"n59", a.n59 or "?"}
+            {"n59", a.n59 or "?"},
+            {"lane", a.aggro ~= nil and (a.lane or 0) or "?"}
         }
     )
 end
@@ -1104,10 +1127,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue97
+            local __continue105
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue97 = true
+                    __continue105 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -1163,7 +1186,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue97 then
+            if not __continue105 then
                 break
             end
         end

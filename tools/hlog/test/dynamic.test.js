@@ -327,3 +327,9 @@ test('stackAttempts: left59 names the camp neutrals still in the box at :59.5 (u
     assert.strictEqual(left('?'), undefined);
     assert.strictEqual(left(undefined), undefined);
 });
+
+test('stackAttempts: lane carries the lane creeps near the camp after the hit (user, s4solo7ab: a pull)', () => {
+    const one = e => D.stackAttempts({ events: [{ ev: 'stack', t: 245, pid: 2, min: 3, res: 'stacked', why: 'ok', ...e }] }, 600)[0].lane;
+    assert.strictEqual(one({ lane: 4 }), 4);
+    assert.strictEqual(one({}), undefined);
+});

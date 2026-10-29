@@ -139,6 +139,10 @@ export interface Attempt {
     fresh?: number;
     n2?: string;
     n59?: string;
+    /** The most lane creeps (either team) within LANE_NEAR of the camp's origin from the hit to the end of the watch: the
+     *  walk-off dragged a wave into the camp, a partial pull (user watching s4solo7ab: evil_1's north-west route pulled the
+     *  top lane twice; nothing in the log showed it). */
+    lane?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -147,14 +151,16 @@ const exits: Record<number, Vector[]> = {};
 /**
  * Walk-off directions set by hand for camps the user described (30/10/2026, watching s4solo5): the safe-lane easy camps run
  * along the lane towards the corner where it turns, not into it. good_1 (Radiant, origin 3978,-5027): east; evil_2 (Dire,
- * -3911,4829): west, the mirror. evil_1 (Dire hard, -4824,3915): north-west; its derived lane-side stand lay south-west
+ * -3911,4829): west, the mirror. evil_1 (Dire hard, -4824,3915): north; its derived lane-side stand lay south-west
  * behind trees, ~350 from the origin with the camp never seen (s4solo6a/6c, 13 of 13 `mistake:no-camp`; user 30/10/2026:
- * stand north or north-west). Matched by spawner origin (7.41 map); other camps derive their walk-off.
+ * stand north or north-west). North-west sees the camp (15 of 22 stacked, s4solo7) but drags the top lane's wave into it,
+ * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. Matched by spawner origin
+ * (7.41 map); other camps derive their walk-off.
  */
 const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },
     { x: -3911, y: 4829, dx: -1, dy: 0 },
-    { x: -4824, y: 3915, dx: -0.7071, dy: 0.7071 },
+    { x: -4824, y: 3915, dx: 0, dy: 1 },
 ];
 
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
@@ -362,6 +368,22 @@ function track(bot: Unit, a: Attempt): void {
         }
     }
     sample59(bot, a);
+    if (a.aggro !== undefined) a.lane = math.max(a.lane ?? 0, laneNear(bot, a));
+}
+
+/** Lane creeps this close to a camp's origin are in it: the 7.41 lane-side camps are ~1500+ from their lane. */
+const LANE_NEAR = 900;
+
+function laneNear(bot: Unit, a: Attempt): number {
+    const sp = Camps.SpawnerByIdx(a.campIdx);
+    if (sp === undefined) return 0;
+    let n = 0;
+    for (const enemy of [false, true]) {
+        for (const c of bot.GetNearbyLaneCreeps(SEEN_SCAN, enemy) ?? []) {
+            if (c !== null && c !== undefined && c.IsAlive() && GetUnitToLocationDistance(c, sp.location) <= LANE_NEAR) n++;
+        }
+    }
+    return n;
 }
 
 /** Neutral scan radius for the seen set (the API's maximum). */
@@ -470,6 +492,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["casts", a.casts !== undefined ? a.casts.join(",") : "-"],
         ["n2", a.n2 ?? "?"],
         ["n59", a.n59 ?? "?"],
+        ["lane", a.aggro !== undefined ? a.lane ?? 0 : "?"],
     ]);
 }
 
