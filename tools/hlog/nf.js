@@ -39,6 +39,10 @@ function flatten(m) {
         // Slice 4 (S.2a): attempts are started jobs; skips are trigger minutes with none. 0 in a game without ev=stack.
         stack_attempts: m.stacks.filter(s => s.res !== 'skip').length,
         stack_stacked: m.stacks.filter(s => s.res === 'stacked').length,
+        // Slice 4 Amendment 1 (user 30/10/2026): the rate's denominator leaves out jobs OHA took over or the job's own stop on
+        // hero damage; execution failures (missed, no-camp, stalled) stay in.
+        stack_clean: m.stacks.filter(s => s.res !== 'skip' && !stackInterrupted(s)).length,
+        stack_interrupted: m.stacks.filter(s => s.res !== 'skip' && stackInterrupted(s)).length,
         stack_deaths: m.stacks.filter(s => s.death).length,
         stack_away_max: Math.max(0, ...m.stacks.filter(s => s.res !== 'skip').map(s => s.away)),
         stack_skips: m.stacks.filter(s => s.res === 'skip').length,
@@ -138,6 +142,13 @@ function pooled(perSeed) {
 }
 
 /** One manifest game with its parsed game: the flat metrics and the gate's problems. */
+/** A started stack job that ended because OHA took the bot (`preempted:mode=*`, `preempted:never_started`, OHA's farm abort
+ *  `cancelled:<why>`) or the job stopped on hero damage (`cancelled:hit`): not an execution outcome (slice 4 Amendment 1). */
+function stackInterrupted(s) {
+    const why = String(s.why ?? '');
+    return why.startsWith('cancelled:') || why.startsWith('preempted:mode=') || why === 'preempted:never_started';
+}
+
 function nfGame(g, game) {
     const m = dynamicMetrics(game);
     const flat = flatten(m);
@@ -202,4 +213,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable };
+module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable, stackInterrupted };

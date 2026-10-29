@@ -752,7 +752,8 @@ ____exports.SETTINGS = {
     StallAfter = 4,
     PreemptAfter = 1,
     ExitTowardLane = true,
-    WatchUntil = 5
+    WatchUntil = 5,
+    AwayMax = 25
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local function override(key)
@@ -1153,6 +1154,9 @@ function ____exports.Desire(bot)
                 end
                 if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
                     return skip(gateWhy[pid] or "late")
+                end
+                if minute * 60 + 60 + ____exports.SETTINGS.WatchUntil - now > ____exports.SETTINGS.AwayMax then
+                    return skip("far")
                 end
                 local why = ____exports.Gate(bot)
                 if why ~= nil then

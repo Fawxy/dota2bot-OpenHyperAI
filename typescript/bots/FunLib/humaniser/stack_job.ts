@@ -54,6 +54,10 @@ export const SETTINGS = {
     ExitTowardLane: true,
     /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
     WatchUntil: 5,
+    /** A job may not start more than this many seconds before its latest end (:00 + WatchUntil): KR S.2's 25 s away. The
+     *  walk and Lead come before the hit and the watch after it is fixed, so a far camp cannot fit: s4 A_on_4 3:31, lich
+     *  from out of lane to camp 23 (a 14.6 s walk), away 30.7. Such a minute is skipped as `far`. */
+    AwayMax: 25,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -527,6 +531,7 @@ export function Desire(bot: Unit): number {
         const walk = travel(bot, stand);
         if (now < aggroAt - walk - SETTINGS.Lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
+        if (minute * 60 + 60 + SETTINGS.WatchUntil - now > SETTINGS.AwayMax) return skip("far");
         const why = Gate(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;

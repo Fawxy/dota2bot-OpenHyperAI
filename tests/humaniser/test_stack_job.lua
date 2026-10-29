@@ -274,6 +274,14 @@ do
 	check("unreachable stand: waited (arr) before the hit", tonumber(field(lines[1], "arr")) ~= nil and tonumber(field(lines[1], "arr")) < tonumber(field(lines[1], "hit0") or "0"), lines[1])
 end
 
+-- A camp too far for KR S.2's 25 s away (s4 A_on_4 3:31: lich out of lane, a 14.6 s walk to camp 23, away 30.7): the
+-- minute is skipped as far when the job would start, and no job runs.
+do
+	local H, bot = world({ t = 3 * 60 + 15, at = Vector(6000, 6000) })
+	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
+	check("far camp: one skip line, far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+end
+
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
 do
 	local lines = stackRun({ noSpawn = true })
