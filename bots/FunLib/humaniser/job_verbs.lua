@@ -151,6 +151,12 @@ local AGGRO_CONFIRM = 2
 local APPROACH_LEAD = 3
 local AGGRO_LEAD_DEFAULT = 0.4
 local AGGRO_LEAD_MAX = 1.5
+--- A stand point the bot gets near but cannot reach (trees) counts as reached once it is this close and has not got
+-- STAND_STUCK_GAIN closer for STAND_STUCK_S: omniknight stopped ~300 short of evil_1's lane-side stand point and jiggled
+-- until `late` (s4solo5, 15 of 20 Dire attempts).
+local STAND_STUCK_R = 400
+local STAND_STUCK_S = 1.5
+local STAND_STUCK_GAIN = 25
 local LEAD_MAX_AFTER_AGGRO = 15
 local WATCH_SEC = 8
 --- Seconds early to arrive at a rune (players aim for 3-5 s).
@@ -280,11 +286,26 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
     local late = at + (o.startLate or START_LATE)
     local stand = camp.stand
     local approached = camp.approach == nil
+    local best = math.huge
+    local bestAt = now()
+    local arrived = false
     local function there()
-        return dist(
+        local d = dist(
             bot:GetLocation(),
             stand
-        ) <= arrive
+        )
+        if d <= arrive then
+            arrived = true
+            return true
+        end
+        if arrived then
+            return false
+        end
+        if d < best - STAND_STUCK_GAIN then
+            best = d
+            bestAt = now()
+        end
+        return d <= STAND_STUCK_R and now() - bestAt >= STAND_STUCK_S
     end
     local reached = false
     local waiting = false
@@ -308,6 +329,9 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
             approached = true
             stand = camp.approach
             waiting = false
+            best = math.huge
+            bestAt = t
+            arrived = false
         end
         if t >= at and there() then
             break
@@ -643,7 +667,7 @@ local function campOf(bot, p)
     local r = p.radius or CLEAR_RADIUS
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
         do
-            local __continue73
+            local __continue76
             repeat
                 local ____opt_47 = n.IsNull
                 local ____temp_49 = ____opt_47 and ____opt_47(n)
@@ -660,7 +684,7 @@ local function campOf(bot, p)
                     ____temp_53 = not ____temp_52
                 end
                 if ____temp_53 then
-                    __continue73 = true
+                    __continue76 = true
                     break
                 end
                 if dist(
@@ -669,9 +693,9 @@ local function campOf(bot, p)
                 ) <= r then
                     out[#out + 1] = n
                 end
-                __continue73 = true
+                __continue76 = true
             until true
-            if not __continue73 then
+            if not __continue76 then
                 break
             end
         end
@@ -713,7 +737,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
     end
     while true do
         do
-            local __continue83
+            local __continue86
             repeat
                 if not bot:IsAlive() then
                     return fail("dead")
@@ -726,7 +750,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 local kept = {}
                 for ____, e in ipairs(seen) do
                     do
-                        local __continue86
+                        local __continue89
                         repeat
                             local ____this_57
                             ____this_57 = e.n
@@ -737,7 +761,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             end
                             local alive = not ____temp_58 and e.n:IsAlive()
                             if not alive then
-                                __continue86 = true
+                                __continue89 = true
                                 break
                             end
                             local inCamp = __TS__ArrayIndexOf(camp, e.n) >= 0
@@ -755,16 +779,16 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             local visibleNow = ____inCamp_62
                             local at = visibleNow and t or e.at
                             if t - at > CLEAR_LOST then
-                                __continue86 = true
+                                __continue89 = true
                                 break
                             end
                             if not inCamp and visibleNow then
                                 camp[#camp + 1] = e.n
                             end
                             kept[#kept + 1] = {n = e.n, at = at}
-                            __continue86 = true
+                            __continue89 = true
                         until true
-                        if not __continue86 then
+                        if not __continue89 then
                             break
                         end
                     end
@@ -799,7 +823,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                         hold(bot, "camp_look")
                     end
                     coroutine.yield()
-                    __continue83 = true
+                    __continue86 = true
                     break
                 end
                 emptySince = nil
@@ -807,7 +831,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 if t < nextOrderAt then
                     hold(bot, "camp_react")
                     coroutine.yield()
-                    __continue83 = true
+                    __continue86 = true
                     break
                 end
                 local ____target_64 = target
@@ -841,9 +865,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     end
                 end
                 coroutine.yield()
-                __continue83 = true
+                __continue86 = true
             until true
-            if not __continue83 then
+            if not __continue86 then
                 break
             end
         end

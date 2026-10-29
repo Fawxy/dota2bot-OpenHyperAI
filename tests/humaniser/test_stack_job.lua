@@ -118,6 +118,20 @@ do
 	check("dire safe-lane pos5 stacks evil_2", d and MAP[d.campIdx][1] == "evil_2", d and MAP[d.campIdx][1])
 end
 
+-- Hand-set walk-offs (user 30/10/2026): good_1 runs east along the bottom lane, evil_2 west along the top lane.
+do
+	local H = world()
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_1", 1 }, { "evil_2", -1 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local data = C.ByIdx(sp.idx, sp.team)
+		local exit = H.StackJob.ExitPath(sp, data)[1]
+		check(c[1] .. ": walk-off along the lane", (exit.x - sp.location.x) * c[2] > 800 and math.abs(exit.y - sp.location.y) < 50, exit.x .. "," .. exit.y)
+		local stand = H.StackJob.Stand(sp, data)
+		check(c[1] .. ": stands on the walk-off side", (stand.x - sp.location.x) * c[2] > 0, stand.x)
+	end
+end
+
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
 do
 	local H, bot = world({ t = 233 })
@@ -215,6 +229,21 @@ do
 	local l = lines[1]
 	check("returning neutrals: before 1, after 3", field(l, "before") == "1" and field(l, "after") == "3", l)
 	check("returning neutrals: fresh 0, not stacked", field(l, "fresh") == "0" and field(l, "res") == "not_stacked", l)
+end
+
+-- A stand point the bot cannot reach (trees): ~300 short and no closer for 1.5 s counts as reached, so the job waits and
+-- hits instead of failing late (s4solo5: omniknight short of evil_1's lane-side stand, 15 of 20 Dire attempts late).
+do
+	local st
+	local lines = stackRun({ onFrame = function(H, bot)
+		if st == nil then
+			local sp = SPAWNERS[idxOf("good_1")]
+			st = H.StackJob.Stand(H.Lane.Camps.SpawnerByIdx(idxOf("good_1")), H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
+		end
+		if T < 3 * 60 + 52 and dist(bot.loc, st) < 300 then bot.loc = Vector(st.x, st.y + 300) end
+	end })
+	check("unreachable stand: not late", field(lines[1], "why") ~= "timeout:late", lines[1])
+	check("unreachable stand: waited (arr) before the hit", tonumber(field(lines[1], "arr")) ~= nil and tonumber(field(lines[1], "arr")) < tonumber(field(lines[1], "hit0") or "0"), lines[1])
 end
 
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.

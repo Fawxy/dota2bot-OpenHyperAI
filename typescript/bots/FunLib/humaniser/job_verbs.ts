@@ -39,6 +39,12 @@ const AGGRO_CONFIRM = 2;
 const APPROACH_LEAD = 3;
 const AGGRO_LEAD_DEFAULT = 0.4;
 const AGGRO_LEAD_MAX = 1.5;
+/** A stand point the bot gets near but cannot reach (trees) counts as reached once it is this close and has not got
+ *  STAND_STUCK_GAIN closer for STAND_STUCK_S: omniknight stopped ~300 short of evil_1's lane-side stand point and jiggled
+ *  until `late` (s4solo5, 15 of 20 Dire attempts). */
+const STAND_STUCK_R = 400;
+const STAND_STUCK_S = 1.5;
+const STAND_STUCK_GAIN = 25;
 const LEAD_MAX_AFTER_AGGRO = 15;
 const WATCH_SEC = 8;
 /** Seconds early to arrive at a rune (players aim for 3-5 s). */
@@ -185,7 +191,23 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
     const late = at + (o.startLate ?? START_LATE);
     let stand = camp.stand;
     let approached = camp.approach === undefined;
-    const there = () => dist(bot.GetLocation(), stand) <= arrive;
+    let best = math.huge;
+    let bestAt = now();
+    // Only on the way in: a bot that stood on the point and was pushed off walks back (job verb test "stack pushed").
+    let arrived = false;
+    const there = () => {
+        const d = dist(bot.GetLocation(), stand);
+        if (d <= arrive) {
+            arrived = true;
+            return true;
+        }
+        if (arrived) return false;
+        if (d < best - STAND_STUCK_GAIN) {
+            best = d;
+            bestAt = now();
+        }
+        return d <= STAND_STUCK_R && now() - bestAt >= STAND_STUCK_S;
+    };
     let reached = false;
     let waiting = false;
     h.label?.("travel");
@@ -199,6 +221,9 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
             approached = true;
             stand = camp.approach!;
             waiting = false;
+            best = math.huge;
+            bestAt = t;
+            arrived = false;
         }
         if (t >= at && there()) break;
         if (!there()) {

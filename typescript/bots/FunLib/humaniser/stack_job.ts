@@ -42,6 +42,10 @@ export const SETTINGS = {
     HitWithin: 3,
     /** Above OHA's ward (0.83) and laning, below a serious retreat (0.94-1.1); s4 validation game. */
     Desire: 0.92,
+    /** Seconds without a step before the job counts as stalled. Farm's Think skips the step while the bot cannot act; the
+     *  engine's default 2 ended 3 good_2 attempts after the hit (`preempted:stalled`, s4solo5; the camp's centaur khan
+     *  stuns). */
+    StallAfter: 4,
     /** Seconds in another mode before the job counts as preempted. */
     PreemptAfter: 1,
     /** Stand and walk off on the camp's lane side, not away from the lane (user replay review, 30/10/2026: these camps pull
@@ -140,10 +144,35 @@ export interface Attempt {
 const handled: Record<number, Record<number, boolean>> = {};
 const exits: Record<number, Vector[]> = {};
 
-/** The walk-off after the hit: the camp data's path, or one derived towards the lane (ExitTowardLane). */
+/**
+ * Walk-off directions set by hand for camps the user described (30/10/2026, watching s4solo5): the safe-lane easy camps run
+ * along the lane towards the corner where it turns, not into it. good_1 (Radiant, origin 3978,-5027): east; evil_2 (Dire,
+ * -3911,4829): west, the mirror. Matched by spawner origin (7.41 map); other camps derive their walk-off.
+ */
+const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
+    { x: 3978, y: -5027, dx: 1, dy: 0 },
+    { x: -3911, y: 4829, dx: -1, dy: 0 },
+];
+
+function setExit(sp: Camps.Spawner): Vector[] | undefined {
+    for (const e of EXIT_DIRS) {
+        if (math.abs(sp.location.x - e.x) > 200 || math.abs(sp.location.y - e.y) > 200) continue;
+        const away = LaneConfig.Settings().Radii.StackExit;
+        const c = Camps.BoxCenter(sp);
+        const target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z);
+        return [Camps.BoxEdgePoint(sp, target, away) ?? target];
+    }
+    return undefined;
+}
+
+/** The walk-off after the hit: a hand-set direction (EXIT_DIRS), else the camp data's path, or one derived towards the
+ *  lane (ExitTowardLane). */
 export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
-    if (!SETTINGS.ExitTowardLane) return data.stack!.exitPath;
-    exits[sp.idx] = exits[sp.idx] ?? Camps.DeriveStackExit(sp, sp.team, true);
+    if (exits[sp.idx] !== undefined) return exits[sp.idx];
+    const set = setExit(sp);
+    if (set !== undefined) exits[sp.idx] = set;
+    else if (SETTINGS.ExitTowardLane) exits[sp.idx] = Camps.DeriveStackExit(sp, sp.team, true);
+    else return data.stack!.exitPath;
     return exits[sp.idx];
 }
 
@@ -479,7 +508,7 @@ export function Desire(bot: Unit): number {
         }
         const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now };
         const plan = Plan(bot, data, stand, minute, a);
-        const ok = Tasks.Start(bot, { name: "stack", host: BotMode.Farm, preemptAfter: SETTINGS.PreemptAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
+        const ok = Tasks.Start(bot, { name: "stack", host: BotMode.Farm, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
             body(bot, plan, a, ctx)
         );
         if (!ok) return skip("refused");
