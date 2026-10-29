@@ -6,6 +6,9 @@
 -- Killer: core_lh (the core's own), enemy_deny, creep_or_tower (`none` or unset), else ally_lh. When the core did not get it,
 -- late = its swing began under 0.6 s before the death (or a target was held), early = longer, idle_in_range = within attack range
 -- + 300 and not attacking, away = further. lh = the core's last-hit counter at `until`; attributed = deaths credited to it.
+-- Constants in this SQL (no other copy to keep equal except these): near 1000, late/early 0.6 s, reach 300, default attack range 150,
+-- lane radius 1100, base radii 1800/1200, ancient and fountain positions, from dynamic.js `C`, `ANCIENT`, `FOUNTAIN` (test/lasthit_cause.test.js
+-- pins the boundaries); `C` in lasthit_cause.js is printed by --json and must match.
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_snap(pid, x, y, alive, lh)
 -- ensure: ev_bot(pid, team, pos)
@@ -79,7 +82,7 @@ cdk AS (
         (cd.home IS NOT NULL AND cd.dlane = cd.home) AS in_lane
     FROM cd
 )
-SELECT (SELECT file FROM games WHERE game_id = (SELECT game_id FROM gm)) AS file, :game AS game, c.team, c.pos, c.pid,
+SELECT (SELECT file FROM games WHERE game_id = (SELECT game_id FROM gm)) AS file, coalesce(:game, 1) AS game, c.team, c.pos, c.pid,
     (SELECT n.hero FROM hero_names n WHERE n.game_id = (SELECT game_id FROM gm) AND n.pid = c.pid) AS hero,
     (SELECT h.lane FROM home h WHERE h.pid = c.pid AND h.rk = 1) AS lane,
     coalesce(sum(k.near), 0) AS near,

@@ -8,7 +8,6 @@
 const fs = require('fs');
 const path = require('path');
 const { parseLog } = require('./parse');
-const { Store, DB } = require('./store');
 
 // WO-025 (`judgement`): a death counts for a core within R; "late" if its own attack on the creep started under LATE_S
 // before the death; "idle in range" if within its attack range + REACH and not attacking the creep. The values are in
@@ -17,7 +16,7 @@ const C = { R: 1000, LATE_S: 0.6, REACH: 300 };
 // WO-025 gates (`judgement`): G1 attributed share of a core's own last hits; G2 revived share of deaths (fog deaths);
 // G4 attributed share of the other team's denies; G5 share of a core's own last hits it was attacking (handle identity and
 // clock), with no negative attack age; G6 deaths per team, against EC-004's ~76-84 lane creeps per lane by 10:00.
-const GATE = { G1: 0.9, G2: 0.05, G4: 0.5, G4_MIN: 5, G5: 0.8, A_MAX: 2, G6: 270 };
+const GATE = { G1: 0.9, G2: 0.05, G4: 0.5, G4_MIN: 5, G5: 0.8, G6: 270 };
 const KILLERS = ['core_lh', 'ally_lh', 'enemy_deny', 'creep_or_tower'];
 const STATES = ['late', 'early', 'idle_in_range', 'away'];
 
@@ -26,6 +25,9 @@ const STATES = ['late', 'early', 'idle_in_range', 'away'];
  * Returns { cores: { r1..r3, d1..d3 }, gates, failed, keep } (the shape lasthit_cause.js had before it moved into SQL).
  */
 function lasthitCause(store, file, game = 1, until = 600) {
+    if (!store.query('SELECT 1 FROM games WHERE file = ? AND game = ?', file, game).length) {
+        throw new Error(`lasthitCause: ${file} game ${game} is not in the store (the path must be absolute, as in games.file; ingest it first)`);
+    }
     const p = { file, game, until };
     const cores = {};
     for (const r of store.query(fs.readFileSync(path.join(__dirname, 'queries', 'lasthit_cores.sql'), 'utf8'), p)) {
@@ -102,8 +104,9 @@ function main(argv) {
         process.exit(2);
     }
     const until = Number(opt('until') ?? 600);
+    const { Store, DB } = require('./store'); // here, so steals.js (gamesFrom, logsFrom) does not load SQLite
     const store = new Store(DB);
-    store.ingestAll(files);
+    for (const f of store.ingestAll(files).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
     const results = files.map(f => path.resolve(f))
         .filter(f => store.query('SELECT 1 FROM games g WHERE g.file = ? AND g.game = 1 AND EXISTS (SELECT 1 FROM ev_bot b WHERE b.game_id = g.game_id)', f).length)
         .map(f => ({ file: f, ...lasthitCause(store, f, 1, until) }));

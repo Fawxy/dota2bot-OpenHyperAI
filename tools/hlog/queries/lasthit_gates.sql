@@ -7,6 +7,8 @@
 --   own, on_it, neg_a: G5, own = a core's own last hits with a distance logged, on_it = of those, on the creep it was attacking
 --     (a target held, or a swing begun 0-2 s before); neg_a = core attack ages below 0 (bad clock or handle)
 --   deaths_r, deaths_d: G6, creep deaths per team
+-- Constants: the G5 attack age (<= 2 s) is here only; the other thresholds are in lasthit_cause.js `GATE`.
+-- The deny and revive shares are divided in lasthit_cause.js.
 -- ensure: ev_creep_death(team, by, p1d, p1t, p1a, p2d, p2t, p2a, p3d, p3t, p3a)
 -- ensure: ev_creep_revive(team)
 -- ensure: ev_lua_error(where)
@@ -24,10 +26,10 @@ cores AS (
       AND EXISTS (SELECT 1 FROM ev_snap s WHERE s.game_id = l.game_id AND s.pid = l.pid AND s.x IS NOT NULL)
 ),
 bt AS (
-    SELECT pid, team FROM (
+    SELECT r.pid, r.team FROM (
         SELECT pid, team, row_number() OVER (PARTITION BY pid ORDER BY seq DESC) AS rn
         FROM ev_bot WHERE game_id = (SELECT game_id FROM gm) AND team IS NOT NULL
-    ) WHERE rn = 1 AND EXISTS (SELECT 1 FROM ev_snap s WHERE s.game_id = (SELECT game_id FROM gm) AND s.pid = pid AND s.x IS NOT NULL)
+    ) r WHERE r.rn = 1 AND EXISTS (SELECT 1 FROM ev_snap s WHERE s.game_id = (SELECT game_id FROM gm) AND s.pid = r.pid AND s.x IS NOT NULL)
 ),
 dn AS (
     SELECT bt.team, coalesce((SELECT s.dn FROM ev_snap s
@@ -42,10 +44,10 @@ own AS (
         CASE c.pos WHEN 1 THEN d.p1a WHEN 2 THEN d.p2a ELSE d.p3a END AS pa
     FROM deaths d JOIN cores c ON CAST(d.killer AS TEXT) = CAST(c.pid AS TEXT) AND d.team = c.team
 )
-SELECT (SELECT file FROM games WHERE game_id = (SELECT game_id FROM gm)) AS file, :game AS game,
+SELECT (SELECT file FROM games WHERE game_id = (SELECT game_id FROM gm)) AS file, coalesce(:game, 1) AS game,
     (SELECT count(*) FROM deaths) AS deaths,
     (SELECT count(*) FROM ev_creep_revive WHERE game_id = (SELECT game_id FROM gm) AND t < coalesce(:until, 600)) AS revives,
-    (SELECT count(*) FROM ev_lua_error WHERE game_id = (SELECT game_id FROM gm) AND "where" LIKE 'Telemetry%') AS telemetry_errors,
+    (SELECT count(*) FROM ev_lua_error WHERE game_id = (SELECT game_id FROM gm) AND "where" GLOB 'Telemetry*') AS telemetry_errors,
     (SELECT count(*) FROM deaths WHERE team = 2 AND killer = 'deny') AS deny_r,
     (SELECT count(*) FROM deaths WHERE team = 3 AND killer = 'deny') AS deny_d,
     (SELECT coalesce(sum(dn), 0) FROM dn WHERE team = 2) AS dn_r,
