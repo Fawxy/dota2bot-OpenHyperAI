@@ -331,9 +331,25 @@ function auditedSteals(game, S, lpos, until) {
  * Stack attempts (slice 4, KR S.2a) from ev=stack: one line per trigger minute, `res` stacked | not_stacked | failed (a job
  * started) or skip (none started). Empty when the log has none (the OFF arm, older builds).
  */
+/**
+ * Why an attempt was not stacked, from the :59.5 sample (Valve spawns a camp only when its box is empty at :00):
+ * `bot-in-box`, `camp-in-box` (neutrals not drawn out, or back early), `unseen` (box out of sight at :59.5 and after),
+ * `no-spawn` (box seen empty at :59.5, nothing new after: something else blocked it or the count missed it);
+ * a failed attempt gives its `why`; undefined for stacked, skips and lines without the sample.
+ */
+function stackCause(e) {
+    if (e.res === 'failed') return String(e.why);
+    if (e.res !== 'not_stacked' || e.box59 === undefined || e.box59 === '?') return undefined;
+    if (e.bot59 === 1) return 'bot-in-box';
+    if (e.box59 > 0) return 'camp-in-box';
+    if (e.vis59 !== 1 && (e.after === undefined || e.after === '?')) return 'unseen';
+    return 'no-spawn';
+}
+
 function stackAttempts(game, until) {
     return game.events.filter(e => e.ev === 'stack' && e.t < until)
-        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1 }));
+        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1,
+            vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59, cause: stackCause(e) }));
 }
 
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */

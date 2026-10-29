@@ -160,6 +160,8 @@ do
 	local away = tonumber(field(l, "away"))
 	check("away at most 25 s", away ~= nil and away <= 25, l)
 	check("no death", field(l, "death") == "0", l)
+	-- Stub neutrals never move, so box59 stays 3 here; the sample is taken with the bot out of the box at the exit point.
+	check(":59.5 sample taken: bot outside the box, at the exit", tonumber(field(l, "box59")) ~= nil and field(l, "bot59") == "0" and field(l, "exit59") == "0", l)
 	check("started just in time (after 3:40)", tonumber(field(l, "start")) >= 220, l)
 end
 

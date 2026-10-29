@@ -307,3 +307,15 @@ test('stackAttempts: one entry per ev=stack line before until; empty without any
     assert.strictEqual(D.stackAttempts({ events }, 600)[2].death, true);
     assert.deepStrictEqual(D.stackAttempts({ events: [] }, 600), []);
 });
+
+test('stackAttempts: cause of a not-stacked attempt from the :59.5 sample', () => {
+    const ns = f => ({ ev: 'stack', t: 245, pid: 4, min: 3, res: 'not_stacked', why: 'ok', before: 3, ...f });
+    const cause = f => D.stackAttempts({ events: [ns(f)] }, 600)[0].cause;
+    assert.strictEqual(cause({ box59: 0, bot59: 1, vis59: 1, after: 3 }), 'bot-in-box');
+    assert.strictEqual(cause({ box59: 2, bot59: 0, vis59: 1, after: 3 }), 'camp-in-box');
+    assert.strictEqual(cause({ box59: 0, bot59: 0, vis59: 0, after: '?' }), 'unseen');
+    assert.strictEqual(cause({ box59: 0, bot59: 0, vis59: 1, after: 2 }), 'no-spawn');
+    assert.strictEqual(cause({ box59: '?', after: 3 }), undefined);
+    assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'failed', why: 'dead' })] }, 600)[0].cause, 'dead');
+    assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'stacked', box59: 0 })] }, 600)[0].cause, undefined);
+});

@@ -49,6 +49,13 @@ export interface Attempt {
     inbox?: number;
     dist?: number;
     vis?: number;
+    /** Sampled once at the spawn check (:59.5): visible neutrals still in the box, neutrals near the bot outside it
+     *  (the pulled camp), the bot inside the box (1/0), the origin visible (1/0), the bot's distance to the exit point. */
+    box59?: number;
+    pulled59?: number;
+    bot59?: number;
+    vis59?: number;
+    exit59?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -214,6 +221,11 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["near", a.near ?? "?"],
         ["inbox", a.inbox ?? "?"],
         ["vis", a.vis ?? "?"],
+        ["box59", a.box59 ?? "?"],
+        ["pulled59", a.pulled59 ?? "?"],
+        ["bot59", a.bot59 ?? "?"],
+        ["vis59", a.vis59 ?? "?"],
+        ["exit59", a.exit59 ?? "?"],
     ]);
 }
 
@@ -262,8 +274,29 @@ export function Desire(bot: Unit): number {
 }
 
 /** mode_farm_generic Think: steps the job; false when none runs. */
+/** At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log. */
+function sample59(bot: Unit, a: Attempt): void {
+    if (a.box59 !== undefined || a.aggro === undefined || DotaTime() < a.minute * 60 + 59.5) return;
+    const sp = Camps.SpawnerByIdx(a.campIdx);
+    const data = Camps.ByIdx(a.campIdx);
+    if (sp === undefined) return;
+    const margin = LaneConfig.Settings().Radii.BoxMargin;
+    let pulled = 0;
+    for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.NeutralSearch, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !Camps.InBox(a.campIdx, c.GetLocation(), margin)) pulled++;
+    }
+    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    a.pulled59 = pulled;
+    a.bot59 = Camps.InBox(a.campIdx, bot.GetLocation(), 0) ? 1 : 0;
+    a.vis59 = IsLocationVisible(sp.location) ? 1 : 0;
+    const path = data?.stack?.exitPath;
+    a.exit59 = path !== undefined && path.length > 0 ? math.floor(GetUnitToLocationDistance(bot, path[path.length - 1])) : undefined;
+}
+
 export function Think(bot: Unit): boolean {
-    if (running[bot.GetPlayerID()] === undefined) return false;
+    const a = running[bot.GetPlayerID()];
+    if (a === undefined) return false;
+    sample59(bot, a);
     return Tasks.Step(bot, BotMode.Farm);
 }
 

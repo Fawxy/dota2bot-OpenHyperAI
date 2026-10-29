@@ -32,7 +32,9 @@ function main(argv) {
         console.log(`${g.file}\n  attempts ${started.length}, stacked ${stacked}, skips ${g.attempts.length - started.length}`);
         for (const a of g.attempts) {
             console.log(`  ${clock(a.t)} pid=${a.pid} min=${a.min} ${a.res} why=${a.why}` +
-                (a.res === 'skip' ? '' : ` camp=${a.camp} ${a.type} aggro=${a.aggro} before=${a.before} after=${a.after} away=${a.away} death=${a.death ? 1 : 0}`));
+                (a.res === 'skip' ? '' : ` camp=${a.camp} ${a.type} aggro=${a.aggro} before=${a.before} after=${a.after} away=${a.away} death=${a.death ? 1 : 0}` +
+                (a.box59 === undefined ? '' : ` box59=${a.box59} pulled59=${a.pulled59} bot59=${a.bot59} vis59=${a.vis59} exit59=${a.exit59}`) +
+                (a.cause === undefined || a.res === 'failed' ? '' : ` cause=${a.cause}`)));
         }
     }
     const rate = total.started ? `${((100 * total.stacked) / total.started).toFixed(1)}%` : '-';

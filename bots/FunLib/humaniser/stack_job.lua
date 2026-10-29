@@ -501,7 +501,12 @@ local function finish(bot, a, result)
             {"dist", a.dist or "?"},
             {"near", a.near or "?"},
             {"inbox", a.inbox or "?"},
-            {"vis", a.vis or "?"}
+            {"vis", a.vis or "?"},
+            {"box59", a.box59 or "?"},
+            {"pulled59", a.pulled59 or "?"},
+            {"bot59", a.bot59 or "?"},
+            {"vis59", a.vis59 or "?"},
+            {"exit59", a.exit59 or "?"}
         }
     )
 end
@@ -584,11 +589,48 @@ function ____exports.Desire(bot)
     end
     return 0
 end
---- mode_farm_generic Think: steps the job; false when none runs.
+--- At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log.
+local function sample59(bot, a)
+    if a.box59 ~= nil or a.aggro == nil or DotaTime() < a.minute * 60 + 59.5 then
+        return
+    end
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    local data = Camps.ByIdx(a.campIdx)
+    if sp == nil then
+        return
+    end
+    local margin = LaneConfig.Settings().Radii.BoxMargin
+    local pulled = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and not Camps.InBox(
+            a.campIdx,
+            c:GetLocation(),
+            margin
+        ) then
+            pulled = pulled + 1
+        end
+    end
+    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.pulled59 = pulled
+    a.bot59 = Camps.InBox(
+        a.campIdx,
+        bot:GetLocation(),
+        0
+    ) and 1 or 0
+    a.vis59 = IsLocationVisible(sp.location) and 1 or 0
+    local ____opt_0 = data and data.stack
+    local path = ____opt_0 and ____opt_0.exitPath
+    a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
+end
 function ____exports.Think(bot)
-    if running[bot:GetPlayerID()] == nil then
+    local a = running[bot:GetPlayerID()]
+    if a == nil then
         return false
     end
+    sample59(bot, a)
     return Tasks.Step(bot, BotMode.Farm)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
