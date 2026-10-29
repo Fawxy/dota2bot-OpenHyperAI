@@ -75,6 +75,14 @@ cd tests/humaniser && npm install && npm run check
 ```
 - `syntax` parses every `.lua` under `bots/` as LuaJIT, Dota's dialect. The checker also accepts `break;`, which upstream uses and LuaJIT allows.
 - `test` runs `tests/humaniser/test_*.lua` in fengari (Lua 5.3 in JS) against the stubs in `dota_stubs.lua`. `FreshHumaniser(cfg)` loads a new module instance with the given `Customize.Humaniser`. Two instances in one test stand in for "modules are not shared between bots".
+  - Each file runs in its own child process, 4 at a time (`node run.js --jobs N [files...]`; name files to run only the
+    ones a change touches). The harness caches each module's compiled chunk per Lua state, so `FreshHumaniser` re-runs
+    the chunk instead of parsing it again; a re-run still builds new module tables (Lua 5.3 may reuse a closure that
+    captures nothing changed, so compare instances by their tables, not their functions). A test that needs a
+    module's source changed on disk mid-file would see the old chunk (none does; `package.preload` still wins).
+  - Cost (30/10/2026, 69 files): about 35 s and under 600 MB per process. Before: 260 s and 1.6 GB in one process
+    (about 1,550 `FreshHumaniser` calls at 170 ms of parsing each). The slowest file is `test_states_smoke.lua`
+    (7.5 s, a 15-minute ten-bot simulation by design).
 - These check logic and wiring only. Valve API semantics (ping types, chat callback delivery, modifier stacks) still need the in-game checks marked TODO in this file.
 - `hlog` runs the telemetry analyser's tests (`tools/hlog/test`), including `hlog_session.lua`: a scripted `!def mid` + `!mark` session through the real modules whose `[HEV]` output must pass the analyser's checks.
 
