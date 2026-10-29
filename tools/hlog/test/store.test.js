@@ -180,3 +180,18 @@ test('stack view keeps stackCause results when a column also holds text and when
     assert.strictEqual(s.colsOf('ev_stack').get('box59'), 'text');
     assert.deepStrictEqual(s.query('SELECT cause FROM stack_attempts ORDER BY t').map(r => r.cause), ['3', 'no-spawn', null]);
 });
+
+test('fields named like a row key do not overwrite it', () => {
+    const dir = tmp();
+    const s = new Store(':memory:', { views: null });
+    s.ingest(log(dir, 'a.log', [...FACTS, '10/30 08:01:00 [DOTACTL] t=1 ev=probe log_id=5 seq=9', BOT,
+        '[HEV] t=1 ev=probe pid=1 seq=77 game_id=4 a=1', '[HEV] t=2 ev=probe pid=1 a=2']));
+    const g = s.query('SELECT game_id FROM games')[0].game_id;
+    assert.deepStrictEqual(s.query('SELECT game_id, seq, f_seq, f_game_id FROM ev_probe ORDER BY t').map(r => ({ ...r })),
+        [{ game_id: g, seq: 1, f_seq: 77, f_game_id: 4 }, { game_id: g, seq: 2, f_seq: null, f_game_id: null }]);
+    const logId = s.query('SELECT log_id FROM logs')[0].log_id;
+    assert.deepStrictEqual({ ...s.query('SELECT log_id, f_log_id, f_seq FROM dx_probe')[0] }, { log_id: logId, f_log_id: 5, f_seq: 9 });
+    fs.rmSync(path.join(dir, 'a.log'));
+    s.prune();
+    assert.strictEqual(s.query('SELECT count(*) AS n FROM dx_probe')[0].n, 0);
+});

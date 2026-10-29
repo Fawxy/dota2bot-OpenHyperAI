@@ -43,6 +43,9 @@ function cell(k, v) {
     return v;
 }
 
+/** A field named like a row key (any case) would overwrite it in the row object: it becomes f_<name>. */
+const fieldKey = k => (RESERVED.has(k.toLowerCase()) ? `f_${k}` : k);
+
 const bind = v => (typeof v === 'number' && Number.isSafeInteger(v) ? BigInt(v) : v);
 
 class Store {
@@ -92,7 +95,7 @@ class Store {
      * becomes f_<name>, first come first served.
      */
     columnFor(tbl, keys, k, taken) {
-        let name = RESERVED.has(k.toLowerCase()) ? `f_${k}` : k;
+        let name = k;
         for (;;) {
             const clash = [...keys, ...this.colsOf(tbl).keys(), ...taken.keys()].find(c => c.toLowerCase() === name.toLowerCase());
             if (clash === undefined || clash === name) return name;
@@ -195,7 +198,7 @@ class Store {
             const f = parseFields(line.slice(i + 10));
             if (typeof f.ev !== 'string') continue;
             const r = { log_id: logId, seq: seq++, t: typeof f.t === 'number' ? f.t : null };
-            for (const [k, v] of Object.entries(f)) if (k !== 'ev' && k !== 't') r[k] = cell(k, v);
+            for (const [k, v] of Object.entries(f)) if (k !== 'ev' && k !== 't') r[fieldKey(k)] = cell(k, v);
             if (!byEv.has(f.ev)) byEv.set(f.ev, []);
             byEv.get(f.ev).push(r);
         }
@@ -222,7 +225,7 @@ class Store {
         const byEv = new Map();
         g.events.forEach((e, seq) => {
             const r = { game_id: gameId, seq, t: e.t };
-            for (const [k, v] of Object.entries(e)) if (k !== 'ev' && k !== 't') r[k] = cell(k, v);
+            for (const [k, v] of Object.entries(e)) if (k !== 'ev' && k !== 't') r[fieldKey(k)] = cell(k, v);
             if (!byEv.has(e.ev)) byEv.set(e.ev, []);
             byEv.get(e.ev).push(r);
         });
@@ -236,8 +239,13 @@ class Store {
         const gone = this.db.prepare('SELECT log_id, file FROM logs').all().filter(r => !fs.existsSync(r.file));
         if (!gone.length) return [];
         this.db.exec('BEGIN IMMEDIATE');
-        for (const r of gone) this.drop(r.log_id);
-        this.db.exec('COMMIT');
+        try {
+            for (const r of gone) this.drop(r.log_id);
+            this.db.exec('COMMIT');
+        } catch (e) {
+            this.db.exec('ROLLBACK');
+            throw e;
+        }
         return gone.map(r => r.file);
     }
 
