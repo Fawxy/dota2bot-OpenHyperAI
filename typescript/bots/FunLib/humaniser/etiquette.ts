@@ -56,3 +56,14 @@ export function CoreCanTake(bot: Unit, creep: Unit): boolean {
 export function MayLastHit(bot: Unit, creep: Unit): boolean {
     return !CoreCanTake(bot, creep);
 }
+
+/**
+ * The attack `bot` is making is on an enemy creep an allied core can take: the caller cancels it with an order of its
+ * own. Covers a swing started before the core came in and an idle auto-attack, which the target choice never sees.
+ */
+export function LeavesTarget(bot: Unit): boolean {
+    if (!Applies(bot)) return false;
+    const target = bot.GetAttackTarget();
+    if (target === null || target === undefined || !target.IsCreep() || target.GetTeam() !== GetOpposingTeam()) return false;
+    return CoreCanTake(bot, target);
+}

@@ -288,6 +288,8 @@ test('auditedSteals: a support last hit counts when a logged core was attacking 
     assert.deepStrictEqual(cases.map(c => c.t), [100.2, 110]);
     assert.strictEqual(cases[0].mode, 'laning');
     assert.deepStrictEqual(cases[1].cores, [{ core: 1, d: 900, r: 150, attacking: true }]);
+    const swung = D.auditedSteals({ events: [death(100.2, 3, { p1d: 300, p1r: 150, bm: 'attack', bs: 0.4 })] }, S, lpos, 600);
+    assert.deepStrictEqual([swung[0].mode, swung[0].snapMode, swung[0].swing], ['attack', 'laning', 0.4], 'bm (swing-start mode) wins over the snapshot');
     assert.strictEqual(D.auditedSteals({ events: [] }, S, lpos, 600), undefined, 'no ev=creep_death: undefined, not 0');
     assert.strictEqual(D.auditedSteals({ events }, S, {}, 600), undefined, 'no lineup positions: undefined');
 });

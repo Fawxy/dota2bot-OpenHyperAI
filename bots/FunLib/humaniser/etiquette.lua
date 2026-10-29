@@ -68,4 +68,16 @@ end
 function ____exports.MayLastHit(bot, creep)
     return not ____exports.CoreCanTake(bot, creep)
 end
+--- The attack `bot` is making is on an enemy creep an allied core can take: the caller cancels it with an order of its
+-- own. Covers a swing started before the core came in and an idle auto-attack, which the target choice never sees.
+function ____exports.LeavesTarget(bot)
+    if not ____exports.Applies(bot) then
+        return false
+    end
+    local target = bot:GetAttackTarget()
+    if target == nil or target == nil or not target:IsCreep() or target:GetTeam() ~= GetOpposingTeam() then
+        return false
+    end
+    return ____exports.CoreCanTake(bot, target)
+end
 return ____exports

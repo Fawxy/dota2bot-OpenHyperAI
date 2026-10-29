@@ -1179,7 +1179,8 @@ local function trackCreepDeaths(bot, now)
             denies = {},
             target = {},
             attackAt = {},
-            attackOn = {}
+            attackOn = {},
+            attackMode = {}
         }
         creepTracks[team] = c
     end
@@ -1298,15 +1299,32 @@ local function trackCreepDeaths(bot, now)
             {"hp", d.seen.hp},
             {"by", d.by or "none"}
         }
+        local ____temp_15
+        if d.by ~= nil then
+            ____temp_15 = tonumber(d.by)
+        else
+            ____temp_15 = nil
+        end
+        local killer = ____temp_15
+        if killer ~= nil and c.attackOn[killer] == d.creep then
+            local mode = c.attackMode[killer]
+            if mode ~= nil then
+                fields[#fields + 1] = {
+                    "bm",
+                    HDebug.ModeName(mode)
+                }
+            end
+            fields[#fields + 1] = {"bs", gameNow - c.attackAt[killer]}
+        end
         for ____, ____value in ipairs(cores) do
             local core = ____value[1]
             local pos = ____value[2]
             do
-                local __continue183
+                local __continue185
                 repeat
                     local dist = deathDistance(core, d)
                     if dist > DEATH_NEAR then
-                        __continue183 = true
+                        __continue185 = true
                         break
                     end
                     local pid = core:GetPlayerID()
@@ -1328,9 +1346,9 @@ local function trackCreepDeaths(bot, now)
                             gameNow - c.attackAt[pid]
                         }
                     end
-                    __continue183 = true
+                    __continue185 = true
                 until true
-                if not __continue183 then
+                if not __continue185 then
                     break
                 end
             end
@@ -1340,22 +1358,24 @@ local function trackCreepDeaths(bot, now)
     end
     for ____, ____value in ipairs(cores) do
         local core = ____value[1]
-        local pid = core:GetPlayerID()
-        local target = core:GetAttackTarget() or nil
-        local at = core:GetLastAttackTime()
-        c.target[pid] = target
+        c.target[core:GetPlayerID()] = core:GetAttackTarget() or nil
+    end
+    for ____, h in ipairs(heroes) do
+        local pid = h:GetPlayerID()
+        local at = h:GetLastAttackTime()
         if c.attackAt[pid] == nil or at > c.attackAt[pid] then
             c.attackAt[pid] = at
-            c.attackOn[pid] = target
+            c.attackOn[pid] = h:GetAttackTarget() or nil
+            c.attackMode[pid] = stateFor(pid).mode
         end
     end
     for ____, u in ipairs(alive) do
         do
-            local __continue191
+            local __continue195
             repeat
                 local kind = creepKind(u:GetUnitName())
                 if kind == nil then
-                    __continue191 = true
+                    __continue195 = true
                     break
                 end
                 local loc = u:GetLocation()
@@ -1368,9 +1388,9 @@ local function trackCreepDeaths(bot, now)
                         u:GetMaxHealth()
                     )
                 }
-                __continue191 = true
+                __continue195 = true
             until true
-            if not __continue191 then
+            if not __continue195 then
                 break
             end
         end
@@ -1389,15 +1409,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue196
+                local __continue200
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue196 = true
+                        __continue200 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue196 = true
+                        __continue200 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1436,9 +1456,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue196 = true
+                    __continue200 = true
                 until true
-                if not __continue196 then
+                if not __continue200 then
                     break
                 end
             end

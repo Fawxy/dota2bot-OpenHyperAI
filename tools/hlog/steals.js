@@ -32,10 +32,11 @@ function main(argv) {
             continue;
         }
         const laning = g.cases.filter(c => c.mode === 'laning').length;
-        console.log(`${g.file}\n  audited_steals ${g.cases.length} (laning ${laning})`);
+        const ours = g.cases.filter(c => c.mode === 'laning' || c.mode === 'team_roam').length;
+        console.log(`${g.file}\n  audited_steals ${g.cases.length} (laning ${laning}, laning or team_roam ${ours})`);
         for (const c of g.cases) {
             const cores = c.cores.map(k => `p${k.core} ${k.attacking ? 'attacking' : `d=${k.d} r=${k.r}`}`).join(', ');
-            console.log(`  ${clock(c.t)} t=${c.t} team=${c.team} pid=${c.pid} pos${c.pos} mode=${c.mode} ${c.kind} | ${cores}`);
+            console.log(`  ${clock(c.t)} t=${c.t} team=${c.team} pid=${c.pid} pos${c.pos} mode=${c.mode}${c.swing !== undefined ? ` swing=${c.swing.toFixed(2)}s` : ''}${c.snapMode !== c.mode ? ` (snap ${c.snapMode})` : ''} ${c.kind} | ${cores}`);
         }
     }
 }

@@ -320,7 +320,9 @@ function auditedSteals(game, S, lpos, until) {
             .filter(c => c.attacking || c.d <= c.r + C.AUDIT_BUF);
         if (!why.length) continue;
         const snap = S[d.by] ? at(S[d.by], d.t) : undefined;
-        cases.push({ t: d.t, team: d.team, pid: d.by, pos: lpos[d.by], mode: snap ? snap.mode : undefined, kind: d.kind, cores: why });
+        // The mode when the killing swing started (`bm`, logged from build after f5be4cb); else the last snapshot's.
+        const snapMode = snap ? snap.mode : undefined;
+        cases.push({ t: d.t, team: d.team, pid: d.by, pos: lpos[d.by], mode: d.bm !== undefined ? d.bm : snapMode, snapMode, swing: d.bs, kind: d.kind, cores: why });
     }
     return cases;
 }

@@ -34,6 +34,8 @@ function flatten(m) {
         // Slice 3 (H.2): both teams; undefined on logs without ev=creep_death.
         audited_steals: m.audited_steals && m.audited_steals.length,
         audited_steals_laning: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning').length,
+        // Slice 3's bar: steals whose swing started in a mode Ours.LeaveCoreCreep owns.
+        audited_steals_ours: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning' || c.mode === 'team_roam').length,
         idle_10s: m.idle_10s,
         lua_error: m.lua_error,
     };

@@ -775,11 +775,12 @@ interface CreepTrack {
     dead: LuaTable<Unit, CreepSeen>;
     lastHits: Record<number, number>;
     denies: Record<number, number>;
-    // Per core pid: last frame's attack target, and the target when its last attack started (attackAt on the GameTime
-    // clock, as GetLastAttackTime is).
+    // Per core pid: last frame's attack target. Per hero pid: the target when its last attack started (attackAt on the
+    // GameTime clock, as GetLastAttackTime is) and the bot's mode then (none for a human).
     target: Record<number, Unit | undefined>;
     attackAt: Record<number, number>;
     attackOn: Record<number, Unit | undefined>;
+    attackMode: Record<number, number | undefined>;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -830,7 +831,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {} };
+        c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes(team);
@@ -888,6 +889,14 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
         ];
+        // The killer's mode when it started the swing that killed (slice 3: a mode switch between swing and death
+        // otherwise leaves the snapshot mode wrong).
+        const killer = d.by !== undefined ? tonumber(d.by) : undefined;
+        if (killer !== undefined && c.attackOn[killer] === d.creep) {
+            const mode = c.attackMode[killer];
+            if (mode !== undefined) fields.push(["bm", HDebug.ModeName(mode)]);
+            fields.push(["bs", gameNow - c.attackAt[killer]]);
+        }
         for (const [core, pos] of cores) {
             const dist = deathDistance(core, d);
             if (dist > DEATH_NEAR) continue;
@@ -901,14 +910,14 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         c.dead.set(d.creep, d.seen);
     }
     // This frame's state, read for next frame's deaths.
-    for (const [core] of cores) {
-        const pid = core.GetPlayerID();
-        const target = core.GetAttackTarget() ?? undefined;
-        const at = core.GetLastAttackTime();
-        c.target[pid] = target;
+    for (const [core] of cores) c.target[core.GetPlayerID()] = core.GetAttackTarget() ?? undefined;
+    for (const h of heroes) {
+        const pid = h.GetPlayerID();
+        const at = h.GetLastAttackTime();
         if (c.attackAt[pid] === undefined || at > c.attackAt[pid]) {
             c.attackAt[pid] = at;
-            c.attackOn[pid] = target;
+            c.attackOn[pid] = h.GetAttackTarget() ?? undefined;
+            c.attackMode[pid] = stateFor(pid).mode;
         }
     }
     for (const u of alive) {

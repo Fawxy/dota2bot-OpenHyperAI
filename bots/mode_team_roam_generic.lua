@@ -312,6 +312,12 @@ function Think()
     ItemOpsThink()
     if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end
 
+	-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.
+	if J.Humaniser.Etiquette.LeavesTarget(bot) then
+		bot:Action_MoveToLocation(bot:GetLocation())
+		return
+	end
+
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)
 		J.Humaniser.LastHitSkill.NoteAttempt(bot, hTargetCreep)

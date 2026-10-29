@@ -191,7 +191,7 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
-    Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no });
+    Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

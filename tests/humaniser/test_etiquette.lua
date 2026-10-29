@@ -86,6 +86,33 @@ do
 	check("the bot itself is never its own core", E.CoreCanTake(cores[1], creepAt(300)) == false)
 end
 
+-- LeavesTarget: the bot's current attack is on an enemy creep a core can take (cancel); not on own creeps, heroes or
+-- a creep no core can take, and never with the switch off.
+do
+	local E, bot, cores = Setup({ cores = { { pos = 1, x = 300, range = 150 } } })
+	local enemy = creepAt(0)
+	enemy.team, enemy.creep = 3, true
+	function enemy:IsCreep() return self.creep end
+	function enemy:GetTeam() return self.team end
+	function GetOpposingTeam() return 3 end
+	check("no attack target: nothing to cancel", E.LeavesTarget(bot) == false)
+	bot.target = enemy
+	check("attacking a creep the core can take: cancel", E.LeavesTarget(bot) == true)
+	cores[1].loc = Vector(2000, 0)
+	check("attacking a creep no core can take: keep", E.LeavesTarget(bot) == false)
+	cores[1].loc = Vector(300, 0)
+	enemy.team = 2
+	check("attacking an own creep (deny): keep", E.LeavesTarget(bot) == false)
+	enemy.team, enemy.creep = 3, false
+	check("attacking a hero: keep", E.LeavesTarget(bot) == false)
+	enemy.creep = true
+	bot.pos = 1
+	check("a core's own attack: keep", E.LeavesTarget(bot) == false)
+	E, bot = Setup({ ours = { LeaveCoreCreep = false }, cores = { { pos = 1, x = 300 } } })
+	bot.target = enemy
+	check("switch off: keep", E.LeavesTarget(bot) == false)
+end
+
 -- Hooks (source pins: mode_team_roam_generic has no test world). With the switch on, the support's team_roam last hit is
 -- gated by the predicate alone; off, OHA's 800-radius exit and the humaniser's AllyLastHit check stay.
 do
@@ -94,7 +121,9 @@ do
 	local roam = source('bots/mode_team_roam_generic.lua')
 	check('team roam: near-core exit only with the switch off', has(roam, 'or (not bEtiquette and not J.IsCore(bot) and J.IsThereCoreNearby(800))'))
 	check('team roam: predicate replaces AllyLastHit', has(roam, '(bEtiquette and Etiquette.MayLastHit(bot, creep) or not bEtiquette and J.Humaniser.AllyLastHit.MayLastHit(bot, creep))'))
+	check('team roam: cancels a swing on a core creep before its own last hit', has(roam, 'if J.Humaniser.Etiquette.LeavesTarget(bot) then\n\t\tbot:Action_MoveToLocation(bot:GetLocation())'))
 	local laning = source('bots/mode_laning_generic.lua')
+	check('laning: cancels a swing on a core creep first in Think', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end'))
 	check('laning: predicate is the filter', has(laning, 'if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end'))
 	local general = source('bots/Customize/general.lua')
 	check('Customize: Ours block on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true }'))

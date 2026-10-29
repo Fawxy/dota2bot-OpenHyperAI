@@ -351,6 +351,8 @@ if bOwnsThink then
 	function Think()
 		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
+		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
+		if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
 		if bLaneLaning and not bTrainerSelfTest then

@@ -22,7 +22,9 @@ function GetUnitToUnitDistance(a, b) return dist(a:GetLocation(), b:GetLocation(
 
 function LaningCreep(o)
 	return {
-		hp = o.hp, loc = o.loc or Vector(0, 0), alive = true,
+		hp = o.hp, loc = o.loc or Vector(0, 0), alive = true, team = o.team or 3,
+		GetTeam = function(self) return self.team end,
+		IsCreep = function() return true end,
 		GetHealth = function(self) return self.hp end,
 		GetMaxHealth = function() return 550 end,
 		GetLocation = function(self) return self.loc end,

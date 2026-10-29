@@ -327,7 +327,8 @@ if Telemetry.GuardsEnabled() then
         {
             Applies = no,
             CoreCanTake = function() return true end,
-            MayLastHit = no
+            MayLastHit = no,
+            LeavesTarget = no
         }
     )
     Telemetry.GuardModule(
