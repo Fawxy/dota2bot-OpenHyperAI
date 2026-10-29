@@ -381,6 +381,8 @@ function ____exports.Plan(bot, data, stand, minute, a)
         onAggro = function(info)
             a.before = CampJobs.Exec.NeutralsInBox(bot, data.campIdx)
             a.aggro = info.confirmedAt - start
+            a.target = info.target
+            a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location))
         end
     }
 end
@@ -507,7 +509,11 @@ local function finish(bot, a, result)
             {"pulled59", a.pulled59 or "?"},
             {"bot59", a.bot59 or "?"},
             {"vis59", a.vis59 or "?"},
-            {"exit59", a.exit59 or "?"}
+            {"exit59", a.exit59 or "?"},
+            {"hitd", a.hitd or "?"},
+            {"tgt2", (a.tgt2 == nil or a.tgt2 < 0) and "?" or a.tgt2},
+            {"tgt59", (a.tgt59 == nil or a.tgt59 < 0) and "?" or a.tgt59},
+            {"strict59", a.strict59 or "?"}
         }
     )
 end
@@ -590,8 +596,19 @@ function ____exports.Desire(bot)
     end
     return 0
 end
---- At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log.
+--- The hit neutral's distance to the camp origin, or undefined when it is gone or unseen.
+local function targetDist(a)
+    local t = a.target
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    if t == nil or sp == nil or t:IsNull() or not t:IsAlive() or not t:CanBeSeen() then
+        return nil
+    end
+    return math.floor(GetUnitToLocationDistance(t, sp.location))
+end
 local function sample59(bot, a)
+    if a.tgt2 == nil and a.aggro ~= nil and DotaTime() >= a.minute * 60 + a.aggro + 2 then
+        a.tgt2 = targetDist(a) or -1
+    end
     if a.box59 ~= nil or a.aggro == nil or DotaTime() < a.minute * 60 + 59.5 then
         return
     end
@@ -615,6 +632,21 @@ local function sample59(bot, a)
         end
     end
     a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.tgt59 = targetDist(a) or -1
+    local strict = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.StackCountScan,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+            a.campIdx,
+            c:GetLocation(),
+            0
+        ) then
+            strict = strict + 1
+        end
+    end
+    a.strict59 = strict
     a.pulled59 = pulled
     a.bot59 = Camps.InBox(
         a.campIdx,

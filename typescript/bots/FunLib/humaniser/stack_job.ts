@@ -58,6 +58,14 @@ export interface Attempt {
     bot59?: number;
     vis59?: number;
     exit59?: number;
+    /** The neutral the hit landed on (not logged), the bot's distance to the origin at the hit, the neutral's distance to
+     *  the origin 2 s after the hit and at :59.5 ("?" when unseen or dead), and visible neutrals in the bare box at :59.5
+     *  (Valve's spawn check has no margin). */
+    target?: Unit;
+    hitd?: number;
+    tgt2?: number;
+    tgt59?: number;
+    strict59?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -147,6 +155,8 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         onAggro: info => {
             a.before = CampJobs.Exec.NeutralsInBox(bot, data.campIdx);
             a.aggro = info.confirmedAt - start;
+            a.target = info.target as unknown as Unit | undefined;
+            a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location));
         },
     };
 }
@@ -230,6 +240,10 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["bot59", a.bot59 ?? "?"],
         ["vis59", a.vis59 ?? "?"],
         ["exit59", a.exit59 ?? "?"],
+        ["hitd", a.hitd ?? "?"],
+        ["tgt2", a.tgt2 === undefined || a.tgt2 < 0 ? "?" : a.tgt2],
+        ["tgt59", a.tgt59 === undefined || a.tgt59 < 0 ? "?" : a.tgt59],
+        ["strict59", a.strict59 ?? "?"],
     ]);
 }
 
@@ -279,7 +293,16 @@ export function Desire(bot: Unit): number {
 
 /** mode_farm_generic Think: steps the job; false when none runs. */
 /** At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log. */
+/** The hit neutral's distance to the camp origin, or undefined when it is gone or unseen. */
+function targetDist(a: Attempt): number | undefined {
+    const t = a.target;
+    const sp = Camps.SpawnerByIdx(a.campIdx);
+    if (t === undefined || sp === undefined || t.IsNull() || !t.IsAlive() || !t.CanBeSeen()) return undefined;
+    return math.floor(GetUnitToLocationDistance(t, sp.location));
+}
+
 function sample59(bot: Unit, a: Attempt): void {
+    if (a.tgt2 === undefined && a.aggro !== undefined && DotaTime() >= a.minute * 60 + a.aggro + 2) a.tgt2 = targetDist(a) ?? -1;
     if (a.box59 !== undefined || a.aggro === undefined || DotaTime() < a.minute * 60 + 59.5) return;
     const sp = Camps.SpawnerByIdx(a.campIdx);
     const data = Camps.ByIdx(a.campIdx);
@@ -290,6 +313,12 @@ function sample59(bot: Unit, a: Attempt): void {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !Camps.InBox(a.campIdx, c.GetLocation(), margin)) pulled++;
     }
     a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    a.tgt59 = targetDist(a) ?? -1;
+    let strict = 0;
+    for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(a.campIdx, c.GetLocation(), 0)) strict++;
+    }
+    a.strict59 = strict;
     a.pulled59 = pulled;
     a.bot59 = Camps.InBox(a.campIdx, bot.GetLocation(), 0) ? 1 : 0;
     a.vis59 = IsLocationVisible(sp.location) ? 1 : 0;

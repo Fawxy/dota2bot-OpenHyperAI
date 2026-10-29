@@ -33,7 +33,8 @@ function main(argv) {
         for (const a of g.attempts) {
             console.log(`  ${clock(a.t)} pid=${a.pid} min=${a.min} ${a.res} why=${a.why}` +
                 (a.res === 'skip' ? '' : ` camp=${a.camp} ${a.type} aggro=${a.aggro} before=${a.before} after=${a.after} away=${a.away} death=${a.death ? 1 : 0}` +
-                (a.box59 === undefined ? '' : ` box59=${a.box59} pulled59=${a.pulled59} bot59=${a.bot59} vis59=${a.vis59} exit59=${a.exit59}`) +
+                (a.box59 === undefined ? '' : ` box59=${a.box59} pulled59=${a.pulled59} bot59=${a.bot59} vis59=${a.vis59} exit59=${a.exit59}` +
+                    (a.hitd === undefined ? '' : ` hitd=${a.hitd} tgt2=${a.tgt2} tgt59=${a.tgt59} strict59=${a.strict59}`)) +
                 (a.cause === undefined || a.res === 'failed' ? '' : ` cause=${a.cause}`)));
         }
     }

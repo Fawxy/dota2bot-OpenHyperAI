@@ -349,7 +349,8 @@ function stackCause(e) {
 function stackAttempts(game, until) {
     return game.events.filter(e => e.ev === 'stack' && e.t < until)
         .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1,
-            vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59, cause: stackCause(e) }));
+            vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59,
+            hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59, cause: stackCause(e) }));
 }
 
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
