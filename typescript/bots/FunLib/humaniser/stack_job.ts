@@ -22,8 +22,8 @@ export const SETTINGS = {
     TriggerMinutes: [3, 5, 7],
     /** Second of the trigger minute from which the trigger looks (a far camp starts early). */
     LookFrom: 15,
-    /** Seconds the bot arrives at the stand point before the hit. */
-    Lead: 2,
+    /** Seconds of slack on the straight-line walk to the stand point: the path around trees and the camp ran ~6 s over (probe 4). */
+    Lead: 5,
     MinHpFraction: 0.5,
     /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
     EnemyRadius: 600,
