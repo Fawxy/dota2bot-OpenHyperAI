@@ -337,6 +337,13 @@ function auditedSteals(game, S, lpos, until) {
  * `no-spawn` (box seen empty at :59.5, nothing new after: something else blocked it or the count missed it);
  * a failed attempt gives its `why`; undefined for stacked, skips and lines without the sample.
  */
+/** The camp neutrals still in the bare box at :59.5 (ev=stack n59, "name:dist:in|out:a|-"), e.g. "large_mauler:-" (not
+ *  attacking the bot); undefined when the line has no n59. */
+function leftInBox(n59) {
+    if (n59 === undefined || n59 === "?") return undefined;
+    return String(n59).split(",").map(x => x.split(":")).filter(x => x[2] === "in").map(x => `${x[0]}:${x[3]}`).join(",") || "-";
+}
+
 function stackCause(e) {
     if (e.res === 'failed') return String(e.why);
     if (e.res !== 'not_stacked' || e.box59 === undefined || e.box59 === '?') return undefined;
@@ -350,7 +357,9 @@ function stackAttempts(game, until) {
     return game.events.filter(e => e.ev === 'stack' && e.t < until)
         .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, away: e.away, death: e.death === 1,
             vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59,
-            hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59, cause: stackCause(e) }));
+            hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59,
+            arr: e.arr, hit0: e.hit0, exit: e.exit, hpa: e.hpa, hpe: e.hpe, hp59: e.hp59, casts: e.casts, n2: e.n2, n59: e.n59,
+            left59: leftInBox(e.n59), cause: stackCause(e) }));
 }
 
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */

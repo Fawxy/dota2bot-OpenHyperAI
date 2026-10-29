@@ -105,6 +105,24 @@ export interface Attempt {
     tgt2?: number;
     tgt59?: number;
     strict59?: number;
+    /** Seconds of the minute the verb reached the stand point (`wait`), gave the hit order (`aggro`) and walked off
+     *  (`exit`); the bot's HP % at the hit order, the walk-off and :59.5 (user replay, s4solo1: the bots stood and tanked
+     *  before walking off). */
+    arr?: number;
+    hit0?: number;
+    exitAt?: number;
+    hpa?: number;
+    hpe?: number;
+    hp59?: number;
+    /** Spells the bot cast while the job ran, "name@second" (user replay, s4solo1: witch doctor's cask stunned the camp at
+     *  3:5x and 4:5x and the large neutral walked back into the box; nothing in the log showed it). */
+    casts?: string[];
+    lastCast?: string;
+    /** The camp's neutrals at the hit, and each one 2 s after the hit and at :59.5 as name:dist:in|out:a|- (distance to
+     *  the origin, inside the bare box, attacking the bot); "name:?" unseen, "name:dead". */
+    campUnits?: Unit[];
+    n2?: string;
+    n59?: string;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -207,6 +225,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
             a.aggro = info.confirmedAt - start;
             a.target = info.target as unknown as Unit | undefined;
             a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location));
+            a.campUnits = campNeutrals(bot, data.campIdx, a.target);
         },
     };
 }
@@ -217,7 +236,11 @@ function travel(bot: Unit, p: Vector): number {
 }
 
 function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): Lib.TaskBody {
-    const r = yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label: ctx.label, urgent: ctx.urgent });
+    const label = (l: string) => {
+        ctx.label(l);
+        phase(bot, a, l);
+    };
+    const r = yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label, urgent: ctx.urgent });
     if (!r.success) return r;
     // Watch: walk towards the camp until its origin is in sight (night vision is 800, the exit point ~900 past the box),
     // count the box, and end once it holds more than at the hit or at :00 + WatchUntil.
@@ -241,6 +264,71 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
         yield;
     }
     return { success: true, reason: "ok" };
+}
+
+function sec(a: Attempt): number {
+    return math.floor((DotaTime() - a.minute * 60) * 10) / 10;
+}
+
+function hpPct(bot: Unit): number {
+    return math.floor((100 * bot.GetHealth()) / math.max(1, bot.GetMaxHealth()));
+}
+
+/** The verb's phase labels as seconds of the minute, with the HP at the hit order and at the walk-off. */
+function phase(bot: Unit, a: Attempt, l: string): void {
+    if (l === "wait" && a.arr === undefined) a.arr = sec(a);
+    if (l === "aggro") {
+        a.hit0 = sec(a);
+        a.hpa = hpPct(bot);
+    }
+    if (l === "exit") {
+        a.exitAt = sec(a);
+        a.hpe = hpPct(bot);
+    }
+}
+
+/** Every frame of a running job, from Desire: farm's Think does not run while the bot casts (J.CanNotUseAction). */
+function track(bot: Unit, a: Attempt): void {
+    const ab = bot.GetCurrentActiveAbility();
+    const name = ab !== null && ab !== undefined ? ab.GetName() : undefined;
+    if (name !== undefined && name !== a.lastCast) {
+        a.casts = a.casts ?? [];
+        a.casts.push(`${name}@${sec(a)}`);
+    }
+    a.lastCast = name;
+    sample59(bot, a);
+}
+
+/** Visible neutrals in the camp's box (with margin) and the hit one: the units the stack has to pull. */
+function campNeutrals(bot: Unit, campIdx: number, target: Unit | undefined): Unit[] {
+    const out: Unit[] = [];
+    const margin = LaneConfig.Settings().Radii.BoxMargin;
+    for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && (c === target || Camps.InBox(campIdx, c.GetLocation(), margin))) out.push(c);
+    }
+    if (target !== undefined && !out.includes(target)) out.push(target);
+    return out;
+}
+
+/** Each camp neutral now: name:dist:in|out:a|-. */
+function describe(bot: Unit, a: Attempt): string {
+    const sp = Camps.SpawnerByIdx(a.campIdx);
+    const parts: string[] = [];
+    for (const n of a.campUnits ?? []) {
+        if (n.IsNull() || !n.IsAlive()) {
+            parts.push("dead");
+            continue;
+        }
+        const name = string.gsub(n.GetUnitName(), "npc_dota_neutral_", "")[0];
+        if (sp === undefined || !n.CanBeSeen()) {
+            parts.push(`${name}:?`);
+            continue;
+        }
+        const d = math.floor(GetUnitToLocationDistance(n, sp.location));
+        const inBox = Camps.InBox(a.campIdx, n.GetLocation(), 0) ? "in" : "out";
+        parts.push(`${name}:${d}:${inBox}:${n.GetAttackTarget() === bot ? "a" : "-"}`);
+    }
+    return parts.join(",");
 }
 
 function log(bot: Unit, minute: number, fields: [string, any][]): void {
@@ -294,6 +382,15 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["tgt2", a.tgt2 === undefined || a.tgt2 < 0 ? "?" : a.tgt2],
         ["tgt59", a.tgt59 === undefined || a.tgt59 < 0 ? "?" : a.tgt59],
         ["strict59", a.strict59 ?? "?"],
+        ["arr", a.arr ?? "?"],
+        ["hit0", a.hit0 ?? "?"],
+        ["exit", a.exitAt ?? "?"],
+        ["hpa", a.hpa ?? "?"],
+        ["hpe", a.hpe ?? "?"],
+        ["hp59", a.hp59 ?? "?"],
+        ["casts", a.casts !== undefined ? a.casts.join(",") : "-"],
+        ["n2", a.n2 ?? "?"],
+        ["n59", a.n59 ?? "?"],
     ]);
 }
 
@@ -303,6 +400,7 @@ export function Desire(bot: Unit): number {
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) {
+        track(bot, running[pid]!);
         const threat = Threat(bot);
         if (threat === undefined) return SETTINGS.Desire;
         Tasks.Cancel(bot, "cancelled", threat);
@@ -357,7 +455,10 @@ function targetDist(a: Attempt): number | undefined {
 }
 
 function sample59(bot: Unit, a: Attempt): void {
-    if (a.tgt2 === undefined && a.aggro !== undefined && DotaTime() >= a.minute * 60 + a.aggro + 2) a.tgt2 = targetDist(a) ?? -1;
+    if (a.tgt2 === undefined && a.aggro !== undefined && DotaTime() >= a.minute * 60 + a.aggro + 2) {
+        a.tgt2 = targetDist(a) ?? -1;
+        a.n2 = describe(bot, a);
+    }
     if (a.box59 !== undefined || a.aggro === undefined || DotaTime() < a.minute * 60 + 59.5) return;
     const sp = Camps.SpawnerByIdx(a.campIdx);
     const data = Camps.ByIdx(a.campIdx);
@@ -374,6 +475,8 @@ function sample59(bot: Unit, a: Attempt): void {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(a.campIdx, c.GetLocation(), 0)) strict++;
     }
     a.strict59 = strict;
+    a.n59 = describe(bot, a);
+    a.hp59 = hpPct(bot);
     a.pulled59 = pulled;
     a.bot59 = Camps.InBox(a.campIdx, bot.GetLocation(), 0) ? 1 : 0;
     a.vis59 = IsLocationVisible(sp.location) ? 1 : 0;
@@ -384,7 +487,6 @@ function sample59(bot: Unit, a: Attempt): void {
 export function Think(bot: Unit): boolean {
     const a = running[bot.GetPlayerID()];
     if (a === undefined) return false;
-    sample59(bot, a);
     return Tasks.Step(bot, BotMode.Farm);
 }
 

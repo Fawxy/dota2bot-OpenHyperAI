@@ -164,6 +164,22 @@ do
 	-- Stub neutrals never move, so box59 stays 3 here; the sample is taken with the bot out of the box at the exit point.
 	check(":59.5 sample taken: bot outside the box, at the exit", tonumber(field(l, "box59")) ~= nil and field(l, "bot59") == "0" and field(l, "exit59") == "0", l)
 	check("started just in time (after 3:40)", tonumber(field(l, "start")) >= 220, l)
+	-- Phases and per-neutral state (user replay s4solo1: a cask and a neutral left in the box were not in the log).
+	local arr, hit0, exit = tonumber(field(l, "arr")), tonumber(field(l, "hit0")), tonumber(field(l, "exit"))
+	check("phases: at the stand, then hit order, then walk-off", arr ~= nil and hit0 ~= nil and exit ~= nil and arr <= hit0 and hit0 <= exit, l)
+	check("hp at the hit order and walk-off", tonumber(field(l, "hpa")) ~= nil and tonumber(field(l, "hpe")) ~= nil and tonumber(field(l, "hp59")) ~= nil, l)
+	check("no cast: casts=-", field(l, "casts") == "-", l)
+	local n59 = field(l, "n59") or ""
+	local _, kobolds = n59:gsub("kobold:%d+:in:", "")
+	check("n59: the three camp neutrals, still in the box (stubs do not move)", kobolds == 3, n59)
+	check("n2 sampled", (field(l, "n2") or "?") ~= "?", l)
+end
+
+-- A spell cast while the job runs is logged with its second (witch doctor's cask, s4solo1 3:5x).
+do
+	local cask = { GetName = function() return "witch_doctor_paralyzing_cask" end }
+	local lines = stackRun({ onFrame = function(_, bot) bot.casting = (T >= 3 * 60 + 55 and T < 3 * 60 + 55.3) and cask or nil end })
+	check("cast logged once with its second", (field(lines[1], "casts") or ""):match("^witch_doctor_paralyzing_cask@55%.%d$") ~= nil, lines[1])
 end
 
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
@@ -292,6 +308,9 @@ do
 	check('farm: bench desire first', bench ~= nil and bench < farm:find('function GetDesireHelper', 1, true))
 	local benchThink = farm:find('if J.Humaniser.StackJob.Bench(bot) then return end', 1, true)
 	check('farm: bench Think before the stack Think', benchThink ~= nil and benchThink < think)
+	local usage = source('bots/ability_item_usage_generic.lua')
+	local _, holds = usage:gsub('if J.Humaniser.StackJob.Benched%(bot%) then return end', '')
+	check('usage: a benched hero casts and uses no items', holds == 2, holds)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
 	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.StackJob.HoldsRun(bot) then"))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.

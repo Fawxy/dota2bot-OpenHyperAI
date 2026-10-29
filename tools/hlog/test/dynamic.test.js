@@ -319,3 +319,11 @@ test('stackAttempts: cause of a not-stacked attempt from the :59.5 sample', () =
     assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'failed', why: 'dead' })] }, 600)[0].cause, 'dead');
     assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'stacked', box59: 0 })] }, 600)[0].cause, undefined);
 });
+
+test('stackAttempts: left59 names the camp neutrals still in the box at :59.5 (user replay s4solo1)', () => {
+    const left = n59 => D.stackAttempts({ events: [{ ev: 'stack', t: 245, pid: 2, min: 3, res: 'not_stacked', why: 'ok', n59 }] }, 600)[0].left59;
+    assert.strictEqual(left('satyr_hellcaller:120:in:-,satyr_soulstealer:900:out:a,dead'), 'satyr_hellcaller:-');
+    assert.strictEqual(left('ogre_mauler:900:out:a,ogre_magi:?'), '-');
+    assert.strictEqual(left('?'), undefined);
+    assert.strictEqual(left(undefined), undefined);
+});

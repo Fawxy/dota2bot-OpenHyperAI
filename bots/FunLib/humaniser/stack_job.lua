@@ -252,8 +252,29 @@ do
         end
     end
 end
+
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
 -- End of Lua Library inline imports
 local ____exports = {}
+local sec, hpPct, phase, campNeutrals, describe, targetDist, sample59
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -265,6 +286,150 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function sec(a)
+    return math.floor((DotaTime() - a.minute * 60) * 10) / 10
+end
+function hpPct(bot)
+    return math.floor(100 * bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ))
+end
+function phase(bot, a, l)
+    if l == "wait" and a.arr == nil then
+        a.arr = sec(a)
+    end
+    if l == "aggro" then
+        a.hit0 = sec(a)
+        a.hpa = hpPct(bot)
+    end
+    if l == "exit" then
+        a.exitAt = sec(a)
+        a.hpe = hpPct(bot)
+    end
+end
+function campNeutrals(bot, campIdx, target)
+    local out = {}
+    local margin = LaneConfig.Settings().Radii.BoxMargin
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.StackCountScan,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and (c == target or Camps.InBox(
+            campIdx,
+            c:GetLocation(),
+            margin
+        )) then
+            out[#out + 1] = c
+        end
+    end
+    if target ~= nil and not __TS__ArrayIncludes(out, target) then
+        out[#out + 1] = target
+    end
+    return out
+end
+function describe(bot, a)
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    local parts = {}
+    for ____, n in ipairs(a.campUnits or ({})) do
+        do
+            local __continue62
+            repeat
+                if n:IsNull() or not n:IsAlive() then
+                    parts[#parts + 1] = "dead"
+                    __continue62 = true
+                    break
+                end
+                local name = (string.gsub(
+                    n:GetUnitName(),
+                    "npc_dota_neutral_",
+                    ""
+                ))
+                if sp == nil or not n:CanBeSeen() then
+                    parts[#parts + 1] = name .. ":?"
+                    __continue62 = true
+                    break
+                end
+                local d = math.floor(GetUnitToLocationDistance(n, sp.location))
+                local inBox = Camps.InBox(
+                    a.campIdx,
+                    n:GetLocation(),
+                    0
+                ) and "in" or "out"
+                parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
+                __continue62 = true
+            until true
+            if not __continue62 then
+                break
+            end
+        end
+    end
+    return table.concat(parts, ",")
+end
+function targetDist(a)
+    local t = a.target
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    if t == nil or sp == nil or t:IsNull() or not t:IsAlive() or not t:CanBeSeen() then
+        return nil
+    end
+    return math.floor(GetUnitToLocationDistance(t, sp.location))
+end
+function sample59(bot, a)
+    if a.tgt2 == nil and a.aggro ~= nil and DotaTime() >= a.minute * 60 + a.aggro + 2 then
+        a.tgt2 = targetDist(a) or -1
+        a.n2 = describe(bot, a)
+    end
+    if a.box59 ~= nil or a.aggro == nil or DotaTime() < a.minute * 60 + 59.5 then
+        return
+    end
+    local sp = Camps.SpawnerByIdx(a.campIdx)
+    local data = Camps.ByIdx(a.campIdx)
+    if sp == nil then
+        return
+    end
+    local margin = LaneConfig.Settings().Radii.BoxMargin
+    local pulled = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.NeutralSearch,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and not Camps.InBox(
+            a.campIdx,
+            c:GetLocation(),
+            margin
+        ) then
+            pulled = pulled + 1
+        end
+    end
+    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.tgt59 = targetDist(a) or -1
+    local strict = 0
+    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
+        LaneConfig.Settings().Radii.StackCountScan,
+        false
+    ) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+            a.campIdx,
+            c:GetLocation(),
+            0
+        ) then
+            strict = strict + 1
+        end
+    end
+    a.strict59 = strict
+    a.n59 = describe(bot, a)
+    a.hp59 = hpPct(bot)
+    a.pulled59 = pulled
+    a.bot59 = Camps.InBox(
+        a.campIdx,
+        bot:GetLocation(),
+        0
+    ) and 1 or 0
+    a.vis59 = IsLocationVisible(sp.location) and 1 or 0
+    local ____opt_3 = data and data.stack
+    local path = ____opt_3 and ____opt_3.exitPath
+    a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
+end
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
@@ -434,6 +599,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
             a.aggro = info.confirmedAt - start
             a.target = info.target
             a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location))
+            a.campUnits = campNeutrals(bot, data.campIdx, a.target)
         end
     }
 end
@@ -445,7 +611,11 @@ local function travel(bot, p)
     )
 end
 local body = __TS__Generator(function(bot, plan, a, ctx)
-    local r = __TS__DelegatedYield(Tasks.Jobs().stack(bot, plan, {label = ctx.label, urgent = ctx.urgent}))
+    local function label(l)
+        ctx.label(l)
+        phase(bot, a, l)
+    end
+    local r = __TS__DelegatedYield(Tasks.Jobs().stack(bot, plan, {label = label, urgent = ctx.urgent}))
     if not r.success then
         return r
     end
@@ -479,6 +649,18 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
     end
     return {success = true, reason = "ok"}
 end)
+--- Every frame of a running job, from Desire: farm's Think does not run while the bot casts (J.CanNotUseAction).
+local function track(bot, a)
+    local ab = bot:GetCurrentActiveAbility()
+    local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
+    if name ~= nil and name ~= a.lastCast then
+        a.casts = a.casts or ({})
+        local ____a_casts_2 = a.casts
+        ____a_casts_2[#____a_casts_2 + 1] = (name .. "@") .. tostring(sec(a))
+    end
+    a.lastCast = name
+    sample59(bot, a)
+end
 local function log(bot, minute, fields)
     Telemetry.Event(
         "stack",
@@ -564,7 +746,19 @@ local function finish(bot, a, result)
             {"hitd", a.hitd or "?"},
             {"tgt2", (a.tgt2 == nil or a.tgt2 < 0) and "?" or a.tgt2},
             {"tgt59", (a.tgt59 == nil or a.tgt59 < 0) and "?" or a.tgt59},
-            {"strict59", a.strict59 or "?"}
+            {"strict59", a.strict59 or "?"},
+            {"arr", a.arr or "?"},
+            {"hit0", a.hit0 or "?"},
+            {"exit", a.exitAt or "?"},
+            {"hpa", a.hpa or "?"},
+            {"hpe", a.hpe or "?"},
+            {"hp59", a.hp59 or "?"},
+            {
+                "casts",
+                a.casts ~= nil and table.concat(a.casts, ",") or "-"
+            },
+            {"n2", a.n2 or "?"},
+            {"n59", a.n59 or "?"}
         }
     )
 end
@@ -576,6 +770,7 @@ function ____exports.Desire(bot)
     local pid = bot:GetPlayerID()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
+        track(bot, running[pid])
         local threat = Threat(bot)
         if threat == nil then
             return ____exports.SETTINGS.Desire
@@ -587,10 +782,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue58
+            local __continue77
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue58 = true
+                    __continue77 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -645,81 +840,18 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue58 then
+            if not __continue77 then
                 break
             end
         end
     end
     return 0
 end
---- The hit neutral's distance to the camp origin, or undefined when it is gone or unseen.
-local function targetDist(a)
-    local t = a.target
-    local sp = Camps.SpawnerByIdx(a.campIdx)
-    if t == nil or sp == nil or t:IsNull() or not t:IsAlive() or not t:CanBeSeen() then
-        return nil
-    end
-    return math.floor(GetUnitToLocationDistance(t, sp.location))
-end
-local function sample59(bot, a)
-    if a.tgt2 == nil and a.aggro ~= nil and DotaTime() >= a.minute * 60 + a.aggro + 2 then
-        a.tgt2 = targetDist(a) or -1
-    end
-    if a.box59 ~= nil or a.aggro == nil or DotaTime() < a.minute * 60 + 59.5 then
-        return
-    end
-    local sp = Camps.SpawnerByIdx(a.campIdx)
-    local data = Camps.ByIdx(a.campIdx)
-    if sp == nil then
-        return
-    end
-    local margin = LaneConfig.Settings().Radii.BoxMargin
-    local pulled = 0
-    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
-        LaneConfig.Settings().Radii.NeutralSearch,
-        false
-    ) or ({})) do
-        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and not Camps.InBox(
-            a.campIdx,
-            c:GetLocation(),
-            margin
-        ) then
-            pulled = pulled + 1
-        end
-    end
-    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
-    a.tgt59 = targetDist(a) or -1
-    local strict = 0
-    for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
-        LaneConfig.Settings().Radii.StackCountScan,
-        false
-    ) or ({})) do
-        if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
-            a.campIdx,
-            c:GetLocation(),
-            0
-        ) then
-            strict = strict + 1
-        end
-    end
-    a.strict59 = strict
-    a.pulled59 = pulled
-    a.bot59 = Camps.InBox(
-        a.campIdx,
-        bot:GetLocation(),
-        0
-    ) and 1 or 0
-    a.vis59 = IsLocationVisible(sp.location) and 1 or 0
-    local ____opt_2 = data and data.stack
-    local path = ____opt_2 and ____opt_2.exitPath
-    a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
-end
 function ____exports.Think(bot)
     local a = running[bot:GetPlayerID()]
     if a == nil then
         return false
     end
-    sample59(bot, a)
     return Tasks.Step(bot, BotMode.Farm)
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the pos5 during its stack are not a reason to run; the job's exit is its
