@@ -9,12 +9,13 @@
 --   deaths_r, deaths_d: G6, creep deaths per team
 -- Constants: the G5 attack age (<= 2 s) is here only; the other thresholds are in lasthit_cause.js `GATE`.
 -- The deny and revive shares are divided in lasthit_cause.js.
+-- `+game_id` in gm: the ev_ game_id columns have no declared type and a subquery value has INTEGER affinity, so a plain comparison cannot use the game_id index; a unary plus on the value lets it.
 -- ensure: ev_creep_death(team, by, p1d, p1t, p1a, p2d, p2t, p2a, p3d, p3t, p3a)
 -- ensure: ev_creep_revive(team)
 -- ensure: ev_lua_error(where)
 -- ensure: ev_snap(pid, x, dn)
 -- ensure: ev_bot(pid, team, pos)
-WITH gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 deaths AS (
     SELECT team, "by" AS killer, p1d, p1t, p1a, p2d, p2t, p2a, p3d, p3t, p3a
     FROM ev_creep_death
