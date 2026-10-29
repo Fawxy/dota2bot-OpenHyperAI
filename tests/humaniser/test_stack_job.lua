@@ -208,7 +208,8 @@ do
 	check("run abort: failed, cancelled:run", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:run", lines[1])
 	check("run abort: farm released", H.StackJob.Desire(bot) == 0)
 
-	-- An enemy hero in reach mid-job ends it (1x probe s4p7: the pos5 walked on after hero hits and died at the camp).
+	-- Hero damage mid-job ends it (1x probe s4p7: the pos5 walked on after hero hits and died at the camp); an enemy hero
+	-- in reach alone does not (probe s4p8: lane opponents ended 4 jobs 1-6 s after their start).
 	H, bot = world({ t = 3 * 60 + 15 })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function()
@@ -216,8 +217,13 @@ do
 		MakeUnit({ pid = 12, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) })
 		frame(H, bot)
 	end))
-	check("enemy mid-job: failed, cancelled:enemy-near", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:enemy-near", lines[1])
-	check("enemy mid-job: farm released", H.StackJob.Desire(bot) == 0)
+	check("enemy in reach mid-job: the job runs on", #lines == 0 and H.StackJob.Desire(bot) > 0, lines[1])
+	lines = stackLines(capture(function()
+		bot.heroHitAt = T
+		frame(H, bot)
+	end))
+	check("hero hit mid-job: failed, cancelled:hit", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:hit", lines[1])
+	check("hero hit mid-job: farm released", H.StackJob.Desire(bot) == 0)
 end
 
 -- A start held back by the gate goes ahead only with MinSlack s to spare (probe s4p5: starts at 0 s slack missed the window).

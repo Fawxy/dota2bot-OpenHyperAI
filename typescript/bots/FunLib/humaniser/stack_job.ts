@@ -118,21 +118,20 @@ export function Nearest(team: number, loc: Vector): LuaMultiReturn<[Camps.CampJo
     return $multi(best, stand);
 }
 
-/** An enemy hero in reach or hero damage just now: the gate's hero checks, also run every frame of a running job (the
- *  1x probe s4p7: the pos5 was hit at 61% on the walk, kept going and died at the camp to two heroes). HP and mode are not
- *  checked mid-job: the camp's neutrals hit the bot by design, and the mode is ours. */
+/** Hero damage just now, checked every frame of a running job (1x probe s4p7: the pos5 was hit at 61% on the walk, kept
+ *  going and died at the camp to two heroes). Not an enemy hero in reach: lane opponents walk within 600 of a laning pos5,
+ *  and that check ended 4 jobs 1-6 s after their start (probe s4p8). Not HP or mode: the camp's neutrals hit the bot by
+ *  design, and the mode is ours. */
 function Threat(bot: Unit): string | undefined {
-    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
-    if (bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin)) return "hit";
-    return undefined;
+    return bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin) ? "hit" : undefined;
 }
 
 /** Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
  *  hero just now, or fighting or retreating. */
 export function Gate(bot: Unit): string | undefined {
     if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
-    const threat = Threat(bot);
-    if (threat !== undefined) return threat;
+    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
+    if (Threat(bot) !== undefined) return "hit";
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
     return undefined;
