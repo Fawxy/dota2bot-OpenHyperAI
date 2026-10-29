@@ -6,9 +6,9 @@
 -- Killer: core_lh (the core's own), enemy_deny, creep_or_tower (`none` or unset), else ally_lh. When the core did not get it,
 -- late = its swing began under 0.6 s before the death (or a target was held), early = longer, idle_in_range = within attack range
 -- + 300 and not attacking, away = further. lh = the core's last-hit counter at `until`; attributed = deaths credited to it.
--- Constants in this SQL (no other copy to keep equal except these): near 1000, late/early 0.6 s, reach 300, default attack range 150,
--- lane radius 1100, base radii 1800/1200, ancient and fountain positions, from dynamic.js `C`, `ANCIENT`, `FOUNTAIN` (test/lasthit_cause.test.js
--- pins the boundaries); `C` in lasthit_cause.js is printed by --json and must match.
+-- Constants in this SQL (no other copy to keep equal except these): near 1000, late/early 0.6 s, reach 300, default attack range 150
+-- (test/lasthit_cause.test.js pins the boundaries); `C` in lasthit_cause.js is printed by --json and must match. The lane rule
+-- (radius 1100, base radii 1800/1200, ancient and fountain positions, from dynamic.js) is the fragment lane_label.
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_snap(pid, x, y, alive, lh)
 -- ensure: ev_bot(pid, team, pos)
@@ -33,25 +33,7 @@ pts AS (
     UNION ALL
     SELECT 'death', seq, seq, NULL, x, y FROM deaths
 ),
-lab AS (
-    SELECT p.kind, p.k, p.seq, p.t,
-        CASE
-            WHEN sqrt((p.x + 5920) * (p.x + 5920) + (p.y + 5352) * (p.y + 5352)) < 1800
-              OR sqrt((p.x - 5528) * (p.x - 5528) + (p.y - 5000) * (p.y - 5000)) < 1800
-              OR sqrt((p.x + 6850) * (p.x + 6850) + (p.y + 6461) * (p.y + 6461)) < 1200
-              OR sqrt((p.x - 7020) * (p.x - 7020) + (p.y - 6345) * (p.y - 6345)) < 1200 THEN 'base'
-            ELSE coalesce((
-                SELECT q.lane FROM (
-                    SELECT g.lane, g.seg,
-                        sqrt((p.x - (g.x1 + g.f * g.dx)) * (p.x - (g.x1 + g.f * g.dx)) + (p.y - (g.y1 + g.f * g.dy)) * (p.y - (g.y1 + g.f * g.dy))) AS d
-                    FROM (
-                        SELECT s.*, max(0.0, min(1.0, ((p.x - s.x1) * s.dx + (p.y - s.y1) * s.dy) / s.l2)) AS f FROM lane_segments s
-                    ) g
-                ) q
-                WHERE q.d < 1100 ORDER BY q.d, q.seg LIMIT 1), 'other')
-        END AS lane
-    FROM pts p
-),
+-- include: lane_label
 home AS (
     SELECT k AS pid, lane, row_number() OVER (PARTITION BY k ORDER BY count(*) DESC, min(t), min(seq)) AS rk
     FROM lab WHERE kind = 'snap' AND lane NOT IN ('base', 'other')

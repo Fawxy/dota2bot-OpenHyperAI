@@ -4,15 +4,17 @@
 // Usage: node steals.js <manifest | log...> [--until 600] [--json]
 'use strict';
 
+const path = require('path');
 const { dynamicMetrics, auditedSteals, series } = require('./dynamic');
 const { gamesFrom, logsFrom } = require('./lasthit_cause');
+const { Store, DB } = require('./store');
 
 const clock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
-/** Per game: { file, cases } (cases undefined for a log without ev=creep_death). */
-function steals(files, until) {
+/** Per game: { file, cases } (cases undefined for a log without ev=creep_death). `store` holds the logs (Store.ingestAll). */
+function steals(files, until, store) {
     return gamesFrom(files).map(([file, game]) => {
-        const m = dynamicMetrics(game);
+        const m = dynamicMetrics(store, path.resolve(file), 1, game);
         return { file, cases: until === 600 ? m.audited_steals : auditedSteals(game, series(game), m.lpos, until) };
     });
 }
@@ -24,7 +26,10 @@ function main(argv) {
         console.error('usage: node steals.js <manifest | log...> [--until 600] [--json]');
         process.exit(2);
     }
-    const out = steals(files, Number(opt('until') ?? 600));
+    const store = new Store(DB);
+    for (const f of store.ingestAll(files).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
+    const out = steals(files, Number(opt('until') ?? 600), store);
+    store.close();
     if (argv.includes('--json')) return console.log(JSON.stringify(out, null, 1));
     for (const g of out) {
         if (!g.cases) {

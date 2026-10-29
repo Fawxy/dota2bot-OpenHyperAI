@@ -4,10 +4,12 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const { parseLog } = require('./parse');
 const { laningMetrics } = require('./metrics');
-const { dynamicMetrics, deathTimes, series } = require('./dynamic');
+const { dynamicMetrics } = require('./dynamic');
 const { readManifest } = require('./manifest');
+const { Store, DB } = require('./store');
 
 // Two-sided 0.05, power 0.8, two-sample t: (t_crit + t_power) * SD * sqrt(2 / N), df = 2N - 2.
 const T975 = { 4: 2.776, 6: 2.447, 8: 2.306, 10: 2.228, 18: 2.101, 38: 2.024 };
@@ -67,7 +69,7 @@ function gate(game, m, flat) {
         const last = b.snaps.filter(s => typeof s.kills === 'number').pop();
         if (last) kills += last.kills;
     }
-    const deaths = deathTimes(series(game)).length;
+    const deaths = m.deaths_total;
     if (deaths > 0 && Math.abs(kills - deaths) / deaths > 0.1) problems.push(`hero kills ${kills} vs deaths ${deaths} differ by > 10%`);
     const lane = Object.fromEntries(laningMetrics(game, { until: 600 }).bots.map(b => [b.pid, b]));
     for (const [role, pid] of Object.entries(m.pids)) {
@@ -131,9 +133,16 @@ function pooled(perSeed) {
     return { delta, se, df, lo: delta - h, hi: delta + h };
 }
 
-/** One manifest game with its parsed game: the flat metrics and the gate's problems. */
-function nfGame(g, game) {
-    const m = dynamicMetrics(game);
+/** The log store (default file, or `db`) with a manifest's logs ingested; a log that fails to ingest is reported. */
+function storeFor(manifest, db = DB) {
+    const store = new Store(db);
+    for (const f of store.ingestAll([manifest]).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
+    return store;
+}
+
+/** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
+function nfGame(g, game, store) {
+    const m = dynamicMetrics(store, path.resolve(g.log), game.index, game);
     const flat = flatten(m);
     return { ...g, flat, problems: gate(game, m, flat), monitors: { first_t1_time: m.first_t1_time, first_roshan_time: m.first_roshan_time } };
 }
@@ -165,10 +174,12 @@ function noiseTable(games, n) {
 function main(argv) {
     const file = argv[0];
     const n = Number((argv.join(' ').match(/--n (\d+)/) || [])[1] || 5);
+    const store = storeFor(file);
     const games = readManifest(file).map(g => {
         const parsed = parseLog(fs.readFileSync(g.log, 'utf8'));
-        return nfGame(g, parsed[parsed.length - 1]);
+        return nfGame(g, parsed[parsed.length - 1], store);
     });
+    store.close();
     const groups = {};
     for (const g of games) (groups[`${g.seed}`] = groups[`${g.seed}`] || []).push(g);
     const table = noiseTable(games, n);
@@ -196,4 +207,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable };
+module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable, storeFor };
