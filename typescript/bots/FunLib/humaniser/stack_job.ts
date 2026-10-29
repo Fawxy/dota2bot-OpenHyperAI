@@ -6,7 +6,9 @@
  * When to stack, and who, is S.2b: it replaces TRIGGER_MINUTES and keeps the job and its result line.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import Customize = require("bots/FunLib/custom_loader");
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
@@ -42,6 +44,38 @@ export const SETTINGS = {
     /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
     WatchUntil: 5,
 };
+
+// Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
+// other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
+// Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Scenario games only, never a verdict.
+const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
+
+function override(key: string): unknown {
+    return (Customize as any).Overrides?.[key];
+}
+
+/** Overrides.Solo names another hero: this one sits out the game in its fountain. */
+export function Benched(bot: Unit): boolean {
+    const solo = override("Solo");
+    return typeof solo === "number" && solo >= 0 && bot.GetPlayerID() !== solo;
+}
+
+/** mode_farm_generic Think for a benched hero: walk to the fountain and stay. False when the hero is not benched. */
+export function Bench(bot: Unit): boolean {
+    if (!Benched(bot)) return false;
+    const [x, y, z] = FOUNTAIN[bot.GetTeam()];
+    const f = Vector(x, y, z);
+    if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
+    return true;
+}
+
+/** The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery. */
+export function Minutes(): number[] {
+    if (override("StackEvery") !== true) return SETTINGS.TriggerMinutes;
+    const out: number[] = [];
+    for (let m = 2; m <= 60; m++) out.push(m);
+    return out;
+}
 
 export interface Attempt {
     minute: number;
@@ -276,7 +310,7 @@ export function Desire(bot: Unit): number {
     }
     const now = DotaTime();
     handled[pid] = handled[pid] ?? {};
-    for (const minute of SETTINGS.TriggerMinutes) {
+    for (const minute of Minutes()) {
         if (handled[pid][minute] || now < minute * 60 + SETTINGS.LookFrom || now >= minute * 60 + 60) continue;
         const [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
         const skip = (why: string) => {

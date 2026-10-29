@@ -66,6 +66,8 @@ local runMode = false;
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
 function GetDesire()
+	-- Slice 4 diagnosis (Overrides.Solo): a benched hero holds farm mode above every other mode and sits in its fountain.
+	if J.Humaniser.StackJob.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
 	-- local cacheKey = 'GetFarmDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.4)
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
@@ -505,6 +507,7 @@ end
 
 function Think()
 	if J.CanNotUseAction(bot) then return end
+	if J.Humaniser.StackJob.Bench(bot) then return end
 	if not runMode and J.Humaniser.StackJob.Think(bot) then return end
 	if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end
 	if not runMode and J.Humaniser.FarmPattern.Think(bot) then return end

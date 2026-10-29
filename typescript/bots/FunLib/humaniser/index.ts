@@ -194,7 +194,7 @@ if (Telemetry.GuardsEnabled()) {
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
     Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
     // An error leaves the farm mode to OHA (no job desire, no owned Think).
-    Telemetry.GuardModule("StackJob", StackJob, { Desire: zero, Think: no, Abort: none, HoldsRun: no });
+    Telemetry.GuardModule("StackJob", StackJob, { Desire: zero, Think: no, Abort: none, HoldsRun: no, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

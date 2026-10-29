@@ -256,6 +256,7 @@ end
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -264,6 +265,7 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
     LookFrom = 15,
@@ -278,6 +280,46 @@ ____exports.SETTINGS = {
     PreemptAfter = 1,
     WatchUntil = 5
 }
+local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
+local function override(key)
+    local ____opt_0 = Customize.Overrides
+    if ____opt_0 ~= nil then
+        ____opt_0 = ____opt_0[key]
+    end
+    return ____opt_0
+end
+--- Overrides.Solo names another hero: this one sits out the game in its fountain.
+function ____exports.Benched(bot)
+    local solo = override("Solo")
+    return type(solo) == "number" and solo >= 0 and bot:GetPlayerID() ~= solo
+end
+--- mode_farm_generic Think for a benched hero: walk to the fountain and stay. False when the hero is not benched.
+function ____exports.Bench(bot)
+    if not ____exports.Benched(bot) then
+        return false
+    end
+    local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
+    local f = Vector(x, y, z)
+    if GetUnitToLocationDistance(bot, f) > 300 then
+        bot:Action_MoveToLocation(f)
+    end
+    return true
+end
+--- The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery.
+function ____exports.Minutes()
+    if override("StackEvery") ~= true then
+        return ____exports.SETTINGS.TriggerMinutes
+    end
+    local out = {}
+    do
+        local m = 2
+        while m <= 60 do
+            out[#out + 1] = m
+            m = m + 1
+        end
+    end
+    return out
+end
 local handled = {}
 local gateWhy = {}
 local running = {}
@@ -304,19 +346,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue12
+            local __continue20
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue12 = true
+                    __continue20 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue12 = true
+                __continue20 = true
             until true
-            if not __continue12 then
+            if not __continue20 then
                 break
             end
         end
@@ -543,12 +585,12 @@ function ____exports.Desire(bot)
     end
     local now = DotaTime()
     handled[pid] = handled[pid] or ({})
-    for ____, minute in ipairs(____exports.SETTINGS.TriggerMinutes) do
+    for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue50
+            local __continue58
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue50 = true
+                    __continue58 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -603,7 +645,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue50 then
+            if not __continue58 then
                 break
             end
         end
@@ -668,8 +710,8 @@ local function sample59(bot, a)
         0
     ) and 1 or 0
     a.vis59 = IsLocationVisible(sp.location) and 1 or 0
-    local ____opt_0 = data and data.stack
-    local path = ____opt_0 and ____opt_0.exitPath
+    local ____opt_2 = data and data.stack
+    local path = ____opt_2 and ____opt_2.exitPath
     a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
 end
 function ____exports.Think(bot)

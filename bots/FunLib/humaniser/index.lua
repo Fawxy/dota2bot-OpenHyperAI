@@ -333,7 +333,19 @@ if Telemetry.GuardsEnabled() then
             LeavesTarget = no
         }
     )
-    Telemetry.GuardModule("StackJob", StackJob, {Desire = zero, Think = no, Abort = none, HoldsRun = no})
+    Telemetry.GuardModule(
+        "StackJob",
+        StackJob,
+        {
+            Desire = zero,
+            Think = no,
+            Abort = none,
+            HoldsRun = no,
+            Benched = no,
+            Bench = no,
+            Minutes = function() return StackJob.SETTINGS.TriggerMinutes end
+        }
+    )
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

@@ -248,6 +248,33 @@ do
 	check("busy until 1 s left: skip busy", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "busy", lines[1])
 end
 
+-- Diagnosis harness (user 30/10/2026): Overrides.Solo benches every other hero in its fountain; StackEvery tries each minute.
+do
+	local H, bot = world()
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	check("solo off: nobody benched", not H.StackJob.Benched(bot) and not H.StackJob.Bench(bot))
+	check("solo off: trigger minutes", #H.StackJob.Minutes() == 3 and H.StackJob.Minutes()[1] == 3)
+	Customize.Overrides = { Solo = 5 }
+	check("solo is this hero: not benched", not H.StackJob.Benched(bot))
+	local other = MakeUnit({ pid = 6, team = 3, loc = Vector(0, 0, 0) })
+	check("another hero: benched", H.StackJob.Benched(other) and H.StackJob.Bench(other))
+	local mv = ActionsOf(6, "MoveToLocation")
+	local to = mv[#mv] and mv[#mv].args[1]
+	check("benched: walks to its own fountain", to ~= nil and to.x > 6000 and to.y > 6000, to and (to.x .. "," .. to.y) or "no move")
+	local home = MakeUnit({ pid = 1, team = 2, loc = Vector(-6600, -6300, 0) })
+	check("benched at the fountain: no move", H.StackJob.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
+	Customize.Overrides = { Solo = 0 }
+	check("solo pid 0 counts", H.StackJob.Benched(bot))
+	Customize.Overrides = { StackEvery = true }
+	local m = H.StackJob.Minutes()
+	check("stack every: from 2:00, each minute", m[1] == 2 and m[2] == 3 and m[3] == 4)
+	T = 4 * 60 + 15
+	local lines = stackLines(capture(function()
+		while T < 4 * 60 + 59 do frame(H, bot) end
+	end))
+	check("stack every: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
+	Customize.Overrides = nil
+end
 
 -- Hook (source pin: mode_farm_generic has no test world): the stack job comes first in GetDesire and Think; OHA's run aborts it.
 do
@@ -260,6 +287,11 @@ do
 	local think = farm:find('J.Humaniser.StackJob.Think(bot)', 1, true)
 	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
 	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.StackJob.Abort(bot, "run")'))
+	-- A benched hero (Overrides.Solo) wins farm before OHA's run and defend-ping checks, and its Think comes first.
+	local bench = farm:find('if J.Humaniser.StackJob.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end', 1, true)
+	check('farm: bench desire first', bench ~= nil and bench < farm:find('function GetDesireHelper', 1, true))
+	local benchThink = farm:find('if J.Humaniser.StackJob.Bench(bot) then return end', 1, true)
+	check('farm: bench Think before the stack Think', benchThink ~= nil and benchThink < think)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
 	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.StackJob.HoldsRun(bot) then"))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
