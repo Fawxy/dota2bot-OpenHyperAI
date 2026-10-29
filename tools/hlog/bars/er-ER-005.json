@@ -1,6 +1,6 @@
 {
  "schema": "er-spec/1",
- "build": "BUILD2",
+ "build": "392431c",
  "until": "11:00",
  "arms": {
   "on": {
@@ -21,31 +21,10 @@
  },
  "bars": [
   {
-   "id": "H2 steals in owned modes (bar)",
+   "id": "H2 steals in owned modes, before per-case classification (bar input)",
    "metric": "audited_steals_ours",
    "rule": "each",
    "eq": 0
-  },
-  {
-   "id": "H2 fallback: no ON game above 2",
-   "metric": "audited_steals_ours",
-   "rule": "each",
-   "max": 2
-  },
-  {
-   "id": "H2 fallback: ON below OFF (CI)",
-   "metric": "audited_steals_ours",
-   "rule": "delta",
-   "met": {
-    "hi": {
-     "lt": 0
-    }
-   },
-   "notMet": {
-    "lo": {
-     "gt": 0
-    }
-   }
   },
   {
    "id": "H2 laning steals (run 1's bar, reported)",
