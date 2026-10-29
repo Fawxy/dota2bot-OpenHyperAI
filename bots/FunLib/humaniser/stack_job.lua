@@ -504,7 +504,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local handSet, setExit, sec, hpPct, phase, laneNear, freshInBox, campNeutrals, describe, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
+local setExit, sec, hpPct, phase, laneNear, freshInBox, campNeutrals, describe, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -516,21 +516,24 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-function handSet(sp)
-    for ____, e in ipairs(EXIT_DIRS) do
-        if math.abs(sp.location.x - e.x) <= 200 and math.abs(sp.location.y - e.y) <= 200 then
-            return e
-        end
-    end
-    return nil
-end
 function setExit(sp)
-    local e = handSet(sp)
-    if e ~= nil then
-        local away = LaneConfig.Settings().Radii.StackExit
-        local c = Camps.BoxCenter(sp)
-        local target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z)
-        return {Camps.BoxEdgePoint(sp, target, away) or target}
+    for ____, e in ipairs(EXIT_DIRS) do
+        do
+            local __continue11
+            repeat
+                if math.abs(sp.location.x - e.x) > 200 or math.abs(sp.location.y - e.y) > 200 then
+                    __continue11 = true
+                    break
+                end
+                local away = LaneConfig.Settings().Radii.StackExit
+                local c = Camps.BoxCenter(sp)
+                local target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z)
+                return {Camps.BoxEdgePoint(sp, target, away) or target}
+            until true
+            if not __continue11 then
+                break
+            end
+        end
     end
     return nil
 end
@@ -594,20 +597,20 @@ function freshInBox(bot, a)
         LaneConfig.Settings().Radii.StackCountScan,
         false
     ) or ({})) do
-        local ____temp_8 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+        local ____temp_6 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
             a.campIdx,
             c:GetLocation(),
             margin
         )
-        if ____temp_8 then
-            local ____opt_5 = a.seen
-            local ____temp_7 = ____opt_5 and ____opt_5:has(c)
-            if ____temp_7 == nil then
-                ____temp_7 = false
+        if ____temp_6 then
+            local ____opt_3 = a.seen
+            local ____temp_5 = ____opt_3 and ____opt_3:has(c)
+            if ____temp_5 == nil then
+                ____temp_5 = false
             end
-            ____temp_8 = not ____temp_7
+            ____temp_6 = not ____temp_5
         end
-        if ____temp_8 then
+        if ____temp_6 then
             n = n + 1
         end
     end
@@ -638,11 +641,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue93
+            local __continue90
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue93 = true
+                    __continue90 = true
                     break
                 end
                 local name = (string.gsub(
@@ -652,7 +655,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue93 = true
+                    __continue90 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -662,9 +665,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue93 = true
+                __continue90 = true
             until true
-            if not __continue93 then
+            if not __continue90 then
                 break
             end
         end
@@ -793,18 +796,7 @@ function ____exports.Minutes()
 end
 local handled = {}
 exits = {}
-EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {
-    x = -4824,
-    y = 3915,
-    dx = 0,
-    dy = 1,
-    sec = 54.4
-}}
---- The second of the minute the hit should land: the hand-set measured second, else Stacking.AggroSec.
-function ____exports.HitSec(sp, data)
-    local ____opt_2 = handSet(sp)
-    return ____opt_2 and ____opt_2.sec or Stacking.AggroSec(data)
-end
+EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}}
 --- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side.
 function ____exports.Stand(sp, data)
     return Camps.StandPoint(
@@ -841,19 +833,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue35
+            local __continue32
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue35 = true
+                    __continue32 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue35 = true
+                __continue32 = true
             until true
-            if not __continue35 then
+            if not __continue32 then
                 break
             end
         end
@@ -920,7 +912,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
             approach = approach
         },
         approachLead = ____exports.SETTINGS.ApproachLead,
-        aggroAt = start + ____exports.HitSec(sp, data),
+        aggroAt = start + Stacking.AggroSec(data),
         exitPath = ____exports.ExitPath(sp, data),
         exitUntil = start + 60 + t.StackExitUntil,
         arrive = r.JobArrive,
@@ -989,8 +981,8 @@ local function track(bot, a)
     local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
     if name ~= nil and name ~= a.lastCast then
         a.casts = a.casts or ({})
-        local ____a_casts_4 = a.casts
-        ____a_casts_4[#____a_casts_4 + 1] = (name .. "@") .. tostring(sec(a))
+        local ____a_casts_2 = a.casts
+        ____a_casts_2[#____a_casts_2 + 1] = (name .. "@") .. tostring(sec(a))
     end
     a.lastCast = name
     if DotaTime() < a.minute * 60 + 60 then
@@ -1135,10 +1127,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue108
+            local __continue105
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue108 = true
+                    __continue105 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -1154,10 +1146,7 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local aggroAt = minute * 60 + ____exports.HitSec(
-                    Camps.SpawnerByIdx(data.campIdx),
-                    data
-                )
+                local aggroAt = minute * 60 + Stacking.AggroSec(data)
                 local walk = travel(bot, stand)
                 if now < aggroAt - walk - ____exports.SETTINGS.Lead then
                     return 0
@@ -1197,7 +1186,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue108 then
+            if not __continue105 then
                 break
             end
         end
