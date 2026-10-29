@@ -165,7 +165,7 @@ export const EVENTS = {
         x: "num",
         y: "num",
         hp: "num",
-        by: "str",
+        by: "mixed",
         bm: "str",
         bs: "num",
         p1d: "num",
@@ -443,7 +443,7 @@ export const EVENTS = {
         role: "str",
         enemy: "num",
         hero: "str",
-        members: "str",
+        members: "mixed",
     },
     lane_take_skip: {
         pid: "num",

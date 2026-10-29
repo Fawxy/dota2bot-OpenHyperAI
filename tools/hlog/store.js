@@ -32,8 +32,18 @@ const INGEST_VERSION = 3;
 
 // Declared column kinds from the typed event declaration (gen_events.js writes events.json); absent file means inference only.
 const DECLARED = (() => {
-    try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'events.json'), 'utf8')).kinds || {}; } catch { return {}; }
+    let text;
+    try { text = fs.readFileSync(path.join(__dirname, 'events.json'), 'utf8'); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
+    return JSON.parse(text).kinds || {};
 })();
+
+// The store's version is INGEST_VERSION plus a hash of the declared kinds, so a changed declaration rebuilds the store.
+const kindsHash = kinds => {
+    let h = 0;
+    for (const ch of JSON.stringify(kinds)) h = (h * 31 + ch.charCodeAt(0)) % 99991;
+    return h;
+};
+const versionOf = kinds => INGEST_VERSION * 100000 + kindsHash(kinds);
 const KEEP_TEXT = new Set(['build', 'text', 'msg']); // parse.js STRING_KEYS: never read true/false as 1/0 there
 const RESERVED = new Set(['game_id', 'log_id', 'seq', 't']);
 const BUSY_MS = 30000;
@@ -62,7 +72,7 @@ class Store {
         this.viewsDir = views;
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL');
         const version = this.db.prepare('PRAGMA user_version').get().user_version;
-        if (version !== INGEST_VERSION) this.rebuild();
+        if (version !== versionOf(kinds)) this.rebuild();
         this.loadKinds();
         this.refreshViews();
     }
@@ -81,7 +91,7 @@ class Store {
             CREATE TABLE columns (tbl TEXT, col TEXT, kind TEXT, PRIMARY KEY (tbl, col));
             CREATE INDEX games_log ON games (log_id);
             CREATE INDEX errors_game ON errors (game_id);
-            PRAGMA user_version = ${INGEST_VERSION};
+            PRAGMA user_version = ${versionOf(this.declared)};
             COMMIT`);
     }
 
@@ -310,4 +320,4 @@ function expand(args) {
     return out;
 }
 
-module.exports = { Store, DB, LOGS, INGEST_VERSION, q };
+module.exports = { Store, DB, LOGS, INGEST_VERSION, DECLARED, versionOf, q };

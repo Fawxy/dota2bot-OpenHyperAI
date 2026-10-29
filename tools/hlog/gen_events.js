@@ -13,9 +13,13 @@ const JSON_OUT = path.join(__dirname, 'events.json');
 const STORE_KIND = { num: 'num', bool: 'num', numstr: 'num', mixed: 'num', str: 'text' };
 const tableName = ev => `ev_${String(ev).replace(/\W/g, '_')}`;
 
+// events.ts is read as TypeScript, so Node must strip types itself (Node >= 22.18); the file must use erasable syntax only.
 function load() {
-    const { EVENTS } = require(SRC);
-    return EVENTS;
+    try {
+        return require(SRC).EVENTS;
+    } catch (e) {
+        throw new Error(`cannot read events.ts (needs Node >= 22.18 for type stripping, erasable syntax only; running ${process.version}): ${e.message}`);
+    }
 }
 
 function build(events) {

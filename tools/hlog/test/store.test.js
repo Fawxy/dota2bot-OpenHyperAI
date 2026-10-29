@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Store, INGEST_VERSION } = require('../store');
+const { Store, INGEST_VERSION, DECLARED, versionOf } = require('../store');
 
 const QUERY = fs.readFileSync(path.join(__dirname, '../queries/stack_attempts.sql'), 'utf8');
 
@@ -166,7 +166,7 @@ test('same content under a new mtime is not re-ingested; manifests name their ok
     s.db.exec('PRAGMA user_version = 1');
     s.close();
     s = new Store(db, { views: null });
-    assert.strictEqual(s.query('PRAGMA user_version')[0].user_version, INGEST_VERSION);
+    assert.strictEqual(s.query('PRAGMA user_version')[0].user_version, versionOf(DECLARED));
     assert.strictEqual(s.query('SELECT count(*) AS n FROM logs')[0].n, 0);
     assert.strictEqual(s.ingest(f), true);
 });
