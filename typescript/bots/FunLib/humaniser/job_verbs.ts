@@ -134,6 +134,8 @@ export interface AggroOpts {
     noCampAfter?: number;
     /** Seconds from the order to see the hit land. Default 2. */
     confirmFor?: number;
+    /** Each neutral the hit order goes to, as it is picked (hosts log whether the hit landed). */
+    onTarget?: (this: void, n: TaskAttacker) => void;
     /** Seconds added to every aggro second of the job; default one `Skill.timingError(bot)` draw per job. */
     timingError?: number;
     /** Seconds before the hit the order goes out; default estimated per target (`aggroLead`). */
@@ -243,7 +245,10 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
     const pick = () => {
         const n = campNeutral(bot, camp);
         if (n !== undefined && orderedAt === undefined) orderedAt = now();
-        if (n !== undefined) target = n;
+        if (n !== undefined) {
+            target = n;
+            o.onTarget?.(n);
+        }
         return n;
     };
     const hit = yield* E().Verbs.attackAndConfirm(bot, pick, {

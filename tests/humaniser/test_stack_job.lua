@@ -237,6 +237,19 @@ do
 	check("enemy hero in reach: hold lifted", enemy == false, tostring(enemy))
 end
 
+-- Hit telemetry (s4 A_on_1: two `no-aggro` misses could not tell a hit that never landed from a camp slow to react): the
+-- second the aimed neutral first lost HP (dmg) and the second a camp neutral first targeted the bot (react).
+do
+	local lines = stackRun({ onFrame = function(_, bot) for _, n in ipairs(NEUTRALS) do if n.target == bot then n.hp = n.hp - 1 end end end })
+	local l = lines[1]
+	local hit0, dmg, react = tonumber(field(l, "hit0")), tonumber(field(l, "dmg")), tonumber(field(l, "react"))
+	check("dmg and react logged at or after the hit order", hit0 ~= nil and dmg ~= nil and react ~= nil and dmg >= hit0 and react >= hit0, l)
+	-- The camp never turns and the hit never lands: both unknown, the attempt fails no-aggro.
+	lines = stackRun({ onFrame = function() for _, n in ipairs(NEUTRALS) do n.target = nil end end })
+	l = lines[1]
+	check("no hit: dmg=? react=?, no-aggro", field(l, "dmg") == "?" and field(l, "react") == "?" and (field(l, "why") or ""):find("no%-aggro") ~= nil, l)
+end
+
 -- A spell cast while the job runs is logged with its second (witch doctor's cask, s4solo1 3:5x).
 do
 	local cask = { GetName = function() return "witch_doctor_paralyzing_cask" end }

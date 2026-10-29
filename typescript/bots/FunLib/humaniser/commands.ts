@@ -464,7 +464,7 @@ export function HandleMessage(team: number, msg: Chat.ChatMessage): void {
     });
     lastSummary = `${parsed.name}${parsed.onlyPIDs !== undefined ? ` ->${parsed.onlyPIDs[0]}` : ""} by ${msg.pid}`;
     Chat.Defer("commands", `${lastSummary} ${msg.text}`);
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"cmd"> = [
         ["by", msg.pid],
         ["team", team],
         ["name", parsed.name],

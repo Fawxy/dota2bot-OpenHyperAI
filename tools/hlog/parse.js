@@ -27,6 +27,8 @@ function parseFields(text) {
 
 /** One console line -> { line: 'event' | 'start' | 'summary' | 'error', ... } or undefined. Events keep their fields in `e`. */
 function parseLine(line) {
+    // dotactl's own fact lines can quote console output (ev=cmd out="... [HEV] t=..."); that text is not an event.
+    if (line.includes('[DOTACTL] ')) return undefined;
     const hev = line.indexOf('[HEV] ');
     if (hev >= 0) {
         const f = parseFields(line.slice(hev + 6));

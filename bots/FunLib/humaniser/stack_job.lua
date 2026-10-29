@@ -641,11 +641,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue90
+            local __continue95
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue90 = true
+                    __continue95 = true
                     break
                 end
                 local name = (string.gsub(
@@ -655,7 +655,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue90 = true
+                    __continue95 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -665,9 +665,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue90 = true
+                __continue95 = true
             until true
-            if not __continue90 then
+            if not __continue95 then
                 break
             end
         end
@@ -753,7 +753,8 @@ ____exports.SETTINGS = {
     PreemptAfter = 1,
     ExitTowardLane = true,
     WatchUntil = 5,
-    AwayMax = 25
+    AwayMax = 25,
+    FarEnd = 3
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local function override(key)
@@ -917,6 +918,14 @@ function ____exports.Plan(bot, data, stand, minute, a)
         exitPath = ____exports.ExitPath(sp, data),
         exitUntil = start + 60 + t.StackExitUntil,
         arrive = r.JobArrive,
+        onTarget = function(n)
+            local u = n
+            if a.aim == u then
+                return
+            end
+            a.aim = u
+            a.aimHp = u:GetHealth()
+        end,
         onAggro = function(info)
             a.before = CampJobs.Exec.NeutralsInBox(bot, data.campIdx)
             a.aggro = info.confirmedAt - start
@@ -947,7 +956,7 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
     local spawnCheck = a.minute * 60 + 60
     local outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt
     local stopped = false
-    while DotaTime() < spawnCheck + ____exports.SETTINGS.WatchUntil do
+    while DotaTime() < math.min(spawnCheck + ____exports.SETTINGS.WatchUntil, a.startedAt + ____exports.SETTINGS.AwayMax - 0.5) do
         if not bot:IsAlive() then
             return {success = false, reason = "dead"}
         end
@@ -995,6 +1004,15 @@ local function track(bot, a)
         end
     end
     sample59(bot, a)
+    if a.hit0 ~= nil then
+        local n = a.aim
+        if a.dmg == nil and n ~= nil and not n:IsNull() and (not n:IsAlive() or n:GetHealth() < (a.aimHp or 0)) then
+            a.dmg = sec(a)
+        end
+        if a.react == nil and CampJobs.Exec.NeutralTargets(bot) then
+            a.react = sec(a)
+        end
+    end
     if a.aggro ~= nil then
         a.lane = math.max(
             a.lane or 0,
@@ -1094,6 +1112,8 @@ local function finish(bot, a, result)
             {"strict59", a.strict59 or "?"},
             {"arr", a.arr or "?"},
             {"hit0", a.hit0 or "?"},
+            {"dmg", a.dmg or "?"},
+            {"react", a.react or "?"},
             {"exit", a.exitAt or "?"},
             {"hpa", a.hpa or "?"},
             {"hpe", a.hpe or "?"},
@@ -1128,10 +1148,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue105
+            local __continue110
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue105 = true
+                    __continue110 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -1155,7 +1175,7 @@ function ____exports.Desire(bot)
                 if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
                     return skip(gateWhy[pid] or "late")
                 end
-                if minute * 60 + 60 + ____exports.SETTINGS.WatchUntil - now > ____exports.SETTINGS.AwayMax then
+                if minute * 60 + 60 + ____exports.SETTINGS.FarEnd - now > ____exports.SETTINGS.AwayMax then
                     return skip("far")
                 end
                 local why = ____exports.Gate(bot)
@@ -1190,7 +1210,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue105 then
+            if not __continue110 then
                 break
             end
         end

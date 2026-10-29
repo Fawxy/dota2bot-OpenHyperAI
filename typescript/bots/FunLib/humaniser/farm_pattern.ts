@@ -482,7 +482,7 @@ function log(bot: Unit, event: string, trip: Trip, extra: [string, any][] = []):
         ["leaveBy", fmt(trip.leaveBy)],
         ...extra,
     ];
-    Telemetry.Event(event, fields);
+    Telemetry.EventUntyped(event, fields);
     const parts: string[] = [];
     for (const [k, v] of fields) parts.push(`${k}=${tostring(v)}`);
     HDebug.Log("farm", `${event} ${parts.join(" ")}`);
@@ -503,7 +503,7 @@ function adopt(bot: Unit, trip: Trip, plan: CampPlan): boolean {
 }
 
 /** Starts a trip, or returns why not (with the numbers behind the reason) for farm_gate. */
-function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, [string, any][]]> {
+function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, Telemetry.Fields<"farm_gate">]> {
     const s = Settings();
     const gate = StartGate(bot, now);
     if (gate !== undefined) return $multi(gate, [["lvl", bot.GetLevel()], ["hp", fmt(hpOf(bot))], ["mode", HDebug.ModeName(bot.GetActiveMode())]]);
@@ -534,7 +534,7 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, [
 let gateLogged: Record<number, { why: string; at: number }> = {};
 
 /** One farm_gate line per reason change (and every GateLogEvery while it holds), so a game shows why cores stayed in lane. */
-function noteGate(bot: Unit, why: string, fields: [string, any][], now: number): void {
+function noteGate(bot: Unit, why: string, fields: Telemetry.Fields<"farm_gate">, now: number): void {
     if (!Telemetry.IsEnabled() && !HDebug.IsEnabled()) return;
     if (why === "not-core" || why === "unit") return;
     const pid = bot.GetPlayerID();

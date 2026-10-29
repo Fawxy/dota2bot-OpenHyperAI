@@ -58,6 +58,9 @@ export const SETTINGS = {
      *  walk and Lead come before the hit and the watch after it is fixed, so a far camp cannot fit: s4 A_on_4 3:31, lich
      *  from out of lane to camp 23 (a 14.6 s walk), away 30.7. Such a minute is skipped as `far`. */
     AwayMax: 25,
+    /** Seconds after :00 a stacked camp is usually seen and the watch ends (s4: :02-:04). The far rule plans with it, not
+     *  the worst case (:00 + WatchUntil, which skipped a 23 s job at 3:39 in s4r2); the watch is cut at AwayMax instead. */
+    FarEnd: 3,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -125,6 +128,13 @@ export interface Attempt {
      *  before walking off). */
     arr?: number;
     hit0?: number;
+    /** The neutral the hit order went to and its HP then; the second it first lost HP (the hit landed) and the second a camp
+     *  neutral first targeted the bot (the camp turned): s4 A_on_1's two `no-aggro` misses could not tell a hit that never
+     *  landed from a camp slow to react. */
+    aim?: Unit;
+    aimHp?: number;
+    dmg?: number;
+    react?: number;
     exitAt?: number;
     hpa?: number;
     hpe?: number;
@@ -288,6 +298,12 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
+        onTarget: n => {
+            const u = n as unknown as Unit;
+            if (a.aim === u) return;
+            a.aim = u;
+            a.aimHp = u.GetHealth();
+        },
         onAggro: info => {
             a.before = CampJobs.Exec.NeutralsInBox(bot, data.campIdx);
             a.aggro = info.confirmedAt - start;
@@ -317,7 +333,7 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
     const spawnCheck = a.minute * 60 + 60;
     const outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt;
     let stopped = false;
-    while (DotaTime() < spawnCheck + SETTINGS.WatchUntil) {
+    while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + SETTINGS.AwayMax - 0.5)) {
         if (!bot.IsAlive()) return { success: false, reason: "dead" };
         if (CampJobs.Exec.BoxInSight(bot, a.campIdx)) {
             if (!stopped) bot.Action_MoveToLocation(bot.GetLocation());
@@ -372,6 +388,11 @@ function track(bot: Unit, a: Attempt): void {
         }
     }
     sample59(bot, a);
+    if (a.hit0 !== undefined) {
+        const n = a.aim;
+        if (a.dmg === undefined && n !== undefined && !n.IsNull() && (!n.IsAlive() || n.GetHealth() < (a.aimHp ?? 0))) a.dmg = sec(a);
+        if (a.react === undefined && CampJobs.Exec.NeutralTargets(bot)) a.react = sec(a);
+    }
     if (a.aggro !== undefined) a.lane = math.max(a.lane ?? 0, laneNear(bot, a));
 }
 
@@ -435,7 +456,7 @@ function describe(bot: Unit, a: Attempt): string {
     return parts.join(",");
 }
 
-function log(bot: Unit, minute: number, fields: [string, any][]): void {
+function log(bot: Unit, minute: number, fields: Telemetry.Fields<"stack">): void {
     Telemetry.Event("stack", [["pid", bot.GetPlayerID()], ["min", minute], ...fields]);
 }
 
@@ -489,6 +510,8 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["strict59", a.strict59 ?? "?"],
         ["arr", a.arr ?? "?"],
         ["hit0", a.hit0 ?? "?"],
+        ["dmg", a.dmg ?? "?"],
+        ["react", a.react ?? "?"],
         ["exit", a.exitAt ?? "?"],
         ["hpa", a.hpa ?? "?"],
         ["hpe", a.hpe ?? "?"],
@@ -531,7 +554,7 @@ export function Desire(bot: Unit): number {
         const walk = travel(bot, stand);
         if (now < aggroAt - walk - SETTINGS.Lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
-        if (minute * 60 + 60 + SETTINGS.WatchUntil - now > SETTINGS.AwayMax) return skip("far");
+        if (minute * 60 + 60 + SETTINGS.FarEnd - now > SETTINGS.AwayMax) return skip("far");
         const why = Gate(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;

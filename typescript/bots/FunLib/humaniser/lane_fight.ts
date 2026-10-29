@@ -267,10 +267,10 @@ function touch(s: FightState, key: string, now: number): Instance {
     return inst;
 }
 
-function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number, extra?: [string, any][]): void {
+function gate(bot: Unit, inst: Instance, reason: string, targetPid?: number, extra?: Telemetry.Fields<"lanefight_gate">): void {
     if (inst.gates[reason] === true) return;
     inst.gates[reason] = true;
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"lanefight_gate"> = [
         ["pid", bot.GetPlayerID()],
         ["gate", reason],
     ];
@@ -540,7 +540,7 @@ interface StartOpts {
     initiating?: boolean;
 }
 
-function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: [string, any][], opts: StartOpts): void {
+function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Instance, now: number, detail: Telemetry.Fields<"lanefight_start">, opts: StartOpts): void {
     inst.started = true;
     s.spent = [inst];
     s.tookOver = false;
@@ -581,7 +581,7 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     // The bot is usually in laning when the floor is first posted; team_roam takes over at the next round.
     s.offModeSince = now;
     if (phase !== "wait_partner") claim(bot, phase);
-    const fields: [string, any][] = [["pid", bot.GetPlayerID()], ["phase", phase], ["target", s.targetPid]];
+    const fields: Telemetry.Fields<"lanefight_start"> = [["pid", bot.GetPlayerID()], ["phase", phase], ["target", s.targetPid]];
     for (const d of detail) fields.push(d);
     Telemetry.Event("lanefight_start", fields);
     if (phase === "commit") {
@@ -672,7 +672,7 @@ function partnerAbandoned(s: FightState, target: Unit | undefined, now: number):
 
 /** What the abandoning partner was visibly doing, to tell a partner that backed off from one the checks missed. */
 function logAbandon(bot: Unit, s: FightState, target: Unit, a: Abandon): void {
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"lanefight_abandon"> = [
         ["pid", bot.GetPlayerID()],
         ["why", a.why],
         ["since", a.since],
@@ -1015,7 +1015,7 @@ function coordinate(bot: Unit, s: FightState, snap: LaneState.LaneSnapshot, now:
     if (target === undefined) return;
     const k = KillCheck.Check(bot, [p.unit], target, now);
     if (k === undefined || k.margin < LaneFightConfig.Settings().FollowMargin) {
-        const extra: [string, any][] = [["margin", k?.margin ?? 0]];
+        const extra: Telemetry.Fields<"lanefight_gate"> = [["margin", k?.margin ?? 0]];
         if (k?.reason !== undefined && k.reason !== "burst") extra.push(["why", k.reason]);
         gate(bot, f.inst, "follow-margin", f.targetPid, extra);
         return;

@@ -111,7 +111,7 @@ local adapter = {
     attackClock = function() return GameTime() end,
     now = function() return DotaTime() end,
     log = function(tag, msg) return HDebug.Log(tag, msg) end,
-    event = function(name, fields) return Telemetry.Event(name, fields) end,
+    event = function(name, fields) return Telemetry.EventUntyped(name, fields) end,
     vector = function(x, y, z) return Vector(x, y, z) end,
     enabled = function() return ____exports.Enabled() or oursOn() end
 }

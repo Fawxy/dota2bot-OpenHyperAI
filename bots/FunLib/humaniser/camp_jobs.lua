@@ -1402,6 +1402,7 @@ local function stackAllowed(bot, job)
     end
     return true, "ok"
 end
+--- The partner keys shared by lane_job_hold and lane_job_abort.
 local function partnerFields(bot, s)
     local ____temp_23
     if s ~= nil then

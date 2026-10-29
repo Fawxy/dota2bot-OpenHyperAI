@@ -16,6 +16,7 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Utils from "bots/FunLib/utils";
+import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
 export const SCHEMA = 2;
 
@@ -135,7 +136,18 @@ export function SetSink(fn: ((this: void, line: string) => void) | undefined): v
     sink = fn;
 }
 
-export function Event(ev: string, fields: [string, any][]): void {
+type Kinds = { num: number; str: string; numstr: string; bool: boolean; mixed: number | string };
+type Events = typeof EVENTS;
+/** One [key, value] pair of event K: only declared keys, each with its declared value type (undefined and null are skipped on print). */
+type PairOf<G> = { [F in keyof G]: [F, Kinds[G[F] & keyof Kinds] | undefined | null] }[keyof G];
+export type Pair<K extends EventName> = PairOf<Events[K]>;
+type UnitPair = PairOf<typeof UNIT>;
+type BotPair = PairOf<typeof BOT>;
+type LanePair = Extract<UnitPair, ["ln" | "s" | "ld", any]>;
+export type Fields<K extends EventName> = Pair<K>[];
+
+/** For names built at run time (farm_pattern trips, the engine adapter); listed as untyped in tools/hlog/EVENTS.md. */
+export function EventUntyped(ev: string, fields: [string, any][]): void {
     if (!IsEnabled()) return;
     const line = FormatLine(ev, fields);
     if (sink !== undefined) {
@@ -144,6 +156,11 @@ export function Event(ev: string, fields: [string, any][]): void {
     }
     const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;
     (rawPrint ?? print)(line);
+}
+
+/** Typed event: the name and every key must be declared in events.ts. The printed line is exactly what EventUntyped prints. */
+export function Event<K extends EventName>(ev: K, fields: Fields<K>): void {
+    EventUntyped(ev, fields as [string, any][]);
 }
 
 type AnyFn = (this: void, ...args: any[]) => any;
@@ -338,7 +355,7 @@ function pct(v: number, max: number): number {
 
 // Lane-front fields (slice 2b, old request H4). Engine lane amounts are in the calling script's team frame (console.9055745679,
 // LaneState refresh), so the log carries absolute amounts, 0 at Radiant's ancient, whichever team's script wrote the line.
-const LANES: [Lane, string][] = [[Lane.Top, "top"], [Lane.Mid, "mid"], [Lane.Bot, "bot"]];
+const LANES: [Lane, "top" | "mid" | "bot"][] = [[Lane.Top, "top"], [Lane.Mid, "mid"], [Lane.Bot, "bot"]];
 
 function absAlong(lane: Lane, loc: Vector): { amount: number; distance: number } {
     const r = GetAmountAlongLane(lane, loc);
@@ -346,7 +363,7 @@ function absAlong(lane: Lane, loc: Vector): { amount: number; distance: number }
 }
 
 /** ln (nearest lane), s (absolute amount along it) and ld (distance from it) for one hero. */
-function laneFields(loc: Vector): [string, any][] {
+function laneFields(loc: Vector): LanePair[] {
     let best: { amount: number; distance: number } | undefined;
     let name = "";
     for (const [lane, n] of LANES) {
@@ -365,12 +382,12 @@ function laneFields(loc: Vector): [string, any][] {
 
 /** One ev=front per team: the team's wave front per lane, absolute amount and map position. */
 function trackFront(team: number): void {
-    const fields: [string, any][] = [["team", team]];
+    const fields: Fields<"front"> = [["team", team]];
     for (const [lane, n] of LANES) {
         const loc = GetLaneFrontLocation(team, lane, 0);
         fields.push([n, absAlong(lane, loc).amount]);
-        fields.push([`${n}x`, math.floor(loc.x)]);
-        fields.push([`${n}y`, math.floor(loc.y)]);
+        fields.push([`${n}x` as const, math.floor(loc.x)]);
+        fields.push([`${n}y` as const, math.floor(loc.y)]);
     }
     Event("front", fields);
 }
@@ -379,11 +396,11 @@ function trackFront(team: number): void {
 const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
 const guardedFront = Guard("Telemetry.Front", trackFront);
 
-function unitFields(unit: Unit): [string, any][] {
+function unitFields(unit: Unit): UnitPair[] {
     const loc = unit.GetLocation();
     const stats = unit as unknown as StatsUnit;
     const target = unit.GetAttackTarget();
-    const fields: [string, any][] = [
+    const fields: UnitPair[] = [
         ["x", math.floor(loc.x)],
         ["y", math.floor(loc.y)],
         ["alive", unit.IsAlive()],
@@ -401,8 +418,8 @@ function unitFields(unit: Unit): [string, any][] {
     return fields;
 }
 
-function botFields(bot: Unit, ctx: BotContext | undefined): [string, any][] {
-    const fields = unitFields(bot);
+function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
+    const fields: BotPair[] = unitFields(bot);
     fields.push(["mode", HDebug.ModeName(bot.GetActiveMode())]);
     fields.push(["d", bot.GetActiveModeDesire()]);
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
@@ -531,7 +548,7 @@ function reportMarks(bot: Unit, s: BotState, provider: ContextProvider | undefin
             if (Get().MarkAck) bot.ActionImmediate_Chat(`mark ${m.n} saved`, false);
         }
         const ctx = provider !== undefined ? provider(bot) : undefined;
-        const fields: [string, any][] = [
+        const fields: Fields<"mark_state"> = [
             ["n", m.n],
             ["pid", pid],
             ["hero", heroName(bot)],
@@ -875,13 +892,13 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         const n = ok && type(dn) === "number" ? rise(c.denies, e.GetPlayerID(), dn as number) : 0;
         if (n > 0) claimDeaths(deaths, e, n, "deny");
     }
-    const cores: [Unit, number][] = [];
+    const cores: [Unit, 1 | 2 | 3][] = [];
     for (const h of heroes) {
         const pos = LaneConfig.PositionOf(h);
-        if (pos !== undefined && pos >= 1 && pos <= 3) cores.push([h, pos]);
+        if (pos !== undefined && pos >= 1 && pos <= 3) cores.push([h, pos as 1 | 2 | 3]);
     }
     for (const d of deaths) {
-        const fields: [string, any][] = [
+        const fields: Fields<"creep_death"> = [
             ["team", team],
             ["kind", d.seen.kind],
             ["x", math.floor(d.seen.x)],
@@ -901,10 +918,10 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             const dist = deathDistance(core, d);
             if (dist > DEATH_NEAR) continue;
             const pid = core.GetPlayerID();
-            fields.push([`p${pos}d`, math.floor(dist)]);
-            fields.push([`p${pos}r`, core.GetAttackRange()]);
-            fields.push([`p${pos}t`, c.target[pid] === d.creep]);
-            if (c.attackOn[pid] === d.creep) fields.push([`p${pos}a`, gameNow - c.attackAt[pid]]);
+            fields.push([`p${pos}d` as const, math.floor(dist)]);
+            fields.push([`p${pos}r` as const, core.GetAttackRange()]);
+            fields.push([`p${pos}t` as const, c.target[pid] === d.creep]);
+            if (c.attackOn[pid] === d.creep) fields.push([`p${pos}a` as const, gameNow - c.attackAt[pid]]);
         }
         Event("creep_death", fields);
         c.dead.set(d.creep, d.seen);
@@ -955,7 +972,7 @@ function snapHumans(bot: Unit, now: number): void {
         guardedHero(member, hs, now, slow);
         if (slow) {
             hs.snapAt = now;
-            const fields: [string, any][] = [
+            const fields: Fields<"snap"> = [
                 ["pid", member.GetPlayerID()],
                 ["human", true],
             ];
@@ -988,7 +1005,7 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
     guardedCreeps(bot, now);
     if (slow) {
         s.snapAt = now;
-        const fields: [string, any][] = [["pid", bot.GetPlayerID()]];
+        const fields: Fields<"snap"> = [["pid", bot.GetPlayerID()]];
         for (const f of botFields(bot, provider !== undefined ? provider(bot) : undefined)) fields.push(f);
         Event("snap", fields);
     }

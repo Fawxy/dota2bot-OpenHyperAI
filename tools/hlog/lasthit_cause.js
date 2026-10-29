@@ -1,130 +1,67 @@
 // Where cores lose last hits (BACKLOG 1.12, WO-025) from ev=creep_death: per core (lineup position 1-3), the enemy lane
 // creeps that died near it, who got them, and what the core was doing. Also the WO-025 telemetry gates G1-G6: a game that
-// fails G2-G6 is left out of the summary, and so is a core that fails G1.
+// fails G2-G6 is left out of the summary, and so is a core that fails G1. The counting is the named queries `@lasthit_cores`
+// and `@lasthit_gates` (queries/); this file holds the gate thresholds, the per-position summary and the printing.
 // Usage: node lasthit_cause.js <manifest | log...> [--until 600] [--json]
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const { parseLog } = require('./parse');
-const { series, laneLabel } = require('./dynamic');
 
 // WO-025 (`judgement`): a death counts for a core within R; "late" if its own attack on the creep started under LATE_S
-// before the death; "idle in range" if within its attack range + REACH and not attacking the creep.
+// before the death; "idle in range" if within its attack range + REACH and not attacking the creep. The values are in
+// queries/lasthit_cores.sql (1000, 0.6, 300), kept here for the --json output.
 const C = { R: 1000, LATE_S: 0.6, REACH: 300 };
 // WO-025 gates (`judgement`): G1 attributed share of a core's own last hits; G2 revived share of deaths (fog deaths);
 // G4 attributed share of the other team's denies; G5 share of a core's own last hits it was attacking (handle identity and
 // clock), with no negative attack age; G6 deaths per team, against EC-004's ~76-84 lane creeps per lane by 10:00.
-const GATE = { G1: 0.9, G2: 0.05, G4: 0.5, G4_MIN: 5, G5: 0.8, A_MAX: 2, G6: 270 };
+const GATE = { G1: 0.9, G2: 0.05, G4: 0.5, G4_MIN: 5, G5: 0.8, G6: 270 };
 const KILLERS = ['core_lh', 'ally_lh', 'enemy_deny', 'creep_or_tower'];
 const STATES = ['late', 'early', 'idle_in_range', 'away'];
 
-/** Lineup position per pid from the last ev=bot pos= (as dynamic.js lpos). */
-function positions(game) {
-    const out = {};
-    for (const b of Object.values(game.bots)) {
-        const p = (b.profiles || []).filter(e => typeof e.pos === 'number').pop();
-        if (p && b.team !== undefined) out[`${b.team}:${p.pos}`] = b.pid;
+/**
+ * One game's cores and gates from the log store: `store` holds the log (Store.ingestAll), `file` is its path as in games.file.
+ * Returns { cores: { r1..r3, d1..d3 }, gates, failed, keep } (the shape lasthit_cause.js had before it moved into SQL).
+ */
+function lasthitCause(store, file, game = 1, until = 600) {
+    if (!store.query('SELECT 1 FROM games WHERE file = ? AND game = ?', file, game).length) {
+        throw new Error(`lasthitCause: ${file} game ${game} is not in the store (the path must be absolute, as in games.file; ingest it first)`);
     }
-    return out;
-}
-
-/** Modal lane of a bot's snapshots in [a, b) s, ignoring base/other. */
-function homeLane(s, a, b) {
-    const n = {};
-    for (const snap of s.snaps) {
-        if (snap.t < a || snap.t >= b || snap.alive === 0) continue;
-        const L = laneLabel([snap.x, snap.y]);
-        if (L !== 'base' && L !== 'other') n[L] = (n[L] || 0) + 1;
+    const p = { file, game, until };
+    const cores = {};
+    for (const r of store.query(fs.readFileSync(path.join(__dirname, 'queries', 'lasthit_cores.sql'), 'utf8'), p)) {
+        const o = {
+            pid: r.pid, team: r.team, pos: r.pos, hero: r.hero ?? undefined, lane: r.lane ?? undefined, near: r.near,
+            laneDeaths: r.lane_deaths, absent: r.absent,
+            killers: { core_lh: r.core_lh, ally_lh: r.ally_lh, enemy_deny: r.enemy_deny, creep_or_tower: r.creep_or_tower },
+            states: { late: r.late, early: r.early, idle_in_range: r.idle_in_range, away: r.away },
+            lh: r.lh, attributed: r.attributed,
+        };
+        o.conversion = o.near ? o.killers.core_lh / o.near : undefined;
+        cores[`${r.team === 2 ? 'r' : 'd'}${r.pos}`] = o;
     }
-    return Object.entries(n).sort((x, y) => y[1] - x[1])[0]?.[0];
-}
-
-/** What the core was doing when a creep it did not get died within R of it. */
-function coreState(e, pos) {
-    const a = e[`p${pos}a`], t = e[`p${pos}t`];
-    if (typeof a === 'number' && a >= 0) return a >= C.LATE_S ? 'early' : 'late';
-    if (t === 1 || t === true) return 'late';
-    return e[`p${pos}d`] <= (e[`p${pos}r`] ?? 150) + C.REACH ? 'idle_in_range' : 'away';
-}
-
-function lasthitCause(game, until = 600) {
-    const S = series(game);
-    const pid = positions(game);
-    const deaths = game.events.filter(e => e.ev === 'creep_death' && e.t < until);
-    const out = {};
-    for (const team of [2, 3]) {
-        for (const pos of [1, 2, 3]) {
-            const me = pid[`${team}:${pos}`];
-            if (me === undefined || !S[me]) continue;
-            const lane = homeLane(S[me], 60, until);
-            const r = { pid: me, team, pos, hero: S[me].hero, lane, near: 0, laneDeaths: 0, absent: 0, killers: {}, states: {} };
-            KILLERS.forEach(k => (r.killers[k] = 0));
-            STATES.forEach(k => (r.states[k] = 0));
-            for (const e of deaths) {
-                if (e.team !== team) continue;
-                const d = e[`p${pos}d`];
-                const near = typeof d === 'number' && d <= C.R;
-                const inLane = lane !== undefined && laneLabel([e.x, e.y]) === lane;
-                if (inLane) r.laneDeaths++;
-                if (!near) {
-                    if (inLane) r.absent++;
-                    continue;
-                }
-                r.near++;
-                const by = e.by;
-                const killer = by === me ? 'core_lh' : by === 'deny' ? 'enemy_deny' : by === 'none' || by === undefined ? 'creep_or_tower' : 'ally_lh';
-                r.killers[killer]++;
-                if (killer !== 'core_lh') r.states[coreState(e, pos)]++;
-            }
-            r.conversion = r.near ? r.killers.core_lh / r.near : undefined;
-            // G1: attributed last hits against the core's own counter.
-            const snaps = S[me].snaps.filter(s => s.t <= until && typeof s.lh === 'number');
-            r.lh = snaps.length ? snaps[snaps.length - 1].lh : 0;
-            r.attributed = deaths.filter(e => e.by === me).length;
-            out[`${team === 2 ? 'r' : 'd'}${pos}`] = r;
-        }
-    }
-    const all = deaths.length;
-    const revives = game.events.filter(e => e.ev === 'creep_revive' && e.t < until).length;
-    // G4: per team, denies attributed on its deaths against the other team's own deny counter.
-    const G4 = {};
-    for (const team of [2, 3]) {
-        const dn = Object.values(S).filter(b => b.team === 5 - team).reduce((n, b) => n + lastAt(b, 'dn', until), 0);
-        G4[team] = dn >= GATE.G4_MIN ? deaths.filter(e => e.team === team && e.by === 'deny').length / dn : undefined;
-    }
-    // G5: a core's own last hits should be on the creep it was attacking.
-    let own = 0, onIt = 0, negA = 0;
-    for (const e of deaths) {
-        for (const pos of [1, 2, 3]) if (typeof e[`p${pos}a`] === 'number' && e[`p${pos}a`] < 0) negA++;
-        const r = Object.values(out).find(x => x.pid === e.by && x.team === e.team);
-        if (!r || e[`p${r.pos}d`] === undefined) continue;
-        own++;
-        const a = e[`p${r.pos}a`], t = e[`p${r.pos}t`];
-        if (t === 1 || t === true || (typeof a === 'number' && a >= 0 && a <= GATE.A_MAX)) onIt++;
-    }
-    const G6 = Math.max(0, ...[2, 3].map(team => deaths.filter(e => e.team === team).length));
+    const q = store.query(fs.readFileSync(path.join(__dirname, 'queries', 'lasthit_gates.sql'), 'utf8'), p)[0];
+    const G4 = {
+        2: q.dn_d >= GATE.G4_MIN ? q.deny_r / q.dn_d : undefined,
+        3: q.dn_r >= GATE.G4_MIN ? q.deny_d / q.dn_r : undefined,
+    };
     const gates = {
-        G1: Object.fromEntries(Object.entries(out).map(([k, r]) => [k, r.lh ? r.attributed / r.lh : undefined])),
-        G2: all ? revives / all : 0,
-        G3: game.events.filter(e => e.ev === 'lua_error' && /^Telemetry/.test(String(e.where))).length,
+        G1: Object.fromEntries(Object.entries(cores).map(([k, r]) => [k, r.lh ? r.attributed / r.lh : undefined])),
+        G2: q.deaths ? q.revives / q.deaths : 0,
+        G3: q.telemetry_errors,
         G4,
-        G5: { share: own ? onIt / own : undefined, negA },
-        G6,
+        G5: { share: q.own ? q.on_it / q.own : undefined, negA: q.neg_a },
+        G6: Math.max(0, q.deaths_r, q.deaths_d),
     };
     const failed = [];
     if (gates.G2 >= GATE.G2) failed.push('G2');
     if (gates.G3 > 0) failed.push('G3');
     if (Object.values(G4).some(v => v !== undefined && v < GATE.G4)) failed.push('G4');
-    if (negA > 0 || (own && onIt / own < GATE.G5)) failed.push('G5');
-    if (G6 > GATE.G6) failed.push('G6');
-    for (const [k, r] of Object.entries(out)) r.keep = r.lh > 0 && gates.G1[k] >= GATE.G1;
-    return { cores: out, gates, failed, keep: failed.length === 0 };
-}
-
-/** Last value of a snapshot counter at or before until (0 if none). */
-function lastAt(b, key, until) {
-    const v = b.snaps.filter(s => s.t <= until && typeof s[key] === 'number');
-    return v.length ? v[v.length - 1][key] : 0;
+    if (q.neg_a > 0 || (q.own && q.on_it / q.own < GATE.G5)) failed.push('G5');
+    if (gates.G6 > GATE.G6) failed.push('G6');
+    for (const [k, r] of Object.entries(cores)) r.keep = r.lh > 0 && gates.G1[k] >= GATE.G1;
+    return { cores, gates, failed, keep: failed.length === 0 };
 }
 
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
@@ -167,11 +104,16 @@ function main(argv) {
         process.exit(2);
     }
     const until = Number(opt('until') ?? 600);
-    const games = gamesFrom(files);
-    const results = games.map(([f, g]) => ({ file: f, ...lasthitCause(g, until) }));
+    const { Store, DB } = require('./store'); // here, so steals.js (gamesFrom, logsFrom) does not load SQLite
+    const store = new Store(DB);
+    for (const f of store.ingestAll(files).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
+    const results = files.map(f => path.resolve(f))
+        .filter(f => store.query('SELECT 1 FROM games g WHERE g.file = ? AND g.game = 1 AND EXISTS (SELECT 1 FROM ev_bot b WHERE b.game_id = g.game_id)', f).length)
+        .map(f => ({ file: f, ...lasthitCause(store, f, 1, until) }));
     const summary = summarise(results);
     if (argv.includes('--json')) return console.log(JSON.stringify({ C, until, results, summary }, null, 1));
-    for (const g of results) console.log(`${g.file}\n  ${g.keep ? 'kept' : 'DROPPED ' + g.failed.join(',')} gates ${JSON.stringify(g.gates)}`);
+    for (const g of results) console.log(`${g.file}
+  ${g.keep ? 'kept' : 'DROPPED ' + g.failed.join(',')} gates ${JSON.stringify(g.gates)}`);
     const pct = ([m, s]) => `${(100 * m).toFixed(0)}% (${(100 * s).toFixed(0)})`;
     for (const [pos, row] of Object.entries(summary)) {
         console.log(`${pos} n=${row.n} lh@${until / 60} ${row.lh[0].toFixed(1)} conversion ${pct(row.conversion)} absent-of-lane ${pct(row.absent_of_lane)}`);
@@ -181,4 +123,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { lasthitCause, summarise, coreState, gamesFrom, logsFrom, C, GATE };
+module.exports = { lasthitCause, summarise, gamesFrom, logsFrom, C, GATE };
