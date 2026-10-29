@@ -101,7 +101,7 @@ const adapter: Lib.Adapter = {
     // DotaTime, the clock camp-job plans are timed in; the runner and verbs only ever use differences of it.
     now: () => DotaTime(),
     log: (tag, msg) => HDebug.Log(tag, msg),
-    event: (name, fields) => Telemetry.Event(name, fields as [string, any][]),
+    event: (name, fields) => Telemetry.EventUntyped(name, fields as [string, any][]),
     vector: (x, y, z) => Vector(x, y, z),
     enabled: () => Enabled(),
 };

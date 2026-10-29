@@ -28,7 +28,12 @@ const DB = path.join(os.homedir(), '.dotactl', 'hlog.sqlite');
 const LOGS = path.join(os.homedir(), '.dotactl', 'logs');
 const VIEWS = path.join(__dirname, 'views');
 // Bump when ingest changes what it writes or the tables' shape: the store is emptied and rebuilt on its next open.
-const INGEST_VERSION = 2;
+const INGEST_VERSION = 3;
+
+// Declared column kinds from the typed event declaration (gen_events.js writes events.json); absent file means inference only.
+const DECLARED = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'events.json'), 'utf8')).kinds || {}; } catch { return {}; }
+})();
 const KEEP_TEXT = new Set(['build', 'text', 'msg']); // parse.js STRING_KEYS: never read true/false as 1/0 there
 const RESERVED = new Set(['game_id', 'log_id', 'seq', 't']);
 const BUSY_MS = 30000;
@@ -49,8 +54,8 @@ const fieldKey = k => (RESERVED.has(k.toLowerCase()) ? `f_${k}` : k);
 const bind = v => (typeof v === 'number' && Number.isSafeInteger(v) ? BigInt(v) : v);
 
 class Store {
-    /** `kinds` ({table: {col: 'num' | 'text'}}) overrides inference; typed event declarations will feed it. */
-    constructor(file = DB, { kinds = {}, views = VIEWS } = {}) {
+    /** `kinds` ({table: {col: 'num' | 'text'}}) overrides inference; the default is the typed event declaration (events.json). */
+    constructor(file = DB, { kinds = DECLARED, views = VIEWS } = {}) {
         if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
         this.db = new DatabaseSync(file, { timeout: BUSY_MS });
         this.declared = kinds;

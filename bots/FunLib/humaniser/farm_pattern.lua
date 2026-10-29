@@ -552,7 +552,7 @@ function log(bot, event, trip, extra)
         },
         unpack(extra)
     }
-    Telemetry.Event(event, fields)
+    Telemetry.EventUntyped(event, fields)
     local parts = {}
     for ____, ____value in ipairs(fields) do
         local k = ____value[1]

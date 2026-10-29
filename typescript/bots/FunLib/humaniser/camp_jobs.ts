@@ -178,7 +178,7 @@ let covering: Record<number, { since: number; via: string; partner: number; kind
 /** Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling. */
 let preContestRest: Record<number, { lane: number; until: number }> = {};
 /** A mode-end abort waiting to be logged: farm's OnEnd runs while farm is still the active mode, so the mode that took over is read on a later tick. */
-let pendingModeEnd: Record<number, { fields: [string, any][]; at: number }> = {};
+let pendingModeEnd: Record<number, { fields: Telemetry.Fields<"lane_job_abort">; at: number }> = {};
 
 export function ResetCache(): void {
     jobs = {};
@@ -386,7 +386,7 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
     if (executor !== undefined && executor.Owns(bot, job)) job.sdk = true;
     jobs[bot.GetPlayerID()] = job;
     LanePlanner.Commit(bot, commitTech(job.kind));
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"lane_job_start"> = [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -710,7 +710,7 @@ function close(bot: Unit, job: Job, phase: "done" | "return", grade: string): vo
  * Aborts go on the `job-abort` line, which the console parser does not read, so safety aborts never count
  * against a camp's timing.
  */
-function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [string, any][] = [], deferLog = false): void {
+function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: Telemetry.Fields<"lane_job_abort"> = [], deferLog = false): void {
     FlushModeEnd(bot, true);
     const phase = job.phase;
     job.phase = "return";
@@ -728,7 +728,7 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"lane_job_abort"> = [
         ["pid", pid],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -737,8 +737,8 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: [s
         ["phase", phase],
         ["acted", job.acted === true],
         ["divert", job.peakDivert],
-        ...(job.preAggroAt !== undefined ? ([["pre", 1]] as [string, any][]) : []),
-        ...(job.take === true ? ([["take", 1]] as [string, any][]) : []),
+        ...(job.preAggroAt !== undefined ? ([["pre", 1]] as Telemetry.Fields<"lane_job_abort">) : []),
+        ...(job.take === true ? ([["take", 1]] as Telemetry.Fields<"lane_job_abort">) : []),
         ...extra,
     ];
     if (deferLog && Telemetry.IsEnabled()) pendingModeEnd[pid] = { fields, at: GameTime() };
@@ -782,7 +782,7 @@ function endContest(bot: Unit, job: Job, reason: string): void {
     if (pre === 1 && (reason === "enemy-in-lane" || reason === "no-pull")) {
         preContestRest[bot.GetPlayerID()] = { lane: bot.GetAssignedLane(), until: DotaTime() + settings().Timing.PreContestCooldown };
     }
-    const fields: [string, any][] = [
+    const fields: Telemetry.Fields<"lane_job_end"> = [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
@@ -823,7 +823,8 @@ function stackAllowed(bot: Unit, job: Job): LuaMultiReturn<[boolean, string]> {
     return $multi(true, "ok");
 }
 
-function partnerFields(bot: Unit, s: LaneState.LaneSnapshot | undefined): [string, any][] {
+/** The partner keys shared by lane_job_hold and lane_job_abort. */
+function partnerFields(bot: Unit, s: LaneState.LaneSnapshot | undefined): Extract<Telemetry.Pair<"lane_job_hold">, ["partner" | "php" | "pnear" | "pclose" | "ploss", any]>[] {
     const r = s !== undefined ? LaneRoles.ReadPartner(bot, s, LaneState.Enemies(bot, s.lane)) : undefined;
     if (r === undefined) return [];
     return [
@@ -1071,7 +1072,7 @@ function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: numbe
  * One lane_plan event per wave cycle and gate: why this bot did or did not start a pull in it. The gates are
  * re-checked every frame, so a bot that reads `far` early in the cycle may still reach the planner later in it.
  */
-function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: [string, any][]): void {
+function notePlan(bot: Unit, s: LaneState.LaneSnapshot, now: number, fields: Telemetry.Fields<"lane_plan">): void {
     if (!Telemetry.IsEnabled()) return;
     const pid = bot.GetPlayerID();
     const cycle = cycleOf(now);
@@ -1695,7 +1696,7 @@ function noteSupply(bot: Unit, job: Job, item: SupplyItem | undefined, state: st
         ["pid", bot.GetPlayerID()],
         ["item", item],
         ["state", state],
-        ...(reason !== undefined ? ([["reason", reason]] as [string, any][]) : []),
+        ...(reason !== undefined ? ([["reason", reason]] as Telemetry.Fields<"lane_job_supply">) : []),
         ["kind", LOG_KIND[job.kind]],
         ["phase", job.phase],
         ["hp", maxHP > 0 ? round3(bot.GetHealth() / maxHP) : -1],
@@ -1862,7 +1863,7 @@ function round3(v: number | undefined): number {
 }
 
 /** Whether the job's claims on other modes were still live when farm ended; FlushModeEnd adds the mode that took over. */
-function modeEndFields(bot: Unit, job: Job): [string, any][] {
+function modeEndFields(bot: Unit, job: Job): Telemetry.Fields<"lane_job_abort"> {
     if (!Telemetry.IsEnabled()) return [];
     return [
         ["competing", Intent.Competing(bot)],
