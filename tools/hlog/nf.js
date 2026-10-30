@@ -204,10 +204,37 @@ function stackInterrupted(s) {
     return why.startsWith('cancelled:') || why.startsWith('preempted:mode=') || why === 'preempted:never_started';
 }
 
+const QUERIES = path.join(__dirname, 'queries');
+
+/**
+ * Slice 5 (L.1) keys per lineup core position N (1-3), the mean of the two teams' posN at 10:00 (undefined when a team has no
+ * such core): `conv_lposN` its own last hits over the enemy lane creeps that died within 1000 of it (@lasthit_cores core_lh /
+ * near), and `dn_`, `lvl_`, `hph_at_10_lposN` from @core_costs. Conversion per team too (`conv_lposN_r`, `_d`): in OFF one
+ * team's cores run OHA's last hits and the other Valve's, so a mean of the two can hide one.
+ */
+function coreLane(store, file, gameNo) {
+    const p = { file, game: gameNo, until: 600 };
+    const sql = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
+    const key = r => `${r.team}:${r.pos}`;
+    const lh = Object.fromEntries(store.query(sql('lasthit_cores'), p).map(r => [key(r), r]));
+    const cost = Object.fromEntries(store.query(sql('core_costs'), p).map(r => [key(r), r]));
+    const conv = r => (r && r.near > 0 ? r.core_lh / r.near : undefined);
+    const mean = (a, b) => (a === undefined || a === null || b === undefined || b === null ? undefined : (a + b) / 2);
+    const out = {};
+    for (const n of [1, 2, 3]) {
+        const [r, d] = [lh[`2:${n}`], lh[`3:${n}`]];
+        out[`conv_lpos${n}`] = mean(conv(r), conv(d));
+        out[`conv_lpos${n}_r`] = conv(r);
+        out[`conv_lpos${n}_d`] = conv(d);
+        for (const f of ['dn', 'lvl', 'hph']) out[`${f}_at_10_lpos${n}`] = mean(cost[`2:${n}`]?.[f], cost[`3:${n}`]?.[f]);
+    }
+    return out;
+}
+
 /** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
 function nfGame(g, game, store) {
     const m = dynamicMetrics(store, path.resolve(g.log), game.index, game);
-    const flat = flatten(m);
+    const flat = { ...flatten(m), ...coreLane(store, path.resolve(g.log), game.index) };
     return { ...g, flat, problems: gate(game, m, flat), monitors: { first_t1_time: m.first_t1_time, first_roshan_time: m.first_roshan_time } };
 }
 
@@ -271,4 +298,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde, t975, tCrit, welch, pooled, nfGame, noiseTable, storeFor, stackInterrupted };
+module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, pooled, nfGame, noiseTable, storeFor, stackInterrupted };
