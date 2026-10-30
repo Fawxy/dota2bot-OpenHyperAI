@@ -481,6 +481,9 @@ export const EVENTS = {
         fbox59: "mixed",
         fhitd: "mixed",
         farr: "mixed",
+        fseen: "num",
+        fn2: "str",
+        fn59: "str",
     },
     lane_job_supply: {
         pid: "num",

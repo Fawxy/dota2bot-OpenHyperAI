@@ -569,6 +569,10 @@ do
 	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
 	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
 	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
+	-- ds2: A's spawn read 0 with no record of its neutrals; now A's neutrals at +2 s and :59.5, and A's box seen in the watch.
+	local _, a2 = (field(l, "fn2") or ""):gsub("kobold:%d+:", "")
+	local _, a59 = (field(l, "fn59") or ""):gsub("kobold:%d+:", "")
+	check("double: fn2 and fn59 list A's two neutrals, fseen=1", a2 == 2 and a59 == 2 and field(l, "fseen") == "1", l)
 end
 
 -- Nearer good_2 than good_1 (ds1: 8 of 10 Radiant starts): still the pair, logged on good_1 with good_2 as camp A.

@@ -188,6 +188,11 @@ export interface FirstCamp {
     fresh?: number;
     /** A's neutrals at its hit: B's hit is picked and confirmed on other neutrals only. */
     units?: Unit[];
+    /** A's neutrals 2 s after its hit and at :59.5 (as `n2`/`n59`), and 1 when A's box was in sight during the watch: in
+     *  ds2, 3 doubles stacked B but read A's spawn as 0 and the log could not say where A's neutrals were. */
+    n2?: string;
+    n59?: string;
+    seen?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -501,6 +506,7 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
     let campIdx = a.campIdx;
     while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + SETTINGS.AwayMax - 0.5)) {
         if (!bot.IsAlive()) return { success: false, reason: "dead" };
+        if (f !== undefined && f.aggro !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
         if (CampJobs.Exec.BoxInSight(bot, campIdx)) {
             if (!stopped) bot.Action_MoveToLocation(bot.GetLocation());
             stopped = true;
@@ -629,10 +635,10 @@ function campNeutrals(bot: Unit, campIdx: number, target: Unit | undefined, a?: 
 }
 
 /** Each camp neutral now: name:dist:in|out:a|-. */
-function describe(bot: Unit, a: Attempt): string {
-    const sp = Camps.SpawnerByIdx(a.campIdx);
+function describe(bot: Unit, units: Unit[] | undefined, campIdx: number): string {
+    const sp = Camps.SpawnerByIdx(campIdx);
     const parts: string[] = [];
-    for (const n of a.campUnits ?? []) {
+    for (const n of units ?? []) {
         if (n.IsNull() || !n.IsAlive()) {
             parts.push("dead");
             continue;
@@ -643,7 +649,7 @@ function describe(bot: Unit, a: Attempt): string {
             continue;
         }
         const d = math.floor(GetUnitToLocationDistance(n, sp.location));
-        const inBox = Camps.InBox(a.campIdx, n.GetLocation(), 0) ? "in" : "out";
+        const inBox = Camps.InBox(campIdx, n.GetLocation(), 0) ? "in" : "out";
         parts.push(`${name}:${d}:${inBox}:${n.GetAttackTarget() === bot ? "a" : "-"}`);
     }
     return parts.join(",");
@@ -735,6 +741,9 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["fbox59", f.box59 ?? "?"],
         ["fhitd", f.hitd ?? "?"],
         ["farr", f.arr ?? "?"],
+        ["fseen", f.seen ?? 0],
+        ["fn2", f.n2 ?? "?"],
+        ["fn59", f.n59 ?? "?"],
     ];
 }
 
@@ -822,9 +831,18 @@ function targetDist(a: Attempt): number | undefined {
 }
 
 function sample59(bot: Unit, a: Attempt): void {
+    // A double's camp A, on its own clock: B's hit may never come (preempted after A's, ds2).
+    const f = a.first;
+    if (f !== undefined && f.aggro !== undefined) {
+        if (f.n2 === undefined && DotaTime() >= a.minute * 60 + f.aggro + 2) f.n2 = describe(bot, f.units, f.campIdx);
+        if (f.n59 === undefined && DotaTime() >= a.minute * 60 + 59.5) {
+            f.n59 = describe(bot, f.units, f.campIdx);
+            f.box59 = CampJobs.Exec.NeutralsInBox(bot, f.campIdx);
+        }
+    }
     if (a.tgt2 === undefined && a.aggro !== undefined && DotaTime() >= a.minute * 60 + a.aggro + 2) {
         a.tgt2 = targetDist(a) ?? -1;
-        a.n2 = describe(bot, a);
+        a.n2 = describe(bot, a.campUnits, a.campIdx);
     }
     if (a.box59 !== undefined || a.aggro === undefined || DotaTime() < a.minute * 60 + 59.5) return;
     const sp = Camps.SpawnerByIdx(a.campIdx);
@@ -836,14 +854,13 @@ function sample59(bot: Unit, a: Attempt): void {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !Camps.InBox(a.campIdx, c.GetLocation(), margin)) pulled++;
     }
     a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
-    if (a.first !== undefined && a.first.aggro !== undefined) a.first.box59 = CampJobs.Exec.NeutralsInBox(bot, a.first.campIdx);
     a.tgt59 = targetDist(a) ?? -1;
     let strict = 0;
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(a.campIdx, c.GetLocation(), 0)) strict++;
     }
     a.strict59 = strict;
-    a.n59 = describe(bot, a);
+    a.n59 = describe(bot, a.campUnits, a.campIdx);
     a.hp59 = hpPct(bot);
     a.pulled59 = pulled;
     a.bot59 = Camps.InBox(a.campIdx, bot.GetLocation(), 0) ? 1 : 0;

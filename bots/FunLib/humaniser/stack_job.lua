@@ -677,16 +677,16 @@ function campNeutrals(bot, campIdx, target, a)
     end
     return out
 end
-function describe(bot, a)
-    local sp = Camps.SpawnerByIdx(a.campIdx)
+function describe(bot, units, campIdx)
+    local sp = Camps.SpawnerByIdx(campIdx)
     local parts = {}
-    for ____, n in ipairs(a.campUnits or ({})) do
+    for ____, n in ipairs(units or ({})) do
         do
-            local __continue139
+            local __continue140
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue139 = true
+                    __continue140 = true
                     break
                 end
                 local name = (string.gsub(
@@ -696,19 +696,19 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue139 = true
+                    __continue140 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
                 local inBox = Camps.InBox(
-                    a.campIdx,
+                    campIdx,
                     n:GetLocation(),
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue139 = true
+                __continue140 = true
             until true
-            if not __continue139 then
+            if not __continue140 then
                 break
             end
         end
@@ -737,7 +737,10 @@ function doubleFields(a)
         {"ffresh", f.fresh or "?"},
         {"fbox59", f.box59 or "?"},
         {"fhitd", f.hitd or "?"},
-        {"farr", f.arr or "?"}
+        {"farr", f.arr or "?"},
+        {"fseen", f.seen or 0},
+        {"fn2", f.n2 or "?"},
+        {"fn59", f.n59 or "?"}
     }
 end
 function targetDist(a)
@@ -749,9 +752,19 @@ function targetDist(a)
     return math.floor(GetUnitToLocationDistance(t, sp.location))
 end
 function sample59(bot, a)
+    local f = a.first
+    if f ~= nil and f.aggro ~= nil then
+        if f.n2 == nil and DotaTime() >= a.minute * 60 + f.aggro + 2 then
+            f.n2 = describe(bot, f.units, f.campIdx)
+        end
+        if f.n59 == nil and DotaTime() >= a.minute * 60 + 59.5 then
+            f.n59 = describe(bot, f.units, f.campIdx)
+            f.box59 = CampJobs.Exec.NeutralsInBox(bot, f.campIdx)
+        end
+    end
     if a.tgt2 == nil and a.aggro ~= nil and DotaTime() >= a.minute * 60 + a.aggro + 2 then
         a.tgt2 = targetDist(a) or -1
-        a.n2 = describe(bot, a)
+        a.n2 = describe(bot, a.campUnits, a.campIdx)
     end
     if a.box59 ~= nil or a.aggro == nil or DotaTime() < a.minute * 60 + 59.5 then
         return
@@ -776,9 +789,6 @@ function sample59(bot, a)
         end
     end
     a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
-    if a.first ~= nil and a.first.aggro ~= nil then
-        a.first.box59 = CampJobs.Exec.NeutralsInBox(bot, a.first.campIdx)
-    end
     a.tgt59 = targetDist(a) or -1
     local strict = 0
     for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
@@ -794,7 +804,7 @@ function sample59(bot, a)
         end
     end
     a.strict59 = strict
-    a.n59 = describe(bot, a)
+    a.n59 = describe(bot, a.campUnits, a.campIdx)
     a.hp59 = hpPct(bot)
     a.pulled59 = pulled
     a.bot59 = Camps.InBox(
@@ -1260,6 +1270,9 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
         if not bot:IsAlive() then
             return {success = false, reason = "dead"}
         end
+        if f ~= nil and f.aggro ~= nil and f.seen == nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
+            f.seen = 1
+        end
         if CampJobs.Exec.BoxInSight(bot, campIdx) then
             if not stopped then
                 bot:Action_MoveToLocation(bot:GetLocation())
@@ -1456,10 +1469,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue157
+            local __continue158
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue157 = true
+                    __continue158 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -1579,7 +1592,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue157 then
+            if not __continue158 then
                 break
             end
         end

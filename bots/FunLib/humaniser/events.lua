@@ -418,7 +418,10 @@ ____exports.EVENTS = {
         ffresh = "mixed",
         fbox59 = "mixed",
         fhitd = "mixed",
-        farr = "mixed"
+        farr = "mixed",
+        fseen = "num",
+        fn2 = "str",
+        fn59 = "str"
     },
     lane_job_supply = {
         pid = "num",
