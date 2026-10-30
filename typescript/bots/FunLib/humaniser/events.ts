@@ -467,6 +467,7 @@ export const EVENTS = {
         casts: "str",
         n2: "str",
         n59: "str",
+        trk: "str",
         lane: "mixed",
         idle: "num",
         // Slice double-stack: camp A of a double (hit first), or `double=0` when the partner's walk did not fit.
@@ -488,6 +489,7 @@ export const EVENTS = {
         fauto: "mixed",
         fn2: "str",
         fn59: "str",
+        ftrk: "str",
     },
     lane_job_supply: {
         pid: "num",

@@ -166,6 +166,8 @@ do
 		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
 		local shrine = Vector(c[2], c[3])
 		check(c[1] .. ": walk-off towards its shrine", dist(exit, shrine) < dist(sp.location, shrine), exit.x .. "," .. exit.y)
+		local stand = H.StackJob.Stand(sp, C.ByIdx(sp.idx, sp.team))
+		check(c[1] .. ": stands east of the camp (the walk from A passes B's east side)", stand.x > sp.location.x + 200, stand.x .. "," .. stand.y)
 	end
 end
 
@@ -603,6 +605,9 @@ do
 	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
 	check("double: A hit within 1 s of its second, B within -1 to +1.5 s of its own (the confirm)", math.abs(fag - pd.fsec) <= 1 and ag >= pd.sec - 1 and ag <= pd.sec + 1.5, l)
 	check("double: A before 2, B before 3", field(l, "fbefore") == "2" and field(l, "before") == "3", l)
+	-- trk/ftrk (user replay review of shsolo4b): each pulled neutral's furthest distance and the second it gave up.
+	local trk, ftrk = field(l, "trk"), field(l, "ftrk")
+	check("double: trk and ftrk list name:max:drop", trk ~= nil and trk:match("^[%w_]+:%d+:[%w%.%-]+") ~= nil and ftrk ~= nil and ftrk:match("^[%w_]+:%d+:[%w%.%-]+") ~= nil, tostring(trk) .. " | " .. tostring(ftrk))
 	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
 	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
 	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
@@ -616,7 +621,7 @@ end
 -- not_stacked. Now B is read for BReadFor, then the watch walks to A and reads it.
 -- Under AwayMax that walk does not fit (A is ~1,100 from B's stand), so this runs with Overrides.StackFar as the solo games do.
 do
-	local lines = stackRun({ double = true, noBSpawn = true, tail = 10, onFrame = function()
+	local lines = stackRun({ double = true, noBSpawn = true, tail = 15, onFrame = function()
 		local C = package.loaded["bots/FunLib/custom_loader"]
 		C.Overrides = C.Overrides or {}
 		C.Overrides.StackFar = true

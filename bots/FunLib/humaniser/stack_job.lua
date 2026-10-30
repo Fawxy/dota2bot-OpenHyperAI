@@ -502,9 +502,150 @@ do
     end
     Set[Symbol.species] = Set
 end
+
+local Map
+do
+    Map = __TS__Class()
+    Map.name = "Map"
+    function Map.prototype.____constructor(self, entries)
+        self[Symbol.toStringTag] = "Map"
+        self.items = {}
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if entries == nil then
+            return
+        end
+        local iterable = entries
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                local value = result.value
+                self:set(value[1], value[2])
+            end
+        else
+            local array = entries
+            for ____, kvp in ipairs(array) do
+                self:set(kvp[1], kvp[2])
+            end
+        end
+    end
+    function Map.prototype.clear(self)
+        self.items = {}
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Map.prototype.delete(self, key)
+        local contains = self:has(key)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[key]
+            local previous = self.previousKey[key]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[key] = nil
+            self.previousKey[key] = nil
+        end
+        self.items[key] = nil
+        return contains
+    end
+    function Map.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, self.items[key], key, self)
+        end
+    end
+    function Map.prototype.get(self, key)
+        return self.items[key]
+    end
+    function Map.prototype.has(self, key)
+        return self.nextKey[key] ~= nil or self.lastKey == key
+    end
+    function Map.prototype.set(self, key, value)
+        local isNewValue = not self:has(key)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        self.items[key] = value
+        if self.firstKey == nil then
+            self.firstKey = key
+            self.lastKey = key
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = key
+            self.previousKey[key] = self.lastKey
+            self.lastKey = key
+        end
+        return self
+    end
+    Map.prototype[Symbol.iterator] = function(self)
+        return self:entries()
+    end
+    function Map.prototype.entries(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, items[key]}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.values(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = items[key]}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    Map[Symbol.species] = Map
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local setExit, dist, sec, hpPct, phase, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
+local setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -596,6 +737,53 @@ function phase(bot, a, l)
         a.hpe = hpPct(bot)
     end
 end
+function follow(bot, a, trk, units, campIdx)
+    local out = trk or __TS__New(Map)
+    local sp = Camps.SpawnerByIdx(campIdx)
+    if sp == nil then
+        return out
+    end
+    for ____, n in ipairs(units or ({})) do
+        do
+            local __continue127
+            repeat
+                if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
+                    __continue127 = true
+                    break
+                end
+                local t = out:get(n) or ({max = 0, aggro = false})
+                t.max = math.max(
+                    t.max,
+                    math.floor(GetUnitToLocationDistance(n, sp.location))
+                )
+                if n:GetAttackTarget() == bot then
+                    t.aggro = true
+                elseif t.aggro and t.drop == nil then
+                    t.drop = sec(a)
+                end
+                out:set(n, t)
+                __continue127 = true
+            until true
+            if not __continue127 then
+                break
+            end
+        end
+    end
+    return out
+end
+function trkField(units, trk)
+    local parts = {}
+    for ____, n in ipairs(units or ({})) do
+        local name = n:IsNull() and "gone" or (string.gsub(
+            n:GetUnitName(),
+            "npc_dota_neutral_",
+            ""
+        ))
+        local t = trk and trk:get(n)
+        parts[#parts + 1] = t == nil and name .. ":?" or (((name .. ":") .. tostring(t.max)) .. ":") .. tostring(not t.aggro and "n" or (t.drop or "-"))
+    end
+    return #parts > 0 and table.concat(parts, ",") or "?"
+end
 function laneNear(bot, a)
     local sp = Camps.SpawnerByIdx(a.campIdx)
     if sp == nil then
@@ -618,37 +806,37 @@ function freshInBox(bot, a, campIdx)
         LaneConfig.Settings().Radii.StackCountScan,
         false
     ) or ({})) do
-        local ____temp_10 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+        local ____temp_12 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
             campIdx,
             c:GetLocation(),
             margin
         )
-        if ____temp_10 then
-            local ____opt_7 = a.seen
-            local ____temp_9 = ____opt_7 and ____opt_7:has(c)
-            if ____temp_9 == nil then
-                ____temp_9 = false
+        if ____temp_12 then
+            local ____opt_9 = a.seen
+            local ____temp_11 = ____opt_9 and ____opt_9:has(c)
+            if ____temp_11 == nil then
+                ____temp_11 = false
             end
-            ____temp_10 = not ____temp_9
+            ____temp_12 = not ____temp_11
         end
-        if ____temp_10 then
+        if ____temp_12 then
             n = n + 1
         end
     end
     return n
 end
 function isFirst(a, n)
-    local ____opt_17 = a and a.first
-    local ____opt_11 = ____opt_17 and ____opt_17.units
-    if ____opt_11 ~= nil then
-        local ____opt_12 = a and a.first
-        ____opt_11 = __TS__ArrayIncludes(____opt_12 and ____opt_12.units, n)
+    local ____opt_19 = a and a.first
+    local ____opt_13 = ____opt_19 and ____opt_19.units
+    if ____opt_13 ~= nil then
+        local ____opt_14 = a and a.first
+        ____opt_13 = __TS__ArrayIncludes(____opt_14 and ____opt_14.units, n)
     end
-    local ____opt_11_21 = ____opt_11
-    if ____opt_11_21 == nil then
-        ____opt_11_21 = false
+    local ____opt_13_23 = ____opt_13
+    if ____opt_13_23 == nil then
+        ____opt_13_23 = false
     end
-    return ____opt_11_21
+    return ____opt_13_23
 end
 function campTargets(bot, a)
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
@@ -686,11 +874,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue144
+            local __continue157
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue144 = true
+                    __continue157 = true
                     break
                 end
                 local name = (string.gsub(
@@ -700,7 +888,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue144 = true
+                    __continue157 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -710,9 +898,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue144 = true
+                __continue157 = true
             until true
-            if not __continue144 then
+            if not __continue157 then
                 break
             end
         end
@@ -748,7 +936,11 @@ function doubleFields(a)
         {"fhpa", f.hpa or "?"},
         {"fauto", f.auto or "?"},
         {"fn2", f.n2 or "?"},
-        {"fn59", f.n59 or "?"}
+        {"fn59", f.n59 or "?"},
+        {
+            "ftrk",
+            landed and trkField(f.units, f.trk) or "?"
+        }
     }
 end
 function targetDist(a)
@@ -844,7 +1036,7 @@ ____exports.SETTINGS = {
     FarEnd = 3,
     DoubleSlack = 0.5,
     DoubleLead = 5,
-    DoubleWatchUntil = 8,
+    DoubleWatchUntil = 12,
     BReadFor = 2,
     WaitClear = 850
 }
@@ -899,8 +1091,8 @@ EXIT_DIRS = {
     {x = -3911, y = 4829, dx = -1, dy = 0},
     {x = -4824, y = 3915, dx = 0, dy = 1},
     {x = 8430, y = 1263, dx = 0, dy = -1},
-    {x = -8313, y = -553, dx = 0.27, dy = 0.96},
-    {x = 7928, y = -120, dx = 0.1, dy = -0.99}
+    {x = -8313, y = -553, dx = 0.71, dy = 0.71},
+    {x = 7928, y = -120, dx = 0.71, dy = -0.71}
 }
 local PAIRS = {
     {
@@ -1391,6 +1583,26 @@ local function track(bot, a)
             laneNear(bot, a)
         )
     end
+    if DotaTime() < a.minute * 60 + 59.5 then
+        if f ~= nil and f.aggro ~= nil then
+            f.trk = follow(
+                bot,
+                a,
+                f.trk,
+                f.units,
+                f.campIdx
+            )
+        end
+        if a.aggro ~= nil then
+            a.trk = follow(
+                bot,
+                a,
+                a.trk,
+                a.campUnits,
+                a.campIdx
+            )
+        end
+    end
 end
 LANE_NEAR = 900
 --- Neutral scan radius for the seen set (the API's maximum).
@@ -1496,6 +1708,10 @@ local function finish(bot, a, result)
             },
             {"n2", a.n2 or "?"},
             {"n59", a.n59 or "?"},
+            {
+                "trk",
+                a.aggro ~= nil and trkField(a.campUnits, a.trk) or "?"
+            },
             {"lane", a.aggro ~= nil and (a.lane or 0) or "?"},
             {"idle", a.idle or 0},
             unpack(doubleFields(a))
@@ -1522,23 +1738,23 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue162
+            local __continue175
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue162 = true
+                    __continue175 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
-                local ____pos4_22
+                local ____pos4_24
                 if pos4 then
-                    ____pos4_22 = ____exports.PairFor(
+                    ____pos4_24 = ____exports.PairFor(
                         bot:GetTeam(),
                         minute
                     )
                 else
-                    ____pos4_22 = nil
+                    ____pos4_24 = nil
                 end
-                local pair = ____pos4_22
+                local pair = ____pos4_24
                 local data, stand = ____exports.Nearest(
                     bot:GetTeam(),
                     bot:GetLocation()
@@ -1561,19 +1777,19 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local ____pos4_24
+                local ____pos4_26
                 if pos4 then
-                    ____pos4_24 = pair
+                    ____pos4_26 = pair
                 else
-                    local ____Ours_On_result_23
+                    local ____Ours_On_result_25
                     if Ours.On("DoubleStack") then
-                        ____Ours_On_result_23 = ____exports.Partner(data)
+                        ____Ours_On_result_25 = ____exports.Partner(data)
                     else
-                        ____Ours_On_result_23 = nil
+                        ____Ours_On_result_25 = nil
                     end
-                    ____pos4_24 = ____Ours_On_result_23
+                    ____pos4_26 = ____Ours_On_result_25
                 end
-                local fd = ____pos4_24
+                local fd = ____pos4_26
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
                 local aggroAt = minute * 60 + Stacking.AggroSec(data)
@@ -1645,7 +1861,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue162 then
+            if not __continue175 then
                 break
             end
         end

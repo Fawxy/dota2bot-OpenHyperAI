@@ -67,8 +67,9 @@ export const SETTINGS = {
      *  Lead the job would run ~27.5 s, over AwayMax (E1, 31/10/2026). A double that still cannot fit runs single. */
     DoubleLead: 5,
     /** A double's watch end after :00: camp A's origin is ~1,100-1,600 from B's stand, so A was read in time only after
-     *  a quick B stack, and was unread in most of dsolo4b-5c (31/10/2026). AwayMax still cuts it. */
-    DoubleWatchUntil: 8,
+     *  a quick B stack, and was unread in most of dsolo4b-5c (31/10/2026). 12, not 8: the shrine pairs walk on away from
+     *  A, which was unread in 18 of 23 (shsolo4b/4c) though the user saw it stack in the replay. AwayMax still cuts it. */
+    DoubleWatchUntil: 12,
     /** Seconds B's box is read without a fresh neutral before the watch walks to A (a stacked B is usually seen by :02-:04). */
     BReadFor: 2,
     /** A double's waits keep this far from the camp's nearest visible neutral (the verb's `waitClear`): Dota's hero
@@ -174,6 +175,9 @@ export interface Attempt {
     fresh?: number;
     n2?: string;
     n59?: string;
+    /** Each pulled neutral from the hit to :59.5 (user replay review of shsolo4b, 31/10/2026: the easy camp's priest gave up
+     *  the chase early and walked back, and the hard camp blocked itself in its box; the log showed neither). */
+    trk?: Map<Unit, NTrack>;
     /** The most lane creeps (either team) within LANE_NEAR of the camp's origin from the hit to the end of the watch: the
      *  walk-off dragged a wave into the camp, a partial pull (user watching s4solo7ab: evil_1's north-west route pulled the
      *  top lane twice; nothing in the log showed it). */
@@ -208,6 +212,7 @@ export interface FirstCamp {
      *  ds2, 3 doubles stacked B but read A's spawn as 0 and the log could not say where A's neutrals were. */
     n2?: string;
     n59?: string;
+    trk?: Map<Unit, NTrack>;
     seen?: number;
     /** The second of the minute A's box was first in sight at or after :00 + StackOutcomeAt; undefined: A was never read. */
     chk?: number;
@@ -216,6 +221,14 @@ export interface FirstCamp {
     hit0?: number;
     hpa?: number;
     auto?: number;
+}
+
+/** One pulled neutral while seen: the furthest it got from its origin, whether it targeted the bot, and the first second
+ *  after that it stopped (gave up the chase). */
+interface NTrack {
+    max: number;
+    aggro: boolean;
+    drop?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -237,8 +250,8 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: -3911, y: 4829, dx: -1, dy: 0 },
     { x: -4824, y: 3915, dx: 0, dy: 1 },
     { x: 8430, y: 1263, dx: 0, dy: -1 },
-    { x: -8313, y: -553, dx: 0.27, dy: 0.96 }, // good_13: on to the west shrine (-7948,768)
-    { x: 7928, y: -120, dx: 0.1, dy: -0.99 }, // evil_7: on to the east shrine (8029,-1126)
+    { x: -8313, y: -553, dx: 0.71, dy: 0.71 }, // good_13: north-east, on to the west shrine (-7948,768)
+    { x: 7928, y: -120, dx: 0.71, dy: -0.71 }, // evil_7: south-east, on to the east shrine (8029,-1126)
 ];
 
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
@@ -279,6 +292,10 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
  * The shrine pairs then turned round (user 31/10/2026): hit the easy camp, walk on through the hard camp and on to the
  * wisdom shrine (Dire southwards: evil_13, evil_7, the shrine; Radiant northwards: good_16, good_13, the shrine), so A's
  * neutrals chase along one line instead of being left behind; B's walk-off points at the shrine (EXIT_DIRS).
+ * Their B lies between A and the shrine, so a stand straight towards the shrine put the walk from A through B's box (B hit
+ * from 108-472, its neutrals 65-276 out 2 s later, shsolo4b/4c); user replay review (31/10/2026): the easy camp's priest
+ * lost the bot and walked back, and the hard camp blocked itself (Dire: blocked by the easy camp's creeps). B's walk-off
+ * turns 45 degrees east (the user's suggestion), so the stand and the walk pass B on its east side.
  */
 interface Pair {
     x: number;
@@ -631,6 +648,36 @@ function track(bot: Unit, a: Attempt): void {
         if (a.react === undefined && campTargets(bot, a)) a.react = sec(a);
     }
     if (a.aggro !== undefined) a.lane = math.max(a.lane ?? 0, laneNear(bot, a));
+    if (DotaTime() < a.minute * 60 + 59.5) {
+        if (f !== undefined && f.aggro !== undefined) f.trk = follow(bot, a, f.trk, f.units, f.campIdx);
+        if (a.aggro !== undefined) a.trk = follow(bot, a, a.trk, a.campUnits, a.campIdx);
+    }
+}
+
+function follow(bot: Unit, a: Attempt, trk: Map<Unit, NTrack> | undefined, units: Unit[] | undefined, campIdx: number): Map<Unit, NTrack> {
+    const out = trk ?? new Map<Unit, NTrack>();
+    const sp = Camps.SpawnerByIdx(campIdx);
+    if (sp === undefined) return out;
+    for (const n of units ?? []) {
+        if (n.IsNull() || !n.IsAlive() || !n.CanBeSeen()) continue;
+        const t = out.get(n) ?? { max: 0, aggro: false };
+        t.max = math.max(t.max, math.floor(GetUnitToLocationDistance(n, sp.location)));
+        if (n.GetAttackTarget() === bot) t.aggro = true;
+        else if (t.aggro && t.drop === undefined) t.drop = sec(a);
+        out.set(n, t);
+    }
+    return out;
+}
+
+/** name:max:drop per pulled neutral (`-` never gave up, `n` never targeted the bot, `?` never seen). */
+function trkField(units: Unit[] | undefined, trk: Map<Unit, NTrack> | undefined): string {
+    const parts: string[] = [];
+    for (const n of units ?? []) {
+        const name = n.IsNull() ? "gone" : string.gsub(n.GetUnitName(), "npc_dota_neutral_", "")[0];
+        const t = trk?.get(n);
+        parts.push(t === undefined ? `${name}:?` : `${name}:${t.max}:${!t.aggro ? "n" : t.drop ?? "-"}`);
+    }
+    return parts.length > 0 ? parts.join(",") : "?";
 }
 
 /** Lane creeps this close to a camp's origin are in it: the 7.41 lane-side camps are ~1500+ from their lane. */
@@ -769,6 +816,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["casts", a.casts !== undefined ? a.casts.join(",") : "-"],
         ["n2", a.n2 ?? "?"],
         ["n59", a.n59 ?? "?"],
+        ["trk", a.aggro !== undefined ? trkField(a.campUnits, a.trk) : "?"],
         ["lane", a.aggro !== undefined ? a.lane ?? 0 : "?"],
         ["idle", a.idle ?? 0],
         ...doubleFields(a),
@@ -799,6 +847,7 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["fauto", f.auto ?? "?"],
         ["fn2", f.n2 ?? "?"],
         ["fn59", f.n59 ?? "?"],
+        ["ftrk", landed ? trkField(f.units, f.trk) : "?"],
     ];
 }
 

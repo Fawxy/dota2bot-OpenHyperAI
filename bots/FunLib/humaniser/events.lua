@@ -406,6 +406,7 @@ ____exports.EVENTS = {
         casts = "str",
         n2 = "str",
         n59 = "str",
+        trk = "str",
         lane = "mixed",
         idle = "num",
         double = "num",
@@ -425,7 +426,8 @@ ____exports.EVENTS = {
         fhpa = "mixed",
         fauto = "mixed",
         fn2 = "str",
-        fn59 = "str"
+        fn59 = "str",
+        ftrk = "str"
     },
     lane_job_supply = {
         pid = "num",
