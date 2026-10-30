@@ -6,7 +6,7 @@
 --   idle   idle episodes from 0:00 to `end` (whole minutes of snapshots): alive, outside base, within 100 units of one spot
 --          for 10 s, each counted once (`C.IDLE_R`, `C.IDLE_S`)
 -- ensure: ev_bot(pid, team, hero, pos)
-WITH RECURSIVE gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+WITH RECURSIVE gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 -- include: hero_second
 pts AS (SELECT 'sec' AS kind, pid AS k, s AS seq, s AS t, x, y FROM hs_sec),
 -- include: lane_label

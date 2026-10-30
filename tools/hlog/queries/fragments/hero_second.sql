@@ -1,6 +1,6 @@
 -- Fragment (`-- include: hero_second`): one game's heroes and their per-second series, as dynamic.js `series` (part A of its
 -- retirement, docs/team/slices/retire-dynamic-a.md). The including query opens with WITH RECURSIVE and defines `gm(game_id)`
--- first. Ends with a comma. CTEs:
+-- first, as `SELECT +game_id AS game_id ...` so the ev_ game_id index is used (LOGGING.md). Ends with a comma. CTEs:
 --   hs_bot(pid, team, hero)   heroes whose last ev=bot or ev=player line has a team and that logged a snapshot with x
 --   hs_snap(pid, team, seq, t, x, y, alive, deaths, lh, kills, tp)   their snapshots with x (tp = the previous snapshot's t)
 --   hs_last(last)             the last snapshot time of any of them (snapshots without x count here, as in `series`)

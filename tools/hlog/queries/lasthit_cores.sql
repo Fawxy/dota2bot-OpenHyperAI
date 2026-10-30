@@ -9,10 +9,11 @@
 -- Constants in this SQL (no other copy to keep equal except these): near 1000, late/early 0.6 s, reach 300, default attack range 150
 -- (test/lasthit_cause.test.js pins the boundaries); `C` in lasthit_cause.js is printed by --json and must match. The lane rule
 -- (radius 1100, base radii 1800/1200, ancient and fountain positions, from dynamic.js) is the fragment lane_label.
+-- `+game_id` in gm: the ev_ game_id columns have no declared type and a subquery value has INTEGER affinity, so a plain comparison cannot use the game_id index; a unary plus on the value lets it.
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_snap(pid, x, y, alive, lh)
 -- ensure: ev_bot(pid, team, pos)
-WITH gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 cores AS (
     SELECT l.team, l.pos, l.pid
     FROM lineup l

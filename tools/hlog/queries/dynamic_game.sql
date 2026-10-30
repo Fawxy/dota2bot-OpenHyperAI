@@ -11,7 +11,7 @@
 --   lua_error_ours, console_lines, console_errors, squelches, error_squelches   ev=lua_error lines; console error lines, those
 --                       saying "script runtime error"; squelch notices, those right after an error line
 -- ensure: ev_lua_error(pid)
-WITH RECURSIVE gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+WITH RECURSIVE gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 -- include: hero_second
 close AS (
     SELECT a.pid AS ap, b.pid AS bp, a.s
