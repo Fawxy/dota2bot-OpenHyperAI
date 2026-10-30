@@ -466,3 +466,9 @@ test('stackAttempts: lane carries the lane creeps near the camp after the hit (u
     assert.strictEqual(one({ lane: 4 }), 4);
     assert.strictEqual(one({}), undefined);
 });
+
+test('stackAttempts: idle carries the OHA idle relocations the job held (slice stack-hit; ER-007 read 0 without it)', () => {
+    const one = e => stackOf([{ t: 245, pid: 2, min: 3, res: 'stacked', why: 'ok', ...e }], 600)[0].idle;
+    assert.strictEqual(one({ idle: 3 }), 3);
+    assert.strictEqual(one({}), undefined);
+});
