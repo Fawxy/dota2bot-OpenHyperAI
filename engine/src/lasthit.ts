@@ -478,28 +478,39 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     let enemyOnIt = false;
     let tHit = 0;
     let diag = "";
+    // Before a swing, what held it back on the last frame (in-game attribution of a lost creep that was never swung at):
+    // `range` walking in, `cd` attack cooldown, `hp50` a deny above half HP, `wait` the kill belief not yet due.
+    let held = "start";
+    const early = (r: Result): Result => {
+        r.message = string.format("w=%.2f why=%s", now() - start, held);
+        return r;
+    };
     let lastFrame: number | undefined;
     let margin = MIN_MARGIN;
     while (true) {
         const t = now();
         if (lastFrame !== undefined && t > lastFrame) margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
         lastFrame = t;
-        if (!bot.IsAlive()) return fail("dead");
-        if (gone(creep)) return fail(lostReason(enemyOnIt));
-        if (opts.interruptIf !== undefined && opts.interruptIf()) return fail("interrupted");
-        if (now() - start > maxWait || expired(opts.deadline)) return fail("timeout");
+        if (!bot.IsAlive()) return early(fail("dead"));
+        if (gone(creep)) return early(fail(lostReason(enemyOnIt)));
+        if (opts.interruptIf !== undefined && opts.interruptIf()) return early(fail("interrupted"));
+        if (now() - start > maxWait || expired(opts.deadline)) return early(fail("timeout"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
         if (dist(bot.GetLocation(), creep.GetLocation()) > bot.GetAttackRange()) {
+            held = string.format("range d=%d", math.floor(dist(bot.GetLocation(), creep.GetLocation()) - bot.GetAttackRange()));
             bot.Action_MoveToLocation(creep.GetLocation());
         } else {
+            const cd = cooldownLeft(bot);
+            held = mode === "deny" && !deniable(creep) ? "hp50" : string.format("cd c=%.2f", cd);
             // An order given during the attack cooldown starts the swing later than the prediction's horizon
             // covers (hits not yet wound up are unseen), so the decision waits until the swing can start.
             if ((mode === "lasthit" || deniable(creep)) && cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE)) {
                 const b = believe(bot, creep, true, margin);
+                held = string.format("wait hp=%d pred=%d mine=%d", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine));
                 if (due(b)) {
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
-                    diag = string.format("hp=%d pred=%d mine=%d t=%.2f m=%.2f", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin);
+                    diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin);
                     bot.Action_AttackUnit(creep, true);
                     break;
                 }

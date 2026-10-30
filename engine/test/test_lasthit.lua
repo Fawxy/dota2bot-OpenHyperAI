@@ -157,6 +157,19 @@ do
     local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
     T.eq("tower wind-up kills first: taken_by_other", r.reason, "taken_by_other")
     T.eq("tower wind-up kills first: no swing", bot:actionsOf("attack"), 0)
+    -- In-game attribution: a creep lost before any swing says what held the swing back on the last frame.
+    T.check("tower wind-up kills first: message says it was waiting on the kill belief", (r.message or ""):find("why=wait", 1, true) ~= nil, tostring(r.message))
+end
+
+-- A creep out of range that dies while the bot walks in: the message says `range`, with how far it still had to go.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("lost while walking in: taken_by_other", r.reason, "taken_by_other")
+    T.check("lost while walking in: why=range with the distance left", (r.message or ""):match("why=range d=%d+") ~= nil, tostring(r.message))
 end
 
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.

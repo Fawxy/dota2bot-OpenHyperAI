@@ -1991,6 +1991,15 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local enemyOnIt = false
     local tHit = 0
     local diag = ""
+    local held = "start"
+    local function early(r)
+        r.message = string.format(
+            "w=%.2f why=%s",
+            now() - start,
+            held
+        )
+        return r
+    end
     local lastFrame
     local margin = MIN_MARGIN
     while true do
@@ -2003,16 +2012,16 @@ local strike = __TS__Generator(function(bot, mode, opts)
         end
         lastFrame = t
         if not bot:IsAlive() then
-            return fail("dead")
+            return early(fail("dead"))
         end
         if gone(creep) then
-            return fail(lostReason(enemyOnIt))
+            return early(fail(lostReason(enemyOnIt)))
         end
         if opts.interruptIf ~= nil and opts.interruptIf() then
-            return fail("interrupted")
+            return early(fail("interrupted"))
         end
         if now() - start > maxWait or expired(opts.deadline) then
-            return fail("timeout")
+            return early(fail("timeout"))
         end
         if mode == "lasthit" then
             enemyOnIt = enemyTargeting(bot, creep)
@@ -2021,14 +2030,30 @@ local strike = __TS__Generator(function(bot, mode, opts)
             bot:GetLocation(),
             creep:GetLocation()
         ) > bot:GetAttackRange() then
+            held = string.format(
+                "range d=%d",
+                math.floor(dist(
+                    bot:GetLocation(),
+                    creep:GetLocation()
+                ) - bot:GetAttackRange())
+            )
             bot:Action_MoveToLocation(creep:GetLocation())
         else
+            local cd = ____exports.cooldownLeft(bot)
+            held = mode == "deny" and not deniable(creep) and "hp50" or string.format("cd c=%.2f", cd)
             if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
                 local b = believe(bot, creep, true, margin)
+                held = string.format(
+                    "wait hp=%d pred=%d mine=%d",
+                    math.floor(creep:GetHealth()),
+                    math.floor(b.hpAtHit),
+                    math.floor(b.mine)
+                )
                 if due(b) then
                     tHit = b.tHit
                     diag = string.format(
-                        "hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        "w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        now() - start,
                         math.floor(creep:GetHealth()),
                         math.floor(b.hpAtHit),
                         math.floor(b.mine),

@@ -145,6 +145,11 @@ hit (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero w
 `timeout`, `no_target`, `etiquette` (every candidate vetoed by `lastHitFilter`), `dead`, `interrupted`,
 `unsupported` (no `GetAttackDamage`/`GetAttackPoint`; `deny` also needs `GetDenies`).
 
+**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= end= dt=` (what the swing
+was based on and how it ended). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+`range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
+(the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
+
 Offline (sim, 30 fps, a creep contested by three allied melee creeps, 120 trials): skill 1 lands 100%, 0.6 65%,
 0.2 50% with both early and late misses. In game the prediction sees less than the sim, so skill 1 should land
 below 100% of contested creeps (the 75-85% target of knowledge.md §1.2).
