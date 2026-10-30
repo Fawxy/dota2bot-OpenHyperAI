@@ -30,6 +30,7 @@
    "ally": "bool",
    "build": "str",
    "pos": "num",
+   "ours": "str",
    "notice": "num",
    "react": "num",
    "ping": "num",
@@ -730,7 +731,8 @@
   },
   "ev_bot": {
    "hero": "text",
-   "build": "text"
+   "build": "text",
+   "ours": "text"
   },
   "ev_lasthit": {
    "creep": "text",

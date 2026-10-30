@@ -12,6 +12,14 @@ export const DEFAULTS = {
 
 export type Feature = keyof typeof DEFAULTS;
 
+/** Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it). */
+export function Describe(): string {
+    const names: string[] = [];
+    for (const name in DEFAULTS) names.push(name);
+    names.sort();
+    return names.map((n) => `${n}:${On(n as Feature) ? 1 : 0}`).join(",");
+}
+
 export function On(feature: Feature): boolean {
     if (Customize.Enable === false) return false;
     const value = Customize.Ours?.[feature];

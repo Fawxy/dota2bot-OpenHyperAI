@@ -15,7 +15,9 @@ const LINEUPS = {
 };
 // Seeds that give each lineup in `--mode bots` (lineups.md).
 const SEEDS = { A: 30, B: 8, C: 25 };
-// Per arm: every --set the arm passes, and whether ev=state lines (the state layer) must appear.
+// Per arm: every --set the arm passes, whether ev=state lines (the state layer) must appear, and optionally `ours`: Ours
+// switch values every bot's ev=bot `ours` field must show ({ "CoreLastHit": false }); a remote arm, which takes no --set, is
+// told apart only by them.
 const ARMS = {
     off: { set: ['Humaniser.Enable=false', 'Humaniser.States.Enable=false'], states: false },
     on: { set: ['Humaniser.States.Teams=all', 'Humaniser.Lane.OwnLaningThink=all'], states: true },
@@ -25,8 +27,8 @@ const ARMS = {
 function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, arms = ARMS }) {
     const p = [];
     const pos = {}; // last ev=bot line per pid wins (a role change re-emits it)
-    for (const m of text.matchAll(/ev=bot pid=(\d+) hero=(\w+) team=(\d) .*?build=(\S+) pos=(\d)/g)) {
-        pos[m[1]] = { hero: m[2], team: Number(m[3]), build: m[4], pos: Number(m[5]) };
+    for (const m of text.matchAll(/ev=bot pid=(\d+) hero=(\w+) team=(\d) .*?build=(\S+) pos=(\d)([^\n]*)/g)) {
+        pos[m[1]] = { hero: m[2], team: Number(m[3]), build: m[4], pos: Number(m[5]), ours: ((m[6] || '').match(/ ours=(\S+)/) || [])[1] };
     }
     const bots = Object.values(pos);
     if (bots.length !== 10) p.push(`${bots.length} bots`);
@@ -42,12 +44,18 @@ function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, 
     if (!spec) p.push(`unknown arm ${arm}`);
     else {
         const given = set.split(/[,\s]+/).filter(Boolean);
-        const missing = spec.set.filter(k => !given.includes(k));
+        const wantSet = spec.set || [];
+        const missing = wantSet.filter(k => !given.includes(k));
         if (missing.length) p.push(`${arm} arm: --set lacks ${missing.join(', ')} (set="${set}")`);
         // The arm's --set line exactly (WO-016): an extra key, such as an Enable=false on ON, is a different arm.
-        const extra = given.filter(k => !spec.set.includes(k));
+        const extra = given.filter(k => !wantSet.includes(k));
         if (extra.length) p.push(`${arm} arm: --set has extra ${extra.join(', ')} (set="${set}")`);
         if (spec.states !== states > 0) p.push(`${arm} arm: ev=state ${states}`);
+        for (const [k, v] of Object.entries(spec.ours || {})) {
+            const flag = `${k}:${v ? 1 : 0}`;
+            const wrong = bots.filter(b => !(b.ours || '').split(',').includes(flag));
+            if (wrong.length) p.push(`${arm} arm: ${wrong.length} bots lack ours ${flag} (${wrong[0].ours || 'no ours field'})`);
+        }
     }
     const stop = text.match(/\[DOTACTL\] t=([\d.]+) ev=stop/);
     if (!stop || Number(stop[1]) < until) p.push(`stopped at t=${stop ? stop[1] : '?'}`);

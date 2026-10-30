@@ -72,6 +72,7 @@ ____exports.EVENTS = {
         ally = "bool",
         build = "str",
         pos = "num",
+        ours = "str",
         notice = "num",
         react = "num",
         ping = "num",

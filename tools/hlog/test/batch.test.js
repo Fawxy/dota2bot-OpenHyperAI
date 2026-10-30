@@ -224,3 +224,14 @@ test('batch main: a game that fails lineup_check is not banked and the batch exi
     assert.match(r.out, /check bt_A_off_1 +axe team 2 pos 1/);
     assert.deepStrictEqual(r.bank.map(e => e.label).sort(), ['bt_A_on_1', 'bt_B_off_2', 'bt_B_on_2']);
 });
+
+test('remote batch: each game is a job on its arm\'s pushed commit, arms interleaved as locally', () => {
+    const { plan, remoteJob } = require('../batch');
+    const spec = { name: 's5', remote: true, until: '10:00', lineups: ['A', 'B'], arms: {
+        on: { branch: 'remote/lion/s5-on', sha: 'a'.repeat(40) }, off: { branch: 'remote/lion/s5-off', sha: 'b'.repeat(40) } } };
+    const games = plan(spec);
+    assert.deepStrictEqual(games.map(g => g.label), ['s5_A_on_1', 's5_A_off_1', 's5_B_off_2', 's5_B_on_2']);
+    const off = remoteJob(spec, games[1]);
+    assert.deepStrictEqual(off, { branch: 'remote/lion/s5-off', sha: 'b'.repeat(40), until: '10:00', seed: 30, timescale: 8, label: 's5_A_off_1' });
+    assert.strictEqual(remoteJob(spec, games[2]).seed, 8);
+});
