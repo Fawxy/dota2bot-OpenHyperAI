@@ -15,6 +15,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
@@ -447,6 +448,7 @@ function maybeProfile(bot: Unit, s: BotState): void {
             ["ally", Difficulty.IsAllyOfHuman(bot)],
             ["build", BUILD],
             ["pos", LaneConfig.PositionOf(bot)],
+            ["ours", Ours.Describe()],
         ]);
         return;
     }
@@ -474,6 +476,7 @@ function maybeProfile(bot: Unit, s: BotState): void {
         ["deference", p.deference],
         ["build", BUILD],
         ["pos", LaneConfig.PositionOf(bot)],
+        ["ours", Ours.Describe()],
     ]);
 }
 
@@ -615,10 +618,11 @@ function firstThisFrame(job: string, team: number, now: number): boolean {
     return true;
 }
 
-function teamHeroes(team: number): Unit[] {
+// The calling bot's team (GetTeamMember is per script team), members 1..5: GetTeamPlayers is empty for a bot-only team
+// in practice mode, and bounding the loop by it logged no ev=creep_death or rune pickup there (debt getteamplayers-bound).
+function teamHeroes(): Unit[] {
     const heroes: Unit[] = [];
-    const n = GetTeamPlayers(team).length;
-    for (let i = 1; i <= n; i++) {
+    for (let i = 1; i <= 5; i++) {
         const m = GetTeamMember(i);
         if (m !== null && m !== undefined && m.IsAlive()) heroes.push(m);
     }
@@ -649,7 +653,7 @@ function trackRunes(team: number, w: WorldState, now: number): void {
         if (seen === undefined || !seen.up) continue;
         // Gone or out of sight. Without an own hero next to it, either the enemy took it (their logger reports it) or fog.
         seen.up = false;
-        const [taker, d] = nearest(teamHeroes(team), seen.loc);
+        const [taker, d] = nearest(teamHeroes(), seen.loc);
         if (taker === undefined || d > RUNE_TAKER_R) continue;
         const [, enemyD] = nearest(GetUnitList(UnitType.EnemyHeroes), seen.loc);
         if (enemyD < d) continue;
@@ -674,7 +678,7 @@ function trackWards(team: number, w: WorldState): void {
         // Hero summons in the ward list (serpent wards and the like) answer no KR.
         if (kind === undefined) continue;
         const loc = ward.GetLocation();
-        const [owner, d] = nearest(teamHeroes(team), loc);
+        const [owner, d] = nearest(teamHeroes(), loc);
         Event("ward_place", [
             ["pid", owner !== undefined && d <= WARD_OWNER_R ? owner.GetPlayerID() : undefined],
             ["team", team],
@@ -851,7 +855,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
         creepTracks[team] = c;
     }
-    const heroes = teamHeroes(team);
+    const heroes = teamHeroes();
     const gameNow = GameTime();
     const alive: Unit[] = [];
     const live = new LuaTable<Unit, boolean>();
