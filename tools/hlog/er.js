@@ -118,13 +118,13 @@ function bar(b, games, table) {
         const arms = b.arms || ['on'];
         const sel = games.filter(g => arms.includes(g.arm));
         // No game of the bar's arms (a typo, or a batch without that arm) is a missing value, never a pass.
-        if (!sel.length) return { value: `no games of arm ${arms.join('+')}`, result: 'not met' };
+        if (!sel.length) return { value: `no games of arm ${arms.join('+')}`, result: 'not met', n: 0 };
         const bad = sel.filter(g => {
             const v = val(g, b.metric);
             return !(Number.isFinite(v) && (b.max === undefined || v <= b.max) && (b.min === undefined || v >= b.min) && (b.eq === undefined || v === b.eq));
         });
         const value = bad.length ? `${sel.length - bad.length}/${sel.length} games; ${bad.map(g => `${g.label} ${val(g, b.metric)}`).join(', ')}` : `${sel.length}/${sel.length} games`;
-        return { value, result: bad.length ? 'not met' : 'met' };
+        return { value, result: bad.length ? 'not met' : 'met', n: sel.length };
     }
     if (b.rule === 'pooled') {
         // sum(num) / sum(den) over the bar's arms (default ON), met at >= min with at least minDen in the denominator.

@@ -46,3 +46,13 @@ test('decide: a pooled bar without cap stays open until the maximum N', () => {
     const b = { ...stacked, cap: undefined };
     assert.strictEqual(decide([r(b, 'not met', { num: 0, den: 10 })], { on: 4, off: 4, look: 0, max: 5 }).stop, false);
 });
+
+test('decide: an each bar with no valid game of its arm yet does not stop the batch, and is not met at the maximum', () => {
+    const { bar } = require('../er');
+    const none = bar(each, [{ arm: 'off', label: 'off1', flat: { lua_ours: 0 } }], {});
+    const mid = decide([{ b: each, ...none }, r(delta, 'met')], { on: 1, off: 1, look: 9, max: 15 });
+    assert.strictEqual(mid.stop, false);
+    assert.strictEqual(mid.states[0], 'open');
+    const end = decide([{ b: each, ...none }, r(delta, 'met')], { on: 15, off: 15, look: 9, max: 15 });
+    assert.strictEqual(end.states[0], 'not met');
+});

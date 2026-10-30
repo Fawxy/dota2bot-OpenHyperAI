@@ -1,6 +1,7 @@
 // Stop when decided (master GOVERNANCE.md s5; skill eval-run rule 7a): after each game of a batch, whether any game still to
 // run can change a bar of the ER spec. batch.js calls it when its spec names `er` (and optionally `look`, games per arm).
-//   each:   a game outside the bounds decides it (not met); otherwise open until the look or the maximum N.
+//   each:   a game outside the bounds decides it (not met); otherwise (no valid game yet included) open until the look or
+//           the maximum N.
 //   pooled: with `cap` (most `den` one game can add) it is decided once the remaining ON games cannot lift the rate to `min`
 //           (or `den` to `minDen`), or cannot pull it below `min`; without `cap`, open until the look or the maximum N.
 //   delta, mean: decided only at the interim look or the maximum N.
@@ -17,7 +18,8 @@ function states(results, { on, off, look, max }) {
     return results.map(r => {
         const b = r.b;
         if (atLook || atMax) return r.result === 'met' ? 'met' : 'not met';
-        if (b.rule === 'each') return r.result === 'not met' ? 'not met' : 'open';
+        // No valid game of the bar's arm yet (the first ON game failed lineup_check, say) is not a failure mid-batch.
+        if (b.rule === 'each') return r.result === 'not met' && r.n !== 0 ? 'not met' : 'open';
         if (b.rule === 'pooled' && b.cap > 0 && Number.isFinite(r.num) && Number.isFinite(r.den)) {
             const c = b.cap * remOn, minDen = b.minDen || 1;
             if (r.den + c < minDen || (r.den + c > 0 && (r.num + c) / (r.den + c) < b.min)) return 'not met';
