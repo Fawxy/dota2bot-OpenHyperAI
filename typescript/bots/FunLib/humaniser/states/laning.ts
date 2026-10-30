@@ -144,6 +144,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         near: NEAR,
         far: FAR,
         leash: LEASH,
+        retarget: true,
         onAttempt: (t, res, contested) =>
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],

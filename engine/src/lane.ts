@@ -22,6 +22,12 @@ export interface LaneFarmOpts {
     far?: number;
     /** Seconds between looks for the next creep while holding (a scan of every creep nearby). Default 0.1. */
     scanEvery?: number;
+    /**
+     * While an attempt waits for its creep (before the swing), keep scanning every `scanEvery`; once the creep is no
+     * longer among laneTargets' offers and `pick` chooses another, drop the attempt (`interrupted`, message `sw=1`)
+     * and go for that one. Default false: an attempt waits for its creep up to its eta + 1.5 s.
+     */
+    retarget?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;
@@ -72,6 +78,18 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         return target !== undefined;
     };
     const stop = (): boolean => (opts.interruptIf !== undefined && opts.interruptIf()) || (opts.deadline !== undefined && get()!.now() >= opts.deadline);
+    // An attempt's creep is still worth waiting for while laneTargets offers it; otherwise `pick` may choose another.
+    const retarget = (current: LaneTarget): boolean => {
+        if (!opts.retarget) return false;
+        const t = get()!.now();
+        if (t - scannedAt < scanEvery) return false;
+        scannedAt = t;
+        if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
+        const offered = laneTargets(bot, { within: opts.within });
+        for (const o of offered) if (o.creep === current.creep) return false;
+        target = offered.length > 0 ? opts.pick(offered) : undefined;
+        return target !== undefined;
+    };
     let atSpot = false;
     let passAt: number | undefined;
     while (true) {
@@ -80,23 +98,25 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         const t0 = get()!.now();
         if (passAt === t0) yield;
         passAt = get()!.now();
-        label(atSpot ? "hold" : "walk");
-        const r = yield* holdAt(bot, spot, {
-            ...(opts.hold ?? {}),
-            deadline: opts.deadline,
-            interruptIf: () => {
-                if (stop()) return true;
-                const d = spot() !== undefined ? away() : undefined;
-                if (atSpot ? (d ?? 0) > far : (d ?? math.huge) <= near) return true;
-                return pick();
-            },
-        });
-        if (r.reason !== "interrupted") return r;
-        if (stop()) return { success: false, reason: "interrupted" };
         if (target === undefined) {
-            const d = spot() !== undefined ? away() : undefined;
-            atSpot = d !== undefined && d <= (atSpot ? far : near);
-            continue;
+            label(atSpot ? "hold" : "walk");
+            const r = yield* holdAt(bot, spot, {
+                ...(opts.hold ?? {}),
+                deadline: opts.deadline,
+                interruptIf: () => {
+                    if (stop()) return true;
+                    const d = spot() !== undefined ? away() : undefined;
+                    if (atSpot ? (d ?? 0) > far : (d ?? math.huge) <= near) return true;
+                    return pick();
+                },
+            });
+            if (r.reason !== "interrupted") return r;
+            if (stop()) return { success: false, reason: "interrupted" };
+            if (target === undefined) {
+                const d = spot() !== undefined ? away() : undefined;
+                atSpot = d !== undefined && d <= (atSpot ? far : near);
+                continue;
+            }
         }
         const t = target;
         target = undefined;
@@ -107,9 +127,10 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             maxWait: t.eta + 1.5,
             deadline: opts.deadline,
             hold: opts.hold?.hold,
-            interruptIf: () => stop() || away() > leash,
+            interruptIf: () => stop() || away() > leash || retarget(t),
         };
         const res = t.kind === "lasthit" ? yield* lastHit(bot, o) : yield* deny(bot, o);
+        if (target !== undefined && res.reason === "interrupted") res.message = `${res.message ?? ""} sw=1`;
         if (opts.onAttempt !== undefined) opts.onAttempt(t, res, contested);
         if (res.reason === "dead") return res;
     }

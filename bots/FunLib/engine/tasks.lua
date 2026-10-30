@@ -2320,82 +2320,114 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local function stop()
         return opts.interruptIf ~= nil and opts.interruptIf() or opts.deadline ~= nil and get().now() >= opts.deadline
     end
+    local function retarget(current)
+        if not opts.retarget then
+            return false
+        end
+        local t = get().now()
+        if t - scannedAt < scanEvery then
+            return false
+        end
+        scannedAt = t
+        if opts.pick == nil or opts.lastHits ~= nil and not opts.lastHits() then
+            return false
+        end
+        local offered = laneTargets(bot, {within = opts.within})
+        for ____, o in ipairs(offered) do
+            if o.creep == current.creep then
+                return false
+            end
+        end
+        local ____temp_6
+        if #offered > 0 then
+            ____temp_6 = opts.pick(offered)
+        else
+            ____temp_6 = nil
+        end
+        target = ____temp_6
+        return target ~= nil
+    end
     local atSpot = false
     local passAt
     while true do
         do
-            local __continue15
+            local __continue22
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
                     coroutine.yield()
                 end
                 passAt = get().now()
-                label(atSpot and "hold" or "walk")
-                local r = __TS__DelegatedYield(holdAt(
-                    bot,
-                    spot,
-                    __TS__ObjectAssign(
-                        {},
-                        opts.hold or ({}),
-                        {
-                            deadline = opts.deadline,
-                            interruptIf = function()
-                                if stop() then
-                                    return true
-                                end
-                                local d = spot() ~= nil and away() or nil
-                                local ____atSpot_6
-                                if atSpot then
-                                    ____atSpot_6 = (d or 0) > far
-                                else
-                                    ____atSpot_6 = (d or math.huge) <= near
-                                end
-                                if ____atSpot_6 then
-                                    return true
-                                end
-                                return pick()
-                            end
-                        }
-                    )
-                ))
-                if r.reason ~= "interrupted" then
-                    return r
-                end
-                if stop() then
-                    return {success = false, reason = "interrupted"}
-                end
                 if target == nil then
-                    local d = spot() ~= nil and away() or nil
-                    atSpot = d ~= nil and d <= (atSpot and far or near)
-                    __continue15 = true
-                    break
+                    label(atSpot and "hold" or "walk")
+                    local r = __TS__DelegatedYield(holdAt(
+                        bot,
+                        spot,
+                        __TS__ObjectAssign(
+                            {},
+                            opts.hold or ({}),
+                            {
+                                deadline = opts.deadline,
+                                interruptIf = function()
+                                    if stop() then
+                                        return true
+                                    end
+                                    local d = spot() ~= nil and away() or nil
+                                    local ____atSpot_7
+                                    if atSpot then
+                                        ____atSpot_7 = (d or 0) > far
+                                    else
+                                        ____atSpot_7 = (d or math.huge) <= near
+                                    end
+                                    if ____atSpot_7 then
+                                        return true
+                                    end
+                                    return pick()
+                                end
+                            }
+                        )
+                    ))
+                    if r.reason ~= "interrupted" then
+                        return r
+                    end
+                    if stop() then
+                        return {success = false, reason = "interrupted"}
+                    end
+                    if target == nil then
+                        local d = spot() ~= nil and away() or nil
+                        atSpot = d ~= nil and d <= (atSpot and far or near)
+                        __continue22 = true
+                        break
+                    end
                 end
                 local t = target
                 target = nil
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_9 = t.creep
-                local ____temp_10 = t.eta + 1.5
-                local ____opts_deadline_11 = opts.deadline
-                local ____opt_7 = opts.hold
+                local ____t_creep_10 = t.creep
+                local ____temp_11 = t.eta + 1.5
+                local ____opts_deadline_12 = opts.deadline
+                local ____opt_8 = opts.hold
                 local o = {
-                    target = ____t_creep_9,
-                    maxWait = ____temp_10,
-                    deadline = ____opts_deadline_11,
-                    hold = ____opt_7 and ____opt_7.hold,
-                    interruptIf = function() return stop() or away() > leash end
+                    target = ____t_creep_10,
+                    maxWait = ____temp_11,
+                    deadline = ____opts_deadline_12,
+                    hold = ____opt_8 and ____opt_8.hold,
+                    interruptIf = function() return stop() or away() > leash or retarget(t) end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
+                if target ~= nil and res.reason == "interrupted" then
+                    res.message = (res.message or "") .. " sw=1"
+                end
                 if opts.onAttempt ~= nil then
                     opts.onAttempt(t, res, contested)
                 end
                 if res.reason == "dead" then
                     return res
                 end
-                __continue15 = true
+                __continue22 = true
             until true
-            if not __continue15 then
+            if not __continue22 then
                 break
             end
         end

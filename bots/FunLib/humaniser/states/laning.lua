@@ -258,6 +258,7 @@ local body = __TS__Generator(function(bot, ctx)
             near = NEAR,
             far = FAR,
             leash = LEASH,
+            retarget = true,
             onAttempt = function(t, res, contested) return Telemetry.Event(
                 "lh",
                 {

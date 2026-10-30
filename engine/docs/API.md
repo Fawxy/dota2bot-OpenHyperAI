@@ -111,7 +111,7 @@ Per-frame creep queries are cached per bot.
 `laneTargets` (no `pick`: it only holds), swings through
 `lastHit`/`deny` (maxWait eta + 1.5 s, dropped beyond `leash` 900 from the spot), then walks back. Labels
 `walk`/`hold`/`lasthit`/`deny` (ctx binds the task label); `onAttempt(target, result, contested)` after every
-attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself.
+attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself. With `retarget` (default false) it keeps scanning while an attempt waits for its creep, before the swing: once that creep is no longer among `laneTargets`' offers and `pick` chooses another, the attempt ends `interrupted` (message ending `sw=1`) and the verb goes straight for the new creep.
 
 **When to swing.** The verb walks into attack range, then each frame computes the own hit time
 `t = attackPoint / attackSpeed (+ cooldown left, with attackClock) (+ max(0, dist - 39) / projectileSpeed for
