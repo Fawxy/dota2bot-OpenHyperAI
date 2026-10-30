@@ -249,7 +249,7 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
             const rule = b.rule === 'delta' ? `delta: met ${JSON.stringify(b.met)}${b.notMet ? `, not met ${JSON.stringify(b.notMet)}` : ''}${b.alpha !== undefined ? `, alpha ${b.alpha}` : ''}`
                 : b.rule === 'mean' ? `mean ${b.cmp}`
                 : b.rule === 'pooled' ? `pooled ${b.num}/${b.den} >= ${b.min}, den >= ${b.minDen || 1}` : `each ${(b.arms || ['on']).join('+')} ${['min', 'max', 'eq'].filter(k => b[k] !== undefined).map(k => `${k} ${b[k]}`).join(' ')}`;
-            out.push(row([b.id, `\`${b.metric}\``, rule, r.value, `**${r.result}**`]));
+            out.push(row([b.id, `\`${b.metric ?? `${b.num}/${b.den}`}\``, rule, r.value, `**${r.result}**`]));
         }
     }
     return out.join('\n') + '\n';
