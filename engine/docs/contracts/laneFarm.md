@@ -1,7 +1,7 @@
 # Contract: `laneFarm` (posture verb)
 
 ```
-name / version / owner:  laneFarm / 1 (slice 5, 31/10/2026: first contract; adds `retarget`) / engine (main loop)
+name / version / owner:  laneFarm / 1 (slice 5, 30/10/2026: first contract; adds `retarget`) / engine (main loop)
 layer:          atomic action (a composite of holdAt, lastHit and deny)
 intent:         A laner holds a spot and breaks off for the lane creeps its caller picks, swinging with lastHit/deny.
 applicability:  A bot handle; `spot()` read every frame (undefined: no spot to hold). Without `pick` it only holds (the
@@ -23,7 +23,7 @@ skill:          none of its own (lastHit/deny draw the Skill error).
 telemetry:      none (the caller logs ev=lh per attempt from onAttempt).
 fixtures:       engine test_lane (skill 1 farm, lastHits off, no pick, skill scaling, leash, retarget on/off, dead,
                 interrupted); bot test_states_laning_body.
-evidence:       handle identity across laneTargets calls: in-game, ER-007 re-run s5c game 1 (31/10/2026), 15 of 233
+evidence:       handle identity across laneTargets calls: in-game, ER-007 re-run s5c game 1 (30/10/2026), 15 of 233
                 Radiant core attempts switched, mean wait 0.95 s before the switch (a failed identity would switch every
                 attempt at its first 0.1 s scan).
 consumers:      bot states/laning (the laning body; retarget on).
