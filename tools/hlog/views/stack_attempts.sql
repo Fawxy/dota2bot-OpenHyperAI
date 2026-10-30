@@ -6,7 +6,7 @@
 -- left59: the camp neutrals still in the bare box at :59.5, from n59 ("name:dist:in|out:a|-") as name:a|- for each "in" entry,
 -- '-' when none, NULL without n59 or when it is '?'.
 -- death_flag: 1 when death=1, else 0 (stacks.js prints false on a skip line, which carries no death field; death itself stays NULL there).
--- needs: ev_stack(pid, min, res, why, camp, type, box59, bot59, vis59, after, n59, death)
+-- needs: ev_stack(pid, min, res, why, camp, type, box59, bot59, vis59, after, n59, death, idle)
 SELECT s.*, g.file, g.game,
     coalesce(s.death = 1, 0) AS death_flag,
     CASE WHEN s.n59 IS NULL OR s.n59 = '?' THEN NULL ELSE coalesce((

@@ -341,6 +341,7 @@ if Telemetry.GuardsEnabled() then
             Think = no,
             Abort = none,
             HoldsRun = no,
+            HoldsIdle = no,
             Benched = no,
             Bench = no,
             HoldsCasts = no,

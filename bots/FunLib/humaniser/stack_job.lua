@@ -1124,7 +1124,8 @@ local function finish(bot, a, result)
             },
             {"n2", a.n2 or "?"},
             {"n59", a.n59 or "?"},
-            {"lane", a.aggro ~= nil and (a.lane or 0) or "?"}
+            {"lane", a.aggro ~= nil and (a.lane or 0) or "?"},
+            {"idle", a.idle or 0}
         }
     )
 end
@@ -1241,6 +1242,19 @@ function ____exports.HoldsCasts(bot)
         return false
     end
     return #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) == 0
+end
+--- jmz_func CheckBotIdleState (called from team_roam's GetDesire whatever mode is active): a bot in farm mode that moved
+-- under 100 in 3 s gets ClearActions and an attack-move to its lane front. A stack job stands still at its stand point by
+-- design, and when the check fell inside the 2 s after the hit order it replaced the attack: all 4 slice 4 `no-aggro` misses
+-- (attack-move from the order to the miss, s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55). True while the job
+-- runs, counted on the attempt.
+function ____exports.HoldsIdle(bot)
+    local a = running[bot:GetPlayerID()]
+    if a == nil then
+        return false
+    end
+    a.idle = (a.idle or 0) + 1
+    return true
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)

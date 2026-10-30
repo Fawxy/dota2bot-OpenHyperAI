@@ -6593,6 +6593,15 @@ function J.CheckBotIdleState()
 				if bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE
 				or botMode == BOT_MODE_ITEM
 				or botMode == BOT_MODE_FARM then
+					-- Ours.StackExecute: a running stack job stands still by design; the relocation replaced its hit order.
+					local bHeld = J.Humaniser.StackJob.HoldsIdle(bot)
+					J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)
+					if bHeld then
+						botState.idleCount = 0
+						botState.botLocation = bot:GetLocation()
+						botState.lastCheckTime = DotaTime()
+						return false
+					end
 					local nActions = bot:NumQueuedActions()
 					if nActions > 0 then
 						for i=1, nActions do

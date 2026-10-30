@@ -254,7 +254,7 @@ const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8')
 // The fields of an ev=stack attempt, in the order stacks.js --json has always printed them.
 const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'before', 'after', 'fresh', 'away', 'death',
     'vis', 'box59', 'pulled59', 'bot59', 'vis59', 'exit59', 'hitd', 'tgt2', 'tgt59', 'strict59',
-    'arr', 'hit0', 'dmg', 'react', 'exit', 'hpa', 'hpe', 'hp59', 'casts', 'n2', 'n59', 'lane', 'left59', 'cause'];
+    'arr', 'hit0', 'dmg', 'react', 'exit', 'hpa', 'hpe', 'hp59', 'casts', 'n2', 'n59', 'lane', 'idle', 'left59', 'cause'];
 
 /**
  * Stack attempts (slice 4, KR S.2a): every ev=stack line of one stored game before `until` (`@stack_rows` over the
