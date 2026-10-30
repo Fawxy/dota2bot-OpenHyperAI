@@ -68,7 +68,7 @@ end
 
 
 -- A creep that walks into the fog mid-attempt (alive, valid handle, no location) ends the attempt cleanly as
--- lost, and is never offered by nextLastHit; it must not raise an error.
+-- lost, and is never offered by laneTargets; it must not raise an error.
 do
     local sim = world()
     local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5 }
@@ -80,8 +80,8 @@ do
     local s2 = world()
     local b2 = s2:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5 }
     s2:addCreep{ x = 100, y = 0, hp = 40, team = 3, passive = true, fogged = true }
-    local ok2, t2 = pcall(V.nextLastHit, b2)
-    T.check("fogged creep: nextLastHit no error and nothing offered", ok2 and t2 == nil, tostring(t2))
+    local ok2, t2 = pcall(V.laneTargets, b2)
+    T.check("fogged creep: laneTargets no error and nothing offered", ok2 and #t2 == 0, tostring(t2))
 end
 
 
@@ -264,7 +264,7 @@ do
 end
 
 
--- nextLastHit: which creep a laner goes for next. Creeps lose hp to `drain` (hp/s); the bot (50 dmg, 0.3 s
+-- laneTargets: the creeps a laner could go for next. Creeps lose hp to `drain` (hp/s); the bot (50 dmg, 0.3 s
 -- wind-up, melee) lands 0.3 s after an order, so a creep at hp h is due when h - 0.3 * drain <= 50.
 local function laneWorld(opts)
     local sim = world(opts)
@@ -273,35 +273,34 @@ local function laneWorld(opts)
 end
 local MELEE, RANGED = "npc_dota_creep_badguys_melee", "npc_dota_creep_badguys_ranged"
 local ALLY_MELEE = "npc_dota_creep_goodguys_melee"
+local function offered(list, creep)
+    for _, t in ipairs(list) do if t.creep == creep then return t end end
+end
 
--- The ranged creep wins over a melee creep due a little sooner (gold and XP).
+-- Each due creep is offered with its eta and kind; the ranged flag follows the unit name. No choice is made.
 do
     local sim, bot = laneWorld()
-    sim:addCreep{ x = 100, y = 0, hp = 100, drain = 100, team = 3, name = MELEE }   -- due in 0.2 s
+    local m = sim:addCreep{ x = 100, y = 0, hp = 100, drain = 100, team = 3, name = MELEE }   -- due in 0.2 s
     local r = sim:addCreep{ x = 100, y = 30, hp = 120, drain = 100, team = 3, name = RANGED } -- due in 0.4 s
-    local t = V.nextLastHit(bot)
-    T.check("next: ranged preferred over a melee due 0.2 s sooner", t ~= nil and t.creep == r and t.kind == "lasthit")
-    T.check("next: eta of the ranged creep about 0.4 s", t ~= nil and math.abs(t.eta - 0.4) < 0.02, t and t.eta)
+    local list = V.laneTargets(bot)
+    local tm, tr = offered(list, m), offered(list, r)
+    T.eq("targets: both creeps offered", #list, 2)
+    T.check("targets: melee eta about 0.2 s, not ranged", tm ~= nil and math.abs(tm.eta - 0.2) < 0.02 and not tm.ranged, tm and tm.eta)
+    T.check("targets: ranged eta about 0.4 s, ranged", tr ~= nil and math.abs(tr.eta - 0.4) < 0.02 and tr.ranged and tr.kind == "lasthit", tr and tr.eta)
 end
 
--- ...but not over a melee creep due now when the ranged one is a second away: the bias is bounded.
+-- Denies: an allied creep below half its max hp is offered as a deny; `lastHit = false` / `deny = false` drop a side.
 do
     local sim, bot = laneWorld()
-    local m = sim:addCreep{ x = 100, y = 0, hp = 60, drain = 100, team = 3, name = MELEE }   -- due now
-    sim:addCreep{ x = 100, y = 30, hp = 180, drain = 100, team = 3, name = RANGED }          -- due in 1.0 s
-    local t = V.nextLastHit(bot, { within = 1.5 })
-    T.check("next: melee due now beats a ranged creep due in 1 s", t ~= nil and t.creep == m, t and t.eta)
-end
-
--- A core never gives up its own last hit to deny: an allied creep due now loses to an enemy creep due in 0.2 s.
-do
-    local sim, bot = laneWorld()
-    sim:addCreep{ x = 80, y = -40, hp = 60, maxHp = 550, drain = 100, team = 2, name = ALLY_MELEE }
+    local a = sim:addCreep{ x = 80, y = -40, hp = 60, maxHp = 550, drain = 100, team = 2, name = ALLY_MELEE }
     local e = sim:addCreep{ x = 100, y = 0, hp = 100, drain = 100, team = 3, name = MELEE }
-    local t = V.nextLastHit(bot)
-    T.check("next: last hit beats a deny due slightly sooner", t ~= nil and t.creep == e and t.kind == "lasthit")
-    local d = V.nextLastHit(bot, { lastHit = false })
-    T.check("next: the deny is offered when last hits are off", d ~= nil and d.kind == "deny")
+    local list = V.laneTargets(bot)
+    T.check("targets: deny offered with its kind", offered(list, a) ~= nil and offered(list, a).kind == "deny")
+    T.check("targets: last hit offered beside it", offered(list, e) ~= nil and offered(list, e).kind == "lasthit")
+    local d = V.laneTargets(bot, { lastHit = false })
+    T.check("targets: lastHit = false leaves only the deny", #d == 1 and d[1].creep == a)
+    local l = V.laneTargets(bot, { deny = false })
+    T.check("targets: deny = false leaves only the last hit", #l == 1 and l[1].creep == e)
 end
 
 -- Etiquette: a last hit the host forbids is not offered; the deny is.
@@ -309,8 +308,8 @@ do
     local sim, bot = laneWorld({ lastHitFilter = function() return false end })
     sim:addCreep{ x = 100, y = 0, hp = 60, drain = 100, team = 3, name = MELEE }
     sim:addCreep{ x = 80, y = -40, hp = 70, maxHp = 550, drain = 100, team = 2, name = ALLY_MELEE }
-    local t = V.nextLastHit(bot)
-    T.check("next: filtered last hit skipped, deny offered", t ~= nil and t.kind == "deny")
+    local list = V.laneTargets(bot)
+    T.check("targets: filtered last hit skipped, deny offered", #list == 1 and list[1].kind == "deny")
 end
 
 -- Not due within the window: a creep nobody hits (only our hit could ever kill it) and a far-off one.
@@ -318,12 +317,12 @@ do
     local sim, bot = laneWorld()
     sim:addCreep{ x = 100, y = 0, hp = 300, team = 3, name = MELEE }                    -- no damage incoming
     sim:addCreep{ x = 100, y = 0, hp = 250, drain = 100, team = 3, name = MELEE }       -- due in 2.3 s
-    T.eq("next: nothing due within 1 s", V.nextLastHit(bot), nil)
+    T.eq("targets: nothing due within 1 s", #V.laneTargets(bot), 0)
     local far = sim:addCreep{ x = 520, y = 0, hp = 40, team = 3, name = MELEE, passive = true }
     sim:step(DT) -- creep queries are cached per frame
-    -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta, and the bot sets off now
-    local t = V.nextLastHit(bot)
-    T.check("next: far creep's eta is its walk", t ~= nil and t.creep == far and math.abs(t.eta - 370 / 300) < 0.05, t and t.eta)
+    -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta and the walk
+    local t = offered(V.laneTargets(bot), far)
+    T.check("targets: far creep's eta is its walk", t ~= nil and math.abs(t.eta - 370 / 300) < 0.05 and math.abs(t.walk - 370 / 300) < 0.05, t and t.eta)
 end
 
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),
@@ -331,14 +330,14 @@ end
 do
     local sim, bot = laneWorld()
     local c = sim:addCreep{ x = 600, y = 0, hp = 200, drain = 100, team = 3, name = MELEE }
-    local t = V.nextLastHit(bot)
-    T.check("next: sets off for a creep due as it arrives", t ~= nil and t.creep == c, t and t.eta)
+    local list = V.laneTargets(bot)
+    T.check("targets: sets off for a creep due as it arrives", #list == 1 and list[1].creep == c, list[1] and list[1].eta)
     c.hp = 350 -- due in 3 s
     sim:step(DT)
-    T.eq("next: too early to set off", V.nextLastHit(bot), nil)
+    T.eq("targets: too early to set off", #V.laneTargets(bot), 0)
     local sim2, bot2 = laneWorld()
     sim2:addCreep{ x = 900, y = 0, hp = 40, team = 3, name = MELEE, passive = true }
-    T.eq("next: beyond the search radius", V.nextLastHit(bot2), nil)
+    T.eq("targets: beyond the search radius", #V.laneTargets(bot2), 0)
 end
 
 -- deny ------------------------------------------------------------------------

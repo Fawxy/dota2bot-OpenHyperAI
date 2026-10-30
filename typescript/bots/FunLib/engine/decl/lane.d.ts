@@ -7,8 +7,13 @@ export interface LaneFarmOpts {
     hold?: HoldOpts;
     /** Whether to go for last hits and denies now; read every frame. Default: always. */
     lastHits?: (this: void) => boolean;
-    /** nextLastHit's `within`. Default 1. */
+    /** laneTargets' `within`. Default 1. */
     within?: number;
+    /**
+     * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
+     * `pick` the verb only holds the spot.
+     */
+    pick?: (this: void, targets: LaneTarget[]) => LaneTarget | undefined;
     /** An attempt is dropped once the bot is this far from the spot. Default 900. */
     leash?: number;
     /** Within this of the spot the label is `hold`, beyond `far` it is `walk` again. Defaults 600 / 1200. */
@@ -26,7 +31,7 @@ export interface LaneFarmOpts {
 }
 /**
  * Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
- * the creep nextLastHit offers (walking in so it arrives as the creep becomes killable), swings with the
+ * the creep `pick` chooses from laneTargets (walking in so it arrives as the creep becomes killable), swings with the
  * skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
  * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
  */

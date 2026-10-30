@@ -1881,17 +1881,18 @@ local function etaOf(bot, c, walkSpeed)
     end
     return {margin / dps, walk}
 end
---- The lane creep the bot should go for next, if any becomes killable within `within` seconds of the bot reaching
--- attack range: an enemy creep to last-hit (the adapter's `lastHitFilter` applies) or an allied creep to deny.
--- Exact prediction, no skill error (the verbs apply that when they swing): eta is when the creep becomes
--- killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Priority: ranged last hit, ranged deny,
--- melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
-function ____exports.nextLastHit(bot, opts)
+--- The lane creeps that become killable within `within` seconds of the bot reaching attack range, in no order:
+-- enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
+-- exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
+-- killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
+-- the caller's choice.
+function ____exports.laneTargets(bot, opts)
     if opts == nil then
         opts = {}
     end
+    local out = {}
     if bot.GetAttackDamage == nil or bot.GetAttackPoint == nil or bot.GetNearbyLaneCreeps == nil then
-        return nil
+        return out
     end
     local adapter = get()
     local radius = opts.radius or math.max(
@@ -1899,8 +1900,6 @@ function ____exports.nextLastHit(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local rangedBias = opts.rangedBias or 0.4
-    local lhBias = opts.lastHitBias or 0.3
     local ____math_max_89 = math.max
     local ____this_88
     ____this_88 = bot
@@ -1911,8 +1910,6 @@ function ____exports.nextLastHit(bot, opts)
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
-    local best
-    local bestKey = math.huge
     local function consider(c, kind)
         if gone(c) or dist(
             here,
@@ -1927,13 +1924,13 @@ function ____exports.nextLastHit(bot, opts)
         if e == nil or e[1] - e[2] > within then
             return
         end
-        local eta = math.max(e[1], e[2])
-        local ranged = isRangedCreep(c)
-        local key = eta - (ranged and rangedBias or 0) - (kind == "lasthit" and lhBias or 0)
-        if key < bestKey then
-            bestKey = key
-            best = {creep = c, kind = kind, eta = eta, ranged = ranged}
-        end
+        out[#out + 1] = {
+            creep = c,
+            kind = kind,
+            eta = math.max(e[1], e[2]),
+            walk = e[2],
+            ranged = isRangedCreep(c)
+        }
     end
     if opts.lastHit ~= false then
         for ____, c in ipairs(n.enemyCreeps) do
@@ -1945,7 +1942,7 @@ function ____exports.nextLastHit(bot, opts)
             consider(c, "deny")
         end
     end
-    return best
+    return out
 end
 local strike = __TS__Generator(function(bot, mode, opts)
     local adapter = get()
@@ -2225,7 +2222,7 @@ local holdAt = ____verbs.holdAt
 local ____lasthit = require("lasthit")
 local deny = ____lasthit.deny
 local lastHit = ____lasthit.lastHit
-local nextLastHit = ____lasthit.nextLastHit
+local laneTargets = ____lasthit.laneTargets
 local function dist(a, b)
     local dx = a.x - b.x
     local dy = a.y - b.y
@@ -2248,7 +2245,7 @@ local function enemyHeroNear(bot, r)
     return false
 end
 --- Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
--- the creep nextLastHit offers (walking in so it arrives as the creep becomes killable), swings with the
+-- the creep `pick` chooses from laneTargets (walking in so it arrives as the creep becomes killable), swings with the
 -- skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
 -- `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
 ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
@@ -2275,13 +2272,20 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
             return false
         end
         scannedAt = t
-        if opts.lastHits ~= nil and not opts.lastHits() then
+        if opts.pick == nil or opts.lastHits ~= nil and not opts.lastHits() then
             return false
         end
         if away() > leash then
             return false
         end
-        target = nextLastHit(bot, {within = opts.within})
+        local offered = laneTargets(bot, {within = opts.within})
+        local ____temp_5
+        if #offered > 0 then
+            ____temp_5 = opts.pick(offered)
+        else
+            ____temp_5 = nil
+        end
+        target = ____temp_5
         return target ~= nil
     end
     local function stop()
@@ -2312,13 +2316,13 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                                     return true
                                 end
                                 local d = spot() ~= nil and away() or nil
-                                local ____atSpot_5
+                                local ____atSpot_6
                                 if atSpot then
-                                    ____atSpot_5 = (d or 0) > far
+                                    ____atSpot_6 = (d or 0) > far
                                 else
-                                    ____atSpot_5 = (d or math.huge) <= near
+                                    ____atSpot_6 = (d or math.huge) <= near
                                 end
-                                if ____atSpot_5 then
+                                if ____atSpot_6 then
                                     return true
                                 end
                                 return pick()
@@ -2342,15 +2346,15 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 target = nil
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_8 = t.creep
-                local ____temp_9 = t.eta + 1.5
-                local ____opts_deadline_10 = opts.deadline
-                local ____opt_6 = opts.hold
+                local ____t_creep_9 = t.creep
+                local ____temp_10 = t.eta + 1.5
+                local ____opts_deadline_11 = opts.deadline
+                local ____opt_7 = opts.hold
                 local o = {
-                    target = ____t_creep_8,
-                    maxWait = ____temp_9,
-                    deadline = ____opts_deadline_10,
-                    hold = ____opt_6 and ____opt_6.hold,
+                    target = ____t_creep_9,
+                    maxWait = ____temp_10,
+                    deadline = ____opts_deadline_11,
+                    hold = ____opt_7 and ____opt_7.hold,
                     interruptIf = function() return stop() or away() > leash end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
