@@ -107,6 +107,20 @@ test('er bars: each, mean and the three-way delta rule', () => {
     assert.strictEqual(bar(g1, [], { m: { all: { delta: 0, lo: -2, hi: 2 } } }).result, 'met');
     assert.strictEqual(bar({ rule: 'delta', metric: 'm', met: { lo: { gt: 0 } } }, [], t).result, 'not met');
     assert.ok(cond({ lo: { le: 0 }, hi: { ge: 1 } }, { lo: 0, hi: 1 }));
+    // Interim look: the same pooled row judged at alpha 0.025 widens the CI from the same SE and df, so a lo just
+    // above 0 at 95% falls below it (t 2.306 -> 2.752 at df 8).
+    const look = { m: { all: { delta: 3, se: 1.25, df: 8, lo: 3 - 2.306 * 1.25, hi: 3 + 2.306 * 1.25 } } };
+    const vs = { rule: 'delta', metric: 'm', met: { lo: { gt: 0 } } };
+    assert.strictEqual(bar(vs, [], look).result, 'met');
+    const atLook = bar({ ...vs, alpha: 0.025 }, [], look);
+    assert.strictEqual(atLook.result, 'not met');
+    assert.match(atLook.value, /\+3\.0 \[-0\.4, 6\.4\] \(97\.5% CI\)/);
+    // Without a df the 95% path would still meet lo > 0 (nf.js' own bounds); at an alpha the bounds are NaN, so not met.
+    const noDf = { m: { all: { delta: 3, se: 1.25, df: NaN, lo: 0.5, hi: 5.5 } } };
+    assert.strictEqual(bar(vs, [], noDf).result, 'met');
+    assert.strictEqual(bar({ ...vs, alpha: 0.025 }, [], noDf).result, 'not met', 'no df: NaN bounds, not met');
+    // An alpha outside (0, 1) (2.5 typed for 2.5%) must not collapse the CI onto the delta and pass the bar.
+    assert.strictEqual(bar({ ...vs, alpha: 2.5 }, [], look).result, 'not met');
 });
 
 test('er gaps: a gap with a death, one without, and an early stop with and without an enemy kill after it', () => {
