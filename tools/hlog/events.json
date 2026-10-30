@@ -92,6 +92,7 @@
    "d": "num",
    "act": "num",
    "gold": "num",
+   "lf": "str",
    "by": "str",
    "order": "str"
   },
@@ -194,6 +195,7 @@
    "d": "num",
    "act": "num",
    "gold": "num",
+   "lf": "str",
    "by": "str",
    "order": "str"
   },
@@ -794,6 +796,7 @@
    "tgt": "text",
    "ln": "text",
    "mode": "text",
+   "lf": "text",
    "by": "text",
    "order": "text"
   },
@@ -820,6 +823,7 @@
    "tgt": "text",
    "ln": "text",
    "mode": "text",
+   "lf": "text",
    "by": "text",
    "order": "text"
   },

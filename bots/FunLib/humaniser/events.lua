@@ -39,6 +39,7 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     d = "num",
     act = "num",
     gold = "num",
+    lf = "str",
     by = "str",
     order = "str"
 })

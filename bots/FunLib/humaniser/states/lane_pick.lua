@@ -33,4 +33,54 @@ function ____exports.Choose(targets)
     end
     return best
 end
+local scans = {}
+local function scanOf(pid)
+    local s = scans[pid]
+    if s == nil then
+        s = {}
+        scans[pid] = s
+    end
+    return s
+end
+function ____exports.NotePhase(pid, ph)
+    scanOf(pid).ph = ph
+end
+function ____exports.NoteScan(pid, now, aw)
+    local s = scanOf(pid)
+    s.scanAt = now
+    s.aw = aw
+end
+function ____exports.NotePick(pid, now, targets, chosen)
+    local s = scanOf(pid)
+    s.pickAt = now
+    s.n = #targets
+    local sk = 0
+    for ____, t in ipairs(targets) do
+        if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
+            sk = sk + 1
+        end
+    end
+    s.sk = sk
+    s.ch = chosen ~= nil
+end
+--- `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any.
+function ____exports.Describe(pid, now)
+    local s = scans[pid]
+    if s == nil then
+        return nil
+    end
+    local function age(t)
+        return t == nil and "-" or string.format("%.1f", now - t)
+    end
+    return string.format(
+        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s",
+        s.ph or "-",
+        age(s.scanAt),
+        s.aw == nil and "-" or tostring(math.floor(s.aw)),
+        age(s.pickAt),
+        tostring(s.n or "-"),
+        tostring(s.sk or "-"),
+        s.ch == nil and "-" or (s.ch and "1" or "0")
+    )
+end
 return ____exports
