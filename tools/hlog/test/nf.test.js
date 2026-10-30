@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { t975, tCrit, welch, pooled, mde, stackInterrupted } = require('../nf');
+const { t975, tCrit, welch, pooled, mde, stackInterrupted, stackNoAggro } = require('../nf');
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) < eps, `${msg}: ${a} vs ${b}`);
 
@@ -42,6 +42,12 @@ test('stackInterrupted: OHA take-overs and the job stop on hero damage, not exec
         assert.strictEqual(stackInterrupted({ res: 'failed', why }), true, why);
     for (const why of ['ok', 'missed:mistake:no-aggro', 'no_target:mistake:no-camp', 'preempted:stalled', undefined])
         assert.strictEqual(stackInterrupted({ res: 'failed', why }), false, String(why));
+});
+
+test('stackNoAggro: a started job whose hit was never confirmed (slice stack-hit)', () => {
+    assert.strictEqual(stackNoAggro({ res: 'failed', why: 'missed:mistake:no-aggro' }), true);
+    for (const s of [{ res: 'failed', why: 'no_target:mistake:no-camp' }, { res: 'stacked', why: 'ok' }, { res: 'skip', why: 'late' }, { res: 'failed' }])
+        assert.strictEqual(stackNoAggro(s), false, JSON.stringify(s));
 });
 
 test('tCrit is the exact two-sided t quantile at any alpha and fractional df', () => {
