@@ -11,7 +11,8 @@
 //   delta: pooled ON-OFF 95% CI of an nf.js metric; `met` and optional `notMet` are conditions on lo/hi/delta, e.g.
 //          { "lo": { "gt": -5 } }. Neither true: inconclusive (only when notMet is given; else not met). Optional `alpha`
 //          (two-sided, default 0.05): the CI is recomputed at that level from the same delta, SE and df, for a bar judged
-//          at an interim look and again at the maximum N (e.g. 0.025 per look; skill eval-run rule 4).
+//          at an interim look and again at the maximum N (e.g. 0.025 per look; skill eval-run rule 4). A condition value
+//          "mde" or "-mde" is the row's MDE at --n per seed from the batch's own OFF SD (a guard rail: { "delta": { "ge": "-mde" } }).
 //   pooled: sum of per-game key `num` over the sum of `den` across the games of `arms` (default ["on"]) >= `min`; under
 //          `minDen` in the denominator it is not met (an S bar with too few attempts is UNTESTED, slice 4).
 'use strict';
@@ -90,9 +91,12 @@ const row = cells => `| ${cells.join(' | ')} |`;
 const head = cells => `${row(cells)}\n${row(cells.map(() => '---'))}`;
 const ARM_ORDER = arms => [...new Set(arms)].sort((a, b) => (a === 'off' ? 1 : b === 'off' ? -1 : a.localeCompare(b)));
 
+/** `v` may be "mde" or "-mde": the pooled row's own MDE (from the batch's OFF SD), for a guard rail whose SD no earlier batch
+ *  measured (slice 5). A row without an MDE (zero or missing OFF SD) gives NaN, so the condition is false (not met). */
 function cond(c, r) {
+    const num = v => (v === 'mde' ? r.mde : v === '-mde' ? -r.mde : v);
     return Object.entries(c).every(([k, ops]) => Object.entries(ops).every(([op, v]) =>
-        ({ lt: r[k] < v, le: r[k] <= v, gt: r[k] > v, ge: r[k] >= v })[op]));
+        ({ lt: r[k] < num(v), le: r[k] <= num(v), gt: r[k] > num(v), ge: r[k] >= num(v) })[op]));
 }
 
 /** The pooled delta with its CI at two-sided `alpha` instead of 0.05. An alpha outside (0, 1) (e.g. 2.5 typed for 2.5%)

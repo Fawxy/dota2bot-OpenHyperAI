@@ -43,6 +43,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
@@ -65,6 +66,9 @@ function ownTeam(bot)
     return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
 end
 function owns(bot, state)
+    if state == Laning.NAME and CoreLastHit.Applies(bot) then
+        return true
+    end
     if not ownTeam(bot) then
         return false
     end
@@ -128,7 +132,7 @@ local function ownsAny()
 end
 --- Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think).
 function ____exports.MayOwn(bot)
-    return ____exports.IsEnabled() and ownTeam(bot) and ownsAny()
+    return ____exports.IsEnabled() and (ownTeam(bot) and ownsAny() or CoreLastHit.Applies(bot))
 end
 --- States by name in registration order; registering an existing name replaces it in place.
 local registry = {}
@@ -245,7 +249,7 @@ function ____exports.Tick(bot)
     if not ____exports.IsEnabled() then
         return
     end
-    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) then
+    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) and not CoreLastHit.Applies(bot) then
         return
     end
     local l = lib()

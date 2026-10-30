@@ -121,6 +121,12 @@ test('er bars: each, mean and the three-way delta rule', () => {
     assert.strictEqual(bar({ ...vs, alpha: 0.025 }, [], noDf).result, 'not met', 'no df: NaN bounds, not met');
     // An alpha outside (0, 1) (2.5 typed for 2.5%) must not collapse the CI onto the delta and pass the bar.
     assert.strictEqual(bar({ ...vs, alpha: 2.5 }, [], look).result, 'not met');
+    // Guard rail against the batch's own MDE (slice 5): harm beyond it is not met; no MDE (OFF SD 0 or missing) is never met.
+    const gr = { rule: 'delta', metric: 'm', met: { delta: { ge: '-mde' } } };
+    assert.strictEqual(bar(gr, [], { m: { all: { delta: -1, lo: -3, hi: 1, mde: 2 } } }).result, 'met');
+    assert.strictEqual(bar(gr, [], { m: { all: { delta: -2.5, lo: -4, hi: -1, mde: 2 } } }).result, 'not met');
+    assert.strictEqual(bar(gr, [], { m: { all: { delta: 0, lo: -1, hi: 1, mde: NaN } } }).result, 'not met');
+    assert.strictEqual(bar({ ...gr, met: { delta: { le: 'mde' } } }, [], { m: { all: { delta: 2.5, mde: 2 } } }).result, 'not met');
 });
 
 test('er gaps: a gap with a death, one without, and an early stop with and without an enemy kill after it', () => {

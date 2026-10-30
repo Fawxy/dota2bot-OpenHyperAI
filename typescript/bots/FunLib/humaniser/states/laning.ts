@@ -13,6 +13,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 
 export const NAME = "laning";
 
@@ -109,6 +110,7 @@ export function SpotInfo(bot: Unit): LaneSpot.SpotInfo | undefined {
 
 /** Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua). */
 export function OwnsLastHit(bot: Unit): boolean {
+    if (CoreLastHit.Applies(bot)) return true;
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined) return false;
     for (const p of Settings().LastHit) if (p === pos) return true;
@@ -124,12 +126,25 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         : { tolerance: 100, repath: 1, jitter: 0.3, scatter: 50, hold: "state:laning" };
     return yield* ctx.laneFarm(() => Spot(bot) as unknown as Lib.Vec | undefined, {
         hold,
-        lastHits: () => OwnsLastHit(bot),
+        lastHits: () => {
+            const spot = Spot(bot);
+            LanePick.NoteScan(bot.GetPlayerID(), DotaTime(), spot !== undefined ? GetUnitToLocationDistance(bot, spot) : undefined);
+            return OwnsLastHit(bot);
+        },
         within: Settings().LastHitWithin,
-        pick: LanePick.Choose,
+        pick: (targets) => {
+            const chosen = LanePick.Choose(targets);
+            LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
+            return chosen;
+        },
+        label: (l) => {
+            ctx.label(l);
+            LanePick.NotePhase(bot.GetPlayerID(), l);
+        },
         near: NEAR,
         far: FAR,
         leash: LEASH,
+        retarget: true,
         onAttempt: (t, res, contested) =>
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],

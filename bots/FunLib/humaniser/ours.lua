@@ -37,7 +37,7 @@ function ____exports.On(feature)
     return value == true
 end
 Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
-____exports.DEFAULTS = {LeaveCoreCreep = true, StackExecute = true}
+____exports.DEFAULTS = {LeaveCoreCreep = true, StackExecute = true, CoreLastHit = false}
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
     local names = {}

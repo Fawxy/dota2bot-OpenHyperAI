@@ -157,6 +157,19 @@ do
     local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
     T.eq("tower wind-up kills first: taken_by_other", r.reason, "taken_by_other")
     T.eq("tower wind-up kills first: no swing", bot:actionsOf("attack"), 0)
+    -- In-game attribution: a creep lost before any swing says what held the swing back on the last frame.
+    T.check("tower wind-up kills first: message says it was waiting on the kill belief", (r.message or ""):find("why=wait", 1, true) ~= nil, tostring(r.message))
+end
+
+-- A creep out of range that dies while the bot walks in: the message says `range`, with how far it still had to go.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("lost while walking in: taken_by_other", r.reason, "taken_by_other")
+    T.check("lost while walking in: why=range with the distance left", (r.message or ""):match("why=range d=%d+") ~= nil, tostring(r.message))
 end
 
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.
@@ -287,6 +300,9 @@ do
     T.eq("targets: both creeps offered", #list, 2)
     T.check("targets: melee eta about 0.2 s, not ranged", tm ~= nil and math.abs(tm.eta - 0.2) < 0.02 and not tm.ranged, tm and tm.eta)
     T.check("targets: ranged eta about 0.4 s, ranged", tr ~= nil and math.abs(tr.eta - 0.4) < 0.02 and tr.ranged and tr.kind == "lasthit", tr and tr.eta)
+    -- The facts behind eta (slice 5): due 0.2 s, no walk, and dead to the drain at 100 hp / 100 hp/s = 1 s from now.
+    T.check("targets: melee due, walk and dies", tm ~= nil and math.abs(tm.due - 0.2) < 0.02 and tm.walk == 0 and math.abs(tm.dies - 1.0) < 0.02,
+        tm and string.format("%s %s %s", tm.due, tm.walk, tm.dies))
 end
 
 -- Denies: an allied creep below half its max hp is offered as a deny; `lastHit = false` / `deny = false` drop a side.
@@ -323,6 +339,8 @@ do
     -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta, and the bot sets off now
     local t = offered(V.laneTargets(bot), far)
     T.check("targets: far creep's eta is its walk", t ~= nil and math.abs(t.eta - 370 / 300) < 0.05, t and t.eta)
+    T.check("targets: far creep due now, its walk apart, and no one on it (dies never)", t ~= nil and t.due == 0 and math.abs(t.walk - 370 / 300) < 0.05 and t.dies == math.huge,
+        t and string.format("%s %s %s", t.due, t.walk, t.dies))
 end
 
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),

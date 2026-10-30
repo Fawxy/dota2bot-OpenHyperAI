@@ -1850,7 +1850,8 @@ local function enemyTargeting(bot, creep)
     end
     return false
 end
---- Seconds until the creep is killable by a swing ordered then, and the walk into attack range.
+--- Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
+-- others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
 local function etaOf(bot, c, walkSpeed)
     local b = believe(bot, c, false)
     if not b.survives then
@@ -1864,9 +1865,6 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    if margin <= 0 then
-        return {0, walk}
-    end
     local ____exports_incomingDps_result_86 = ____exports.incomingDps(bot, c)
     local ____math_max_85 = math.max
     local ____this_84
@@ -1876,10 +1874,14 @@ local function etaOf(bot, c, walkSpeed)
         0,
         -(____opt_83 and ____opt_83(____this_84) or 0)
     )
+    local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
+    if margin <= 0 then
+        return {0, walk, dies}
+    end
     if dps <= 0 then
         return nil
     end
-    return {margin / dps, walk}
+    return {margin / dps, walk, dies}
 end
 --- The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
 -- first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
@@ -1928,6 +1930,9 @@ function ____exports.laneTargets(bot, opts)
             creep = c,
             kind = kind,
             eta = math.max(e[1], e[2]),
+            due = e[1],
+            walk = e[2],
+            dies = e[3],
             ranged = isRangedCreep(c)
         }
     end
@@ -1991,6 +1996,15 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local enemyOnIt = false
     local tHit = 0
     local diag = ""
+    local held = "start"
+    local function early(r)
+        r.message = string.format(
+            "w=%.2f why=%s",
+            now() - start,
+            held
+        )
+        return r
+    end
     local lastFrame
     local margin = MIN_MARGIN
     while true do
@@ -2003,16 +2017,16 @@ local strike = __TS__Generator(function(bot, mode, opts)
         end
         lastFrame = t
         if not bot:IsAlive() then
-            return fail("dead")
+            return early(fail("dead"))
         end
         if gone(creep) then
-            return fail(lostReason(enemyOnIt))
+            return early(fail(lostReason(enemyOnIt)))
         end
         if opts.interruptIf ~= nil and opts.interruptIf() then
-            return fail("interrupted")
+            return early(fail("interrupted"))
         end
         if now() - start > maxWait or expired(opts.deadline) then
-            return fail("timeout")
+            return early(fail("timeout"))
         end
         if mode == "lasthit" then
             enemyOnIt = enemyTargeting(bot, creep)
@@ -2021,14 +2035,30 @@ local strike = __TS__Generator(function(bot, mode, opts)
             bot:GetLocation(),
             creep:GetLocation()
         ) > bot:GetAttackRange() then
+            held = string.format(
+                "range d=%d",
+                math.floor(dist(
+                    bot:GetLocation(),
+                    creep:GetLocation()
+                ) - bot:GetAttackRange())
+            )
             bot:Action_MoveToLocation(creep:GetLocation())
         else
+            local cd = ____exports.cooldownLeft(bot)
+            held = mode == "deny" and not deniable(creep) and "hp50" or string.format("cd c=%.2f", cd)
             if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
                 local b = believe(bot, creep, true, margin)
+                held = string.format(
+                    "wait hp=%d pred=%d mine=%d",
+                    math.floor(creep:GetHealth()),
+                    math.floor(b.hpAtHit),
+                    math.floor(b.mine)
+                )
                 if due(b) then
                     tHit = b.tHit
                     diag = string.format(
-                        "hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        "w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        now() - start,
                         math.floor(creep:GetHealth()),
                         math.floor(b.hpAtHit),
                         math.floor(b.mine),
@@ -2290,82 +2320,114 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local function stop()
         return opts.interruptIf ~= nil and opts.interruptIf() or opts.deadline ~= nil and get().now() >= opts.deadline
     end
+    local function retarget(current)
+        if not opts.retarget then
+            return false
+        end
+        local t = get().now()
+        if t - scannedAt < scanEvery then
+            return false
+        end
+        scannedAt = t
+        if opts.pick == nil or opts.lastHits ~= nil and not opts.lastHits() then
+            return false
+        end
+        local offered = laneTargets(bot, {within = opts.within})
+        for ____, o in ipairs(offered) do
+            if o.creep == current.creep then
+                return false
+            end
+        end
+        local ____temp_6
+        if #offered > 0 then
+            ____temp_6 = opts.pick(offered)
+        else
+            ____temp_6 = nil
+        end
+        target = ____temp_6
+        return target ~= nil
+    end
     local atSpot = false
     local passAt
     while true do
         do
-            local __continue15
+            local __continue22
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
                     coroutine.yield()
                 end
                 passAt = get().now()
-                label(atSpot and "hold" or "walk")
-                local r = __TS__DelegatedYield(holdAt(
-                    bot,
-                    spot,
-                    __TS__ObjectAssign(
-                        {},
-                        opts.hold or ({}),
-                        {
-                            deadline = opts.deadline,
-                            interruptIf = function()
-                                if stop() then
-                                    return true
-                                end
-                                local d = spot() ~= nil and away() or nil
-                                local ____atSpot_6
-                                if atSpot then
-                                    ____atSpot_6 = (d or 0) > far
-                                else
-                                    ____atSpot_6 = (d or math.huge) <= near
-                                end
-                                if ____atSpot_6 then
-                                    return true
-                                end
-                                return pick()
-                            end
-                        }
-                    )
-                ))
-                if r.reason ~= "interrupted" then
-                    return r
-                end
-                if stop() then
-                    return {success = false, reason = "interrupted"}
-                end
                 if target == nil then
-                    local d = spot() ~= nil and away() or nil
-                    atSpot = d ~= nil and d <= (atSpot and far or near)
-                    __continue15 = true
-                    break
+                    label(atSpot and "hold" or "walk")
+                    local r = __TS__DelegatedYield(holdAt(
+                        bot,
+                        spot,
+                        __TS__ObjectAssign(
+                            {},
+                            opts.hold or ({}),
+                            {
+                                deadline = opts.deadline,
+                                interruptIf = function()
+                                    if stop() then
+                                        return true
+                                    end
+                                    local d = spot() ~= nil and away() or nil
+                                    local ____atSpot_7
+                                    if atSpot then
+                                        ____atSpot_7 = (d or 0) > far
+                                    else
+                                        ____atSpot_7 = (d or math.huge) <= near
+                                    end
+                                    if ____atSpot_7 then
+                                        return true
+                                    end
+                                    return pick()
+                                end
+                            }
+                        )
+                    ))
+                    if r.reason ~= "interrupted" then
+                        return r
+                    end
+                    if stop() then
+                        return {success = false, reason = "interrupted"}
+                    end
+                    if target == nil then
+                        local d = spot() ~= nil and away() or nil
+                        atSpot = d ~= nil and d <= (atSpot and far or near)
+                        __continue22 = true
+                        break
+                    end
                 end
                 local t = target
                 target = nil
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_9 = t.creep
-                local ____temp_10 = t.eta + 1.5
-                local ____opts_deadline_11 = opts.deadline
-                local ____opt_7 = opts.hold
+                local ____t_creep_10 = t.creep
+                local ____temp_11 = t.eta + 1.5
+                local ____opts_deadline_12 = opts.deadline
+                local ____opt_8 = opts.hold
                 local o = {
-                    target = ____t_creep_9,
-                    maxWait = ____temp_10,
-                    deadline = ____opts_deadline_11,
-                    hold = ____opt_7 and ____opt_7.hold,
-                    interruptIf = function() return stop() or away() > leash end
+                    target = ____t_creep_10,
+                    maxWait = ____temp_11,
+                    deadline = ____opts_deadline_12,
+                    hold = ____opt_8 and ____opt_8.hold,
+                    interruptIf = function() return stop() or away() > leash or retarget(t) end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
+                if target ~= nil and res.reason == "interrupted" then
+                    res.message = (res.message or "") .. " sw=1"
+                end
                 if opts.onAttempt ~= nil then
                     opts.onAttempt(t, res, contested)
                 end
                 if res.reason == "dead" then
                     return res
                 end
-                __continue15 = true
+                __continue22 = true
             until true
-            if not __continue15 then
+            if not __continue22 then
                 break
             end
         end

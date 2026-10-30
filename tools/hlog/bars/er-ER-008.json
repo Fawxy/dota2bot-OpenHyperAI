@@ -1,0 +1,28 @@
+{
+ "schema": "er-spec/1",
+ "build": "009df4b",
+ "until": "10:00",
+ "arms": {
+  "on": { "branch": "remote/lion/s5-on-009df4b", "sha": "f24cf5a0f981693f25a5b509b8bb2923f471fa2d", "build": "009df4b", "states": true,
+          "ours": { "CoreLastHit": true, "LeaveCoreCreep": true, "StackExecute": true } },
+  "off": { "branch": "remote/lion/s5-off-d3508d9", "sha": "049bc25096ab46d9076761d67d32294dd0fa8d9e", "build": "d3508d9+dirty", "states": true,
+           "ours": { "CoreLastHit": false, "LeaveCoreCreep": true, "StackExecute": true } }
+ },
+ "bars": [
+  { "id": "B1 Radiant conversion pos1 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos1_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
+  { "id": "B2 Radiant conversion pos2 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos2_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
+  { "id": "B3 Radiant conversion pos3 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos3_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
+  { "id": "guard lh@10 pos1 (delta >= -MDE)", "metric": "lh_at_10_lpos1", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard lh@10 pos2 (delta >= -MDE)", "metric": "lh_at_10_lpos2", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard lh@10 pos3 (delta >= -MDE)", "metric": "lh_at_10_lpos3", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard deaths before 10:00 (delta <= 3.1, NF-001)", "metric": "deaths_before_10", "rule": "delta", "met": { "delta": { "le": 3.1 } } },
+  { "id": "guard level pos1 (delta >= -MDE)", "metric": "lvl_at_10_lpos1", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard level pos2 (delta >= -MDE)", "metric": "lvl_at_10_lpos2", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard level pos3 (delta >= -MDE)", "metric": "lvl_at_10_lpos3", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
+  { "id": "guard HP lost to heroes pos1 (delta <= MDE)", "metric": "hph_at_10_lpos1", "rule": "delta", "met": { "delta": { "le": "mde" } } },
+  { "id": "guard HP lost to heroes pos2 (delta <= MDE)", "metric": "hph_at_10_lpos2", "rule": "delta", "met": { "delta": { "le": "mde" } } },
+  { "id": "guard HP lost to heroes pos3 (delta <= MDE)", "metric": "hph_at_10_lpos3", "rule": "delta", "met": { "delta": { "le": "mde" } } },
+  { "id": "H1 lua_ours", "metric": "lua_ours", "rule": "each", "max": 0 },
+  { "id": "H1 console", "metric": "console", "rule": "mean", "cmp": "on<=off" }
+ ]
+}

@@ -21,6 +21,12 @@ export interface LaneFarmOpts {
     far?: number;
     /** Seconds between looks for the next creep while holding (a scan of every creep nearby). Default 0.1. */
     scanEvery?: number;
+    /**
+     * While an attempt waits for its creep (before the swing), keep scanning every `scanEvery`; once the creep is no
+     * longer among laneTargets' offers and `pick` chooses another, drop the attempt (`interrupted`, message `sw=1`)
+     * and go for that one. Default false: an attempt waits for its creep up to its eta + 1.5 s.
+     */
+    retarget?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;

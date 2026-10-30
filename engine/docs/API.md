@@ -97,10 +97,11 @@ closest to dying to the bot's hit; above skill 0.6, a ranged/siege creep (by uni
 wins over a melee one.
 
 **Lane targets (`Verbs.laneTargets(bot, opts)`, a query, not a verb).** The lane creeps a laner could go for
-next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, ranged }[]`. Considers enemy creeps (filtered by
+next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, due, walk, dies, ranged }[]`. Considers enemy creeps (filtered by
 `lastHitFilter`) and allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (max(800, range
-+ 400)) that become killable at most `within` (1 s) after the bot could be in range: eta = max(walk into range,
-(believed HP at our hit - own damage) / incoming DPS), exact (no skill error; the verbs add it when they swing);
++ 400)) that become killable at most `within` (1 s) after the bot could be in range: `due` = (believed HP at our hit -
+own damage) / incoming DPS (0 when killable now), `walk` = into range at the current speed, eta = max(due, walk), `dies` =
+when the others kill it at their current DPS (`math.huge` with no one on it); exact (no skill error; the verbs add it when they swing);
 `ranged` = a ranged or siege creep (by unit name). Facts only: which one to take is the caller's choice (slice 5a
 moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
 Per-frame creep queries are cached per bot.
@@ -110,7 +111,7 @@ Per-frame creep queries are cached per bot.
 `laneTargets` (no `pick`: it only holds), swings through
 `lastHit`/`deny` (maxWait eta + 1.5 s, dropped beyond `leash` 900 from the spot), then walks back. Labels
 `walk`/`hold`/`lasthit`/`deny` (ctx binds the task label); `onAttempt(target, result, contested)` after every
-attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself.
+attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself. With `retarget` (default false) it keeps scanning while an attempt waits for its creep, before the swing: once that creep is no longer among `laneTargets`' offers and `pick` chooses another, the attempt ends `interrupted` (message ending `sw=1`) and the verb goes straight for the new creep.
 
 **When to swing.** The verb walks into attack range, then each frame computes the own hit time
 `t = attackPoint / attackSpeed (+ cooldown left, with attackClock) (+ max(0, dist - 39) / projectileSpeed for
@@ -144,6 +145,11 @@ rose) without the kill, or nothing resolved within `t + 0.5` s. `taken_by_other`
 hit (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero was attacking it as it died.
 `timeout`, `no_target`, `etiquette` (every candidate vetoed by `lastHitFilter`), `dead`, `interrupted`,
 `unsupported` (no `GetAttackDamage`/`GetAttackPoint`; `deny` also needs `GetDenies`).
+
+**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= end= dt=` (what the swing
+was based on and how it ended). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+`range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
+(the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
 
 Offline (sim, 30 fps, a creep contested by three allied melee creeps, 120 trials): skill 1 lands 100%, 0.6 65%,
 0.2 50% with both early and late misses. In game the prediction sees less than the sim, so skill 1 should land

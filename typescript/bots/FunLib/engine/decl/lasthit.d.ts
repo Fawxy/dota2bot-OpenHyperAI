@@ -23,6 +23,12 @@ export interface LaneTarget {
     kind: "lasthit" | "deny";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
+    /** Seconds until a swing ordered then would be due (0: due now). */
+    due: number;
+    /** Seconds to walk into attack range at the current speed (0: in range). */
+    walk: number;
+    /** Seconds until the creep dies to the others' damage at their current DPS (exact, as `due`). */
+    dies: number;
     /** A ranged or siege creep (more gold and XP than a melee one). */
     ranged: boolean;
 }

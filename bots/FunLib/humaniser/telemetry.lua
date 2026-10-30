@@ -16,6 +16,7 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.SCHEMA = 2
 local BUILD = (function()
@@ -551,6 +552,13 @@ local function botFields(bot, ctx)
     fields[#fields + 1] = {
         "gold",
         bot:GetGold()
+    }
+    fields[#fields + 1] = {
+        "lf",
+        LanePick.Describe(
+            bot:GetPlayerID(),
+            DotaTime()
+        )
     }
     if ctx ~= nil then
         fields[#fields + 1] = {"by", ctx.by}
