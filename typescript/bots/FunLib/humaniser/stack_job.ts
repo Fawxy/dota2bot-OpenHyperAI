@@ -270,6 +270,10 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
  * :55-:56"; A's neutrals chase the bot through B's hit, so A's own window may not bind), camp B late in its window.
  * The pos4's pairs fit only with A's stand facing B (E1, 31/10/2026); evil_8 then evil_9 still does not for a 550-range
  * hero (EC-063 rates it the weakest) and runs single with `dwhy=walk`.
+ * Solo runs on f215060 (31/10/2026) moved them: the pos5's B was hit about 1 s after its planned second (the walk from A
+ * after A's confirmed hit), and `good_1` stacked 0 of 8 hit after :56.4, so both pos5 pairs hit earlier; the shrine pairs'
+ * A neutrals were back in A's box at :59 after a :52-:54 hit against A's own 55-56 window (0 of 22 stacked), and A's
+ * stand facing B leaves a short walk, so A is hit as late as the walk to B allows there (54 and 53.5).
  */
 interface Pair {
     x: number;
@@ -282,12 +286,12 @@ interface Pair {
     face: boolean;
 }
 const PAIRS: Pair[] = [
-    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 52.5, sec: 56.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
-    { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54.5, sec: 56.5, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
+    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
+    { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54, sec: 56, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
     { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
-    { x: -8023, y: -1838, fx: -8313, fy: -553, fsec: 53, sec: 55.75, pos: 4, face: true }, // good_16 after good_13 (both 55-56)
+    { x: -8023, y: -1838, fx: -8313, fy: -553, fsec: 54, sec: 55.75, pos: 4, face: true }, // good_16 after good_13 (both 55-56)
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 53, sec: 55, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
-    { x: 8430, y: 1263, fx: 7928, fy: -120, fsec: 53, sec: 55.75, pos: 4, face: true }, // evil_13 after evil_7 (both 55-56)
+    { x: 8430, y: 1263, fx: 7928, fy: -120, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // evil_13 after evil_7 (both 55-56)
 ];
 
 /** A resolved pair: camps B and A, the hit seconds, and A's stand point. */

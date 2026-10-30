@@ -505,7 +505,8 @@ do
 	check("evil_1 then evil_2 fits ranged", fits("evil_1", "evil_2", 550))
 	check("evil_1 then evil_2 does not fit melee", not fits("evil_1", "evil_2", 150))
 	local d = H.StackJob.Partner(C.ByIdx(idxOf("good_1"), RAD))
-	check("hits: good_2 early in 52-54, good_1 late in 55-57", d.fsec >= 52 and d.fsec < 53 and d.sec > 56 and d.sec <= 57, d.fsec .. " " .. d.sec)
+	-- Solo runs on f215060: B was hit about 1 s after its plan, so both hits moved earlier (good_2 before its own 52-54).
+	check("hits: good_2 at 51-52, good_1 in 55-56", d.fsec >= 51 and d.fsec < 52 and d.sec >= 55 and d.sec <= 56, d.fsec .. " " .. d.sec)
 end
 
 -- The pos4's offlane pairs (user 31/10/2026): each ancient camp and its neighbour, the two camps by each wisdom shrine; one
@@ -532,7 +533,7 @@ do
 	for k, d in pairs(seen[RAD]) do
 		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
 		check(k .. ": A's stand faces B", dist(d.stand, spb.location) < dist(spa.location, spb.location), k)
-		check(k .. ": A's hit by :53, before B's", d.fsec <= 53 and d.fsec < d.sec, k)
+		check(k .. ": A's hit by :54, before B's", d.fsec <= 54 and d.fsec < d.sec, k)
 	end
 	-- The pos4 runs no job with the double off (it stacks only its pairs).
 	local H2, b2 = world({ t = 3 * 60 + 40 })
@@ -588,7 +589,8 @@ do
 	check("double: both camps stacked", field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
-	check("double: A hit in 52-54, B hit late in 55-57 (1 s for the confirm)", fag >= 51.5 and fag <= 54 and ag >= 55.5 and ag <= 58, l)
+	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
+	check("double: A hit within 1 s of its second, B within -1 to +1.5 s of its own (the confirm)", math.abs(fag - pd.fsec) <= 1 and ag >= pd.sec - 1 and ag <= pd.sec + 1.5, l)
 	check("double: A before 2, B before 3", field(l, "fbefore") == "2" and field(l, "before") == "3", l)
 	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
 	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
@@ -636,7 +638,7 @@ do
 	end })
 	local l = lines[1]
 	check("wait clear: at least ~825 from A's neutrals until :51", minD >= 820, minD)
-	check("wait clear: both stacked, A hit in 52-54, fauto=?", field(l, "fres") == "stacked" and field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 51.5 and tonumber(field(l, "faggro")) <= 54 and field(l, "fauto") == "?", l)
+	check("wait clear: both stacked, A hit in 50.5-52.5, fauto=?", field(l, "fres") == "stacked" and field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 50.5 and tonumber(field(l, "faggro")) <= 52.5 and field(l, "fauto") == "?", l)
 	check("wait clear: fhit0 and fhpa logged", tonumber(field(l, "fhit0")) ~= nil and tonumber(field(l, "fhpa")) ~= nil, l)
 end
 
