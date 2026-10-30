@@ -111,6 +111,9 @@ export interface Camp {
     pick?: (this: void) => TaskAttacker | undefined;
     /** Extra proof the aggro landed (e.g. a neutral targets the bot), passed to `attackAndConfirm`. */
     confirmed?: (this: void) => boolean;
+    /** Seconds to pull the hit forward, read every frame until the order (e.g. stacks already in the box block each other).
+     *  CANDIDATE(earlier): one consumer, the double stack. */
+    earlier?: (this: void) => number;
 }
 
 export interface AggroInfo {
@@ -203,7 +206,7 @@ export function aggroLead(bot: TaskUnit, target: TaskAttacker): number {
  * confirmed. Failure messages: `late`, `mistake:no-camp`, `mistake:no-aggro`.
  */
 function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: AggroOpts, h: JobHooks): TaskBody {
-    const at = planned + err;
+    let at = planned + err;
     const arrive = o.arrive ?? ARRIVE;
     const late = at + (o.startLate ?? START_LATE);
     let stand = camp.stand;
@@ -234,6 +237,7 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
         if (!bot.IsAlive()) return fail("dead");
         const t = now();
         const n = campNeutral(bot, camp);
+        if (camp.earlier !== undefined) at = planned + err - camp.earlier();
         if (there()) reached = true;
         if (n !== undefined && t >= at - (o.aggroLead ?? aggroLead(bot, n))) break;
         if (n === undefined && clearLead !== undefined && there() && t >= at - clearLead) break;

@@ -490,6 +490,8 @@ export const EVENTS = {
         fn2: "str",
         fn59: "str",
         ftrk: "str",
+        early: "num",
+        fearly: "num",
     },
     lane_job_supply: {
         pid: "num",

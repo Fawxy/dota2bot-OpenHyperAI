@@ -188,7 +188,7 @@ local function stackRun(o)
 	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double, at = o.at })
 	if o.range then bot.range = o.range end
 	local camp = SPAWNERS[idxOf("good_1")].location
-	neutrals(camp, 3)
+	neutrals(camp, o.bN or 3)
 	local first = SPAWNERS[idxOf("good_2")].location
 	if o.double then MakeNeutral({ x = first.x, y = first.y }) MakeNeutral({ x = first.x + 20, y = first.y }) end
 	local lines = capture(function()
@@ -615,6 +615,19 @@ do
 	local _, a2 = (field(l, "fn2") or ""):gsub("kobold:%d+:", "")
 	local _, a59 = (field(l, "fn59") or ""):gsub("kobold:%d+:", "")
 	check("double: fn2 and fn59 list A's two neutrals, fseen=1", a2 == 2 and a59 == 2 and field(l, "fseen") == "1", l)
+end
+
+-- Stacks already in the box block each other (EC-066): a double hits a camp PileEarlier (0.5) s earlier per stack past the
+-- first, PileSize (4) visible neutrals each; sdsolo5a/5c B stacked 1 of 12 with 7 or more neutrals in it. Singles unchanged.
+do
+	local base = stackRun({ double = true })[1]
+	local piled = stackRun({ double = true, bN = 9 })[1]
+	local ag0, ag1 = tonumber(field(base, "aggro")), tonumber(field(piled, "aggro"))
+	check("pile: early=0 with 3 in B, early=1 with 9", field(base, "early") == "0" and field(piled, "early") == "1", piled)
+	check("pile: A (2 neutrals) not pulled forward", field(piled, "fearly") == "0", piled)
+	check("pile: B hit about 1 s earlier", ag0 ~= nil and ag1 ~= nil and ag0 - ag1 >= 0.6 and ag0 - ag1 <= 1.4, ag0 .. " " .. tostring(ag1))
+	local single0, single1 = stackRun()[1], stackRun({ bN = 9 })[1]
+	check("pile: a single stack's hit is unchanged", field(single1, "early") == nil and math.abs(tonumber(field(single0, "aggro")) - tonumber(field(single1, "aggro"))) < 0.2, single1)
 end
 
 -- dsolo4b-5c (31/10/2026): A was read only after B stacked, so a B that did not stack left A unread and logged as

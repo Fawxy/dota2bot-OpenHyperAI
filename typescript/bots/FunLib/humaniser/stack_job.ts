@@ -76,6 +76,12 @@ export const SETTINGS = {
      *  acquisition range is about 800 (judgement, to be confirmed by `fauto`); warlock and lich lost 25-40% HP at the
      *  shrine pair's camp A from their arrival at :48-:49, 3 s before the hit (dsolo4b, dsolo4c; user replay review). */
     WaitClear: 850,
+    /** A double's hit comes PileEarlier s earlier per stack already in the camp's box (PileSize visible neutrals each past
+     *  the first), at most PileEarlierMax: stacked neutrals block each other (EC-066: about 0.5 s per stack). In
+     *  sdsolo5a/5c B stacked 10 of 14 with 6 or fewer neutrals in it and 1 of 12 with 7 or more. */
+    PileEarlier: 0.5,
+    PileSize: 4,
+    PileEarlierMax: 1.5,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -190,6 +196,8 @@ export interface Attempt {
     /** Why a camp with a partner ran single: `walk` (A to B does not fit the gap), `far` (over AwayMax), `late`. */
     dwhy?: string;
     first?: FirstCamp;
+    /** As FirstCamp.early, for camp B. */
+    early?: number;
 }
 
 /** Camp A of a double stack, hit before the attempt's own camp (B). */
@@ -221,6 +229,8 @@ export interface FirstCamp {
     hit0?: number;
     hpa?: number;
     auto?: number;
+    /** Seconds the hit was pulled forward for the stacks in the box (`PileEarlier`). */
+    early?: number;
 }
 
 /** One pulled neutral while seen: the furthest it got from its origin, whether it targeted the bot, and the first second
@@ -451,7 +461,7 @@ export function Gate(bot: Unit): string | undefined {
 
 /** The stack verb's plan for `data` in `minute`: the hit lands on the camp's stack second of that minute. */
 /** The verb's camp for `sp`, waiting at `stand`; `others` are neutrals that are not this camp (a double's camp A). */
-function campFor(bot: Unit, sp: Camps.Spawner, stand: Vector, others?: () => Unit[] | undefined): JobVerbs.Camp {
+function campFor(bot: Unit, sp: Camps.Spawner, stand: Vector, others?: () => Unit[] | undefined, pile?: { early?: number }): JobVerbs.Camp {
     const r = LaneConfig.Settings().Radii;
     // Seen nothing from the stand point (trees, high ground, night): step in to ApproachDist from the origin. Not camp_jobs'
     // StandApproach (150): hit from 84-124 the neutral had moved 57-72 two seconds later and stayed in the box; hits from
@@ -470,6 +480,20 @@ function campFor(bot: Unit, sp: Camps.Spawner, stand: Vector, others?: () => Uni
         confirmed: () => CampJobs.Exec.NeutralTargets(bot),
         approach: approach as unknown as Lib.Vec,
     };
+    if (pile !== undefined) {
+        // The largest pull seen so far: neutrals out of sight do not undo it.
+        // Without camp A's neutrals, which chase the bot into B's box margin.
+        camp.earlier = () => {
+            const skip = others?.() ?? [];
+            let n = 0;
+            for (const c of bot.GetNearbyNeutralCreeps(r.StackCountScan, false) ?? []) {
+                if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !skip.includes(c) && Camps.InBox(sp.idx, c.GetLocation(), r.BoxMargin)) n++;
+            }
+            const e = math.min(SETTINGS.PileEarlierMax, SETTINGS.PileEarlier * math.floor(math.max(0, n - 1) / SETTINGS.PileSize));
+            pile.early = math.max(pile.early ?? 0, e);
+            return pile.early;
+        };
+    }
     if (others === undefined) return camp;
     // Camp A's neutrals chase the bot to B: they target it and may stand in B's box margin, so B's hit and its proof skip them.
     const other = (n: Unit) => (others() ?? []).includes(n);
@@ -500,11 +524,11 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     const fsp = f !== undefined ? Camps.SpawnerByIdx(f.campIdx) : undefined;
     const first =
         f !== undefined && fd !== undefined && fsp !== undefined
-            ? { camp: campFor(bot, fsp, f.stand), aggroAt: start + f.fsec }
+            ? { camp: campFor(bot, fsp, f.stand, undefined, f), aggroAt: start + f.fsec }
             : undefined;
     const firstDone = () => f === undefined || f.aggro !== undefined;
     return {
-        camp: campFor(bot, sp, stand, f !== undefined ? () => f.units : undefined),
+        camp: campFor(bot, sp, stand, f !== undefined ? () => f.units : undefined, f !== undefined ? a : undefined),
         first,
         // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
@@ -848,6 +872,8 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["fn2", f.n2 ?? "?"],
         ["fn59", f.n59 ?? "?"],
         ["ftrk", landed ? trkField(f.units, f.trk) : "?"],
+        ["fearly", f.early ?? 0],
+        ["early", a.early ?? 0],
     ];
 }
 
