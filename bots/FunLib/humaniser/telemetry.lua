@@ -826,12 +826,11 @@ local function firstThisFrame(job, team, now)
     teamJobAt[key] = now
     return true
 end
-local function teamHeroes(team)
+local function teamHeroes()
     local heroes = {}
-    local n = #GetTeamPlayers(team)
     do
         local i = 1
-        while i <= n do
+        while i <= 5 do
             local m = GetTeamMember(i)
             if m ~= nil and m ~= nil and m:IsAlive() then
                 heroes[#heroes + 1] = m
@@ -878,7 +877,7 @@ local function trackRunes(team, w, now)
                 end
                 seen.up = false
                 local taker, d = nearest(
-                    teamHeroes(team),
+                    teamHeroes(),
                     seen.loc
                 )
                 if taker == nil or d > RUNE_TAKER_R then
@@ -940,7 +939,7 @@ local function trackWards(team, w)
                 end
                 local loc = ward:GetLocation()
                 local owner, d = nearest(
-                    teamHeroes(team),
+                    teamHeroes(),
                     loc
                 )
                 ____exports.Event(
@@ -1198,7 +1197,7 @@ local function trackCreepDeaths(bot, now)
         }
         creepTracks[team] = c
     end
-    local heroes = teamHeroes(team)
+    local heroes = teamHeroes()
     local gameNow = GameTime()
     local alive = {}
     local live = {}

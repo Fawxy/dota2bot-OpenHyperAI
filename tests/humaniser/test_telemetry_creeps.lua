@@ -97,6 +97,25 @@ do
 	check("core's attack on b started 0.3 s before the frame that saw the death", e[2] and math.abs(tonumber(field(e[2], "p1a")) - 0.3) < 1e-6, e[2])
 end
 
+-- Practice mode: GetTeamPlayers is empty for the bot-only team; its heroes are still found (GetTeamMember 1..5) and its
+-- creep deaths logged (debt getteamplayers-bound: the old loop logged none).
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	core.pos = 1
+	local real = GetTeamPlayers
+	GetTeamPlayers = function() return {} end
+	local a = creep("npc_dota_creep_badguys_melee", Vector(120, 0), 20)
+	tick(H, { core }, 60)
+	kill(a)
+	core.lh = 1
+	tick(H, { core }, 60.1)
+	GetTeamPlayers = real
+	local e = events("creep_death")
+	check("bot-only team: death logged", #e == 1, #e)
+	check("bot-only team: credited to the core", e[1] and field(e[1], "by") == "1", e[1])
+end
+
 -- Creeps that leave vision, enemy denies, creeps far from every hero, other teams' units and the time limit.
 do
 	local H = fresh()
