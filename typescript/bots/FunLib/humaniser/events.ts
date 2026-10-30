@@ -213,6 +213,11 @@ export const EVENTS = {
         mode: "str",
         competing: "str",
     },
+    oha_idle: {
+        pid: "num",
+        mode: "num",
+        held: "num",
+    },
     stuck: {
         pid: "num",
         mode: "str",
@@ -463,6 +468,7 @@ export const EVENTS = {
         n2: "str",
         n59: "str",
         lane: "mixed",
+        idle: "num",
     },
     lane_job_supply: {
         pid: "num",

@@ -41,6 +41,7 @@ does produce the action when the condition is absent; otherwise it passes when t
 | decision | runs | verbs and values |
 |---|---|---|
 | `laning_mode` | `mode_laning_generic` GetDesire + Think, stub humaniser (`laning_mode_world.lua`): tests the mode file's own logic; `CoreCanReach`, `WillKill` and `MayLastHit` are stubs | `lastHit(creep#)`, `deny(creep#)`, `hold`, `move`, `attempt(creep#)`; `desire.laning` |
+| `team_roam` | `mode_team_roam_generic` Think alone (no GetDesire), in the `laning_mode` stub world | as `laning_mode`, no desire |
 | `retreat_desire` | Transitions caution tick, then Intent.Resolve on retreat (hook H3), `lane_world.lua` | `desire.retreat`, `fact.base`, `fact.caution` |
 | `lane_prethink` | `Lane.PreThink` (block, pulls, aggro draws, tower swap) over frames | `attack(<id>)`, `move`, `commit(<tech>)`; `fact.acted` |
 | `kill_check` | `LaneFight.KillCheck.Check` | `kill`, `noKill(<reason>)`; `fact.margin` |

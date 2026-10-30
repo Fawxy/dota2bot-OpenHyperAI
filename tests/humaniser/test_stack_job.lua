@@ -313,6 +313,32 @@ do
 	check("unseen from the stand: hit inside the window", tonumber(field(lines[1], "aggro") or "99") <= 58, lines[1])
 end
 
+-- OHA's idle relocation (jmz_func CheckBotIdleState, every 3 s from team_roam's GetDesire) replaced the hit order with an
+-- attack-move to the lane in all 4 slice 4 no-aggro misses (s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55:
+-- ev=snap act=5 from the order to the miss). The job holds it while it runs and counts each hold on its line.
+do
+	local before, during, calls = nil, false, 0
+	local lines = stackRun({ onFrame = function(H, bot)
+		if before == nil then before = H.StackJob.HoldsIdle(bot) end
+		if H.StackJob.HoldsRun(bot) and T >= 3 * 60 + 50 and T < 3 * 60 + 53 then
+			during = H.StackJob.HoldsIdle(bot) or during
+			calls = calls + 1
+		end
+	end })
+	check("no job yet: idle check free", before == false, tostring(before))
+	check("job running: idle check held", during)
+	check("holds counted on the line: idle=<calls>", tonumber(field(lines[1], "idle")) == calls and calls > 0, lines[1])
+	check("held relocations do not change the outcome", field(lines[1], "res") == "stacked", lines[1])
+	local plain = stackRun()
+	check("no hold asked: idle=0", field(plain[1], "idle") == "0", plain[1])
+	local src = io.open(HARNESS_DIR .. "/../../bots/FunLib/jmz_func.lua", "r"):read("a")
+	local body = src:match("function J%.CheckBotIdleState%(%)(.-)\nend\n")
+	local hook = body and body:find("J.Humaniser.StackJob.HoldsIdle(bot)", 1, true)
+	local clear = body and body:find("bot:Action_ClearActions(true)", 1, true)
+	check("CheckBotIdleState asks HoldsIdle before it clears the bot's actions", hook ~= nil and clear ~= nil and hook < clear)
+	check("CheckBotIdleState logs ev=oha_idle", body ~= nil and body:find("J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)", 1, true) ~= nil)
+end
+
 -- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
 do
 	local H, bot = world({ t = 3 * 60 + 15 })

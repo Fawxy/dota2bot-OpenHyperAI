@@ -21,4 +21,4 @@ notes: >
   The core can take the creep, so the support's attack on it is overridden by a move order (Etiquette.LeavesTarget,
   then PositionThink). The control passes: at f5be4cb the owned Think already reached PositionThink for this world, so
   the fixture pins the override rather than separating the builds. The change that matters is team_roam's cancel
-  (source pin in test_etiquette.lua).
+  (source pin in test_etiquette.lua; behavioural fixture lane.lasthit.roam-cancels-swing.001).

@@ -19,6 +19,7 @@ const STATUSES = ['active', 'quarantined', 'retired'];
 // verb in mustNot cannot pass by never matching.
 const VERBS = {
     laning_mode: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
+    team_roam: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     retreat_desire: [],
     lane_prethink: ['attack', 'move', 'commit'],
     kill_check: ['kill', 'noKill'],

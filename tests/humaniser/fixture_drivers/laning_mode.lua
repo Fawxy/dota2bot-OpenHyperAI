@@ -4,9 +4,10 @@
 -- Observation (last frame): lastHit/deny(creep#id) for AttackUnit on an enemy/allied creep, move(creep#id) for
 -- MoveToUnit, hold for MoveToLocation at the bot's spot, move for any other MoveToLocation, attempt(creep#id) for a
 -- counted last-hit attempt; desire.laning = GetDesire().
+-- mode (the team_roam driver): { file = mode file, think = true } runs that file's Think alone, without GetDesire.
 dofile(HARNESS_DIR .. "/laning_mode_world.lua")
 
-return function(fx)
+return function(fx, mode)
 	local w = fx.world
 	local byId, enemies, allyCreeps = {}, {}, {}
 	for _, c in ipairs(w.creeps or {}) do
@@ -32,7 +33,8 @@ return function(fx)
 		local t = f.t or w.t or 120
 		if i == 1 then
 			bot, attempts = LaningLoad({ t = t, pos = b.pos, range = b.range, dmg = b.dmg, loc = Vector(b.x or 0, b.y or 0),
-				owned = w.owned == true, ours = w.ours == true, humanPos5 = w.humanPos5 == true, enemyCreeps = enemies, allyCreeps = allyCreeps, allies = allies })
+				owned = w.owned == true, ours = w.ours == true, humanPos5 = w.humanPos5 == true, enemyCreeps = enemies, allyCreeps = allyCreeps, allies = allies,
+				modeFile = mode and mode.file })
 			if b.target then bot.target = byId[b.target] end
 		else
 			DotaTime = function() return t end
@@ -40,10 +42,11 @@ return function(fx)
 		end
 		bot.actions = {}
 		for k in pairs(attempts) do attempts[k] = nil end
-		desire = GetDesire()
+		if not (mode and mode.think) then desire = GetDesire() end
 		Think()
 	end
 	local obs = { actions = {}, desire = { laning = desire } }
+	if mode and mode.think then obs.desire = {} end
 	local here = bot:GetLocation()
 	for _, a in ipairs(bot.actions) do
 		local target = a.args[1]
