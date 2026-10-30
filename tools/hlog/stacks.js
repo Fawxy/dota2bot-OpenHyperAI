@@ -12,8 +12,10 @@ const { logsFrom } = require('./lasthit_cause');
 const any = (s, keys) => keys.some(k => s[k] !== undefined);
 const clock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
-/** Per log with bots: { file (as given), attempts } of its first game (the store is asked by absolute path, as in games.file). */
+/** Per log whose first game has ev=bot lines: { file (as given), attempts } of that game (the store is asked by absolute path,
+ *  as in games.file). A log without ev=bot is left out, as gamesFrom left out a game without bots. */
 function stacks(store, files, until) {
+    if (!store.kinds.has('ev_bot')) return [];
     return files.filter(f => store.query('SELECT 1 FROM games g WHERE g.file = ? AND g.game = 1 AND EXISTS (SELECT 1 FROM ev_bot b WHERE b.game_id = g.game_id)', path.resolve(f)).length)
         .map(file => ({ file, attempts: stackAttempts(store, path.resolve(file), 1, until) }));
 }

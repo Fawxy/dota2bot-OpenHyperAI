@@ -251,26 +251,21 @@ function auditedSteals(game, S, lpos, until) {
 const QUERIES = path.join(__dirname, 'queries');
 const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
 
-/**
- * Stack attempts (slice 4, KR S.2a) from ev=stack: one line per trigger minute, `res` stacked | not_stacked | failed (a job
- * started) or skip (none started). Empty when the log has none (the OFF arm, older builds).
- */
-/**
- * Why an attempt was not stacked, from the :59.5 sample (Valve spawns a camp only when its box is empty at :00):
- * `bot-in-box`, `camp-in-box` (neutrals not drawn out, or back early), `unseen` (box out of sight at :59.5 and after),
- * `no-spawn` (box seen empty at :59.5, nothing new after: something else blocked it or the count missed it);
- * a failed attempt gives its `why`; undefined for stacked, skips and lines without the sample.
- */
-/** The camp neutrals still in the bare box at :59.5 (ev=stack n59, "name:dist:in|out:a|-"), e.g. "large_mauler:-" (not
- *  attacking the bot); undefined when the line has no n59. */
 // The fields of an ev=stack attempt, in the order stacks.js --json has always printed them.
 const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'before', 'after', 'fresh', 'away', 'death',
     'vis', 'box59', 'pulled59', 'bot59', 'vis59', 'exit59', 'hitd', 'tgt2', 'tgt59', 'strict59',
     'arr', 'hit0', 'dmg', 'react', 'exit', 'hpa', 'hpe', 'hp59', 'casts', 'n2', 'n59', 'lane', 'left59', 'cause'];
 
-/** Every ev=stack line of one stored game before `until` (`@stack_rows`); `death` is a boolean, a NULL field is absent. */
+/**
+ * Stack attempts (slice 4, KR S.2a): every ev=stack line of one stored game before `until` (`@stack_rows` over the
+ * stack_attempts view, which holds the `cause` and `left59` rules), one per trigger minute, `res` stacked | not_stacked |
+ * failed (a job started) or skip (none started). `death` is a boolean; a NULL field ('?' or absent in the log) is left out.
+ * Empty when the log has none (the OFF arm, older builds).
+ */
 function stackAttempts(store, file, gameNo = 1, until = Infinity) {
     if (!store.kinds.has('ev_stack')) return []; // no log in the store has ev=stack, so the view is skipped (refreshViews)
+    // A store filled with ingest() alone has not created the view yet (ingestAll refreshes the views itself).
+    if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'stack_attempts'").length) store.refreshViews();
     return store.query(sqlOf('stack_rows'), { file, game: gameNo, until: Number.isFinite(until) ? until : null })
         .map(r => Object.fromEntries(STACK_KEYS.map(k => [k, k === 'death' ? r.death_flag === 1 : r[k] ?? undefined])));
 }
