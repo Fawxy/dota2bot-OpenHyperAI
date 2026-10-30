@@ -70,7 +70,9 @@ export const SETTINGS = {
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
 // other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
-// Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Scenario games only, never a verdict.
+// Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
+// AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
+// 12-17 s from its pairs). Scenario games only, never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
 function override(key: string): unknown {
@@ -90,6 +92,11 @@ export function Bench(bot: Unit): boolean {
     const f = Vector(x, y, z);
     if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
     return true;
+}
+
+/** AwayMax, or no limit with Overrides.StackFar (scenario games only). */
+function awayMax(): number {
+    return override("StackFar") === true ? math.huge : SETTINGS.AwayMax;
 }
 
 /** The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery. */
@@ -504,7 +511,7 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
     const f = a.first;
     let stopped = false;
     let campIdx = a.campIdx;
-    while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + SETTINGS.AwayMax - 0.5)) {
+    while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + awayMax() - 0.5)) {
         if (!bot.IsAlive()) return { success: false, reason: "dead" };
         if (f !== undefined && f.aggro !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
         if (CampJobs.Exec.BoxInSight(bot, campIdx)) {
@@ -790,14 +797,14 @@ export function Desire(bot: Unit): number {
             const fWalk = travel(bot, fd!.stand);
             // Started at its latest slack (MinSlack) the double must still end within AwayMax, else this minute runs single.
             // Held by the gate past its own latest start, it runs single while the single can still start.
-            dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > SETTINGS.AwayMax ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
+            dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > awayMax() ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
             double = dwhy === undefined;
             // The line's camp is B; a minute that runs single keeps the nearest camp (slice 4's stack).
             if (double) [aggroAt, walk, lead, data, stand] = [fAt, fWalk, SETTINGS.DoubleLead, fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
         }
         if (now < aggroAt - walk - lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
-        if (minute * 60 + 60 + SETTINGS.FarEnd - now > SETTINGS.AwayMax) return skip("far");
+        if (minute * 60 + 60 + SETTINGS.FarEnd - now > awayMax()) return skip("far");
         const why = Gate(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;

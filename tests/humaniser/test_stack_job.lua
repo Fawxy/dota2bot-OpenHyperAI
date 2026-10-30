@@ -554,6 +554,17 @@ do
 	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
 	check("pos4 shrine pair from the T1: skip far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
 end
+-- Overrides.StackFar (scenario games only): the same minute starts the double instead.
+do
+	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.StackFar = true
+	local started = false
+	capture(function() while T < 3 * 60 + 50 do frame(H, bot) if H.StackJob.HoldsRun(bot) then started = true end end end)
+	Customize.Overrides.StackFar = false
+	check("StackFar: the shrine pair starts from the T1", started)
+end
 
 
 do

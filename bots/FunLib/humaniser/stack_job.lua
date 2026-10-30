@@ -519,10 +519,10 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function setExit(sp)
     for ____, e in ipairs(EXIT_DIRS) do
         do
-            local __continue11
+            local __continue12
             repeat
                 if math.abs(sp.location.x - e.x) > 200 or math.abs(sp.location.y - e.y) > 200 then
-                    __continue11 = true
+                    __continue12 = true
                     break
                 end
                 local away = LaneConfig.Settings().Radii.StackExit
@@ -530,7 +530,7 @@ function setExit(sp)
                 local target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z)
                 return {Camps.BoxEdgePoint(sp, target, away) or target}
             until true
-            if not __continue11 then
+            if not __continue12 then
                 break
             end
         end
@@ -682,11 +682,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue140
+            local __continue141
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue140 = true
+                    __continue141 = true
                     break
                 end
                 local name = (string.gsub(
@@ -696,7 +696,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue140 = true
+                    __continue141 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -706,9 +706,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue140 = true
+                __continue141 = true
             until true
-            if not __continue140 then
+            if not __continue141 then
                 break
             end
         end
@@ -862,6 +862,10 @@ function ____exports.Bench(bot)
     end
     return true
 end
+--- AwayMax, or no limit with Overrides.StackFar (scenario games only).
+local function awayMax()
+    return override("StackFar") == true and math.huge or ____exports.SETTINGS.AwayMax
+end
 --- The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery.
 function ____exports.Minutes()
     if override("StackEvery") ~= true then
@@ -948,19 +952,19 @@ end
 local function campAt(team, x, y)
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue21
+            local __continue22
             repeat
                 if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
-                    __continue21 = true
+                    __continue22 = true
                     break
                 end
                 local d = Camps.ByIdx(s.idx, s.team)
                 if d ~= nil and d.stack ~= nil then
                     return d
                 end
-                __continue21 = true
+                __continue22 = true
             until true
-            if not __continue21 then
+            if not __continue22 then
                 break
             end
         end
@@ -1061,19 +1065,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue51
+            local __continue52
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue51 = true
+                    __continue52 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue51 = true
+                __continue52 = true
             until true
-            if not __continue51 then
+            if not __continue52 then
                 break
             end
         end
@@ -1148,22 +1152,22 @@ local function campFor(bot, sp, stand, others)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue70
+                local __continue71
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue70 = true
+                        __continue71 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue70 = true
+                    __continue71 = true
                 until true
-                if not __continue70 then
+                if not __continue71 then
                     break
                 end
             end
@@ -1266,7 +1270,10 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
     local f = a.first
     local stopped = false
     local campIdx = a.campIdx
-    while DotaTime() < math.min(spawnCheck + ____exports.SETTINGS.WatchUntil, a.startedAt + ____exports.SETTINGS.AwayMax - 0.5) do
+    while DotaTime() < math.min(
+        spawnCheck + ____exports.SETTINGS.WatchUntil,
+        a.startedAt + awayMax() - 0.5
+    ) do
         if not bot:IsAlive() then
             return {success = false, reason = "dead"}
         end
@@ -1469,10 +1476,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue158
+            local __continue159
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue158 = true
+                    __continue159 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -1529,7 +1536,7 @@ function ____exports.Desire(bot)
                 if double then
                     local fAt = minute * 60 + fd.fsec
                     local fWalk = travel(bot, fd.stand)
-                    dwhy = minute * 60 + 60 + ____exports.SETTINGS.FarEnd - (fAt - fWalk - ____exports.SETTINGS.MinSlack) > ____exports.SETTINGS.AwayMax and "far" or (now > fAt - fWalk - ____exports.SETTINGS.MinSlack and "late" or nil)
+                    dwhy = minute * 60 + 60 + ____exports.SETTINGS.FarEnd - (fAt - fWalk - ____exports.SETTINGS.MinSlack) > awayMax() and "far" or (now > fAt - fWalk - ____exports.SETTINGS.MinSlack and "late" or nil)
                     double = dwhy == nil
                     if double then
                         aggroAt, walk, lead, data, stand = fAt, fWalk, ____exports.SETTINGS.DoubleLead, fd.b, ____exports.Stand(
@@ -1544,7 +1551,7 @@ function ____exports.Desire(bot)
                 if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
                     return skip(gateWhy[pid] or "late")
                 end
-                if minute * 60 + 60 + ____exports.SETTINGS.FarEnd - now > ____exports.SETTINGS.AwayMax then
+                if minute * 60 + 60 + ____exports.SETTINGS.FarEnd - now > awayMax() then
                     return skip("far")
                 end
                 local why = ____exports.Gate(bot)
@@ -1592,7 +1599,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue158 then
+            if not __continue159 then
                 break
             end
         end
