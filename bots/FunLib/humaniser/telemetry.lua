@@ -15,6 +15,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 ____exports.SCHEMA = 2
 local BUILD = (function()
@@ -573,6 +574,10 @@ local function maybeProfile(bot, s)
                 {
                     "pos",
                     LaneConfig.PositionOf(bot)
+                },
+                {
+                    "ours",
+                    Ours.Describe()
                 }
             }
         )
@@ -625,6 +630,10 @@ local function maybeProfile(bot, s)
             {
                 "pos",
                 LaneConfig.PositionOf(bot)
+            },
+            {
+                "ours",
+                Ours.Describe()
             }
         }
     )
