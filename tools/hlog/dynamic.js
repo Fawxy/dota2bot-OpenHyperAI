@@ -1,7 +1,15 @@
 // Dynamic-game metrics (GOALS O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
 // bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry, the encounter rule and the
 // rotation rule follow the replay moment index (research/replay-index/moments.js) so bot and replay moments compare.
+// Moving into the log store (docs/team/slices/retire-dynamic-a.md, part A of three): the per-second series, deaths, last hits
+// at 10:00, home lanes, lineup positions, encounters, fights, idle episodes and the error counts are the named queries
+// `@dynamic_heroes`, `@dynamic_game` and `@dynamic_deaths` (rules in queries/fragments/hero_second.sql, hero_death.sql and
+// lane_label.sql). Rotations, lane exits, teleports, steals and the world metrics still read the parsed game (`series`) here.
 'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { parseLog } = require('./parse');
 
 const C = {
     R_AWARE: 1200, // heroes within this many units count as meeting
@@ -121,36 +129,13 @@ const at = (s, t) => s.sec[Math.floor(t)];
 const pos = snap => [snap.x, snap.y];
 const alive = snap => snap && snap.alive !== 0;
 
-/** Last value of a counter field at or before t (0 if none). */
-function counterAt(s, field, t) {
-    let v = 0;
-    for (const snap of s.snaps) {
-        if (snap.t > t) break;
-        if (typeof snap[field] === 'number') v = snap[field];
-    }
-    return v;
-}
-
-/** Modal lane label over [a, b) seconds, ignoring base/other. */
-function modalLane(s, a, b) {
-    const n = {};
-    for (let t = a; t < b; t++) {
-        const snap = s.sec[t];
-        if (!alive(snap)) continue;
-        const L = laneLabel(pos(snap));
-        if (L !== 'base' && L !== 'other') n[L] = (n[L] || 0) + 1;
-    }
-    return Object.entries(n).sort((x, y) => y[1] - x[1])[0]?.[0];
-}
-
-/** Roles by behaviour: per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
+/** Roles by behaviour (each hero's `lh10` and `home` set from @dynamic_heroes): per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
  *  off-lane core pos 3), the other two supports (more last hits = pos 4). Avoids the bots-mode Dire pos= artefact.
  *  Fallbacks (no mid core, no safe-lane core) are reported in `warnings`. */
 function roles(S, warnings = []) {
     const out = {};
     for (const team of [2, 3]) {
         const bots = Object.values(S).filter(s => s.team === team);
-        bots.forEach(s => ((s.lh10 = counterAt(s, 'lh', 600)), (s.home = modalLane(s, 60, 300))));
         bots.sort((a, b) => b.lh10 - a.lh10);
         const cores = bots.slice(0, 3), sups = bots.slice(3);
         const safe = team === 2 ? 'bot' : 'top';
@@ -163,70 +148,6 @@ function roles(S, warnings = []) {
         [[mid, 2], [p1, 1], [p3, 3], [sups[0], 4], [sups[1], 5]].forEach(([s, r]) => s && (out[s.pid] = r));
     }
     return out;
-}
-
-/** Encounters with onset in [from, to): an opposing pair, both alive, comes within R_AWARE after >= GAP_ENC s apart; an onset
- *  within MERGE_ENC s of the current encounter's first onset joins it (moments.js rule). The scan starts at 0, so pairs already
- *  together at `from` do not open an encounter. */
-function encounters(S, from, to) {
-    const rad = Object.values(S).filter(s => s.team === 2), dire = Object.values(S).filter(s => s.team === 3);
-    const onsets = [];
-    for (const a of rad) {
-        for (const b of dire) {
-            let apart = C.GAP_ENC;
-            for (let t = 0; t < to; t++) {
-                const sa = a.sec[t], sb = b.sec[t];
-                const close = alive(sa) && alive(sb) && dist(pos(sa), pos(sb)) <= C.R_AWARE;
-                if (close && apart >= C.GAP_ENC && t >= from) onsets.push(t);
-                if (close) apart = 0;
-                else apart++;
-            }
-        }
-    }
-    onsets.sort((x, y) => x - y);
-    let n = 0, first = -Infinity;
-    for (const t of onsets) {
-        if (t - first > C.MERGE_ENC) {
-            n++;
-            first = t;
-        }
-    }
-    return n;
-}
-
-/** Death times of every hero, sorted. A deaths increment after a gap > DEAD_GAP is dated at the last snapshot before the gap
- *  (the death, not the respawn); a bot dead at the end of the game adds one death at its last snapshot. */
-function deathTimes(S) {
-    const out = [];
-    for (const s of Object.values(S)) {
-        const snaps = s.snaps;
-        let prev = 0;
-        for (let i = 0; i < snaps.length; i++) {
-            if (typeof snaps[i].deaths !== 'number') continue;
-            const t = i > 0 && snaps[i].t - snaps[i - 1].t > C.DEAD_GAP ? snaps[i - 1].t : snaps[i].t;
-            for (let k = prev; k < snaps[i].deaths; k++) out.push({ t, team: s.team });
-            prev = snaps[i].deaths;
-        }
-        const lastSnap = snaps[snaps.length - 1];
-        if (s.last - lastSnap.t > C.DEAD_GAP) out.push({ t: lastSnap.t, team: s.team });
-    }
-    return out.sort((a, b) => a.t - b.t);
-}
-
-/** Fights: runs of deaths with <= FIGHT_GAP s between consecutive deaths and >= FIGHT_MIN_DEATHS deaths. */
-function fights(deaths, from, to) {
-    const ds = deaths.filter(d => d.t >= from && d.t < to);
-    let n = 0, run = 0, last = -Infinity;
-    for (const d of ds) {
-        if (d.t - last <= C.FIGHT_GAP) run++;
-        else {
-            if (run >= C.FIGHT_MIN_DEATHS) n++;
-            run = 1;
-        }
-        last = d.t;
-    }
-    if (run >= C.FIGHT_MIN_DEATHS) n++;
-    return n;
 }
 
 /** Rotations before `until` (moments.js rule): from 1:00, a run of >= ROT_MIN_S seconds in one lane region other than home;
@@ -327,6 +248,9 @@ function auditedSteals(game, S, lpos, until) {
     return cases;
 }
 
+const QUERIES = path.join(__dirname, 'queries');
+const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
+
 /**
  * Stack attempts (slice 4, KR S.2a) from ev=stack: one line per trigger minute, `res` stacked | not_stacked | failed (a job
  * started) or skip (none started). Empty when the log has none (the OFF arm, older builds).
@@ -362,42 +286,38 @@ function stackAttempts(game, until) {
             left59: leftInBox(e.n59), cause: stackCause(e) }));
 }
 
-/** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
-function idles(s, from, to) {
-    let n = 0, anchor, start;
-    for (let t = from; t < to; t++) {
-        const snap = s.sec[t];
-        if (!alive(snap) || laneLabel(pos(snap)) === 'base') {
-            anchor = undefined;
-            continue;
-        }
-        if (!anchor || dist(anchor, pos(snap)) > C.IDLE_R) {
-            anchor = pos(snap);
-            start = t;
-        } else if (t - start === C.IDLE_S) n++;
+/**
+ * All dynamic metrics for one game of the log store (`file` as in games.file, already ingested). `end` is the last whole minute
+ * of snapshots. `parsed` is that game from parseLog (read from `file` when omitted): the part-B and C metrics still use it.
+ */
+function dynamicMetrics(store, file, gameNo = 1, parsed) {
+    if (!store.query('SELECT 1 FROM games WHERE file = ? AND game = ?', file, gameNo).length) {
+        throw new Error(`dynamicMetrics: ${file} game ${gameNo} is not in the store (the path must be absolute, as in games.file; ingest it first)`);
     }
-    return n;
-}
-
-/** All dynamic metrics for one parsed game. `end` is the last whole minute of snapshots. */
-function dynamicMetrics(game) {
+    const p = { file, game: gameNo };
+    const H = Object.fromEntries(store.query(sqlOf('dynamic_heroes'), p).map(h => [h.pid, h]));
+    if (!Object.keys(H).length) throw new Error(`dynamicMetrics: ${file} game ${gameNo} has no hero with a team and a snapshot`);
+    const G = store.query(sqlOf('dynamic_game'), p)[0];
+    const game = parsed || parseLog(fs.readFileSync(file, 'utf8'))[gameNo - 1];
     const S = series(game);
-    const end = Math.floor(Object.values(S)[0].last / 60) * 60;
+    const pids = Object.keys(S).join();
+    if (pids !== Object.keys(H).join()) throw new Error(`dynamicMetrics: series heroes ${pids} differ from @dynamic_heroes ${Object.keys(H).join()}`);
+    for (const s of Object.values(S)) Object.assign(s, { hero: H[s.pid].hero ?? undefined, lh10: H[s.pid].lh10, home: H[s.pid].home ?? undefined });
+    const end = G.end;
+    // Parts B and C still walk the JS series up to `end`: the two time bases must agree.
+    const jsEnd = Math.floor(Object.values(S)[0].last / 60) * 60;
+    if (jsEnd !== end) throw new Error(`dynamicMetrics: series end ${jsEnd} differs from @dynamic_game end ${end}`);
     const warnings = [];
     const role = roles(S, warnings);
-    const deaths = deathTimes(S);
+    const deaths = [];
+    for (const d of store.query(sqlOf('dynamic_deaths'), p)) for (let k = 0; k < d.n; k++) deaths.push({ t: d.t, team: d.team });
     const team = t => Object.values(S).filter(s => s.team === t);
     const perTeam = f => ({ 2: f(team(2), 2), 3: f(team(3), 3) });
     const sum = (arr, f) => arr.reduce((a, s) => a + f(s), 0);
     const byRole = f => Object.fromEntries(Object.values(S).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
-    const ours = game.events.filter(e => e.ev === 'lua_error').length;
-    const errors = ours + game.errors.length;
     // Lineup position: pos= of the last ev=bot line (a role change re-emits it). Trusted only where pos= is (lineups.md).
     const lpos = {};
-    for (const s of Object.values(S)) {
-        const p = (game.bots[s.pid]?.profiles || []).filter(e => typeof e.pos === 'number').pop();
-        if (p) lpos[s.pid] = p.pos;
-    }
+    for (const s of Object.values(S)) if (H[s.pid].lpos !== null) lpos[s.pid] = H[s.pid].lpos;
     // A team whose positions are not exactly 1-5 (e.g. a pre-Dire-fix log, all Dire pos=1) gets no lpos keys.
     for (const t of [2, 3]) {
         const ps = team(t).map(s => lpos[s.pid]).sort().join();
@@ -407,31 +327,33 @@ function dynamicMetrics(game) {
         }
     }
     const byLpos = f => Object.fromEntries(Object.values(S).filter(s => lpos[s.pid]).map(s => [`${s.team === 2 ? 'r' : 'd'}${lpos[s.pid]}`, f(s)]));
+    const rate = n => (end > 600 ? (n * 600) / (end - 600) : undefined);
     return {
         end,
-        bots: Object.values(S).length,
+        bots: G.bots,
         roles: byRole(s => s.hero),
         pids: byRole(s => s.pid),
-        lh_at_10: byRole(s => counterAt(s, 'lh', 600)),
-        deaths_before_10: perTeam((ts, t) => deaths.filter(d => d.t < 600 && d.team === t).length),
-        encounters_per_10min: { before10: encounters(S, 0, 600), after10: end > 600 ? (encounters(S, 600, end) * 600) / (end - 600) : undefined },
-        fights_per_10min: { before10: fights(deaths, 0, 600), after10: end > 600 ? (fights(deaths, 600, end) * 600) / (end - 600) : undefined },
+        lh_at_10: byRole(s => s.lh10),
+        deaths_before_10: { 2: G.deaths10_r, 3: G.deaths10_d },
+        deaths_total: G.deaths,
+        encounters_per_10min: { before10: G.enc10, after10: rate(G.enc_after) },
+        fights_per_10min: { before10: G.fights10, after10: rate(G.fights_after) },
         rotation_attempts_per_team_10: perTeam(ts => sum(ts, s => rotations(s, 600))),
         core_lane_exit_time: byRole(s => (role[s.pid] === 1 || role[s.pid] === 3 ? laneExit(s, end) : undefined)),
         tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         audited_steals: auditedSteals(game, S, lpos, 600),
         stacks: stackAttempts(game, end + 1),
-        idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
-        lua_error: errors,
-        lua_error_ours: ours,
-        console_errors: game.errors.filter(e => /script runtime error/i.test(e.text)).length,
+        idle_10s: sum(Object.values(H), h => h.idle),
+        lua_error: G.lua_error_ours + G.console_lines,
+        lua_error_ours: G.lua_error_ours,
+        console_errors: G.console_errors,
         // Dota squelches a console message after 10 identical copies, so with a notice the console counts are lower bounds.
-        console_squelches: game.squelches || 0,
+        console_squelches: G.squelches,
         // Censored only by a notice right after an error line: Dota squelches any repeated message, errors or not.
-        console_censored: (game.errorSquelches || 0) > 0,
+        console_censored: G.error_squelches > 0,
         lpos,
-        lh_at_10_lpos: byLpos(s => counterAt(s, 'lh', 600)),
+        lh_at_10_lpos: byLpos(s => s.lh10),
         core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
         role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
         // Lineup position where pos= is trusted (lpos), else the behavioural role.
@@ -533,4 +455,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, rotations, laneExit, tpJoins, series, roles, C };

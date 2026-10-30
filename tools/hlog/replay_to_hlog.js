@@ -1,5 +1,6 @@
 // Writes a replay (the master replay index's manta extractor NDJSON: one `k=s` row per game second, `k=meta` with players)
-// as humaniser [HEV] telemetry, so parseLog + dynamicMetrics run on a replay unchanged (WO-021 R4; EC-058/059 review L8).
+// as humaniser [HEV] telemetry, so the log store and dynamicMetrics run on a replay unchanged once its output file is ingested
+// (WO-021 R4; EC-058/059 review L8).
 // Snapshots are 1 Hz like bot logs, and none are written while a hero is dead (bots log none), so dynamic.js infers deaths
 // from gaps exactly as it does for bots. pid = replay player index 0-9.
 // Rows stop at the ancient kill (the `_fort` log line), as the replay index's batch_a_analyze.js `load` does, unless --until
