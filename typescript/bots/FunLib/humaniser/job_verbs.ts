@@ -272,16 +272,22 @@ export interface StackPlan extends AggroOpts {
     exitPath: Vec[];
     /** Absolute time the walk-off ends (just after the next :00 spawn check). */
     exitUntil: number;
+    /** Double stack: this camp is hit first at its own second, then `camp`, whose walk-off both camps follow. */
+    first?: { camp: Camp; aggroAt: number };
 }
 
 /**
  * Camp stack: travel, wait at the stand point, a confirmed hit landing on
  * the aggro second (+ skill error), walk off along `exitPath`, stay out until `exitUntil`. Labels `travel`, `wait`,
- * `aggro`, `exit`; urgent until the hit lands.
+ * `aggro` (twice for a double), `exit`; urgent until the last hit lands.
  */
 export function* stack(bot: TaskUnit, p: StackPlan, h: JobHooks = {}): TaskBody {
     const err = p.timingError ?? E().Skill.timingError(bot);
     h.urgent?.(true);
+    if (p.first !== undefined) {
+        const f = yield* aggroCamp(bot, p.first.camp, p.first.aggroAt, err, p, h);
+        if (!f.success) return f;
+    }
     const r = yield* aggroCamp(bot, p.camp, p.aggroAt, err, p, h);
     if (!r.success) return r;
     h.urgent?.(false);

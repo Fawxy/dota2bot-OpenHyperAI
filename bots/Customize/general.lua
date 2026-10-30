@@ -238,7 +238,7 @@ Customize.Humaniser = {
 -- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body; off since
 -- ER-008's FAIL (no better than OHA, more deaths).
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = false }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

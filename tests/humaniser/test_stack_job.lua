@@ -30,6 +30,8 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	if o.ours ~= nil then Customize.Ours = o.ours end
+	-- Slice 4's single-stack tests run with the double off; the double-stack tests below pass double = true.
+	if Customize.Ours ~= nil then Customize.Ours.DoubleStack = o.double == true end
 	T = o.t or 200
 	CURRENT_TEAM = 2
 	FOGGED = o.fogged
@@ -157,9 +159,12 @@ end
 -- A full stack at 3:5x on good_1: starts in time, hit inside the window, outcome stacked, away <= 25 s.
 local function stackRun(o)
 	o = o or {}
-	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged })
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double })
+	if o.range then bot.range = o.range end
 	local camp = SPAWNERS[idxOf("good_1")].location
 	neutrals(camp, 3)
+	local first = SPAWNERS[idxOf("good_2")].location
+	if o.double then MakeNeutral({ x = first.x, y = first.y }) MakeNeutral({ x = first.x + 20, y = first.y }) end
 	local lines = capture(function()
 		-- blind: until the hit a neutral is seen only within 350 of the bot (trees or high ground; lich saw evil_1 from 274, not 428).
 		local function step()
@@ -169,6 +174,7 @@ local function stackRun(o)
 		end
 		while T < 4 * 60 do step() end
 		if not o.noSpawn then neutrals(camp, 3) end
+		if o.double and not o.noSpawn then MakeNeutral({ x = first.x + 40, y = first.y }) end
 		while T < 4 * 60 + 8 do step() end
 	end)
 	return stackLines(lines), H, bot
@@ -456,6 +462,87 @@ do
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.StackJob.Abort(bot, "defend-ping")', 1, true)
 	check('farm: a defend ping aborts the job', ping ~= nil and abort ~= nil and abort > ping and abort - ping < 200, tostring(ping) .. ' ' .. tostring(abort))
+end
+
+-- Slice double-stack (Ours.DoubleStack): the safe-lane partners (EC-063), the fit of the walk from A to B's hit, and one
+-- minute that stacks both camps.
+do
+	local H, bot = world({ double = true })
+	local C = H.Lane.Camps
+	local function partner(name)
+		local sp = C.SpawnerByIdx(idxOf(name))
+		local p = H.StackJob.Partner(C.ByIdx(sp.idx, sp.team))
+		return p and MAP[p.campIdx][1]
+	end
+	check("good_1's partner is good_2", partner("good_1") == "good_2", partner("good_1"))
+	check("evil_2's partner is evil_1", partner("evil_2") == "evil_1", partner("evil_2"))
+	check("good_5 has no partner", partner("good_5") == nil, partner("good_5"))
+	local function fits(a, b, range)
+		bot.range = range
+		local sa, sb = C.SpawnerByIdx(idxOf(a)), C.SpawnerByIdx(idxOf(b))
+		return H.StackJob.Fits(bot, C.ByIdx(sa.idx, sa.team), C.ByIdx(sb.idx, sb.team))
+	end
+	-- EC-063's table: good_2 then good_1 fits a melee hero; evil_1 then evil_2 a ranged one only.
+	check("good_2 then good_1 fits ranged", fits("good_2", "good_1", 550))
+	check("good_2 then good_1 fits melee", fits("good_2", "good_1", 150))
+	check("evil_1 then evil_2 fits ranged", fits("evil_1", "evil_2", 550))
+	check("evil_1 then evil_2 does not fit melee", not fits("evil_1", "evil_2", 150))
+	local fa = H.StackJob.WindowSec(C.ByIdx(idxOf("good_2"), RAD), H.StackJob.SETTINGS.FirstWindowAt)
+	local fb = H.StackJob.WindowSec(C.ByIdx(idxOf("good_1"), RAD), H.StackJob.SETTINGS.SecondWindowAt)
+	check("hits: good_2 early in 52-54, good_1 late in 55-57", fa >= 52 and fa < 53 and fb > 56 and fb <= 57, fa .. " " .. fb)
+end
+
+do
+	local lines, H = stackRun({ double = true })
+	local l = lines[1]
+	check("double: one line for the minute", #lines == 1, #lines)
+	check("double: double=1, camp A good_2", field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
+	check("double: both camps stacked", field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
+	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
+	check("double: A hit in 52-54, B hit late in 55-57 (1 s for the confirm)", fag >= 51.5 and fag <= 54 and ag >= 55.5 and ag <= 58, l)
+	check("double: A before 2, B before 3", field(l, "fbefore") == "2" and field(l, "before") == "3", l)
+	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
+	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
+	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
+end
+
+-- B's hit skips A's neutrals: they chase the bot into B's box margin and target it, which must not count as B's hit.
+do
+	local moved = false
+	-- After A's hit (~:52.5) its two neutrals arrive in B's margin, nearer the bot than B's own, and target it.
+	local lines = stackRun({ double = true, onFrame = function(H, bot)
+		if moved or T < 3 * 60 + 54 then return end
+		moved = true
+		local c = SPAWNERS[idxOf("good_1")].location
+		for _, m in ipairs(NEUTRALS) do
+			if dist(m.loc, SPAWNERS[idxOf("good_2")].location) < 100 then
+				m.loc = Vector(c.x + 280, c.y)
+				m.target = bot
+			end
+		end
+	end })
+	local l = lines[1]
+	check("chasers in B's margin: B still hit (before 3, a good_1 neutral)", moved and field(l, "before") == "3" and field(l, "res") == "stacked", l)
+end
+
+-- A walk from A to B that does not fit the gap (melee on evil_1 then evil_2, above; forced here with the slack): the
+-- minute runs single on good_1 with double=0 dwhy=walk.
+do
+	local slack = nil
+	local lines = stackRun({ double = true, onFrame = function(H)
+		if slack == nil then slack = H.StackJob.SETTINGS.DoubleSlack H.StackJob.SETTINGS.DoubleSlack = 10 end
+	end })
+	local H = world()
+	H.StackJob.SETTINGS.DoubleSlack = slack
+	local l = lines[1]
+	check("no fit: single on good_1 stacked, double=0 dwhy=walk", field(l, "res") == "stacked" and tonumber(field(l, "camp")) == idxOf("good_1") and field(l, "double") == "0" and field(l, "dwhy") == "walk" and field(l, "fcamp") == nil, l)
+end
+
+-- Switch off: no double fields at all (slice 4's line).
+do
+	local lines = stackRun({})
+	check("DoubleStack off: no double field", field(lines[1], "double") == nil, lines[1])
 end
 
 finish()

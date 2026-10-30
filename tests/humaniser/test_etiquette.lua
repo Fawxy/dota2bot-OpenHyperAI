@@ -126,7 +126,7 @@ do
 	check('laning: cancels a swing on a core creep first in Think', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end'))
 	check('laning: predicate is the filter', has(laning, 'if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end'))
 	local general = source('bots/Customize/general.lua')
-	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = false }'))
+	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = false }'))
 end
 
 finish()

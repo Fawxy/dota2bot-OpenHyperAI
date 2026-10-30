@@ -61,6 +61,16 @@ export const SETTINGS = {
     /** Seconds after :00 a stacked camp is usually seen and the watch ends (s4: :02-:04). The far rule plans with it, not
      *  the worst case (:00 + WatchUntil, which skipped a 23 s job at 3:39 in s4r2); the watch is cut at AwayMax instead. */
     FarEnd: 3,
+    /** Double stack (slice double-stack, switch Ours.DoubleStack): where in each Valve window the two hits land. Camp A
+     *  early in its window and camp B late in its own, so the walk between them has the widest gap; A's neutrals chase
+     *  the bot through B's hit, so A's single-camp window may not bind (EC-063: guides say ":53, then :55-:56"). */
+    FirstWindowAt: 0.25,
+    SecondWindowAt: 0.75,
+    /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
+    DoubleSlack: 0.5,
+    /** A double's start slack instead of Lead (9): the walk to camp A from the safe-lane T1 is ~8 s for good_2, and with
+     *  Lead the job would run ~27.5 s, over AwayMax (E1, 31/10/2026). A double that still cannot fit runs single. */
+    DoubleLead: 5,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -159,6 +169,26 @@ export interface Attempt {
     lane?: number;
     /** OHA idle relocations the job held while it ran (`HoldsIdle`). */
     idle?: number;
+    /** Double stack: 1 when the attempt hits `first` before this camp; 0 when the camp has a partner but the walk between
+     *  them does not fit (`Fits`); undefined when it has none or the switch is off. */
+    double?: number;
+    /** Why a camp with a partner ran single: `walk` (A to B does not fit the gap), `far` (over AwayMax), `late`. */
+    dwhy?: string;
+    first?: FirstCamp;
+}
+
+/** Camp A of a double stack, hit before the attempt's own camp (B). */
+export interface FirstCamp {
+    campIdx: number;
+    type: string;
+    aggro?: number;
+    before?: number;
+    hitd?: number;
+    arr?: number;
+    box59?: number;
+    fresh?: number;
+    /** A's neutrals at its hit: B's hit is picked and confirmed on other neutrals only. */
+    units?: Unit[];
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -199,6 +229,54 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
     else if (SETTINGS.ExitTowardLane) exits[sp.idx] = Camps.DeriveStackExit(sp, sp.team, true);
     else return data.stack!.exitPath;
     return exits[sp.idx];
+}
+
+/**
+ * Double-stack partners (EC-063, user lead 31/10/2026), matched by spawner origin as EXIT_DIRS: camp B (the trigger's
+ * nearest camp) to camp A, hit first. Only the safe-lane pairs: they are the pos5's own camps (145 of 168 started slice 4
+ * 5v5 attempts), and the ancient and wisdom-shrine pairs lie on the offlane side, out of a safe-lane pos5's 25 s reach.
+ */
+const PAIRS: { x: number; y: number; fx: number; fy: number }[] = [
+    { x: 3978, y: -5027, fx: 4649, fy: -3699 }, // good_1 after good_2 (windows 55-57, 52-54)
+    { x: -3911, y: 4829, fx: -4824, fy: 3915 }, // evil_2 after evil_1 (55-57, 54-56)
+];
+
+function near(v: Vector, x: number, y: number): boolean {
+    return math.abs(v.x - x) <= 200 && math.abs(v.y - y) <= 200;
+}
+
+/** Camp A for camp B, if B has a listed partner on the same team with a Valve window. */
+export function Partner(data: Camps.CampJobData): Camps.CampJobData | undefined {
+    const sp = Camps.SpawnerByIdx(data.campIdx);
+    if (sp === undefined) return undefined;
+    for (const p of PAIRS) {
+        if (!near(sp.location, p.x, p.y)) continue;
+        for (const s of Camps.Spawners()) {
+            if (s.team !== sp.team || !near(s.location, p.fx, p.fy) || Stacking.Window(s.idx)[0] === undefined) continue;
+            const a = Camps.ByIdx(s.idx, s.team);
+            if (a !== undefined && a.stack !== undefined) return a;
+        }
+    }
+    return undefined;
+}
+
+/** The second of the minute `data`'s hit lands at `at` (0..1) through its Valve window. */
+export function WindowSec(data: Camps.CampJobData, at: number): number {
+    const [from, to] = Stacking.Window(data.campIdx);
+    if (from === undefined || to === undefined) return Stacking.AggroSec(data);
+    return from + (to - from) * at;
+}
+
+/**
+ * The walk from A's stand point to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
+ * so a ranged pos5 walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
+ */
+export function Fits(bot: Unit, a: Camps.CampJobData, b: Camps.CampJobData): boolean {
+    const spa = Camps.SpawnerByIdx(a.campIdx)!;
+    const spb = Camps.SpawnerByIdx(b.campIdx)!;
+    const reach = bot.GetAttackRange() + (spb.max.x - spb.min.x) / 2;
+    const walk = math.max(0, dist(Stand(spa, a), spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
+    return walk + SETTINGS.DoubleSlack <= WindowSec(b, SETTINGS.SecondWindowAt) - WindowSec(a, SETTINGS.FirstWindowAt);
 }
 
 /** Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side. */
@@ -270,48 +348,88 @@ export function Gate(bot: Unit): string | undefined {
 }
 
 /** The stack verb's plan for `data` in `minute`: the hit lands on the camp's stack second of that minute. */
-export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: number, a: Attempt): JobVerbs.StackPlan {
-    const sp = Camps.SpawnerByIdx(data.campIdx)!;
+/** The verb's camp for `sp`, waiting at `stand`; `others` are neutrals that are not this camp (a double's camp A). */
+function campFor(bot: Unit, sp: Camps.Spawner, stand: Vector, others?: () => Unit[] | undefined): JobVerbs.Camp {
     const r = LaneConfig.Settings().Radii;
-    const t = LaneConfig.Settings().Timing;
-    const start = minute * 60;
     // Seen nothing from the stand point (trees, high ground, night): step in to ApproachDist from the origin. Not camp_jobs'
     // StandApproach (150): hit from 84-124 the neutral had moved 57-72 two seconds later and stayed in the box; hits from
     // 389-450 drew it 300-600 out (probe s4p4). Lich saw evil_1 from 274 (probe 4). 250, not 300: witch doctor's evil_2
     // stand point is 383 from the origin, so 300 lay inside the arrive radius and the bot never stepped in (probe s4p5).
     const o = sp.location;
     const d = math.max(1, ((stand.x - o.x) ** 2 + (stand.y - o.y) ** 2) ** 0.5);
-    const near = math.min(d, SETTINGS.ApproachDist);
-    const approach = Vector(o.x + ((stand.x - o.x) * near) / d, o.y + ((stand.y - o.y) * near) / d, o.z);
+    const close = math.min(d, SETTINGS.ApproachDist);
+    const approach = Vector(o.x + ((stand.x - o.x) * close) / d, o.y + ((stand.y - o.y) * close) / d, o.z);
+    const camp: JobVerbs.Camp = {
+        stand: stand as unknown as Lib.Vec,
+        box: { min: sp.min as unknown as Lib.Vec, max: sp.max as unknown as Lib.Vec },
+        origin: sp.location as unknown as Lib.Vec,
+        margin: r.BoxMargin,
+        search: r.NeutralSearch,
+        confirmed: () => CampJobs.Exec.NeutralTargets(bot),
+        approach: approach as unknown as Lib.Vec,
+    };
+    if (others === undefined) return camp;
+    // Camp A's neutrals chase the bot to B: they target it and may stand in B's box margin, so B's hit and its proof skip them.
+    const other = (n: Unit) => (others() ?? []).includes(n);
+    camp.pick = () => {
+        let best: Unit | undefined;
+        for (const n of bot.GetNearbyNeutralCreeps(r.NeutralSearch, false) ?? []) {
+            if (n === null || n === undefined || !n.IsAlive() || !n.CanBeSeen() || other(n) || !Camps.InBox(sp.idx, n.GetLocation(), r.BoxMargin)) continue;
+            if (best === undefined || GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best)) best = n;
+        }
+        return best as unknown as Lib.TaskAttacker | undefined;
+    };
+    camp.confirmed = () => {
+        for (const n of bot.GetNearbyNeutralCreeps(r.NeutralSearch, false) ?? []) {
+            if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && !other(n) && n.GetAttackTarget() === bot) return true;
+        }
+        return false;
+    };
+    return camp;
+}
+
+export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: number, a: Attempt): JobVerbs.StackPlan {
+    const sp = Camps.SpawnerByIdx(data.campIdx)!;
+    const r = LaneConfig.Settings().Radii;
+    const t = LaneConfig.Settings().Timing;
+    const start = minute * 60;
+    const f = a.first;
+    const fd = f !== undefined ? Camps.ByIdx(f.campIdx) : undefined;
+    const fsp = f !== undefined ? Camps.SpawnerByIdx(f.campIdx) : undefined;
+    const first =
+        f !== undefined && fd !== undefined && fsp !== undefined
+            ? { camp: campFor(bot, fsp, Stand(fsp, fd)), aggroAt: start + WindowSec(fd, SETTINGS.FirstWindowAt) }
+            : undefined;
+    const firstDone = () => f === undefined || f.aggro !== undefined;
     return {
-        camp: {
-            stand: stand as unknown as Lib.Vec,
-            box: { min: sp.min as unknown as Lib.Vec, max: sp.max as unknown as Lib.Vec },
-            origin: sp.location as unknown as Lib.Vec,
-            margin: r.BoxMargin,
-            search: r.NeutralSearch,
-            confirmed: () => CampJobs.Exec.NeutralTargets(bot),
-            approach: approach as unknown as Lib.Vec,
-        },
+        camp: campFor(bot, sp, stand, f !== undefined ? () => f.units : undefined),
+        first,
         // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
-        aggroAt: start + Stacking.AggroSec(data),
+        aggroAt: start + (first !== undefined ? WindowSec(data, SETTINGS.SecondWindowAt) : Stacking.AggroSec(data)),
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
         onTarget: n => {
             const u = n as unknown as Unit;
-            if (a.aim === u) return;
+            if (!firstDone() || a.aim === u) return;
             a.aim = u;
             a.aimHp = u.GetHealth();
         },
         onAggro: info => {
-            a.before = CampJobs.Exec.NeutralsInBox(bot, data.campIdx);
-            a.aggro = info.confirmedAt - start;
+            if (f !== undefined && f.aggro === undefined) {
+                f.before = CampJobs.Exec.NeutralsInBox(bot, f.campIdx);
+                f.aggro = info.confirmedAt - start;
+                f.hitd = math.floor(GetUnitToLocationDistance(bot, fsp!.location));
+                f.units = campNeutrals(bot, f.campIdx, info.target as unknown as Unit | undefined);
+                return;
+            }
             a.target = info.target as unknown as Unit | undefined;
+            a.campUnits = campNeutrals(bot, data.campIdx, a.target, a);
+            a.before = f === undefined ? CampJobs.Exec.NeutralsInBox(bot, data.campIdx) : a.campUnits.length;
+            a.aggro = info.confirmedAt - start;
             a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location));
-            a.campUnits = campNeutrals(bot, data.campIdx, a.target);
         },
     };
 }
@@ -329,24 +447,34 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
     const r = yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label, urgent: ctx.urgent });
     if (!r.success) return r;
     // Watch: walk towards the camp until its origin is in sight (night vision is 800, the exit point ~900 past the box),
-    // count the box, and end once it holds more than at the hit or at :00 + WatchUntil.
+    // count the box, and end once it holds more than at the hit or at :00 + WatchUntil. A double watches B, then A.
     ctx.label("watch");
-    const sp = Camps.SpawnerByIdx(a.campIdx)!;
     const spawnCheck = a.minute * 60 + 60;
     const outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt;
+    const f = a.first;
     let stopped = false;
+    let campIdx = a.campIdx;
     while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + SETTINGS.AwayMax - 0.5)) {
         if (!bot.IsAlive()) return { success: false, reason: "dead" };
-        if (CampJobs.Exec.BoxInSight(bot, a.campIdx)) {
+        if (CampJobs.Exec.BoxInSight(bot, campIdx)) {
             if (!stopped) bot.Action_MoveToLocation(bot.GetLocation());
             stopped = true;
             if (DotaTime() >= outcomeAt) {
-                a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
-                a.fresh = math.max(a.fresh ?? 0, freshInBox(bot, a));
-                if (a.fresh > 0) break;
+                const fresh = freshInBox(bot, a, campIdx);
+                if (campIdx === a.campIdx) {
+                    a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
+                    a.fresh = math.max(a.fresh ?? 0, fresh);
+                } else {
+                    f!.fresh = math.max(f!.fresh ?? 0, fresh);
+                }
+                if (fresh > 0) {
+                    if (f === undefined || campIdx !== a.campIdx) break;
+                    campIdx = f.campIdx;
+                    stopped = false;
+                }
             }
         } else {
-            bot.Action_MoveToLocation(sp.location);
+            bot.Action_MoveToLocation(Camps.SpawnerByIdx(campIdx)!.location);
         }
         yield;
     }
@@ -363,6 +491,11 @@ function hpPct(bot: Unit): number {
 
 /** The verb's phase labels as seconds of the minute, with the HP at the hit order and at the walk-off. */
 function phase(bot: Unit, a: Attempt, l: string): void {
+    // A double's phases before camp A's hit are A's: arrival as farr, and no hit fields (they are B's).
+    if (a.first !== undefined && a.first.aggro === undefined) {
+        if (l === "wait") a.first.arr = a.first.arr ?? sec(a);
+        return;
+    }
     if (l === "wait" && a.arr === undefined) a.arr = sec(a);
     if (l === "aggro") {
         a.hit0 = sec(a);
@@ -393,7 +526,7 @@ function track(bot: Unit, a: Attempt): void {
     if (a.hit0 !== undefined) {
         const n = a.aim;
         if (a.dmg === undefined && n !== undefined && !n.IsNull() && (!n.IsAlive() || n.GetHealth() < (a.aimHp ?? 0))) a.dmg = sec(a);
-        if (a.react === undefined && CampJobs.Exec.NeutralTargets(bot)) a.react = sec(a);
+        if (a.react === undefined && campTargets(bot, a)) a.react = sec(a);
     }
     if (a.aggro !== undefined) a.lane = math.max(a.lane ?? 0, laneNear(bot, a));
 }
@@ -416,22 +549,35 @@ function laneNear(bot: Unit, a: Attempt): number {
 /** Neutral scan radius for the seen set (the API's maximum). */
 const SEEN_SCAN = 1600;
 
-/** Visible neutrals in the box (with margin) the bot had not seen before the :00 spawn check. */
-function freshInBox(bot: Unit, a: Attempt): number {
+/** Visible neutrals in camp `campIdx`'s box (with margin) the bot had not seen before the :00 spawn check. */
+function freshInBox(bot: Unit, a: Attempt, campIdx: number): number {
     const margin = LaneConfig.Settings().Radii.BoxMargin;
     let n = 0;
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
-        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(a.campIdx, c.GetLocation(), margin) && !(a.seen?.has(c) ?? false)) n++;
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(campIdx, c.GetLocation(), margin) && !(a.seen?.has(c) ?? false)) n++;
     }
     return n;
 }
 
-/** Visible neutrals in the camp's box (with margin) and the hit one: the units the stack has to pull. */
-function campNeutrals(bot: Unit, campIdx: number, target: Unit | undefined): Unit[] {
+/** A double's camp A neutrals, which B's counts skip (they chase the bot into B's box margin). */
+function isFirst(a: Attempt | undefined, n: Unit): boolean {
+    return a?.first?.units?.includes(n) ?? false;
+}
+
+/** A visible neutral of the attempt's camp (not a double's camp A) is attacking the bot. */
+function campTargets(bot: Unit, a: Attempt): boolean {
+    for (const n of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.NeutralSearch, false) ?? []) {
+        if (n !== null && n !== undefined && n.IsAlive() && n.CanBeSeen() && !isFirst(a, n) && n.GetAttackTarget() === bot) return true;
+    }
+    return false;
+}
+
+/** Visible neutrals in camp `campIdx`'s box (with margin) and the hit one, without a double's camp A: the units to pull. */
+function campNeutrals(bot: Unit, campIdx: number, target: Unit | undefined, a?: Attempt): Unit[] {
     const out: Unit[] = [];
     const margin = LaneConfig.Settings().Radii.BoxMargin;
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {
-        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && (c === target || Camps.InBox(campIdx, c.GetLocation(), margin))) out.push(c);
+        if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !isFirst(a, c) && (c === target || Camps.InBox(campIdx, c.GetLocation(), margin))) out.push(c);
     }
     if (target !== undefined && !out.includes(target)) out.push(target);
     return out;
@@ -523,7 +669,28 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["n59", a.n59 ?? "?"],
         ["lane", a.aggro !== undefined ? a.lane ?? 0 : "?"],
         ["idle", a.idle ?? 0],
+        ...doubleFields(a),
     ]);
+}
+
+/** A double's camp A on the attempt's line (`f` prefix); `double` alone when the camp's partner did not fit. */
+function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
+    if (a.double === undefined) return [];
+    const f = a.first;
+    if (f === undefined) return [["double", a.double], ["dwhy", a.dwhy ?? "?"]];
+    const landed = f.aggro !== undefined;
+    return [
+        ["double", a.double],
+        ["fres", !landed ? "failed" : (f.fresh ?? 0) > 0 ? "stacked" : "not_stacked"],
+        ["fcamp", f.campIdx],
+        ["ftype", f.type],
+        ["faggro", landed ? math.floor(f.aggro! * 10) / 10 : "?"],
+        ["fbefore", f.before ?? "?"],
+        ["ffresh", f.fresh ?? "?"],
+        ["fbox59", f.box59 ?? "?"],
+        ["fhitd", f.hitd ?? "?"],
+        ["farr", f.arr ?? "?"],
+    ];
 }
 
 /** mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). */
@@ -553,9 +720,23 @@ export function Desire(bot: Unit): number {
             return 0;
         };
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
-        const aggroAt = minute * 60 + Stacking.AggroSec(data);
-        const walk = travel(bot, stand);
-        if (now < aggroAt - walk - SETTINGS.Lead) return 0;
+        // A double starts from camp A: its stand point and hit second set the start.
+        const fd = Ours.On("DoubleStack") ? Partner(data) : undefined;
+        let double = fd !== undefined && Fits(bot, fd, data);
+        let dwhy = fd !== undefined && !double ? "walk" : undefined;
+        let aggroAt = minute * 60 + Stacking.AggroSec(data);
+        let walk = travel(bot, stand);
+        let lead = SETTINGS.Lead;
+        if (double) {
+            const fAt = minute * 60 + WindowSec(fd!, SETTINGS.FirstWindowAt);
+            const fWalk = travel(bot, Stand(Camps.SpawnerByIdx(fd!.campIdx)!, fd!));
+            // Started at its latest slack (MinSlack) the double must still end within AwayMax, else this minute runs single.
+            // Held by the gate past its own latest start, it runs single while the single can still start.
+            dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > SETTINGS.AwayMax ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
+            double = dwhy === undefined;
+            if (double) [aggroAt, walk, lead] = [fAt, fWalk, SETTINGS.DoubleLead];
+        }
+        if (now < aggroAt - walk - lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
         if (minute * 60 + 60 + SETTINGS.FarEnd - now > SETTINGS.AwayMax) return skip("far");
         const why = Gate(bot);
@@ -564,6 +745,9 @@ export function Desire(bot: Unit): number {
             return 0;
         }
         const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now };
+        if (fd !== undefined) a.double = double ? 1 : 0;
+        a.dwhy = dwhy;
+        if (double) a.first = { campIdx: fd!.campIdx, type: fd!.type };
         const plan = Plan(bot, data, stand, minute, a);
         const ok = Tasks.Start(bot, { name: "stack", host: BotMode.Farm, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
             body(bot, plan, a, ctx)
@@ -602,6 +786,7 @@ function sample59(bot: Unit, a: Attempt): void {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !Camps.InBox(a.campIdx, c.GetLocation(), margin)) pulled++;
     }
     a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    if (a.first !== undefined && a.first.aggro !== undefined) a.first.box59 = CampJobs.Exec.NeutralsInBox(bot, a.first.campIdx);
     a.tgt59 = targetDist(a) ?? -1;
     let strict = 0;
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {

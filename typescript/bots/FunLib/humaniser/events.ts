@@ -469,6 +469,18 @@ export const EVENTS = {
         n59: "str",
         lane: "mixed",
         idle: "num",
+        // Slice double-stack: camp A of a double (hit first), or `double=0` when the partner's walk did not fit.
+        double: "num",
+        dwhy: "str",
+        fres: "str",
+        fcamp: "num",
+        ftype: "str",
+        faggro: "mixed",
+        fbefore: "mixed",
+        ffresh: "mixed",
+        fbox59: "mixed",
+        fhitd: "mixed",
+        farr: "mixed",
     },
     lane_job_supply: {
         pid: "num",
