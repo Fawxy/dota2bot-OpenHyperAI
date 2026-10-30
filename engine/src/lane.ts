@@ -86,7 +86,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         scannedAt = t;
         if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
         const offered = laneTargets(bot, { within: opts.within });
-        // Handle identity holds across scans in game (contract laneFarm, evidence: ER-007 re-run s5c).
+        // Handle identity holds across scans in game (contract laneFarm, evidence: ER-008 re-run s5c).
         for (const o of offered) if (o.creep === current.creep) return false;
         target = offered.length > 0 ? opts.pick(offered) : undefined;
         return target !== undefined;

@@ -237,7 +237,7 @@ Customize.Humaniser = {
 -- LeaveCoreCreep (slice 3): pos4/pos5 leave a lane creep an allied core can take.
 -- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body; off since
--- ER-007's FAIL (no better than OHA, more deaths).
+-- ER-008's FAIL (no better than OHA, more deaths).
 Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,

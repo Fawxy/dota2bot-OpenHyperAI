@@ -23,9 +23,9 @@ skill:          none of its own (lastHit/deny draw the Skill error).
 telemetry:      none (the caller logs ev=lh per attempt from onAttempt).
 fixtures:       engine test_lane (skill 1 farm, lastHits off, no pick, skill scaling, leash, retarget on/off, dead,
                 interrupted); bot test_states_laning_body.
-evidence:       handle identity across laneTargets calls: in-game, ER-007 re-run s5c game 1 (30/10/2026), 15 of 233
+evidence:       handle identity across laneTargets calls: in-game, ER-008 re-run s5c game 1 (30/10/2026), 15 of 233
                 Radiant core attempts switched, mean wait 0.95 s before the switch (a failed identity would switch every
                 attempt at its first 0.1 s scan).
 consumers:      bot states/laning (the laning body; retarget on).
-status:         offline-verified (in-game result for slice 5: ER-007)
+status:         offline-verified (in-game result for slice 5: ER-008)
 ```

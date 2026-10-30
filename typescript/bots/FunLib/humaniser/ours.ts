@@ -11,7 +11,7 @@ export const DEFAULTS = {
     /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
     StackExecute: true,
     /**
-     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). Off: ER-007
+     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). Off: ER-008
      * FAIL (no better than OHA, more deaths).
      */
     CoreLastHit: false,

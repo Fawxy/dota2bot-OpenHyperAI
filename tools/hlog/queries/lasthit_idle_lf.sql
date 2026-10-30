@@ -1,4 +1,4 @@
--- Idle-in-range lane-creep deaths with what the laning body was doing (slice 5 missed-bar attribution, ER-007): one row per
+-- Idle-in-range lane-creep deaths with what the laning body was doing (slice 5 missed-bar attribution, ER-008): one row per
 -- enemy lane creep that died before `until` within a core's attack range + 300 (as @lasthit_cores' idle_in_range) while the
 -- core (lineup position 1-3) was not attacking it and did not get it. `mode` is the core's OHA mode at the last ev=snap at or
 -- before the death; `lf` the laning body's lane_pick Describe string from the last snap within 1.5 s before it (NULL when
