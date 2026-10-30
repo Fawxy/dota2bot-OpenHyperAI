@@ -66,6 +66,11 @@ export const SETTINGS = {
     /** A double's start slack instead of Lead (9): the walk to camp A from the safe-lane T1 is ~8 s for good_2, and with
      *  Lead the job would run ~27.5 s, over AwayMax (E1, 31/10/2026). A double that still cannot fit runs single. */
     DoubleLead: 5,
+    /** A double's watch end after :00: camp A's origin is ~1,100-1,600 from B's stand, so A was read in time only after
+     *  a quick B stack, and was unread in most of dsolo4b-5c (31/10/2026). AwayMax still cuts it. */
+    DoubleWatchUntil: 8,
+    /** Seconds B's box is read without a fresh neutral before the watch walks to A (a stacked B is usually seen by :02-:04). */
+    BReadFor: 2,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -200,6 +205,8 @@ export interface FirstCamp {
     n2?: string;
     n59?: string;
     seen?: number;
+    /** The second of the minute A's box was first in sight at or after :00 + StackOutcomeAt; undefined: A was never read. */
+    chk?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -504,33 +511,39 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
     const r = yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label, urgent: ctx.urgent });
     if (!r.success) return r;
     // Watch: walk towards the camp until its origin is in sight (night vision is 800, the exit point ~900 past the box),
-    // count the box, and end once it holds more than at the hit or at :00 + WatchUntil. A double watches B, then A.
+    // count the box, and end once it holds more than at the hit or at :00 + WatchUntil. A double reads B, then walks to A
+    // once B stacked or was read for BReadFor, and reads each box whenever it is in sight; A is `unseen` when it never was.
     ctx.label("watch");
     const spawnCheck = a.minute * 60 + 60;
     const outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt;
-    const f = a.first;
+    const f = a.first !== undefined && a.first.aggro !== undefined ? a.first : undefined;
+    const until = f !== undefined ? SETTINGS.DoubleWatchUntil : SETTINGS.WatchUntil;
     let stopped = false;
     let campIdx = a.campIdx;
-    while (DotaTime() < math.min(spawnCheck + SETTINGS.WatchUntil, a.startedAt + awayMax() - 0.5)) {
+    let bReadAt: number | undefined;
+    while (DotaTime() < math.min(spawnCheck + until, a.startedAt + awayMax() - 0.5)) {
         if (!bot.IsAlive()) return { success: false, reason: "dead" };
-        if (f !== undefined && f.aggro !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
+        if (f !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
+        if (DotaTime() >= outcomeAt) {
+            if (CampJobs.Exec.BoxInSight(bot, a.campIdx)) {
+                bReadAt = bReadAt ?? DotaTime();
+                a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
+                a.fresh = math.max(a.fresh ?? 0, freshInBox(bot, a, a.campIdx));
+            }
+            if (f !== undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) {
+                f.chk = f.chk ?? sec(a);
+                f.fresh = math.max(f.fresh ?? 0, freshInBox(bot, a, f.campIdx));
+            }
+            if (f === undefined ? (a.fresh ?? 0) > 0 : (a.fresh ?? 0) > 0 && (f.fresh ?? 0) > 0) break;
+            if (f !== undefined && campIdx === a.campIdx && bReadAt !== undefined
+                && ((a.fresh ?? 0) > 0 || DotaTime() >= bReadAt + SETTINGS.BReadFor)) {
+                campIdx = f.campIdx;
+                stopped = false;
+            }
+        }
         if (CampJobs.Exec.BoxInSight(bot, campIdx)) {
             if (!stopped) bot.Action_MoveToLocation(bot.GetLocation());
             stopped = true;
-            if (DotaTime() >= outcomeAt) {
-                const fresh = freshInBox(bot, a, campIdx);
-                if (campIdx === a.campIdx) {
-                    a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
-                    a.fresh = math.max(a.fresh ?? 0, fresh);
-                } else {
-                    f!.fresh = math.max(f!.fresh ?? 0, fresh);
-                }
-                if (fresh > 0) {
-                    if (f === undefined || campIdx !== a.campIdx) break;
-                    campIdx = f.campIdx;
-                    stopped = false;
-                }
-            }
         } else {
             bot.Action_MoveToLocation(Camps.SpawnerByIdx(campIdx)!.location);
         }
@@ -739,7 +752,7 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
     const landed = f.aggro !== undefined;
     return [
         ["double", a.double],
-        ["fres", !landed ? "failed" : (f.fresh ?? 0) > 0 ? "stacked" : "not_stacked"],
+        ["fres", !landed ? "failed" : (f.fresh ?? 0) > 0 ? "stacked" : f.chk === undefined ? "unseen" : "not_stacked"],
         ["fcamp", f.campIdx],
         ["ftype", f.type],
         ["faggro", landed ? math.floor(f.aggro! * 10) / 10 : "?"],
@@ -749,6 +762,7 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["fhitd", f.hitd ?? "?"],
         ["farr", f.arr ?? "?"],
         ["fseen", f.seen ?? 0],
+        ["fchk", f.chk ?? "?"],
         ["fn2", f.n2 ?? "?"],
         ["fn59", f.n59 ?? "?"],
     ];

@@ -713,6 +713,9 @@ function X.ShouldRun()
         and botTarget:IsAncientCreep()
         and #nAllyHeroes <= 1
         and bot:DistanceFromFountain() > 3000
+        -- Hook (slice double-stack): a stack job's one hit on an ancient is not farming it; in dsolo4b/4c this 6.21 s run
+        -- cut every ancient double at the hit with the bot at full HP and no enemy near. The job's own Gate still runs.
+        and not J.Humaniser.StackJob.HoldsRun(bot)
     then
         return 6.21
     end

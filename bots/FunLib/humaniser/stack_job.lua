@@ -614,37 +614,37 @@ function freshInBox(bot, a, campIdx)
         LaneConfig.Settings().Radii.StackCountScan,
         false
     ) or ({})) do
-        local ____temp_9 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+        local ____temp_10 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
             campIdx,
             c:GetLocation(),
             margin
         )
-        if ____temp_9 then
-            local ____opt_6 = a.seen
-            local ____temp_8 = ____opt_6 and ____opt_6:has(c)
-            if ____temp_8 == nil then
-                ____temp_8 = false
+        if ____temp_10 then
+            local ____opt_7 = a.seen
+            local ____temp_9 = ____opt_7 and ____opt_7:has(c)
+            if ____temp_9 == nil then
+                ____temp_9 = false
             end
-            ____temp_9 = not ____temp_8
+            ____temp_10 = not ____temp_9
         end
-        if ____temp_9 then
+        if ____temp_10 then
             n = n + 1
         end
     end
     return n
 end
 function isFirst(a, n)
-    local ____opt_16 = a and a.first
-    local ____opt_10 = ____opt_16 and ____opt_16.units
-    if ____opt_10 ~= nil then
-        local ____opt_11 = a and a.first
-        ____opt_10 = __TS__ArrayIncludes(____opt_11 and ____opt_11.units, n)
+    local ____opt_17 = a and a.first
+    local ____opt_11 = ____opt_17 and ____opt_17.units
+    if ____opt_11 ~= nil then
+        local ____opt_12 = a and a.first
+        ____opt_11 = __TS__ArrayIncludes(____opt_12 and ____opt_12.units, n)
     end
-    local ____opt_10_20 = ____opt_10
-    if ____opt_10_20 == nil then
-        ____opt_10_20 = false
+    local ____opt_11_21 = ____opt_11
+    if ____opt_11_21 == nil then
+        ____opt_11_21 = false
     end
-    return ____opt_10_20
+    return ____opt_11_21
 end
 function campTargets(bot, a)
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
@@ -726,7 +726,7 @@ function doubleFields(a)
     local landed = f.aggro ~= nil
     return {
         {"double", a.double},
-        {"fres", not landed and "failed" or ((f.fresh or 0) > 0 and "stacked" or "not_stacked")},
+        {"fres", not landed and "failed" or ((f.fresh or 0) > 0 and "stacked" or (f.chk == nil and "unseen" or "not_stacked"))},
         {"fcamp", f.campIdx},
         {"ftype", f.type},
         {
@@ -739,6 +739,7 @@ function doubleFields(a)
         {"fhitd", f.hitd or "?"},
         {"farr", f.arr or "?"},
         {"fseen", f.seen or 0},
+        {"fchk", f.chk or "?"},
         {"fn2", f.n2 or "?"},
         {"fn59", f.n59 or "?"}
     }
@@ -835,7 +836,9 @@ ____exports.SETTINGS = {
     AwayMax = 25,
     FarEnd = 3,
     DoubleSlack = 0.5,
-    DoubleLead = 5
+    DoubleLead = 5,
+    DoubleWatchUntil = 8,
+    BReadFor = 2
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local function override(key)
@@ -1267,43 +1270,59 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
     ctx.label("watch")
     local spawnCheck = a.minute * 60 + 60
     local outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt
-    local f = a.first
+    local f = a.first ~= nil and a.first.aggro ~= nil and a.first or nil
+    local ____until = f ~= nil and ____exports.SETTINGS.DoubleWatchUntil or ____exports.SETTINGS.WatchUntil
     local stopped = false
     local campIdx = a.campIdx
+    local bReadAt
     while DotaTime() < math.min(
-        spawnCheck + ____exports.SETTINGS.WatchUntil,
+        spawnCheck + ____until,
         a.startedAt + awayMax() - 0.5
     ) do
         if not bot:IsAlive() then
             return {success = false, reason = "dead"}
         end
-        if f ~= nil and f.aggro ~= nil and f.seen == nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
+        if f ~= nil and f.seen == nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
             f.seen = 1
+        end
+        if DotaTime() >= outcomeAt then
+            if CampJobs.Exec.BoxInSight(bot, a.campIdx) then
+                bReadAt = bReadAt or DotaTime()
+                a.after = math.max(
+                    a.after or 0,
+                    CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+                )
+                a.fresh = math.max(
+                    a.fresh or 0,
+                    freshInBox(bot, a, a.campIdx)
+                )
+            end
+            if f ~= nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
+                f.chk = f.chk or sec(a)
+                f.fresh = math.max(
+                    f.fresh or 0,
+                    freshInBox(bot, a, f.campIdx)
+                )
+            end
+            local ____temp_5
+            if f == nil then
+                ____temp_5 = (a.fresh or 0) > 0
+            else
+                ____temp_5 = (a.fresh or 0) > 0 and (f.fresh or 0) > 0
+            end
+            if ____temp_5 then
+                break
+            end
+            if f ~= nil and campIdx == a.campIdx and bReadAt ~= nil and ((a.fresh or 0) > 0 or DotaTime() >= bReadAt + ____exports.SETTINGS.BReadFor) then
+                campIdx = f.campIdx
+                stopped = false
+            end
         end
         if CampJobs.Exec.BoxInSight(bot, campIdx) then
             if not stopped then
                 bot:Action_MoveToLocation(bot:GetLocation())
             end
             stopped = true
-            if DotaTime() >= outcomeAt then
-                local fresh = freshInBox(bot, a, campIdx)
-                if campIdx == a.campIdx then
-                    a.after = math.max(
-                        a.after or 0,
-                        CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
-                    )
-                    a.fresh = math.max(a.fresh or 0, fresh)
-                else
-                    f.fresh = math.max(f.fresh or 0, fresh)
-                end
-                if fresh > 0 then
-                    if f == nil or campIdx ~= a.campIdx then
-                        break
-                    end
-                    campIdx = f.campIdx
-                    stopped = false
-                end
-            end
         else
             bot:Action_MoveToLocation(Camps.SpawnerByIdx(campIdx).location)
         end
@@ -1317,8 +1336,8 @@ local function track(bot, a)
     local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
     if name ~= nil and name ~= a.lastCast then
         a.casts = a.casts or ({})
-        local ____a_casts_5 = a.casts
-        ____a_casts_5[#____a_casts_5 + 1] = (name .. "@") .. tostring(sec(a))
+        local ____a_casts_6 = a.casts
+        ____a_casts_6[#____a_casts_6 + 1] = (name .. "@") .. tostring(sec(a))
     end
     a.lastCast = name
     if DotaTime() < a.minute * 60 + 60 then
@@ -1483,16 +1502,16 @@ function ____exports.Desire(bot)
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
-                local ____pos4_21
+                local ____pos4_22
                 if pos4 then
-                    ____pos4_21 = ____exports.PairFor(
+                    ____pos4_22 = ____exports.PairFor(
                         bot:GetTeam(),
                         minute
                     )
                 else
-                    ____pos4_21 = nil
+                    ____pos4_22 = nil
                 end
-                local pair = ____pos4_21
+                local pair = ____pos4_22
                 local data, stand = ____exports.Nearest(
                     bot:GetTeam(),
                     bot:GetLocation()
@@ -1515,19 +1534,19 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local ____pos4_23
+                local ____pos4_24
                 if pos4 then
-                    ____pos4_23 = pair
+                    ____pos4_24 = pair
                 else
-                    local ____Ours_On_result_22
+                    local ____Ours_On_result_23
                     if Ours.On("DoubleStack") then
-                        ____Ours_On_result_22 = ____exports.Partner(data)
+                        ____Ours_On_result_23 = ____exports.Partner(data)
                     else
-                        ____Ours_On_result_22 = nil
+                        ____Ours_On_result_23 = nil
                     end
-                    ____pos4_23 = ____Ours_On_result_22
+                    ____pos4_24 = ____Ours_On_result_23
                 end
-                local fd = ____pos4_23
+                local fd = ____pos4_24
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
                 local aggroAt = minute * 60 + Stacking.AggroSec(data)

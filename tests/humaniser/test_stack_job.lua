@@ -173,9 +173,9 @@ local function stackRun(o)
 			frame(H, bot)
 		end
 		while T < 4 * 60 do step() end
-		if not o.noSpawn then neutrals(camp, 3) end
+		if not o.noSpawn and not o.noBSpawn then neutrals(camp, 3) end
 		if o.double and not o.noSpawn then MakeNeutral({ x = first.x + 40, y = first.y }) end
-		while T < 4 * 60 + 8 do step() end
+		while T < 4 * 60 + (o.tail or 8) do step() end
 	end)
 	return stackLines(lines), H, bot
 end
@@ -584,6 +584,29 @@ do
 	local _, a2 = (field(l, "fn2") or ""):gsub("kobold:%d+:", "")
 	local _, a59 = (field(l, "fn59") or ""):gsub("kobold:%d+:", "")
 	check("double: fn2 and fn59 list A's two neutrals, fseen=1", a2 == 2 and a59 == 2 and field(l, "fseen") == "1", l)
+end
+
+-- dsolo4b-5c (31/10/2026): A was read only after B stacked, so a B that did not stack left A unread and logged as
+-- not_stacked. Now B is read for BReadFor, then the watch walks to A and reads it.
+-- Under AwayMax that walk does not fit (A is ~1,100 from B's stand), so this runs with Overrides.StackFar as the solo games do.
+do
+	local lines = stackRun({ double = true, noBSpawn = true, tail = 10, onFrame = function()
+		local C = package.loaded["bots/FunLib/custom_loader"]
+		C.Overrides = C.Overrides or {}
+		C.Overrides.StackFar = true
+	end })
+	package.loaded["bots/FunLib/custom_loader"].Overrides.StackFar = false
+	local l = lines[1]
+	check("B not stacked: the watch still reads A (StackFar)", field(l, "res") == "not_stacked" and field(l, "fres") == "stacked" and tonumber(field(l, "fchk")) ~= nil, l)
+end
+-- A's box never in sight after :00: fres=unseen, not not_stacked.
+do
+	local lines = stackRun({ double = true, fogged = function(v)
+		local g2 = SPAWNERS[idxOf("good_2")].location
+		return T >= 4 * 60 and math.abs(v.x - g2.x) < 1 and math.abs(v.y - g2.y) < 1
+	end })
+	local l = lines[1]
+	check("A unread after :00: fres=unseen, fchk=?", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fchk") == "?", l)
 end
 
 -- Nearer good_2 than good_1 (ds1: 8 of 10 Radiant starts): still the pair, logged on good_1 with good_2 as camp A.

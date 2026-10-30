@@ -482,6 +482,7 @@ export const EVENTS = {
         fhitd: "mixed",
         farr: "mixed",
         fseen: "num",
+        fchk: "mixed",
         fn2: "str",
         fn59: "str",
     },
