@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { t975, tCrit, welch, pooled, mde } = require('../nf');
+const { t975, tCrit, welch, pooled, mde, stackInterrupted } = require('../nf');
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) < eps, `${msg}: ${a} vs ${b}`);
 
@@ -35,6 +35,13 @@ test('pooled: equal-weight mean of seed deltas, Satterthwaite df', () => {
 
 test('mde over pooled seeds equals mde at N times seeds', () => {
     near(mde(2, 15), (2.048 + 0.855) * 2 * Math.sqrt(2 / 15), 0.1, 'N=15');
+});
+
+test('stackInterrupted: OHA take-overs and the job stop on hero damage, not execution failures (slice 4 Amendment 1)', () => {
+    for (const why of ['cancelled:hit', 'cancelled:run', 'cancelled:defend-ping', 'preempted:mode=3', 'preempted:never_started'])
+        assert.strictEqual(stackInterrupted({ res: 'failed', why }), true, why);
+    for (const why of ['ok', 'missed:mistake:no-aggro', 'no_target:mistake:no-camp', 'preempted:stalled', undefined])
+        assert.strictEqual(stackInterrupted({ res: 'failed', why }), false, String(why));
 });
 
 test('tCrit is the exact two-sided t quantile at any alpha and fractional df', () => {

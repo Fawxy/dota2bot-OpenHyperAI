@@ -109,13 +109,23 @@ test('steals: the query equals dynamic.js auditedSteals on a parsed log', () => 
         [130, 'by=5'], [140, 'by=1 p1d=50 p1r=150'], [170, 'by=4 p2d=100 p2r=150 p3d=900 p3r=150 p3t=0'], [610, 'by=5 p1d=50 p1r=150'],
     ]);
     const { parseLog } = require('../parse');
-    const game = parseLog(text)[0];
     const strip = o => JSON.parse(JSON.stringify(o));
-    const want = (g, until = 600) => D.auditedSteals(g, D.series(g), D.dynamicMetrics(g).lpos, until);
-    assert.ok(want(game).length > 0);
-    assert.deepStrictEqual(strip(run(text)), strip(want(game)));
+    /** dynamicMetrics' lpos for the log text, through an in-memory store as nf.js reads it. */
+    const lposOf = t => {
+        const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-steals-')), 'a.log');
+        fs.writeFileSync(f, t + '\n');
+        const s = new Store(':memory:');
+        s.ingest(f);
+        s.refreshViews();
+        const lpos = D.dynamicMetrics(s, f, 1).lpos;
+        s.db.close();
+        return lpos;
+    };
+    const want = (t, until = 600) => { const g = parseLog(t)[0]; return D.auditedSteals(g, D.series(g), lposOf(t), until); };
+    assert.ok(want(text).length > 0);
+    assert.deepStrictEqual(strip(run(text)), strip(want(text)));
     // The lineup trust rule too: dynamicMetrics' lpos and the query's lineup agree on a team that is not trusted.
     const four = log([[100, 'by=5 p1d=100 p1r=150']], { drop: 2 });
-    assert.strictEqual(want(parseLog(four)[0]), undefined);
+    assert.strictEqual(want(four), undefined);
     assert.strictEqual(run(four), undefined);
 });

@@ -292,7 +292,11 @@ function ____exports.SpawnerByIdx(idx)
     end
     return nil
 end
-function ____exports.DeriveStackExit(s, _team)
+--- `towardLane`: the walk-off heads for the nearest lane instead of away from it (slice 4 StackJob, user 30/10/2026).
+function ____exports.DeriveStackExit(s, _team, towardLane)
+    if towardLane == nil then
+        towardLane = false
+    end
     local c = ____exports.BoxCenter(s)
     local nearest
     local nearestDist = math.huge
@@ -311,8 +315,9 @@ function ____exports.DeriveStackExit(s, _team)
     local ux = 0
     local uy = -1
     if nearest ~= nil and nearestDist >= 1 then
-        ux = (c.x - nearest.x) / nearestDist
-        uy = (c.y - nearest.y) / nearestDist
+        local sign = towardLane and -1 or 1
+        ux = sign * (c.x - nearest.x) / nearestDist
+        uy = sign * (c.y - nearest.y) / nearestDist
     end
     local fallback
     for ____, turn in ipairs({0, 45, 90, 135}) do
@@ -324,7 +329,7 @@ function ____exports.DeriveStackExit(s, _team)
             local target = Vector(c.x + dx * away, c.y + dy * away, c.z)
             candidates[#candidates + 1] = ____exports.BoxEdgePoint(s, target, away) or target
         end
-        if nearest ~= nil and #candidates == 2 and dist2D(candidates[2], nearest) > dist2D(candidates[1], nearest) then
+        if nearest ~= nil and #candidates == 2 and dist2D(candidates[2], nearest) > dist2D(candidates[1], nearest) ~= towardLane then
             __TS__ArrayReverse(candidates)
         end
         fallback = fallback or candidates[1]

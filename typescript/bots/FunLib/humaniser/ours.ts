@@ -8,6 +8,8 @@ import Customize = require("bots/FunLib/custom_loader");
 export const DEFAULTS = {
     /** Slice 3: pos4/pos5 leave a lane creep an allied core can take (Etiquette). */
     LeaveCoreCreep: true,
+    /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
+    StackExecute: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
