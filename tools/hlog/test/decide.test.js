@@ -78,6 +78,12 @@ test('decide: an each bar with no valid game at the look stays open', () => {
     const none = bar(each, [{ arm: 'off', label: 'off1', flat: { lua_ours: 0 } }], {});
     const d = decide([{ b: each, ...none }, r(delta, 'met')], { on: 9, off: 9, look: 9, max: 15 });
     assert.deepStrictEqual([d.stop, d.states[0]], [false, 'open']);
+    assert.match(d.reason, /open H1 lua_ours \(no valid game\)/);
+});
+
+test('decide: a look at the maximum N is the maximum N (every bar decided, no "going on")', () => {
+    const d = decide([r(each, 'met', { n: 5 }), r(delta, 'not met')], { on: 5, off: 5, look: 5, max: 5 });
+    assert.deepStrictEqual([d.stop, d.reason], [true, 'every bar decided']);
 });
 
 // H2: the remaining games are those of the bar's own arms.

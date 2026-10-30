@@ -40,8 +40,9 @@ function decide(results, counts) {
     const st = states(results, counts);
     const ids = s => results.filter((_, i) => st[i] === s).map(r => r.b.id);
     const failed = results.filter((r, i) => st[i] === 'not met' && ['each', 'pooled'].includes(r.b.rule)).map(r => r.b.id);
-    const atLook = counts.look > 0 && counts.on === counts.look && counts.off === counts.look;
     const atMax = counts.on >= counts.max && counts.off >= counts.max;
+    // A look at the maximum N is the maximum N: nothing is left to go on to.
+    const atLook = !atMax && counts.look > 0 && counts.on === counts.look && counts.off === counts.look;
     // A cap a game has already exceeded: the slice file's cap is wrong, so the bar is judged only at the maximum N.
     const overCap = results.filter(r => r.b.rule === 'pooled' && r.b.cap > 0 && r.maxDen > r.b.cap).map(r => `${r.b.id} (a game added ${r.maxDen} > cap ${r.b.cap})`);
     const note = overCap.length && !atMax ? `; over cap, open until the maximum N: ${overCap.join('; ')}` : '';
@@ -49,7 +50,9 @@ function decide(results, counts) {
     if (atLook && st.every(s => s === 'met')) return { stop: true, reason: 'interim look: every bar met', states: st };
     if (!st.includes('open') && !atLook) return { stop: true, reason: 'every bar decided', states: st };
     if (atLook) {
-        const parts = [['not met', ids('not met')], ['open', ids('open')]].filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join('; ')}`);
+        const why = r => (r.b.rule === 'each' && r.n === 0 ? `${r.b.id} (no valid game)` : r.b.id);
+        const open = results.filter((_, i) => st[i] === 'open').map(why);
+        const parts = [['not met', ids('not met')], ['open', open]].filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join('; ')}`);
         return { stop: false, reason: `interim look: ${parts.join(', ')}; going on to the maximum N${note}`, states: st };
     }
     return { stop: false, reason: `open: ${ids('open').length} of ${results.length} bars${note}`, states: st };
