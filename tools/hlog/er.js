@@ -93,9 +93,10 @@ function cond(c, r) {
         ({ lt: r[k] < v, le: r[k] <= v, gt: r[k] > v, ge: r[k] >= v })[op]));
 }
 
-/** The pooled delta with its CI at two-sided `alpha` instead of 0.05. No spread (SE 0) keeps nf.js' bounds (both the
- *  delta); an SE without a df (a seed with one game per arm) gives NaN bounds, so every condition on them is false. */
+/** The pooled delta with its CI at two-sided `alpha` instead of 0.05. An alpha outside (0, 1) (e.g. 2.5 typed for 2.5%)
+ *  or an SE without a df gives NaN bounds, so every condition on them is false; no spread (SE 0) keeps nf.js' bounds. */
 function atAlpha(r, alpha) {
+    if (!(alpha > 0 && alpha < 1)) return { ...r, lo: NaN, hi: NaN };
     if (!(r.se > 0)) return r;
     if (!(r.df > 0)) return { ...r, lo: NaN, hi: NaN };
     const h = tCrit(alpha, r.df) * r.se;
@@ -235,7 +236,7 @@ function report(manifest, { spec = {}, n = 5, perSeed = false } = {}) {
         out.push('\n## Bar results (pre-registered)\n' + head(['id', 'metric', 'rule', 'value', 'result']));
         for (const b of spec.bars) {
             const r = b.rule === 'delta' && !table ? { value: 'no paired arms', result: 'not met' } : bar(b, used, table || {});
-            const rule = b.rule === 'delta' ? `delta: met ${JSON.stringify(b.met)}${b.notMet ? `, not met ${JSON.stringify(b.notMet)}` : ''}`
+            const rule = b.rule === 'delta' ? `delta: met ${JSON.stringify(b.met)}${b.notMet ? `, not met ${JSON.stringify(b.notMet)}` : ''}${b.alpha !== undefined ? `, alpha ${b.alpha}` : ''}`
                 : b.rule === 'mean' ? `mean ${b.cmp}` : `each ${(b.arms || ['on']).join('+')} ${['min', 'max', 'eq'].filter(k => b[k] !== undefined).map(k => `${k} ${b[k]}`).join(' ')}`;
             out.push(row([b.id, `\`${b.metric}\``, rule, r.value, `**${r.result}**`]));
         }

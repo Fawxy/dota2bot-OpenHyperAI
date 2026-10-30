@@ -115,7 +115,12 @@ test('er bars: each, mean and the three-way delta rule', () => {
     const atLook = bar({ ...vs, alpha: 0.025 }, [], look);
     assert.strictEqual(atLook.result, 'not met');
     assert.match(atLook.value, /\+3\.0 \[-0\.4, 6\.4\] \(97\.5% CI\)/);
-    assert.strictEqual(bar({ ...vs, alpha: 0.025 }, [], { m: { all: { delta: 3, se: 1.25, df: NaN } } }).result, 'not met', 'no df: NaN bounds, not met');
+    // Without a df the 95% path would still meet lo > 0 (nf.js' own bounds); at an alpha the bounds are NaN, so not met.
+    const noDf = { m: { all: { delta: 3, se: 1.25, df: NaN, lo: 0.5, hi: 5.5 } } };
+    assert.strictEqual(bar(vs, [], noDf).result, 'met');
+    assert.strictEqual(bar({ ...vs, alpha: 0.025 }, [], noDf).result, 'not met', 'no df: NaN bounds, not met');
+    // An alpha outside (0, 1) (2.5 typed for 2.5%) must not collapse the CI onto the delta and pass the bar.
+    assert.strictEqual(bar({ ...vs, alpha: 2.5 }, [], look).result, 'not met');
 });
 
 test('er gaps: a gap with a death, one without, and an early stop with and without an enemy kill after it', () => {
