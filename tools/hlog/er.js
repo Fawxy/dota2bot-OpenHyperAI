@@ -9,7 +9,9 @@
 //   each:  every game of `arms` (default ["on"]) within `min`/`max`/`eq` on a per-game metric (health keys or nf.js keys).
 //   mean:  `cmp` "on<=off" or "on>=off" on the per-arm means of a per-game metric.
 //   delta: pooled ON-OFF 95% CI of an nf.js metric; `met` and optional `notMet` are conditions on lo/hi/delta, e.g.
-//          { "lo": { "gt": -5 } }. Neither true: inconclusive (only when notMet is given; else not met).
+//          { "lo": { "gt": -5 } }. Neither true: inconclusive (only when notMet is given; else not met). Optional `alpha`
+//          (two-sided, default 0.05): the CI is recomputed at that level from the same delta, SE and df, for a bar judged
+//          at an interim look and again at the maximum N (e.g. 0.025 per look; skill eval-run rule 4).
 'use strict';
 
 const fs = require('fs');
@@ -17,7 +19,7 @@ const path = require('path');
 const { readManifest } = require('./manifest');
 const { parseLog } = require('./parse');
 const { runChecks } = require('./checks');
-const { nfGame, noiseTable, stats } = require('./nf');
+const { nfGame, noiseTable, stats, tCrit } = require('./nf');
 const { checkGame } = require('./lineup_check');
 const { describe } = require('./bank');
 
@@ -91,6 +93,15 @@ function cond(c, r) {
         ({ lt: r[k] < v, le: r[k] <= v, gt: r[k] > v, ge: r[k] >= v })[op]));
 }
 
+/** The pooled delta with its CI at two-sided `alpha` instead of 0.05. No spread (SE 0) keeps nf.js' bounds (both the
+ *  delta); an SE without a df (a seed with one game per arm) gives NaN bounds, so every condition on them is false. */
+function atAlpha(r, alpha) {
+    if (!(r.se > 0)) return r;
+    if (!(r.df > 0)) return { ...r, lo: NaN, hi: NaN };
+    const h = tCrit(alpha, r.df) * r.se;
+    return { ...r, lo: r.delta - h, hi: r.delta + h };
+}
+
 /** One bar's value and result over the games and the noise table. */
 function bar(b, games, table) {
     const val = (g, k) => (g.health[k] !== undefined ? g.health[k] : g.flat[k]);
@@ -113,9 +124,10 @@ function bar(b, games, table) {
         const ok = b.cmp === 'on>=off' ? on >= off : on <= off;
         return { value: `ON ${f1(on)}, OFF ${f1(off)}`, result: ok ? 'met' : 'not met' };
     }
-    const r = table[b.metric] && table[b.metric].all;
-    if (!r) return { value: 'no such nf.js metric', result: 'not met' };
-    const value = `${r.delta >= 0 ? '+' : ''}${f1(r.delta)} [${f1(r.lo)}, ${f1(r.hi)}]`;
+    const all = table[b.metric] && table[b.metric].all;
+    if (!all) return { value: 'no such nf.js metric', result: 'not met' };
+    const r = b.alpha === undefined ? all : atAlpha(all, b.alpha);
+    const value = `${r.delta >= 0 ? '+' : ''}${f1(r.delta)} [${f1(r.lo)}, ${f1(r.hi)}]${b.alpha === undefined ? '' : ` (${f1(100 * (1 - b.alpha))}% CI)`}`;
     if (cond(b.met, r)) return { value, result: 'met' };
     if (b.notMet) return { value, result: cond(b.notMet, r) ? 'not met' : 'inconclusive' };
     return { value, result: 'not met' };

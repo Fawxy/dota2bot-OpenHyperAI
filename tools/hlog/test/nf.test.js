@@ -1,13 +1,13 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { t975, welch, pooled, mde } = require('../nf');
+const { t975, tCrit, welch, pooled, mde } = require('../nf');
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) < eps, `${msg}: ${a} vs ${b}`);
 
 test('t975 matches t tables', () => {
     for (const [df, t] of [[3, 3.182], [4, 2.776], [8, 2.306], [16, 2.12], [30, 2.042], [40, 2.021], [1000, 1.962]]) near(t975(df), t, 0.002, `df ${df}`);
-    near(t975(4.5), 2.66, 0.01, 'df 4.5 between the table rows'); // exact 2.6544
+    near(t975(4.5), 2.66, 0.01, 'df 4.5 between the table rows'); // exact 2.6589 (tCrit)
 });
 
 test('welch: equal SDs and N give df 2N-2 and the pooled-t interval', () => {
@@ -35,4 +35,13 @@ test('pooled: equal-weight mean of seed deltas, Satterthwaite df', () => {
 
 test('mde over pooled seeds equals mde at N times seeds', () => {
     near(mde(2, 15), (2.048 + 0.855) * 2 * Math.sqrt(2 / 15), 0.1, 'N=15');
+});
+
+test('tCrit is the exact two-sided t quantile at any alpha and fractional df', () => {
+    // Tables: alpha 0.05 (t975), 0.025 per look (t 0.9875), 0.01 (t 0.995).
+    for (const [a, df, t] of [[0.05, 4, 2.776], [0.05, 30, 2.042], [0.025, 8, 2.752], [0.025, 20, 2.423], [0.01, 10, 3.169], [0.05, 1, 12.706]]) {
+        near(tCrit(a, df), t, 0.002, `alpha ${a} df ${df}`);
+    }
+    near(tCrit(0.05, 4.5), 2.6589, 0.001, 'df 4.5 (numeric integration of the t density)');
+    assert.ok(tCrit(0.025, 12) > tCrit(0.05, 12), 'a smaller alpha gives a wider interval');
 });

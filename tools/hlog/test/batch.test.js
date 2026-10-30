@@ -107,6 +107,15 @@ test('er bars: each, mean and the three-way delta rule', () => {
     assert.strictEqual(bar(g1, [], { m: { all: { delta: 0, lo: -2, hi: 2 } } }).result, 'met');
     assert.strictEqual(bar({ rule: 'delta', metric: 'm', met: { lo: { gt: 0 } } }, [], t).result, 'not met');
     assert.ok(cond({ lo: { le: 0 }, hi: { ge: 1 } }, { lo: 0, hi: 1 }));
+    // Interim look: the same pooled row judged at alpha 0.025 widens the CI from the same SE and df, so a lo just
+    // above 0 at 95% falls below it (t 2.306 -> 2.752 at df 8).
+    const look = { m: { all: { delta: 3, se: 1.25, df: 8, lo: 3 - 2.306 * 1.25, hi: 3 + 2.306 * 1.25 } } };
+    const vs = { rule: 'delta', metric: 'm', met: { lo: { gt: 0 } } };
+    assert.strictEqual(bar(vs, [], look).result, 'met');
+    const atLook = bar({ ...vs, alpha: 0.025 }, [], look);
+    assert.strictEqual(atLook.result, 'not met');
+    assert.match(atLook.value, /\+3\.0 \[-0\.4, 6\.4\] \(97\.5% CI\)/);
+    assert.strictEqual(bar({ ...vs, alpha: 0.025 }, [], { m: { all: { delta: 3, se: 1.25, df: NaN } } }).result, 'not met', 'no df: NaN bounds, not met');
 });
 
 test('er gaps: a gap with a death, one without, and an early stop with and without an enemy kill after it', () => {
