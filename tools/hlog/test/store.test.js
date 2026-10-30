@@ -205,3 +205,40 @@ SELECT lane FROM lab`)[0].lane;
     assert.deepStrictEqual([lane(-360, -6256), lane(-5920, -5352), lane(-2500, 2500)], ['bot', 'base', 'other']);
     assert.throws(() => s.query('-- include: no_such_fragment\nSELECT 1'), /no fragment no_such_fragment/);
 });
+
+test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, each death used once; own denies and losses', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    const D = (t, team, x, y, by, kind = 'melee') => `[HEV] t=${t} ev=creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.2 by=${by}`;
+    const O = (t, team, x, y, by, kind = 'melee') => `[HEV] t=${t} ev=own_creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.2 by=${by}`;
+    s.ingest(log(dir, 'a.log', [BOT,
+        D(100, 2, 100, 100, 1),                // team 2 last hit by pid 1
+        D(110, 2, 200, 100, 'none'),           // an enemy deny: team 3 denied its own creep 0.2 s later, 50 units away
+        O(110.2, 3, 250, 100, 7),
+        D(120, 2, 300, 100, 'none'),           // tower or creep kill: nothing denied it
+        D(130, 2, 400, 100, 'none'),           // two creeps in one place: the nearer pair wins, the other stays other
+        D(130, 2, 600, 100, 'none'),
+        O(130.1, 3, 420, 100, 8),
+        D(140, 2, 500, 100, 'none', 'ranged'), // a deny of another kind does not pair
+        O(140, 3, 500, 100, 9),
+        O(150, 2, 0, 0, 1),                    // team 2's own creep denied by pid 1
+        O(160, 2, 0, 0, 'none')]));            // and one lost to an enemy last hit or a tower
+    const rows = s.query('SELECT t, team, side, kind, fate, pid FROM creep_fate ORDER BY side DESC, t, x').map(r => ({ ...r }));
+    const f = (t, side, kind = 'melee') => rows.filter(r => r.t === t && r.side === side && r.kind === kind).map(r => [r.team, r.fate, r.pid]);
+    assert.deepStrictEqual(f(100, 'enemy'), [[2, 'own_lh', 1]]);
+    assert.deepStrictEqual(f(110, 'enemy'), [[2, 'enemy_deny', 7]]);
+    assert.deepStrictEqual(f(120, 'enemy'), [[2, 'other', null]]);
+    assert.deepStrictEqual(f(130, 'enemy'), [[2, 'enemy_deny', 8], [2, 'other', null]]);
+    assert.deepStrictEqual(f(140, 'enemy', 'ranged'), [[2, 'other', null]]);
+    assert.deepStrictEqual(f(150, 'own'), [[2, 'own_deny', 1]]);
+    assert.deepStrictEqual(f(160, 'own'), [[2, 'lost', null]]);
+    assert.strictEqual(rows.filter(r => r.side === 'own' && r.team === 3).length, 3, 'the other team\'s own deaths are rows too');
+});
+
+test('creep_fate: by=deny reads enemy_deny, and a log without own_creep_death reads enemy denies as other', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    s.ingest(log(dir, 'a.log', [BOT, '[HEV] t=10 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=deny',
+        '[HEV] t=20 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none']));
+    assert.deepStrictEqual(s.query('SELECT t, fate FROM creep_fate ORDER BY t').map(r => [r.t, r.fate]), [[10, 'enemy_deny'], [20, 'other']]);
+});

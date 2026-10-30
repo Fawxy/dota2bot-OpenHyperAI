@@ -804,6 +804,9 @@ interface CreepDeath {
 }
 interface CreepTrack {
     creeps: LuaTable<Unit, CreepSeen>;
+    // Own lane creeps seen last frame (slice creep-economy): a death near an own hero is ev=own_creep_death.
+    own: LuaTable<Unit, CreepSeen>;
+    ownDenies: Record<number, number>;
     // Handles logged as deaths: one seen alive again was a creep that left vision (ev=creep_revive, the WO-025 G2 gate).
     dead: LuaTable<Unit, CreepSeen>;
     lastHits: Record<number, number>;
@@ -864,7 +867,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
+        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -958,6 +961,50 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         if (kind === undefined) continue;
         const loc = u.GetLocation();
         c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
+    }
+    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
+    // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
+    // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
+    // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
+    const ownAlive = new LuaTable<Unit, boolean>();
+    const ownList: Unit[] = [];
+    for (const u of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+        if (u === null || u === undefined || !u.IsAlive()) continue;
+        ownList.push(u);
+        ownAlive.set(u, true);
+    }
+    const ownDeaths: CreepDeath[] = [];
+    for (const [creep, seen] of c.own) {
+        if (ownAlive.get(creep) === true) continue;
+        c.own.delete(creep);
+        if (seen.hp > DEATH_MAX_HP) continue;
+        const d: CreepDeath = { creep, seen };
+        for (const h of heroes) {
+            if (deathDistance(h, d) <= DEATH_NEAR) {
+                ownDeaths.push(d);
+                break;
+            }
+        }
+    }
+    for (const h of heroes) {
+        const [ok, dn] = pcall(() => (h as unknown as StatsUnit).GetDenies());
+        const n = ok && type(dn) === "number" ? rise(c.ownDenies, h.GetPlayerID(), dn as number) : 0;
+        if (n > 0) claimDeaths(ownDeaths, h, n, tostring(h.GetPlayerID()));
+    }
+    for (const d of ownDeaths)
+        Event("own_creep_death", [
+            ["team", team],
+            ["kind", d.seen.kind],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+        ]);
+    for (const u of ownList) {
+        const kind = creepKind(u.GetUnitName());
+        if (kind === undefined) continue;
+        const loc = u.GetLocation();
+        c.own.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
     }
 }
 
