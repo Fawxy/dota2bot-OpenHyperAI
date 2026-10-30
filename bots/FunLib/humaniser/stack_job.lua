@@ -578,6 +578,10 @@ function phase(bot, a, l)
         if l == "wait" then
             a.first.arr = a.first.arr or sec(a)
         end
+        if l == "aggro" and a.first.hit0 == nil then
+            a.first.hit0 = sec(a)
+            a.first.hpa = hpPct(bot)
+        end
         return
     end
     if l == "wait" and a.arr == nil then
@@ -682,11 +686,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue141
+            local __continue144
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue141 = true
+                    __continue144 = true
                     break
                 end
                 local name = (string.gsub(
@@ -696,7 +700,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue141 = true
+                    __continue144 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -706,9 +710,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue141 = true
+                __continue144 = true
             until true
-            if not __continue141 then
+            if not __continue144 then
                 break
             end
         end
@@ -740,6 +744,9 @@ function doubleFields(a)
         {"farr", f.arr or "?"},
         {"fseen", f.seen or 0},
         {"fchk", f.chk or "?"},
+        {"fhit0", f.hit0 or "?"},
+        {"fhpa", f.hpa or "?"},
+        {"fauto", f.auto or "?"},
         {"fn2", f.n2 or "?"},
         {"fn59", f.n59 or "?"}
     }
@@ -838,7 +845,8 @@ ____exports.SETTINGS = {
     DoubleSlack = 0.5,
     DoubleLead = 5,
     DoubleWatchUntil = 8,
-    BReadFor = 2
+    BReadFor = 2,
+    WaitClear = 850
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local function override(key)
@@ -886,7 +894,7 @@ function ____exports.Minutes()
 end
 local handled = {}
 exits = {}
-EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}}
+EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}, {x = 8430, y = 1263, dx = 0, dy = -1}}
 local PAIRS = {
     {
         x = 3978,
@@ -1223,6 +1231,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
         ),
         first = first,
         approachLead = ____exports.SETTINGS.ApproachLead,
+        waitClear = f ~= nil and ____exports.SETTINGS.WaitClear or nil,
         aggroAt = start + (first ~= nil and f.sec or Stacking.AggroSec(data)),
         exitPath = ____exports.ExitPath(sp, data),
         exitUntil = start + 60 + t.StackExitUntil,
@@ -1349,6 +1358,17 @@ local function track(bot, a)
         end
     end
     sample59(bot, a)
+    local f = a.first
+    if f ~= nil and f.hit0 == nil and f.auto == nil then
+        local tgt = bot:GetAttackTarget()
+        if tgt ~= nil and tgt ~= nil and tgt:GetTeam() == Team.Neutral and Camps.InBox(
+            f.campIdx,
+            tgt:GetLocation(),
+            LaneConfig.Settings().Radii.BoxMargin
+        ) then
+            f.auto = sec(a)
+        end
+    end
     if a.hit0 ~= nil then
         local n = a.aim
         if a.dmg == nil and n ~= nil and not n:IsNull() and (not n:IsAlive() or n:GetHealth() < (a.aimHp or 0)) then
@@ -1495,10 +1515,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue159
+            local __continue162
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue159 = true
+                    __continue162 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -1618,7 +1638,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue159 then
+            if not __continue162 then
                 break
             end
         end

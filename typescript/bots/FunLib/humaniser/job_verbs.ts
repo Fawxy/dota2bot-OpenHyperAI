@@ -142,6 +142,10 @@ export interface AggroOpts {
     aggroLead?: number;
     /** Seconds before the aggro the bot moves to `camp.approach` when it sees nothing. Default 3. */
     approachLead?: number;
+    /** While it waits, the bot keeps this far from the camp's nearest visible neutral, stepping back along the line from
+     *  it, then walks in on the hit's lead: an idle bot in auto-attack reach hits the camp seconds early and stands
+     *  under fire (user replay review of dsolo4b, 31/10/2026). Default off. */
+    waitClear?: number;
     onAggro?: (this: void, info: AggroInfo) => void;
 }
 
@@ -153,6 +157,17 @@ function inBox(b: Box, p: Vec, m: number): boolean {
  * The camp's neutral nearest the bot: alive, visible, inside the box grown by `margin` (or, without a box,
  * within `margin` of the origin, else anything in `search`).
  */
+/** The point `clear` from neutral `n` on the line from it through the bot, or undefined when the bot is already that far
+ *  (within 25). CANDIDATE(waitClear): one consumer, the double stack. */
+function clearPoint(bot: TaskUnit, n: TaskAttacker, clear: number): Vec | undefined {
+    const p = n.GetLocation();
+    const b = bot.GetLocation();
+    const d = dist(p, b);
+    if (d >= clear - 25) return undefined;
+    const k = clear / math.max(1, d);
+    return Vector(p.x + (b.x - p.x) * k, p.y + (b.y - p.y) * k, b.z ?? 0) as unknown as Vec;
+}
+
 export function campNeutral(bot: TaskUnit, camp: Camp): TaskAttacker | undefined {
     if (camp.pick !== undefined) return camp.pick();
     if (bot.GetNearbyNeutralCreeps === undefined) return undefined;
@@ -212,6 +227,8 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
     };
     let reached = false;
     let waiting = false;
+    // Set once the wait stepped back from a neutral it could see: the lead the hit then needs from the new point.
+    let clearLead: number | undefined;
     h.label?.("travel");
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
@@ -219,6 +236,7 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
         const n = campNeutral(bot, camp);
         if (there()) reached = true;
         if (n !== undefined && t >= at - (o.aggroLead ?? aggroLead(bot, n))) break;
+        if (n === undefined && clearLead !== undefined && there() && t >= at - clearLead) break;
         if (n === undefined && !approached && there() && t >= at - (o.approachLead ?? APPROACH_LEAD)) {
             approached = true;
             stand = camp.approach!;
@@ -234,7 +252,21 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
         } else {
             if (!waiting) h.label?.("wait");
             waiting = true;
-            hold(bot, "job_wait");
+            const back = o.waitClear !== undefined && n !== undefined ? clearPoint(bot, n, o.waitClear) : undefined;
+            if (back !== undefined) {
+                stand = back;
+                approached = true;
+                arrived = false;
+                best = math.huge;
+                bestAt = t;
+                // aggroLead as if the neutral stood where it is now and the bot at the new point.
+                const speed = math.max(1, bot.GetCurrentMovementSpeed?.() ?? 300);
+                const hit = bot.GetAttackPoint === undefined ? AGGRO_LEAD_DEFAULT : E().Verbs.ownHitTime(bot, n as TaskCreep);
+                clearLead = math.min(AGGRO_LEAD_MAX, math.max(0, o.waitClear! - bot.GetAttackRange()) / speed + hit);
+                bot.Action_MoveToLocation(stand);
+            } else {
+                hold(bot, "job_wait");
+            }
         }
         yield;
     }

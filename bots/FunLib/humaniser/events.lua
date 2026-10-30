@@ -421,6 +421,9 @@ ____exports.EVENTS = {
         farr = "mixed",
         fseen = "num",
         fchk = "mixed",
+        fhit0 = "mixed",
+        fhpa = "mixed",
+        fauto = "mixed",
         fn2 = "str",
         fn59 = "str"
     },

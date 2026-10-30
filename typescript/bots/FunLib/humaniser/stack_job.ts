@@ -71,6 +71,10 @@ export const SETTINGS = {
     DoubleWatchUntil: 8,
     /** Seconds B's box is read without a fresh neutral before the watch walks to A (a stacked B is usually seen by :02-:04). */
     BReadFor: 2,
+    /** A double's waits keep this far from the camp's nearest visible neutral (the verb's `waitClear`): Dota's hero
+     *  acquisition range is about 800 (judgement, to be confirmed by `fauto`); warlock and lich lost 25-40% HP at the
+     *  shrine pair's camp A from their arrival at :48-:49, 3 s before the hit (dsolo4b, dsolo4c; user replay review). */
+    WaitClear: 850,
 };
 
 // Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
@@ -207,6 +211,11 @@ export interface FirstCamp {
     seen?: number;
     /** The second of the minute A's box was first in sight at or after :00 + StackOutcomeAt; undefined: A was never read. */
     chk?: number;
+    /** A's hit order second and HP % then, and the first second before it the bot's attack target was a neutral in A's
+     *  box (an auto-attack while it waited). */
+    hit0?: number;
+    hpa?: number;
+    auto?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -218,13 +227,16 @@ const exits: Record<number, Vector[]> = {};
  * -3911,4829): west, the mirror. evil_1 (Dire hard, -4824,3915): north; its derived lane-side stand lay south-west
  * behind trees, ~350 from the origin with the camp never seen (s4solo6a/6c, 13 of 13 `mistake:no-camp`; user 30/10/2026:
  * stand north or north-west). North-west sees the camp (15 of 22 stacked, s4solo7) but drags the top lane's wave into it,
- * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. Matched by spawner origin
- * (7.41 map); other camps derive their walk-off.
+ * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. evil_13 (Dire shrine pair's
+ * camp B, 8430,1263): south, back towards the offlane and the secret shop; the derived lane-side walk-off ran north-west
+ * towards mid, the harder of its two routes (user replay review of dsolo4b, 31/10/2026; both go to the route choice row).
+ * Matched by spawner origin (7.41 map); other camps derive their walk-off.
  */
 const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },
     { x: -3911, y: 4829, dx: -1, dy: 0 },
     { x: -4824, y: 3915, dx: 0, dy: 1 },
+    { x: 8430, y: 1263, dx: 0, dy: -1 },
 ];
 
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
@@ -471,6 +483,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
+        waitClear: f !== undefined ? SETTINGS.WaitClear : undefined,
         aggroAt: start + (first !== undefined ? f!.sec : Stacking.AggroSec(data)),
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
@@ -565,6 +578,10 @@ function phase(bot: Unit, a: Attempt, l: string): void {
     // A double's phases before camp A's hit are A's: arrival as farr, and no hit fields (they are B's).
     if (a.first !== undefined && a.first.aggro === undefined) {
         if (l === "wait") a.first.arr = a.first.arr ?? sec(a);
+        if (l === "aggro" && a.first.hit0 === undefined) {
+            a.first.hit0 = sec(a);
+            a.first.hpa = hpPct(bot);
+        }
         return;
     }
     if (l === "wait" && a.arr === undefined) a.arr = sec(a);
@@ -594,6 +611,11 @@ function track(bot: Unit, a: Attempt): void {
         }
     }
     sample59(bot, a);
+    const f = a.first;
+    if (f !== undefined && f.hit0 === undefined && f.auto === undefined) {
+        const tgt = bot.GetAttackTarget();
+        if (tgt !== null && tgt !== undefined && tgt.GetTeam() === Team.Neutral && Camps.InBox(f.campIdx, tgt.GetLocation(), LaneConfig.Settings().Radii.BoxMargin)) f.auto = sec(a);
+    }
     if (a.hit0 !== undefined) {
         const n = a.aim;
         if (a.dmg === undefined && n !== undefined && !n.IsNull() && (!n.IsAlive() || n.GetHealth() < (a.aimHp ?? 0))) a.dmg = sec(a);
@@ -763,6 +785,9 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["farr", f.arr ?? "?"],
         ["fseen", f.seen ?? 0],
         ["fchk", f.chk ?? "?"],
+        ["fhit0", f.hit0 ?? "?"],
+        ["fhpa", f.hpa ?? "?"],
+        ["fauto", f.auto ?? "?"],
         ["fn2", f.n2 ?? "?"],
         ["fn59", f.n59 ?? "?"],
     ];

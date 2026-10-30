@@ -144,6 +144,19 @@ do
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
 end
+-- evil_13, the Dire shrine pair's camp B (user replay review of dsolo4b, 31/10/2026): south, towards the offlane, not
+-- north-west towards mid.
+do
+	local H = world()
+	local C = H.Lane.Camps
+	local sp = C.SpawnerByIdx(idxOf("evil_13"))
+	local data = C.ByIdx(sp.idx, sp.team)
+	local exit = H.StackJob.ExitPath(sp, data)[1]
+	local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
+	check("evil_13: walk-off south", dy < -800 and math.abs(dx) < 50, exit.x .. "," .. exit.y)
+	local stand = H.StackJob.Stand(sp, data)
+	check("evil_13: stands south of the camp", stand.y < sp.location.y, stand.x .. "," .. stand.y)
+end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
 do
@@ -607,6 +620,24 @@ do
 	end })
 	local l = lines[1]
 	check("A unread after :00: fres=unseen, fchk=?", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fchk") == "?", l)
+end
+
+-- User replay review of dsolo4b (31/10/2026): the pos4 tanked camp A from its arrival, 3 s before the hit. A double's wait
+-- keeps WaitClear (850) from A's visible neutrals, then walks in on the lead; the hit still lands in A's window.
+do
+	local minD = math.huge
+	local lines = stackRun({ double = true, onFrame = function(H, bot)
+		if T >= 3 * 60 + 40 and T < 3 * 60 + 51 then
+			local a = SPAWNERS[idxOf("good_2")].location
+			for _, n in ipairs(NEUTRALS) do
+				if dist(n.loc, a) < 300 then minD = math.min(minD, dist(bot.loc, n.loc)) end
+			end
+		end
+	end })
+	local l = lines[1]
+	check("wait clear: at least ~825 from A's neutrals until :51", minD >= 820, minD)
+	check("wait clear: both stacked, A hit in 52-54, fauto=?", field(l, "fres") == "stacked" and field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 51.5 and tonumber(field(l, "faggro")) <= 54 and field(l, "fauto") == "?", l)
+	check("wait clear: fhit0 and fhpa logged", tonumber(field(l, "fhit0")) ~= nil and tonumber(field(l, "fhpa")) ~= nil, l)
 end
 
 -- Nearer good_2 than good_1 (ds1: 8 of 10 Radiant starts): still the pair, logged on good_1 with good_2 as camp A.
