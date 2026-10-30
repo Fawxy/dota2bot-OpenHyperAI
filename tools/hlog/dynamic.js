@@ -327,6 +327,41 @@ function auditedSteals(game, S, lpos, until) {
     return cases;
 }
 
+/**
+ * Stack attempts (slice 4, KR S.2a) from ev=stack: one line per trigger minute, `res` stacked | not_stacked | failed (a job
+ * started) or skip (none started). Empty when the log has none (the OFF arm, older builds).
+ */
+/**
+ * Why an attempt was not stacked, from the :59.5 sample (Valve spawns a camp only when its box is empty at :00):
+ * `bot-in-box`, `camp-in-box` (neutrals not drawn out, or back early), `unseen` (box out of sight at :59.5 and after),
+ * `no-spawn` (box seen empty at :59.5, nothing new after: something else blocked it or the count missed it);
+ * a failed attempt gives its `why`; undefined for stacked, skips and lines without the sample.
+ */
+/** The camp neutrals still in the bare box at :59.5 (ev=stack n59, "name:dist:in|out:a|-"), e.g. "large_mauler:-" (not
+ *  attacking the bot); undefined when the line has no n59. */
+function leftInBox(n59) {
+    if (n59 === undefined || n59 === "?") return undefined;
+    return String(n59).split(",").map(x => x.split(":")).filter(x => x[2] === "in").map(x => `${x[0]}:${x[3]}`).join(",") || "-";
+}
+
+function stackCause(e) {
+    if (e.res === 'failed') return String(e.why);
+    if (e.res !== 'not_stacked' || e.box59 === undefined || e.box59 === '?') return undefined;
+    if (e.bot59 === 1) return 'bot-in-box';
+    if (e.box59 > 0) return 'camp-in-box';
+    if (e.vis59 !== 1 && (e.after === undefined || e.after === '?')) return 'unseen';
+    return 'no-spawn';
+}
+
+function stackAttempts(game, until) {
+    return game.events.filter(e => e.ev === 'stack' && e.t < until)
+        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, fresh: e.fresh, away: e.away, death: e.death === 1,
+            vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59,
+            hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59,
+            arr: e.arr, hit0: e.hit0, dmg: e.dmg, react: e.react, exit: e.exit, hpa: e.hpa, hpe: e.hpe, hp59: e.hp59, casts: e.casts, n2: e.n2, n59: e.n59, lane: e.lane,
+            left59: leftInBox(e.n59), cause: stackCause(e) }));
+}
+
 /** Idle episodes: alive, outside base and fountain, within IDLE_R of one spot for >= IDLE_S seconds (each counted once). */
 function idles(s, from, to) {
     let n = 0, anchor, start;
@@ -386,6 +421,7 @@ function dynamicMetrics(game) {
         tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         audited_steals: auditedSteals(game, S, lpos, 600),
+        stacks: stackAttempts(game, end + 1),
         idle_10s: sum(Object.values(S), s => idles(s, 0, end)),
         lua_error: errors,
         lua_error_ours: ours,
@@ -497,4 +533,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { POLY, dynamicMetrics, auditedSteals, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };
+module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, encounters, fights, rotations, laneExit, tpJoins, idles, series, roles, deathTimes, C };

@@ -10,6 +10,7 @@ local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_h
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
@@ -17,6 +18,10 @@ local attempted = false
 local lib
 function ____exports.Enabled()
     return Config.IsEnabled() and Config.Get().Tasks.Enable ~= false
+end
+--- A switch whose job runs on the bundle (StackJob, slice 4): it loads the bundle through `ForOurs` with the humaniser off.
+local function oursOn()
+    return Ours.On("StackExecute")
 end
 --- An allied core (position 1-3, not the bot) within 1600 that can take the creep itself.
 local function CoreCanTake(bot, creep, allies)
@@ -108,10 +113,13 @@ local adapter = {
     log = function(tag, msg) return HDebug.Log(tag, msg) end,
     event = function(name, fields) return Telemetry.EventUntyped(name, fields) end,
     vector = function(x, y, z) return Vector(x, y, z) end,
-    enabled = function() return ____exports.Enabled() end
+    enabled = function() return ____exports.Enabled() or oursOn() end
 }
-local function loadBundle()
-    if not ____exports.Enabled() then
+local function loadBundle(ours)
+    if ours == nil then
+        ours = false
+    end
+    if not ____exports.Enabled() and not (ours and oursOn()) then
         return nil
     end
     if attempted then
@@ -198,4 +206,28 @@ end
 function ____exports.Jobs()
     return loadBundle() ~= nil and JobVerbs or nil
 end
+--- The task calls for a job behind an Ours switch (StackJob): the same runner, loaded for the switch alone, so the job runs
+-- with the humaniser or its tasks off. The humaniser's own calls above stay gated on Enabled().
+____exports.ForOurs = {
+    Start = function(bot, opts, body)
+        local l = loadBundle(true)
+        return l ~= nil and l.Tasks.task(bot, opts, body)
+    end,
+    Step = function(bot, mode)
+        local l = loadBundle(true)
+        return l ~= nil and l.Tasks.Step(bot, mode)
+    end,
+    Tick = function(bot)
+        local ____opt_20 = loadBundle(true)
+        if ____opt_20 ~= nil then
+            ____opt_20.Tasks.Tick(bot)
+        end
+    end,
+    Cancel = function(bot, reason, message)
+        if lib ~= nil then
+            lib.Tasks.Cancel(bot, reason, message)
+        end
+    end,
+    Jobs = function() return loadBundle(true) ~= nil and JobVerbs or nil end
+}
 return ____exports

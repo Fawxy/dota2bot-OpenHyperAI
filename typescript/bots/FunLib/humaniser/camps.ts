@@ -237,7 +237,8 @@ export function SpawnerByIdx(idx: number): Spawner | undefined {
     return undefined;
 }
 
-export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
+/** `towardLane`: the walk-off heads for the nearest lane instead of away from it (slice 4 StackJob, user 30/10/2026). */
+export function DeriveStackExit(s: Spawner, _team: number, towardLane = false): Vector[] {
     const c = BoxCenter(s);
     let nearest: Vector | undefined;
     let nearestDist = math.huge;
@@ -253,8 +254,9 @@ export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
     let ux = 0;
     let uy = -1;
     if (nearest !== undefined && nearestDist >= 1) {
-        ux = (c.x - nearest.x) / nearestDist;
-        uy = (c.y - nearest.y) / nearestDist;
+        const sign = towardLane ? -1 : 1;
+        ux = (sign * (c.x - nearest.x)) / nearestDist;
+        uy = (sign * (c.y - nearest.y)) / nearestDist;
     }
     // Directly away from the lane can run into the map edge: evil_7 (Dire hard camp behind the bot T2) sits ~200 from it, so the
     // walk-off ended 350 past the box and its ranged trolls kept shooting from inside (console.9055828679, after=3).
@@ -271,7 +273,8 @@ export function DeriveStackExit(s: Spawner, _team: number): Vector[] {
             const target = Vector(c.x + dx * away, c.y + dy * away, c.z);
             candidates.push(BoxEdgePoint(s, target, away) ?? target);
         }
-        if (nearest !== undefined && candidates.length === 2 && dist2D(candidates[1], nearest) > dist2D(candidates[0], nearest)) candidates.reverse();
+        // Away from the lane: the side farther from it first; towards it: the nearer side first.
+        if (nearest !== undefined && candidates.length === 2 && dist2D(candidates[1], nearest) > dist2D(candidates[0], nearest) !== towardLane) candidates.reverse();
         fallback = fallback ?? candidates[0];
         for (const exit of candidates) if (walkable(BoxEdgePoint(s, exit, 0) ?? c, exit)) return [exit];
     }
