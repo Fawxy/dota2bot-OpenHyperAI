@@ -61,11 +61,6 @@ export const SETTINGS = {
     /** Seconds after :00 a stacked camp is usually seen and the watch ends (s4: :02-:04). The far rule plans with it, not
      *  the worst case (:00 + WatchUntil, which skipped a 23 s job at 3:39 in s4r2); the watch is cut at AwayMax instead. */
     FarEnd: 3,
-    /** Double stack (slice double-stack, switch Ours.DoubleStack): where in each Valve window the two hits land. Camp A
-     *  early in its window and camp B late in its own, so the walk between them has the widest gap; A's neutrals chase
-     *  the bot through B's hit, so A's single-camp window may not bind (EC-063: guides say ":53, then :55-:56"). */
-    FirstWindowAt: 0.25,
-    SecondWindowAt: 0.75,
     /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
     DoubleSlack: 0.5,
     /** A double's start slack instead of Lead (9): the walk to camp A from the safe-lane T1 is ~8 s for good_2, and with
@@ -181,6 +176,10 @@ export interface Attempt {
 export interface FirstCamp {
     campIdx: number;
     type: string;
+    /** Its stand point and hit second, and camp B's hit second (the pair's). */
+    stand: Vector;
+    fsec: number;
+    sec: number;
     aggro?: number;
     before?: number;
     hitd?: number;
@@ -232,51 +231,92 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
 }
 
 /**
- * Double-stack partners (EC-063, user lead 31/10/2026), matched by spawner origin as EXIT_DIRS: camp B (the trigger's
- * nearest camp) to camp A, hit first. Only the safe-lane pairs: they are the pos5's own camps (145 of 168 started slice 4
- * 5v5 attempts), and the ancient and wisdom-shrine pairs lie on the offlane side, out of a safe-lane pos5's 25 s reach.
+ * Double-stack pairs (EC-063, user lead 31/10/2026), matched by spawner origin as EXIT_DIRS: camp B (graded, the line's
+ * own camp), camp A (hit first), the two hit seconds, the position that stacks it, and whether A's stand faces B.
+ * The pos5's are its safe-lane camps (145 of 168 started slice 4 5v5 attempts); the pos4's lie on the offlane side: each
+ * ancient camp and its neighbour, and the two camps by each wisdom shrine (the nearer of each pair to the offlane T1
+ * first). Seconds (judgement): camp A early in its Valve window, at :53 at the latest (EC-063's guides: ":53, then
+ * :55-:56"; A's neutrals chase the bot through B's hit, so A's own window may not bind), camp B late in its window.
+ * The pos4's pairs fit only with A's stand facing B (E1, 31/10/2026); evil_8 then evil_9 still does not for a 550-range
+ * hero (EC-063 rates it the weakest) and runs single with `dwhy=walk`.
  */
-const PAIRS: { x: number; y: number; fx: number; fy: number }[] = [
-    { x: 3978, y: -5027, fx: 4649, fy: -3699 }, // good_1 after good_2 (windows 55-57, 52-54)
-    { x: -3911, y: 4829, fx: -4824, fy: 3915 }, // evil_2 after evil_1 (55-57, 54-56)
+interface Pair {
+    x: number;
+    y: number;
+    fx: number;
+    fy: number;
+    fsec: number;
+    sec: number;
+    pos: number;
+    face: boolean;
+}
+const PAIRS: Pair[] = [
+    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 52.5, sec: 56.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
+    { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54.5, sec: 56.5, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
+    { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
+    { x: -8023, y: -1838, fx: -8313, fy: -553, fsec: 53, sec: 55.75, pos: 4, face: true }, // good_16 after good_13 (both 55-56)
+    { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 53, sec: 55, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
+    { x: 8430, y: 1263, fx: 7928, fy: -120, fsec: 53, sec: 55.75, pos: 4, face: true }, // evil_13 after evil_7 (both 55-56)
 ];
+
+/** A resolved pair: camps B and A, the hit seconds, and A's stand point. */
+export interface Double {
+    b: Camps.CampJobData;
+    a: Camps.CampJobData;
+    fsec: number;
+    sec: number;
+    stand: Vector;
+}
 
 function near(v: Vector, x: number, y: number): boolean {
     return math.abs(v.x - x) <= 200 && math.abs(v.y - y) <= 200;
 }
 
-/** Camp A for camp B, if B has a listed partner on the same team with a Valve window. */
-export function Partner(data: Camps.CampJobData): Camps.CampJobData | undefined {
-    const sp = Camps.SpawnerByIdx(data.campIdx);
-    if (sp === undefined) return undefined;
-    for (const p of PAIRS) {
-        if (!near(sp.location, p.x, p.y)) continue;
-        for (const s of Camps.Spawners()) {
-            if (s.team !== sp.team || !near(s.location, p.fx, p.fy) || Stacking.Window(s.idx)[0] === undefined) continue;
-            const a = Camps.ByIdx(s.idx, s.team);
-            if (a !== undefined && a.stack !== undefined) return a;
-        }
+function campAt(team: number, x: number, y: number): Camps.CampJobData | undefined {
+    for (const s of Camps.Spawners()) {
+        if (s.team !== team || !near(s.location, x, y) || Stacking.Window(s.idx)[0] === undefined) continue;
+        const d = Camps.ByIdx(s.idx, s.team);
+        if (d !== undefined && d.stack !== undefined) return d;
     }
     return undefined;
 }
 
-/** The second of the minute `data`'s hit lands at `at` (0..1) through its Valve window. */
-export function WindowSec(data: Camps.CampJobData, at: number): number {
-    const [from, to] = Stacking.Window(data.campIdx);
-    if (from === undefined || to === undefined) return Stacking.AggroSec(data);
-    return from + (to - from) * at;
+function resolvePair(p: Pair, team: number): Double | undefined {
+    const b = campAt(team, p.x, p.y);
+    const a = campAt(team, p.fx, p.fy);
+    if (a === undefined || b === undefined) return undefined;
+    const spa = Camps.SpawnerByIdx(a.campIdx)!;
+    const stand = p.face ? Camps.StandPoint(spa, Camps.SpawnerByIdx(b.campIdx)!.location, LaneConfig.Settings().Radii.StandOffset) : Stand(spa, a);
+    return { b, a, fsec: p.fsec, sec: p.sec, stand };
+}
+
+/** The pos5's pair for its trigger camp B, if B has one. */
+export function Partner(data: Camps.CampJobData): Double | undefined {
+    const sp = Camps.SpawnerByIdx(data.campIdx);
+    if (sp === undefined) return undefined;
+    for (const p of PAIRS) if (p.pos === 5 && near(sp.location, p.x, p.y)) return resolvePair(p, sp.team);
+    return undefined;
+}
+
+/** The pos4's pair in `minute`: its team's pairs in turn, so each gets tried (a placeholder like the trigger: S.2b). */
+export function PairFor(team: number, minute: number): Double | undefined {
+    const list: Double[] = [];
+    for (const p of PAIRS) {
+        const d = p.pos === 4 ? resolvePair(p, team) : undefined;
+        if (d !== undefined) list.push(d);
+    }
+    return list.length > 0 ? list[math.floor(minute / 2) % list.length] : undefined;
 }
 
 /**
  * The walk from A's stand point to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
- * so a ranged pos5 walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
+ * so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
  */
-export function Fits(bot: Unit, a: Camps.CampJobData, b: Camps.CampJobData): boolean {
-    const spa = Camps.SpawnerByIdx(a.campIdx)!;
-    const spb = Camps.SpawnerByIdx(b.campIdx)!;
+export function Fits(bot: Unit, d: Double): boolean {
+    const spb = Camps.SpawnerByIdx(d.b.campIdx)!;
     const reach = bot.GetAttackRange() + (spb.max.x - spb.min.x) / 2;
-    const walk = math.max(0, dist(Stand(spa, a), spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
-    return walk + SETTINGS.DoubleSlack <= WindowSec(b, SETTINGS.SecondWindowAt) - WindowSec(a, SETTINGS.FirstWindowAt);
+    const walk = math.max(0, dist(d.stand, spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
+    return walk + SETTINGS.DoubleSlack <= d.sec - d.fsec;
 }
 
 /** Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side. */
@@ -293,9 +333,11 @@ export function ResetCache(): void {
     for (const k in exits) delete exits[k];
 }
 
-/** The switch is on and `bot` is OHA position 5. */
+/** The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its pairs only). */
 export function Applies(bot: Unit): boolean {
-    return Ours.On("StackExecute") && LaneConfig.PositionOf(bot) === 5;
+    if (!Ours.On("StackExecute")) return false;
+    const pos = LaneConfig.PositionOf(bot);
+    return pos === 5 || (pos === 4 && Ours.On("DoubleStack"));
 }
 
 function dist(a: Vector, b: Vector): number {
@@ -398,7 +440,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     const fsp = f !== undefined ? Camps.SpawnerByIdx(f.campIdx) : undefined;
     const first =
         f !== undefined && fd !== undefined && fsp !== undefined
-            ? { camp: campFor(bot, fsp, Stand(fsp, fd)), aggroAt: start + WindowSec(fd, SETTINGS.FirstWindowAt) }
+            ? { camp: campFor(bot, fsp, f.stand), aggroAt: start + f.fsec }
             : undefined;
     const firstDone = () => f === undefined || f.aggro !== undefined;
     return {
@@ -407,7 +449,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         // 6 s, not camp_jobs' StandApproachLead (3): from the stand the camp was first seen at :55, so the hit landed at
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
-        aggroAt: start + (first !== undefined ? WindowSec(data, SETTINGS.SecondWindowAt) : Stacking.AggroSec(data)),
+        aggroAt: start + (first !== undefined ? f!.sec : Stacking.AggroSec(data)),
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
@@ -709,7 +751,11 @@ export function Desire(bot: Unit): number {
     handled[pid] = handled[pid] ?? {};
     for (const minute of Minutes()) {
         if (handled[pid][minute] || now < minute * 60 + SETTINGS.LookFrom || now >= minute * 60 + 60) continue;
-        const [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
+        // The pos4 stacks only its pairs (camp B of the minute's pair); the pos5 its nearest camp, with its partner if any.
+        const pos4 = LaneConfig.PositionOf(bot) === 4;
+        const pair = pos4 ? PairFor(bot.GetTeam(), minute) : undefined;
+        let [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
+        if (pos4) [data, stand] = pair !== undefined ? [pair.b, Stand(Camps.SpawnerByIdx(pair.b.campIdx)!, pair.b)] : [undefined, undefined];
         const skip = (why: string) => {
             handled[pid][minute] = true;
             gateWhy[pid] = undefined;
@@ -721,15 +767,15 @@ export function Desire(bot: Unit): number {
         };
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
         // A double starts from camp A: its stand point and hit second set the start.
-        const fd = Ours.On("DoubleStack") ? Partner(data) : undefined;
-        let double = fd !== undefined && Fits(bot, fd, data);
+        const fd = pos4 ? pair : Ours.On("DoubleStack") ? Partner(data) : undefined;
+        let double = fd !== undefined && Fits(bot, fd);
         let dwhy = fd !== undefined && !double ? "walk" : undefined;
         let aggroAt = minute * 60 + Stacking.AggroSec(data);
         let walk = travel(bot, stand);
         let lead = SETTINGS.Lead;
         if (double) {
-            const fAt = minute * 60 + WindowSec(fd!, SETTINGS.FirstWindowAt);
-            const fWalk = travel(bot, Stand(Camps.SpawnerByIdx(fd!.campIdx)!, fd!));
+            const fAt = minute * 60 + fd!.fsec;
+            const fWalk = travel(bot, fd!.stand);
             // Started at its latest slack (MinSlack) the double must still end within AwayMax, else this minute runs single.
             // Held by the gate past its own latest start, it runs single while the single can still start.
             dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > SETTINGS.AwayMax ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
@@ -747,7 +793,7 @@ export function Desire(bot: Unit): number {
         const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now };
         if (fd !== undefined) a.double = double ? 1 : 0;
         a.dwhy = dwhy;
-        if (double) a.first = { campIdx: fd!.campIdx, type: fd!.type };
+        if (double) a.first = { campIdx: fd!.a.campIdx, type: fd!.a.type, stand: fd!.stand, fsec: fd!.fsec, sec: fd!.sec };
         const plan = Plan(bot, data, stand, minute, a);
         const ok = Tasks.Start(bot, { name: "stack", host: BotMode.Farm, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
             body(bot, plan, a, ctx)

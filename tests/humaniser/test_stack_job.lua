@@ -472,25 +472,86 @@ do
 	local function partner(name)
 		local sp = C.SpawnerByIdx(idxOf(name))
 		local p = H.StackJob.Partner(C.ByIdx(sp.idx, sp.team))
-		return p and MAP[p.campIdx][1]
+		return p and MAP[p.a.campIdx][1]
 	end
 	check("good_1's partner is good_2", partner("good_1") == "good_2", partner("good_1"))
 	check("evil_2's partner is evil_1", partner("evil_2") == "evil_1", partner("evil_2"))
 	check("good_5 has no partner", partner("good_5") == nil, partner("good_5"))
 	local function fits(a, b, range)
 		bot.range = range
-		local sa, sb = C.SpawnerByIdx(idxOf(a)), C.SpawnerByIdx(idxOf(b))
-		return H.StackJob.Fits(bot, C.ByIdx(sa.idx, sa.team), C.ByIdx(sb.idx, sb.team))
+		local sb = C.SpawnerByIdx(idxOf(b))
+		local d = H.StackJob.Partner(C.ByIdx(sb.idx, sb.team))
+		return d ~= nil and MAP[d.a.campIdx][1] == a and H.StackJob.Fits(bot, d)
 	end
 	-- EC-063's table: good_2 then good_1 fits a melee hero; evil_1 then evil_2 a ranged one only.
 	check("good_2 then good_1 fits ranged", fits("good_2", "good_1", 550))
 	check("good_2 then good_1 fits melee", fits("good_2", "good_1", 150))
 	check("evil_1 then evil_2 fits ranged", fits("evil_1", "evil_2", 550))
 	check("evil_1 then evil_2 does not fit melee", not fits("evil_1", "evil_2", 150))
-	local fa = H.StackJob.WindowSec(C.ByIdx(idxOf("good_2"), RAD), H.StackJob.SETTINGS.FirstWindowAt)
-	local fb = H.StackJob.WindowSec(C.ByIdx(idxOf("good_1"), RAD), H.StackJob.SETTINGS.SecondWindowAt)
-	check("hits: good_2 early in 52-54, good_1 late in 55-57", fa >= 52 and fa < 53 and fb > 56 and fb <= 57, fa .. " " .. fb)
+	local d = H.StackJob.Partner(C.ByIdx(idxOf("good_1"), RAD))
+	check("hits: good_2 early in 52-54, good_1 late in 55-57", d.fsec >= 52 and d.fsec < 53 and d.sec > 56 and d.sec <= 57, d.fsec .. " " .. d.sec)
 end
+
+-- The pos4's offlane pairs (user 31/10/2026): each ancient camp and its neighbour, the two camps by each wisdom shrine; one
+-- pair per trigger minute in turn; A's stand faces B. Fit for a 550-range hero per E1 (31/10/2026): all but evil_8 then
+-- evil_9 (EC-063's weakest pair).
+do
+	local H, bot = world({ double = true })
+	local seen = { [RAD] = {}, [DIRE] = {} }
+	for _, team in ipairs({ RAD, DIRE }) do
+		for _, minute in ipairs({ 3, 5, 7 }) do
+			local d = H.StackJob.PairFor(team, minute)
+			if d then seen[team][MAP[d.a.campIdx][1] .. ">" .. MAP[d.b.campIdx][1]] = d end
+		end
+	end
+	check("pos4 radiant pairs: good_8>good_7 and good_13>good_16", seen[RAD]["good_8>good_7"] ~= nil and seen[RAD]["good_13>good_16"] ~= nil)
+	check("pos4 dire pairs: evil_8>evil_9 and evil_7>evil_13", seen[DIRE]["evil_8>evil_9"] ~= nil and seen[DIRE]["evil_7>evil_13"] ~= nil)
+	check("pos4: minutes 3 and 5 take different pairs", H.StackJob.PairFor(RAD, 3).b.campIdx ~= H.StackJob.PairFor(RAD, 5).b.campIdx)
+	bot.range = 550
+	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
+	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
+	check("good_13>good_16 fits ranged", fitsPair(RAD, "good_13>good_16"))
+	check("evil_7>evil_13 fits ranged", fitsPair(DIRE, "evil_7>evil_13"))
+	check("evil_8>evil_9 does not fit ranged", not fitsPair(DIRE, "evil_8>evil_9"))
+	for k, d in pairs(seen[RAD]) do
+		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
+		check(k .. ": A's stand faces B", dist(d.stand, spb.location) < dist(spa.location, spb.location), k)
+		check(k .. ": A's hit by :53, before B's", d.fsec <= 53 and d.fsec < d.sec, k)
+	end
+	-- The pos4 runs no job with the double off (it stacks only its pairs).
+	local H2, b2 = world({ t = 3 * 60 + 40 })
+	b2.pos = 4
+	check("pos4, DoubleStack off: no job", H2.StackJob.Desire(b2) == 0 and not H2.StackJob.Applies(b2))
+end
+
+-- A full pos4 double from the Radiant offlane T1 at 5:5x: good_8 (ancient) then good_7.
+do
+	local H, bot = world({ t = 5 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local d = H.StackJob.PairFor(RAD, 5)
+	check("pos4 minute 5: good_8 then good_7", MAP[d.a.campIdx][1] == "good_8" and MAP[d.b.campIdx][1] == "good_7")
+	local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+	MakeNeutral({ x = a.x, y = a.y }) MakeNeutral({ x = a.x + 20, y = a.y })
+	neutrals(b, 3)
+	local lines = stackLines(capture(function()
+		while T < 6 * 60 do frame(H, bot) end
+		neutrals(b, 3) MakeNeutral({ x = a.x + 40, y = a.y })
+		while T < 6 * 60 + 8 do frame(H, bot) end
+	end))
+	local l = lines[1]
+	check("pos4 good_8>good_7: double=1, both stacked", l ~= nil and field(l, "double") == "1" and field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	check("pos4 good_8>good_7: away at most 25 s, no death", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25 and field(l, "death") == "0", l)
+	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
+	check("pos4 good_8>good_7: A hit near its second, B near its own (1 s for the confirm)", fag ~= nil and ag ~= nil and math.abs(fag - d.fsec) <= 1 and ag >= d.sec - 0.5 and ag <= d.sec + 1, l)
+end
+
+-- Reach (E1, 31/10/2026): from the Radiant offlane T1 the shrine pair (minute 3) plans over 25 s away as a double, and its
+-- camp B alone too, so the minute is skipped as far.
+do
+	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
+	check("pos4 shrine pair from the T1: skip far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+end
+
 
 do
 	local lines, H = stackRun({ double = true })

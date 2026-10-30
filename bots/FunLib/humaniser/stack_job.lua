@@ -614,37 +614,37 @@ function freshInBox(bot, a, campIdx)
         LaneConfig.Settings().Radii.StackCountScan,
         false
     ) or ({})) do
-        local ____temp_8 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+        local ____temp_9 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
             campIdx,
             c:GetLocation(),
             margin
         )
-        if ____temp_8 then
-            local ____opt_5 = a.seen
-            local ____temp_7 = ____opt_5 and ____opt_5:has(c)
-            if ____temp_7 == nil then
-                ____temp_7 = false
+        if ____temp_9 then
+            local ____opt_6 = a.seen
+            local ____temp_8 = ____opt_6 and ____opt_6:has(c)
+            if ____temp_8 == nil then
+                ____temp_8 = false
             end
-            ____temp_8 = not ____temp_7
+            ____temp_9 = not ____temp_8
         end
-        if ____temp_8 then
+        if ____temp_9 then
             n = n + 1
         end
     end
     return n
 end
 function isFirst(a, n)
-    local ____opt_15 = a and a.first
-    local ____opt_9 = ____opt_15 and ____opt_15.units
-    if ____opt_9 ~= nil then
-        local ____opt_10 = a and a.first
-        ____opt_9 = __TS__ArrayIncludes(____opt_10 and ____opt_10.units, n)
+    local ____opt_16 = a and a.first
+    local ____opt_10 = ____opt_16 and ____opt_16.units
+    if ____opt_10 ~= nil then
+        local ____opt_11 = a and a.first
+        ____opt_10 = __TS__ArrayIncludes(____opt_11 and ____opt_11.units, n)
     end
-    local ____opt_9_19 = ____opt_9
-    if ____opt_9_19 == nil then
-        ____opt_9_19 = false
+    local ____opt_10_20 = ____opt_10
+    if ____opt_10_20 == nil then
+        ____opt_10_20 = false
     end
-    return ____opt_9_19
+    return ____opt_10_20
 end
 function campTargets(bot, a)
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
@@ -682,11 +682,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue133
+            local __continue139
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue133 = true
+                    __continue139 = true
                     break
                 end
                 local name = (string.gsub(
@@ -696,7 +696,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue133 = true
+                    __continue139 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -706,9 +706,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue133 = true
+                __continue139 = true
             until true
-            if not __continue133 then
+            if not __continue139 then
                 break
             end
         end
@@ -824,8 +824,6 @@ ____exports.SETTINGS = {
     WatchUntil = 5,
     AwayMax = 25,
     FarEnd = 3,
-    FirstWindowAt = 0.25,
-    SecondWindowAt = 0.75,
     DoubleSlack = 0.5,
     DoubleLead = 5
 }
@@ -872,80 +870,156 @@ end
 local handled = {}
 exits = {}
 EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}}
---- Double-stack partners (EC-063, user lead 31/10/2026), matched by spawner origin as EXIT_DIRS: camp B (the trigger's
--- nearest camp) to camp A, hit first. Only the safe-lane pairs: they are the pos5's own camps (145 of 168 started slice 4
--- 5v5 attempts), and the ancient and wisdom-shrine pairs lie on the offlane side, out of a safe-lane pos5's 25 s reach.
-local PAIRS = {{x = 3978, y = -5027, fx = 4649, fy = -3699}, {x = -3911, y = 4829, fx = -4824, fy = 3915}}
+local PAIRS = {
+    {
+        x = 3978,
+        y = -5027,
+        fx = 4649,
+        fy = -3699,
+        fsec = 52.5,
+        sec = 56.5,
+        pos = 5,
+        face = false
+    },
+    {
+        x = -3911,
+        y = 4829,
+        fx = -4824,
+        fy = 3915,
+        fsec = 54.5,
+        sec = 56.5,
+        pos = 5,
+        face = false
+    },
+    {
+        x = -4013,
+        y = 992,
+        fx = -5015,
+        fy = -96,
+        fsec = 52.5,
+        sec = 55,
+        pos = 4,
+        face = true
+    },
+    {
+        x = -8023,
+        y = -1838,
+        fx = -8313,
+        fy = -553,
+        fsec = 53,
+        sec = 55.75,
+        pos = 4,
+        face = true
+    },
+    {
+        x = 3392,
+        y = -1408,
+        fx = 4352,
+        fy = 48,
+        fsec = 53,
+        sec = 55,
+        pos = 4,
+        face = true
+    },
+    {
+        x = 8430,
+        y = 1263,
+        fx = 7928,
+        fy = -120,
+        fsec = 53,
+        sec = 55.75,
+        pos = 4,
+        face = true
+    }
+}
 local function near(v, x, y)
     return math.abs(v.x - x) <= 200 and math.abs(v.y - y) <= 200
 end
---- Camp A for camp B, if B has a listed partner on the same team with a Valve window.
-function ____exports.Partner(data)
-    local sp = Camps.SpawnerByIdx(data.campIdx)
-    if sp == nil then
-        return nil
-    end
-    for ____, p in ipairs(PAIRS) do
+local function campAt(team, x, y)
+    for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue22
+            local __continue21
             repeat
-                if not near(sp.location, p.x, p.y) then
-                    __continue22 = true
+                if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
+                    __continue21 = true
                     break
                 end
-                for ____, s in ipairs(Camps.Spawners()) do
-                    do
-                        local __continue24
-                        repeat
-                            if s.team ~= sp.team or not near(s.location, p.fx, p.fy) or (Stacking.Window(s.idx)) == nil then
-                                __continue24 = true
-                                break
-                            end
-                            local a = Camps.ByIdx(s.idx, s.team)
-                            if a ~= nil and a.stack ~= nil then
-                                return a
-                            end
-                            __continue24 = true
-                        until true
-                        if not __continue24 then
-                            break
-                        end
-                    end
+                local d = Camps.ByIdx(s.idx, s.team)
+                if d ~= nil and d.stack ~= nil then
+                    return d
                 end
-                __continue22 = true
+                __continue21 = true
             until true
-            if not __continue22 then
+            if not __continue21 then
                 break
             end
         end
     end
     return nil
 end
---- The second of the minute `data`'s hit lands at `at` (0..1) through its Valve window.
-function ____exports.WindowSec(data, at)
-    local from, to = Stacking.Window(data.campIdx)
-    if from == nil or to == nil then
-        return Stacking.AggroSec(data)
+local function resolvePair(p, team)
+    local b = campAt(team, p.x, p.y)
+    local a = campAt(team, p.fx, p.fy)
+    if a == nil or b == nil then
+        return nil
     end
-    return from + (to - from) * at
+    local spa = Camps.SpawnerByIdx(a.campIdx)
+    local stand = p.face and Camps.StandPoint(
+        spa,
+        Camps.SpawnerByIdx(b.campIdx).location,
+        LaneConfig.Settings().Radii.StandOffset
+    ) or ____exports.Stand(spa, a)
+    return {
+        b = b,
+        a = a,
+        fsec = p.fsec,
+        sec = p.sec,
+        stand = stand
+    }
+end
+--- The pos5's pair for its trigger camp B, if B has one.
+function ____exports.Partner(data)
+    local sp = Camps.SpawnerByIdx(data.campIdx)
+    if sp == nil then
+        return nil
+    end
+    for ____, p in ipairs(PAIRS) do
+        if p.pos == 5 and near(sp.location, p.x, p.y) then
+            return resolvePair(p, sp.team)
+        end
+    end
+    return nil
+end
+--- The pos4's pair in `minute`: its team's pairs in turn, so each gets tried (a placeholder like the trigger: S.2b).
+function ____exports.PairFor(team, minute)
+    local list = {}
+    for ____, p in ipairs(PAIRS) do
+        local ____temp_2
+        if p.pos == 4 then
+            ____temp_2 = resolvePair(p, team)
+        else
+            ____temp_2 = nil
+        end
+        local d = ____temp_2
+        if d ~= nil then
+            list[#list + 1] = d
+        end
+    end
+    return #list > 0 and list[math.floor(minute / 2) % #list + 1] or nil
 end
 --- The walk from A's stand point to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
--- so a ranged pos5 walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
-function ____exports.Fits(bot, a, b)
-    local spa = Camps.SpawnerByIdx(a.campIdx)
-    local spb = Camps.SpawnerByIdx(b.campIdx)
+-- so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
+function ____exports.Fits(bot, d)
+    local spb = Camps.SpawnerByIdx(d.b.campIdx)
     local reach = bot:GetAttackRange() + (spb.max.x - spb.min.x) / 2
     local walk = math.max(
         0,
-        dist(
-            ____exports.Stand(spa, a),
-            spb.location
-        ) - reach
+        dist(d.stand, spb.location) - reach
     ) / math.max(
         1,
         bot:GetCurrentMovementSpeed()
     )
-    return walk + ____exports.SETTINGS.DoubleSlack <= ____exports.WindowSec(b, ____exports.SETTINGS.SecondWindowAt) - ____exports.WindowSec(a, ____exports.SETTINGS.FirstWindowAt)
+    return walk + ____exports.SETTINGS.DoubleSlack <= d.sec - d.fsec
 end
 local gateWhy = {}
 local running = {}
@@ -963,28 +1037,32 @@ function ____exports.ResetCache()
         __TS__Delete(exits, k)
     end
 end
---- The switch is on and `bot` is OHA position 5.
+--- The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its pairs only).
 function ____exports.Applies(bot)
-    return Ours.On("StackExecute") and LaneConfig.PositionOf(bot) == 5
+    if not Ours.On("StackExecute") then
+        return false
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    return pos == 5 or pos == 4 and Ours.On("DoubleStack")
 end
 --- Own-side, not ancient, with a Valve stack window: the camps this job may stack.
 function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue45
+            local __continue51
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue45 = true
+                    __continue51 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue45 = true
+                __continue51 = true
             until true
-            if not __continue45 then
+            if not __continue51 then
                 break
             end
         end
@@ -1059,22 +1137,22 @@ local function campFor(bot, sp, stand, others)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue64
+                local __continue70
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue64 = true
+                        __continue70 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue64 = true
+                    __continue70 = true
                 until true
-                if not __continue64 then
+                if not __continue70 then
                     break
                 end
             end
@@ -1097,27 +1175,23 @@ function ____exports.Plan(bot, data, stand, minute, a)
     local t = LaneConfig.Settings().Timing
     local start = minute * 60
     local f = a.first
-    local ____temp_2
-    if f ~= nil then
-        ____temp_2 = Camps.ByIdx(f.campIdx)
-    else
-        ____temp_2 = nil
-    end
-    local fd = ____temp_2
     local ____temp_3
     if f ~= nil then
-        ____temp_3 = Camps.SpawnerByIdx(f.campIdx)
+        ____temp_3 = Camps.ByIdx(f.campIdx)
     else
         ____temp_3 = nil
     end
-    local fsp = ____temp_3
+    local fd = ____temp_3
+    local ____temp_4
+    if f ~= nil then
+        ____temp_4 = Camps.SpawnerByIdx(f.campIdx)
+    else
+        ____temp_4 = nil
+    end
+    local fsp = ____temp_4
     local first = f ~= nil and fd ~= nil and fsp ~= nil and ({
-        camp = campFor(
-            bot,
-            fsp,
-            ____exports.Stand(fsp, fd)
-        ),
-        aggroAt = start + ____exports.WindowSec(fd, ____exports.SETTINGS.FirstWindowAt)
+        camp = campFor(bot, fsp, f.stand),
+        aggroAt = start + f.fsec
     }) or nil
     local function firstDone()
         return f == nil or f.aggro ~= nil
@@ -1131,7 +1205,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
         ),
         first = first,
         approachLead = ____exports.SETTINGS.ApproachLead,
-        aggroAt = start + (first ~= nil and ____exports.WindowSec(data, ____exports.SETTINGS.SecondWindowAt) or Stacking.AggroSec(data)),
+        aggroAt = start + (first ~= nil and f.sec or Stacking.AggroSec(data)),
         exitPath = ____exports.ExitPath(sp, data),
         exitUntil = start + 60 + t.StackExitUntil,
         arrive = r.JobArrive,
@@ -1222,8 +1296,8 @@ local function track(bot, a)
     local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
     if name ~= nil and name ~= a.lastCast then
         a.casts = a.casts or ({})
-        local ____a_casts_4 = a.casts
-        ____a_casts_4[#____a_casts_4 + 1] = (name .. "@") .. tostring(sec(a))
+        local ____a_casts_5 = a.casts
+        ____a_casts_5[#____a_casts_5 + 1] = (name .. "@") .. tostring(sec(a))
     end
     a.lastCast = name
     if DotaTime() < a.minute * 60 + 60 then
@@ -1381,16 +1455,36 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue151
+            local __continue157
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue151 = true
+                    __continue157 = true
                     break
                 end
+                local pos4 = LaneConfig.PositionOf(bot) == 4
+                local ____pos4_21
+                if pos4 then
+                    ____pos4_21 = ____exports.PairFor(
+                        bot:GetTeam(),
+                        minute
+                    )
+                else
+                    ____pos4_21 = nil
+                end
+                local pair = ____pos4_21
                 local data, stand = ____exports.Nearest(
                     bot:GetTeam(),
                     bot:GetLocation()
                 )
+                if pos4 then
+                    data, stand = unpack(pair ~= nil and ({
+                        pair.b,
+                        ____exports.Stand(
+                            Camps.SpawnerByIdx(pair.b.campIdx),
+                            pair.b
+                        )
+                    }) or ({nil, nil}))
+                end
                 local function skip(why)
                     handled[pid][minute] = true
                     gateWhy[pid] = nil
@@ -1400,27 +1494,27 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local ____Ours_On_result_20
-                if Ours.On("DoubleStack") then
-                    ____Ours_On_result_20 = ____exports.Partner(data)
+                local ____pos4_23
+                if pos4 then
+                    ____pos4_23 = pair
                 else
-                    ____Ours_On_result_20 = nil
+                    local ____Ours_On_result_22
+                    if Ours.On("DoubleStack") then
+                        ____Ours_On_result_22 = ____exports.Partner(data)
+                    else
+                        ____Ours_On_result_22 = nil
+                    end
+                    ____pos4_23 = ____Ours_On_result_22
                 end
-                local fd = ____Ours_On_result_20
-                local double = fd ~= nil and ____exports.Fits(bot, fd, data)
+                local fd = ____pos4_23
+                local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
                 local aggroAt = minute * 60 + Stacking.AggroSec(data)
                 local walk = travel(bot, stand)
                 local lead = ____exports.SETTINGS.Lead
                 if double then
-                    local fAt = minute * 60 + ____exports.WindowSec(fd, ____exports.SETTINGS.FirstWindowAt)
-                    local fWalk = travel(
-                        bot,
-                        ____exports.Stand(
-                            Camps.SpawnerByIdx(fd.campIdx),
-                            fd
-                        )
-                    )
+                    local fAt = minute * 60 + fd.fsec
+                    local fWalk = travel(bot, fd.stand)
                     dwhy = minute * 60 + 60 + ____exports.SETTINGS.FarEnd - (fAt - fWalk - ____exports.SETTINGS.MinSlack) > ____exports.SETTINGS.AwayMax and "far" or (now > fAt - fWalk - ____exports.SETTINGS.MinSlack and "late" or nil)
                     double = dwhy == nil
                     if double then
@@ -1447,7 +1541,13 @@ function ____exports.Desire(bot)
                 end
                 a.dwhy = dwhy
                 if double then
-                    a.first = {campIdx = fd.campIdx, type = fd.type}
+                    a.first = {
+                        campIdx = fd.a.campIdx,
+                        type = fd.a.type,
+                        stand = fd.stand,
+                        fsec = fd.fsec,
+                        sec = fd.sec
+                    }
                 end
                 local plan = ____exports.Plan(
                     bot,
@@ -1475,7 +1575,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue151 then
+            if not __continue157 then
                 break
             end
         end
