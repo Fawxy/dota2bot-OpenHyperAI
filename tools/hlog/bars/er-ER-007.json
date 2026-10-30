@@ -1,9 +1,9 @@
 {
  "schema": "er-spec/1",
- "build": "1eadc79",
+ "build": "009df4b",
  "until": "10:00",
  "arms": {
-  "on": { "branch": "remote/lion/s5-on-1eadc79", "sha": "aca8b6a6ae1604abedbe024bfa3ad18f878af2cc", "build": "1eadc79", "states": true,
+  "on": { "branch": "remote/lion/s5-on-009df4b", "sha": "f24cf5a0f981693f25a5b509b8bb2923f471fa2d", "build": "009df4b", "states": true,
           "ours": { "CoreLastHit": true, "LeaveCoreCreep": true, "StackExecute": true } },
   "off": { "branch": "remote/lion/s5-off-d3508d9", "sha": "049bc25096ab46d9076761d67d32294dd0fa8d9e", "build": "d3508d9+dirty", "states": true,
            "ours": { "CoreLastHit": false, "LeaveCoreCreep": true, "StackExecute": true } }
