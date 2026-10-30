@@ -1,6 +1,6 @@
 id: lane.lasthit.roam-keeps-swing-off.001
 source: log
-ref: {log: "~/.dotactl/logs/2026-10-29T00-31-45-s3_A_on_1.log", t: 336.133, note: "the same world with Ours.LeaveCoreCreep off (the OFF arm)"}
+ref: {log: "~/.dotactl/logs/2026-10-29T00-31-45-s3_A_on_1.log", finding: "review 2026-10-29 slice 3, finding 8; the team_roam world is built from the laning moment t=336.133 (pos5 jakiro took a creep luna was attacking)"}
 status: active
 decision: team_roam
 control: {commit: f5be4cb, outcome: pass}
