@@ -235,6 +235,27 @@ test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, e
     assert.strictEqual(rows.filter(r => r.side === 'own' && r.team === 3).length, 3, 'the other team\'s own deaths are rows too');
 });
 
+test('creep_guard: team and core last hits, denies and deaths at 10:00, and the rises with no logged death', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    const B = (pid, team, pos) => `[HEV] t=-60 ev=bot pid=${pid} hero=h${pid} team=${team} pos=${pos}`;
+    const S = (t, pid, lh, dn, deaths) => `[HEV] t=${t} ev=snap pid=${pid} x=0 y=0 alive=1 hp=100 mp=100 lvl=1 lh=${lh} dn=${dn} kills=0 deaths=${deaths}`;
+    // pid 7 is a Radiant bot and pid 5 a Dire one (team comes from ev=bot, not the pid); pid 9 is a human with no pos
+    s.ingest(log(dir, 'a.log', [B(0, 2, 1), B(7, 2, 5), B(5, 3, 1), B(6, 3, 2), '[HEV] t=-60 ev=player pid=9 hero=abaddon team=3',
+        S(100, 0, 5, 1, 0), S(100, 6, 1, 1, 0),
+        `[HEV] t=200 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0`,
+        `[HEV] t=300 ev=own_creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0`,
+        S(590, 0, 10, 2, 1), S(590, 7, 3, 4, 2), S(590, 5, 7, 0, 0), S(590, 9, 2, 2, 0),
+        S(598, 6, 4, 3, 1),   // seen at 598: no extra death
+        S(700, 0, 99, 99, 9)]));
+    s.refreshViews();
+    const r = s.query('SELECT * FROM creep_guard WHERE team = 2')[0];
+    assert.deepStrictEqual([r.team_lh, r.team_dn, r.core_lh, r.core_dn, r.deaths, r.not_in_share], [13, 6, 10, 2, 3 + 2, 17]);
+    // pids 0 and 7 last seen at 590 (over 2.5 s before 10:00, game ran on): each still dead, +1 each
+    const d = s.query('SELECT * FROM creep_guard WHERE team = 3')[0];
+    assert.deepStrictEqual([d.team_lh, d.team_dn, d.core_lh, d.deaths, d.not_in_share], [13, 5, 11, 3, null], 'dire: human in the team columns only; pids 5 and 9 still dead at 10:00, pid 6 seen at 598; no share row');
+});
+
 test('creep_share: taken over (enemy creeps less enemy denies plus own creeps) per team, first 10:00 only', () => {
     const dir = tmp();
     const s = new Store(':memory:');
