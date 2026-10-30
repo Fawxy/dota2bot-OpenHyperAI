@@ -106,6 +106,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
 local NEAR = 600
@@ -192,6 +193,9 @@ function ____exports.SpotInfo(bot)
 end
 --- Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua).
 function ____exports.OwnsLastHit(bot)
+    if CoreLastHit.Applies(bot) then
+        return true
+    end
     local pos = LaneConfig.PositionOf(bot)
     if pos == nil then
         return false

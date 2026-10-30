@@ -11,6 +11,8 @@ local function Fresh(states, o)
 	T = 10
 	package.loaded[BUNDLE] = nil
 	local H = FreshHumaniser({ Enable = true, Lane = { Enable = false }, Transitions = { Enable = false }, States = states })
+	-- These cases test the States settings on OHA's path: slice 5's Ours.CoreLastHit (pos1-3 own laning) is off here.
+	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = false }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")

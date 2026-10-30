@@ -1,7 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
-____exports.DEFAULTS = {LeaveCoreCreep = true}
+____exports.DEFAULTS = {LeaveCoreCreep = true, CoreLastHit = true}
 function ____exports.On(feature)
     if Customize.Enable == false then
         return false

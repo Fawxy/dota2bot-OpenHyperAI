@@ -11,6 +11,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
@@ -66,12 +67,14 @@ function ownsAny(): boolean {
 
 /** Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think). */
 export function MayOwn(bot: Unit): boolean {
-    return IsEnabled() && ownTeam(bot) && ownsAny();
+    return IsEnabled() && ((ownTeam(bot) && ownsAny()) || CoreLastHit.Applies(bot));
 }
 
 // Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
 // Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
+    // Ours.CoreLastHit owns laning for pos1-3 on both teams; MayOwn gives those bots this file's Lua Think.
+    if (state === Laning.NAME && CoreLastHit.Applies(bot)) return true;
     if (!ownTeam(bot)) return false;
     const list = ownList(state);
     if (list === undefined) return false;
@@ -163,7 +166,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
     if (!IsEnabled()) return;
-    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny())) return;
+    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot)) return;
     const l = lib();
     if (l === undefined) return;
     const pid = bot.GetPlayerID();

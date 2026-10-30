@@ -61,14 +61,17 @@ local function Fresh(states, o)
 	CREEPS, TOWERS = {}, {}
 	package.loaded[BUNDLE] = nil
 	local H = FreshHumaniser({ Enable = true, Lane = { Enable = false }, Transitions = { Enable = false }, Telemetry = { Enable = true }, States = states })
+	o = o or {}
+	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
+	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
+	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
 	local positions = {}
 	LaneConfig.SetHelpers({ GetPosition = function(u) return positions[u.pid] end })
-	o = o or {}
 	MakeUnit({ pid = 0, bot = false, loc = Vector(-4000, -4000) })
-	local bot = MakeUnit({ pid = 1, mode = LANING, loc = o.loc or Vector(-300, 0), level = o.level or 3 })
+	local bot = MakeUnit({ pid = 1, team = o.team, mode = LANING, loc = o.loc or Vector(-300, 0), level = o.level or 3 })
 	bot.range = o.range
 	positions[1] = o.pos or 2
 	return H, bot, positions
@@ -262,6 +265,35 @@ do
 	check("etiquette: pos 5 takes it with no core near", t5far ~= nil and t5far.kind == "lasthit")
 	local t2 = offered(2, beside)
 	check("etiquette: pos 2 never defers", t2 ~= nil and t2.kind == "lasthit")
+end
+
+-- Slice 5, Ours.CoreLastHit: a core on the team without a human (Valve's C++ laning in OFF) gets the Lua Think and the
+-- body takes its last hits, with Own and Laning.LastHit at their defaults; supports are untouched; off is OHA's path.
+do
+	local DEFAULTS = { Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }
+	local function dire(pos, on)
+		local H, bot, c
+		silenced(function()
+			H, bot = Fresh(DEFAULTS, { team = 3, pos = pos, coreLastHit = on })
+			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+			for _ = 1, 4 do frame(H, bot) end
+			-- Radiant's creep: the enemy's for this Dire bot.
+			c = creep({ loc = Vector(-200, 0), hp = 60, regen = -100, team = 2, name = "npc_dota_creep_goodguys_melee" })
+			for _ = 1, 3 do frame(H, bot) end
+		end)
+		return H, bot, c
+	end
+	for _, pos in ipairs({ 1, 2, 3 }) do
+		local H, bot, c = dire(pos, true)
+		check("core lh on: Dire pos " .. pos .. " may own (Lua Think)", H.States.MayOwn(bot) == true)
+		check("core lh on: Dire pos " .. pos .. " body owns its last hits", H.States.BodyLastHits(bot) == true)
+		check("core lh on: Dire pos " .. pos .. " body swung at the dying creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == c)
+	end
+	local H4, bot4 = dire(4, true)
+	check("core lh on: a support is not taken over", H4.States.BodyLastHits(bot4) == false and bot4.attacks == nil)
+	local Hoff, botoff = dire(1, false)
+	check("core lh off: Dire pos 1 stays on Valve's laning (no Lua Think)", Hoff.States.MayOwn(botoff) == false)
+	check("core lh off: the body never attacks", Hoff.States.BodyLastHits(botoff) == false and botoff.attacks == nil)
 end
 
 finish()

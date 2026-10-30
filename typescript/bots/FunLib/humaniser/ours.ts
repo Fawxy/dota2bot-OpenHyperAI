@@ -8,6 +8,8 @@ import Customize = require("bots/FunLib/custom_loader");
 export const DEFAULTS = {
     /** Slice 3: pos4/pos5 leave a lane creep an allied core can take (Etiquette). */
     LeaveCoreCreep: true,
+    /** Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). */
+    CoreLastHit: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
