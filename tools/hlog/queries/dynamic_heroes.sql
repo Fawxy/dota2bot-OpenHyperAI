@@ -14,7 +14,6 @@ lane AS MATERIALIZED (
     SELECT h.pid, h.s, h.x, h.y, h.alive IS NOT 0 AS up, l.lane
     FROM hs_sec h JOIN lab l ON l.k = h.pid AND l.seq = h.s
 ),
-gend AS (SELECT CAST(floor((SELECT last FROM hs_last) / 60) AS INTEGER) * 60 AS e),
 home AS (
     SELECT pid, lane, row_number() OVER (PARTITION BY pid ORDER BY count(*) DESC, min(s)) AS rk
     FROM lane WHERE up AND s >= 60 AND s < 300 AND lane NOT IN ('base', 'other')
@@ -33,7 +32,7 @@ idle(pid, s, ax, ay, st, n) AS (
         i.n + (coalesce(l.up AND l.lane <> 'base', 0) AND i.ax IS NOT NULL
                AND sqrt((l.x - i.ax) * (l.x - i.ax) + (l.y - i.ay) * (l.y - i.ay)) <= 100 AND i.s + 1 - i.st = 10)
     FROM idle i LEFT JOIN lane l ON l.pid = i.pid AND l.s = i.s + 1
-    WHERE i.s + 1 < (SELECT e FROM gend)
+    WHERE i.s + 1 < (SELECT e FROM hs_end)
 )
 SELECT b.pid, b.team, b.hero,
     (SELECT e.pos FROM ev_bot e WHERE e.game_id = (SELECT game_id FROM gm) AND e.pid = b.pid AND typeof(e.pos) IN ('integer', 'real')

@@ -269,6 +269,9 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
     if (pids !== Object.keys(H).join()) throw new Error(`dynamicMetrics: series heroes ${pids} differ from @dynamic_heroes ${Object.keys(H).join()}`);
     for (const s of Object.values(S)) Object.assign(s, { hero: H[s.pid].hero ?? undefined, lh10: H[s.pid].lh10, home: H[s.pid].home ?? undefined });
     const end = G.end;
+    // Parts B and C still walk the JS series up to `end`: the two time bases must agree.
+    const jsEnd = Math.floor(Object.values(S)[0].last / 60) * 60;
+    if (jsEnd !== end) throw new Error(`dynamicMetrics: series end ${jsEnd} differs from @dynamic_game end ${end}`);
     const warnings = [];
     const role = roles(S, warnings);
     const deaths = [];

@@ -13,7 +13,6 @@
 -- ensure: ev_lua_error(pid)
 WITH RECURSIVE gm AS (SELECT game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
 -- include: hero_second
-gend AS (SELECT CAST(floor((SELECT last FROM hs_last) / 60) AS INTEGER) * 60 AS e),
 close AS (
     SELECT a.pid AS ap, b.pid AS bp, a.s
     FROM hs_sec a JOIN hs_sec b ON b.s = a.s AND b.team = 3
@@ -24,7 +23,7 @@ onset AS (
     SELECT DISTINCT CASE WHEN s < 600 THEN 1 ELSE 2 END AS w, s
     FROM (SELECT s, lag(s) OVER (PARTITION BY ap, bp ORDER BY s) AS ps FROM close)
     WHERE (ps IS NULL OR s - ps >= 6)
-      AND (s < 600 OR s < (SELECT e FROM gend))
+      AND (s < 600 OR s < (SELECT e FROM hs_end))
 ),
 ord AS (SELECT w, s, row_number() OVER (PARTITION BY w ORDER BY s) AS rn FROM onset),
 enc(w, rn, first, n) AS (
@@ -38,10 +37,10 @@ run AS (
     SELECT w, sum(brk) OVER (PARTITION BY w ORDER BY t ROWS UNBOUNDED PRECEDING) AS id, n
     FROM (SELECT w, t, n, CASE WHEN t - lag(t) OVER (PARTITION BY w ORDER BY t) <= 15 THEN 0 ELSE 1 END AS brk
           FROM (SELECT CASE WHEN t < 600 THEN 1 ELSE 2 END AS w, t, n FROM death
-                WHERE t >= 0 AND (t < 600 OR t < (SELECT e FROM gend))))
+                WHERE t >= 0 AND (t < 600 OR t < (SELECT e FROM hs_end))))
 ),
 fight AS (SELECT w, count(*) AS k FROM (SELECT w, id FROM run GROUP BY w, id HAVING sum(n) >= 3) GROUP BY w)
-SELECT (SELECT e FROM gend) AS "end",
+SELECT (SELECT e FROM hs_end) AS "end",
     (SELECT count(*) FROM hs_bot) AS bots,
     coalesce((SELECT max(n) FROM enc WHERE w = 1), 0) AS enc10,
     coalesce((SELECT max(n) FROM enc WHERE w = 2), 0) AS enc_after,

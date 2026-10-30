@@ -41,7 +41,7 @@ function logText(g) {
         const t0 = b.snaps.length ? b.snaps[0].t : 0;
         const profiles = b.profiles.length ? b.profiles : [{}];
         for (const p of profiles) lines.push([t0, fmt(t0, 'bot', { pid: b.pid, hero: b.hero, team: b.team, ...(p.pos !== undefined ? { pos: p.pos } : {}) })]);
-        for (const s of b.snaps) lines.push([s.t, fmt(s.t, 'snap', { pid: s.pid, x: s.x, y: s.y, alive: s.alive, deaths: s.deaths, lh: s.lh })]);
+        for (const s of b.snaps) lines.push([s.t, fmt(s.t, 'snap', { pid: s.pid, ...(s.x !== undefined ? { x: s.x, y: s.y } : {}), alive: s.alive, deaths: s.deaths, lh: s.lh })]);
     }
     for (const { ev, t, ...f } of g.events) lines.push([t, fmt(t, ev, f)]);
     lines.sort((a, b) => a[0] - b[0]);
@@ -176,6 +176,58 @@ test('a teleport-sized jump landing by an ally is a TP join; a respawn or a TP t
     const toBase = bot(0, 2, t => ({ p: t < 650 ? TOP : FOUNTAIN }), 600, 700);
     S = D.series(game([toBase, inFountain]));
     assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 0);
+});
+
+test('the later of two snapshots at one time wins, for the series and for last hits at 10:00', () => {
+    const far = [6000, 6000];
+    // Dire: far, then at 20 two lines (mid, then far), far again, mid from 30. Second 20 is far, so the only onset is 30.
+    const dire = bot(5, 3, t => ({ p: t >= 30 ? MID : far }), 0, 60);
+    dire.snaps.splice(20, 0, { ...dire.snaps[20], x: MID[0], y: MID[1] });
+    const rad = bot(0, 2, t => ({ p: MID, lh: t === 600 ? 5 : 0 }), 0, 700);
+    rad.snaps.splice(601, 0, { ...rad.snaps[600], lh: 7 });
+    const m = metricsOf(game([rad, dire]));
+    assert.strictEqual(m.encounters_per_10min.before10, 1);
+    assert.strictEqual(m.lh_at_10.r2, 7);
+});
+
+test('pre-game seconds open no encounter: the scan starts at 0:00', () => {
+    // Together from -20 to -3, apart -2 to 2, together from 3: the gap straddles 0:00, so 3 is the only onset.
+    const dire = bot(5, 3, t => ({ p: t >= -2 && t <= 2 ? [6000, 6000] : MID }), -20, 60);
+    assert.strictEqual(metricsOf(game([bot(0, 2, () => ({ p: MID }), -20, 60), dire])).encounters_per_10min.before10, 1);
+});
+
+test('fights after 10:00 are a rate per 10 min; deaths 15 s apart join, 16 s do not', () => {
+    const after = ts => metricsOf(game([...ts.map((t, k) => dies(k, 2, MID, t, t + 20, 900)), bot(9, 3, () => ({ p: [6000, 6000] }), 0, 900)])).fights_per_10min;
+    assert.deepStrictEqual(after([700, 715, 730]), { before10: 0, after10: 2 }); // one fight in the 300 s after 10:00
+    assert.deepStrictEqual(after([700, 716, 732]), { before10: 0, after10: 0 });
+});
+
+test('a deaths counter that rises by 2 across one gap is two deaths at the snapshot before it', () => {
+    const a = bot(0, 2, t => (t <= 50 ? { p: MID } : t < 80 ? null : { p: FOUNTAIN, deaths: 2 }), 0, 200);
+    const m = metricsOf(game([a, bot(1, 3, () => ({ p: [6000, 6000] }), 0, 200)]));
+    assert.deepStrictEqual([m.deaths_total, m.deaths_before_10[2]], [2, 2]);
+});
+
+test('the second game of a log is read on its own', () => {
+    const one = game([bot(0, 2, () => ({ p: MID })), bot(5, 3, () => ({ p: MID }))]); // together: 1 encounter
+    const two = game([bot(0, 2, () => ({ p: MID })), bot(5, 3, t => ({ p: [6000, 6000] }))]); // never: 0
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-dyn-')), 'a.log');
+    fs.writeFileSync(file, logText(one) + logText(two));
+    const store = new Store(':memory:');
+    store.ingest(file);
+    store.refreshViews();
+    const enc = n => D.dynamicMetrics(store, file, n).encounters_per_10min.before10;
+    assert.deepStrictEqual([enc(1), enc(2)], [1, 0]);
+    store.db.close();
+});
+
+test('the game end counts snapshots without a position, as the series does', () => {
+    // Radiant's last snapshot (t=900) has no x: end is 900, not 660, and Dire's snapshots stopping at 700 make it dead at the end.
+    const rad = bot(0, 2, () => ({ p: MID }), 0, 700);
+    rad.snaps.push({ ev: 'snap', t: 900, pid: 0, alive: 1, deaths: 0, lh: 0 });
+    const m = metricsOf(game([rad, bot(5, 3, () => ({ p: [6000, 6000] }), 0, 700)]));
+    assert.strictEqual(m.end, 900);
+    assert.strictEqual(m.deaths_total, 2);
 });
 
 test('standing still outside base for 10+ s is one idle episode; in base, fountain or dead it is not', () => {

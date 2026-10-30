@@ -3,7 +3,8 @@
 -- first. Ends with a comma. CTEs:
 --   hs_bot(pid, team, hero)   heroes whose last ev=bot or ev=player line has a team and that logged a snapshot with x
 --   hs_snap(pid, team, seq, t, x, y, alive, deaths, lh, kills, tp)   their snapshots with x (tp = the previous snapshot's t)
---   hs_last(last)             the last snapshot time of any of them
+--   hs_last(last)             the last snapshot time of any of them (snapshots without x count here, as in `series`)
+--   hs_end(e)                 `last` down to a whole minute (dynamicMetrics' `end`)
 --   hs_sec(pid, team, s, seq, t, x, y, alive, lh, deaths)   per hero, per whole second from its first snapshot to `last`: the
 --                             latest snapshot at or before s; alive = 0 in a death gap (dead_after), else the snapshot's alive
 -- Death gap (`deadAfter`): bots log no snapshot while dead, so the gap after a snapshot is dead time when it is over 2.5 s and the
@@ -30,7 +31,10 @@ hs_snap AS MATERIALIZED (
     FROM ev_snap s JOIN hs_bot b ON b.pid = s.pid
     WHERE s.game_id = (SELECT game_id FROM gm) AND typeof(s.x) IN ('integer', 'real')
 ),
-hs_last AS MATERIALIZED (SELECT max(t) AS last FROM hs_snap),
+hs_last AS MATERIALIZED (
+    SELECT max(s.t) AS last FROM ev_snap s WHERE s.game_id = (SELECT game_id FROM gm) AND s.pid IN (SELECT pid FROM hs_bot)
+),
+hs_end AS MATERIALIZED (SELECT CAST(floor((SELECT last FROM hs_last) / 60) AS INTEGER) * 60 AS e),
 hs_span AS (
     SELECT pid, team, seq, t, x, y, alive, lh, deaths,
         CASE WHEN tn IS NULL THEN (SELECT last FROM hs_last) - t > 2.5
