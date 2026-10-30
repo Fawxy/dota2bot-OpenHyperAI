@@ -2,7 +2,7 @@
 
 ```
 name / version / owner:  laneFarm / 1 (slice 5, 31/10/2026: first contract; adds `retarget`) / engine (main loop)
-layer:          atomic composite (holdAt, lastHit, deny)
+layer:          atomic action (a composite of holdAt, lastHit and deny)
 intent:         A laner holds a spot and breaks off for the lane creeps its caller picks, swinging with lastHit/deny.
 applicability:  A bot handle; `spot()` read every frame (undefined: no spot to hold). Without `pick` it only holds (the
                 engine makes no choice of its own); with `lastHits()` false it only holds.
