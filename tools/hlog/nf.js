@@ -38,6 +38,16 @@ function flatten(m) {
         audited_steals_laning: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning').length,
         // Slice 3's bar: steals whose swing started in a mode Ours.LeaveCoreCreep owns.
         audited_steals_ours: m.audited_steals && m.audited_steals.filter(c => c.mode === 'laning' || c.mode === 'team_roam').length,
+        // Slice 4 (S.2a): attempts are started jobs; skips are trigger minutes with none. 0 in a game without ev=stack.
+        stack_attempts: m.stacks.filter(s => s.res !== 'skip').length,
+        stack_stacked: m.stacks.filter(s => s.res === 'stacked').length,
+        // Slice 4 Amendment 1 (user 30/10/2026): the rate's denominator leaves out jobs OHA took over or the job's own stop on
+        // hero damage; execution failures (missed, no-camp, stalled) stay in.
+        stack_clean: m.stacks.filter(s => s.res !== 'skip' && !stackInterrupted(s)).length,
+        stack_interrupted: m.stacks.filter(s => s.res !== 'skip' && stackInterrupted(s)).length,
+        stack_deaths: m.stacks.filter(s => s.death).length,
+        stack_away_max: Math.max(0, ...m.stacks.filter(s => s.res !== 'skip').map(s => s.away)),
+        stack_skips: m.stacks.filter(s => s.res === 'skip').length,
         idle_10s: m.idle_10s,
         lua_error: m.lua_error,
     };
@@ -107,6 +117,53 @@ function t975(df) {
         (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3);
 }
 
+/** ln Gamma (Lanczos, g = 7): accurate to about 1e-14 for x > 0. */
+function lnGamma(x) {
+    const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+        12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lnGamma(1 - x);
+    x -= 1;
+    let a = c[0];
+    const t = x + 7.5;
+    for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+/** Regularised incomplete beta I_x(a, b) by its continued fraction (Numerical Recipes betacf). */
+function betaInc(x, a, b) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const front = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    if (x > (a + 1) / (a + b + 2)) return 1 - betaInc(1 - x, b, a);
+    let f = 1, c = 1, d = 1 - ((a + b) * x) / (a + 1);
+    d = 1 / (Math.abs(d) < 1e-300 ? 1e-300 : d);
+    f = d;
+    for (let m = 1; m <= 200; m++) {
+        for (const num of [(m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m)), -((a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1))]) {
+            d = 1 + num * d;
+            d = 1 / (Math.abs(d) < 1e-300 ? 1e-300 : d);
+            c = 1 + num / c;
+            if (Math.abs(c) < 1e-300) c = 1e-300;
+            f *= c * d;
+        }
+        if (Math.abs(c * d - 1) < 1e-12) break;
+    }
+    return (front * f) / a;
+}
+
+/** Two-sided t critical value at `alpha` for any df > 0 (P(|T| > t) = alpha), by bisection on the exact t CDF. Used for
+ *  look-adjusted CIs (an interim look spends part of the alpha, e.g. 0.025 per look; skill eval-run rule 4). */
+function tCrit(alpha, df) {
+    const tail = t => 0.5 * betaInc(df / (df + t * t), df / 2, 0.5); // P(T > t)
+    let lo = 0, hi = 1;
+    while (tail(hi) > alpha / 2) hi *= 2;
+    for (let i = 0; i < 100; i++) {
+        const mid = (lo + hi) / 2;
+        if (tail(mid) > alpha / 2) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
 /** ON - OFF for one seed: Welch 95% CI. Returns { delta, se, df, lo, hi }. */
 function welch(off, on) {
     const vOff = off.sd ** 2 / off.n, vOn = on.sd ** 2 / on.n;
@@ -138,6 +195,13 @@ function storeFor(manifest, db = DB) {
     const store = new Store(db);
     for (const f of store.ingestAll([manifest]).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
     return store;
+}
+
+/** A started stack job that ended because OHA took the bot (`preempted:mode=*`, `preempted:never_started`, OHA's farm abort
+ *  `cancelled:<why>`) or the job stopped on hero damage (`cancelled:hit`): not an execution outcome (slice 4 Amendment 1). */
+function stackInterrupted(s) {
+    const why = String(s.why ?? '');
+    return why.startsWith('cancelled:') || why.startsWith('preempted:mode=') || why === 'preempted:never_started';
 }
 
 /** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
@@ -207,4 +271,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { flatten, gate, stats, mde, t975, welch, pooled, nfGame, noiseTable, storeFor };
+module.exports = { flatten, gate, stats, mde, t975, tCrit, welch, pooled, nfGame, noiseTable, storeFor, stackInterrupted };
