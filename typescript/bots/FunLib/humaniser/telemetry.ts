@@ -943,7 +943,25 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         Event("creep_death", fields);
         c.dead.set(d.creep, d.seen);
     }
-    // Own lane creeps that died near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
+    // This frame's state, read for next frame's deaths.
+    for (const [core] of cores) c.target[core.GetPlayerID()] = core.GetAttackTarget() ?? undefined;
+    for (const h of heroes) {
+        const pid = h.GetPlayerID();
+        const at = h.GetLastAttackTime();
+        if (c.attackAt[pid] === undefined || at > c.attackAt[pid]) {
+            c.attackAt[pid] = at;
+            c.attackOn[pid] = h.GetAttackTarget() ?? undefined;
+            c.attackMode[pid] = stateFor(pid).mode;
+        }
+    }
+    for (const u of alive) {
+        const kind = creepKind(u.GetUnitName());
+        if (kind === undefined) continue;
+        const loc = u.GetLocation();
+        c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
+    }
+    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
+    // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
     // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
     // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
     const ownAlive = new LuaTable<Unit, boolean>();
@@ -980,23 +998,6 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
         ]);
-    // This frame's state, read for next frame's deaths.
-    for (const [core] of cores) c.target[core.GetPlayerID()] = core.GetAttackTarget() ?? undefined;
-    for (const h of heroes) {
-        const pid = h.GetPlayerID();
-        const at = h.GetLastAttackTime();
-        if (c.attackAt[pid] === undefined || at > c.attackAt[pid]) {
-            c.attackAt[pid] = at;
-            c.attackOn[pid] = h.GetAttackTarget() ?? undefined;
-            c.attackMode[pid] = stateFor(pid).mode;
-        }
-    }
-    for (const u of alive) {
-        const kind = creepKind(u.GetUnitName());
-        if (kind === undefined) continue;
-        const loc = u.GetLocation();
-        c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
-    }
     for (const u of ownList) {
         const kind = creepKind(u.GetUnitName());
         if (kind === undefined) continue;

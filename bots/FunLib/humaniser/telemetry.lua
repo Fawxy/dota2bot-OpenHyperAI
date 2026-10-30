@@ -1391,21 +1391,60 @@ local function trackCreepDeaths(bot, now)
         ____exports.Event("creep_death", fields)
         c.dead[d.creep] = d.seen
     end
+    for ____, ____value in ipairs(cores) do
+        local core = ____value[1]
+        c.target[core:GetPlayerID()] = core:GetAttackTarget() or nil
+    end
+    for ____, h in ipairs(heroes) do
+        local pid = h:GetPlayerID()
+        local at = h:GetLastAttackTime()
+        if c.attackAt[pid] == nil or at > c.attackAt[pid] then
+            c.attackAt[pid] = at
+            c.attackOn[pid] = h:GetAttackTarget() or nil
+            c.attackMode[pid] = stateFor(pid).mode
+        end
+    end
+    for ____, u in ipairs(alive) do
+        do
+            local __continue198
+            repeat
+                local kind = creepKind(u:GetUnitName())
+                if kind == nil then
+                    __continue198 = true
+                    break
+                end
+                local loc = u:GetLocation()
+                c.creeps[u] = {
+                    kind = kind,
+                    x = loc.x,
+                    y = loc.y,
+                    hp = u:GetHealth() / math.max(
+                        1,
+                        u:GetMaxHealth()
+                    )
+                }
+                __continue198 = true
+            until true
+            if not __continue198 then
+                break
+            end
+        end
+    end
     local ownAlive = {}
     local ownList = {}
     for ____, u in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue193
+            local __continue201
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue193 = true
+                    __continue201 = true
                     break
                 end
                 ownList[#ownList + 1] = u
                 ownAlive[u] = true
-                __continue193 = true
+                __continue201 = true
             until true
-            if not __continue193 then
+            if not __continue201 then
                 break
             end
         end
@@ -1413,15 +1452,15 @@ local function trackCreepDeaths(bot, now)
     local ownDeaths = {}
     for creep, seen in pairs(c.own) do
         do
-            local __continue196
+            local __continue204
             repeat
                 if ownAlive[creep] == true then
-                    __continue196 = true
+                    __continue204 = true
                     break
                 end
                 c.own[creep] = nil
                 if seen.hp > DEATH_MAX_HP then
-                    __continue196 = true
+                    __continue204 = true
                     break
                 end
                 local d = {creep = creep, seen = seen}
@@ -1431,9 +1470,9 @@ local function trackCreepDeaths(bot, now)
                         break
                     end
                 end
-                __continue196 = true
+                __continue204 = true
             until true
-            if not __continue196 then
+            if not __continue204 then
                 break
             end
         end
@@ -1472,45 +1511,6 @@ local function trackCreepDeaths(bot, now)
                 {"by", d.by or "none"}
             }
         )
-    end
-    for ____, ____value in ipairs(cores) do
-        local core = ____value[1]
-        c.target[core:GetPlayerID()] = core:GetAttackTarget() or nil
-    end
-    for ____, h in ipairs(heroes) do
-        local pid = h:GetPlayerID()
-        local at = h:GetLastAttackTime()
-        if c.attackAt[pid] == nil or at > c.attackAt[pid] then
-            c.attackAt[pid] = at
-            c.attackOn[pid] = h:GetAttackTarget() or nil
-            c.attackMode[pid] = stateFor(pid).mode
-        end
-    end
-    for ____, u in ipairs(alive) do
-        do
-            local __continue213
-            repeat
-                local kind = creepKind(u:GetUnitName())
-                if kind == nil then
-                    __continue213 = true
-                    break
-                end
-                local loc = u:GetLocation()
-                c.creeps[u] = {
-                    kind = kind,
-                    x = loc.x,
-                    y = loc.y,
-                    hp = u:GetHealth() / math.max(
-                        1,
-                        u:GetMaxHealth()
-                    )
-                }
-                __continue213 = true
-            until true
-            if not __continue213 then
-                break
-            end
-        end
     end
     for ____, u in ipairs(ownList) do
         do
