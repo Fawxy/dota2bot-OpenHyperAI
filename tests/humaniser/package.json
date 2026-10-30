@@ -6,7 +6,7 @@
         "syntax": "node syntax_check.js ../../bots",
         "test": "node run.js",
         "mining": "node ../../tools/replay-mining/test/run.js",
-        "hlog": "node --test ../../tools/hlog/test/hlog.test.js ../../tools/hlog/test/bars.test.js ../../tools/hlog/test/dynamic.test.js ../../tools/hlog/test/nf.test.js ../../tools/hlog/test/lineup_check.test.js ../../tools/hlog/test/batch.test.js ../../tools/hlog/test/front_at.test.js ../../tools/hlog/test/lasthit_cause.test.js ../../tools/hlog/test/steals.test.js ../../tools/hlog/test/store.test.js ../../tools/hlog/test/events.test.js",
+        "hlog": "node --test ../../tools/hlog/test/hlog.test.js ../../tools/hlog/test/bars.test.js ../../tools/hlog/test/dynamic.test.js ../../tools/hlog/test/nf.test.js ../../tools/hlog/test/lineup_check.test.js ../../tools/hlog/test/batch.test.js ../../tools/hlog/test/front_at.test.js ../../tools/hlog/test/lasthit_cause.test.js ../../tools/hlog/test/steals.test.js ../../tools/hlog/test/store.test.js ../../tools/hlog/test/events.test.js ../../tools/hlog/test/er.test.js",
         "check": "npm run syntax && npm test && npm run fixtures && npm run mining && npm run hlog",
         "fixtures": "node --test fixtures.test.js && node fixtures.js",
         "fixtures:controls": "node fixtures.js --controls"

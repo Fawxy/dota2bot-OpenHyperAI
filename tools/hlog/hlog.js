@@ -47,7 +47,7 @@ function params(argv) {
 function sqlOf(arg) {
     if (!arg.startsWith('@')) return arg;
     const file = path.join(QUERIES, `${arg.slice(1)}.sql`);
-    if (!fs.existsSync(file)) throw new Error(`no query ${arg}; have: ${fs.readdirSync(QUERIES).map(f => '@' + f.replace(/\.sql$/, '')).join(' ')}`);
+    if (!fs.existsSync(file)) throw new Error(`no query ${arg}; have: ${fs.readdirSync(QUERIES).filter(f => f.endsWith('.sql')).map(f => '@' + f.replace(/\.sql$/, '')).join(' ')}`);
     return fs.readFileSync(file, 'utf8');
 }
 

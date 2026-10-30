@@ -1,0 +1,17 @@
+{
+ "schema": "er-spec/1",
+ "build": "e5fbde6",
+ "until": "11:00",
+ "arms": {
+  "on": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false", "Ours.LeaveCoreCreep=false"], "states": false },
+  "off": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false", "Ours.LeaveCoreCreep=false", "Ours.StackExecute=false"], "states": false }
+ },
+ "bars": [
+  { "id": "S2a stacked per clean attempt (>= 80%, >= 10 clean; Amendment 1)", "rule": "pooled", "num": "stack_stacked", "den": "stack_clean", "min": 0.8, "minDen": 10 },
+  { "id": "S2a deaths during the job", "metric": "stack_deaths", "rule": "each", "eq": 0 },
+  { "id": "S2a away <= 25 s", "metric": "stack_away_max", "rule": "each", "max": 25 },
+  { "id": "guard lh@10 pos1", "metric": "lh_at_10_lpos1", "rule": "delta", "met": { "lo": { "gt": -6.8 } }, "notMet": { "delta": { "lt": -6.8 } } },
+  { "id": "H1 lua_ours", "metric": "lua_ours", "rule": "each", "max": 0 },
+  { "id": "H1 console", "metric": "console", "rule": "mean", "cmp": "on<=off" }
+ ]
+}

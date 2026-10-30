@@ -235,13 +235,16 @@ Customize.Humaniser = {
 
 -- Decisions taken over from OHA, one kill switch each (false = OHA's own decision). Defaults: FunLib/humaniser/ours.lua.
 -- LeaveCoreCreep (slice 3): pos4/pos5 leave a lane creep an allied core can take.
+-- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body.
-Customize.Ours = { LeaveCoreCreep = true, CoreLastHit = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
 -- RoleByHero: all-bot teams take positions by hero weight, not slot order (dota_bot_populate lineups; hero_selection.lua).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true }
+-- Solo (pid, -1 = off): every other hero sits in its fountain, so one pos5 stacks alone; StackEvery: the stack job tries every
+-- minute from 2:00 (slice 4 diagnosis, scenario games only; StackJob.Bench, StackJob.Minutes).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

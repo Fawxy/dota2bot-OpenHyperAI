@@ -195,3 +195,13 @@ test('fields named like a row key do not overwrite it', () => {
     s.prune();
     assert.strictEqual(s.query('SELECT count(*) AS n FROM dx_probe')[0].n, 0);
 });
+
+test('a query includes a fragment by name, and names a fragment that does not exist', () => {
+    const s = new Store(':memory:');
+    const lane = (x, y) => s.query(`WITH pts AS (SELECT 'p' AS kind, 1 AS k, 1 AS seq, 0 AS t, ${x} AS x, ${y} AS y),
+-- include: lane_label
+z AS (SELECT 1)
+SELECT lane FROM lab`)[0].lane;
+    assert.deepStrictEqual([lane(-360, -6256), lane(-5920, -5352), lane(-2500, 2500)], ['bot', 'base', 'other']);
+    assert.throws(() => s.query('-- include: no_such_fragment\nSELECT 1'), /no fragment no_such_fragment/);
+});
