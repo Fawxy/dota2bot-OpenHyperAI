@@ -268,20 +268,31 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
 /** The shrine pairs' other route (user 31/10/2026): straight between the two camps towards the lanes, Radiant east, Dire
  *  west; easier than the shrine route once the camps hold several stacks; the shrine route is the one to take the shrine at
  *  7:00. Which to run per attempt waits for the stack route choice row; until then the solo harness picks it. */
-const SHRINE_LANE: { x: number; y: number; dx: number; dy: number }[] = [
-    { x: -8313, y: -553, dx: 1, dy: 0 }, // good_13: east
-    { x: 7928, y: -120, dx: -1, dy: 0 }, // evil_7: west
+const SHRINE_LANE: { x: number; y: number; dx: number; dy: number; sx?: number; sy?: number }[] = [
+    { x: -8313, y: -553, dx: 1, dy: 0 }, // good_13: east; the east stand is on camp A's side
+    // evil_7: west, standing on the north side between the two camps: a west stand is behind the box from camp A (northeast),
+    // and the walk round it missed every hit (lsolo4b/4c, 10 of 10 timeout:late).
+    { x: 7928, y: -120, dx: -1, dy: 0, sx: 0, sy: 1 },
 ];
 
-function setExit(sp: Camps.Spawner): Vector[] | undefined {
+function setDir(sp: Camps.Spawner): { dx: number; dy: number; sx?: number; sy?: number } | undefined {
     for (const e of override("ShrineLane") === true ? [...SHRINE_LANE, ...EXIT_DIRS] : EXIT_DIRS) {
-        if (math.abs(sp.location.x - e.x) > 200 || math.abs(sp.location.y - e.y) > 200) continue;
-        const away = LaneConfig.Settings().Radii.StackExit;
-        const c = Camps.BoxCenter(sp);
-        const target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z);
-        return [Camps.BoxEdgePoint(sp, target, away) ?? target];
+        if (math.abs(sp.location.x - e.x) <= 200 && math.abs(sp.location.y - e.y) <= 200) return e;
     }
     return undefined;
+}
+
+/** The box edge point `StackExit` out from the box centre in direction (dx, dy). */
+function edgeToward(sp: Camps.Spawner, dx: number, dy: number): Vector {
+    const away = LaneConfig.Settings().Radii.StackExit;
+    const c = Camps.BoxCenter(sp);
+    const target = Vector(c.x + dx * away, c.y + dy * away, c.z);
+    return Camps.BoxEdgePoint(sp, target, away) ?? target;
+}
+
+function setExit(sp: Camps.Spawner): Vector[] | undefined {
+    const e = setDir(sp);
+    return e !== undefined ? [edgeToward(sp, e.dx, e.dy)] : undefined;
 }
 
 /** The walk-off after the hit: a hand-set direction (EXIT_DIRS), else the camp data's path, or one derived towards the
@@ -399,9 +410,11 @@ export function Fits(bot: Unit, d: Double): boolean {
     return walk + SETTINGS.DoubleSlack <= d.sec - d.fsec;
 }
 
-/** Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side. */
+/** Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side unless a hand-set entry names its own. */
 export function Stand(sp: Camps.Spawner, data: Camps.CampJobData): Vector {
-    return Camps.StandPoint(sp, ExitPath(sp, data)[0], LaneConfig.Settings().Radii.StandOffset);
+    const e = setDir(sp);
+    const side = e !== undefined && e.sx !== undefined ? edgeToward(sp, e.sx, e.sy!) : ExitPath(sp, data)[0];
+    return Camps.StandPoint(sp, side, LaneConfig.Settings().Radii.StandOffset);
 }
 const gateWhy: Record<number, string | undefined> = {};
 const running: Record<number, Attempt | undefined> = {};

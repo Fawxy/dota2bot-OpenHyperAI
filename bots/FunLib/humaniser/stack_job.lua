@@ -666,7 +666,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local override, setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
+local override, setDir, edgeToward, setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -685,7 +685,7 @@ function override(key)
     end
     return ____opt_0
 end
-function setExit(sp)
+function setDir(sp)
     local ____temp_3
     if override("ShrineLane") == true then
         local ____array_2 = __TS__SparseArrayNew(unpack(SHRINE_LANE))
@@ -698,24 +698,21 @@ function setExit(sp)
         ____temp_3 = EXIT_DIRS
     end
     for ____, e in ipairs(____temp_3) do
-        do
-            local __continue12
-            repeat
-                if math.abs(sp.location.x - e.x) > 200 or math.abs(sp.location.y - e.y) > 200 then
-                    __continue12 = true
-                    break
-                end
-                local away = LaneConfig.Settings().Radii.StackExit
-                local c = Camps.BoxCenter(sp)
-                local target = Vector(c.x + e.dx * away, c.y + e.dy * away, c.z)
-                return {Camps.BoxEdgePoint(sp, target, away) or target}
-            until true
-            if not __continue12 then
-                break
-            end
+        if math.abs(sp.location.x - e.x) <= 200 and math.abs(sp.location.y - e.y) <= 200 then
+            return e
         end
     end
     return nil
+end
+function edgeToward(sp, dx, dy)
+    local away = LaneConfig.Settings().Radii.StackExit
+    local c = Camps.BoxCenter(sp)
+    local target = Vector(c.x + dx * away, c.y + dy * away, c.z)
+    return Camps.BoxEdgePoint(sp, target, away) or target
+end
+function setExit(sp)
+    local e = setDir(sp)
+    return e ~= nil and ({edgeToward(sp, e.dx, e.dy)}) or nil
 end
 --- The walk-off after the hit: a hand-set direction (EXIT_DIRS), else the camp data's path, or one derived towards the
 -- lane (ExitTowardLane).
@@ -734,11 +731,13 @@ function ____exports.ExitPath(sp, data)
     end
     return exits[sp.idx]
 end
---- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side.
+--- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side unless a hand-set entry names its own.
 function ____exports.Stand(sp, data)
+    local e = setDir(sp)
+    local side = e ~= nil and e.sx ~= nil and edgeToward(sp, e.sx, e.sy) or ____exports.ExitPath(sp, data)[1]
     return Camps.StandPoint(
         sp,
-        ____exports.ExitPath(sp, data)[1],
+        side,
         LaneConfig.Settings().Radii.StandOffset
     )
 end
@@ -785,10 +784,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue132
+            local __continue134
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue132 = true
+                    __continue134 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -802,9 +801,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue132 = true
+                __continue134 = true
             until true
-            if not __continue132 then
+            if not __continue134 then
                 break
             end
         end
@@ -914,11 +913,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue162
+            local __continue164
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue162 = true
+                    __continue164 = true
                     break
                 end
                 local name = (string.gsub(
@@ -928,7 +927,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue162 = true
+                    __continue164 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -938,9 +937,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue162 = true
+                __continue164 = true
             until true
-            if not __continue162 then
+            if not __continue164 then
                 break
             end
         end
@@ -1132,7 +1131,14 @@ EXIT_DIRS = {
     {x = -8313, y = -553, dx = 0.71, dy = 0.71},
     {x = 7928, y = -120, dx = 0.71, dy = -0.71}
 }
-SHRINE_LANE = {{x = -8313, y = -553, dx = 1, dy = 0}, {x = 7928, y = -120, dx = -1, dy = 0}}
+SHRINE_LANE = {{x = -8313, y = -553, dx = 1, dy = 0}, {
+    x = 7928,
+    y = -120,
+    dx = -1,
+    dy = 0,
+    sx = 0,
+    sy = 1
+}}
 local PAIRS = {
     {
         x = 3978,
@@ -1201,19 +1207,19 @@ end
 local function campAt(team, x, y)
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue22
+            local __continue24
             repeat
                 if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
-                    __continue22 = true
+                    __continue24 = true
                     break
                 end
                 local d = Camps.ByIdx(s.idx, s.team)
                 if d ~= nil and d.stack ~= nil then
                     return d
                 end
-                __continue22 = true
+                __continue24 = true
             until true
-            if not __continue22 then
+            if not __continue24 then
                 break
             end
         end
@@ -1314,19 +1320,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue52
+            local __continue54
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue52 = true
+                    __continue54 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue52 = true
+                __continue54 = true
             until true
-            if not __continue52 then
+            if not __continue54 then
                 break
             end
         end
@@ -1422,22 +1428,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue76
+                local __continue78
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue76 = true
+                        __continue78 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue76 = true
+                    __continue78 = true
                 until true
-                if not __continue76 then
+                if not __continue78 then
                     break
                 end
             end
@@ -1805,10 +1811,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue180
+            local __continue182
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue180 = true
+                    __continue182 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -1928,7 +1934,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue180 then
+            if not __continue182 then
                 break
             end
         end

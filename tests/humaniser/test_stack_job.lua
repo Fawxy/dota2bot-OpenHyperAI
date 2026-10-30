@@ -184,6 +184,10 @@ do
 		local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
 		check(c[1] .. ": ShrineLane walk-off " .. (c[2] > 0 and "east" or "west"), dx * c[2] > 800 and math.abs(dy) < 50, exit.x .. "," .. exit.y)
 	end
+	-- Dire stands on the north side, between the camps (lsolo4b/4c: the west stand missed every hit).
+	local sp = C.SpawnerByIdx(idxOf("evil_7"))
+	local stand = H.StackJob.Stand(sp, C.ByIdx(sp.idx, sp.team))
+	check("evil_7: ShrineLane stands north of the camp", stand.y > sp.location.y + 200 and math.abs(stand.x - sp.location.x) < 300, stand.x .. "," .. stand.y)
 	Customize.Overrides.ShrineLane = false
 end
 
