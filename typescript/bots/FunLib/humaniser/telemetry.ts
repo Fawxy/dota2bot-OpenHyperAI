@@ -15,6 +15,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
@@ -447,6 +448,7 @@ function maybeProfile(bot: Unit, s: BotState): void {
             ["ally", Difficulty.IsAllyOfHuman(bot)],
             ["build", BUILD],
             ["pos", LaneConfig.PositionOf(bot)],
+            ["ours", Ours.Describe()],
         ]);
         return;
     }
@@ -474,6 +476,7 @@ function maybeProfile(bot: Unit, s: BotState): void {
         ["deference", p.deference],
         ["build", BUILD],
         ["pos", LaneConfig.PositionOf(bot)],
+        ["ours", Ours.Describe()],
     ]);
 }
 

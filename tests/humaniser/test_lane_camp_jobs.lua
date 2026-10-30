@@ -969,7 +969,7 @@ do
 	-- Farm's own ShouldRun ("don't trade into creeps under 70%") ended a pull in watch at 68% (ogre 1:27).
 	local src = io.open(HARNESS_DIR .. "/../../bots/mode_farm_generic.lua", "r"):read("a")
 	local branch = src:find("and bot:WasRecentlyDamagedByCreep(1)", 1, true)
-	local gate = src:find("and not J.Humaniser.Lane.CampJobHoldsRetreat(bot) then", 1, true)
+	local gate = src:find("and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)", 1, true)
 	check("farm's creep-damage run yields to a held pull", branch ~= nil and gate ~= nil and gate > branch and gate - branch < 200)
 	local H, support = leadingWorld()
 	support.hp = 68

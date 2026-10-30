@@ -8,9 +8,19 @@ import Customize = require("bots/FunLib/custom_loader");
 export const DEFAULTS = {
     /** Slice 3: pos4/pos5 leave a lane creep an allied core can take (Etiquette). */
     LeaveCoreCreep: true,
+    /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
+    StackExecute: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
+
+/** Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it). */
+export function Describe(): string {
+    const names: string[] = [];
+    for (const name in DEFAULTS) names.push(name);
+    names.sort();
+    return names.map((n) => `${n}:${On(n as Feature) ? 1 : 0}`).join(",");
+}
 
 export function On(feature: Feature): boolean {
     if (Customize.Enable === false) return false;
