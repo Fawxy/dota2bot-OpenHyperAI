@@ -144,7 +144,7 @@ do
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
 end
--- evil_13, the Dire shrine pair's camp B (user replay review of dsolo4b, 31/10/2026): south, towards the offlane, not
+-- evil_13, the Dire shrine pair's easy camp (user replay review of dsolo4b, 31/10/2026): south, towards the offlane, not
 -- north-west towards mid.
 do
 	local H = world()
@@ -156,6 +156,17 @@ do
 	check("evil_13: walk-off south", dy < -800 and math.abs(dx) < 50, exit.x .. "," .. exit.y)
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_13: stands south of the camp", stand.y < sp.location.y, stand.x .. "," .. stand.y)
+end
+-- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north, evil_7 south.
+do
+	local H = world({})
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_13", -7948, 768 }, { "evil_7", 8029, -1126 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
+		local shrine = Vector(c[2], c[3])
+		check(c[1] .. ": walk-off towards its shrine", dist(exit, shrine) < dist(sp.location, shrine), exit.x .. "," .. exit.y)
+	end
 end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
@@ -521,14 +532,14 @@ do
 			if d then seen[team][MAP[d.a.campIdx][1] .. ">" .. MAP[d.b.campIdx][1]] = d end
 		end
 	end
-	check("pos4 radiant pairs: good_8>good_7 and good_13>good_16", seen[RAD]["good_8>good_7"] ~= nil and seen[RAD]["good_13>good_16"] ~= nil)
-	check("pos4 dire pairs: evil_8>evil_9 and evil_7>evil_13", seen[DIRE]["evil_8>evil_9"] ~= nil and seen[DIRE]["evil_7>evil_13"] ~= nil)
+	check("pos4 radiant pairs: good_8>good_7 and good_16>good_13", seen[RAD]["good_8>good_7"] ~= nil and seen[RAD]["good_16>good_13"] ~= nil)
+	check("pos4 dire pairs: evil_8>evil_9 and evil_13>evil_7", seen[DIRE]["evil_8>evil_9"] ~= nil and seen[DIRE]["evil_13>evil_7"] ~= nil)
 	check("pos4: minutes 3 and 5 take different pairs", H.StackJob.PairFor(RAD, 3).b.campIdx ~= H.StackJob.PairFor(RAD, 5).b.campIdx)
 	bot.range = 550
 	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
 	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
-	check("good_13>good_16 fits ranged", fitsPair(RAD, "good_13>good_16"))
-	check("evil_7>evil_13 fits ranged", fitsPair(DIRE, "evil_7>evil_13"))
+	check("good_16>good_13 fits ranged", fitsPair(RAD, "good_16>good_13"))
+	check("evil_13>evil_7 fits ranged", fitsPair(DIRE, "evil_13>evil_7"))
 	check("evil_8>evil_9 does not fit ranged", not fitsPair(DIRE, "evil_8>evil_9"))
 	for k, d in pairs(seen[RAD]) do
 		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)

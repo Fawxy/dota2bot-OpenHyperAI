@@ -894,7 +894,14 @@ function ____exports.Minutes()
 end
 local handled = {}
 exits = {}
-EXIT_DIRS = {{x = 3978, y = -5027, dx = 1, dy = 0}, {x = -3911, y = 4829, dx = -1, dy = 0}, {x = -4824, y = 3915, dx = 0, dy = 1}, {x = 8430, y = 1263, dx = 0, dy = -1}}
+EXIT_DIRS = {
+    {x = 3978, y = -5027, dx = 1, dy = 0},
+    {x = -3911, y = 4829, dx = -1, dy = 0},
+    {x = -4824, y = 3915, dx = 0, dy = 1},
+    {x = 8430, y = 1263, dx = 0, dy = -1},
+    {x = -8313, y = -553, dx = 0.27, dy = 0.96},
+    {x = 7928, y = -120, dx = 0.1, dy = -0.99}
+}
 local PAIRS = {
     {
         x = 3978,
@@ -927,11 +934,11 @@ local PAIRS = {
         face = true
     },
     {
-        x = -8023,
-        y = -1838,
-        fx = -8313,
-        fy = -553,
-        fsec = 54,
+        x = -8313,
+        y = -553,
+        fx = -8023,
+        fy = -1838,
+        fsec = 53.5,
         sec = 55.75,
         pos = 4,
         face = true
@@ -947,10 +954,10 @@ local PAIRS = {
         face = true
     },
     {
-        x = 8430,
-        y = 1263,
-        fx = 7928,
-        fy = -120,
+        x = 7928,
+        y = -120,
+        fx = 8430,
+        fy = 1263,
         fsec = 53.5,
         sec = 55.75,
         pos = 4,

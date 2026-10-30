@@ -228,7 +228,7 @@ const exits: Record<number, Vector[]> = {};
  * behind trees, ~350 from the origin with the camp never seen (s4solo6a/6c, 13 of 13 `mistake:no-camp`; user 30/10/2026:
  * stand north or north-west). North-west sees the camp (15 of 22 stacked, s4solo7) but drags the top lane's wave into it,
  * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. evil_13 (Dire shrine pair's
- * camp B, 8430,1263): south, back towards the offlane and the secret shop; the derived lane-side walk-off ran north-west
+ * easy camp, 8430,1263): south, back towards the offlane and the secret shop; the derived lane-side walk-off ran north-west
  * towards mid, the harder of its two routes (user replay review of dsolo4b, 31/10/2026; both go to the route choice row).
  * Matched by spawner origin (7.41 map); other camps derive their walk-off.
  */
@@ -237,6 +237,8 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: -3911, y: 4829, dx: -1, dy: 0 },
     { x: -4824, y: 3915, dx: 0, dy: 1 },
     { x: 8430, y: 1263, dx: 0, dy: -1 },
+    { x: -8313, y: -553, dx: 0.27, dy: 0.96 }, // good_13: on to the west shrine (-7948,768)
+    { x: 7928, y: -120, dx: 0.1, dy: -0.99 }, // evil_7: on to the east shrine (8029,-1126)
 ];
 
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
@@ -274,6 +276,9 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
  * after A's confirmed hit), and `good_1` stacked 0 of 8 hit after :56.4, so both pos5 pairs hit earlier; the shrine pairs'
  * A neutrals were back in A's box at :59 after a :52-:54 hit against A's own 55-56 window (0 of 22 stacked), and A's
  * stand facing B leaves a short walk, so A is hit as late as the walk to B allows there (54 and 53.5).
+ * The shrine pairs then turned round (user 31/10/2026): hit the easy camp, walk on through the hard camp and on to the
+ * wisdom shrine (Dire southwards: evil_13, evil_7, the shrine; Radiant northwards: good_16, good_13, the shrine), so A's
+ * neutrals chase along one line instead of being left behind; B's walk-off points at the shrine (EXIT_DIRS).
  */
 interface Pair {
     x: number;
@@ -289,9 +294,9 @@ const PAIRS: Pair[] = [
     { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
     { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54, sec: 56, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
     { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
-    { x: -8023, y: -1838, fx: -8313, fy: -553, fsec: 54, sec: 55.75, pos: 4, face: true }, // good_16 after good_13 (both 55-56)
+    { x: -8313, y: -553, fx: -8023, fy: -1838, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // good_13 after good_16 (both 55-56)
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 53, sec: 55, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
-    { x: 8430, y: 1263, fx: 7928, fy: -120, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // evil_13 after evil_7 (both 55-56)
+    { x: 7928, y: -120, fx: 8430, fy: 1263, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // evil_7 after evil_13 (both 55-56)
 ];
 
 /** A resolved pair: camps B and A, the hit seconds, and A's stand point. */
