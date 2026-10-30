@@ -51,3 +51,9 @@ test('a remote arm is told apart by the ev=bot ours field (no --set)', () => {
     assert.match(checkGame(on, { lineup: 'A', arm: 'off', build: 'abc1234', arms }).join('; '), /10 bots lack ours CoreLastHit:0/);
     assert.match(checkGame(log({ set: '' }), { lineup: 'A', arm: 'off', build: 'abc1234', arms }).join('; '), /no ours field/);
 });
+
+test('an arm may expect its own build stamp (a remote arm is its own commit)', () => {
+    const arms = { off: { set: [], states: false, build: 'abc1234' }, on: { set: [], states: false, build: 'def5678' } };
+    assert.deepStrictEqual(checkGame(log({ set: '' }), { lineup: 'A', arm: 'off', build: 'zzz', arms }), []);
+    assert.match(checkGame(log({ set: '' }), { lineup: 'A', arm: 'on', build: 'abc1234', arms }).join('; '), /build abc1234/);
+});

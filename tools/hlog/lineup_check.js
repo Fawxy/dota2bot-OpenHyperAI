@@ -33,10 +33,12 @@ function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, 
     const bots = Object.values(pos);
     if (bots.length !== 10) p.push(`${bots.length} bots`);
     const want = lineups[lineup];
+    // An arm may carry its own build stamp (a remote arm is its own commit, batch.js "remote").
+    const wantBuild = (arms[arm] && arms[arm].build) || build;
     if (!want) p.push(`unknown lineup ${lineup}`);
     for (const b of bots) {
         if (want && want[b.team][b.pos - 1] !== b.hero) p.push(`${b.hero} team ${b.team} pos ${b.pos}`);
-        if (!b.build.startsWith(build)) p.push(`build ${b.build}`);
+        if (!b.build.startsWith(wantBuild)) p.push(`build ${b.build}`);
     }
     const spec = arms[arm];
     const set = (text.match(/ev=start [^\n]*?set="([^"]*)"/) || [, ''])[1];

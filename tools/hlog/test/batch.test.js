@@ -235,3 +235,32 @@ test('remote batch: each game is a job on its arm\'s pushed commit, arms interle
     assert.deepStrictEqual(off, { branch: 'remote/lion/s5-off', sha: 'b'.repeat(40), until: '10:00', seed: 30, timescale: 8, label: 's5_A_off_1' });
     assert.strictEqual(remoteJob(spec, games[2]).seed, 8);
 });
+
+test('remote batch: runRemote saves the log, surfaces the reason, stops on a curfew and gives up on a silent host', async () => {
+    const { runRemote, remoteJob } = require('../batch');
+    const fsx = require('fs'), osx = require('os'), px = require('path');
+    const logs = fsx.mkdtempSync(px.join(osx.tmpdir(), 'rb-'));
+    const spec = { until: 600, arms: { on: { branch: 'remote/lion/x', sha: 'a'.repeat(40) } } };
+    const game = { label: 'x_A_on_1', seed: 30, arm: 'on' };
+    assert.strictEqual(remoteJob(spec, game).until, '10:00', 'a numeric until goes out as M:SS');
+    const res = (status, body) => ({ ok: status < 400, status, json: async () => body, arrayBuffer: async () => Buffer.from(body.text || '') });
+    // A host answering in order: submit, then each poll.
+    const host = answers => async (url, o) => answers.shift()(url, o);
+    const opts = extra => ({ poll: 0, sleepFn: async () => {}, logs, ...extra });
+    const ok = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([
+        () => res(201, { id: 'j1', state: 'queued' }), () => res(200, { state: 'running' }), () => res(200, { state: 'done' }),
+        url => (assert.match(url, /\/jobs\/j1\/files\/game\.log$/), res(200, { text: 'LOG' }))]) }));
+    assert.ok(ok.ok && fsx.readFileSync(ok.log, 'utf8') === 'LOG' && ok.log.endsWith('-x_A_on_1.log'));
+    const curfew = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([
+        () => res(201, { id: 'j2', state: 'queued' }),
+        () => res(200, { state: 'failed', reason: 'testing is closed by the user from 30/10 until they reopen it' })]) }));
+    assert.ok(!curfew.ok && curfew.curfew && /closed by the user/.test(curfew.out));
+    const failed = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([
+        () => res(201, { id: 'j3', state: 'queued' }), () => res(200, { state: 'failed', reason: 'dotactl run exited 1' })]) }));
+    assert.ok(!failed.ok && !failed.curfew && /exited 1/.test(failed.out));
+    const silent = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ maxBadPolls: 3, fetchFn: host([
+        () => res(201, { id: 'j4', state: 'queued' }), () => res(500, {}), () => res(429, {}), () => { throw new Error('down'); }]) }));
+    assert.ok(!silent.ok && /no state in 3 polls/.test(silent.out));
+    const refused = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([() => res(403, { error: 'forbidden' })]) }));
+    assert.ok(!refused.ok && refused.out === 'submit 403 forbidden');
+});

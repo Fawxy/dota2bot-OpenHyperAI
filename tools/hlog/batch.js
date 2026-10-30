@@ -13,7 +13,9 @@
 // Remote (dotactl serve on another machine, REQUESTS D7): "remote": true reads { host, token, client } from
 //   ~/.dotactl/remote-client.json; each arm names a pushed commit instead of --set (remote jobs take none):
 //   "arms": { "on": { "branch": "remote/<client>/x-on", "sha": "<40 hex>", "states": true, "ours": { "X": true } }, ... }.
-//   No worktree or --build; the build stamp is the commit's. A game's game.log is saved to ~/.dotactl/logs/<time>-<label>.log
+//   No worktree or --build. An arm may name its own `build` (the stamp lineup_check expects, default the spec's): the
+//   stamp file bots/FunLib/humaniser/build_info.lua is git-ignored, so build the arm's tree, `git add -f` that file, commit
+//   and push; the stamp is then `<parent sha>+dirty` (two arms built from different trees carry different stamps). A game's game.log is saved to ~/.dotactl/logs/<time>-<label>.log
 //   so hlog ingests it; a failed job is retried once like a local run. `ours` is checked by lineup_check (ev=bot ours).
 //
 // Manifest: ~/.dotactl/batches/<name>.manifest, one `status=ok|fail label=... seed= arm= lineup= log=...` line per game.
@@ -65,29 +67,54 @@ function runArgs(spec, game, build) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/** "M:SS" for the server (it accepts no bare seconds). */
+function clock(until) {
+    const t = seconds(until);
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
 /** The remote job body for one game: the arm's pushed commit, the lineup seed and the spec's clock. */
 function remoteJob(spec, game) {
     const arm = spec.arms[game.arm];
-    return { branch: arm.branch, sha: arm.sha, until: String(spec.until), seed: game.seed, timescale: spec.timescale || 8, label: game.label };
+    return { branch: arm.branch, sha: arm.sha, until: clock(spec.until), seed: game.seed, timescale: spec.timescale || 8, label: game.label };
 }
 
-/** Runs one game on the remote host; resolves to { ok, log, out }. Polls every `poll` ms (the server cannot notify). */
-async function runRemote(cfg, spec, game, { poll = 30000 } = {}) {
+/** A curfew on the host ends the job failed with dotactl's own wording (dotactl.js curfewError). */
+const CURFEW = /closed by the user/i;
+
+/**
+ * Runs one game on the remote host; resolves to { ok, log, out, curfew }. Polls every `poll` ms (the server cannot
+ * notify); `maxBadPolls` answers in a row without a job state (an HTTP error, an unreachable host) give up on the game.
+ * `fetchFn`/`sleepFn` are for tests.
+ */
+async function runRemote(cfg, spec, game, { poll = 30000, maxBadPolls = 20, fetchFn = fetch, sleepFn = sleep, logs = path.join(os.homedir(), '.dotactl', 'logs') } = {}) {
     const H = { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' };
-    const r = await fetch(`${cfg.host}/jobs`, { method: 'POST', headers: H, body: JSON.stringify(remoteJob(spec, game)) });
-    const job = await r.json();
-    if (!r.ok || !job.id) return { ok: false, out: `submit ${r.status} ${JSON.stringify(job)}` };
-    let j = job;
-    while (!['done', 'failed', 'cancelled'].includes(j.state)) {
-        await sleep(poll);
-        try { j = await (await fetch(`${cfg.host}/jobs/${job.id}`, { headers: H })).json(); } catch (e) { /* retry next poll */ }
+    const json = async r => { try { return await r.json(); } catch (e) { return {}; } };
+    let r, job;
+    try {
+        r = await fetchFn(`${cfg.host}/jobs`, { method: 'POST', headers: H, body: JSON.stringify(remoteJob(spec, game)) });
+        job = await json(r);
+    } catch (e) {
+        return { ok: false, out: `submit failed: ${e.message}` };
     }
-    const out = `job ${job.id} ${j.state} ${j.error || ''}`;
-    if (j.state !== 'done') return { ok: false, out };
-    const g = await fetch(`${cfg.host}/jobs/${job.id}/files/game.log`, { headers: H });
+    if (!r.ok || !job.id) return { ok: false, out: `submit ${r.status} ${job.error || ''}`.trim() };
+    let j = job, bad = 0;
+    while (!['done', 'failed', 'cancelled'].includes(j.state)) {
+        await sleepFn(poll);
+        try {
+            const q = await fetchFn(`${cfg.host}/jobs/${job.id}`, { headers: H });
+            const v = await json(q);
+            if (q.ok && v.state) { j = v; bad = 0; continue; }
+        } catch (e) { /* counted below */ }
+        if (++bad >= maxBadPolls) return { ok: false, out: `job ${job.id}: no state in ${bad} polls` };
+    }
+    const out = `job ${job.id} ${j.state} ${j.reason || ''}`.trim();
+    if (j.state !== 'done') return { ok: false, out, curfew: CURFEW.test(j.reason || '') };
+    const g = await fetchFn(`${cfg.host}/jobs/${job.id}/files/game.log`, { headers: H });
     if (!g.ok) return { ok: false, out: `${out}; game.log ${g.status}` };
     const stamp = new Date().toISOString().replace(/:/g, '-').replace(/\..*/, '');
-    const log = path.join(os.homedir(), '.dotactl', 'logs', `${stamp}-${game.label}.log`);
+    fs.mkdirSync(logs, { recursive: true });
+    const log = path.join(logs, `${stamp}-${game.label}.log`);
     fs.writeFileSync(log, Buffer.from(await g.arrayBuffer()));
     return { ok: true, log, out };
 }
@@ -116,7 +143,14 @@ async function main(argv) {
         games.forEach((g, i) => console.log(`${g.label.padEnd(14)} ${spec.remote ? `POST /jobs ${JSON.stringify(remoteJob(spec, g))}` : `node dotactl.js ${runArgs(spec, g, i === 0).join(' ')}`}`));
         return;
     }
-    const cfg = spec.remote ? JSON.parse(fs.readFileSync(path.join(os.homedir(), '.dotactl', 'remote-client.json'), 'utf8')) : undefined;
+    let cfg;
+    if (spec.remote) {
+        // A parse error would quote the file (the token) on stderr: report only that it is not JSON.
+        try { cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.dotactl', 'remote-client.json'), 'utf8')); } catch (e) {
+            console.error('~/.dotactl/remote-client.json is missing or not JSON ({ "host", "token", "client" })');
+            process.exit(2);
+        }
+    }
     fs.mkdirSync(BATCHES, { recursive: true });
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '');
     const done = () => new Set(readManifest(manifest).map(g => g.label));
@@ -132,7 +166,11 @@ async function main(argv) {
                     console.log(`ok ${game.label} ${rr.out}`);
                     break;
                 }
-                fs.appendFileSync(manifest, manifestLine('fail', game, `remote="${rr.out}" attempt=${attempt}`) + '\n');
+                if (rr.curfew) {
+                    console.log('curfew: stopping');
+                    process.exit(3);
+                }
+                fs.appendFileSync(manifest, manifestLine('fail', game, `remote="${rr.out.replace(/"/g, "'")}" attempt=${attempt}`) + '\n');
                 console.log(`fail ${game.label} ${rr.out} attempt ${attempt}`);
                 if (attempt >= 2) process.exit(1);
                 continue;
@@ -174,4 +212,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
-module.exports = { plan, runArgs, seconds, remoteJob };
+module.exports = { plan, runArgs, seconds, remoteJob, runRemote };
