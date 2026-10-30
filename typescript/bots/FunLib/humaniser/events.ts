@@ -467,6 +467,11 @@ export const EVENTS = {
         n59: "str",
         lane: "mixed",
         idle: "num",
+        // Spell-timed stack attribution (late skips): seconds short of the walk, the best aggro spell, its range and readiness.
+        short: "num",
+        spell: "str",
+        srange: "num",
+        sready: "num",
     },
     lane_job_supply: {
         pid: "num",

@@ -6,11 +6,12 @@
  * When to stack, and who, is S.2b: it replaces TRIGGER_MINUTES and keeps the job and its result line.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { Ability, BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -316,6 +317,31 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
     };
 }
 
+const BEHAVIOR_UNIT_TARGET = 8; // DOTA_ABILITY_BEHAVIOR_UNIT_TARGET
+const TARGET_TEAM_ENEMY = 2; // DOTA_UNIT_TARGET_TEAM_ENEMY
+
+function hasFlag(field: number, flag: number): boolean {
+    return math.floor(field / flag) % 2 === 1;
+}
+
+/**
+ * CANDIDATE(AggroSpell): the bot's longest-range spell that can aggro a camp from range on its own: a learned, non-passive,
+ * non-ultimate spell cast on an enemy unit (EC-060: damage or a single-target spell from within 1,800 aggroes a neutral).
+ * Not a disable (ability_classes key): a stun or root holds the neutrals in the box (s4solo2: witch doctor's cask drew
+ * the camp at :42-:47 and the stunned camp stayed). Ready or not; the caller reads IsFullyCastable.
+ */
+export function AggroSpell(bot: Unit): Ability | undefined {
+    let best: Ability | undefined;
+    for (const i of $range(0, 5)) {
+        const ab = bot.GetAbilityInSlot(i);
+        if (ab === null || ab === undefined || ab.IsNull() || ab.GetLevel() < 1 || ab.IsHidden() || ab.IsPassive() || ab.IsUltimate()) continue;
+        if (!hasFlag(ab.GetBehavior(), BEHAVIOR_UNIT_TARGET) || !hasFlag(ab.GetTargetTeam(), TARGET_TEAM_ENEMY)) continue;
+        if (AbilityClasses.Classify(ab.GetName(), false) !== "other") continue;
+        if (best === undefined || ab.GetCastRange() > best.GetCastRange()) best = ab;
+    }
+    return best;
+}
+
 /** Seconds to walk from the bot to `p`. */
 function travel(bot: Unit, p: Vector): number {
     return GetUnitToLocationDistance(bot, p) / math.max(1, bot.GetCurrentMovementSpeed());
@@ -556,7 +582,22 @@ export function Desire(bot: Unit): number {
         const aggroAt = minute * 60 + Stacking.AggroSec(data);
         const walk = travel(bot, stand);
         if (now < aggroAt - walk - SETTINGS.Lead) return 0;
-        if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
+        if (now > aggroAt - walk - SETTINGS.MinSlack) {
+            if (gateWhy[pid] !== undefined) return skip(gateWhy[pid]!);
+            // How late, and the spell a cast from range could have used instead (spell-timed stack attribution).
+            const sp = AggroSpell(bot);
+            log(bot, minute, [
+                ["res", "skip"],
+                ["why", "late"],
+                ["short", math.floor((now - (aggroAt - walk - SETTINGS.MinSlack)) * 10) / 10],
+                ["spell", sp !== undefined ? sp.GetName() : "-"],
+                ["srange", sp !== undefined ? sp.GetCastRange() : 0],
+                ["sready", sp !== undefined && sp.IsFullyCastable() ? 1 : 0],
+                ["dist", math.floor(GetUnitToLocationDistance(bot, stand))],
+            ]);
+            handled[pid][minute] = true;
+            return 0;
+        }
         if (minute * 60 + 60 + SETTINGS.FarEnd - now > SETTINGS.AwayMax) return skip("far");
         const why = Gate(bot);
         if (why !== undefined) {

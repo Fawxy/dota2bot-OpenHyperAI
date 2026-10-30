@@ -469,7 +469,11 @@
    "n2": "str",
    "n59": "str",
    "lane": "mixed",
-   "idle": "num"
+   "idle": "num",
+   "short": "num",
+   "spell": "str",
+   "srange": "num",
+   "sready": "num"
   },
   "lane_job_supply": {
    "pid": "num",
@@ -935,7 +939,8 @@
    "type": "text",
    "casts": "text",
    "n2": "text",
-   "n59": "text"
+   "n59": "text",
+   "spell": "text"
   },
   "ev_lane_job_supply": {
    "item": "text",

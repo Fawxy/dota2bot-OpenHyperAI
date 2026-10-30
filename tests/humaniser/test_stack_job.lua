@@ -295,6 +295,47 @@ do
 	check("far camp: one skip line, far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
 end
 
+-- Spell-timed stack attribution: a minute picked up too late logs how many seconds short the walk was and the bot's best
+-- aggro spell (AggroSpell: learned, unit-target on enemies, not passive, not an ultimate, not a disable), so the logs say
+-- whether a cast from range could have made the hit.
+do
+	local function ability(o)
+		return {
+			GetName = function() return o.name end, IsNull = function() return false end, GetLevel = function() return o.level or 1 end,
+			IsHidden = function() return false end, IsPassive = function() return o.passive == true end,
+			IsUltimate = function() return o.ult == true end, GetBehavior = function() return o.behavior or 8 end,
+			GetTargetTeam = function() return o.team or 2 end, GetCastRange = function() return o.range or 600 end,
+			IsFullyCastable = function() return o.ready ~= false end,
+		}
+	end
+	local H, bot = world({ t = 3 * 60 + 15 })
+	check("no abilities: no aggro spell", H.StackJob.AggroSpell(bot) == nil)
+	bot.abilities = {
+		[0] = ability({ name = "lich_frost_blast", range = 600, behavior = 8 + 4096 }),
+		[1] = ability({ name = "witch_doctor_paralyzing_cask", range = 700 }),
+		[2] = ability({ name = "some_ally_buff", range = 800, team = 1 }),
+		[3] = ability({ name = "some_point_spell", range = 900, behavior = 16 }),
+		[4] = ability({ name = "some_unlearned", range = 1000, level = 0 }),
+		[5] = ability({ name = "some_ult", range = 1200, ult = true }),
+	}
+	local sp = H.StackJob.AggroSpell(bot)
+	check("aggro spell: the enemy unit-target non-disable (behaviour flags combined), not the cask, ally, point, unlearned or ult",
+		sp ~= nil and sp:GetName() == "lich_frost_blast", sp and sp:GetName())
+	bot.abilities[0] = nil
+	check("only a disable left: none", H.StackJob.AggroSpell(bot) == nil)
+
+	H, bot = world({ t = 3 * 60 + 50 })
+	bot.abilities = { [0] = ability({ name = "lich_frost_blast", range = 600, ready = false }) }
+	local lines = stackLines(capture(function() while T < 3 * 60 + 52 do frame(H, bot) end end))
+	local l = lines[1]
+	check("late: one skip line", #lines == 1 and field(l, "res") == "skip" and field(l, "why") == "late", l)
+	check("late: seconds short > 0, distance to the stand", tonumber(field(l, "short") or "") ~= nil and tonumber(field(l, "short")) > 0 and tonumber(field(l, "dist") or "") ~= nil, l)
+	check("late: the spell, its range and readiness", field(l, "spell") == "lich_frost_blast" and field(l, "srange") == "600" and field(l, "sready") == "0", l)
+	H, bot = world({ t = 3 * 60 + 50 })
+	lines = stackLines(capture(function() while T < 3 * 60 + 52 do frame(H, bot) end end))
+	check("late without a spell: spell=-", field(lines[1], "spell") == "-" and field(lines[1], "srange") == "0", lines[1])
+end
+
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
 do
 	local lines = stackRun({ noSpawn = true })

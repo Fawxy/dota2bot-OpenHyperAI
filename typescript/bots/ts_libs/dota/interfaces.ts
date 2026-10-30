@@ -198,7 +198,10 @@ export interface Ability {
     GetLevel(): number;
     GetCooldown(): number;
     IsUltimate(): boolean;
+    IsPassive(): boolean;
     GetBehavior(): number;
+    /** DOTA_UNIT_TARGET_TEAM_* bitfield. */
+    GetTargetTeam(): number;
 }
 
 export interface Talent {}

@@ -406,7 +406,11 @@ ____exports.EVENTS = {
         n2 = "str",
         n59 = "str",
         lane = "mixed",
-        idle = "num"
+        idle = "num",
+        short = "num",
+        spell = "str",
+        srange = "num",
+        sready = "num"
     },
     lane_job_supply = {
         pid = "num",

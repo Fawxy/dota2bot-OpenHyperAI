@@ -510,6 +510,7 @@ local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
@@ -641,11 +642,11 @@ function describe(bot, a)
     local parts = {}
     for ____, n in ipairs(a.campUnits or ({})) do
         do
-            local __continue95
+            local __continue102
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue95 = true
+                    __continue102 = true
                     break
                 end
                 local name = (string.gsub(
@@ -655,7 +656,7 @@ function describe(bot, a)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue95 = true
+                    __continue102 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -665,9 +666,9 @@ function describe(bot, a)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue95 = true
+                __continue102 = true
             until true
-            if not __continue95 then
+            if not __continue102 then
                 break
             end
         end
@@ -935,6 +936,55 @@ function ____exports.Plan(bot, data, stand, minute, a)
         end
     }
 end
+local BEHAVIOR_UNIT_TARGET = 8
+local TARGET_TEAM_ENEMY = 2
+local function hasFlag(field, flag)
+    return math.floor(field / flag) % 2 == 1
+end
+--- CANDIDATE(AggroSpell): the bot's longest-range spell that can aggro a camp from range on its own: a learned, non-passive,
+-- non-ultimate spell cast on an enemy unit (EC-060: damage or a single-target spell from within 1,800 aggroes a neutral).
+-- Not a disable (ability_classes key): a stun or root holds the neutrals in the box (s4solo2: witch doctor's cask drew
+-- the camp at :42-:47 and the stunned camp stayed). Ready or not; the caller reads IsFullyCastable.
+function ____exports.AggroSpell(bot)
+    local best
+    for i = 0, 5 do
+        do
+            local __continue53
+            repeat
+                local ab = bot:GetAbilityInSlot(i)
+                if ab == nil or ab == nil or ab:IsNull() or ab:GetLevel() < 1 or ab:IsHidden() or ab:IsPassive() or ab:IsUltimate() then
+                    __continue53 = true
+                    break
+                end
+                if not hasFlag(
+                    ab:GetBehavior(),
+                    BEHAVIOR_UNIT_TARGET
+                ) or not hasFlag(
+                    ab:GetTargetTeam(),
+                    TARGET_TEAM_ENEMY
+                ) then
+                    __continue53 = true
+                    break
+                end
+                if AbilityClasses.Classify(
+                    ab:GetName(),
+                    false
+                ) ~= "other" then
+                    __continue53 = true
+                    break
+                end
+                if best == nil or ab:GetCastRange() > best:GetCastRange() then
+                    best = ab
+                end
+                __continue53 = true
+            until true
+            if not __continue53 then
+                break
+            end
+        end
+    end
+    return best
+end
 --- Seconds to walk from the bot to `p`.
 local function travel(bot, p)
     return GetUnitToLocationDistance(bot, p) / math.max(
@@ -1149,10 +1199,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue110
+            local __continue117
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue110 = true
+                    __continue117 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -1174,7 +1224,40 @@ function ____exports.Desire(bot)
                     return 0
                 end
                 if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
-                    return skip(gateWhy[pid] or "late")
+                    if gateWhy[pid] ~= nil then
+                        return skip(gateWhy[pid])
+                    end
+                    local sp = ____exports.AggroSpell(bot)
+                    log(
+                        bot,
+                        minute,
+                        {
+                            {"res", "skip"},
+                            {"why", "late"},
+                            {
+                                "short",
+                                math.floor((now - (aggroAt - walk - ____exports.SETTINGS.MinSlack)) * 10) / 10
+                            },
+                            {
+                                "spell",
+                                sp ~= nil and sp:GetName() or "-"
+                            },
+                            {
+                                "srange",
+                                sp ~= nil and sp:GetCastRange() or 0
+                            },
+                            {
+                                "sready",
+                                sp ~= nil and sp:IsFullyCastable() and 1 or 0
+                            },
+                            {
+                                "dist",
+                                math.floor(GetUnitToLocationDistance(bot, stand))
+                            }
+                        }
+                    )
+                    handled[pid][minute] = true
+                    return 0
                 end
                 if minute * 60 + 60 + ____exports.SETTINGS.FarEnd - now > ____exports.SETTINGS.AwayMax then
                     return skip("far")
@@ -1211,7 +1294,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue110 then
+            if not __continue117 then
                 break
             end
         end
