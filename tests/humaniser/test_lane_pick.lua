@@ -3,7 +3,9 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 FreshHumaniser({ Enable = false })
 local Pick = require("bots/FunLib/humaniser/states/lane_pick")
 
-local function target(kind, eta, ranged) return { creep = {}, kind = kind, eta = eta, ranged = ranged == true } end
+local function target(kind, eta, ranged, walk, dies)
+	return { creep = {}, kind = kind, eta = eta, due = eta, walk = walk or 0, dies = dies or math.huge, ranged = ranged == true }
+end
 
 -- The ranged creep wins over a melee creep due a little sooner (gold and XP).
 do
@@ -32,6 +34,20 @@ end
 do
 	local rd, ml = target("deny", 0.25, true), target("lasthit", 0.2)
 	check("pick: ranged deny beats a melee last hit due 0.05 s sooner", Pick.Choose({ ml, rd }) == rd)
+end
+
+-- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even
+-- though the pick would otherwise take it; one the bot can reach and swing at before it dies is kept.
+do
+	local far = target("lasthit", 0, true, 1.2, 0.9)
+	local near = target("lasthit", 0.6, false, 0, 2)
+	check("pick: a creep dead before the bot can reach it is skipped", Pick.Choose({ far, near }) == near)
+	check("pick: nothing reachable, nothing picked", Pick.Choose({ far }) == nil)
+	local reach = target("lasthit", 0.5, true, 0.5, 1.5)
+	check("pick: a creep reachable with time to swing is kept", Pick.Choose({ reach, near }) == reach)
+	-- In range already (walk 0): never skipped on this rule, even when it dies soon (lastHit judges the swing).
+	local here = target("lasthit", 0, false, 0, 0.2)
+	check("pick: a creep in range is kept however soon it dies", Pick.Choose({ here }) == here)
 end
 
 finish()

@@ -300,6 +300,9 @@ do
     T.eq("targets: both creeps offered", #list, 2)
     T.check("targets: melee eta about 0.2 s, not ranged", tm ~= nil and math.abs(tm.eta - 0.2) < 0.02 and not tm.ranged, tm and tm.eta)
     T.check("targets: ranged eta about 0.4 s, ranged", tr ~= nil and math.abs(tr.eta - 0.4) < 0.02 and tr.ranged and tr.kind == "lasthit", tr and tr.eta)
+    -- The facts behind eta (slice 5): due 0.2 s, no walk, and dead to the drain at 100 hp / 100 hp/s = 1 s from now.
+    T.check("targets: melee due, walk and dies", tm ~= nil and math.abs(tm.due - 0.2) < 0.02 and tm.walk == 0 and math.abs(tm.dies - 1.0) < 0.02,
+        tm and string.format("%s %s %s", tm.due, tm.walk, tm.dies))
 end
 
 -- Denies: an allied creep below half its max hp is offered as a deny; `lastHit = false` / `deny = false` drop a side.
@@ -336,6 +339,8 @@ do
     -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta, and the bot sets off now
     local t = offered(V.laneTargets(bot), far)
     T.check("targets: far creep's eta is its walk", t ~= nil and math.abs(t.eta - 370 / 300) < 0.05, t and t.eta)
+    T.check("targets: far creep due now, its walk apart, and no one on it (dies never)", t ~= nil and t.due == 0 and math.abs(t.walk - 370 / 300) < 0.05 and t.dies == math.huge,
+        t and string.format("%s %s %s", t.due, t.walk, t.dies))
 end
 
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),

@@ -97,10 +97,11 @@ closest to dying to the bot's hit; above skill 0.6, a ranged/siege creep (by uni
 wins over a melee one.
 
 **Lane targets (`Verbs.laneTargets(bot, opts)`, a query, not a verb).** The lane creeps a laner could go for
-next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, ranged }[]`. Considers enemy creeps (filtered by
+next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, due, walk, dies, ranged }[]`. Considers enemy creeps (filtered by
 `lastHitFilter`) and allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (max(800, range
-+ 400)) that become killable at most `within` (1 s) after the bot could be in range: eta = max(walk into range,
-(believed HP at our hit - own damage) / incoming DPS), exact (no skill error; the verbs add it when they swing);
++ 400)) that become killable at most `within` (1 s) after the bot could be in range: `due` = (believed HP at our hit -
+own damage) / incoming DPS (0 when killable now), `walk` = into range at the current speed, eta = max(due, walk), `dies` =
+when the others kill it at their current DPS (`math.huge` with no one on it); exact (no skill error; the verbs add it when they swing);
 `ranged` = a ranged or siege creep (by unit name). Facts only: which one to take is the caller's choice (slice 5a
 moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
 Per-frame creep queries are cached per bot.

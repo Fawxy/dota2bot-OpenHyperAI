@@ -1850,7 +1850,8 @@ local function enemyTargeting(bot, creep)
     end
     return false
 end
---- Seconds until the creep is killable by a swing ordered then, and the walk into attack range.
+--- Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
+-- others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
 local function etaOf(bot, c, walkSpeed)
     local b = believe(bot, c, false)
     if not b.survives then
@@ -1864,9 +1865,6 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    if margin <= 0 then
-        return {0, walk}
-    end
     local ____exports_incomingDps_result_86 = ____exports.incomingDps(bot, c)
     local ____math_max_85 = math.max
     local ____this_84
@@ -1876,10 +1874,14 @@ local function etaOf(bot, c, walkSpeed)
         0,
         -(____opt_83 and ____opt_83(____this_84) or 0)
     )
+    local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
+    if margin <= 0 then
+        return {0, walk, dies}
+    end
     if dps <= 0 then
         return nil
     end
-    return {margin / dps, walk}
+    return {margin / dps, walk, dies}
 end
 --- The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
 -- first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
@@ -1928,6 +1930,9 @@ function ____exports.laneTargets(bot, opts)
             creep = c,
             kind = kind,
             eta = math.max(e[1], e[2]),
+            due = e[1],
+            walk = e[2],
+            dies = e[3],
             ranged = isRangedCreep(c)
         }
     end

@@ -369,6 +369,12 @@ export interface LaneTarget {
     kind: "lasthit" | "deny";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
+    /** Seconds until a swing ordered then would be due (0: due now). */
+    due: number;
+    /** Seconds to walk into attack range at the current speed (0: in range). */
+    walk: number;
+    /** Seconds until the creep dies to the others' damage at their current DPS (exact, as `due`). */
+    dies: number;
     /** A ranged or siege creep (more gold and XP than a melee one). */
     ranged: boolean;
 }
@@ -387,16 +393,20 @@ export interface LaneTargetsOpts {
     lastHit?: boolean;
 }
 
-/** Seconds until the creep is killable by a swing ordered then, and the walk into attack range. */
-function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number] | undefined {
+/**
+ * Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
+ * others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
+ */
+function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number, number] | undefined {
     const b = believe(bot, c, false);
     if (!b.survives) return undefined;
     const walk = math.max(0, dist(bot.GetLocation(), c.GetLocation()) - bot.GetAttackRange()) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
-    if (margin <= 0) return [0, walk];
     const dps = incomingDps(bot, c) + math.max(0, -(c.GetHealthRegen?.() ?? 0));
+    const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
+    if (margin <= 0) return [0, walk, dies];
     if (dps <= 0) return undefined;
-    return [margin / dps, walk];
+    return [margin / dps, walk, dies];
 }
 
 /**
@@ -422,7 +432,7 @@ export function laneTargets(bot: TaskUnit, opts: LaneTargetsOpts = {}): LaneTarg
         if (kind === "lasthit" && adapter.lastHitFilter !== undefined && !adapter.lastHitFilter(bot, c)) return;
         const e = etaOf(bot, c, speed);
         if (e === undefined || e[0] - e[1] > within) return;
-        out.push({ creep: c, kind, eta: math.max(e[0], e[1]), ranged: isRangedCreep(c) });
+        out.push({ creep: c, kind, eta: math.max(e[0], e[1]), due: e[0], walk: e[1], dies: e[2], ranged: isRangedCreep(c) });
     };
     if (opts.lastHit !== false) for (const c of n.enemyCreeps) consider(c, "lasthit");
     if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of n.allyCreeps) consider(c, "deny");
