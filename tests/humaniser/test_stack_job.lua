@@ -159,7 +159,7 @@ end
 -- A full stack at 3:5x on good_1: starts in time, hit inside the window, outcome stacked, away <= 25 s.
 local function stackRun(o)
 	o = o or {}
-	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double })
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double, at = o.at })
 	if o.range then bot.range = o.range end
 	local camp = SPAWNERS[idxOf("good_1")].location
 	neutrals(camp, 3)
@@ -477,6 +477,9 @@ do
 	check("good_1's partner is good_2", partner("good_1") == "good_2", partner("good_1"))
 	check("evil_2's partner is evil_1", partner("evil_2") == "evil_1", partner("evil_2"))
 	check("good_5 has no partner", partner("good_5") == nil, partner("good_5"))
+	-- From camp A too (ds1: the pos5 stood nearer good_2 or evil_1 in 14 of 20 started attempts); B stays the small camp.
+	local fromA = H.StackJob.Partner(C.ByIdx(idxOf("good_2"), RAD))
+	check("from good_2: the pair, B good_1", fromA ~= nil and MAP[fromA.a.campIdx][1] == "good_2" and MAP[fromA.b.campIdx][1] == "good_1")
 	local function fits(a, b, range)
 		bot.range = range
 		local sb = C.SpawnerByIdx(idxOf(b))
@@ -566,6 +569,19 @@ do
 	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
 	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
 	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
+end
+
+-- Nearer good_2 than good_1 (ds1: 8 of 10 Radiant starts): still the pair, logged on good_1 with good_2 as camp A.
+do
+	local lines = stackRun({ double = true, at = Vector(4700, -3000) })
+	local l = lines[1]
+	check("near good_2: double on good_1 after good_2, both stacked", field(l, "double") == "1" and tonumber(field(l, "camp")) == idxOf("good_1") and tonumber(field(l, "fcamp")) == idxOf("good_2") and field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+end
+-- And single with the double off: slice 4 stacks the nearest camp, good_2.
+do
+	local H, bot = world({ t = 3 * 60 + 15, at = Vector(4700, -3000) })
+	local data = H.StackJob.Nearest(RAD, bot.loc)
+	check("near good_2, double off: nearest good_2", MAP[data.campIdx][1] == "good_2", MAP[data.campIdx][1])
 end
 
 -- B's hit skips A's neutrals: they chase the bot into B's box margin and target it, which must not count as B's hit.

@@ -977,14 +977,15 @@ local function resolvePair(p, team)
         stand = stand
     }
 end
---- The pos5's pair for its trigger camp B, if B has one.
+--- The pos5's pair for its nearest camp, which may be either camp of it: the pos5 stood nearer camp A (the large one) in
+-- 14 of 20 started attempts (probe ds1), and the pair then never ran.
 function ____exports.Partner(data)
     local sp = Camps.SpawnerByIdx(data.campIdx)
     if sp == nil then
         return nil
     end
     for ____, p in ipairs(PAIRS) do
-        if p.pos == 5 and near(sp.location, p.x, p.y) then
+        if p.pos == 5 and (near(sp.location, p.x, p.y) or near(sp.location, p.fx, p.fy)) then
             return resolvePair(p, sp.team)
         end
     end
@@ -1518,7 +1519,10 @@ function ____exports.Desire(bot)
                     dwhy = minute * 60 + 60 + ____exports.SETTINGS.FarEnd - (fAt - fWalk - ____exports.SETTINGS.MinSlack) > ____exports.SETTINGS.AwayMax and "far" or (now > fAt - fWalk - ____exports.SETTINGS.MinSlack and "late" or nil)
                     double = dwhy == nil
                     if double then
-                        aggroAt, walk, lead = fAt, fWalk, ____exports.SETTINGS.DoubleLead
+                        aggroAt, walk, lead, data, stand = fAt, fWalk, ____exports.SETTINGS.DoubleLead, fd.b, ____exports.Stand(
+                            Camps.SpawnerByIdx(fd.b.campIdx),
+                            fd.b
+                        )
                     end
                 end
                 if now < aggroAt - walk - lead then

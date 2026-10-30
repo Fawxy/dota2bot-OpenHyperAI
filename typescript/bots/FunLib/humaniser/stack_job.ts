@@ -290,11 +290,14 @@ function resolvePair(p: Pair, team: number): Double | undefined {
     return { b, a, fsec: p.fsec, sec: p.sec, stand };
 }
 
-/** The pos5's pair for its trigger camp B, if B has one. */
+/** The pos5's pair for its nearest camp, which may be either camp of it: the pos5 stood nearer camp A (the large one) in
+ *  14 of 20 started attempts (probe ds1), and the pair then never ran. */
 export function Partner(data: Camps.CampJobData): Double | undefined {
     const sp = Camps.SpawnerByIdx(data.campIdx);
     if (sp === undefined) return undefined;
-    for (const p of PAIRS) if (p.pos === 5 && near(sp.location, p.x, p.y)) return resolvePair(p, sp.team);
+    for (const p of PAIRS) {
+        if (p.pos === 5 && (near(sp.location, p.x, p.y) || near(sp.location, p.fx, p.fy))) return resolvePair(p, sp.team);
+    }
     return undefined;
 }
 
@@ -780,7 +783,8 @@ export function Desire(bot: Unit): number {
             // Held by the gate past its own latest start, it runs single while the single can still start.
             dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > SETTINGS.AwayMax ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
             double = dwhy === undefined;
-            if (double) [aggroAt, walk, lead] = [fAt, fWalk, SETTINGS.DoubleLead];
+            // The line's camp is B; a minute that runs single keeps the nearest camp (slice 4's stack).
+            if (double) [aggroAt, walk, lead, data, stand] = [fAt, fWalk, SETTINGS.DoubleLead, fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
         }
         if (now < aggroAt - walk - lead) return 0;
         if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
