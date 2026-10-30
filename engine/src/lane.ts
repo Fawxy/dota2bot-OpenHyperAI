@@ -1,6 +1,6 @@
 import { get } from "./adapter";
 import { HoldOpts, holdAt } from "./verbs";
-import { deny, lastHit, LaneTarget, LastHitOpts, nextLastHit } from "./lasthit";
+import { deny, lastHit, LaneTarget, laneTargets, LastHitOpts } from "./lasthit";
 import { Result, TaskBody, TaskUnit, Vec } from "./types";
 
 export interface LaneFarmOpts {
@@ -8,8 +8,13 @@ export interface LaneFarmOpts {
     hold?: HoldOpts;
     /** Whether to go for last hits and denies now; read every frame. Default: always. */
     lastHits?: (this: void) => boolean;
-    /** nextLastHit's `within`. Default 1. */
+    /** laneTargets' `within`. Default 1. */
     within?: number;
+    /**
+     * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
+     * `pick` the verb only holds the spot.
+     */
+    pick?: (this: void, targets: LaneTarget[]) => LaneTarget | undefined;
     /** An attempt is dropped once the bot is this far from the spot. Default 900. */
     leash?: number;
     /** Within this of the spot the label is `hold`, beyond `far` it is `walk` again. Defaults 600 / 1200. */
@@ -39,7 +44,7 @@ function enemyHeroNear(bot: TaskUnit, r: number): boolean {
 
 /**
  * Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
- * the creep nextLastHit offers (walking in so it arrives as the creep becomes killable), swings with the
+ * the creep `pick` chooses from laneTargets (walking in so it arrives as the creep becomes killable), swings with the
  * skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
  * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
  */
@@ -59,10 +64,11 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         const t = get()!.now();
         if (t - scannedAt < scanEvery) return false;
         scannedAt = t;
-        if (opts.lastHits !== undefined && !opts.lastHits()) return false;
+        if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
         // Not beyond the leash: an attempt there is dropped at once, and picking it again would spin.
         if (away() > leash) return false;
-        target = nextLastHit(bot, { within: opts.within });
+        const offered = laneTargets(bot, { within: opts.within });
+        target = offered.length > 0 ? opts.pick(offered) : undefined;
         return target !== undefined;
     };
     const stop = (): boolean => (opts.interruptIf !== undefined && opts.interruptIf()) || (opts.deadline !== undefined && get()!.now() >= opts.deadline);

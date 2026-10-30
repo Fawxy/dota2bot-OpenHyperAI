@@ -12,6 +12,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
+import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 
 export const NAME = "laning";
 
@@ -125,6 +126,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         hold,
         lastHits: () => OwnsLastHit(bot),
         within: Settings().LastHitWithin,
+        pick: LanePick.Choose,
         near: NEAR,
         far: FAR,
         leash: LEASH,

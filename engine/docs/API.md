@@ -8,8 +8,8 @@ This document describes what is built. The project goal changed after it was wri
 with no OHA code left, and the SDK holds only the kernel, engine facts (each citing a source) and atomic actions (master
 `CLAUDE.md` hard rule 3). Nothing below is removed by this note; the sections stay accurate until their replacement lands.
 Slice 0b (29/10/2026) moved this package into the bot repo as `engine/`, moved the job verbs (with `campNeutral`, `aggroLead`,
-`runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Still scheduled to move to bot code:
-the `nextLastHit` biases (slice 5). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
+`runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Slice 5a moved the `nextLastHit` biases to bot
+code (`laneTargets` returns the facts; `laneFarm` takes `pick`). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
 incoming damage (2.2), per-patch camp and rune data. Jitter stays in `Skill`. Public verbs and facts will get contracts under
 `docs/contracts/`. Where this document names OHA files or values (the friction table, the Adapter table, the job verbs), read them
 as the current host's source, not as SDK vocabulary.
@@ -96,16 +96,18 @@ read goes through the adapter. Bodies and verbs never read OHA directly.
 closest to dying to the bot's hit; above skill 0.6, a ranged/siege creep (by unit name) that is killable now
 wins over a melee one.
 
-**What next (`Verbs.nextLastHit(bot, opts)`, a query, not a verb).** The lane creep to go for next, or nil:
-`{ creep, kind: "lasthit"|"deny", eta, ranged }`. Considers enemy creeps (filtered by `lastHitFilter`) and
-allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (attack range + 400) whose eta is
-killable at most `within` (1 s) after the bot could be in range (radius max(800, range + 400)): eta = max(walk into range, (believed HP at our hit - own damage) / incoming DPS), exact
-(no skill error; the verbs add it when they swing). Picks the lowest `eta - rangedBias (0.4, ranged/siege) -
-lastHitBias (0.3, last hits)`: ranged LH > ranged deny > melee LH > melee deny, without waiting a second on a
-ranged creep while a melee one is due now. Per-frame creep queries are cached per bot.
+**Lane targets (`Verbs.laneTargets(bot, opts)`, a query, not a verb).** The lane creeps a laner could go for
+next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, ranged }[]`. Considers enemy creeps (filtered by
+`lastHitFilter`) and allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (max(800, range
++ 400)) that become killable at most `within` (1 s) after the bot could be in range: eta = max(walk into range,
+(believed HP at our hit - own damage) / incoming DPS), exact (no skill error; the verbs add it when they swing);
+`ranged` = a ranged or siege creep (by unit name). Facts only: which one to take is the caller's choice (slice 5a
+moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
+Per-frame creep queries are cached per bot.
 
 **`laneFarm(bot, spot, opts)` / `ctx.laneFarm`** (posture verb, src/lane.ts): holds `spot()` (holdAt with
-`opts.hold`), and while `lastHits()` allows, breaks off for the creep `nextLastHit` offers, swings through
+`opts.hold`), and while `lastHits()` allows, breaks off for the creep `opts.pick(targets)` chooses from
+`laneTargets` (no `pick`: it only holds), swings through
 `lastHit`/`deny` (maxWait eta + 1.5 s, dropped beyond `leash` 900 from the spot), then walks back. Labels
 `walk`/`hold`/`lasthit`/`deny` (ctx binds the task label); `onAttempt(target, result, contested)` after every
 attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself.

@@ -21,11 +21,12 @@ export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 export interface LaneTarget {
     creep: TaskCreep;
     kind: "lasthit" | "deny";
-    /** Seconds until a swing ordered then would be due (0: due now), plus the walk into attack range. */
+    /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
+    /** A ranged or siege creep (more gold and XP than a melee one). */
     ranged: boolean;
 }
-export interface NextLastHitOpts {
+export interface LaneTargetsOpts {
     /** Creeps farther than this are ignored. Default max(800, attack range + 400). */
     radius?: number;
     /**
@@ -37,19 +38,15 @@ export interface NextLastHitOpts {
     deny?: boolean;
     /** Consider enemy creeps to last-hit. Default true. */
     lastHit?: boolean;
-    /** Seconds of eta a ranged/siege creep is preferred by. Default 0.4. */
-    rangedBias?: number;
-    /** Seconds of eta a last hit is preferred over a deny by (a core never gives up its last hit to deny). Default 0.3. */
-    lastHitBias?: number;
 }
 /**
- * The lane creep the bot should go for next, if any becomes killable within `within` seconds of the bot reaching
- * attack range: an enemy creep to last-hit (the adapter's `lastHitFilter` applies) or an allied creep to deny.
- * Exact prediction, no skill error (the verbs apply that when they swing): eta is when the creep becomes
- * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Priority: ranged last hit, ranged deny,
- * melee last hit, melee deny, as eta biases so a melee creep due now still beats a ranged one due much later.
+ * The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
+ * first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
+ * exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
+ * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
+ * the caller's choice.
  */
-export declare function nextLastHit(bot: TaskUnit, opts?: NextLastHitOpts): LaneTarget | undefined;
+export declare function laneTargets(bot: TaskUnit, opts?: LaneTargetsOpts): LaneTarget[];
 export interface LastHitOpts {
     /** Seconds to wait for the creep to become due before failing `timeout`. Default 1.5. */
     maxWait?: number;

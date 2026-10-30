@@ -45,9 +45,17 @@ local function wave(seed, skill, dmg)
     return sim, bot
 end
 
+-- The caller's choice (bot code in game); here the soonest creep.
+local function soonest(targets)
+    local best
+    for _, t in ipairs(targets) do if best == nil or t.eta < best.eta then best = t end end
+    return best
+end
+
 local function farm(sim, bot, secs, opts)
     local attempts = {}
     opts = opts or {}
+    if opts.pick == nil and not opts.noPick then opts.pick = soonest end
     opts.onAttempt = function(t, r, contested) attempts[#attempts + 1] = { kind = t.kind, ok = r.success, reason = r.reason } end
     local g = V.laneFarm(bot, function() return SPOT end, opts)
     for _ = 1, math.floor(secs / DT) do
@@ -80,6 +88,14 @@ do
     T.check("lane off: stayed at the spot", Sim.dist(bot.loc, SPOT) <= 150)
 end
 
+-- No `pick`: the engine makes no choice of its own, so the bot only holds although creeps are due.
+do
+    local sim, bot = wave(11)
+    local _, attempts = farm(sim, bot, 40, { noPick = true })
+    T.eq("no pick: no attempts", #attempts, 0)
+    T.eq("no pick: no last hits", bot.lastHits, 0)
+end
+
 -- Skill scales the result where the kill window is about one creep hit (35-damage hits, 48-damage hero):
 -- skill 1 takes nearly every creep, skill 0.2 clearly fewer (early swings `missed`, late ones lost).
 do
@@ -105,7 +121,7 @@ do
     local bot = sim:addBot{ x = 400, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
     sim:addCreep{ x = 450, y = 0, hp = 40, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
     local n = 0
-    local g = V.laneFarm(bot, function() return SPOT end, { onAttempt = function()
+    local g = V.laneFarm(bot, function() return SPOT end, { pick = soonest, onAttempt = function()
         n = n + 1
         if n > 50 then error("laneFarm spun on one creep", 0) end
     end })

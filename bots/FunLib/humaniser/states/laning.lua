@@ -105,6 +105,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
+local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
 local NEAR = 600
@@ -225,6 +226,7 @@ local body = __TS__Generator(function(bot, ctx)
             hold = hold,
             lastHits = function() return ____exports.OwnsLastHit(bot) end,
             within = ____exports.Settings().LastHitWithin,
+            pick = LanePick.Choose,
             near = NEAR,
             far = FAR,
             leash = LEASH,
