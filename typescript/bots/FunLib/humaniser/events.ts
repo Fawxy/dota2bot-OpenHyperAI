@@ -182,6 +182,14 @@ export const EVENTS = {
         p3t: "bool",
         p3a: "num",
     },
+    own_creep_death: {
+        team: "num",
+        kind: "str",
+        x: "num",
+        y: "num",
+        hp: "num",
+        by: "mixed",
+    },
     player: {
         pid: "num",
         hero: "str",

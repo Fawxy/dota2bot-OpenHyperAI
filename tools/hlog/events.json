@@ -167,6 +167,14 @@
    "p3t": "bool",
    "p3a": "num"
   },
+  "own_creep_death": {
+   "team": "num",
+   "kind": "str",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed"
+  },
   "player": {
    "pid": "num",
    "hero": "str",
@@ -818,6 +826,9 @@
   "ev_creep_death": {
    "kind": "text",
    "bm": "text"
+  },
+  "ev_own_creep_death": {
+   "kind": "text"
   },
   "ev_player": {
    "hero": "text"

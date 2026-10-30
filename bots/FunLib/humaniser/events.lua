@@ -160,6 +160,14 @@ ____exports.EVENTS = {
         p3t = "bool",
         p3a = "num"
     },
+    own_creep_death = {
+        team = "num",
+        kind = "str",
+        x = "num",
+        y = "num",
+        hp = "num",
+        by = "mixed"
+    },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
     game_end = {pid = "num", radiantAncient = "bool", direAncient = "bool"},
