@@ -1,0 +1,22 @@
+id: lane.lasthit.roam-cancels-swing.001
+source: log
+ref: {log: "~/.dotactl/logs/2026-10-29T00-31-45-s3_A_on_1.log", t: 336.133, note: "s3 ON: pos5 jakiro took a creep luna (pos1) was attacking; slice 3's fix cancels the swing in laning and team_roam"}
+status: active
+decision: team_roam
+control: {commit: f5be4cb, outcome: fail}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  ours: true
+  # The support is already swinging at a creep its core can take, and team_roam is the mode running.
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50, target: 1}
+  creeps: [{id: 1, team: enemy, hp: 300, x: 100, y: 0}]
+  allies: [{id: 2, pos: 1, x: 250, y: 0, range: 150}]
+expect:
+  must: ["hold"]
+  mustNot: ["lastHit(creep#1)"]
+notes: >
+  team_roam's Think cancels the swing with a move order at the bot's spot (Etiquette.LeavesTarget) before its own last
+  hit. Before slice 3's fix (control, f5be4cb) team_roam had no cancel and Think issued nothing in this world, so the
+  swing went on. Review 2026-10-29 slice 3, finding 8 (ROADMAP debt cause: fixture-gap). Positive control for the
+  hold: lane.lasthit.roam-keeps-swing-off.001.

@@ -1,0 +1,18 @@
+id: lane.lasthit.roam-keeps-swing-off.001
+source: log
+ref: {log: "~/.dotactl/logs/2026-10-29T00-31-45-s3_A_on_1.log", t: 336.133, note: "the same world with Ours.LeaveCoreCreep off (the OFF arm)"}
+status: active
+decision: team_roam
+control: {commit: f5be4cb, outcome: pass}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 120
+  ours: false
+  bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50, target: 1}
+  creeps: [{id: 1, team: enemy, hp: 300, x: 100, y: 0}]
+  allies: [{id: 2, pos: 1, x: 250, y: 0, range: 150}]
+expect:
+  mustNot: ["hold"]
+notes: >
+  Guard for the OFF arm: with the switch off team_roam's Think leaves the swing alone, as before slice 3. Also the
+  sibling that shows lane.lasthit.roam-cancels-swing.001's hold comes from the switch, not from the world.
