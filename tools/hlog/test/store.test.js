@@ -235,6 +235,23 @@ test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, e
     assert.strictEqual(rows.filter(r => r.side === 'own' && r.team === 3).length, 3, 'the other team\'s own deaths are rows too');
 });
 
+test('creep_share: taken over (enemy creeps less enemy denies plus own creeps) per team, first 10:00 only', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    const D = (t, team, x, by) => `[HEV] t=${t} ev=creep_death team=${team} kind=melee x=${x} y=100 hp=0.2 by=${by}`;
+    const O = (t, team, x, by) => `[HEV] t=${t} ev=own_creep_death team=${team} kind=melee x=${x} y=100 hp=0.2 by=${by}`;
+    s.ingest(log(dir, 'a.log', [BOT,
+        D(100, 2, 100, 1),     // taken: our last hit
+        D(110, 2, 200, 'none'), // an enemy deny (below): out of the denominator
+        O(110.2, 3, 250, 7),
+        D(120, 2, 300, 'none'), // tower or creep kill: a miss
+        O(150, 2, 0, 1),       // taken: our deny of our own creep
+        O(160, 2, 0, 'none'),   // lost: a miss
+        D(700, 2, 400, 1)]));   // after 10:00: left out
+    const r = s.query('SELECT team, taken, den, share FROM creep_share WHERE team = 2')[0];
+    assert.deepStrictEqual([r.taken, r.den, r.share], [2, 4, 0.5]);
+});
+
 test('creep_fate: by=deny reads enemy_deny, and a log without own_creep_death reads enemy denies as other', () => {
     const dir = tmp();
     const s = new Store(':memory:');
