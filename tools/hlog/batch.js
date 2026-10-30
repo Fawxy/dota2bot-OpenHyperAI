@@ -8,7 +8,12 @@
 //     "arms": { "on":  { "set": [], "states": true },             arm order rotates by one each rep
 //               "off": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false"], "states": false } },
 //     "until": "20:00", "timescale": 8, "mode": "bots", "args": [],   args: extra dotactl run arguments
-//     "validUntil": 600, "note": "..." }                          optional, copied into the bank entries
+//     "validUntil": 600, "note": "...",                           optional, copied into the bank entries
+//     "er": "tools/hlog/bars/er-ER-nnn.json", "look": 9, "n": 5 }   optional: stop when decided (below)
+//
+// Stop when decided (GOVERNANCE.md s5): with `er` (an ER spec, relative to this repo's root unless absolute) the batch judges
+// the spec's bars after each game (decide.js; `look` = games per arm at the interim look, `n` = games per seed for the
+// MDE, default 5) and stops once no remaining game can change a bar, printing `decide: <reason>` after every game.
 //
 // Remote (dotactl serve on another machine, REQUESTS D7): "remote": true reads { host, token, client } from
 //   ~/.dotactl/remote-client.json; each arm names a pushed commit instead of --set (remote jobs take none):
@@ -31,6 +36,7 @@ const { spawnSync } = require('child_process');
 const { readManifest } = require('./manifest');
 const { checkGame, SEEDS } = require('./lineup_check');
 const bank = require('./bank');
+const { decide } = require('./decide');
 
 const MASTER = path.resolve(__dirname, '../../../..');
 const BATCHES = path.join(os.homedir(), '.dotactl', 'batches');
@@ -119,6 +125,19 @@ async function runRemote(cfg, spec, game, { poll = 30000, maxBadPolls = 20, fetc
     return { ok: true, log, out };
 }
 
+/** decide.js on the manifest so far: the ER spec's bars on the valid games, against the look and the maximum N. */
+function judge(spec, manifest, games) {
+    const { loadGames, validGames, barResults } = require('./er');
+    const { noiseTable } = require('./nf');
+    const er = JSON.parse(fs.readFileSync(path.isAbsolute(spec.er) ? spec.er : path.resolve(__dirname, '../..', spec.er), 'utf8'));
+    const all = loadGames(manifest);
+    const { used } = validGames(all, er);
+    const count = arm => all.filter(g => g.arm === arm).length;
+    const table = used.some(g => g.arm === 'on') && used.some(g => g.arm === 'off') ? noiseTable(used, spec.n || 5) : undefined;
+    const max = games.filter(g => g.arm === 'on').length;
+    return decide(barResults(er, used, table), { on: count('on'), off: count('off'), look: spec.look, max });
+}
+
 function manifestLine(status, game, extra) {
     return `status=${status} label="${game.label}" seed=${game.seed} arm=${game.arm} lineup=${game.lineup} ${extra}`;
 }
@@ -155,8 +174,17 @@ async function main(argv) {
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '');
     const done = () => new Set(readManifest(manifest).map(g => g.label));
     let built = false;
+    const decided = () => {
+        const ok = readManifest(manifest);
+        if (!spec.er || !ok.some(g => g.arm === 'on') || !ok.some(g => g.arm === 'off')) return false;
+        const d = judge(spec, manifest, games);
+        console.log(`decide: ${d.reason}`);
+        return d.stop;
+    };
     for (const game of games) {
         if (done().has(game.label)) continue;
+        // On resume and after every game; a look is only checked when the arms are level, so mid-pair it never stops.
+        if (decided()) break;
         for (let attempt = 1; ; attempt++) {
             if (cfg) {
                 const rr = await runRemote(cfg, spec, game);
@@ -212,4 +240,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
-module.exports = { plan, runArgs, seconds, remoteJob, runRemote };
+module.exports = { plan, runArgs, seconds, remoteJob, runRemote, judge };
