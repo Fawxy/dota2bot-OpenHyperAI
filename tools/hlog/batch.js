@@ -125,17 +125,35 @@ async function runRemote(cfg, spec, game, { poll = 30000, maxBadPolls = 20, fetc
     return { ok: true, log, out };
 }
 
+const erPath = spec => (path.isAbsolute(spec.er) ? spec.er : path.resolve(__dirname, '../..', spec.er));
+
 /** decide.js on the manifest so far: the ER spec's bars on the valid games, against the look and the maximum N. */
 function judge(spec, manifest, games) {
     const { loadGames, validGames, barResults } = require('./er');
     const { noiseTable } = require('./nf');
-    const er = JSON.parse(fs.readFileSync(path.isAbsolute(spec.er) ? spec.er : path.resolve(__dirname, '../..', spec.er), 'utf8'));
+    const er = JSON.parse(fs.readFileSync(erPath(spec), 'utf8'));
     const all = loadGames(manifest);
     const { used } = validGames(all, er);
     const count = arm => all.filter(g => g.arm === arm).length;
     const table = used.some(g => g.arm === 'on') && used.some(g => g.arm === 'off') ? noiseTable(used, spec.n || 5) : undefined;
     const max = games.filter(g => g.arm === 'on').length;
     return decide(barResults(er, used, table), { on: count('on'), off: count('off'), look: spec.look, max });
+}
+
+/**
+ * Whether the batch stops before its next game. Judged once both arms have a game; an error while judging is printed and the
+ * batch goes on, since judging must never be what stops a batch (review 2026-10-30 eval-cost cc9740e M2).
+ */
+function decided(spec, manifest, games, judgeFn = judge) {
+    const ok = readManifest(manifest);
+    if (!spec.er || !ok.some(g => g.arm === 'on') || !ok.some(g => g.arm === 'off')) return false;
+    let d;
+    try { d = judgeFn(spec, manifest, games); } catch (e) {
+        console.log(`decide: error ${e.message}; going on`);
+        return false;
+    }
+    console.log(`decide: ${d.reason}`);
+    return d.stop;
 }
 
 function manifestLine(status, game, extra) {
@@ -152,6 +170,13 @@ async function main(argv) {
     for (const k of ['name', spec.remote ? 'arms' : 'worktree', 'build', 'lineups', 'arms', 'until']) {
         if (spec[k] === undefined) {
             console.error(`spec lacks ${k}`);
+            process.exit(2);
+        }
+    }
+    if (spec.er !== undefined) {
+        // A wrong ER spec path would otherwise surface only after the first pair of games.
+        try { JSON.parse(fs.readFileSync(erPath(spec), 'utf8')); } catch (e) {
+            console.error(`spec er: ${erPath(spec)} is missing or not JSON (relative to the bot repo root)`);
             process.exit(2);
         }
     }
@@ -174,17 +199,10 @@ async function main(argv) {
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '');
     const done = () => new Set(readManifest(manifest).map(g => g.label));
     let built = false;
-    const decided = () => {
-        const ok = readManifest(manifest);
-        if (!spec.er || !ok.some(g => g.arm === 'on') || !ok.some(g => g.arm === 'off')) return false;
-        const d = judge(spec, manifest, games);
-        console.log(`decide: ${d.reason}`);
-        return d.stop;
-    };
     for (const game of games) {
         if (done().has(game.label)) continue;
         // On resume and after every game; a look is only checked when the arms are level, so mid-pair it never stops.
-        if (decided()) break;
+        if (decided(spec, manifest, games)) break;
         for (let attempt = 1; ; attempt++) {
             if (cfg) {
                 const rr = await runRemote(cfg, spec, game);
@@ -240,4 +258,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
-module.exports = { plan, runArgs, seconds, remoteJob, runRemote, judge };
+module.exports = { plan, runArgs, seconds, remoteJob, runRemote, judge, decided };

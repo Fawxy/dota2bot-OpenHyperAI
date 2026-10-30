@@ -131,8 +131,10 @@ function bar(b, games, table) {
         const sel = games.filter(g => (b.arms || ['on']).includes(g.arm));
         const num = sel.reduce((s, g) => s + (val(g, b.num) || 0), 0);
         const den = sel.reduce((s, g) => s + (val(g, b.den) || 0), 0);
-        if (den < (b.minDen || 1)) return { value: `${num}/${den} (under ${b.minDen || 1})`, result: 'not met', num, den };
-        return { value: `${num}/${den} = ${f1((100 * num) / den)}%`, result: num / den >= b.min ? 'met' : 'not met', num, den };
+        // The largest den one game added, so decide.js can tell when the slice file's cap does not hold.
+        const maxDen = sel.reduce((m, g) => Math.max(m, val(g, b.den) || 0), 0);
+        if (den < (b.minDen || 1)) return { value: `${num}/${den} (under ${b.minDen || 1})`, result: 'not met', num, den, maxDen };
+        return { value: `${num}/${den} = ${f1((100 * num) / den)}%`, result: num / den >= b.min ? 'met' : 'not met', num, den, maxDen };
     }
     if (b.rule === 'mean') {
         const m = arm => stats(games.filter(g => g.arm === arm).map(g => val(g, b.metric))).mean;
