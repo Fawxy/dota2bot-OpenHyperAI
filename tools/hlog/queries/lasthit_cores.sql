@@ -3,7 +3,7 @@
 -- core was doing when it did not. Params: file (absolute log path, as in games.file), game (default 1), until (s, default 600).
 -- `lane` is the core's modal lane over 1:00 to `until` (snaps while alive, base and other ignored); a death is in the lane when
 -- its place is nearest that lane's polyline (within 1100 units; base = within 1800 of an ancient or 1200 of a fountain).
--- Killer: core_lh (the core's own), enemy_deny, creep_or_tower (`none` or unset), else ally_lh. When the core did not get it,
+-- Killer: core_lh (the core's own), enemy_deny (by=deny, or paired to the other team's own_creep_death by the creep_fate view; logs from before 406ee95 have none, so those read creep_or_tower), creep_or_tower (`none` or unset), else ally_lh. When the core did not get it,
 -- late = its swing began under 0.6 s before the death (or a target was held), early = longer, idle_in_range = within attack range
 -- + 300 and not attacking, away = further. lh = the core's last-hit counter at `until`; attributed = deaths credited to it.
 -- Constants in this SQL (no other copy to keep equal except these): near 1000, late/early 0.6 s, reach 300, default attack range 150
@@ -11,6 +11,7 @@
 -- (radius 1100, base radii 1800/1200, ancient and fountain positions, from dynamic.js) is the fragment lane_label.
 -- `+game_id` in gm: the ev_ game_id columns have no declared type and a subquery value has INTEGER affinity, so a plain comparison cannot use the game_id index; a unary plus on the value lets it.
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
+-- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_snap(pid, x, y, alive, lh)
 -- ensure: ev_bot(pid, team, pos)
 WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
@@ -21,10 +22,11 @@ cores AS (
       AND EXISTS (SELECT 1 FROM ev_snap s WHERE s.game_id = l.game_id AND s.pid = l.pid AND s.x IS NOT NULL)
 ),
 deaths AS (
-    SELECT seq, team, x, y, "by" AS killer,
-        p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a
-    FROM ev_creep_death
-    WHERE game_id = (SELECT game_id FROM gm) AND t < coalesce(:until, 600)
+    SELECT c.seq, c.team, c.x, c.y, CASE WHEN f.fate = 'enemy_deny' THEN 'deny' ELSE c."by" END AS killer,
+        c.p1d, c.p1r, c.p1t, c.p1a, c.p2d, c.p2r, c.p2t, c.p2a, c.p3d, c.p3r, c.p3t, c.p3a
+    FROM ev_creep_death c
+    LEFT JOIN creep_fate f ON f.game_id = c.game_id AND f.seq = c.seq AND f.side = 'enemy'
+    WHERE c.game_id = (SELECT game_id FROM gm) AND c.t < coalesce(:until, 600)
 ),
 pts AS (
     SELECT 'snap' AS kind, s.pid AS k, s.seq, s.t, s.x, s.y
