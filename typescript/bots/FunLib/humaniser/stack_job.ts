@@ -157,6 +157,8 @@ export interface Attempt {
      *  walk-off dragged a wave into the camp, a partial pull (user watching s4solo7ab: evil_1's north-west route pulled the
      *  top lane twice; nothing in the log showed it). */
     lane?: number;
+    /** OHA idle relocations the job held while it ran (`HoldsIdle`). */
+    idle?: number;
 }
 
 const handled: Record<number, Record<number, boolean>> = {};
@@ -520,6 +522,7 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["n2", a.n2 ?? "?"],
         ["n59", a.n59 ?? "?"],
         ["lane", a.aggro !== undefined ? a.lane ?? 0 : "?"],
+        ["idle", a.idle ?? 0],
     ]);
 }
 
@@ -638,6 +641,20 @@ export function HoldsCasts(bot: Unit): boolean {
     if (Benched(bot)) return true;
     if (running[bot.GetPlayerID()] === undefined) return false;
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
+}
+
+/**
+ * jmz_func CheckBotIdleState (called from team_roam's GetDesire whatever mode is active): a bot in farm mode that moved
+ * under 100 in 3 s gets ClearActions and an attack-move to its lane front. A stack job stands still at its stand point by
+ * design, and when the check fell inside the 2 s after the hit order it replaced the attack: all 4 slice 4 `no-aggro` misses
+ * (attack-move from the order to the miss, s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55). True while the job
+ * runs, counted on the attempt.
+ */
+export function HoldsIdle(bot: Unit): boolean {
+    const a = running[bot.GetPlayerID()];
+    if (a === undefined) return false;
+    a.idle = (a.idle ?? 0) + 1;
+    return true;
 }
 
 /** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */

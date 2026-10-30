@@ -113,7 +113,7 @@ do
 	check("switch off: keep", E.LeavesTarget(bot) == false)
 end
 
--- Hooks (source pins: mode_team_roam_generic has no test world). With the switch on, the support's team_roam last hit is
+-- Hooks (source pins; team_roam's cancel also has behavioural fixtures, tests/fixtures/laning/f9-roam-*.yaml). With the switch on, the support's team_roam last hit is
 -- gated by the predicate alone; off, OHA's 800-radius exit and the humaniser's AllyLastHit check stay.
 do
 	local function source(rel) return io.open(BOTS_ROOT .. '/' .. rel, 'r'):read('a') end
@@ -126,7 +126,7 @@ do
 	check('laning: cancels a swing on a core creep first in Think', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end'))
 	check('laning: predicate is the filter', has(laning, 'if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end'))
 	local general = source('bots/Customize/general.lua')
-	check('Customize: Ours block on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = true }'))
+	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = false }'))
 end
 
 finish()

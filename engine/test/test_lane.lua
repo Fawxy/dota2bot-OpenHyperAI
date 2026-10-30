@@ -130,6 +130,38 @@ do
     T.check("leash: walking back to the spot", bot.loc.x < 400)
 end
 
+-- `retarget`: an attempt whose creep loses its attackers (no longer offered) is dropped for the creep `pick` chooses
+-- next; without it the attempt waits out its maxWait while that creep becomes due elsewhere.
+local function stall(retarget)
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(7), skill = function() return 1 end, attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+    local a = sim:addCreep{ x = 100, y = 0, hp = 81, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    local b = sim:addCreep{ x = 100, y = 60, hp = 200, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    local first = sim:addCreep{ x = 0, y = 200, team = 2, damage = 21, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+        firstSwingAt = 0, attackTarget = a, passive = true }
+    for i = 1, 3 do
+        sim:addCreep{ x = 0, y = 200 + i * 30, team = 2, damage = 21, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+            firstSwingAt = 0.2 * i, attackTarget = b, passive = true }
+    end
+    sim:at(0.6, function() first.attackTarget = b end)
+    local attempts = {}
+    local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { pick = soonest, retarget = retarget,
+        onAttempt = function(t, r) attempts[#attempts + 1] = { creep = t.creep, reason = r.reason, msg = r.message } end })
+    for _ = 1, math.floor(4 / DT) do g:next() sim:step(DT) end
+    return attempts, a, b, bot
+end
+do
+    local attempts, a, b, bot = stall(true)
+    T.eq("retarget: first attempt on the stalled creep", attempts[1] and attempts[1].creep, a)
+    T.eq("retarget: dropped as interrupted", attempts[1] and attempts[1].reason, "interrupted")
+    T.check("retarget: marked sw=1 (" .. tostring(attempts[1] and attempts[1].msg) .. ")", attempts[1] ~= nil and attempts[1].msg:find("sw=1") ~= nil)
+    T.eq("retarget: next attempt on the creep now due", attempts[2] and attempts[2].creep, b)
+    T.eq("retarget: and it lands", attempts[2] and attempts[2].reason, "ok")
+    local off = stall(false)
+    T.eq("no retarget: the stalled attempt waits out its maxWait", off[1] and off[1].reason, "timeout")
+end
+
 -- Death ends it; interruptIf ends it.
 do
     local sim, bot = wave(3)

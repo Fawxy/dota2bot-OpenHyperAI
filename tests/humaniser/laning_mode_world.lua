@@ -1,5 +1,6 @@
--- Stub world for bots/mode_laning_generic.lua GetDesire and Think: a stub bot, creeps, allied heroes and a stub humaniser.
--- Shared by test_laning_mode.lua and the laning_mode fixture driver. Not a test_ file, so run.js skips it.
+-- Stub world for bots/mode_laning_generic.lua GetDesire and Think (or another mode file's Think, opts.modeFile): a stub
+-- bot, creeps, allied heroes and a stub humaniser. Shared by test_laning_mode.lua and the laning_mode and team_roam
+-- fixture drivers. Not a test_ file, so run.js skips it.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 BOT_MODE_LANING, BOT_MODE_NONE = 1, 0
@@ -44,7 +45,8 @@ function LaningHero(o)
 	return h
 end
 
--- opts: pos, owned (Lane owns laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg.
+-- opts: pos, owned (Lane owns laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg,
+-- modeFile (default bots/mode_laning_generic.lua).
 function LaningLoad(opts)
 	DotaTime = function() return opts.t or 120 end
 	GameTime = DotaTime
@@ -110,6 +112,8 @@ function LaningLoad(opts)
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
 		Etiquette = Etiquette,
+		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
+		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
 		States = { MayOwn = function() return false end, SetLaneSpot = function() end, Step = function() return false end, BodyLastHits = function() return false end, BodyBusy = function() return false end },
 	}
@@ -142,8 +146,17 @@ function LaningLoad(opts)
 	package.loaded["bots/FunLib/jmz_func"] = J
 	package.loaded["bots/FunLib/version"] = {}
 	package.loaded["bots/FunLib/localization"] = {}
+	-- Modules only team_roam loads; its Think never reaches them in these worlds.
+	for _, m in ipairs({ "bots/FunLib/enemy_role_estimation", "bots/Customize/general", "bots/FunLib/aba_item", "bots/FunLib/aba_role" }) do
+		package.loaded[m] = package.loaded[m] or {}
+	end
 	Think = nil
-	dofile((BOTS_ROOT or (HARNESS_DIR .. "/../..")) .. "/bots/mode_laning_generic.lua")
+	-- team_roam also dofiles aba_special_units (by an extensionless path the bot VM resolves); its Think does not run here.
+	local realDofile = dofile
+	dofile = function(p) if p == "bots/FunLib/aba_special_units" then return { Think = function() end } end return realDofile(p) end
+	local ok, err = pcall(realDofile, (BOTS_ROOT or (HARNESS_DIR .. "/../..")) .. "/" .. (opts.modeFile or "bots/mode_laning_generic.lua"))
+	dofile = realDofile
+	if not ok then error(err, 0) end
 	PickOneAnnouncer, AnnounceMessages = function() end, function() end
 	return bot, attempts
 end

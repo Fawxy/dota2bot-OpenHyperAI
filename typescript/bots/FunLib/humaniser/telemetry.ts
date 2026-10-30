@@ -16,6 +16,7 @@ import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
@@ -312,6 +313,16 @@ function heroName(unit: Unit): string {
     return string.gsub(unit.GetUnitName(), "npc_dota_hero_", "")[0];
 }
 
+/** Called from jmz_func CheckBotIdleState as it would relocate an idle bot; held when our job kept it (both arms). */
+export function NoteOhaIdle(bot: Unit, held: boolean): void {
+    if (!IsEnabled()) return;
+    Event("oha_idle", [
+        ["pid", bot.GetPlayerID()],
+        ["mode", bot.GetActiveMode()],
+        ["held", held ? 1 : 0],
+    ]);
+}
+
 /** Called from AllyLastHit.MayLastHit for every enemy creep it judges. */
 export function NoteLastHitDecision(bot: Unit, creep: Unit, allowed: boolean, reason: string): void {
     if (!IsEnabled()) return;
@@ -425,6 +436,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["d", bot.GetActiveModeDesire()]);
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
     fields.push(["gold", bot.GetGold()]);
+    fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);

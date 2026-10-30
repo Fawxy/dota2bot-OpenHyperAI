@@ -30,3 +30,67 @@ export function Choose(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.L
     }
     return best;
 }
+
+/**
+ * What the laning body last did about last hits, per player, for the snapshot's `lf` field (slice 5, missed-bar step 1:
+ * creeps dying in the core's range with no attempt near them had no cause in the log). Telemetry only.
+ */
+interface Scan {
+    /** The body's phase label (walk, hold, lasthit, deny). */
+    ph?: string;
+    /** When the body last asked whether it may last-hit, and its distance to the spot then. */
+    scanAt?: number;
+    aw?: number;
+    /** When it last chose among offered creeps: how many were offered, skipped as unreachable, and whether one was chosen. */
+    pickAt?: number;
+    n?: number;
+    sk?: number;
+    ch?: boolean;
+}
+const scans: Record<number, Scan> = {};
+
+function scanOf(pid: number): Scan {
+    let s = scans[pid];
+    if (s === undefined) {
+        s = {};
+        scans[pid] = s;
+    }
+    return s;
+}
+
+export function NotePhase(pid: number, ph: string): void {
+    scanOf(pid).ph = ph;
+}
+
+export function NoteScan(pid: number, now: number, aw: number | undefined): void {
+    const s = scanOf(pid);
+    s.scanAt = now;
+    s.aw = aw;
+}
+
+export function NotePick(pid: number, now: number, targets: Lib.Verbs.LaneTarget[], chosen: Lib.Verbs.LaneTarget | undefined): void {
+    const s = scanOf(pid);
+    s.pickAt = now;
+    s.n = targets.length;
+    let sk = 0;
+    for (const t of targets) if (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies) sk++;
+    s.sk = sk;
+    s.ch = chosen !== undefined;
+}
+
+/** `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. */
+export function Describe(pid: number, now: number): string | undefined {
+    const s = scans[pid];
+    if (s === undefined) return undefined;
+    const age = (t: number | undefined): string => (t === undefined ? "-" : string.format("%.1f", now - t));
+    return string.format(
+        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s",
+        s.ph ?? "-",
+        age(s.scanAt),
+        s.aw === undefined ? "-" : tostring(math.floor(s.aw)),
+        age(s.pickAt),
+        tostring(s.n ?? "-"),
+        tostring(s.sk ?? "-"),
+        s.ch === undefined ? "-" : s.ch ? "1" : "0",
+    );
+}

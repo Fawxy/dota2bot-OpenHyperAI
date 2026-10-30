@@ -46,6 +46,10 @@ function flatten(m) {
         stack_clean: m.stacks.filter(s => s.res !== 'skip' && !stackInterrupted(s)).length,
         stack_interrupted: m.stacks.filter(s => s.res !== 'skip' && stackInterrupted(s)).length,
         stack_deaths: m.stacks.filter(s => s.death).length,
+        // Slice stack-hit: hit orders never confirmed (OHA's idle relocation replaced the attack in slice 4's four), and the
+        // relocations the job held (ev=stack idle; NULL on older builds).
+        stack_noaggro: m.stacks.filter(stackNoAggro).length,
+        stack_idle_held: m.stacks.reduce((n, s) => n + (Number(s.idle) || 0), 0),
         stack_away_max: Math.max(0, ...m.stacks.filter(s => s.res !== 'skip').map(s => s.away)),
         stack_skips: m.stacks.filter(s => s.res === 'skip').length,
         idle_10s: m.idle_10s,
@@ -244,6 +248,11 @@ function coreLane(store, file, gameNo) {
     return out;
 }
 
+/** A started job whose hit order was never confirmed (the stack verb's `mistake:no-aggro`). */
+function stackNoAggro(s) {
+    return s.res !== 'skip' && String(s.why ?? '').endsWith(':mistake:no-aggro');
+}
+
 /** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
 function nfGame(g, game, store) {
     const m = dynamicMetrics(store, path.resolve(g.log), game.index, game);
@@ -314,4 +323,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, stratified, nfGame, noiseTable, storeFor, stackInterrupted };
+module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, stratified, nfGame, noiseTable, storeFor, stackInterrupted, stackNoAggro };

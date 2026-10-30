@@ -410,34 +410,51 @@ test('auditedSteals: a support last hit counts when a logged core was attacking 
     assert.strictEqual(D.auditedSteals({ events }, S, {}, 600), undefined, 'no lineup positions: undefined');
 });
 
+/** stackAttempts of a log holding only the given ev=stack lines, through the log store. */
+function stackOf(events, until) {
+    const { store, file } = stored(game([], events.map(e => ({ ev: 'stack', ...e }))));
+    try {
+        return D.stackAttempts(store, file, 1, until);
+    } finally {
+        store.db.close();
+    }
+}
+
 test('stackAttempts: one entry per ev=stack line before until; empty without any', () => {
-    const line = (t, f) => ({ ev: 'stack', t, pid: 4, min: 3, ...f });
+    const line = (t, f) => ({ t, pid: 4, min: 3, ...f });
     const events = [
         line(242, { res: 'stacked', why: 'ok', camp: 15, type: 'small', aggro: 55.4, before: 3, after: 6, away: 12.8, death: 0 }),
         line(300, { min: 5, res: 'skip', why: 'enemy-near' }),
         line(480, { min: 7, res: 'failed', why: 'dead', away: 9, death: 1 }),
     ];
-    const a = D.stackAttempts({ events }, 400);
+    const a = stackOf(events, 400);
     assert.deepStrictEqual(a.map(x => x.res), ['stacked', 'skip']);
-    assert.strictEqual(a[0].death, false);
-    assert.strictEqual(D.stackAttempts({ events }, 600)[2].death, true);
-    assert.deepStrictEqual(D.stackAttempts({ events: [] }, 600), []);
+    assert.deepStrictEqual([a[0].death, a[1].death], [false, false], 'a skip line has no death field: false, as before');
+    assert.deepStrictEqual([a[0].camp, a[0].aggro, a[0].type, a[0].hitd], [15, 55.4, 'small', undefined]);
+    assert.strictEqual(stackOf(events)[2].death, true, 'no until: every line');
+    assert.strictEqual(stackOf(events, 480).length, 2, 'until is exclusive');
+    const { store, file } = stored(game([bot(0, 2, () => ({ p: MID }), 0, 20)]));
+    try {
+        assert.deepStrictEqual(D.stackAttempts(store, file, 1, 600), [], 'a game without ev=stack (no ev_stack table at all)');
+    } finally {
+        store.db.close();
+    }
 });
 
 test('stackAttempts: cause of a not-stacked attempt from the :59.5 sample', () => {
-    const ns = f => ({ ev: 'stack', t: 245, pid: 4, min: 3, res: 'not_stacked', why: 'ok', before: 3, ...f });
-    const cause = f => D.stackAttempts({ events: [ns(f)] }, 600)[0].cause;
+    const ns = f => ({ t: 245, pid: 4, min: 3, res: 'not_stacked', why: 'ok', before: 3, ...f });
+    const cause = f => stackOf([ns(f)], 600)[0].cause;
     assert.strictEqual(cause({ box59: 0, bot59: 1, vis59: 1, after: 3 }), 'bot-in-box');
     assert.strictEqual(cause({ box59: 2, bot59: 0, vis59: 1, after: 3 }), 'camp-in-box');
     assert.strictEqual(cause({ box59: 0, bot59: 0, vis59: 0, after: '?' }), 'unseen');
     assert.strictEqual(cause({ box59: 0, bot59: 0, vis59: 1, after: 2 }), 'no-spawn');
     assert.strictEqual(cause({ box59: '?', after: 3 }), undefined);
-    assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'failed', why: 'dead' })] }, 600)[0].cause, 'dead');
-    assert.strictEqual(D.stackAttempts({ events: [ns({ res: 'stacked', box59: 0 })] }, 600)[0].cause, undefined);
+    assert.strictEqual(stackOf([ns({ res: 'failed', why: 'dead' })], 600)[0].cause, 'dead');
+    assert.strictEqual(stackOf([ns({ res: 'stacked', box59: 0 })], 600)[0].cause, undefined);
 });
 
 test('stackAttempts: left59 names the camp neutrals still in the box at :59.5 (user replay s4solo1)', () => {
-    const left = n59 => D.stackAttempts({ events: [{ ev: 'stack', t: 245, pid: 2, min: 3, res: 'not_stacked', why: 'ok', n59 }] }, 600)[0].left59;
+    const left = n59 => stackOf([{ t: 245, pid: 2, min: 3, res: 'not_stacked', why: 'ok', ...(n59 === undefined ? {} : { n59 }) }], 600)[0].left59;
     assert.strictEqual(left('satyr_hellcaller:120:in:-,satyr_soulstealer:900:out:a,dead'), 'satyr_hellcaller:-');
     assert.strictEqual(left('ogre_mauler:900:out:a,ogre_magi:?'), '-');
     assert.strictEqual(left('?'), undefined);
@@ -445,7 +462,13 @@ test('stackAttempts: left59 names the camp neutrals still in the box at :59.5 (u
 });
 
 test('stackAttempts: lane carries the lane creeps near the camp after the hit (user, s4solo7ab: a pull)', () => {
-    const one = e => D.stackAttempts({ events: [{ ev: 'stack', t: 245, pid: 2, min: 3, res: 'stacked', why: 'ok', ...e }] }, 600)[0].lane;
+    const one = e => stackOf([{ t: 245, pid: 2, min: 3, res: 'stacked', why: 'ok', ...e }], 600)[0].lane;
     assert.strictEqual(one({ lane: 4 }), 4);
+    assert.strictEqual(one({}), undefined);
+});
+
+test('stackAttempts: idle carries the OHA idle relocations the job held (slice stack-hit; ER-007 read 0 without it)', () => {
+    const one = e => stackOf([{ t: 245, pid: 2, min: 3, res: 'stacked', why: 'ok', ...e }], 600)[0].idle;
+    assert.strictEqual(one({ idle: 3 }), 3);
     assert.strictEqual(one({}), undefined);
 });

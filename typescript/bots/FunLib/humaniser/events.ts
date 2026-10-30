@@ -30,6 +30,8 @@ export const BOT = {
     d: "num",
     act: "num",
     gold: "num",
+    /** Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers. */
+    lf: "str",
     by: "str",
     order: "str",
 } as const;
@@ -210,6 +212,11 @@ export const EVENTS = {
         window: "num",
         mode: "str",
         competing: "str",
+    },
+    oha_idle: {
+        pid: "num",
+        mode: "num",
+        held: "num",
     },
     stuck: {
         pid: "num",
@@ -461,6 +468,7 @@ export const EVENTS = {
         n2: "str",
         n59: "str",
         lane: "mixed",
+        idle: "num",
     },
     lane_job_supply: {
         pid: "num",

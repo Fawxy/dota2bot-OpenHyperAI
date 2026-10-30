@@ -228,12 +228,37 @@ local body = __TS__Generator(function(bot, ctx)
         function() return ____exports.Spot(bot) end,
         {
             hold = hold,
-            lastHits = function() return ____exports.OwnsLastHit(bot) end,
+            lastHits = function()
+                local spot = ____exports.Spot(bot)
+                LanePick.NoteScan(
+                    bot:GetPlayerID(),
+                    DotaTime(),
+                    spot ~= nil and GetUnitToLocationDistance(bot, spot) or nil
+                )
+                return ____exports.OwnsLastHit(bot)
+            end,
             within = ____exports.Settings().LastHitWithin,
-            pick = LanePick.Choose,
+            pick = function(targets)
+                local chosen = LanePick.Choose(targets)
+                LanePick.NotePick(
+                    bot:GetPlayerID(),
+                    DotaTime(),
+                    targets,
+                    chosen
+                )
+                return chosen
+            end,
+            label = function(l)
+                ctx.label(l)
+                LanePick.NotePhase(
+                    bot:GetPlayerID(),
+                    l
+                )
+            end,
             near = NEAR,
             far = FAR,
             leash = LEASH,
+            retarget = true,
             onAttempt = function(t, res, contested) return Telemetry.Event(
                 "lh",
                 {

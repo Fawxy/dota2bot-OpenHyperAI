@@ -1,27 +1,17 @@
 {
  "schema": "er-spec/1",
- "build": "1eadc79",
- "until": "10:00",
+ "build": "a75fb4a",
+ "until": "11:00",
  "arms": {
-  "on": { "branch": "remote/lion/s5-on-1eadc79", "sha": "aca8b6a6ae1604abedbe024bfa3ad18f878af2cc", "build": "1eadc79", "states": true,
-          "ours": { "CoreLastHit": true, "LeaveCoreCreep": true, "StackExecute": true } },
-  "off": { "branch": "remote/lion/s5-off-d3508d9", "sha": "049bc25096ab46d9076761d67d32294dd0fa8d9e", "build": "d3508d9+dirty", "states": true,
-           "ours": { "CoreLastHit": false, "LeaveCoreCreep": true, "StackExecute": true } }
+  "on": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false", "Ours.LeaveCoreCreep=false"], "states": false },
+  "off": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false", "Ours.LeaveCoreCreep=false", "Ours.StackExecute=false"], "states": false }
  },
  "bars": [
-  { "id": "B1 Radiant conversion pos1 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos1_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
-  { "id": "B2 Radiant conversion pos2 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos2_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
-  { "id": "B3 Radiant conversion pos3 vs OHA (lo > 0, 97.5% CI)", "metric": "conv_lpos3_r", "rule": "delta", "alpha": 0.025, "met": { "lo": { "gt": 0 } } },
-  { "id": "guard lh@10 pos1 (delta >= -MDE)", "metric": "lh_at_10_lpos1", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard lh@10 pos2 (delta >= -MDE)", "metric": "lh_at_10_lpos2", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard lh@10 pos3 (delta >= -MDE)", "metric": "lh_at_10_lpos3", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard deaths before 10:00 (delta <= 3.1, NF-001)", "metric": "deaths_before_10", "rule": "delta", "met": { "delta": { "le": 3.1 } } },
-  { "id": "guard level pos1 (delta >= -MDE)", "metric": "lvl_at_10_lpos1", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard level pos2 (delta >= -MDE)", "metric": "lvl_at_10_lpos2", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard level pos3 (delta >= -MDE)", "metric": "lvl_at_10_lpos3", "rule": "delta", "met": { "delta": { "ge": "-mde" } } },
-  { "id": "guard HP lost to heroes pos1 (delta <= MDE)", "metric": "hph_at_10_lpos1", "rule": "delta", "met": { "delta": { "le": "mde" } } },
-  { "id": "guard HP lost to heroes pos2 (delta <= MDE)", "metric": "hph_at_10_lpos2", "rule": "delta", "met": { "delta": { "le": "mde" } } },
-  { "id": "guard HP lost to heroes pos3 (delta <= MDE)", "metric": "hph_at_10_lpos3", "rule": "delta", "met": { "delta": { "le": "mde" } } },
+  { "id": "no-aggro misses", "metric": "stack_noaggro", "rule": "each", "eq": 0 },
+  { "id": "S2a stacked per clean attempt (>= 80%, >= 10 clean; slice 4 Amendment 1)", "rule": "pooled", "num": "stack_stacked", "den": "stack_clean", "min": 0.8, "minDen": 10 },
+  { "id": "S2a deaths during the job", "metric": "stack_deaths", "rule": "each", "eq": 0 },
+  { "id": "S2a away <= 25 s", "metric": "stack_away_max", "rule": "each", "max": 25 },
+  { "id": "guard lh@10 pos1", "metric": "lh_at_10_lpos1", "rule": "delta", "met": { "delta": { "ge": -6.8 } } },
   { "id": "H1 lua_ours", "metric": "lua_ours", "rule": "each", "max": 0 },
   { "id": "H1 console", "metric": "console", "rule": "mean", "cmp": "on<=off" }
  ]

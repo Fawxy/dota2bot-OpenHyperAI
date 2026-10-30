@@ -39,6 +39,7 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     d = "num",
     act = "num",
     gold = "num",
+    lf = "str",
     by = "str",
     order = "str"
 })
@@ -171,6 +172,7 @@ ____exports.EVENTS = {
         mode = "str",
         competing = "str"
     },
+    oha_idle = {pid = "num", mode = "num", held = "num"},
     stuck = {
         pid = "num",
         mode = "str",
@@ -404,7 +406,8 @@ ____exports.EVENTS = {
         casts = "str",
         n2 = "str",
         n59 = "str",
-        lane = "mixed"
+        lane = "mixed",
+        idle = "num"
     },
     lane_job_supply = {
         pid = "num",

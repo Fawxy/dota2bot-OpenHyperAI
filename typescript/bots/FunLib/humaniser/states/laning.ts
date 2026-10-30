@@ -126,12 +126,25 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         : { tolerance: 100, repath: 1, jitter: 0.3, scatter: 50, hold: "state:laning" };
     return yield* ctx.laneFarm(() => Spot(bot) as unknown as Lib.Vec | undefined, {
         hold,
-        lastHits: () => OwnsLastHit(bot),
+        lastHits: () => {
+            const spot = Spot(bot);
+            LanePick.NoteScan(bot.GetPlayerID(), DotaTime(), spot !== undefined ? GetUnitToLocationDistance(bot, spot) : undefined);
+            return OwnsLastHit(bot);
+        },
         within: Settings().LastHitWithin,
-        pick: LanePick.Choose,
+        pick: (targets) => {
+            const chosen = LanePick.Choose(targets);
+            LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
+            return chosen;
+        },
+        label: (l) => {
+            ctx.label(l);
+            LanePick.NotePhase(bot.GetPlayerID(), l);
+        },
         near: NEAR,
         far: FAR,
         leash: LEASH,
+        retarget: true,
         onAttempt: (t, res, contested) =>
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],

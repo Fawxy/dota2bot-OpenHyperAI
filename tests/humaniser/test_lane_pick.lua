@@ -50,4 +50,17 @@ do
 	check("pick: a creep in range is kept however soon it dies", Pick.Choose({ here }) == here)
 end
 
+-- Missed-bar telemetry (s5b): the snapshot's lf field counts the offers the reach rule skipped, from the same rule Choose uses.
+do
+	local far = target("lasthit", 0, true, 1.2, 0.9)
+	local near = target("lasthit", 0.6, false, 0, 2)
+	check("lf: nothing before any scan", Pick.Describe(7, 10) == nil)
+	Pick.NoteScan(7, 9.5, 340.6)
+	Pick.NotePick(7, 8, { far, near }, Pick.Choose({ far, near }))
+	Pick.NotePhase(7, "hold")
+	check("lf: phase, ages, distance and offers", Pick.Describe(7, 10) == "ph=hold sc=0.5 aw=340 pk=2.0 n=2 sk=1 ch=1")
+	Pick.NotePick(7, 10, { far }, Pick.Choose({ far }))
+	check("lf: all offers skipped, none chosen", Pick.Describe(7, 10) == "ph=hold sc=0.5 aw=340 pk=0.0 n=1 sk=1 ch=0")
+end
+
 finish()
