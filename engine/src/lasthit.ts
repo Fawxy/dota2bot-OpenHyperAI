@@ -369,8 +369,6 @@ export interface LaneTarget {
     kind: "lasthit" | "deny";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
-    /** Seconds of walking into attack range at the bot's current speed (0: already in range). */
-    walk: number;
     /** A ranged or siege creep (more gold and XP than a melee one). */
     ranged: boolean;
 }
@@ -402,8 +400,8 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number]
 }
 
 /**
- * The lane creeps that become killable within `within` seconds of the bot reaching attack range, in no order:
- * enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
+ * The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
+ * first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
  * exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
  * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
  * the caller's choice.
@@ -424,7 +422,7 @@ export function laneTargets(bot: TaskUnit, opts: LaneTargetsOpts = {}): LaneTarg
         if (kind === "lasthit" && adapter.lastHitFilter !== undefined && !adapter.lastHitFilter(bot, c)) return;
         const e = etaOf(bot, c, speed);
         if (e === undefined || e[0] - e[1] > within) return;
-        out.push({ creep: c, kind, eta: math.max(e[0], e[1]), walk: e[1], ranged: isRangedCreep(c) });
+        out.push({ creep: c, kind, eta: math.max(e[0], e[1]), ranged: isRangedCreep(c) });
     };
     if (opts.lastHit !== false) for (const c of n.enemyCreeps) consider(c, "lasthit");
     if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of n.allyCreeps) consider(c, "deny");

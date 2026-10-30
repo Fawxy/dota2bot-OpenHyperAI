@@ -320,9 +320,9 @@ do
     T.eq("targets: nothing due within 1 s", #V.laneTargets(bot), 0)
     local far = sim:addCreep{ x = 520, y = 0, hp = 40, team = 3, name = MELEE, passive = true }
     sim:step(DT) -- creep queries are cached per frame
-    -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta and the walk
+    -- killable now but 370 out of range: the walk (about 1.2 s at 300) is the eta, and the bot sets off now
     local t = offered(V.laneTargets(bot), far)
-    T.check("targets: far creep's eta is its walk", t ~= nil and math.abs(t.eta - 370 / 300) < 0.05 and math.abs(t.walk - 370 / 300) < 0.05, t and t.eta)
+    T.check("targets: far creep's eta is its walk", t ~= nil and math.abs(t.eta - 370 / 300) < 0.05, t and t.eta)
 end
 
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),

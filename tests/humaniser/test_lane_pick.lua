@@ -3,7 +3,7 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 FreshHumaniser({ Enable = false })
 local Pick = require("bots/FunLib/humaniser/states/lane_pick")
 
-local function target(kind, eta, ranged) return { creep = {}, kind = kind, eta = eta, walk = 0, ranged = ranged == true } end
+local function target(kind, eta, ranged) return { creep = {}, kind = kind, eta = eta, ranged = ranged == true } end
 
 -- The ranged creep wins over a melee creep due a little sooner (gold and XP).
 do
@@ -26,5 +26,12 @@ do
 	check("pick: deny due now beats a last hit 1 s away", Pick.Choose({ late, d }) == d)
 end
 
+
+-- The ranged bias outweighs the last-hit bias: a ranged deny beats a melee last hit due 0.05 s sooner (with the
+-- two biases swapped the last hit would win).
+do
+	local rd, ml = target("deny", 0.25, true), target("lasthit", 0.2)
+	check("pick: ranged deny beats a melee last hit due 0.05 s sooner", Pick.Choose({ ml, rd }) == rd)
+end
 
 finish()

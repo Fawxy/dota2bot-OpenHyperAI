@@ -23,8 +23,6 @@ export interface LaneTarget {
     kind: "lasthit" | "deny";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
-    /** Seconds of walking into attack range at the bot's current speed (0: already in range). */
-    walk: number;
     /** A ranged or siege creep (more gold and XP than a melee one). */
     ranged: boolean;
 }
@@ -42,8 +40,8 @@ export interface LaneTargetsOpts {
     lastHit?: boolean;
 }
 /**
- * The lane creeps that become killable within `within` seconds of the bot reaching attack range, in no order:
- * enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
+ * The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
+ * first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
  * exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
  * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
  * the caller's choice.

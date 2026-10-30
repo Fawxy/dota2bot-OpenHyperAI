@@ -8,7 +8,7 @@ This document describes what is built. The project goal changed after it was wri
 with no OHA code left, and the SDK holds only the kernel, engine facts (each citing a source) and atomic actions (master
 `CLAUDE.md` hard rule 3). Nothing below is removed by this note; the sections stay accurate until their replacement lands.
 Slice 0b (29/10/2026) moved this package into the bot repo as `engine/`, moved the job verbs (with `campNeutral`, `aggroLead`,
-`runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Slice 5 moved the `nextLastHit` biases to bot
+`runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Slice 5a moved the `nextLastHit` biases to bot
 code (`laneTargets` returns the facts; `laneFarm` takes `pick`). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
 incoming damage (2.2), per-patch camp and rune data. Jitter stays in `Skill`. Public verbs and facts will get contracts under
 `docs/contracts/`. Where this document names OHA files or values (the friction table, the Adapter table, the job verbs), read them
@@ -97,12 +97,12 @@ closest to dying to the bot's hit; above skill 0.6, a ranged/siege creep (by uni
 wins over a melee one.
 
 **Lane targets (`Verbs.laneTargets(bot, opts)`, a query, not a verb).** The lane creeps a laner could go for
-next, in no order: `{ creep, kind: "lasthit"|"deny", eta, walk, ranged }[]`. Considers enemy creeps (filtered by
+next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, ranged }[]`. Considers enemy creeps (filtered by
 `lastHitFilter`) and allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (max(800, range
 + 400)) that become killable at most `within` (1 s) after the bot could be in range: eta = max(walk into range,
 (believed HP at our hit - own damage) / incoming DPS), exact (no skill error; the verbs add it when they swing);
-`walk` = seconds into attack range at the current speed; `ranged` = a ranged or siege creep (by unit name). Facts
-only: which one to take is the caller's choice (slice 5 moved the old `nextLastHit` priority biases to bot code).
+`ranged` = a ranged or siege creep (by unit name). Facts only: which one to take is the caller's choice (slice 5a
+moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
 Per-frame creep queries are cached per bot.
 
 **`laneFarm(bot, spot, opts)` / `ctx.laneFarm`** (posture verb, src/lane.ts): holds `spot()` (holdAt with
