@@ -171,6 +171,22 @@ do
 	end
 end
 
+-- Overrides.ShrineLane: the shrine pairs' lane route (user 31/10/2026), Radiant's B walks off east, Dire's west.
+do
+	local H = world({})
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.ShrineLane = true
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_13", 1 }, { "evil_7", -1 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
+		local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
+		check(c[1] .. ": ShrineLane walk-off " .. (c[2] > 0 and "east" or "west"), dx * c[2] > 800 and math.abs(dy) < 50, exit.x .. "," .. exit.y)
+	end
+	Customize.Overrides.ShrineLane = false
+end
+
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
 do
 	local H, bot = world({ t = 233 })

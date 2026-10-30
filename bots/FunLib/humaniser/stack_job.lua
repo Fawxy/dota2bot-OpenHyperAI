@@ -1,5 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__StringIncludes(self, searchString, position)
     if not position then
         position = 1
@@ -233,10 +258,6 @@ local function __TS__DelegatedYield(iterable)
             coroutine.yield(value)
         end
     end
-end
-
-local function __TS__CountVarargs(...)
-    return select("#", ...)
 end
 
 local __TS__Unpack = table.unpack or unpack
@@ -645,7 +666,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, exits, EXIT_DIRS, LANE_NEAR, SEEN_SCAN
+local override, setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -657,8 +678,26 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function override(key)
+    local ____opt_0 = Customize.Overrides
+    if ____opt_0 ~= nil then
+        ____opt_0 = ____opt_0[key]
+    end
+    return ____opt_0
+end
 function setExit(sp)
-    for ____, e in ipairs(EXIT_DIRS) do
+    local ____temp_3
+    if override("ShrineLane") == true then
+        local ____array_2 = __TS__SparseArrayNew(unpack(SHRINE_LANE))
+        __TS__SparseArrayPush(
+            ____array_2,
+            unpack(EXIT_DIRS)
+        )
+        ____temp_3 = {__TS__SparseArraySpread(____array_2)}
+    else
+        ____temp_3 = EXIT_DIRS
+    end
+    for ____, e in ipairs(____temp_3) do
         do
             local __continue12
             repeat
@@ -681,13 +720,14 @@ end
 --- The walk-off after the hit: a hand-set direction (EXIT_DIRS), else the camp data's path, or one derived towards the
 -- lane (ExitTowardLane).
 function ____exports.ExitPath(sp, data)
+    local set = setExit(sp)
+    if set ~= nil then
+        return set
+    end
     if exits[sp.idx] ~= nil then
         return exits[sp.idx]
     end
-    local set = setExit(sp)
-    if set ~= nil then
-        exits[sp.idx] = set
-    elseif ____exports.SETTINGS.ExitTowardLane then
+    if ____exports.SETTINGS.ExitTowardLane then
         exits[sp.idx] = Camps.DeriveStackExit(sp, sp.team, true)
     else
         return data.stack.exitPath
@@ -806,37 +846,37 @@ function freshInBox(bot, a, campIdx)
         LaneConfig.Settings().Radii.StackCountScan,
         false
     ) or ({})) do
-        local ____temp_14 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+        local ____temp_16 = c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
             campIdx,
             c:GetLocation(),
             margin
         )
-        if ____temp_14 then
-            local ____opt_11 = a.seen
-            local ____temp_13 = ____opt_11 and ____opt_11:has(c)
-            if ____temp_13 == nil then
-                ____temp_13 = false
+        if ____temp_16 then
+            local ____opt_13 = a.seen
+            local ____temp_15 = ____opt_13 and ____opt_13:has(c)
+            if ____temp_15 == nil then
+                ____temp_15 = false
             end
-            ____temp_14 = not ____temp_13
+            ____temp_16 = not ____temp_15
         end
-        if ____temp_14 then
+        if ____temp_16 then
             n = n + 1
         end
     end
     return n
 end
 function isFirst(a, n)
-    local ____opt_21 = a and a.first
-    local ____opt_15 = ____opt_21 and ____opt_21.units
-    if ____opt_15 ~= nil then
-        local ____opt_16 = a and a.first
-        ____opt_15 = __TS__ArrayIncludes(____opt_16 and ____opt_16.units, n)
+    local ____opt_23 = a and a.first
+    local ____opt_17 = ____opt_23 and ____opt_23.units
+    if ____opt_17 ~= nil then
+        local ____opt_18 = a and a.first
+        ____opt_17 = __TS__ArrayIncludes(____opt_18 and ____opt_18.units, n)
     end
-    local ____opt_15_25 = ____opt_15
-    if ____opt_15_25 == nil then
-        ____opt_15_25 = false
+    local ____opt_17_27 = ____opt_17
+    if ____opt_17_27 == nil then
+        ____opt_17_27 = false
     end
-    return ____opt_15_25
+    return ____opt_17_27
 end
 function campTargets(bot, a)
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(
@@ -1018,7 +1058,7 @@ function sample59(bot, a)
     local path = data ~= nil and data.stack ~= nil and ____exports.ExitPath(sp, data) or nil
     a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
 end
-local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
+Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
     LookFrom = 15,
@@ -1046,13 +1086,6 @@ ____exports.SETTINGS = {
     PileEarlierMax = 1.5
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
-local function override(key)
-    local ____opt_0 = Customize.Overrides
-    if ____opt_0 ~= nil then
-        ____opt_0 = ____opt_0[key]
-    end
-    return ____opt_0
-end
 --- Overrides.Solo names another hero: this one sits out the game in its fountain.
 function ____exports.Benched(bot)
     local solo = override("Solo")
@@ -1099,6 +1132,7 @@ EXIT_DIRS = {
     {x = -8313, y = -553, dx = 0.71, dy = 0.71},
     {x = 7928, y = -120, dx = 0.71, dy = -0.71}
 }
+SHRINE_LANE = {{x = -8313, y = -553, dx = 1, dy = 0}, {x = 7928, y = -120, dx = -1, dy = 0}}
 local PAIRS = {
     {
         x = 3978,
@@ -1224,13 +1258,13 @@ end
 function ____exports.PairFor(team, minute)
     local list = {}
     for ____, p in ipairs(PAIRS) do
-        local ____temp_2
+        local ____temp_4
         if p.pos == 4 then
-            ____temp_2 = resolvePair(p, team)
+            ____temp_4 = resolvePair(p, team)
         else
-            ____temp_2 = nil
+            ____temp_4 = nil
         end
-        local d = ____temp_2
+        local d = ____temp_4
         if d ~= nil then
             list[#list + 1] = d
         end
@@ -1426,20 +1460,20 @@ function ____exports.Plan(bot, data, stand, minute, a)
     local t = LaneConfig.Settings().Timing
     local start = minute * 60
     local f = a.first
-    local ____temp_5
+    local ____temp_7
     if f ~= nil then
-        ____temp_5 = Camps.ByIdx(f.campIdx)
+        ____temp_7 = Camps.ByIdx(f.campIdx)
     else
-        ____temp_5 = nil
+        ____temp_7 = nil
     end
-    local fd = ____temp_5
-    local ____temp_6
+    local fd = ____temp_7
+    local ____temp_8
     if f ~= nil then
-        ____temp_6 = Camps.SpawnerByIdx(f.campIdx)
+        ____temp_8 = Camps.SpawnerByIdx(f.campIdx)
     else
-        ____temp_6 = nil
+        ____temp_8 = nil
     end
-    local fsp = ____temp_6
+    local fsp = ____temp_8
     local first = f ~= nil and fd ~= nil and fsp ~= nil and ({
         camp = campFor(
             bot,
@@ -1545,13 +1579,13 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
                     freshInBox(bot, a, f.campIdx)
                 )
             end
-            local ____temp_7
+            local ____temp_9
             if f == nil then
-                ____temp_7 = (a.fresh or 0) > 0
+                ____temp_9 = (a.fresh or 0) > 0
             else
-                ____temp_7 = (a.fresh or 0) > 0 and (f.fresh or 0) > 0
+                ____temp_9 = (a.fresh or 0) > 0 and (f.fresh or 0) > 0
             end
-            if ____temp_7 then
+            if ____temp_9 then
                 break
             end
             if f ~= nil and campIdx == a.campIdx and bReadAt ~= nil and ((a.fresh or 0) > 0 or DotaTime() >= bReadAt + ____exports.SETTINGS.BReadFor) then
@@ -1577,8 +1611,8 @@ local function track(bot, a)
     local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
     if name ~= nil and name ~= a.lastCast then
         a.casts = a.casts or ({})
-        local ____a_casts_8 = a.casts
-        ____a_casts_8[#____a_casts_8 + 1] = (name .. "@") .. tostring(sec(a))
+        local ____a_casts_10 = a.casts
+        ____a_casts_10[#____a_casts_10 + 1] = (name .. "@") .. tostring(sec(a))
     end
     a.lastCast = name
     if DotaTime() < a.minute * 60 + 60 then
@@ -1778,16 +1812,16 @@ function ____exports.Desire(bot)
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
-                local ____pos4_26
+                local ____pos4_28
                 if pos4 then
-                    ____pos4_26 = ____exports.PairFor(
+                    ____pos4_28 = ____exports.PairFor(
                         bot:GetTeam(),
                         minute
                     )
                 else
-                    ____pos4_26 = nil
+                    ____pos4_28 = nil
                 end
-                local pair = ____pos4_26
+                local pair = ____pos4_28
                 local data, stand = ____exports.Nearest(
                     bot:GetTeam(),
                     bot:GetLocation()
@@ -1810,19 +1844,19 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local ____pos4_28
+                local ____pos4_30
                 if pos4 then
-                    ____pos4_28 = pair
+                    ____pos4_30 = pair
                 else
-                    local ____Ours_On_result_27
+                    local ____Ours_On_result_29
                     if Ours.On("DoubleStack") then
-                        ____Ours_On_result_27 = ____exports.Partner(data)
+                        ____Ours_On_result_29 = ____exports.Partner(data)
                     else
-                        ____Ours_On_result_27 = nil
+                        ____Ours_On_result_29 = nil
                     end
-                    ____pos4_28 = ____Ours_On_result_27
+                    ____pos4_30 = ____Ours_On_result_29
                 end
-                local fd = ____pos4_28
+                local fd = ____pos4_30
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
                 local aggroAt = minute * 60 + Stacking.AggroSec(data)

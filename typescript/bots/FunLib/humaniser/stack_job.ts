@@ -88,7 +88,8 @@ export const SETTINGS = {
 // other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
 // Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
 // AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
-// 12-17 s from its pairs). Scenario games only, never a verdict.
+// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Scenario games only,
+// never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
 function override(key: string): unknown {
@@ -264,8 +265,16 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: 7928, y: -120, dx: 0.71, dy: -0.71 }, // evil_7: south-east, on to the east shrine (8029,-1126)
 ];
 
+/** The shrine pairs' other route (user 31/10/2026): straight between the two camps towards the lanes, Radiant east, Dire
+ *  west; easier than the shrine route once the camps hold several stacks; the shrine route is the one to take the shrine at
+ *  7:00. Which to run per attempt waits for the stack route choice row; until then the solo harness picks it. */
+const SHRINE_LANE: { x: number; y: number; dx: number; dy: number }[] = [
+    { x: -8313, y: -553, dx: 1, dy: 0 }, // good_13: east
+    { x: 7928, y: -120, dx: -1, dy: 0 }, // evil_7: west
+];
+
 function setExit(sp: Camps.Spawner): Vector[] | undefined {
-    for (const e of EXIT_DIRS) {
+    for (const e of override("ShrineLane") === true ? [...SHRINE_LANE, ...EXIT_DIRS] : EXIT_DIRS) {
         if (math.abs(sp.location.x - e.x) > 200 || math.abs(sp.location.y - e.y) > 200) continue;
         const away = LaneConfig.Settings().Radii.StackExit;
         const c = Camps.BoxCenter(sp);
@@ -278,10 +287,11 @@ function setExit(sp: Camps.Spawner): Vector[] | undefined {
 /** The walk-off after the hit: a hand-set direction (EXIT_DIRS), else the camp data's path, or one derived towards the
  *  lane (ExitTowardLane). */
 export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
-    if (exits[sp.idx] !== undefined) return exits[sp.idx];
+    // Hand-set exits are not cached: Overrides.ShrineLane may change them (a loop over a few entries).
     const set = setExit(sp);
-    if (set !== undefined) exits[sp.idx] = set;
-    else if (SETTINGS.ExitTowardLane) exits[sp.idx] = Camps.DeriveStackExit(sp, sp.team, true);
+    if (set !== undefined) return set;
+    if (exits[sp.idx] !== undefined) return exits[sp.idx];
+    if (SETTINGS.ExitTowardLane) exits[sp.idx] = Camps.DeriveStackExit(sp, sp.team, true);
     else return data.stack!.exitPath;
     return exits[sp.idx];
 }
