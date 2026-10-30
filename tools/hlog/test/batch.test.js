@@ -165,6 +165,7 @@ const log = path.join(dir, opt('--label') + '-' + n + '.log');
 fs.writeFileSync(log, [\`10/29 10:00:00 [DOTACTL] ev=start worktree=w mode=bots timescale=8 seed=\${opt('--seed')}\${sets.length ? \` set="\${sets.join(',')}"\` : ''}\`,
     ...bots.map(b => \`10/29 10:00:02 [VScript] [HEV] t=-90.000 ev=bot pid=\${b.pid} hero=\${b.hero} team=\${b.team} schema=2 build=abc1234 pos=\${b.pos}\`),
     ...(sets.length ? [] : ['10/29 10:00:03 [VScript] [HEV] t=0.000 ev=state pid=0 state=lane']),
+    ...bots.map(b => \`10/29 10:00:04 [VScript] [HEV] t=1.000 ev=snap pid=\${b.pid} x=0 y=0 alive=1 hp=100 mp=50 lvl=1 lh=0 dn=0 kills=0 deaths=0 mode=laning d=0.3 act=2 gold=600\`),
     \`10/29 10:09:00 [DOTACTL] t=\${Number(opt('--until').split(':')[0]) * 60 + 0.5} ev=stop\`].join('\\n'));
 console.log('log: ' + log);
 `;
@@ -269,4 +270,41 @@ test('remote batch: runRemote saves the log, surfaces the reason, stops on a cur
     assert.ok(!silent.ok && /no state in 3 polls/.test(silent.out));
     const refused = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([() => res(403, { error: 'forbidden' })]) }));
     assert.ok(!refused.ok && refused.out === 'submit 403 forbidden');
+});
+
+// Review 2026-10-30 eval-cost cc9740e L4, M2: the stop-when-decided wiring.
+test('batch main: with er, a bar decided not met stops after the first pair, and lineup_check and the bank still run', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const er = path.join(dir, 'er.json');
+    fs.writeFileSync(er, JSON.stringify({ bars: [{ id: 'H1', rule: 'each', metric: 'lua_ours', max: -1 }] }));
+    const r = runBatch({ ...BSPEC, er }, [], dir);
+    assert.strictEqual(r.status, 0, r.out);
+    assert.match(r.out, /decide: bar not met: H1/);
+    assert.strictEqual(r.calls.length, 2, 'stopped before the second pair');
+    assert.deepStrictEqual(r.bank.map(e => e.label).sort(), ['bt_A_off_1', 'bt_A_on_1']);
+    // Without er the same batch runs every game.
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    assert.strictEqual(runBatch(BSPEC, [], dir2).calls.length, 4);
+});
+
+test('batch main: an er path that does not load is a usage error before any game', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
+    const r = runBatch({ ...BSPEC, er: path.join(dir, 'missing.json') }, [], dir);
+    assert.strictEqual(r.status, 2, r.out);
+    assert.strictEqual(r.calls.length, 0);
+});
+
+test('batch decided: judged only with er and both arms; an error while judging goes on', () => {
+    const { decided } = require('../batch');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dec-'));
+    const man = path.join(dir, 'm.manifest');
+    fs.writeFileSync(man, 'status=ok label="a" seed=8 arm=on lineup=B log="/x.log"\n');
+    let calls = 0;
+    const stop = () => { calls++; return { stop: true, reason: 'r' }; };
+    assert.strictEqual(decided({ er: 'e.json' }, man, [], stop), false, 'one arm only');
+    fs.appendFileSync(man, 'status=ok label="b" seed=8 arm=off lineup=B log="/y.log"\n');
+    assert.strictEqual(decided({}, man, [], stop), false, 'no er');
+    assert.strictEqual(calls, 0);
+    assert.strictEqual(decided({ er: 'e.json' }, man, [], stop), true);
+    assert.strictEqual(decided({ er: 'e.json' }, man, [], () => { throw new Error('bad log'); }), false);
 });

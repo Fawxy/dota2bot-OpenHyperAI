@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { t975, tCrit, welch, pooled, mde, stackInterrupted, stackNoAggro } = require('../nf');
+const { t975, tCrit, welch, stratified, noiseTable, mde, stackInterrupted, stackNoAggro } = require('../nf');
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) < eps, `${msg}: ${a} vs ${b}`);
 
@@ -23,14 +23,40 @@ test('welch: zero spread in both arms gives a point interval', () => {
     assert.strictEqual(r.hi, 1);
 });
 
-test('pooled: equal-weight mean of seed deltas, Satterthwaite df', () => {
-    const a = welch({ n: 5, mean: 10, sd: 2 }, { n: 5, mean: 12, sd: 2 });
-    const b = welch({ n: 5, mean: 20, sd: 2 }, { n: 5, mean: 24, sd: 2 });
-    const p = pooled([a, b]);
+test('stratified: balanced seeds give the mean of the seed deltas with the pooled-t interval', () => {
+    // Two seeds, 3 games per arm, every arm SD 1: s^2 = 1, df = 2 * (3 + 3 - 2) = 8, sum of weights 2 * 1.5 = 3.
+    const p = stratified([{ off: [9, 10, 11], on: [11, 12, 13] }, { off: [19, 20, 21], on: [23, 24, 25] }]);
     near(p.delta, 3, 1e-9, 'delta');
-    near(p.se, Math.sqrt(3.2) / 2, 1e-9, 'se');
-    near(p.df, 16, 1e-9, 'df');
-    near(p.hi - p.delta, 2.12 * p.se, 0.01, 'half width');
+    near(p.df, 8, 1e-9, 'df');
+    near(p.se, Math.sqrt(1 / 3), 1e-9, 'se');
+    near(p.hi - p.delta, 2.306 * p.se, 0.01, 'half width');
+});
+
+test('stratified: a seed with one game per arm counts in the delta, a one-arm seed does not (slice 4 lineup C)', () => {
+    const two = [{ off: [9, 11], on: [11, 13] }, { off: [19, 21], on: [23, 25] }];
+    const p = stratified([...two, { off: [30], on: [20] }, { off: [5, 6], on: [] }]);
+    // Weights 1, 1, 0.5: (2 + 4 - 10 * 0.5) / 2.5. Per-seed Welch gave lineup C no SE and left it out.
+    near(p.delta, 0.4, 1e-9, 'delta');
+    near(p.df, 4, 1e-9, 'df from the two-game seeds only');
+    assert.ok(Number.isFinite(p.lo) && p.lo < p.delta, 'a CI');
+    const q = stratified([{ off: [30], on: [20] }, { off: [1], on: [2] }]);
+    assert.ok(Number.isFinite(q.delta) && Number.isNaN(q.lo), 'one game per arm everywhere: a delta, no CI');
+});
+
+test('stratified: unbalanced arms weight a seed by its effective pair count, not equally', () => {
+    // Seed 1 has 4 pairs, seed 2 one: an equal-weight mean would give 5, the effective-N weights (2, 0.5) give 2.
+    const p = stratified([{ off: [0, 0, 0, 0], on: [1, 1, 1, 1] }, { off: [0], on: [17] }]);
+    near(p.delta, (2 * 1 + 0.5 * 17) / 2.5, 1e-9, 'delta');
+});
+
+test('noiseTable: the pooled row uses every game and pools the OFF SD by df', () => {
+    const g = (seed, arm, x) => ({ seed, arm, flat: { m: x } });
+    const games = [g(30, 'off', 9), g(30, 'off', 11), g(30, 'on', 12), g(30, 'on', 14), g(25, 'off', 4), g(25, 'on', 1)];
+    const all = noiseTable(games, 5).m.all;
+    assert.strictEqual(all.off.n, 3);
+    near(all.off.sd, Math.SQRT2, 1e-9, 'OFF SD from seed 30 only (seed 25 has one OFF game)');
+    near(all.delta, (1 * 3 + 0.5 * -3) / 1.5, 1e-9, 'delta includes the one-game seed');
+    assert.ok(Number.isFinite(all.lo), 'CI');
 });
 
 test('mde over pooled seeds equals mde at N times seeds', () => {

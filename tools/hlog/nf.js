@@ -179,17 +179,30 @@ function welch(off, on) {
     return { delta, se, df, lo: delta - h, hi: delta + h };
 }
 
-/** Seeds pooled with equal weight (a stratified mean of the per-seed deltas), Satterthwaite df. */
-function pooled(perSeed) {
-    const rows = perSeed.filter(r => Number.isFinite(r.delta) && Number.isFinite(r.se));
-    const k = rows.length;
-    if (!k) return { delta: NaN, se: NaN, df: NaN, lo: NaN, hi: NaN };
-    const delta = rows.reduce((a, r) => a + r.delta, 0) / k;
-    const v = rows.reduce((a, r) => a + r.se ** 2, 0);
-    const se = Math.sqrt(v) / k;
-    if (!(se > 0)) return { delta, se, df: NaN, lo: delta, hi: delta };
-    const dfs = rows.filter(r => r.se > 0);
-    const df = v ** 2 / dfs.reduce((a, r) => a + r.se ** 4 / r.df, 0);
+/**
+ * ON - OFF over all pairs with the lineup seed as a stratum: each seed's delta weighted by n_off*n_on/(n_off+n_on) (equal
+ * weights when the arms are balanced), SE from the residual variance pooled over every seed and arm, df = N - 2 per seed.
+ * A seed with one game per arm still counts in the delta (it adds no df); a seed with a game in one arm only is left out.
+ * Assumes one variance across arms and seeds (the pooled-variance t); Welch per seed needed n >= 2 per arm and dropped the
+ * rest (ROADMAP debt `cause: eval-cost`). `strata`: [{ off: [values], on: [values] }].
+ */
+function stratified(strata) {
+    let sw = 0, swd = 0, ss = 0, df = 0;
+    for (const s of strata) {
+        const off = s.off.filter(Number.isFinite), on = s.on.filter(Number.isFinite);
+        if (!off.length || !on.length) continue;
+        const a = stats(off), b = stats(on);
+        const w = (off.length * on.length) / (off.length + on.length);
+        sw += w;
+        swd += w * (b.mean - a.mean);
+        for (const [xs, m] of [[off, a.mean], [on, b.mean]]) ss += xs.reduce((t, x) => t + (x - m) ** 2, 0);
+        df += off.length + on.length - 2;
+    }
+    if (!sw) return { delta: NaN, se: NaN, df: NaN, lo: NaN, hi: NaN };
+    const delta = swd / sw;
+    if (!df) return { delta, se: NaN, df: NaN, lo: NaN, hi: NaN };
+    const se = Math.sqrt(ss / df / sw);
+    if (!(se > 0)) return { delta, se, df, lo: delta, hi: delta };
     const h = t975(df) * se;
     return { delta, se, df, lo: delta - h, hi: delta + h };
 }
@@ -259,14 +272,17 @@ function noiseTable(games, n) {
             (table[key] = table[key] || {})[seed] = { off, on, mde: mde(off.sd, n), ...welch(off, on) };
         }
     }
-    for (const bySeed of Object.values(table)) {
+    for (const [key, bySeed] of Object.entries(table)) {
         const rows = Object.values(bySeed);
-        // Pooled OFF SD: root mean square of the per-seed SDs (equal weights, as the pooled delta).
-        const sds = rows.map(r => r.off.sd).filter(Number.isFinite);
-        const sd = sds.length ? Math.sqrt(sds.reduce((a, s) => a + s * s, 0) / sds.length) : NaN;
+        const strata = Object.keys(bySeed).map(seed => ({ off: groups[seed].filter(g => g.arm === 'off').map(g => g.flat[key]),
+            on: groups[seed].filter(g => g.arm === 'on').map(g => g.flat[key]) }));
+        // Pooled OFF SD: the per-seed SDs pooled by their df (as the stratified delta's variance).
+        const sdRows = rows.filter(r => Number.isFinite(r.off.sd));
+        const dfOff = sdRows.reduce((a, r) => a + r.off.n - 1, 0);
+        const sd = dfOff ? Math.sqrt(sdRows.reduce((a, r) => a + (r.off.n - 1) * r.off.sd ** 2, 0) / dfOff) : NaN;
         const off = stats(rows.map(r => r.off.mean)), on = stats(rows.map(r => r.on.mean));
         bySeed.all = { off: { n: rows.reduce((a, r) => a + r.off.n, 0), mean: off.mean, sd }, on: { n: rows.reduce((a, r) => a + r.on.n, 0), mean: on.mean },
-            mde: mde(sd, n * rows.length), ...pooled(rows) };
+            mde: mde(sd, n * rows.length), ...stratified(strata) };
     }
     return table;
 }
@@ -297,7 +313,7 @@ function main(argv) {
         }
     }
     const f = x => (Number.isFinite(x) ? x.toFixed(1) : '-');
-    console.log(`\nmetric | seed | OFF mean | OFF SD | n | MDE (N=${n} per seed) | ON mean | ON-OFF | 95% CI (Welch; all = seeds pooled)`);
+    console.log(`\nmetric | seed | OFF mean | OFF SD | n | MDE (N=${n} per seed) | ON mean | ON-OFF | 95% CI (Welch per seed; all = seeds as strata, pooled variance)`);
     for (const [key, bySeed] of Object.entries(table)) {
         for (const [seed, r] of Object.entries(bySeed)) {
             console.log(`${key} | ${seed} | ${f(r.off.mean)} | ${f(r.off.sd)} | ${r.off.n} | ${f(r.mde)} | ${f(r.on.mean)} | ${f(r.delta)} | ${f(r.lo)} to ${f(r.hi)}`);
@@ -307,4 +323,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, pooled, nfGame, noiseTable, storeFor, stackInterrupted, stackNoAggro };
+module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, stratified, nfGame, noiseTable, storeFor, stackInterrupted, stackNoAggro };
