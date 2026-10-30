@@ -10,8 +10,11 @@ export const DEFAULTS = {
     LeaveCoreCreep: true,
     /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
     StackExecute: true,
-    /** Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). */
-    CoreLastHit: true,
+    /**
+     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). Off: ER-007
+     * FAIL (no better than OHA, more deaths).
+     */
+    CoreLastHit: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;
