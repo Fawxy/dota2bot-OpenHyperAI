@@ -252,7 +252,7 @@ do
 		positions[2] = 1
 		creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
 		local t
-		silenced(function() t = H.Tasks.Verbs().nextLastHit(bot) end)
+		silenced(function() t = H.Tasks.Verbs().laneTargets(bot)[1] end)
 		return t
 	end
 	local beside = Vector(-170, 30)

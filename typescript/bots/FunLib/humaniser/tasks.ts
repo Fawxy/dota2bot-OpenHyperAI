@@ -76,7 +76,7 @@ const adapter: Lib.Adapter = {
     release: (bot, source, mode) => Intent.Release(bot as unknown as Unit, source, mode as BotMode),
     hold: (bot, tag) => Intent.Hold(bot as unknown as Unit, tag),
     lastHitFilter: (bot, creep) => {
-        // nextLastHit asks for every creep every frame; one answer per bot, creep and frame.
+        // laneTargets asks for every creep every frame; one answer per bot, creep and frame.
         const pid = bot.GetPlayerID();
         const now = DotaTime();
         let f = filterCache[pid];
