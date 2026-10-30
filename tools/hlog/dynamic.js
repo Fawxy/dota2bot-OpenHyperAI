@@ -263,27 +263,16 @@ const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8')
  */
 /** The camp neutrals still in the bare box at :59.5 (ev=stack n59, "name:dist:in|out:a|-"), e.g. "large_mauler:-" (not
  *  attacking the bot); undefined when the line has no n59. */
-function leftInBox(n59) {
-    if (n59 === undefined || n59 === "?") return undefined;
-    return String(n59).split(",").map(x => x.split(":")).filter(x => x[2] === "in").map(x => `${x[0]}:${x[3]}`).join(",") || "-";
-}
+// The fields of an ev=stack attempt, in the order stacks.js --json has always printed them.
+const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'before', 'after', 'fresh', 'away', 'death',
+    'vis', 'box59', 'pulled59', 'bot59', 'vis59', 'exit59', 'hitd', 'tgt2', 'tgt59', 'strict59',
+    'arr', 'hit0', 'dmg', 'react', 'exit', 'hpa', 'hpe', 'hp59', 'casts', 'n2', 'n59', 'lane', 'left59', 'cause'];
 
-function stackCause(e) {
-    if (e.res === 'failed') return String(e.why);
-    if (e.res !== 'not_stacked' || e.box59 === undefined || e.box59 === '?') return undefined;
-    if (e.bot59 === 1) return 'bot-in-box';
-    if (e.box59 > 0) return 'camp-in-box';
-    if (e.vis59 !== 1 && (e.after === undefined || e.after === '?')) return 'unseen';
-    return 'no-spawn';
-}
-
-function stackAttempts(game, until) {
-    return game.events.filter(e => e.ev === 'stack' && e.t < until)
-        .map(e => ({ t: e.t, pid: e.pid, min: e.min, res: e.res, why: e.why, camp: e.camp, type: e.type, aggro: e.aggro, before: e.before, after: e.after, fresh: e.fresh, away: e.away, death: e.death === 1,
-            vis: e.vis, box59: e.box59, pulled59: e.pulled59, bot59: e.bot59, vis59: e.vis59, exit59: e.exit59,
-            hitd: e.hitd, tgt2: e.tgt2, tgt59: e.tgt59, strict59: e.strict59,
-            arr: e.arr, hit0: e.hit0, dmg: e.dmg, react: e.react, exit: e.exit, hpa: e.hpa, hpe: e.hpe, hp59: e.hp59, casts: e.casts, n2: e.n2, n59: e.n59, lane: e.lane,
-            left59: leftInBox(e.n59), cause: stackCause(e) }));
+/** Every ev=stack line of one stored game before `until` (`@stack_rows`); `death` is a boolean, a NULL field is absent. */
+function stackAttempts(store, file, gameNo = 1, until = Infinity) {
+    if (!store.kinds.has('ev_stack')) return []; // no log in the store has ev=stack, so the view is skipped (refreshViews)
+    return store.query(sqlOf('stack_rows'), { file, game: gameNo, until: Number.isFinite(until) ? until : null })
+        .map(r => Object.fromEntries(STACK_KEYS.map(k => [k, k === 'death' ? r.death_flag === 1 : r[k] ?? undefined])));
 }
 
 /**
@@ -343,7 +332,7 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         audited_steals: auditedSteals(game, S, lpos, 600),
-        stacks: stackAttempts(game, end + 1),
+        stacks: stackAttempts(store, file, gameNo, end + 1),
         idle_10s: sum(Object.values(H), h => h.idle),
         lua_error: G.lua_error_ours + G.console_lines,
         lua_error_ours: G.lua_error_ours,
