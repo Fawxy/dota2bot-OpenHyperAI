@@ -145,7 +145,7 @@ do
 	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
 end
 -- evil_13, the Dire shrine pair's easy camp (user replay review of dsolo4b, 31/10/2026): south, towards the offlane, not
--- north-west towards mid.
+-- north-west towards mid; south-west since 01/11/2026, where its stand sees the camp (visprobe1/2).
 do
 	local H = world()
 	local C = H.Lane.Camps
@@ -153,9 +153,9 @@ do
 	local data = C.ByIdx(sp.idx, sp.team)
 	local exit = H.StackJob.ExitPath(sp, data)[1]
 	local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
-	check("evil_13: walk-off south", dy < -800 and math.abs(dx) < 50, exit.x .. "," .. exit.y)
+	check("evil_13: walk-off south-west", dy < -500 and dx < -500, exit.x .. "," .. exit.y)
 	local stand = H.StackJob.Stand(sp, data)
-	check("evil_13: stands south of the camp", stand.y < sp.location.y, stand.x .. "," .. stand.y)
+	check("evil_13: stands south-west of the camp", stand.y < sp.location.y and stand.x < sp.location.x, stand.x .. "," .. stand.y)
 end
 -- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north, evil_7 south.
 do
