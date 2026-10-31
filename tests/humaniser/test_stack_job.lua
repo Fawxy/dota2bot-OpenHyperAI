@@ -781,7 +781,7 @@ end
 do
 	local H = world()
 	local C, S = H.Lane.Camps, H.Lane.Stacking
-	for _, c in ipairs({ { "good_15", RAD, 1 }, { "evil_4", DIRE, 1 }, { "evil_5", DIRE, 1 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
+	for _, c in ipairs({ { "good_15", RAD, 1 }, { "evil_4", DIRE, 1 }, { "evil_5", DIRE, 1 }, { "good_9", RAD, 1 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
 		local d = C.ByIdx(idxOf(c[1]), c[2])
 		check(c[1] .. ": single hit " .. c[3] .. " s before the window middle", math.abs(S.AggroSec(d) - H.StackJob.SingleSec(d) - c[3]) < 1e-6, H.StackJob.SingleSec(d))
 	end

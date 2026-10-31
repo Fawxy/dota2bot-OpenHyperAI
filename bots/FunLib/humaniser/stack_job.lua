@@ -1183,7 +1183,7 @@ local PAIRS = {{
 -- (sweep5a, sweep5c, 01/11/2026; replay-graded, fresh camps): these three missed in 2 of 2 attempts each with the hit
 -- on its plan or up to 0.5 s after, the rest of their side stacked 14 of 15: good_15 (window 56-57) neutrals first 400
 -- out at :58 or later, evil_4 (55-56) two never left, evil_5 (55-56) none in the box but no spawn. `judgement`, 1 s.
-local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}, {x = 1224, y = 4176, s = 1}, {x = 1064, y = 2580, s = 1}}
+local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}, {x = 1224, y = 4176, s = 1}, {x = 1064, y = 2580, s = 1}, {x = -1983, y = -4815, s = 1}}
 --- A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names.
 function ____exports.SingleSec(data)
     local sp = Camps.SpawnerByIdx(data.campIdx)

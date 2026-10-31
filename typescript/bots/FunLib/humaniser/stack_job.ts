@@ -360,6 +360,9 @@ const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
     { x: 1922, y: -3975, s: 1 }, // good_15
     { x: 1224, y: 4176, s: 1 }, // evil_4
     { x: 1064, y: 2580, s: 1 }, // evil_5
+    // sweep6a/6c: good_9 (56-57) 1 of 4 over both sweeps, hit at 56.4-57.2 from 154-287 (seen only on the step in); as
+    // good_15's 1 s, which then stacked 2 of 2.
+    { x: -1983, y: -4815, s: 1 }, // good_9
 ];
 
 /** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */

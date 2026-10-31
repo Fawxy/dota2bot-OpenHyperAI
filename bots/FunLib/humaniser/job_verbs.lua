@@ -356,7 +356,11 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
             bestAt = t
             arrived = false
         end
-        if n == nil and not inward and approached and camp.origin ~= nil and there() and t >= at - INWARD_LEAD then
+        local stuck = approached and camp.approach ~= nil and dist(
+            bot:GetLocation(),
+            stand
+        ) > arrive
+        if n == nil and not inward and approached and camp.origin ~= nil and there() and (stuck or t >= at - INWARD_LEAD) then
             inward = true
             stand = camp.origin
             best = math.huge

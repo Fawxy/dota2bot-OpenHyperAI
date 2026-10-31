@@ -255,7 +255,10 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
             bestAt = t;
             arrived = false;
         }
-        if (n === undefined && !inward && approached && camp.origin !== undefined && there() && t >= at - INWARD_LEAD) {
+        // Stuck short of the approach point (trees) goes in at once: from INWARD_LEAD the walk made camp 3's hit land at
+        // :57-:57.7 against its 55-56 window (sweep6a, sweep6c).
+        const stuck = approached && camp.approach !== undefined && dist(bot.GetLocation(), stand) > arrive;
+        if (n === undefined && !inward && approached && camp.origin !== undefined && there() && (stuck || t >= at - INWARD_LEAD)) {
             inward = true;
             stand = camp.origin;
             best = math.huge;
