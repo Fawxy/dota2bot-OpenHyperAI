@@ -775,6 +775,23 @@ do
 	end
 	check("sweep: a job most minutes from 2:00 to 5:00", started >= 3, started)
 	check("sweep: no camp twice", not dup, table.concat(lines, " | "))
+	-- Overrides.SweepCamps: only the listed camp numbers.
+	local H2, b2 = world({ t = 2 * 60 + 15 })
+	local only = idxOf("good_5") .. "," .. idxOf("good_9")
+	Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, only
+	local l2 = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H2, b2) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	local okCamps, started2 = true, 0
+	for _, l in ipairs(l2) do
+		if field(l, "res") ~= "skip" then
+			started2 = started2 + 1
+			local c = tonumber(field(l, "camp"))
+			if c ~= idxOf("good_5") and c ~= idxOf("good_9") then okCamps = false end
+		end
+	end
+	check("SweepCamps: only the listed camps, each once", okCamps and started2 >= 1 and started2 <= 2, table.concat(l2, " | "))
 end
 
 -- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle; other camps unchanged.

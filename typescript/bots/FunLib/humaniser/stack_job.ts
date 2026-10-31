@@ -496,10 +496,14 @@ const swept: Record<number, Record<number, boolean>> = {};
 /** Overrides.Sweep: the nearest own-side camp with a stack window, ancients too, that `pid` has not tried yet. */
 function SweepNext(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
     const done = swept[bot.GetPlayerID()] ?? {};
+    // Overrides.SweepCamps = "5,7,9,12": only those camp numbers (the far camps nearest-first in 10 minutes never reached).
+    const only = override("SweepCamps");
+    const list: Record<number, boolean> | undefined = typeof only === "string" ? {} : undefined;
+    if (list !== undefined) for (const [n] of string.gmatch(only as string, "%d+")) list[tonumber(n)!] = true;
     let best: Camps.CampJobData | undefined;
     let stand: Vector | undefined;
     for (const s of Camps.Spawners()) {
-        if (s.team !== bot.GetTeam() || done[s.idx] || Stacking.Window(s.idx)[0] === undefined) continue;
+        if (s.team !== bot.GetTeam() || done[s.idx] || (list !== undefined && !list[s.idx]) || Stacking.Window(s.idx)[0] === undefined) continue;
         const data = Camps.ByIdx(s.idx, s.team);
         if (data === undefined || data.stack === undefined) continue;
         const p = Stand(s, data);
