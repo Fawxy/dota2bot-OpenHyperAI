@@ -149,6 +149,11 @@ local START_LATE = 2
 local NO_CAMP_AFTER = 1
 local AGGRO_CONFIRM = 2
 local APPROACH_LEAD = 3
+--- Still nothing in sight this long before the hit after the approach (or no approach point): walk to the origin and stop
+-- at the first neutral seen. The approach point can lie in trees: from the stand of Radiant large camp 3 and Dire small
+-- camp 24 the bot stood 450-520 from the origin, never moved and logged `mistake:no-camp` in 4 of 4 sweep attempts with
+-- the camp there in the replay (sweep5a, sweep5c, 01/11/2026).
+local INWARD_LEAD = 2
 local AGGRO_LEAD_DEFAULT = 0.4
 local AGGRO_LEAD_MAX = 1.5
 --- A stand point the bot gets near but cannot reach (trees) counts as reached once it is this close and has not got
@@ -319,6 +324,7 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
     end
     local reached = false
     local waiting = false
+    local inward = false
     local clearLead
     local ____opt_12 = h.label
     if ____opt_12 ~= nil then
@@ -350,7 +356,18 @@ local aggroCamp = __TS__Generator(function(bot, camp, planned, err, o, h)
             bestAt = t
             arrived = false
         end
-        if t >= at and there() then
+        if n == nil and not inward and approached and camp.origin ~= nil and there() and t >= at - INWARD_LEAD then
+            inward = true
+            stand = camp.origin
+            best = math.huge
+            bestAt = t
+            arrived = false
+        end
+        if inward and n ~= nil and not arrived then
+            stand = bot:GetLocation()
+            arrived = true
+        end
+        if t >= at and there() and not (inward and n == nil and not arrived) then
             break
         end
         if not there() then
@@ -733,7 +750,7 @@ local function campOf(bot, p)
     local r = p.radius or CLEAR_RADIUS
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
         do
-            local __continue84
+            local __continue86
             repeat
                 local ____opt_53 = n.IsNull
                 local ____temp_55 = ____opt_53 and ____opt_53(n)
@@ -750,7 +767,7 @@ local function campOf(bot, p)
                     ____temp_59 = not ____temp_58
                 end
                 if ____temp_59 then
-                    __continue84 = true
+                    __continue86 = true
                     break
                 end
                 if dist(
@@ -759,9 +776,9 @@ local function campOf(bot, p)
                 ) <= r then
                     out[#out + 1] = n
                 end
-                __continue84 = true
+                __continue86 = true
             until true
-            if not __continue84 then
+            if not __continue86 then
                 break
             end
         end
@@ -803,7 +820,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
     end
     while true do
         do
-            local __continue94
+            local __continue96
             repeat
                 if not bot:IsAlive() then
                     return fail("dead")
@@ -816,7 +833,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 local kept = {}
                 for ____, e in ipairs(seen) do
                     do
-                        local __continue97
+                        local __continue99
                         repeat
                             local ____this_63
                             ____this_63 = e.n
@@ -827,7 +844,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             end
                             local alive = not ____temp_64 and e.n:IsAlive()
                             if not alive then
-                                __continue97 = true
+                                __continue99 = true
                                 break
                             end
                             local inCamp = __TS__ArrayIndexOf(camp, e.n) >= 0
@@ -845,16 +862,16 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             local visibleNow = ____inCamp_68
                             local at = visibleNow and t or e.at
                             if t - at > CLEAR_LOST then
-                                __continue97 = true
+                                __continue99 = true
                                 break
                             end
                             if not inCamp and visibleNow then
                                 camp[#camp + 1] = e.n
                             end
                             kept[#kept + 1] = {n = e.n, at = at}
-                            __continue97 = true
+                            __continue99 = true
                         until true
-                        if not __continue97 then
+                        if not __continue99 then
                             break
                         end
                     end
@@ -889,7 +906,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                         hold(bot, "camp_look")
                     end
                     coroutine.yield()
-                    __continue94 = true
+                    __continue96 = true
                     break
                 end
                 emptySince = nil
@@ -897,7 +914,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 if t < nextOrderAt then
                     hold(bot, "camp_react")
                     coroutine.yield()
-                    __continue94 = true
+                    __continue96 = true
                     break
                 end
                 local ____target_70 = target
@@ -931,9 +948,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     end
                 end
                 coroutine.yield()
-                __continue94 = true
+                __continue96 = true
             until true
-            if not __continue94 then
+            if not __continue96 then
                 break
             end
         end

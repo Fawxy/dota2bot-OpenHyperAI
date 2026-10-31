@@ -352,6 +352,24 @@ const PAIRS: Pair[] = [
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 52.25, sec: 54.25, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
 ];
 
+/** Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. Sweep
+ *  (sweep5a, sweep5c, 01/11/2026; replay-graded, fresh camps): these three missed in 2 of 2 attempts each with the hit
+ *  on its plan or up to 0.5 s after, the rest of their side stacked 14 of 15: good_15 (window 56-57) neutrals first 400
+ *  out at :58 or later, evil_4 (55-56) two never left, evil_5 (55-56) none in the box but no spawn. `judgement`, 1 s. */
+const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
+    { x: 1922, y: -3975, s: 1 }, // good_15
+    { x: 1224, y: 4176, s: 1 }, // evil_4
+    { x: 1064, y: 2580, s: 1 }, // evil_5
+];
+
+/** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */
+export function SingleSec(data: Camps.CampJobData): number {
+    const sp = Camps.SpawnerByIdx(data.campIdx);
+    let sec = Stacking.AggroSec(data);
+    for (const e of SINGLE_EARLIER) if (sp !== undefined && near(sp.location, e.x, e.y)) sec -= e.s;
+    return sec;
+}
+
 /** The pos4's single camps, taken in turn with its pairs: each wisdom shrine's large camp (good_13, evil_7). */
 const POS4_SINGLES: { x: number; y: number }[] = [
     { x: -8313, y: -553 },
@@ -620,7 +638,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         // :55.8-57.7 with the camp back in its box at :59.5 (probe s4p2, lich on evil_1 and evil_2).
         approachLead: SETTINGS.ApproachLead,
         waitClear: f !== undefined ? SETTINGS.WaitClear : undefined,
-        aggroAt: start + (first !== undefined ? f!.sec : Stacking.AggroSec(data)),
+        aggroAt: start + (first !== undefined ? f!.sec : SingleSec(data)),
         exitPath: ExitPath(sp, data) as unknown as Lib.Vec[],
         exitUntil: start + 60 + t.StackExitUntil,
         arrive: r.JobArrive,
@@ -1001,7 +1019,7 @@ export function Desire(bot: Unit): number {
         const fd = pos4 ? pair : Ours.On("DoubleStack") ? Partner(data) : undefined;
         let double = fd !== undefined && Fits(bot, fd);
         let dwhy = fd !== undefined && !double ? "walk" : undefined;
-        let aggroAt = minute * 60 + Stacking.AggroSec(data);
+        let aggroAt = minute * 60 + SingleSec(data);
         let walk = travel(bot, stand);
         let lead = SETTINGS.Lead;
         if (double) {

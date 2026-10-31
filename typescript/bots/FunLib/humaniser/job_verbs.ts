@@ -37,6 +37,11 @@ const START_LATE = 2;
 const NO_CAMP_AFTER = 1;
 const AGGRO_CONFIRM = 2;
 const APPROACH_LEAD = 3;
+/** Still nothing in sight this long before the hit after the approach (or no approach point): walk to the origin and stop
+ *  at the first neutral seen. The approach point can lie in trees: from the stand of Radiant large camp 3 and Dire small
+ *  camp 24 the bot stood 450-520 from the origin, never moved and logged `mistake:no-camp` in 4 of 4 sweep attempts with
+ *  the camp there in the replay (sweep5a, sweep5c, 01/11/2026). */
+const INWARD_LEAD = 2;
 const AGGRO_LEAD_DEFAULT = 0.4;
 const AGGRO_LEAD_MAX = 1.5;
 /** A stand point the bot gets near but cannot reach (trees) counts as reached once it is this close and has not got
@@ -230,6 +235,7 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
     };
     let reached = false;
     let waiting = false;
+    let inward = false;
     // Set once the wait stepped back from a neutral it could see: the lead the hit then needs from the new point.
     let clearLead: number | undefined;
     h.label?.("travel");
@@ -249,7 +255,20 @@ function* aggroCamp(bot: TaskUnit, camp: Camp, planned: number, err: number, o: 
             bestAt = t;
             arrived = false;
         }
-        if (t >= at && there()) break;
+        if (n === undefined && !inward && approached && camp.origin !== undefined && there() && t >= at - INWARD_LEAD) {
+            inward = true;
+            stand = camp.origin;
+            best = math.huge;
+            bestAt = t;
+            arrived = false;
+        }
+        // On the way in, the first neutral seen ends the walk: wait there for the hit.
+        if (inward && n !== undefined && !arrived) {
+            stand = bot.GetLocation() as unknown as Lib.Vec;
+            arrived = true;
+        }
+        // Inward with nothing seen yet: keep walking until the origin (then `mistake:no-camp` as before) or `late`.
+        if (t >= at && there() && !(inward && n === undefined && !arrived)) break;
         if (!there()) {
             if (t >= late) return fail("timeout", "late");
             bot.Action_MoveToLocation(stand);

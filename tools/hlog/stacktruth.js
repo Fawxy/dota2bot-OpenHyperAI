@@ -123,9 +123,10 @@ function main() {
     if (!fs.existsSync(dem)) { console.error(`no replay for ${log}`); continue; }
     // A double whose B failed (no hit) may still have hit A: grade A there, and B only where its hit landed.
     // The replay is of the log's last game (a restarted start leaves an earlier one in the log).
+    // Filtered here, not in SQL: the view has a `double`/`fres` column only when some stored log wrote those fields.
     const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ?1 AND game = (SELECT max(game) FROM stack_attempts
-      WHERE file = ?1) AND (res IN ('stacked', 'not_stacked') OR (double = 1 AND fres IN ('stacked', 'not_stacked', 'unseen')))
-      ORDER BY min`, path.resolve(log));
+      WHERE file = ?1) ORDER BY min`, path.resolve(log)).filter((r) => ['stacked', 'not_stacked'].includes(r.res) ||
+      (r.double === 1 && ['stacked', 'not_stacked', 'unseen'].includes(r.fres)));
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
     const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
     const t = readTruth(dem);

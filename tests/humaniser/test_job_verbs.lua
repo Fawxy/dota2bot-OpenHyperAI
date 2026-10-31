@@ -590,6 +590,30 @@ do
     T.check("approach: the camp was hit", n.attackTarget ~= nil)
 end
 
+do
+    -- The approach point is in trees (sweep5a/5c, 01/11/2026: camps 3 and 24, the bot stood still 450-520 from the origin
+    -- and logged mistake:no-camp): still blind INWARD_LEAD s before the hit, it walks to the origin and stops at the first
+    -- neutral it sees, then hits.
+    -- A ranged hero (the sim does not walk a bot in to attack).
+    local sim, bot = world(nil, { range = 600 })
+    local n = sim:addNeutral{ x = 1300, y = 0, hp = 500 }
+    -- Stand 450 out and the approach 300 past it, as at camp 3 (the bot stopped about 200 short of it).
+    local camp = { stand = { x = 850, y = 0 }, box = box(1300, 0, 100), origin = { x = 1300, y = 0 }, approach = { x = 1150, y = 0 } }
+    start(bot, function(ctx) return job.stack(ctx, stackPlan{ camp = camp, aggroAt = 6, exitUntil = 10 }) end)
+    local closest = math.huge
+    for _ = 1, 400 do
+        n.hidden = math.abs(bot.loc.x - n.loc.x) > 300
+        bot.blocked = bot.moveTarget ~= nil and bot.moveTarget.x == 1150
+        if R.Current(bot) == nil then break end
+        frame(sim, bot)
+        closest = math.min(closest, math.abs(bot.loc.x - 1300))
+    end
+    local r = R.Last(bot).result
+    T.eq("approach in trees: ok", r.reason, "ok")
+    T.check("approach in trees: the camp was hit", n.attackTarget ~= nil)
+    T.check("approach in trees: stopped near first sight, not in the camp (" .. closest .. ")", closest >= 150)
+end
+
 print("jobs [" .. T.runtime() .. "]")
 T.finish()
 FINISHED = true

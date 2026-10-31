@@ -666,7 +666,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local override, setDir, edgeToward, setExit, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
+local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -731,6 +731,9 @@ function ____exports.ExitPath(sp, data)
     end
     return exits[sp.idx]
 end
+function near(v, x, y)
+    return math.abs(v.x - x) <= 200 and math.abs(v.y - y) <= 200
+end
 --- Where the bot waits for the hit: StandOffset past the box edge, on the walk-off side unless a hand-set entry names its own.
 function ____exports.Stand(sp, data)
     local e = setDir(sp)
@@ -784,10 +787,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue151
+            local __continue155
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue151 = true
+                    __continue155 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -801,9 +804,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue151 = true
+                __continue155 = true
             until true
-            if not __continue151 then
+            if not __continue155 then
                 break
             end
         end
@@ -913,11 +916,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue181
+            local __continue185
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue181 = true
+                    __continue185 = true
                     break
                 end
                 local name = (string.gsub(
@@ -927,7 +930,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue181 = true
+                    __continue185 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -937,9 +940,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue181 = true
+                __continue185 = true
             until true
-            if not __continue181 then
+            if not __continue185 then
                 break
             end
         end
@@ -1176,27 +1179,40 @@ local PAIRS = {{
     pos = 4,
     face = true
 }}
+--- Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. Sweep
+-- (sweep5a, sweep5c, 01/11/2026; replay-graded, fresh camps): these three missed in 2 of 2 attempts each with the hit
+-- on its plan or up to 0.5 s after, the rest of their side stacked 14 of 15: good_15 (window 56-57) neutrals first 400
+-- out at :58 or later, evil_4 (55-56) two never left, evil_5 (55-56) none in the box but no spawn. `judgement`, 1 s.
+local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}, {x = 1224, y = 4176, s = 1}, {x = 1064, y = 2580, s = 1}}
+--- A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names.
+function ____exports.SingleSec(data)
+    local sp = Camps.SpawnerByIdx(data.campIdx)
+    local sec = Stacking.AggroSec(data)
+    for ____, e in ipairs(SINGLE_EARLIER) do
+        if sp ~= nil and near(sp.location, e.x, e.y) then
+            sec = sec - e.s
+        end
+    end
+    return sec
+end
 --- The pos4's single camps, taken in turn with its pairs: each wisdom shrine's large camp (good_13, evil_7).
 local POS4_SINGLES = {{x = -8313, y = -553}, {x = 7928, y = -120}}
-local function near(v, x, y)
-    return math.abs(v.x - x) <= 200 and math.abs(v.y - y) <= 200
-end
 local function campAt(team, x, y)
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue24
+            local __continue28
             repeat
                 if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
-                    __continue24 = true
+                    __continue28 = true
                     break
                 end
                 local d = Camps.ByIdx(s.idx, s.team)
                 if d ~= nil and d.stack ~= nil then
                     return d
                 end
-                __continue24 = true
+                __continue28 = true
             until true
-            if not __continue24 then
+            if not __continue28 then
                 break
             end
         end
@@ -1337,15 +1353,15 @@ local function SweepNext(bot)
     local stand
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue51
+            local __continue55
             repeat
                 if s.team ~= bot:GetTeam() or done[s.idx] or (Stacking.Window(s.idx)) == nil then
-                    __continue51 = true
+                    __continue55 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, s.team)
                 if data == nil or data.stack == nil then
-                    __continue51 = true
+                    __continue55 = true
                     break
                 end
                 local p = ____exports.Stand(s, data)
@@ -1358,9 +1374,9 @@ local function SweepNext(bot)
                 ) then
                     best, stand = data, p
                 end
-                __continue51 = true
+                __continue55 = true
             until true
-            if not __continue51 then
+            if not __continue55 then
                 break
             end
         end
@@ -1398,19 +1414,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue71
+            local __continue75
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue71 = true
+                    __continue75 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue71 = true
+                __continue75 = true
             until true
-            if not __continue71 then
+            if not __continue75 then
                 break
             end
         end
@@ -1506,22 +1522,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue95
+                local __continue99
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue95 = true
+                        __continue99 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue95 = true
+                    __continue99 = true
                 until true
-                if not __continue95 then
+                if not __continue99 then
                     break
                 end
             end
@@ -1582,7 +1598,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
         first = first,
         approachLead = ____exports.SETTINGS.ApproachLead,
         waitClear = f ~= nil and ____exports.SETTINGS.WaitClear or nil,
-        aggroAt = start + (first ~= nil and f.sec or Stacking.AggroSec(data)),
+        aggroAt = start + (first ~= nil and f.sec or ____exports.SingleSec(data)),
         exitPath = ____exports.ExitPath(sp, data),
         exitUntil = start + 60 + t.StackExitUntil,
         arrive = r.JobArrive,
@@ -1890,10 +1906,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue199
+            local __continue203
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue199 = true
+                    __continue203 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -1945,7 +1961,7 @@ function ____exports.Desire(bot)
                 local fd = ____pos4_34
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
-                local aggroAt = minute * 60 + Stacking.AggroSec(data)
+                local aggroAt = minute * 60 + ____exports.SingleSec(data)
                 local walk = travel(bot, stand)
                 local lead = ____exports.SETTINGS.Lead
                 if double then
@@ -2021,7 +2037,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue199 then
+            if not __continue203 then
                 break
             end
         end
