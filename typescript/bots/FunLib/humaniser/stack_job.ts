@@ -256,6 +256,12 @@ const exits: Record<number, Vector[]> = {};
  * a partial pull (user watching s4solo7ab); that route waits for the stack route choice row. evil_13 (Dire shrine pair's
  * easy camp, 8430,1263): south, back towards the offlane and the secret shop; the derived lane-side walk-off ran north-west
  * towards mid, the harder of its two routes (user replay review of dsolo4b, 31/10/2026; both go to the route choice row).
+ * Vision probe (visprobe1, 01/11/2026; user: pick a waiting spot that sees the camp instead of walking in): five camps'
+ * derived stand points saw none of their neutrals, and the sweep missed them (`mistake:no-camp`, or a late close hit after
+ * the approach): good_5 (camp 3, stand north; seen from south-west to south-east), good_9 (camp 6; seen east to north),
+ * evil_11 (camp 24; seen north-east to north-west), evil_4 (camp 20, seen north-west to south), evil_5 (camp 22, seen
+ * north-east to north-west). Each walks off, so stands, on a side that saw all its neutrals; evil_5 north-east, not north,
+ * which runs into evil_4's box, and evil_11 north-east, away from the map edge.
  * Matched by spawner origin (7.41 map); other camps derive their walk-off.
  */
 const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
@@ -265,6 +271,11 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     { x: 8430, y: 1263, dx: 0, dy: -1 },
     { x: -8313, y: -553, dx: 0.71, dy: 0.71 }, // good_13: north-east, on to the west shrine (-7948,768)
     { x: 7928, y: -120, dx: 0.71, dy: -0.71 }, // evil_7: south-east, on to the east shrine (8029,-1126)
+    { x: -1454, y: -3356, dx: 0, dy: -1 }, // good_5: south
+    { x: -1983, y: -4815, dx: 1, dy: 0 }, // good_9: east
+    { x: -2880, y: 7376, dx: 0.71, dy: 0.71 }, // evil_11: north-east
+    { x: 1224, y: 4176, dx: -1, dy: 0 }, // evil_4: west
+    { x: 1064, y: 2580, dx: 0.71, dy: 0.71 }, // evil_5: north-east
 ];
 
 /** The shrine pairs' other route (user 31/10/2026): straight between the two camps towards the lanes, Radiant east, Dire
@@ -352,17 +363,13 @@ const PAIRS: Pair[] = [
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 52.25, sec: 54.25, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
 ];
 
-/** Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. Sweep
- *  (sweep5a, sweep5c, 01/11/2026; replay-graded, fresh camps): these three missed in 2 of 2 attempts each with the hit
- *  on its plan or up to 0.5 s after, the rest of their side stacked 14 of 15: good_15 (window 56-57) neutrals first 400
- *  out at :58 or later, evil_4 (55-56) two never left, evil_5 (55-56) none in the box but no spawn. `judgement`, 1 s. */
+/** Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. good_15
+ *  (window 56-57) missed 2 of 2 in the sweep (sweep5a, sweep5c, 01/11/2026; replay-graded) with its neutrals first 400 out
+ *  at :58 or later and its stand point in sight of the camp (visprobe1), then stacked 2 of 2 1 s earlier (sweep6a, sweep6c).
+ *  evil_4, evil_5 and good_9 had the same 1 s for misses that the vision probe put down to stand points out of sight
+ *  (EXIT_DIRS): back to the window middle. `judgement`, 1 s. */
 const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
     { x: 1922, y: -3975, s: 1 }, // good_15
-    { x: 1224, y: 4176, s: 1 }, // evil_4
-    { x: 1064, y: 2580, s: 1 }, // evil_5
-    // sweep6a/6c: good_9 (56-57) 1 of 4 over both sweeps, hit at 56.4-57.2 from 154-287 (seen only on the step in); as
-    // good_15's 1 s, which then stacked 2 of 2.
-    { x: -1983, y: -4815, s: 1 }, // good_9
 ];
 
 /** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */
@@ -998,6 +1005,7 @@ declare function GetTimeOfDay(): number;
 const VISION_DIRS = 8;
 const VISION_WAIT = 1;
 const VISION_WALK = 10;
+const VISION_WALK_FIRST = 40;
 interface ProbePoint {
     camp: number;
     k: number;
@@ -1037,7 +1045,9 @@ function visionProbe(bot: Unit): boolean {
     if (p === undefined) return false;
     const there = dist(bot.GetLocation(), p.at) <= 100;
     if (there && st.reachedAt === undefined) st.reachedAt = now;
-    const walkedOut = !there && now - st.since >= VISION_WALK;
+    // The walk to a camp's stand point (k -1) comes from the last camp: VISION_WALK_FIRST, not VISION_WALK (visprobe1 left
+    // most k -1 points unreached in 10 s and read them on the way).
+    const walkedOut = !there && now - st.since >= (p.k === -1 ? VISION_WALK_FIRST : VISION_WALK);
     if ((st.reachedAt !== undefined && now - st.reachedAt >= VISION_WAIT) || walkedOut) {
         const sp = Camps.SpawnerByIdx(p.camp)!;
         let seen = 0;

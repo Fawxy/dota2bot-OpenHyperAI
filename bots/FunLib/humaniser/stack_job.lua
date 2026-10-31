@@ -1206,7 +1206,12 @@ EXIT_DIRS = {
     {x = -4824, y = 3915, dx = 0, dy = 1},
     {x = 8430, y = 1263, dx = 0, dy = -1},
     {x = -8313, y = -553, dx = 0.71, dy = 0.71},
-    {x = 7928, y = -120, dx = 0.71, dy = -0.71}
+    {x = 7928, y = -120, dx = 0.71, dy = -0.71},
+    {x = -1454, y = -3356, dx = 0, dy = -1},
+    {x = -1983, y = -4815, dx = 1, dy = 0},
+    {x = -2880, y = 7376, dx = 0.71, dy = 0.71},
+    {x = 1224, y = 4176, dx = -1, dy = 0},
+    {x = 1064, y = 2580, dx = 0.71, dy = 0.71}
 }
 SHRINE_LANE = {{x = -8313, y = -553, dx = 1, dy = 0}, {
     x = 7928,
@@ -1253,11 +1258,12 @@ local PAIRS = {{
     pos = 4,
     face = true
 }}
---- Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. Sweep
--- (sweep5a, sweep5c, 01/11/2026; replay-graded, fresh camps): these three missed in 2 of 2 attempts each with the hit
--- on its plan or up to 0.5 s after, the rest of their side stacked 14 of 15: good_15 (window 56-57) neutrals first 400
--- out at :58 or later, evil_4 (55-56) two never left, evil_5 (55-56) none in the box but no spawn. `judgement`, 1 s.
-local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}, {x = 1224, y = 4176, s = 1}, {x = 1064, y = 2580, s = 1}, {x = -1983, y = -4815, s = 1}}
+--- Single-stack hits this much earlier than Valve's window middle (`Stacking.AggroSec`), by spawner origin. good_15
+-- (window 56-57) missed 2 of 2 in the sweep (sweep5a, sweep5c, 01/11/2026; replay-graded) with its neutrals first 400 out
+-- at :58 or later and its stand point in sight of the camp (visprobe1), then stacked 2 of 2 1 s earlier (sweep6a, sweep6c).
+-- evil_4, evil_5 and good_9 had the same 1 s for misses that the vision probe put down to stand points out of sight
+-- (EXIT_DIRS): back to the window middle. `judgement`, 1 s.
+local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}}
 --- A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names.
 function ____exports.SingleSec(data)
     local sp = Camps.SpawnerByIdx(data.campIdx)
@@ -1965,6 +1971,7 @@ end
 local VISION_DIRS = 8
 local VISION_WAIT = 1
 local VISION_WALK = 10
+local VISION_WALK_FIRST = 40
 probe = {}
 local function probePoints(bot)
     local left = {}
@@ -2047,7 +2054,7 @@ local function visionProbe(bot)
     if there and st.reachedAt == nil then
         st.reachedAt = now
     end
-    local walkedOut = not there and now - st.since >= VISION_WALK
+    local walkedOut = not there and now - st.since >= (p.k == -1 and VISION_WALK_FIRST or VISION_WALK)
     if st.reachedAt ~= nil and now - st.reachedAt >= VISION_WAIT or walkedOut then
         local sp = Camps.SpawnerByIdx(p.camp)
         local seen = 0

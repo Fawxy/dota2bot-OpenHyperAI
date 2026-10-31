@@ -777,11 +777,11 @@ do
 	check("sweep: no camp twice", not dup, table.concat(lines, " | "))
 end
 
--- Sweep (01/11/2026): good_15, evil_4 and evil_5 single stacks hit 1 s before Valve's window middle; other camps unchanged.
+-- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle; other camps unchanged.
 do
 	local H = world()
 	local C, S = H.Lane.Camps, H.Lane.Stacking
-	for _, c in ipairs({ { "good_15", RAD, 1 }, { "evil_4", DIRE, 1 }, { "evil_5", DIRE, 1 }, { "good_9", RAD, 1 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
+	for _, c in ipairs({ { "good_15", RAD, 1 }, { "evil_4", DIRE, 0 }, { "evil_5", DIRE, 0 }, { "good_9", RAD, 0 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
 		local d = C.ByIdx(idxOf(c[1]), c[2])
 		check(c[1] .. ": single hit " .. c[3] .. " s before the window middle", math.abs(S.AggroSec(d) - H.StackJob.SingleSec(d) - c[3]) < 1e-6, H.StackJob.SingleSec(d))
 	end
@@ -814,6 +814,19 @@ do
 	local seen = 0
 	for i = 1, 9 do seen = seen + tonumber(field(lines[i], "seen") or 0) end
 	check("visprobe: good_1's neutrals counted in sight", seen > 0, seen)
+end
+
+-- Vision probe (visprobe1, 01/11/2026): five camps stand on a side that sees their neutrals, and walk off that way.
+do
+	local H = world()
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))
+		local dx, dy = stand.x - sp.location.x, stand.y - sp.location.y
+		local len = math.sqrt(dx * dx + dy * dy)
+		check(c[1] .. ": stand on the seeing side", (dx * c[3] + dy * c[4]) / len > 0.9, stand.x .. "," .. stand.y)
+	end
 end
 
 finish()
