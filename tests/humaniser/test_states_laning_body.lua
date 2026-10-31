@@ -297,15 +297,18 @@ do
 end
 
 do -- CoreLastHitDire = false: Radiant keeps the body, Dire stays on Valve's laning
-	local function side(team)
+	local function side(team, pos)
 		local H, bot
 		silenced(function()
-			H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }, { team = team, pos = 1, coreLastHit = true, direOff = true })
+			H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }, { team = team, pos = pos, coreLastHit = true, direOff = true })
 		end)
 		return H.States.MayOwn(bot)
+	 end
+	for _, pos in ipairs({ 1, 2, 3 }) do
+		check("dire off: Radiant pos " .. pos .. " still owned", side(2, pos) == true)
+		check("dire off: Dire pos " .. pos .. " left to Valve", side(3, pos) == false)
 	end
-	check("dire off: Radiant pos 1 still owned", side(2) == true)
-	check("dire off: Dire pos 1 left to Valve", side(3) == false)
+	check("dire off: a Dire pos 4 stays untouched", side(3, 4) == false)
 end
 
 finish()

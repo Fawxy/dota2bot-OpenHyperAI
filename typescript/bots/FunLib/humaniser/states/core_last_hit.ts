@@ -1,5 +1,5 @@
 /**
- * Ours.CoreLastHit (slice 5): for pos1-3 on both teams, the laning state's body takes the core's lane last hits and
+ * Ours.CoreLastHit (slice 5): for pos1-3 (both teams unless Ours.CoreLastHitDire is false), the laning state's body takes the core's lane last hits and
  * denies (the creep from laneTargets with states/lane_pick, the swing timed by the engine's lastHit/deny facts),
  * replacing OHA's LastHitThink/DenyThink and, on the team without a human, Valve's C++ laning. The body stands on
  * OHA's own lane spot (States.Laning.Spot 'oha'); the state's floor is 0, so OHA's mode arbitration is unchanged.
