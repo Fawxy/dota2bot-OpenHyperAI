@@ -755,4 +755,26 @@ do
 	check("DoubleStack off: no double field", field(lines[1], "double") == nil, lines[1])
 end
 
+-- Overrides.Sweep (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, nearest untried first, so every
+-- attempt is on a fresh camp; ancients are in the sweep.
+do
+	local H, bot = world({ t = 2 * 60 + 15 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = true, true, true
+	for _, s in ipairs(SPAWNERS) do if s.team == RAD then neutrals(s.location, 2) end end
+	local lines = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H, bot) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = false, false, false
+	local seen, started, dup = {}, 0, false
+	for _, l in ipairs(lines) do
+		if field(l, "res") ~= "skip" then
+			local c = field(l, "camp")
+			if seen[c] then dup = true end
+			seen[c], started = true, started + 1
+		end
+	end
+	check("sweep: a job most minutes from 2:00 to 5:00", started >= 3, started)
+	check("sweep: no camp twice", not dup, table.concat(lines, " | "))
+end
+
 finish()

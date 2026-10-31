@@ -88,7 +88,9 @@ export const SETTINGS = {
 // other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
 // Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
 // AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
-// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Scenario games only,
+// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Overrides.Sweep = true
+// (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
+// attempt is on a fresh camp (`SweepNext`). Scenario games only,
 // never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
@@ -460,8 +462,27 @@ function logCamps(): void {
     }
 }
 
+/** Overrides.Sweep: camps a pos5 has started a job on this game. */
+const swept: Record<number, Record<number, boolean>> = {};
+
+/** Overrides.Sweep: the nearest own-side camp with a stack window, ancients too, that `pid` has not tried yet. */
+function SweepNext(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
+    const done = swept[bot.GetPlayerID()] ?? {};
+    let best: Camps.CampJobData | undefined;
+    let stand: Vector | undefined;
+    for (const s of Camps.Spawners()) {
+        if (s.team !== bot.GetTeam() || done[s.idx] || Stacking.Window(s.idx)[0] === undefined) continue;
+        const data = Camps.ByIdx(s.idx, s.team);
+        if (data === undefined || data.stack === undefined) continue;
+        const p = Stand(s, data);
+        if (stand === undefined || dist(bot.GetLocation(), p) < dist(bot.GetLocation(), stand)) [best, stand] = [data, p];
+    }
+    return $multi(best, stand);
+}
+
 export function ResetCache(): void {
     campsLogged = false;
+    for (const k in swept) delete swept[k];
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
     for (const k in running) delete running[k];
@@ -964,7 +985,7 @@ export function Desire(bot: Unit): number {
         const pos4 = LaneConfig.PositionOf(bot) === 4;
         const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
         const pair = job?.[1];
-        let [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
+        let [data, stand] = override("Sweep") === true ? SweepNext(bot) : Nearest(bot.GetTeam(), bot.GetLocation());
         if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
         const skip = (why: string) => {
             handled[pid][minute] = true;
@@ -1011,6 +1032,7 @@ export function Desire(bot: Unit): number {
         );
         if (!ok) return skip("refused");
         handled[pid][minute] = true;
+        if (override("Sweep") === true) (swept[pid] ??= {})[data.campIdx] = true;
         gateWhy[pid] = undefined;
         running[pid] = a;
         return SETTINGS.Desire;
