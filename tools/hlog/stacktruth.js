@@ -90,8 +90,10 @@ function main() {
     const dem = log.replace(/\.log$/, '.dem');
     if (!fs.existsSync(dem)) { console.error(`no replay for ${log}`); continue; }
     // A double whose B failed (no hit) may still have hit A: grade A there, and B only where its hit landed.
-    const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ? AND game = 1 AND (res IN ('stacked', 'not_stacked')
-      OR (double = 1 AND fres IN ('stacked', 'not_stacked', 'unseen'))) ORDER BY min`, path.resolve(log));
+    // The replay is of the log's last game (a restarted start leaves an earlier one in the log).
+    const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ?1 AND game = (SELECT max(game) FROM stack_attempts
+      WHERE file = ?1) AND (res IN ('stacked', 'not_stacked') OR (double = 1 AND fres IN ('stacked', 'not_stacked', 'unseen')))
+      ORDER BY min`, path.resolve(log));
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
     const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
     const t = readTruth(dem);
