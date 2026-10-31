@@ -492,6 +492,9 @@ function logCamps(): void {
 
 /** Overrides.Sweep: camps a pos5 has started a job on this game. */
 const swept: Record<number, Record<number, boolean>> = {};
+/** Overrides.Sweep: the stand point a pos5 walks to and waits at when its next camp was out of reach this minute (the
+ *  far camps skipped `late` every minute in sweepfara/sweepfarc, 01/11/2026). */
+const prewalk: Record<number, Vector | undefined> = {};
 
 /** Overrides.Sweep: the nearest own-side camp with a stack window, ancients too, that `pid` has not tried yet. */
 function SweepNext(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
@@ -516,6 +519,7 @@ export function ResetCache(): void {
     campsLogged = false;
     for (const k in probe) delete probe[k];
     for (const k in swept) delete swept[k];
+    for (const k in prewalk) delete prewalk[k];
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
     for (const k in running) delete running[k];
@@ -1131,8 +1135,13 @@ export function Desire(bot: Unit): number {
             // The line's camp is B; a minute that runs single keeps the nearest camp (slice 4's stack).
             if (double) [aggroAt, walk, lead, data, stand] = [fAt, fWalk, SETTINGS.DoubleLead, fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
         }
-        if (now < aggroAt - walk - lead) return 0;
-        if (now > aggroAt - walk - SETTINGS.MinSlack) return skip(gateWhy[pid] ?? "late");
+        const sweep = override("Sweep") === true;
+        if (now < aggroAt - walk - lead) return sweep && prewalk[pid] !== undefined ? SETTINGS.Desire : 0;
+        if (now > aggroAt - walk - SETTINGS.MinSlack) {
+            if (!sweep) return skip(gateWhy[pid] ?? "late");
+            prewalk[pid] = stand;
+            return SETTINGS.Desire;
+        }
         if (minute * 60 + 60 + SETTINGS.FarEnd - now > awayMax()) return skip("far");
         const why = Gate(bot);
         if (why !== undefined) {
@@ -1149,7 +1158,8 @@ export function Desire(bot: Unit): number {
         );
         if (!ok) return skip("refused");
         handled[pid][minute] = true;
-        if (override("Sweep") === true) (swept[pid] ??= {})[data.campIdx] = true;
+        if (sweep) (swept[pid] ??= {})[data.campIdx] = true;
+        prewalk[pid] = undefined;
         gateWhy[pid] = undefined;
         running[pid] = a;
         return SETTINGS.Desire;
@@ -1208,6 +1218,11 @@ function sample59(bot: Unit, a: Attempt): void {
 
 export function Think(bot: Unit): boolean {
     if (visionProbe(bot)) return true;
+    const pre = prewalk[bot.GetPlayerID()];
+    if (running[bot.GetPlayerID()] === undefined && pre !== undefined) {
+        bot.Action_MoveToLocation(pre);
+        return true;
+    }
     const a = running[bot.GetPlayerID()];
     if (a === undefined) return false;
     return Tasks.Step(bot, BotMode.Farm);

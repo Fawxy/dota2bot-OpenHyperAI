@@ -792,6 +792,16 @@ do
 		end
 	end
 	check("SweepCamps: only the listed camps, each once", okCamps and started2 >= 1 and started2 <= 2, table.concat(l2, " | "))
+	-- A far camp (sweepfara/c: skipped late every minute): the bot walks to its stand and stacks it a minute later.
+	local H3, b3 = world({ t = 2 * 60 + 15, at = Vector(6000, 6000) })
+	Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, tostring(idxOf("good_5")) .. ","
+	local l3 = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H3, b3) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	local late = false
+	for _, l in ipairs(l3) do if field(l, "why") == "late" then late = true end end
+	check("sweep: a far camp is walked to, not skipped late", not late and #l3 >= 1 and tonumber(field(l3[1], "camp")) == idxOf("good_5"), table.concat(l3, " | "))
 end
 
 -- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle; other camps unchanged.
