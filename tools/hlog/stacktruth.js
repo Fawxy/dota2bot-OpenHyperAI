@@ -5,11 +5,10 @@
 // extractor `stacktruth.exe` (docs/team/research/replay-index.md; path in STACKTRUTH_EXE or the default below).
 // Per attempt and camp (B = the line's camp, A = fcamp of a double): `true` 1 when the camp spawned at :00 of the next
 // minute (a neutral of that spawner left m_bIsWaitingToSpawn in [:59.5, :02]), `log` our res/fres, and when it did not
-// spawn, what stood within BLOCK of the spawner origin at :59.9 (`grade`): the likely blockers. Valve's box is not in the
-// replay, so BLOCK is a radius (7.41 boxes are 600-1,100 wide), not the box.
+// spawn, what stood in its spawn box at :59.9 (`grade`): the blockers. The replay has no boxes; the log's `ev=camp` lines
+// (bot eecba6b on) give them, and a log without them uses `camp_boxes.json` (the same lines, saved once; static map data).
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 
-const BLOCK = +(process.env.STACKTRUTH_BLOCK || 900);
 /** EC-060's guard distance, and the second after which a neutral that first got that far out was hit too late to clear. */
 const GUARD = 400, LATE = 58;
 const EXE = process.env.STACKTRUTH_EXE ||
@@ -31,21 +30,29 @@ function readTruth(dem) {
 }
 
 const near = (sp, x, y) => sp.reduce((b, s) => (Math.hypot(s.x - x, s.y - y) < Math.hypot(b.x - x, b.y - y) ? s : b));
+const BOXES = path.join(__dirname, 'camp_boxes.json');
 
-/** Our camp number -> spawner, from the attempts' own cx/cy; a camp A never logged with cx/cy is its B's nearest other spawner. */
-function campMap(rows, sp) {
-  const m = {};
-  for (const r of rows) if (r.cx != null && m[r.camp] === undefined) m[r.camp] = near(sp, r.cx, r.cy);
-  for (const r of rows) {
-    if (r.fcamp == null || m[r.fcamp] !== undefined || m[r.camp] === undefined) continue;
-    const b = m[r.camp];
-    m[r.fcamp] = near(sp.filter((s) => s !== b), b.x, b.y);
+/** The `ev=camp` lines of a log as {idx: {x, y, x0, y0, x1, y1}}, or undefined when it has none. */
+function boxesOf(text) {
+  const out = {};
+  for (const m of text.matchAll(/ev=camp (.*)/g)) {
+    const f = Object.fromEntries(m[1].trim().split(/\s+/).map((kv) => kv.split('=')));
+    out[f.idx] = { type: f.type, x: +f.x, y: +f.y, x0: +f.x0, y0: +f.y0, x1: +f.x1, y1: +f.y1 };
   }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Our camp number -> the replay's spawner (nearest origin) with that camp's box. */
+function campMap(boxes, sp) {
+  const m = {};
+  for (const [idx, b] of Object.entries(boxes)) m[idx] = { ...near(sp, b.x, b.y), box: b };
   return m;
 }
 
-/** A camp's result at :00 of the next minute and, when it did not spawn, what stood within BLOCK of its origin at :59.9: its own
- *  neutrals that never went GUARD out since :45 (`stay`: not drawn out), first went GUARD out at or after :LATE (`late`) or
+const inBox = (b, x, y) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
+
+/** A camp's result at :00 of the next minute and, when it did not spawn, what stood in its box at :59.9: its own
+ *  neutrals in its box that never went GUARD out since :45 (`stay`: not drawn out), first went GUARD out at or after :LATE (`late`) or
  *  before it and came back (`back`, each as that second, then `>` the second it was furthest out and `:` the nearest hero's
  *  distance to it then), other camps' neutrals, lane creeps and heroes. */
 function grade(s, minute, t) {
@@ -53,7 +60,7 @@ function grade(s, minute, t) {
   if (spawned) return { true: 1 };
   const c = { stay: 0, late: 0, back: [], other: 0, lane: 0, hero: 0 };
   for (const [, kind, who, x, y, maxd, out, turn, hero] of t.snap[minute] || []) {
-    if (Math.hypot(s.x - x, s.y - y) > BLOCK) continue;
+    if (!inBox(s.box, x, y)) continue;
     if (kind === 'n' && who === s.ent) {
       if (maxd <= GUARD) c.stay++;
       else if (out >= LATE) c.late++;
@@ -84,8 +91,9 @@ function main() {
     const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ? AND game = 1 AND res IN ('stacked', 'not_stacked')
       ORDER BY min`, path.resolve(log));
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
+    const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
     const t = readTruth(dem);
-    const m = campMap(rows, t.sp);
+    const m = campMap(boxes, t.sp);
     for (const r of rows) {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
       const b = m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
@@ -102,4 +110,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { grade, campMap, near };
+module.exports = { grade, campMap, boxesOf, near };

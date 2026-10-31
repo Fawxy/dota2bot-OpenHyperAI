@@ -338,12 +338,16 @@ interface Pair {
     pos: number;
     face: boolean;
 }
+// Seconds moved by replay truth (hlog stacktruth.js on runs 20-33, 01/11/2026): good_2's neutrals left at 52.5 and turned
+// at 57.3, EC-060's 5 s leash, and were home by :00 (A 51.5 -> 51.75; 52 no longer fits a melee pos5, `Fits`); evil_9 and
+// good_13 were hit on plan or late and their neutrals first got 400 out at :58 or later (both hits 0.75 earlier; evil_9's
+// ran 0.9 s past plan, so its A moves too).
 const PAIRS: Pair[] = [
-    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
+    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.75, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
     { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54, sec: 56, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
     { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
-    { x: -8313, y: -553, fx: -8023, fy: -1838, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // good_13 after good_16 (both 55-56)
-    { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 53, sec: 55, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
+    { x: -8313, y: -553, fx: -8023, fy: -1838, fsec: 52.75, sec: 55, pos: 4, face: true }, // good_13 after good_16 (both 55-56)
+    { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 52.25, sec: 54.25, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
     { x: 7928, y: -120, fx: 8430, fy: 1263, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // evil_7 after evil_13 (both 55-56)
 ];
 
