@@ -32,6 +32,11 @@ test('own neutrals near the origin are split into never left, out too late and c
   assert.strictEqual(g.block, 'stay:1,late:1,back:1@55.8,other:1,hero:1');
 });
 
+test('a neutral that came back carries where it turned and how far the nearest hero was then', () => {
+  const t = { nc: [], snap: { 3: [[1200, 'n', 527, 4100, -5000, 900, 55.8, 57.2, 740]] } };
+  assert.strictEqual(grade(SP[0], 3, t).block, 'back:1@55.8>57.2:740');
+});
+
 test('nothing near a camp that did not spawn reads none', () => {
   assert.strictEqual(grade(SP[0], 3, { nc: [], snap: {} }).block, 'none');
 });

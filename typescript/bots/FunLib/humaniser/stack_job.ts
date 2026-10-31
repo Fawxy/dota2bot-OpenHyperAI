@@ -418,8 +418,31 @@ export function Stand(sp: Camps.Spawner, data: Camps.CampJobData): Vector {
 }
 const gateWhy: Record<number, string | undefined> = {};
 const running: Record<number, Attempt | undefined> = {};
+let campsLogged = false;
+
+/** One `ev=camp` line per spawner, once the spawner list is final: the boxes a replay grader needs (the replay has none). */
+function logCamps(): void {
+    if (campsLogged) return;
+    const list = Camps.Spawners();
+    if (list.length === 0) return;
+    campsLogged = true;
+    for (const sp of list) {
+        Telemetry.Event("camp", [
+            ["idx", sp.idx],
+            ["team", sp.team],
+            ["type", sp.type],
+            ["x", math.floor(sp.location.x)],
+            ["y", math.floor(sp.location.y)],
+            ["x0", math.floor(sp.min.x)],
+            ["y0", math.floor(sp.min.y)],
+            ["x1", math.floor(sp.max.x)],
+            ["y1", math.floor(sp.max.y)],
+        ]);
+    }
+}
 
 export function ResetCache(): void {
+    campsLogged = false;
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
     for (const k in running) delete running[k];
@@ -903,6 +926,7 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
 /** mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). */
 export function Desire(bot: Unit): number {
     if (!Applies(bot)) return 0;
+    logCamps();
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) {

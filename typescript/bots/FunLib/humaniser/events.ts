@@ -218,6 +218,18 @@ export const EVENTS = {
         mode: "num",
         held: "num",
     },
+    /** Each neutral camp's spawn box once per game, from the first stack job (replay grading, hlog stacktruth.js). */
+    camp: {
+        idx: "num",
+        team: "num",
+        type: "str",
+        x: "num",
+        y: "num",
+        x0: "num",
+        y0: "num",
+        x1: "num",
+        y1: "num",
+    },
     stuck: {
         pid: "num",
         mode: "str",

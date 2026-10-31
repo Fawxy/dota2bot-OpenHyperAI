@@ -222,6 +222,17 @@
    "mode": "num",
    "held": "num"
   },
+  "camp": {
+   "idx": "num",
+   "team": "num",
+   "type": "str",
+   "x": "num",
+   "y": "num",
+   "x0": "num",
+   "y0": "num",
+   "x1": "num",
+   "y1": "num"
+  },
   "stuck": {
    "pid": "num",
    "mode": "str",
@@ -470,6 +481,7 @@
    "casts": "str",
    "n2": "str",
    "n59": "str",
+   "trk": "str",
    "lane": "mixed",
    "idle": "num",
    "double": "num",
@@ -484,8 +496,15 @@
    "fhitd": "mixed",
    "farr": "mixed",
    "fseen": "num",
+   "fchk": "mixed",
+   "fhit0": "mixed",
+   "fhpa": "mixed",
+   "fauto": "mixed",
    "fn2": "str",
-   "fn59": "str"
+   "fn59": "str",
+   "ftrk": "str",
+   "early": "num",
+   "fearly": "num"
   },
   "lane_job_supply": {
    "pid": "num",
@@ -856,6 +875,9 @@
    "mode": "text",
    "competing": "text"
   },
+  "ev_camp": {
+   "type": "text"
+  },
   "ev_stuck": {
    "mode": "text"
   },
@@ -954,11 +976,13 @@
    "casts": "text",
    "n2": "text",
    "n59": "text",
+   "trk": "text",
    "dwhy": "text",
    "fres": "text",
    "ftype": "text",
    "fn2": "text",
-   "fn59": "text"
+   "fn59": "text",
+   "ftrk": "text"
   },
   "ev_lane_job_supply": {
    "item": "text",

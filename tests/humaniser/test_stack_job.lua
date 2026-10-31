@@ -193,6 +193,17 @@ end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
 do
+	do
+		-- ev=camp: one line per spawner with its box, once per game (hlog stacktruth.js grades replays with it).
+		local H0, bot0 = world({ t = 233 })
+		local camps = {}
+		for _, l in ipairs(capture(function() for _ = 1, 3 do frame(H0, bot0) end end)) do
+			if l:find("ev=camp ", 1, true) then table.insert(camps, l) end
+		end
+		local g1 = camps[idxOf("good_1")]
+		check("ev=camp: one line per spawner, once", #camps == #MAP, #camps)
+		check("ev=camp: good_1's box", g1 ~= nil and field(g1, "x0") == "3828" and field(g1, "y1") == "-4877" and field(g1, "type") == "small", g1)
+	end
 	local H, bot = world({ t = 233 })
 	bot.pos = 4
 	check("pos4: no job", H.StackJob.Desire(bot) == 0)

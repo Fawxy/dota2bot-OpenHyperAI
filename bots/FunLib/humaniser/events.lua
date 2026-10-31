@@ -173,6 +173,17 @@ ____exports.EVENTS = {
         competing = "str"
     },
     oha_idle = {pid = "num", mode = "num", held = "num"},
+    camp = {
+        idx = "num",
+        team = "num",
+        type = "str",
+        x = "num",
+        y = "num",
+        x0 = "num",
+        y0 = "num",
+        x1 = "num",
+        y1 = "num"
+    },
     stuck = {
         pid = "num",
         mode = "str",

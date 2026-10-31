@@ -46,17 +46,18 @@ function campMap(rows, sp) {
 
 /** A camp's result at :00 of the next minute and, when it did not spawn, what stood within BLOCK of its origin at :59.9: its own
  *  neutrals that never went GUARD out since :45 (`stay`: not drawn out), first went GUARD out at or after :LATE (`late`) or
- *  before it and came back (`back`, with that second each), other camps' neutrals, lane creeps and heroes. */
+ *  before it and came back (`back`, each as that second, then `>` the second it was furthest out and `:` the nearest hero's
+ *  distance to it then), other camps' neutrals, lane creeps and heroes. */
 function grade(s, minute, t) {
   const spawned = t.nc.some((n) => n.sp === s.ent && n.t >= minute * 60 + 59.5 && n.t <= minute * 60 + 62);
   if (spawned) return { true: 1 };
   const c = { stay: 0, late: 0, back: [], other: 0, lane: 0, hero: 0 };
-  for (const [, kind, who, x, y, maxd, out] of t.snap[minute] || []) {
+  for (const [, kind, who, x, y, maxd, out, turn, hero] of t.snap[minute] || []) {
     if (Math.hypot(s.x - x, s.y - y) > BLOCK) continue;
     if (kind === 'n' && who === s.ent) {
       if (maxd <= GUARD) c.stay++;
       else if (out >= LATE) c.late++;
-      else c.back.push(out);
+      else c.back.push(turn === undefined ? `${out}` : `${out}>${turn}:${hero}`);
     }
     else if (kind === 'n') c.other++;
     else if (kind === 'l') c.lane++;
