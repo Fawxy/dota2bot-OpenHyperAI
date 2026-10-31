@@ -9,9 +9,14 @@ const SP = [{ ent: 527, x: 3978, y: -5027 }, { ent: 2516, x: 4649, y: -3699 }, {
 // good_1 with a box 700 wide (x 3700-4400) and 400 high, as `campMap` gives it.
 const G1 = { ...SP[0], box: { x0: 3700, y0: -5250, x1: 4400, y1: -4850 } };
 
-test('a camp that spawned at :00.1 of the next minute is stacked, whatever stood near it', () => {
-  const t = { nc: [{ sp: 527, t: 300.1 }], snap: { 4: [[1, 'n', 527, 3980, -5020, 0, -1]] } };
+test('a camp that spawned at :00.1 of the next minute with its earlier neutrals alive is stacked', () => {
+  const t = { nc: [{ sp: 527, t: 300.1 }], snap: { 4: [[1, 'n', 527, 3980, -5020, 0, -1]] }, alive: { 4: { 527: 3 } } };
   assert.deepStrictEqual(grade(G1, 4, t), { true: 1 });
+});
+
+test('a camp cleared before :00 spawns too: a respawn, not a stack', () => {
+  const t = { nc: [{ sp: 527, t: 300.1 }], snap: { 4: [] }, alive: { 4: { 2516: 3 } } };
+  assert.deepStrictEqual(grade(G1, 4, t), { true: 0, block: 'respawn' });
 });
 
 test('a spawn of another camp, or of this camp a minute later, does not count', () => {

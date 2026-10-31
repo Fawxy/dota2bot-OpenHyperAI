@@ -4,7 +4,8 @@
 // dotactl --record keeps beside the log), not from the bot's vision. The replay is read by the master's replay-index
 // extractor `stacktruth.exe` (docs/team/research/replay-index.md; path in STACKTRUTH_EXE or the default below).
 // Per attempt and camp (B = the line's camp, A = fcamp of a double): `true` 1 when the camp spawned at :00 of the next
-// minute (a neutral of that spawner left m_bIsWaitingToSpawn in [:59.5, :02]), `log` our res/fres, and when it did not
+// minute (a neutral of that spawner left m_bIsWaitingToSpawn in [:59.5, :02]) while its earlier neutrals still lived (a camp
+// cleared before :00 spawns too: `true` 0, `block` `respawn`), `log` our res/fres, and when it did not
 // spawn, what stood in its spawn box at :59.9 (`grade`): the blockers. The replay has no boxes; the log's `ev=camp` lines
 // (bot eecba6b on) give them, and a log without them uses `camp_boxes.json` (the same lines, saved once; static map data).
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
@@ -17,13 +18,13 @@ const EXE = process.env.STACKTRUTH_EXE ||
 function readTruth(dem) {
   const p = spawnSync(EXE, [dem], { maxBuffer: 1 << 30, encoding: 'utf8' });
   if (p.status !== 0) throw new Error(`stacktruth failed on ${dem}: ${p.stderr}`);
-  const t = { sp: [], nc: [], snap: {}, cs: [] };
+  const t = { sp: [], nc: [], snap: {}, alive: {}, cs: [] };
   for (const line of p.stdout.split('\n')) {
     if (!line.startsWith('{')) continue;
     const o = JSON.parse(line);
     if (o.k === 'sp') t.sp.push(o);
     else if (o.k === 'nc') t.nc.push(o);
-    else if (o.k === 'snap' && o.at === 59.9) t.snap[o.min] = o.u;
+    else if (o.k === 'snap' && o.at === 59.9) { t.snap[o.min] = o.u; t.alive[o.min] = o.alive || {}; }
     else if (o.k === 'cs') t.cs.push(o);
   }
   return t;
@@ -57,7 +58,7 @@ const inBox = (b, x, y) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
  *  distance to it then), other camps' neutrals, lane creeps and heroes. */
 function grade(s, minute, t) {
   const spawned = t.nc.some((n) => n.sp === s.ent && n.t >= minute * 60 + 59.5 && n.t <= minute * 60 + 62);
-  if (spawned) return { true: 1 };
+  if (spawned) return (t.alive?.[minute]?.[s.ent] ?? 0) > 0 ? { true: 1 } : { true: 0, block: 'respawn' };
   const c = { stay: 0, late: 0, back: [], other: 0, lane: 0, hero: 0 };
   for (const [, kind, who, x, y, maxd, out, turn, hero] of t.snap[minute] || []) {
     if (!inBox(s.box, x, y)) continue;
@@ -88,15 +89,17 @@ function main() {
   for (const log of logs) {
     const dem = log.replace(/\.log$/, '.dem');
     if (!fs.existsSync(dem)) { console.error(`no replay for ${log}`); continue; }
-    const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ? AND game = 1 AND res IN ('stacked', 'not_stacked')
-      ORDER BY min`, path.resolve(log));
+    // A double whose B failed (no hit) may still have hit A: grade A there, and B only where its hit landed.
+    const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ? AND game = 1 AND (res IN ('stacked', 'not_stacked')
+      OR (double = 1 AND fres IN ('stacked', 'not_stacked', 'unseen'))) ORDER BY min`, path.resolve(log));
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
     const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
     const t = readTruth(dem);
     const m = campMap(boxes, t.sp);
     for (const r of rows) {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
-      const b = m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
+      const landed = r.res === 'stacked' || r.res === 'not_stacked';
+      const b = landed && m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
       Object.assign(o, { camp: r.camp, before: r.before, log: r.res, true: b.true, block: b.block ?? '' });
       if (r.double === 1 && r.fcamp != null) {
         const a = m[r.fcamp] ? grade(m[r.fcamp], r.min, t) : { true: null };
