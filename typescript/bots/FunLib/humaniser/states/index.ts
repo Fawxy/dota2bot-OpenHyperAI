@@ -73,7 +73,7 @@ export function MayOwn(bot: Unit): boolean {
 // Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
 // Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
-    // Ours.CoreLastHit owns laning for pos1-3 on both teams; MayOwn gives those bots this file's Lua Think.
+    // Ours.CoreLastHit owns laning for pos1-3 (both teams unless Ours.CoreLastHitDire is false); MayOwn gives those bots this file's Lua Think.
     if (state === Laning.NAME && CoreLastHit.Applies(bot)) return true;
     if (!ownTeam(bot)) return false;
     const list = ownList(state);
