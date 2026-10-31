@@ -5,12 +5,13 @@
  * OHA's own lane spot (States.Laning.Spot 'oha'); the state's floor is 0, so OHA's mode arbitration is unchanged.
  * Off: OHA's own path, exactly as before.
  */
-import { Unit } from "bots/ts_libs/dota";
+import { Team, Unit } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 
 export function Applies(bot: Unit): boolean {
     if (!Ours.On("CoreLastHit")) return false;
+    if (bot.GetTeam() === Team.Dire && !Ours.On("CoreLastHitDire")) return false;
     const pos = LaneConfig.PositionOf(bot);
     return pos !== undefined && pos >= 1 && pos <= 3;
 }

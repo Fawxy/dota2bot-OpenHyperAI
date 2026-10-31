@@ -64,7 +64,7 @@ local function Fresh(states, o)
 	o = o or {}
 	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
-	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true }
+	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -271,10 +271,10 @@ end
 -- body takes its last hits, with Own and Laning.LastHit at their defaults; supports are untouched; off is OHA's path.
 do
 	local DEFAULTS = { Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }
-	local function dire(pos, on)
+	local function dire(pos, on, direOff)
 		local H, bot, c
 		silenced(function()
-			H, bot = Fresh(DEFAULTS, { team = 3, pos = pos, coreLastHit = on })
+			H, bot = Fresh(DEFAULTS, { team = 3, pos = pos, coreLastHit = on, direOff = direOff })
 			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
 			for _ = 1, 4 do frame(H, bot) end
 			-- Radiant's creep: the enemy's for this Dire bot.
@@ -294,6 +294,18 @@ do
 	local Hoff, botoff = dire(1, false)
 	check("core lh off: Dire pos 1 stays on Valve's laning (no Lua Think)", Hoff.States.MayOwn(botoff) == false)
 	check("core lh off: the body never attacks", Hoff.States.BodyLastHits(botoff) == false and botoff.attacks == nil)
+end
+
+do -- CoreLastHitDire = false: Radiant keeps the body, Dire stays on Valve's laning
+	local function side(team)
+		local H, bot
+		silenced(function()
+			H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }, { team = team, pos = 1, coreLastHit = true, direOff = true })
+		end)
+		return H.States.MayOwn(bot)
+	end
+	check("dire off: Radiant pos 1 still owned", side(2) == true)
+	check("dire off: Dire pos 1 left to Valve", side(3) == false)
 end
 
 finish()

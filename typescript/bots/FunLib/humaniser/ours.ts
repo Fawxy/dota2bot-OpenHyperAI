@@ -15,6 +15,8 @@ export const DEFAULTS = {
      * FAIL (no better than OHA, more deaths).
      */
     CoreLastHit: false,
+    /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
+    CoreLastHitDire: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

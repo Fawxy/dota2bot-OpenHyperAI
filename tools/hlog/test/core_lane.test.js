@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Store } = require('../store');
-const { coreLane } = require('../nf');
+const { coreLane, economy } = require('../nf');
 
 // Radiant safe lane (bot) near its T1, as in lasthit_cause.test.js; the Dire pos1 stands in the same lane (its own safe lane is
 // top, but only distance to the death counts here).
@@ -69,4 +69,34 @@ test('a position one team lacks leaves the mean undefined, never half of one tea
     const o2 = run(log([line(0, 'bot pid=2 hero=h2 team=2 pos=2'), line(5, `snap pid=2 x=0 y=0 alive=1 lh=0 dn=1 lvl=3 deaths=0`)]));
     assert.strictEqual(o2.conv_lpos2_r, undefined);
     assert.strictEqual(o2.conv_lpos2, undefined);
+});
+
+function runEconomy(text) {
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-econ-')), 'a.log');
+    fs.writeFileSync(f, text + '\n');
+    const s = new Store(':memory:');
+    s.ingest(f);
+    s.refreshViews();
+    const out = economy(s, f, 1);
+    s.db.close();
+    return out;
+}
+
+test('economy: per-team guard counts at 10:00, share undefined without own-side rows', () => {
+    const o = runEconomy(log());
+    // pid 1 (Radiant) dn=4 lh=0 at t<600; pid 6 (Dire) dn=2.
+    assert.strictEqual(o.team_lhdn_r, 4);
+    assert.strictEqual(o.team_lhdn_d, 2);
+    assert.strictEqual(o.core_dn_r, 4);
+    // deaths=1 in the snaps, +1: the last snap at 590 s is over 2.5 s before 10:00 (creep_guard counts the hero as still dead).
+    assert.strictEqual(o.deaths_t_r, 2);
+    assert.strictEqual(o.share_r, undefined);
+});
+
+test('economy: share and not_in_share are numbers once the team logs own-side creep deaths', () => {
+    const own = [line(120, `own_creep_death team=2 kind=melee x=${BOT[0]} y=${BOT[1]} hp=0.1 by=1`)];
+    const o = runEconomy(log(own));
+    assert.strictEqual(typeof o.share_r, 'number');
+    assert.ok(o.share_r >= 0 && o.share_r <= 1);
+    assert.strictEqual(typeof o.not_in_share_r, 'number');
 });

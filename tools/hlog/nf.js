@@ -248,6 +248,26 @@ function coreLane(store, file, gameNo) {
     return out;
 }
 
+/**
+ * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the views creep_share and creep_guard (GOALS.md L.1,
+ * LOGGING.md): `share`, `team_lhdn` (team last hits + denies), `core_lh`, `core_dn`, `deaths_t` (counts a hero still dead
+ * at 10:00), `not_in_share`. Undefined for a team with no row (share and not_in_share are NULL on logs from before 406ee95).
+ */
+function economy(store, file, gameNo) {
+    const rows = store.query(`WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1))
+        SELECT g.team, s.share AS share, g.team_lh + g.team_dn AS team_lhdn, g.core_lh, g.core_dn, g.deaths, g.not_in_share
+        FROM creep_guard g LEFT JOIN creep_share s ON s.game_id = g.game_id AND s.team = g.team
+        WHERE g.game_id = (SELECT game_id FROM gm)`, { file, game: gameNo });
+    const out = {};
+    for (const r of rows) {
+        const sfx = r.team === 2 ? '_r' : r.team === 3 ? '_d' : null;
+        if (!sfx) continue;
+        for (const [k, f] of [['share', 'share'], ['team_lhdn', 'team_lhdn'], ['core_lh', 'core_lh'], ['core_dn', 'core_dn'],
+            ['deaths_t', 'deaths'], ['not_in_share', 'not_in_share']]) out[k + sfx] = r[f] === null ? undefined : r[f];
+    }
+    return out;
+}
+
 /** A started job whose hit order was never confirmed (the stack verb's `mistake:no-aggro`). */
 function stackNoAggro(s) {
     return s.res !== 'skip' && String(s.why ?? '').endsWith(':mistake:no-aggro');
@@ -256,7 +276,7 @@ function stackNoAggro(s) {
 /** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
 function nfGame(g, game, store) {
     const m = dynamicMetrics(store, path.resolve(g.log), game.index, game);
-    const flat = { ...flatten(m), ...coreLane(store, path.resolve(g.log), game.index) };
+    const flat = { ...flatten(m), ...coreLane(store, path.resolve(g.log), game.index), ...economy(store, path.resolve(g.log), game.index) };
     return { ...g, flat, problems: gate(game, m, flat), monitors: { first_t1_time: m.first_t1_time, first_roshan_time: m.first_roshan_time } };
 }
 
@@ -323,4 +343,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { coreLane, flatten, gate, stats, mde, t975, tCrit, welch, stratified, nfGame, noiseTable, storeFor, stackInterrupted, stackNoAggro };
+module.exports = { coreLane, economy, flatten, gate, stats, mde, t975, tCrit, welch, stratified, nfGame, noiseTable, storeFor, stackInterrupted, stackNoAggro };
