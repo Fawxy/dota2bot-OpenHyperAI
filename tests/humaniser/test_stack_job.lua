@@ -553,26 +553,27 @@ do
 	check("hits: good_2 at 51-52, good_1 in 55-56", d.fsec >= 51 and d.fsec < 52 and d.sec >= 55 and d.sec <= 56, d.fsec .. " " .. d.sec)
 end
 
--- The pos4's offlane pairs (user 31/10/2026): each ancient camp and its neighbour, the two camps by each wisdom shrine; one
--- pair per trigger minute in turn; A's stand faces B. Fit for a 550-range hero per E1 (31/10/2026): all but evil_8 then
--- evil_9 (EC-063's weakest pair).
+-- The pos4's offlane camps: each ancient camp and its neighbour as a pair (user 31/10/2026), and each wisdom shrine's large
+-- camp single (user 01/11/2026: the shrine double dropped); one per trigger minute in turn; A's stand faces B. Fit for a
+-- 550-range hero per E1 (31/10/2026): good_8 then good_7 fits, evil_8 then evil_9 does not (EC-063's weakest pair).
 do
 	local H, bot = world({ double = true })
-	local seen = { [RAD] = {}, [DIRE] = {} }
+	local seen, single = { [RAD] = {}, [DIRE] = {} }, { [RAD] = {}, [DIRE] = {} }
 	for _, team in ipairs({ RAD, DIRE }) do
 		for _, minute in ipairs({ 3, 5, 7 }) do
-			local d = H.StackJob.PairFor(team, minute)
-			if d then seen[team][MAP[d.a.campIdx][1] .. ">" .. MAP[d.b.campIdx][1]] = d end
+			local job = H.StackJob.Pos4For(team, minute)
+			local d = job[2]
+			if d then seen[team][MAP[d.a.campIdx][1] .. ">" .. MAP[d.b.campIdx][1]] = d else single[team][MAP[job[1].campIdx][1]] = true end
+			local pf = H.StackJob.PairFor(team, minute)
+			check("PairFor agrees with Pos4For", (pf and pf.b.campIdx) == (d and d.b.campIdx))
 		end
 	end
-	check("pos4 radiant pairs: good_8>good_7 and good_16>good_13", seen[RAD]["good_8>good_7"] ~= nil and seen[RAD]["good_16>good_13"] ~= nil)
-	check("pos4 dire pairs: evil_8>evil_9 and evil_13>evil_7", seen[DIRE]["evil_8>evil_9"] ~= nil and seen[DIRE]["evil_13>evil_7"] ~= nil)
-	check("pos4: minutes 3 and 5 take different pairs", H.StackJob.PairFor(RAD, 3).b.campIdx ~= H.StackJob.PairFor(RAD, 5).b.campIdx)
+	check("pos4 radiant: pair good_8>good_7, single good_13", seen[RAD]["good_8>good_7"] ~= nil and single[RAD]["good_13"] and next(seen[RAD], next(seen[RAD])) == nil)
+	check("pos4 dire: pair evil_8>evil_9, single evil_7", seen[DIRE]["evil_8>evil_9"] ~= nil and single[DIRE]["evil_7"] and next(seen[DIRE], next(seen[DIRE])) == nil)
+	check("pos4: minutes 3 and 5 take different camps", H.StackJob.Pos4For(RAD, 3)[1].campIdx ~= H.StackJob.Pos4For(RAD, 5)[1].campIdx)
 	bot.range = 550
 	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
 	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
-	check("good_16>good_13 fits ranged", fitsPair(RAD, "good_16>good_13"))
-	check("evil_13>evil_7 fits ranged", fitsPair(DIRE, "evil_13>evil_7"))
 	check("evil_8>evil_9 does not fit ranged", not fitsPair(DIRE, "evil_8>evil_9"))
 	for k, d in pairs(seen[RAD]) do
 		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
@@ -605,23 +606,24 @@ do
 	check("pos4 good_8>good_7: A hit near its second, B near its own (1 s for the confirm)", fag ~= nil and ag ~= nil and math.abs(fag - d.fsec) <= 1 and ag >= d.sec - 0.5 and ag <= d.sec + 1, l)
 end
 
--- Reach (E1, 31/10/2026): from the Radiant offlane T1 the shrine pair (minute 3) plans over 25 s away as a double, and its
--- camp B alone too, so the minute is skipped as far.
+-- Reach (E1, 31/10/2026): from the Radiant offlane T1 the shrine's large camp good_13 (minute 3, single since 01/11/2026)
+-- plans over 25 s away, so the minute is skipped as far.
 do
 	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
 	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
-	check("pos4 shrine pair from the T1: skip far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+	check("pos4 shrine camp from the T1: skip far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
 end
--- Overrides.StackFar (scenario games only): the same minute starts the double instead.
+-- Overrides.StackFar (scenario games only): the same minute starts good_13's single instead.
 do
 	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
 	Customize.Overrides.StackFar = true
 	local started = false
-	capture(function() while T < 3 * 60 + 50 do frame(H, bot) if H.StackJob.HoldsRun(bot) then started = true end end end)
+	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) if H.StackJob.HoldsRun(bot) then started = true end end end))
 	Customize.Overrides.StackFar = false
-	check("StackFar: the shrine pair starts from the T1", started)
+	check("StackFar: good_13's single starts from the T1", started)
+	check("StackFar: the line is good_13, no double", lines[1] ~= nil and tonumber(field(lines[1], "camp")) == idxOf("good_13") and field(lines[1], "double") == nil, lines[1])
 end
 
 

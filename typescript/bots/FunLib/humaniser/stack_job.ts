@@ -311,8 +311,8 @@ export function ExitPath(sp: Camps.Spawner, data: Camps.CampJobData): Vector[] {
  * Double-stack pairs (EC-063, user lead 31/10/2026), matched by spawner origin as EXIT_DIRS: camp B (graded, the line's
  * own camp), camp A (hit first), the two hit seconds, the position that stacks it, and whether A's stand faces B.
  * The pos5's are its safe-lane camps (145 of 168 started slice 4 5v5 attempts); the pos4's lie on the offlane side: each
- * ancient camp and its neighbour, and the two camps by each wisdom shrine (the nearer of each pair to the offlane T1
- * first). Seconds (judgement): camp A early in its Valve window, at :53 at the latest (EC-063's guides: ":53, then
+ * ancient camp and its neighbour, and until 01/11/2026 the two camps by each wisdom shrine (the nearer of each pair to the
+ * offlane T1 first; now POS4_SINGLES). Seconds (judgement): camp A early in its Valve window, at :53 at the latest (EC-063's guides: ":53, then
  * :55-:56"; A's neutrals chase the bot through B's hit, so A's own window may not bind), camp B late in its window.
  * The pos4's pairs fit only with A's stand facing B (E1, 31/10/2026); evil_8 then evil_9 still does not for a 550-range
  * hero (EC-063 rates it the weakest) and runs single with `dwhy=walk`.
@@ -341,13 +341,19 @@ interface Pair {
 // evil_8>evil_9 0.75 s earlier from replay truth (hlog stacktruth.js on runs 20-33, 01/11/2026): evil_9's hit ran 0.9 s
 // past plan and its neutrals first got 400 out at :58 or later. The same move on good_16>good_13 and good_2 51.75 made
 // things worse in tsolo (A's neutrals ran out their leash sooner; good_1's hit came later) and were reverted.
+// The shrine pairs (good_16>good_13, evil_13>evil_7) were dropped (user 01/11/2026): both camps stacked in 5 of 26 first
+// doubles on fresh camps (solo runs 16-39); the pos4 single stacks the large camp there instead (POS4_SINGLES).
 const PAIRS: Pair[] = [
     { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
     { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54, sec: 56, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
     { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
-    { x: -8313, y: -553, fx: -8023, fy: -1838, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // good_13 after good_16 (both 55-56)
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 52.25, sec: 54.25, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
-    { x: 7928, y: -120, fx: 8430, fy: 1263, fsec: 53.5, sec: 55.75, pos: 4, face: true }, // evil_7 after evil_13 (both 55-56)
+];
+
+/** The pos4's single camps, taken in turn with its pairs: each wisdom shrine's large camp (good_13, evil_7). */
+const POS4_SINGLES: { x: number; y: number }[] = [
+    { x: -8313, y: -553 },
+    { x: 7928, y: -120 },
 ];
 
 /** A resolved pair: camps B and A, the hit seconds, and A's stand point. */
@@ -392,14 +398,24 @@ export function Partner(data: Camps.CampJobData): Double | undefined {
     return undefined;
 }
 
-/** The pos4's pair in `minute`: its team's pairs in turn, so each gets tried (a placeholder like the trigger: S.2b). */
-export function PairFor(team: number, minute: number): Double | undefined {
-    const list: Double[] = [];
+/** The pos4's camp in `minute`, and its pair when that camp is a pair's camp B: its team's pairs, then its single camps,
+ *  in turn, so each gets tried (a placeholder like the trigger: S.2b). */
+export function Pos4For(team: number, minute: number): [Camps.CampJobData, Double | undefined] | undefined {
+    const list: [Camps.CampJobData, Double | undefined][] = [];
     for (const p of PAIRS) {
         const d = p.pos === 4 ? resolvePair(p, team) : undefined;
-        if (d !== undefined) list.push(d);
+        if (d !== undefined) list.push([d.b, d]);
+    }
+    for (const c of POS4_SINGLES) {
+        const b = campAt(team, c.x, c.y);
+        if (b !== undefined) list.push([b, undefined]);
     }
     return list.length > 0 ? list[math.floor(minute / 2) % list.length] : undefined;
+}
+
+/** The pos4's pair in `minute`, if that minute's camp is a pair's. */
+export function PairFor(team: number, minute: number): Double | undefined {
+    return Pos4For(team, minute)?.[1];
 }
 
 /**
@@ -452,7 +468,7 @@ export function ResetCache(): void {
     for (const k in exits) delete exits[k];
 }
 
-/** The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its pairs only). */
+/** The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`). */
 export function Applies(bot: Unit): boolean {
     if (!Ours.On("StackExecute")) return false;
     const pos = LaneConfig.PositionOf(bot);
@@ -943,11 +959,13 @@ export function Desire(bot: Unit): number {
     handled[pid] = handled[pid] ?? {};
     for (const minute of Minutes()) {
         if (handled[pid][minute] || now < minute * 60 + SETTINGS.LookFrom || now >= minute * 60 + 60) continue;
-        // The pos4 stacks only its pairs (camp B of the minute's pair); the pos5 its nearest camp, with its partner if any.
+        // The pos4 stacks only its listed camps (camp B of the minute's pair, or a single camp); the pos5 its nearest camp,
+        // with its partner if any.
         const pos4 = LaneConfig.PositionOf(bot) === 4;
-        const pair = pos4 ? PairFor(bot.GetTeam(), minute) : undefined;
+        const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
+        const pair = job?.[1];
         let [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
-        if (pos4) [data, stand] = pair !== undefined ? [pair.b, Stand(Camps.SpawnerByIdx(pair.b.campIdx)!, pair.b)] : [undefined, undefined];
+        if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
         const skip = (why: string) => {
             handled[pid][minute] = true;
             gateWhy[pid] = undefined;

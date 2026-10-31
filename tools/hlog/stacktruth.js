@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// node tools/hlog/stacktruth.js <game.log>... [--json] : grade each ev=stack attempt from its game's SourceTV replay (the .dem
+// node tools/hlog/stacktruth.js <game.log>... [--json | --tiers] : grade each ev=stack attempt from its game's SourceTV replay (the .dem
 // dotactl --record keeps beside the log), not from the bot's vision. The replay is read by the master's replay-index
 // extractor `stacktruth.exe` (docs/team/research/replay-index.md; path in STACKTRUTH_EXE or the default below).
 // Per attempt and camp (B = the line's camp, A = fcamp of a double): `true` 1 when the camp spawned at :00 of the next
@@ -8,6 +8,8 @@
 // cleared before :00 spawns too: `true` 0, `block` `respawn`), `log` our res/fres, and when it did not
 // spawn, what stood in its spawn box at :59.9 (`grade`): the blockers. The replay has no boxes; the log's `ev=camp` lines
 // (bot eecba6b on) give them, and a log without them uses `camp_boxes.json` (the same lines, saved once; static map data).
+// `nin`/`fnin`: stacks already in the camp, since it was last empty, before this minute (KR S.2a's tiers, `GOALS.md`
+// 01/11/2026: 0 is a fresh camp). `--tiers` prints, per camp or pair, attempts and replay-stacked by `nin` 0, 1, 2, 3+.
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 
 /** EC-060's guard distance, and the second after which a neutral that first got that far out was hit too late to clear. */
@@ -79,8 +81,38 @@ function grade(s, minute, t) {
   return { true: 0, block: parts.join(',') || 'none', c };
 }
 
+/** Stacks in the camp before `minute`: each earlier minute whose :00 spawn landed on live neutrals adds one, and a
+ *  minute that ended (:59.9) with none of its neutrals alive starts again from 0. */
+function nin(s, minute, t) {
+  let n = 0;
+  for (let m = 0; m < minute; m++) {
+    if (!(m in t.alive)) continue;
+    if ((t.alive[m][s.ent] ?? 0) === 0) n = 0;
+    else if (t.nc.some((c) => c.sp === s.ent && c.t >= m * 60 + 59.5 && c.t <= m * 60 + 62)) n++;
+  }
+  return n;
+}
+
+/** Attempts and replay-stacked per camp (single) or pair (A>B, both camps), by stacks already in: '0', '1', '2', '3+'.
+ *  A pair's tier is its fuller camp's. */
+function tiers(out) {
+  const k = (n) => (n == null ? '?' : n >= 3 ? '3+' : String(n));
+  const rows = {};
+  for (const o of out) {
+    const d = o.double === 1 && o.fcamp != null;
+    if (o.true == null && !d) continue;
+    const key = d ? `${o.fcamp}>${o.camp}` : `${o.camp}`;
+    const tier = d ? k(o.nin == null && o.fnin == null ? null : Math.max(o.nin ?? 0, o.fnin ?? 0)) : k(o.nin);
+    const r = ((rows[key] ??= {})[tier] ??= { n: 0, b: 0, a: 0, both: 0 });
+    r.n++;
+    r.b += o.true === 1 ? 1 : 0;
+    if (d) { r.a += o.ftrue === 1 ? 1 : 0; r.both += o.true === 1 && o.ftrue === 1 ? 1 : 0; }
+  }
+  return rows;
+}
+
 function main() {
-  const args = process.argv.slice(2), json = args.includes('--json');
+  const args = process.argv.slice(2), json = args.includes('--json'), tierOut = args.includes('--tiers');
   const logs = args.filter((a) => !a.startsWith('--'));
   const { Store, DB } = require('./store');
   const store = new Store(DB);
@@ -102,17 +134,25 @@ function main() {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
       const landed = r.res === 'stacked' || r.res === 'not_stacked';
       const b = landed && m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
-      Object.assign(o, { camp: r.camp, before: r.before, log: r.res, true: b.true, block: b.block ?? '' });
+      Object.assign(o, { camp: r.camp, before: r.before, nin: m[r.camp] ? nin(m[r.camp], r.min, t) : null, log: r.res, true: b.true, block: b.block ?? '' });
       if (r.double === 1 && r.fcamp != null) {
         const a = m[r.fcamp] ? grade(m[r.fcamp], r.min, t) : { true: null };
-        Object.assign(o, { fcamp: r.fcamp, fbefore: r.fbefore, flog: r.fres, ftrue: a.true, fblock: a.block ?? '' });
+        Object.assign(o, { fcamp: r.fcamp, fbefore: r.fbefore, fnin: m[r.fcamp] ? nin(m[r.fcamp], r.min, t) : null, flog: r.fres, ftrue: a.true, fblock: a.block ?? '' });
       }
       out.push(o);
     }
   }
   if (json) { console.log(JSON.stringify(out, null, 1)); return; }
-  for (const o of out) console.log([o.file, o.min, o.camp, o.log, o.true, o.block, o.fcamp ?? '', o.flog ?? '', o.ftrue ?? '', o.fblock ?? ''].join('\t'));
+  if (tierOut) {
+    for (const [key, ts] of Object.entries(tiers(out))) {
+      for (const [tier, r] of Object.entries(ts).sort()) {
+        console.log([key, `nin=${tier}`, `n=${r.n}`, `b=${r.b}`, ...(key.includes('>') ? [`a=${r.a}`, `both=${r.both}`] : [])].join('\t'));
+      }
+    }
+    return;
+  }
+  for (const o of out) console.log([o.file, o.min, o.camp, o.nin, o.log, o.true, o.block, o.fcamp ?? '', o.fnin ?? '', o.flog ?? '', o.ftrue ?? '', o.fblock ?? ''].join('\t'));
 }
 
 if (require.main === module) main();
-module.exports = { grade, campMap, boxesOf, near };
+module.exports = { grade, campMap, boxesOf, near, nin, tiers };
