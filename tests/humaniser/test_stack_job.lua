@@ -787,4 +787,33 @@ do
 	end
 end
 
+-- Overrides.VisionProbe (KR S.2a tier 1, 01/11/2026): from 1:00 the pos5 visits each own-side camp, nearest first, and logs
+-- at its stand point and 8 points round the box whether the camp's neutrals are in sight; nothing is hit.
+do
+	local H, bot = world({ t = 59 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.VisionProbe = true
+	local oldVis, oldTod = IsLocationVisible, GetTimeOfDay
+	IsLocationVisible, GetTimeOfDay = function() return true end, function() return 0.5 end
+	local g1 = SPAWNERS[idxOf("good_1")].location
+	neutrals(g1, 3)
+	local lines = {}
+	for _, l in ipairs(capture(function() while T < 120 do frame(H, bot) end end)) do
+		if l:find("ev=visprobe ", 1, true) then table.insert(lines, l) end
+	end
+	Customize.Overrides.VisionProbe = false
+	IsLocationVisible, GetTimeOfDay = oldVis, oldTod
+	check("visprobe: nothing before 1:00, then a line per point", #lines >= 9, #lines)
+	local camp, ks, attacked = lines[1] and field(lines[1], "camp"), {}, false
+	for i = 1, 9 do if lines[i] and field(lines[i], "camp") == camp then ks[tonumber(field(lines[i], "k"))] = true end end
+	for k = -1, 7 do check("visprobe: first camp has point k=" .. k, ks[k] == true) end
+	for _, a in ipairs(ACTIONS) do if a.pid == bot.pid and a.kind == "AttackUnit" then attacked = true end end
+	check("visprobe: no hit", not attacked)
+	check("visprobe: the first camp is the nearest (good_1 from the safe T1)", tonumber(camp) == idxOf("good_1"), camp)
+	local seen = 0
+	for i = 1, 9 do seen = seen + tonumber(field(lines[i], "seen") or 0) end
+	check("visprobe: good_1's neutrals counted in sight", seen > 0, seen)
+end
+
 finish()

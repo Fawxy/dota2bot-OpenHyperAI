@@ -184,6 +184,17 @@ ____exports.EVENTS = {
         x1 = "num",
         y1 = "num"
     },
+    visprobe = {
+        pid = "num",
+        camp = "num",
+        k = "num",
+        x = "num",
+        y = "num",
+        reach = "num",
+        seen = "num",
+        vis = "num",
+        night = "num"
+    },
     stuck = {
         pid = "num",
         mode = "str",

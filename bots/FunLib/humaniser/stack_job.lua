@@ -664,9 +664,83 @@ do
     end
     Map[Symbol.species] = Map
 end
+
+local function __TS__ArraySplice(self, ...)
+    local args = {...}
+    local len = #self
+    local actualArgumentCount = __TS__CountVarargs(...)
+    local start = args[1]
+    local deleteCount = args[2]
+    if start < 0 then
+        start = len + start
+        if start < 0 then
+            start = 0
+        end
+    elseif start > len then
+        start = len
+    end
+    local itemCount = actualArgumentCount - 2
+    if itemCount < 0 then
+        itemCount = 0
+    end
+    local actualDeleteCount
+    if actualArgumentCount == 0 then
+        actualDeleteCount = 0
+    elseif actualArgumentCount == 1 then
+        actualDeleteCount = len - start
+    else
+        actualDeleteCount = deleteCount or 0
+        if actualDeleteCount < 0 then
+            actualDeleteCount = 0
+        end
+        if actualDeleteCount > len - start then
+            actualDeleteCount = len - start
+        end
+    end
+    local out = {}
+    for k = 1, actualDeleteCount do
+        local from = start + k
+        if self[from] ~= nil then
+            out[k] = self[from]
+        end
+    end
+    if itemCount < actualDeleteCount then
+        for k = start + 1, len - actualDeleteCount do
+            local from = k + actualDeleteCount
+            local to = k + itemCount
+            if self[from] then
+                self[to] = self[from]
+            else
+                self[to] = nil
+            end
+        end
+        for k = len - actualDeleteCount + itemCount + 1, len do
+            self[k] = nil
+        end
+    elseif itemCount > actualDeleteCount then
+        for k = len - actualDeleteCount, start + 1, -1 do
+            local from = k + actualDeleteCount
+            local to = k + itemCount
+            if self[from] then
+                self[to] = self[from]
+            else
+                self[to] = nil
+            end
+        end
+    end
+    local j = start + 1
+    for i = 3, actualArgumentCount do
+        self[j] = args[i]
+        j = j + 1
+    end
+    for k = #self, len - actualDeleteCount + itemCount + 1, -1 do
+        self[k] = nil
+    end
+    return out
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN
+local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -787,10 +861,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue155
+            local __continue157
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue155 = true
+                    __continue157 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -804,9 +878,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue155 = true
+                __continue157 = true
             until true
-            if not __continue155 then
+            if not __continue157 then
                 break
             end
         end
@@ -916,11 +990,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue185
+            local __continue187
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue185 = true
+                    __continue187 = true
                     break
                 end
                 local name = (string.gsub(
@@ -930,7 +1004,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue185 = true
+                    __continue187 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -940,9 +1014,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue185 = true
+                __continue187 = true
             until true
-            if not __continue185 then
+            if not __continue187 then
                 break
             end
         end
@@ -1385,6 +1459,9 @@ local function SweepNext(bot)
 end
 function ____exports.ResetCache()
     campsLogged = false
+    for k in pairs(probe) do
+        __TS__Delete(probe, k)
+    end
     for k in pairs(swept) do
         __TS__Delete(swept, k)
     end
@@ -1414,19 +1491,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue75
+            local __continue77
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue75 = true
+                    __continue77 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue75 = true
+                __continue77 = true
             until true
-            if not __continue75 then
+            if not __continue77 then
                 break
             end
         end
@@ -1522,22 +1599,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue99
+                local __continue101
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue99 = true
+                        __continue101 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue99 = true
+                    __continue101 = true
                 until true
-                if not __continue99 then
+                if not __continue101 then
                     break
                 end
             end
@@ -1885,12 +1962,144 @@ local function finish(bot, a, result)
         }
     )
 end
+local VISION_DIRS = 8
+local VISION_WAIT = 1
+local VISION_WALK = 10
+probe = {}
+local function probePoints(bot)
+    local left = {}
+    for ____, s in ipairs(Camps.Spawners()) do
+        local data = Camps.ByIdx(s.idx, s.team)
+        if s.team == bot:GetTeam() and (Stacking.Window(s.idx)) ~= nil and data ~= nil and data.stack ~= nil then
+            left[#left + 1] = s
+        end
+    end
+    local out = {}
+    local from = bot:GetLocation()
+    while #left > 0 do
+        local bi = 0
+        do
+            local i = 1
+            while i < #left do
+                if dist(from, left[i + 1].location) < dist(from, left[bi + 1].location) then
+                    bi = i
+                end
+                i = i + 1
+            end
+        end
+        local s = __TS__ArraySplice(left, bi, 1)[1]
+        out[#out + 1] = {
+            camp = s.idx,
+            k = -1,
+            at = ____exports.Stand(
+                s,
+                Camps.ByIdx(s.idx, s.team)
+            )
+        }
+        do
+            local k = 0
+            while k < VISION_DIRS do
+                local a = 2 * math.pi * k / VISION_DIRS
+                local toward = Vector(
+                    s.location.x + 2000 * math.cos(a),
+                    s.location.y + 2000 * math.sin(a),
+                    s.location.z
+                )
+                out[#out + 1] = {
+                    camp = s.idx,
+                    k = k,
+                    at = Camps.StandPoint(
+                        s,
+                        toward,
+                        LaneConfig.Settings().Radii.StandOffset
+                    )
+                }
+                k = k + 1
+            end
+        end
+        from = s.location
+    end
+    return out
+end
+local function visionProbe(bot)
+    if override("VisionProbe") ~= true or DotaTime() < 60 then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local ____probe_30, ____pid_31 = probe, pid
+    if ____probe_30[____pid_31] == nil then
+        ____probe_30[____pid_31] = {
+            points = probePoints(bot),
+            i = 0,
+            since = now
+        }
+    end
+    local st = probe[pid]
+    local p = st.points[st.i + 1]
+    if p == nil then
+        return false
+    end
+    local there = dist(
+        bot:GetLocation(),
+        p.at
+    ) <= 100
+    if there and st.reachedAt == nil then
+        st.reachedAt = now
+    end
+    local walkedOut = not there and now - st.since >= VISION_WALK
+    if st.reachedAt ~= nil and now - st.reachedAt >= VISION_WAIT or walkedOut then
+        local sp = Camps.SpawnerByIdx(p.camp)
+        local seen = 0
+        for ____, c in ipairs(bot:GetNearbyNeutralCreeps(1600, false) or ({})) do
+            if c ~= nil and c ~= nil and c:IsAlive() and c:CanBeSeen() and Camps.InBox(
+                p.camp,
+                c:GetLocation()
+            ) then
+                seen = seen + 1
+            end
+        end
+        local tod = GetTimeOfDay()
+        Telemetry.Event(
+            "visprobe",
+            {
+                {"pid", pid},
+                {"camp", p.camp},
+                {"k", p.k},
+                {
+                    "x",
+                    math.floor(p.at.x)
+                },
+                {
+                    "y",
+                    math.floor(p.at.y)
+                },
+                {"reach", walkedOut and 0 or 1},
+                {"seen", seen},
+                {
+                    "vis",
+                    IsLocationVisible(sp.location) and 1 or 0
+                },
+                {"night", (tod < 0.25 or tod > 0.75) and 1 or 0}
+            }
+        )
+        st.i = st.i + 1
+        st.since = now
+        st.reachedAt = nil
+        return true
+    end
+    bot:Action_MoveToLocation(p.at)
+    return true
+end
 --- mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides).
 function ____exports.Desire(bot)
     if not ____exports.Applies(bot) then
         return 0
     end
     logCamps()
+    if override("VisionProbe") == true then
+        return DotaTime() >= 60 and (probe[bot:GetPlayerID()] == nil or probe[bot:GetPlayerID()].points[probe[bot:GetPlayerID()].i + 1] ~= nil) and ____exports.SETTINGS.Desire or 0
+    end
     local pid = bot:GetPlayerID()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
@@ -1906,23 +2115,23 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue203
+            local __continue222
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue203 = true
+                    __continue222 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
-                local ____pos4_30
+                local ____pos4_33
                 if pos4 then
-                    ____pos4_30 = ____exports.Pos4For(
+                    ____pos4_33 = ____exports.Pos4For(
                         bot:GetTeam(),
                         minute
                     )
                 else
-                    ____pos4_30 = nil
+                    ____pos4_33 = nil
                 end
-                local job = ____pos4_30
+                local job = ____pos4_33
                 local pair = job and job[2]
                 local data, stand = unpack(override("Sweep") == true and ({SweepNext(bot)}) or ({____exports.Nearest(
                     bot:GetTeam(),
@@ -1946,19 +2155,19 @@ function ____exports.Desire(bot)
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
-                local ____pos4_34
+                local ____pos4_37
                 if pos4 then
-                    ____pos4_34 = pair
+                    ____pos4_37 = pair
                 else
-                    local ____Ours_On_result_33
+                    local ____Ours_On_result_36
                     if Ours.On("DoubleStack") then
-                        ____Ours_On_result_33 = ____exports.Partner(data)
+                        ____Ours_On_result_36 = ____exports.Partner(data)
                     else
-                        ____Ours_On_result_33 = nil
+                        ____Ours_On_result_36 = nil
                     end
-                    ____pos4_34 = ____Ours_On_result_33
+                    ____pos4_37 = ____Ours_On_result_36
                 end
-                local fd = ____pos4_34
+                local fd = ____pos4_37
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
                 local aggroAt = minute * 60 + ____exports.SingleSec(data)
@@ -2027,9 +2236,9 @@ function ____exports.Desire(bot)
                 end
                 handled[pid][minute] = true
                 if override("Sweep") == true then
-                    local ____swept_35, ____pid_36 = swept, pid
-                    if ____swept_35[____pid_36] == nil then
-                        ____swept_35[____pid_36] = {}
+                    local ____swept_38, ____pid_39 = swept, pid
+                    if ____swept_38[____pid_39] == nil then
+                        ____swept_38[____pid_39] = {}
                     end
                     swept[pid][data.campIdx] = true
                 end
@@ -2037,7 +2246,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue203 then
+            if not __continue222 then
                 break
             end
         end
@@ -2045,6 +2254,9 @@ function ____exports.Desire(bot)
     return 0
 end
 function ____exports.Think(bot)
+    if visionProbe(bot) then
+        return true
+    end
     local a = running[bot:GetPlayerID()]
     if a == nil then
         return false

@@ -503,6 +503,7 @@ function SweepNext(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Ve
 
 export function ResetCache(): void {
     campsLogged = false;
+    for (const k in probe) delete probe[k];
     for (const k in swept) delete swept[k];
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
@@ -984,10 +985,91 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
     ];
 }
 
+/**
+ * Overrides.VisionProbe (scenario games only; KR S.2a tier 1, 01/11/2026): which stand points see their camp. The sweep's
+ * misses at camps 3, 6 and 24 came from stand points out of sight of the neutrals (trees or high ground: the bot saw the camp
+ * only on the step in, or never). From 1:00 the pos5 visits each own-side camp, nearest first, and at its stand point
+ * (k = -1) and at VISION_DIRS points at the stand offset past the box edge (k = 0..7, east then anticlockwise) waits
+ * VISION_WAIT s and logs `ev=visprobe`: `seen` the camp's neutrals in sight inside the box, `vis` the origin visible,
+ * `reach` 0 when the point was not reached in VISION_WALK s. Camps are not hit.
+ */
+// Valve's bot API: 0 at midnight, 0.5 at noon (not in ts_libs' declarations).
+declare function GetTimeOfDay(): number;
+const VISION_DIRS = 8;
+const VISION_WAIT = 1;
+const VISION_WALK = 10;
+interface ProbePoint {
+    camp: number;
+    k: number;
+    at: Vector;
+}
+const probe: Record<number, { points: ProbePoint[]; i: number; since: number; reachedAt?: number }> = {};
+
+function probePoints(bot: Unit): ProbePoint[] {
+    const left: Camps.Spawner[] = [];
+    for (const s of Camps.Spawners()) {
+        const data = Camps.ByIdx(s.idx, s.team);
+        if (s.team === bot.GetTeam() && Stacking.Window(s.idx)[0] !== undefined && data !== undefined && data.stack !== undefined) left.push(s);
+    }
+    const out: ProbePoint[] = [];
+    let from = bot.GetLocation();
+    while (left.length > 0) {
+        let bi = 0;
+        for (let i = 1; i < left.length; i++) if (dist(from, left[i].location) < dist(from, left[bi].location)) bi = i;
+        const s = left.splice(bi, 1)[0];
+        out.push({ camp: s.idx, k: -1, at: Stand(s, Camps.ByIdx(s.idx, s.team)!) });
+        for (let k = 0; k < VISION_DIRS; k++) {
+            const a = (2 * math.pi * k) / VISION_DIRS;
+            const toward = Vector(s.location.x + 2000 * math.cos(a), s.location.y + 2000 * math.sin(a), s.location.z);
+            out.push({ camp: s.idx, k, at: Camps.StandPoint(s, toward, LaneConfig.Settings().Radii.StandOffset) });
+        }
+        from = s.location;
+    }
+    return out;
+}
+
+function visionProbe(bot: Unit): boolean {
+    if (override("VisionProbe") !== true || DotaTime() < 60) return false;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const st = (probe[pid] ??= { points: probePoints(bot), i: 0, since: now });
+    const p = st.points[st.i];
+    if (p === undefined) return false;
+    const there = dist(bot.GetLocation(), p.at) <= 100;
+    if (there && st.reachedAt === undefined) st.reachedAt = now;
+    const walkedOut = !there && now - st.since >= VISION_WALK;
+    if ((st.reachedAt !== undefined && now - st.reachedAt >= VISION_WAIT) || walkedOut) {
+        const sp = Camps.SpawnerByIdx(p.camp)!;
+        let seen = 0;
+        for (const c of bot.GetNearbyNeutralCreeps(1600, false) ?? []) {
+            if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && Camps.InBox(p.camp, c.GetLocation())) seen++;
+        }
+        const tod = GetTimeOfDay();
+        Telemetry.Event("visprobe", [
+            ["pid", pid],
+            ["camp", p.camp],
+            ["k", p.k],
+            ["x", math.floor(p.at.x)],
+            ["y", math.floor(p.at.y)],
+            ["reach", walkedOut ? 0 : 1],
+            ["seen", seen],
+            ["vis", IsLocationVisible(sp.location) ? 1 : 0],
+            ["night", tod < 0.25 || tod > 0.75 ? 1 : 0],
+        ]);
+        st.i++;
+        st.since = now;
+        st.reachedAt = undefined;
+        return true;
+    }
+    bot.Action_MoveToLocation(p.at);
+    return true;
+}
+
 /** mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). */
 export function Desire(bot: Unit): number {
     if (!Applies(bot)) return 0;
     logCamps();
+    if (override("VisionProbe") === true) return DotaTime() >= 60 && (probe[bot.GetPlayerID()] === undefined || probe[bot.GetPlayerID()].points[probe[bot.GetPlayerID()].i] !== undefined) ? SETTINGS.Desire : 0;
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) {
@@ -1111,6 +1193,7 @@ function sample59(bot: Unit, a: Attempt): void {
 }
 
 export function Think(bot: Unit): boolean {
+    if (visionProbe(bot)) return true;
     const a = running[bot.GetPlayerID()];
     if (a === undefined) return false;
     return Tasks.Step(bot, BotMode.Farm);

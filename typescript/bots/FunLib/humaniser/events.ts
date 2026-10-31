@@ -230,6 +230,18 @@ export const EVENTS = {
         x1: "num",
         y1: "num",
     },
+    /** Overrides.VisionProbe (scenario games only): whether the camp's neutrals are in sight from one candidate stand point. */
+    visprobe: {
+        pid: "num",
+        camp: "num",
+        k: "num",
+        x: "num",
+        y: "num",
+        reach: "num",
+        seen: "num",
+        vis: "num",
+        night: "num",
+    },
     stuck: {
         pid: "num",
         mode: "str",
