@@ -855,7 +855,7 @@ end
 do
 	local H = world()
 	local C = H.Lane.Camps
-	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 } }) do
+	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 1, 0 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))
 		local dx, dy = stand.x - sp.location.x, stand.y - sp.location.y

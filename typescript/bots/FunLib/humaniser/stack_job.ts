@@ -272,7 +272,7 @@ const exits: Record<number, Vector[]> = {};
  * which runs into evil_4's box, and evil_11 north-east, away from the map edge.
  * Matched by spawner origin (7.41 map); other camps derive their walk-off.
  */
-const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
+const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy?: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },
     { x: -3911, y: 4829, dx: -1, dy: 0 },
     { x: -4824, y: 3915, dx: 0, dy: 1 },
@@ -280,7 +280,10 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number }[] = [
     // the hit came from 161-162, 0 of 2 (sweepfar2a/2c); south-west keeps the user's southward route as near as it sees.
     { x: 8430, y: 1263, dx: -0.71, dy: -0.71 },
     { x: -8313, y: -553, dx: 0.71, dy: 0.71 }, // good_13: north-east, on to the west shrine (-7948,768)
-    { x: 7928, y: -120, dx: 0.71, dy: -0.71 }, // evil_7: south-east, on to the east shrine (8029,-1126)
+    // evil_7: walks off south-east, on to the east shrine (8029,-1126), from a stand on its east side: the south-east stand
+    // never saw the camp (visprobe1/2: seen east and north-east), and the pos4's single hit from 97-328 stacked 5 of 12
+    // fresh (fresh4c-6c, replay), the misses' neutrals mostly never on the bot.
+    { x: 7928, y: -120, dx: 0.71, dy: -0.71, sx: 1, sy: 0 },
     { x: -1454, y: -3356, dx: 0, dy: -1 }, // good_5: south
     { x: -1983, y: -4815, dx: 1, dy: 0 }, // good_9: east
     { x: -2880, y: 7376, dx: 0.71, dy: 0.71 }, // evil_11: north-east
