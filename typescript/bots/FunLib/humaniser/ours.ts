@@ -11,10 +11,10 @@ export const DEFAULTS = {
     /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
     StackExecute: true,
     /**
-     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). Off: ER-008
-     * FAIL (no better than OHA, more deaths).
+     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). On by user
+     * decision 02/11/2026 although ER-008/009/010 FAILed against OHA (share flat, more deaths): our code ends up enabled.
      */
-    CoreLastHit: false,
+    CoreLastHit: true,
     /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
     CoreLastHitDire: true,
 };
