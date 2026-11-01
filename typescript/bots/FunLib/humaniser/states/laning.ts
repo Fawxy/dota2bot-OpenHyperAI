@@ -171,6 +171,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         far: FAR,
         leash: LEASH,
         retarget: true,
+        // A support stops waiting on a creep the others will kill before its swing lands (sdp1: 15 of 90 lost denies), so
+        // the body hands the frame back to OHA's positioning and harass instead of holding (D5).
+        dropLost: OwnsDenyOnly(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             Telemetry.Event("lh", [
@@ -184,6 +187,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["ol", ol],
                 ["od", od],
                 ["ow", ow],
+                ["walk", math.floor(t.walk * 100) / 100],
+                ["dies", t.dies === math.huge ? -1 : math.floor(t.dies * 100) / 100],
                 ["msg", res.message],
             ]);
         },

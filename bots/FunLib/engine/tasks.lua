@@ -2281,6 +2281,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     if opts == nil then
         opts = {}
     end
+    local dropped
     local near = opts.near or 600
     local far = opts.far or 1200
     local leash = opts.leash or 900
@@ -2345,13 +2346,17 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
             ____temp_6 = nil
         end
         target = ____temp_6
-        return target ~= nil
+        if target == nil and opts.dropLost then
+            dropped = true
+        end
+        return target ~= nil or dropped
     end
+    dropped = false
     local atSpot = false
     local passAt
     while true do
         do
-            local __continue22
+            local __continue23
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2396,12 +2401,13 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     if target == nil then
                         local d = spot() ~= nil and away() or nil
                         atSpot = d ~= nil and d <= (atSpot and far or near)
-                        __continue22 = true
+                        __continue23 = true
                         break
                     end
                 end
                 local t = target
                 target = nil
+                dropped = false
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
                 local ____t_creep_10 = t.creep
@@ -2416,8 +2422,8 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     interruptIf = function() return stop() or away() > leash or retarget(t) end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
-                if target ~= nil and res.reason == "interrupted" then
-                    res.message = (res.message or "") .. " sw=1"
+                if res.reason == "interrupted" and (target ~= nil or dropped) then
+                    res.message = ((res.message or "") .. " sw=") .. tostring(target ~= nil and 1 or 0)
                 end
                 if opts.onAttempt ~= nil then
                     opts.onAttempt(t, res, contested)
@@ -2425,9 +2431,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue22 = true
+                __continue23 = true
             until true
-            if not __continue22 then
+            if not __continue23 then
                 break
             end
         end

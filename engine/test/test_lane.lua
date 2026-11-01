@@ -162,6 +162,36 @@ do
     T.eq("no retarget: the stalled attempt waits out its maxWait", off[1] and off[1].reason, "timeout")
 end
 
+-- `dropLost`: an attempt waiting in range for a creep that the others will now kill before a swing ordered now lands (no
+-- longer offered) is dropped at once (`sw=0`) when `pick` has nothing else; without it the attempt waits until the creep is
+-- taken.
+local function doomed(dropLost)
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(9), skill = function() return 1 end, attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+    local a = sim:addCreep{ x = 100, y = 0, hp = 75, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    sim:addCreep{ x = 0, y = 200, team = 2, damage = 20, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+        firstSwingAt = 0, attackTarget = a, passive = true }
+    for i = 1, 4 do
+        sim:addCreep{ x = 0, y = 200 + i * 30, team = 2, damage = 40, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+            firstSwingAt = 0.3, attackTarget = a, passive = true }
+    end
+    local attempts = {}
+    local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { pick = soonest, retarget = true, dropLost = dropLost,
+        onAttempt = function(t, r) attempts[#attempts + 1] = { creep = t.creep, reason = r.reason, msg = r.message, at = sim.t } end })
+    for _ = 1, math.floor(2 / DT) do g:next() sim:step(DT) end
+    return attempts, a
+end
+do
+    local on, a = doomed(true)
+    T.eq("dropLost: first attempt on the creep", on[1] and on[1].creep, a)
+    T.eq("dropLost: dropped as interrupted", on[1] and on[1].reason, "interrupted")
+    T.check("dropLost: marked sw=0 (" .. tostring(on[1] and on[1].msg) .. ")", on[1] ~= nil and on[1].msg:find("sw=0") ~= nil)
+    T.check("dropLost: dropped before the others' hits land (" .. tostring(on[1] and on[1].at) .. ")", on[1] ~= nil and on[1].at < 0.3 + 0.467)
+    local off = doomed(false)
+    T.eq("no dropLost: the attempt waits until the creep is taken", off[1] and off[1].reason, "taken_by_other")
+end
+
 -- Death ends it; interruptIf ends it.
 do
     local sim, bot = wave(3)

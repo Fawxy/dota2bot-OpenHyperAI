@@ -615,6 +615,8 @@ ____exports.EVENTS = {
         ol = "num",
         od = "num",
         ow = "num",
+        walk = "num",
+        dies = "num",
         msg = "str"
     },
     job_exec = {

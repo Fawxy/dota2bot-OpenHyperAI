@@ -297,6 +297,7 @@ local body = __TS__Generator(function(bot, ctx)
             far = FAR,
             leash = LEASH,
             retarget = true,
+            dropLost = ____exports.OwnsDenyOnly(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
                 Telemetry.Event(
@@ -318,6 +319,14 @@ local body = __TS__Generator(function(bot, ctx)
                         {"ol", ol},
                         {"od", od},
                         {"ow", ow},
+                        {
+                            "walk",
+                            math.floor(t.walk * 100) / 100
+                        },
+                        {
+                            "dies",
+                            t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+                        },
                         {"msg", res.message}
                     }
                 )
