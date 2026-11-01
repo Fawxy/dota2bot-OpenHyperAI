@@ -17,6 +17,7 @@ import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
@@ -404,9 +405,58 @@ function trackFront(team: number): void {
     Event("front", fields);
 }
 
+/** The laning stage the lane read serves is over by 12:00; past it the event would only grow the log. */
+const LANE_READ_UNTIL = 720;
+
+function r3(v: number | undefined): number | undefined {
+    return v === undefined ? undefined : math.floor(v * 1000 + 0.5) / 1000;
+}
+
+/** Slice lane-read: one ev=lane_read per lane for the calling script's team, to LANE_READ_UNTIL. */
+function trackLaneRead(team: number, now: number): void {
+    if (now < 0 || now > LANE_READ_UNTIL) return;
+    for (const r of LaneRead.Read(team, now)) {
+        const ee: string[] = [];
+        for (const e of r.enemies) {
+            const head = `${e.pid}:${e.visible ? "v" : math.floor(e.seen)}:${math.floor(e.dist)}`;
+            ee.push(e.visible ? `${head}:${pct(e.hp ?? 0, 1)}:${e.lvl}` : head);
+        }
+        const ag: string[] = [];
+        for (const a of r.aggro) ag.push(`${a.pid}:${a.now}:${a.since === undefined ? -1 : math.floor(a.since * 10) / 10}`);
+        Event("lane_read", [
+            ["team", team],
+            ["lane", r.lane],
+            ["adv", r3(r.adv)],
+            ["eq", r3(r.eq)],
+            ["a", r.near.count],
+            ["e", r.enemyNear.count],
+            ["ap", math.floor(r.near.power)],
+            ["ep", math.floor(r.enemyNear.power)],
+            ["of", r3(r.ourFront)],
+            ["ef", r3(r.enemyFront)],
+            ["ot", r3(r.ourTower)],
+            ["et", r3(r.theirTower)],
+            ["cyc", math.floor(r.cycleSec * 10) / 10],
+            ["arr", r.arrivalSec],
+            ["cn", r.census.count],
+            ["chp", r.census.hp],
+            ["cpw", math.floor(r.census.power)],
+            ["cl", r3(r.census.lead)],
+            ["cnn", r.censusAtEnemy.count],
+            ["cnp", math.floor(r.censusAtEnemy.power)],
+            ["fx", math.floor(r.frontLoc.x)],
+            ["fy", math.floor(r.frontLoc.y)],
+            ["dead", r.dead],
+            ["ee", ee.join(";")],
+            ["ag", ag.join(";")],
+        ]);
+    }
+}
+
 // Own guards, so a failure reads as where=Telemetry.Lane|Telemetry.Front and drops only these fields or this event.
 const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
 const guardedFront = Guard("Telemetry.Front", trackFront);
+const guardedLaneRead = Guard("Telemetry.LaneRead", trackLaneRead);
 
 function unitFields(unit: Unit): UnitPair[] {
     const loc = unit.GetLocation();
@@ -769,6 +819,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
         ]);
     w.roshanAt = killedAt;
     guardedFront(team);
+    guardedLaneRead(team, now);
 }
 
 /** Smoke, teleport and aegis edges for one hero (bot or human). */

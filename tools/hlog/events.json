@@ -311,6 +311,33 @@
    "a": "num",
    "e": "num"
   },
+  "lane_read": {
+   "team": "num",
+   "lane": "num",
+   "adv": "num",
+   "eq": "num",
+   "a": "num",
+   "e": "num",
+   "ap": "num",
+   "ep": "num",
+   "of": "num",
+   "ef": "num",
+   "ot": "num",
+   "et": "num",
+   "cyc": "num",
+   "arr": "num",
+   "cn": "num",
+   "chp": "num",
+   "cpw": "num",
+   "cl": "num",
+   "cnn": "num",
+   "cnp": "num",
+   "fx": "num",
+   "fy": "num",
+   "dead": "num",
+   "ee": "str",
+   "ag": "str"
+  },
   "lane_tech": {
    "pid": "num",
    "tech": "str",
@@ -899,6 +926,10 @@
   },
   "ev_lane_eq": {
    "kind": "text"
+  },
+  "ev_lane_read": {
+   "ee": "text",
+   "ag": "text"
   },
   "ev_lane_tech": {
    "tech": "text",
