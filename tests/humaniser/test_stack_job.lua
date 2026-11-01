@@ -158,10 +158,14 @@ do
 	check("evil_13: stands south-west of the camp", stand.y < sp.location.y and stand.x < sp.location.x, stand.x .. "," .. stand.y)
 end
 -- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north. evil_7's south-east route was
--- blocked from a stand that sees the camp (fresh7c, fresh8c); it walks off north-east (vision probe test below).
+-- blocked from a stand that sees the camp (fresh7c, fresh8c), north-east ran into the map edge (fresh9c); it stands
+-- north-east (vision probe test below) and walks off north, clear of evil_13's box.
 do
 	local H = world({})
 	local C = H.Lane.Camps
+	local e7 = C.SpawnerByIdx(idxOf("evil_7"))
+	local ex = H.StackJob.ExitPath(e7, C.ByIdx(e7.idx, e7.team))[1]
+	check("evil_7: walk-off north, west of evil_13's box", ex.y > e7.location.y + 800 and ex.x < 8192, ex.x .. "," .. ex.y)
 	for _, c in ipairs({ { "good_13", -7948, 768 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
