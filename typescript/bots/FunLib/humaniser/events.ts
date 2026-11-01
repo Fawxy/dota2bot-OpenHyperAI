@@ -516,6 +516,11 @@ export const EVENTS = {
         ftrk: "str",
         early: "num",
         fearly: "num",
+        // Valve's window of the camp (`w0-w1`) and the confirmed hit's offset from it (0 inside); `f` for camp A.
+        win: "str",
+        woff: "mixed",
+        fwin: "str",
+        fwoff: "mixed",
     },
     lane_job_supply: {
         pid: "num",

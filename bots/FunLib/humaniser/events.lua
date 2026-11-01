@@ -451,7 +451,11 @@ ____exports.EVENTS = {
         fn59 = "str",
         ftrk = "str",
         early = "num",
-        fearly = "num"
+        fearly = "num",
+        win = "str",
+        woff = "mixed",
+        fwin = "str",
+        fwoff = "mixed"
     },
     lane_job_supply = {
         pid = "num",

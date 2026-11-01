@@ -54,10 +54,11 @@ export const SETTINGS = {
     ExitTowardLane: true,
     /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
     WatchUntil: 5,
-    /** A job may not start more than this many seconds before its latest end (:00 + WatchUntil): KR S.2's 25 s away. The
-     *  walk and Lead come before the hit and the watch after it is fixed, so a far camp cannot fit: s4 A_on_4 3:31, lich
-     *  from out of lane to camp 23 (a 14.6 s walk), away 30.7. Such a minute is skipped as `far`. */
-    AwayMax: 25,
+    /** A job may not start more than this many seconds before its latest end (:00 + WatchUntil), else the minute is skipped
+     *  as `far` and the watch is cut here. No limit since 02/11/2026 (user: "too many factors to have this as a blanket
+     *  rule"; S.2a's 25 s away is a reading now): when a support leaves lane is the stage 2 "Support stacking choice" row's.
+     *  The job's run stays bounded by the verbs' own timeouts and the watch's :00 + WatchUntil. Was 25 (KR S.2's away). */
+    AwayMax: math.huge,
     /** Seconds after :00 a stacked camp is usually seen and the watch ends (s4: :02-:04). The far rule plans with it, not
      *  the worst case (:00 + WatchUntil, which skipped a 23 s job at 3:39 in s4r2); the watch is cut at AwayMax instead. */
     FarEnd: 3,
@@ -1012,6 +1013,8 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["trk", a.aggro !== undefined ? trkField(a.campUnits, a.trk) : "?"],
         ["lane", a.aggro !== undefined ? a.lane ?? 0 : "?"],
         ["idle", a.idle ?? 0],
+        ["win", winField(a.campIdx)],
+        ["woff", a.aggro !== undefined ? winOff(a.campIdx, a.aggro) : "?"],
         ...doubleFields(a),
     ]);
 }
@@ -1043,7 +1046,24 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
         ["ftrk", landed ? trkField(f.units, f.trk) : "?"],
         ["fearly", f.early ?? 0],
         ["early", a.early ?? 0],
+        ["fwin", winField(f.campIdx)],
+        ["fwoff", landed ? winOff(f.campIdx, f.aggro!) : "?"],
     ];
+}
+
+/** Valve's stack window of the camp as `w0-w1`, or `?`. */
+function winField(campIdx: number): string {
+    const [w0, w1] = Stacking.Window(campIdx);
+    return w0 !== undefined && w1 !== undefined ? `${w0}-${w1}` : "?";
+}
+
+/** How far the confirmed hit second fell outside Valve's window: negative early, positive late, 0 inside (user 02/11/2026:
+ *  the Dire triangle's ancient hit planned before its window was never flagged). */
+function winOff(campIdx: number, at: number): number | string {
+    const [w0, w1] = Stacking.Window(campIdx);
+    if (w0 === undefined || w1 === undefined) return "?";
+    const off = at < w0 ? at - w0 : at > w1 ? at - w1 : 0;
+    return math.floor(off * 10 + 0.5) / 10;
 }
 
 /**

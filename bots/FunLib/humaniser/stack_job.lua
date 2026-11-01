@@ -740,7 +740,7 @@ local function __TS__ArraySplice(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
+local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, winField, winOff, targetDist, sample59, Customize, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -1058,8 +1058,28 @@ function doubleFields(a)
             landed and trkField(f.units, f.trk) or "?"
         },
         {"fearly", f.early or 0},
-        {"early", a.early or 0}
+        {"early", a.early or 0},
+        {
+            "fwin",
+            winField(f.campIdx)
+        },
+        {
+            "fwoff",
+            landed and winOff(f.campIdx, f.aggro) or "?"
+        }
     }
+end
+function winField(campIdx)
+    local w0, w1 = Stacking.Window(campIdx)
+    return w0 ~= nil and w1 ~= nil and (tostring(w0) .. "-") .. tostring(w1) or "?"
+end
+function winOff(campIdx, at)
+    local w0, w1 = Stacking.Window(campIdx)
+    if w0 == nil or w1 == nil then
+        return "?"
+    end
+    local off = at < w0 and at - w0 or (at > w1 and at - w1 or 0)
+    return math.floor(off * 10 + 0.5) / 10
 end
 function targetDist(a)
     local t = a.target
@@ -1150,7 +1170,7 @@ ____exports.SETTINGS = {
     PreemptAfter = 1,
     ExitTowardLane = true,
     WatchUntil = 5,
-    AwayMax = 25,
+    AwayMax = math.huge,
     FarEnd = 3,
     DoubleSlack = 0.5,
     NeutralSpread = 150,
@@ -2014,6 +2034,14 @@ local function finish(bot, a, result)
             },
             {"lane", a.aggro ~= nil and (a.lane or 0) or "?"},
             {"idle", a.idle or 0},
+            {
+                "win",
+                winField(a.campIdx)
+            },
+            {
+                "woff",
+                a.aggro ~= nil and winOff(a.campIdx, a.aggro) or "?"
+            },
             unpack(doubleFields(a))
         }
     )
@@ -2172,10 +2200,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue229
+            local __continue232
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue229 = true
+                    __continue232 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2309,7 +2337,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue229 then
+            if not __continue232 then
                 break
             end
         end

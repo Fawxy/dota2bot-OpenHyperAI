@@ -355,12 +355,14 @@ do
 	check("unreachable stand: waited (arr) before the hit", tonumber(field(lines[1], "arr")) ~= nil and tonumber(field(lines[1], "arr")) < tonumber(field(lines[1], "hit0") or "0"), lines[1])
 end
 
--- A camp too far for KR S.2's 25 s away (s4 A_on_4 3:31: lich out of lane, a 14.6 s walk to camp 23, away 30.7): the
--- minute is skipped as far when the job would start, and no job runs.
+-- A camp far from the bot (s4 A_on_4 3:31: lich out of lane, a 14.6 s walk to camp 23, away 30.7): skipped as far under
+-- KR S.2's old 25 s away; no blanket limit since 02/11/2026 (user), so the job runs and is never skipped `far`.
 do
 	local H, bot = world({ t = 3 * 60 + 15, at = Vector(6000, 6000) })
-	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
-	check("far camp: one skip line, far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) end end))
+	local far = false
+	for _, l in ipairs(lines) do if field(l, "why") == "far" then far = true end end
+	check("far camp: no far skip", #lines >= 1 and not far, lines[1])
 end
 
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
@@ -643,14 +645,16 @@ do
 	check("pos4 good_8>good_7: away at most 25 s, no death", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25 and field(l, "death") == "0", l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("pos4 good_8>good_7: A hit near its second, B near its own (1 s for the confirm)", fag ~= nil and ag ~= nil and math.abs(fag - d.fsec) <= 1 and ag >= d.sec - 0.5 and ag <= d.sec + 1, l)
+	-- Each confirmed hit carries its camp's Valve window and the offset from it (user 02/11/2026).
+	check("pos4 good_8>good_7: win and fwin, woff and fwoff numbers", field(l, "win") ~= "?" and field(l, "fwin") ~= "?" and tonumber(field(l, "woff")) ~= nil and tonumber(field(l, "fwoff")) ~= nil, l)
 end
 
 -- Reach (E1, 31/10/2026): from the Radiant offlane T1 the shrine's large camp good_13 (minute 3, single since 01/11/2026)
--- plans over 25 s away, so the minute is skipped as far.
+-- plans over 25 s away, which skipped the minute as far until the away limit went (user 02/11/2026): now the job runs.
 do
 	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
 	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
-	check("pos4 shrine camp from the T1: skip far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+	check("pos4 shrine camp from the T1: no far skip", #lines >= 1 and field(lines[1], "why") ~= "far", lines[1])
 end
 -- Overrides.StackFar (scenario games only): the same minute starts good_13's single instead.
 do
@@ -717,7 +721,8 @@ do
 end
 -- A's box never in sight after :00: fres=unseen, not not_stacked.
 do
-	local lines = stackRun({ double = true, fogged = function(v)
+	-- tail: with no away limit (02/11/2026) the watch is not cut short and walks on to A, so its line comes later.
+	local lines = stackRun({ double = true, tail = 15, fogged = function(v)
 		local g2 = SPAWNERS[idxOf("good_2")].location
 		return T >= 4 * 60 and math.abs(v.x - g2.x) < 1 and math.abs(v.y - g2.y) < 1
 	end })

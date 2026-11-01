@@ -9,7 +9,7 @@
 // spawn, what stood in its spawn box at :59.9 (`grade`): the blockers. The replay has no boxes; the log's `ev=camp` lines
 // (bot eecba6b on) give them, and a log without them uses `camp_boxes.json` (the same lines, saved once; static map data).
 // `nin`/`fnin`: stacks already in the camp, since it was last empty, before this minute (KR S.2a's tiers, `GOALS.md`
-// 01/11/2026: 0 is a fresh camp). `--tiers` prints, per camp or pair, attempts and replay-stacked by `nin` 0, 1, 2, 3+.
+// 01/11/2026: 0 is a fresh camp). `--tiers` prints, per camp or pair, attempts and replay-stacked by `nin` 0, 1, 2, 3+. `woff`/`fwoff`: the hit's offset from Valve's window (bot logs from the window fields on; 0 inside).
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 
 /** EC-060's guard distance, and the second after which a neutral that first got that far out was hit too late to clear. */
@@ -139,10 +139,10 @@ function main() {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
       const landed = r.res === 'stacked' || r.res === 'not_stacked';
       const b = landed && m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
-      Object.assign(o, { camp: r.camp, before: r.before, nin: m[r.camp] ? nin(m[r.camp], r.min, t) : null, log: r.res, true: b.true, block: b.block ?? '' });
+      Object.assign(o, { camp: r.camp, before: r.before, nin: m[r.camp] ? nin(m[r.camp], r.min, t) : null, log: r.res, true: b.true, block: b.block ?? '', woff: r.woff ?? null });
       if (r.double === 1 && r.fcamp != null) {
         const a = m[r.fcamp] ? grade(m[r.fcamp], r.min, t) : { true: null };
-        Object.assign(o, { fcamp: r.fcamp, fbefore: r.fbefore, fnin: m[r.fcamp] ? nin(m[r.fcamp], r.min, t) : null, flog: r.fres, ftrue: a.true, fblock: a.block ?? '' });
+        Object.assign(o, { fcamp: r.fcamp, fbefore: r.fbefore, fnin: m[r.fcamp] ? nin(m[r.fcamp], r.min, t) : null, flog: r.fres, ftrue: a.true, fblock: a.block ?? '', fwoff: r.fwoff ?? null });
       }
       out.push(o);
     }
@@ -156,7 +156,7 @@ function main() {
     }
     return;
   }
-  for (const o of out) console.log([o.file, o.min, o.camp, o.nin, o.log, o.true, o.block, o.fcamp ?? '', o.fnin ?? '', o.flog ?? '', o.ftrue ?? '', o.fblock ?? ''].join('\t'));
+  for (const o of out) console.log([o.file, o.min, o.camp, o.nin, o.log, o.true, o.block, o.woff ?? '', o.fcamp ?? '', o.fnin ?? '', o.flog ?? '', o.ftrue ?? '', o.fblock ?? '', o.fwoff ?? ''].join('\t'));
 }
 
 if (require.main === module) main();
