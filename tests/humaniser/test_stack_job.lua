@@ -491,6 +491,14 @@ do
 		while T < 4 * 60 + 59 do frame(H, bot) end
 	end))
 	check("stack every: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
+	Customize.Overrides = { StackEvery = 2 }
+	m = H.StackJob.Minutes()
+	check("stack every 2: even minutes from 2:00", m[1] == 2 and m[2] == 4 and m[3] == 6)
+	Customize.Overrides = { Solo = "0,5," }
+	check("solo list: a listed hero plays", not H.StackJob.Benched(bot))
+	check("solo list: an unlisted one is benched", H.StackJob.Benched(other))
+	Customize.Overrides = { Solo = "50," }
+	check("solo list: pid 5 is not 50's 5", H.StackJob.Benched(bot))
 	Customize.Overrides = nil
 end
 

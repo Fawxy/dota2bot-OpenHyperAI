@@ -90,7 +90,9 @@ export const SETTINGS = {
 // AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
 // 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Overrides.Sweep = true
 // (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
-// attempt is on a fresh camp (`SweepNext`). Scenario games only,
+// attempt is on a fresh camp (`SweepNext`). Tier 2's fresh doubles: Overrides.Solo = "0,1," keeps several heroes, and
+// Overrides.StackEvery = 2 tries every second minute, so a console kill of all neutrals at the odd minutes' :30 leaves
+// each attempt a fresh camp. Scenario games only,
 // never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
@@ -101,6 +103,10 @@ function override(key: string): unknown {
 /** Overrides.Solo names another hero: this one sits out the game in its fountain. */
 export function Benched(bot: Unit): boolean {
     const solo = override("Solo");
+    if (typeof solo === "string") {
+        for (const [n] of string.gmatch(solo, "%d+")) if (tonumber(n) === bot.GetPlayerID()) return false;
+        return true;
+    }
     return typeof solo === "number" && solo >= 0 && bot.GetPlayerID() !== solo;
 }
 
@@ -118,11 +124,12 @@ function awayMax(): number {
     return override("StackFar") === true ? math.huge : SETTINGS.AwayMax;
 }
 
-/** The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery. */
+/** The minutes with an attempt: TriggerMinutes, or from 2 every minute (Overrides.StackEvery true) or every second one (2). */
 export function Minutes(): number[] {
-    if (override("StackEvery") !== true) return SETTINGS.TriggerMinutes;
+    const every = override("StackEvery");
+    if (every !== true && every !== 2) return SETTINGS.TriggerMinutes;
     const out: number[] = [];
-    for (let m = 2; m <= 60; m++) out.push(m);
+    for (let m = 2; m <= 60; m += every === 2 ? 2 : 1) out.push(m);
     return out;
 }
 
