@@ -1153,6 +1153,7 @@ ____exports.SETTINGS = {
     AwayMax = 25,
     FarEnd = 3,
     DoubleSlack = 0.5,
+    NeutralSpread = 150,
     DoubleLead = 5,
     DoubleWatchUntil = 12,
     BReadFor = 2,
@@ -1243,7 +1244,7 @@ local PAIRS = {{
     fx = 4649,
     fy = -3699,
     fsec = 51.5,
-    sec = 55.5,
+    sec = 55,
     pos = 5,
     face = false
 }, {
@@ -1279,7 +1280,7 @@ local PAIRS = {{
 -- at :58 or later and its stand point in sight of the camp (visprobe1), then stacked 2 of 2 1 s earlier (sweep6a, sweep6c).
 -- evil_4, evil_5 and good_9 had the same 1 s for misses that the vision probe put down to stand points out of sight
 -- (EXIT_DIRS): back to the window middle. `judgement`, 1 s.
-local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}}
+local SINGLE_EARLIER = {{x = 1922, y = -3975, s = 1}, {x = -8313, y = -553, s = 0.5}}
 --- A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names.
 function ____exports.SingleSec(data)
     local sp = Camps.SpawnerByIdx(data.campIdx)
@@ -1378,14 +1379,25 @@ function ____exports.PairFor(team, minute)
     local ____opt_5 = ____exports.Pos4For(team, minute)
     return ____opt_5 and ____opt_5[2]
 end
---- The walk from A's stand point to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
--- so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
+--- The walk from where A was hit to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
+-- so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only). A is hit from the
+-- stand, or from attack range plus NeutralSpread of A's origin when the stand is further out.
 function ____exports.Fits(bot, d)
+    local spa = Camps.SpawnerByIdx(d.a.campIdx)
     local spb = Camps.SpawnerByIdx(d.b.campIdx)
+    local da = math.max(
+        1,
+        dist(d.stand, spa.location)
+    )
+    local inA = math.max(
+        0,
+        da - bot:GetAttackRange() - ____exports.SETTINGS.NeutralSpread
+    ) / da
+    local from = Vector(d.stand.x + (spa.location.x - d.stand.x) * inA, d.stand.y + (spa.location.y - d.stand.y) * inA, d.stand.z)
     local reach = bot:GetAttackRange() + (spb.max.x - spb.min.x) / 2
     local walk = math.max(
         0,
-        dist(d.stand, spb.location) - reach
+        dist(from, spb.location) - reach
     ) / math.max(
         1,
         bot:GetCurrentMovementSpeed()

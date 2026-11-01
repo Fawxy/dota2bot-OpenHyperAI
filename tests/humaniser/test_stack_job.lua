@@ -556,9 +556,10 @@ do
 		local d = H.StackJob.Partner(C.ByIdx(sb.idx, sb.team))
 		return d ~= nil and MAP[d.a.campIdx][1] == a and H.StackJob.Fits(bot, d)
 	end
-	-- EC-063's table: good_2 then good_1 fits a melee hero; evil_1 then evil_2 a ranged one only.
+	-- EC-063's table: evil_1 then evil_2 fits a ranged hero only.
 	check("good_2 then good_1 fits ranged", fits("good_2", "good_1", 550))
-	check("good_2 then good_1 fits melee", fits("good_2", "good_1", 150))
+	-- EC-063 had it fit a melee hero too; with good_1 hit at :55 (dsvA, 02/11/2026) a melee one at 300 runs single.
+	check("good_2 then good_1 does not fit melee at 300", not fits("good_2", "good_1", 150))
 	check("evil_1 then evil_2 fits ranged", fits("evil_1", "evil_2", 550))
 	check("evil_1 then evil_2 does not fit melee", not fits("evil_1", "evil_2", 150))
 	local d = H.StackJob.Partner(C.ByIdx(idxOf("good_1"), RAD))
@@ -588,6 +589,23 @@ do
 	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
 	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
 	check("evil_8>evil_9 does not fit ranged", not fitsPair(DIRE, "evil_8>evil_9"))
+	-- The walk counts from where A is hit (dsvA: earthshaker walked 430 into good_8's box from its stand): from a stand 650
+	-- from A's origin towards B, a 550-range hero hits A there and fits; a melee one hits from 300 and does not.
+	do
+		local d = seen[RAD]["good_8>good_7"]
+		local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+		local ab = dist(a, b)
+		local near = { b = d.b, a = d.a, fsec = d.fsec, sec = d.sec, stand = Vector(a.x + (b.x - a.x) * 650 / ab, a.y + (b.y - a.y) * 650 / ab, 0) }
+		local half = (H.Lane.Camps.SpawnerByIdx(d.b.campIdx).max.x - H.Lane.Camps.SpawnerByIdx(d.b.campIdx).min.x) / 2
+		-- The speed at which a 550-range hero's walk from the stand takes the whole gap less the slack.
+		bot.speed = math.max(1, ab - 650 - 550 - half) / (d.sec - d.fsec - 0.5) + 1
+		bot.range = 550
+		check("good_8>good_7 from a stand near B: ranged fits", H.StackJob.Fits(bot, near))
+		bot.range = 150
+		check("good_8>good_7 from a stand near B: melee walks from its hit in A, no fit", not H.StackJob.Fits(bot, near))
+		bot.range = 550
+		bot.speed = nil
+	end
 	for k, d in pairs(seen[RAD]) do
 		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
 		check(k .. ": A's stand faces B", dist(d.stand, spb.location) < dist(spa.location, spb.location), k)
@@ -817,11 +835,11 @@ do
 	check("sweep: a far camp is walked to, not skipped late", not late and #l3 >= 1 and tonumber(field(l3[1], "camp")) == idxOf("good_5"), table.concat(l3, " | "))
 end
 
--- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle; other camps unchanged.
+-- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle, good_13's 0.5 s (dsvA); others unchanged.
 do
 	local H = world()
 	local C, S = H.Lane.Camps, H.Lane.Stacking
-	for _, c in ipairs({ { "good_15", RAD, 1 }, { "evil_7", DIRE, 0 }, { "evil_4", DIRE, 0 }, { "evil_5", DIRE, 0 }, { "good_9", RAD, 0 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
+	for _, c in ipairs({ { "good_15", RAD, 1 }, { "good_13", RAD, 0.5 }, { "evil_7", DIRE, 0 }, { "evil_4", DIRE, 0 }, { "evil_5", DIRE, 0 }, { "good_9", RAD, 0 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
 		local d = C.ByIdx(idxOf(c[1]), c[2])
 		check(c[1] .. ": single hit " .. c[3] .. " s before the window middle", math.abs(S.AggroSec(d) - H.StackJob.SingleSec(d) - c[3]) < 1e-6, H.StackJob.SingleSec(d))
 	end

@@ -63,6 +63,10 @@ export const SETTINGS = {
     FarEnd: 3,
     /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
     DoubleSlack: 0.5,
+    /** `Fits` counts the walk to B from where camp A is hit: within attack range plus this of A's origin, not the stand.
+     *  Earthshaker (150 range) walked 430 in from good_8's stand to 214 from its origin and timed out on good_7 in 5 of 8
+     *  doubles (dsvA, 02/11/2026) that the walk from the stand said fit. Judgement. */
+    NeutralSpread: 150,
     /** A double's start slack instead of Lead (9): the walk to camp A from the safe-lane T1 is ~8 s for good_2, and with
      *  Lead the job would run ~27.5 s, over AwayMax (E1, 31/10/2026). A double that still cannot fit runs single. */
     DoubleLead: 5,
@@ -373,7 +377,9 @@ interface Pair {
 // The shrine pairs (good_16>good_13, evil_13>evil_7) were dropped (user 01/11/2026): both camps stacked in 5 of 26 first
 // doubles on fresh camps (solo runs 16-39); the pos4 single stacks the large camp there instead (POS4_SINGLES).
 const PAIRS: Pair[] = [
-    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55.5, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
+    // good_1 :55, not :55.5 (dsvA, 02/11/2026): jakiro (400 range, 290 speed before boots) confirmed B at :56.7-:57.0 in its
+    // misses and by :56.5 in its stacks; lion, lich and jakiro with boots stacked from :54.7 confirmed (runs 88-116).
+    { x: 3978, y: -5027, fx: 4649, fy: -3699, fsec: 51.5, sec: 55, pos: 5, face: false }, // good_1 (55-57) after good_2 (52-54)
     { x: -3911, y: 4829, fx: -4824, fy: 3915, fsec: 54, sec: 56, pos: 5, face: false }, // evil_2 (55-57) after evil_1 (54-56)
     { x: -4013, y: 992, fx: -5015, fy: -96, fsec: 52.5, sec: 55, pos: 4, face: true }, // good_7 (53-55) after ancient good_8 (52-54)
     { x: 3392, y: -1408, fx: 4352, fy: 48, fsec: 52.25, sec: 54.25, pos: 4, face: true }, // evil_9 after ancient evil_8 (both 53-55)
@@ -386,6 +392,9 @@ const PAIRS: Pair[] = [
  *  (EXIT_DIRS): back to the window middle. `judgement`, 1 s. */
 const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
     { x: 1922, y: -3975, s: 1 }, // good_15
+    // good_13 0.5 s (dsvA, 02/11/2026; replay, runs 88-116): its satyr camps missed 2 of 9, both hit at :55.3-:55.5 and first
+    // 400 out at :58 or later (`late`); every good_13 hit by :55.1 stacked, other types up to :55.8.
+    { x: -8313, y: -553, s: 0.5 }, // good_13
 ];
 
 /** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */
@@ -465,13 +474,18 @@ export function PairFor(team: number, minute: number): Double | undefined {
 }
 
 /**
- * The walk from A's stand point to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
- * so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only).
+ * The walk from where A was hit to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
+ * so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only). A is hit from the
+ * stand, or from attack range plus NeutralSpread of A's origin when the stand is further out.
  */
 export function Fits(bot: Unit, d: Double): boolean {
+    const spa = Camps.SpawnerByIdx(d.a.campIdx)!;
     const spb = Camps.SpawnerByIdx(d.b.campIdx)!;
+    const da = math.max(1, dist(d.stand, spa.location));
+    const inA = math.max(0, da - bot.GetAttackRange() - SETTINGS.NeutralSpread) / da;
+    const from = Vector(d.stand.x + (spa.location.x - d.stand.x) * inA, d.stand.y + (spa.location.y - d.stand.y) * inA, d.stand.z);
     const reach = bot.GetAttackRange() + (spb.max.x - spb.min.x) / 2;
-    const walk = math.max(0, dist(d.stand, spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
+    const walk = math.max(0, dist(from, spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
     return walk + SETTINGS.DoubleSlack <= d.sec - d.fsec;
 }
 
