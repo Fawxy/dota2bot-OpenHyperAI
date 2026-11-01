@@ -92,7 +92,8 @@ export const SETTINGS = {
 // other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
 // Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
 // AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
-// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Overrides.Sweep = true
+// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriSE = true the Dire
+// triangle pair's south-east walk-off (TRI_SE), Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
 // (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
 // attempt is on a fresh camp (`SweepNext`). Tier 2's fresh doubles: Overrides.Solo = "0,1," keeps several heroes, and
 // Overrides.StackEvery = 3 tries every third minute, and a console kill of all neutrals at :05 of the two minutes between
@@ -296,10 +297,15 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy
     { x: -2880, y: 7376, dx: 0.71, dy: 0.71 }, // evil_11: north-east
     { x: 1224, y: 4176, dx: -1, dy: 0 }, // evil_4: west
     { x: 1064, y: 2580, dx: 0.71, dy: 0.71 }, // evil_5: north-east
-    // evil_9 (camp B of the Dire triangle pair): south-east, towards the secret shop, the easier route (user replay review of
-    // dsv2B/C, 02/11/2026). The derived walk-off ran north-west towards mid and the ancients of evil_8 turned back into their
-    // box out of sight, 750-880 from the origin at :59.9 (6 of 13 both stacked, dsv2).
-    { x: 3392, y: -1408, dx: 0.71, dy: -0.71 },
+];
+
+/** Overrides.TriSE = true (solo harness, until the stack route choice row): evil_9, camp B of the Dire triangle pair, walks
+ *  off south-east towards the secret shop, the easier route (user replay review of dsv2B/C, 02/11/2026); the derived walk-off
+ *  runs north-west towards mid, and there evil_8's ancients turned back into their box out of sight, 750-880 from the origin
+ *  at :59.9 (6 of 13 both stacked, dsv2). It stands on the side facing evil_8 (sx, sy): from a south-east stand the walk
+ *  from A ran late 3 of 4 (`timeout:late`, triSEC), though A stacked 4 of 4. */
+const TRI_SE: { x: number; y: number; dx: number; dy: number; sx?: number; sy?: number }[] = [
+    { x: 3392, y: -1408, dx: 0.71, dy: -0.71, sx: 0.55, sy: 0.83 },
 ];
 
 /** The shrine pairs' other route (user 31/10/2026): straight between the two camps towards the lanes, Radiant east, Dire
@@ -313,7 +319,8 @@ const SHRINE_LANE: { x: number; y: number; dx: number; dy: number; sx?: number; 
 ];
 
 function setDir(sp: Camps.Spawner): { dx: number; dy: number; sx?: number; sy?: number } | undefined {
-    for (const e of override("ShrineLane") === true ? [...SHRINE_LANE, ...EXIT_DIRS] : EXIT_DIRS) {
+    const first = [...(override("ShrineLane") === true ? SHRINE_LANE : []), ...(override("TriSE") === true ? TRI_SE : [])];
+    for (const e of [...first, ...EXIT_DIRS]) {
         if (math.abs(sp.location.x - e.x) <= 200 && math.abs(sp.location.y - e.y) <= 200) return e;
     }
     return undefined;
@@ -443,7 +450,10 @@ function resolvePair(p: Pair, team: number): Double | undefined {
     if (a === undefined || b === undefined) return undefined;
     const spa = Camps.SpawnerByIdx(a.campIdx)!;
     const stand = p.face ? Camps.StandPoint(spa, Camps.SpawnerByIdx(b.campIdx)!.location, LaneConfig.Settings().Radii.StandOffset) : Stand(spa, a);
-    return { b, a, fsec: p.fsec, sec: p.sec, stand };
+    // Overrides.TriLate = <s> (solo harness): evil_8's hit that much later, nearer its 53-55 window (user replay review of
+    // dsv2B/C, 02/11/2026: the ice shaman was back in its box at :00 after a :50.5-:52.1 hit).
+    const late = p.fx === 4352 && p.fy === 48 && typeof override("TriLate") === "number" ? (override("TriLate") as number) : 0;
+    return { b, a, fsec: p.fsec + late, sec: p.sec, stand };
 }
 
 /** The pos5's pair for its nearest camp, which may be either camp of it: the pos5 stood nearer camp A (the large one) in

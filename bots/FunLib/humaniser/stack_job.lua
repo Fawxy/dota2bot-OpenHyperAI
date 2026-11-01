@@ -740,7 +740,7 @@ local function __TS__ArraySplice(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
+local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, targetDist, sample59, Customize, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
@@ -760,18 +760,18 @@ function override(key)
     return ____opt_0
 end
 function setDir(sp)
-    local ____temp_3
-    if override("ShrineLane") == true then
-        local ____array_2 = __TS__SparseArrayNew(unpack(SHRINE_LANE))
-        __TS__SparseArrayPush(
-            ____array_2,
-            unpack(EXIT_DIRS)
-        )
-        ____temp_3 = {__TS__SparseArraySpread(____array_2)}
-    else
-        ____temp_3 = EXIT_DIRS
-    end
-    for ____, e in ipairs(____temp_3) do
+    local ____array_2 = __TS__SparseArrayNew(unpack(override("ShrineLane") == true and SHRINE_LANE or ({})))
+    __TS__SparseArrayPush(
+        ____array_2,
+        unpack(override("TriSE") == true and TRI_SE or ({}))
+    )
+    local first = {__TS__SparseArraySpread(____array_2)}
+    local ____array_3 = __TS__SparseArrayNew(unpack(first))
+    __TS__SparseArrayPush(
+        ____array_3,
+        unpack(EXIT_DIRS)
+    )
+    for ____, e in ipairs({__TS__SparseArraySpread(____array_3)}) do
         if math.abs(sp.location.x - e.x) <= 200 and math.abs(sp.location.y - e.y) <= 200 then
             return e
         end
@@ -1228,9 +1228,16 @@ EXIT_DIRS = {
     {x = -1983, y = -4815, dx = 1, dy = 0},
     {x = -2880, y = 7376, dx = 0.71, dy = 0.71},
     {x = 1224, y = 4176, dx = -1, dy = 0},
-    {x = 1064, y = 2580, dx = 0.71, dy = 0.71},
-    {x = 3392, y = -1408, dx = 0.71, dy = -0.71}
+    {x = 1064, y = 2580, dx = 0.71, dy = 0.71}
 }
+TRI_SE = {{
+    x = 3392,
+    y = -1408,
+    dx = 0.71,
+    dy = -0.71,
+    sx = 0.55,
+    sy = 0.83
+}}
 SHRINE_LANE = {{x = -8313, y = -553, dx = 1, dy = 0}, {
     x = 7928,
     y = -120,
@@ -1329,10 +1336,11 @@ local function resolvePair(p, team)
         Camps.SpawnerByIdx(b.campIdx).location,
         LaneConfig.Settings().Radii.StandOffset
     ) or ____exports.Stand(spa, a)
+    local late = p.fx == 4352 and p.fy == 48 and type(override("TriLate")) == "number" and override("TriLate") or 0
     return {
         b = b,
         a = a,
-        fsec = p.fsec,
+        fsec = p.fsec + late,
         sec = p.sec,
         stand = stand
     }

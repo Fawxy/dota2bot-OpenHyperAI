@@ -65,6 +65,15 @@ test('stacks in the camp count up while its neutrals live and start again once i
   assert.deepStrictEqual([3, 4, 5, 6, 7].map((m) => nin(G1, m, t)), [1, 2, 2, 0, 1]);
 });
 
+test('a forced respawn mid-minute starts the count again: every minute an attempt on a fresh camp', () => {
+  // Per-minute harness: stacked at 3:00, every neutral killed at 3:03, dota_spawn_neutrals at 3:10; the same at 4:00; at 5:00 a stack with no respawn after it.
+  const sp = (t) => ({ sp: 527, t });
+  const t = { nc: [sp(120.1), sp(130), sp(180.1), sp(190), sp(240.1), sp(250), sp(300.1)], alive: { 2: { 527: 6 }, 3: { 527: 6 }, 4: { 527: 6 } } };
+  assert.deepStrictEqual([2, 3, 4, 5].map((m) => nin(G1, m, t)), [0, 0, 0, 1]);
+  // A :00 spawn up to :02 is the minute's grade, not a reset.
+  assert.strictEqual(nin(G1, 3, { nc: [sp(181.9)], alive: { 2: { 527: 3 } } }), 1);
+});
+
 test('tiers: a pair is graded at its fuller camp and counts both camps stacked', () => {
   const r = tiers([
     { double: 1, camp: 1, fcamp: 2, nin: 0, fnin: 0, true: 1, ftrue: 1 },

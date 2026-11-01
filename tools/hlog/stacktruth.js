@@ -82,11 +82,14 @@ function grade(s, minute, t) {
 }
 
 /** Stacks in the camp before `minute`: each earlier minute whose :00 spawn landed on live neutrals adds one, and a
- *  minute that ended (:59.9) with none of its neutrals alive starts again from 0. */
+ *  minute that ended (:59.9) with none of its neutrals alive starts again from 0. So does a spawn between :02 and :59.5,
+ *  up to `minute`'s own: the solo harness's forced respawn (`dota_spawn_neutrals`), sent only after a console kill of
+ *  every neutral, so each minute's attempt is on a fresh camp. */
 function nin(s, minute, t) {
   let n = 0;
-  for (let m = 0; m < minute; m++) {
-    if (!(m in t.alive)) continue;
+  for (let m = 0; m <= minute; m++) {
+    if (t.nc.some((c) => c.sp === s.ent && c.t > m * 60 + 2 && c.t < m * 60 + 59.5)) n = 0;
+    if (m === minute || !(m in t.alive)) continue;
     if ((t.alive[m][s.ent] ?? 0) === 0) n = 0;
     else if (t.nc.some((c) => c.sp === s.ent && c.t >= m * 60 + 59.5 && c.t <= m * 60 + 62)) n++;
   }
