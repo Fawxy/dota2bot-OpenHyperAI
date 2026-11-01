@@ -130,6 +130,7 @@ function main() {
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
     const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
     const t = readTruth(dem);
+    if (t.sp.length === 0) { console.error(`no camp spawners in ${dem} (a cut or stale replay)`); continue; }
     const m = campMap(boxes, t.sp);
     for (const r of rows) {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
