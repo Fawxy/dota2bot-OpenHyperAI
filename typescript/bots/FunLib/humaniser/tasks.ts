@@ -14,6 +14,7 @@ import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -124,6 +125,8 @@ function loadBundle(ours = false): Bundle | undefined {
         lib = res as Bundle;
         lib.init(adapter);
         JobVerbs.Bind(lib, adapter);
+        const verbs = lib.Verbs;
+        LanePick.SetOffers(bot => verbs.laneTargets(bot, { within: 1 }));
         (rawPrint ?? print)(support + "ok");
     } else {
         (rawPrint ?? print)(`${support}fail ${tostring(res)}`);

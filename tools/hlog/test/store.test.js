@@ -280,3 +280,66 @@ test('creep_fate: by=deny reads enemy_deny, and a log without own_creep_death re
         '[HEV] t=20 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none']));
     assert.deepStrictEqual(s.query('SELECT t, fate FROM creep_fate ORDER BY t').map(r => [r.t, r.fate]), [[10, 'enemy_deny'], [20, 'other']]);
 });
+
+test('lane_activity and @lane_time: activity per snap, choice against option, presence and conversion', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    const B = (pid, team, pos) => `[HEV] t=-60 ev=bot pid=${pid} hero=h${pid} team=${team} pos=${pos}`;
+    const S = (t, o) => `[HEV] t=${t} ev=snap pid=${o.pid ?? 0} x=0 y=0 alive=${o.alive ?? 1} hp=${o.hp ?? 100} mode=${o.mode ?? 'laning'} d=${o.d ?? 0.45}` +
+        (o.tgt ? ` tgt=${o.tgt}` : '') + (o.ol !== undefined ? ` ol=${o.ol} od=0 ar=500` : '') + (o.ed ? ` ed=${o.ed}` : '') + (o.hit ? ' hit=1' : '');
+    const CREEP = 'npc_dota_creep_badguys_melee', HERO = 'npc_dota_hero_lion';
+    const f = log(dir, 'a.log', [B(0, 2, 1), B(5, 3, 4),
+        S(50, { ol: 1 }),                                    // before `from`
+        S(100, { tgt: HERO, ol: 0, ed: 400 }),               // in range, nothing to take, trading
+        S(101, { ol: 0, ed: 500, hit: 1 }),                  // in range and hit, no reply
+        S(102, { tgt: CREEP, ol: 1, d: 0.9 }),               // a last hit on offer, taken; at the spike
+        S(103, { ol: 2, hp: 30 }),                           // a last hit on offer, standing; low HP in laning
+        S(104, { mode: 'retreat', ol: 0, ed: 900 }),         // enemy out of range
+        S(105, { mode: 'retreat', tgt: HERO, ol: 0 }),       // a target outranks the mode
+        S(106, { mode: 'farm', tgt: 'npc_dota_neutral_kobold', ol: 0 }),
+        S(107, { mode: 'rune', ol: 0 }),
+        S(108, { tgt: 'npc_dota_goodguys_tower1_bot', ol: 0 }),
+        S(109, { pid: 5, ol: 0 }),
+        '[HEV] t=200 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0 p1d=300',
+        '[HEV] t=201 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none p1d=900',
+        '[HEV] t=202 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none p1d=1100',
+        '[HEV] t=610 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0 p1d=100',
+        S(650, { ol: 1 })]);   // after `until`
+    s.ingest(f);
+    s.refreshViews();
+    const acts = s.query('SELECT t, activity, spike, in_range FROM lane_activity WHERE pid = 0 AND t BETWEEN 100 AND 108 ORDER BY t').map(r => [r.activity, r.spike, r.in_range]);
+    assert.deepStrictEqual(acts, [['hero', 0, 1], ['lane', 0, 1], ['creep', 1, 0], ['lane', 0, 0], ['retreat', 0, 0], ['hero', 0, 0], ['neutral', 0, 0], ['other', 0, 0], ['building', 0, 0]]);
+    const sql = fs.readFileSync(path.join(__dirname, '../queries/lane_time.sql'), 'utf8');
+    const r = s.query(sql, {}).find(x => x.pid === 0);
+    assert.deepStrictEqual([r.secs, r.hero, r.creep, r.retreat, r.lane, r.other, r.low_lane, r.spike], [9, 2, 1, 1, 2, 3, 1, 1]);
+    assert.deepStrictEqual([r.lh_open, r.lh_open_creep, r.trade_open, r.trade_open_hero, r.hit_noreply], [2, 1, 2, 1, 1]);
+    assert.deepStrictEqual([r.near, r.taken], [2, 1]);
+    const sup = s.query(sql, {}).find(x => x.pid === 5);
+    assert.deepStrictEqual([sup.secs, sup.near, sup.taken], [1, null, null], 'a support has no creep_death distances');
+});
+
+test('@lane_time: a build without the option fields reads NULL, not 0', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    s.ingest(log(dir, 'old.log', ['[HEV] t=-60 ev=bot pid=0 hero=h team=2 pos=1',
+        '[HEV] t=100 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4', '[HEV] t=601 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4']));
+    s.refreshViews();
+    const r = s.query(fs.readFileSync(path.join(__dirname, '../queries/lane_time.sql'), 'utf8'), {})[0];
+    assert.deepStrictEqual([r.secs, r.lane, r.lh_open, r.trade_open, r.hit_noreply], [1, 1, null, null, null]);
+});
+
+test('@lane_time: near and taken obey from; a siege creep target is a creep', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    s.ingest(log(dir, 'a.log', ['[HEV] t=-60 ev=bot pid=0 hero=h team=2 pos=1',
+        '[HEV] t=50 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0 p1d=100',
+        '[HEV] t=100 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4 tgt=npc_dota_badguys_siege',
+        '[HEV] t=120 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none p1d=100',
+        '[HEV] t=601 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4']));
+    s.refreshViews();
+    const sql = fs.readFileSync(path.join(__dirname, '../queries/lane_time.sql'), 'utf8');
+    const r = s.query(sql, {})[0];
+    assert.deepStrictEqual([r.creep, r.lane, r.near, r.taken], [1, 0, 1, 0], 'from 90: the death at 50 is out');
+    const all = s.query(sql, { from: 0 })[0];
+    assert.deepStrictEqual([all.near, all.taken], [2, 1]);
+});

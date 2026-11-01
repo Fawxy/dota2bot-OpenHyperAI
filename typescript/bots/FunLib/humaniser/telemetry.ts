@@ -7,7 +7,7 @@
  * Events emitted from a team-wide context (order posts, pings, commands) repeat once per module instance;
  * tools/hlog de-duplicates them.
  */
-import { Barracks, GameState, Lane, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Barracks, BotMode, GameState, Lane, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
@@ -430,6 +430,36 @@ function unitFields(unit: Unit): UnitPair[] {
     return fields;
 }
 
+/** Options are logged up to here: past the laning stage they would only grow the log. */
+const OPTIONS_UNTIL = 720;
+const ENEMY_RADIUS = 1200;
+
+/**
+ * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero, hit by a hero.
+ * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only. Skipped for an ally of a
+ * human, where the offers would run the etiquette filter, whose decisions log themselves.
+ */
+function optionFields(bot: Unit): BotPair[] {
+    if (DotaTime() > OPTIONS_UNTIL || !bot.IsAlive() || Difficulty.IsAllyOfHuman(bot)) return [];
+    const [ol, od] = LanePick.Options(bot as unknown as Parameters<typeof LanePick.Options>[0]);
+    let nearest: number | undefined;
+    for (const h of bot.GetNearbyHeroes(ENEMY_RADIUS, true, BotMode.None) ?? []) {
+        if (h.IsAlive()) {
+            const d = GetUnitToUnitDistance(bot, h);
+            if (nearest === undefined || d < nearest) nearest = d;
+        }
+    }
+    return [
+        ["ol", ol],
+        ["od", od],
+        ["ar", bot.GetAttackRange()],
+        ["ed", nearest !== undefined ? math.floor(nearest) : undefined],
+        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
+    ];
+}
+
+const guardedOptionFields = Guard("Telemetry.Options", optionFields, () => []);
+
 function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
     fields.push(["mode", HDebug.ModeName(bot.GetActiveMode())]);
@@ -437,6 +467,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
     fields.push(["gold", bot.GetGold()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
+    for (const f of guardedOptionFields(bot)) fields.push(f);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);

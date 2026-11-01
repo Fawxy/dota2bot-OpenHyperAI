@@ -40,6 +40,11 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     act = "num",
     gold = "num",
     lf = "str",
+    ol = "num",
+    od = "num",
+    ar = "num",
+    ed = "num",
+    hit = "bool",
     by = "str",
     order = "str"
 })
@@ -607,6 +612,9 @@ ____exports.EVENTS = {
         ranged = "bool",
         eta = "num",
         contested = "bool",
+        ol = "num",
+        od = "num",
+        ow = "num",
         msg = "str"
     },
     job_exec = {

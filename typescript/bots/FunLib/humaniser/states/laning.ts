@@ -129,7 +129,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         lastHits: () => {
             const spot = Spot(bot);
             LanePick.NoteScan(bot.GetPlayerID(), DotaTime(), spot !== undefined ? GetUnitToLocationDistance(bot, spot) : undefined);
-            return OwnsLastHit(bot);
+            const owns = OwnsLastHit(bot);
+            if (owns) LanePick.NoteWait(bot as unknown as Lib.TaskUnit);
+            return owns;
         },
         within: Settings().LastHitWithin,
         pick: (targets) => {
@@ -145,7 +147,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         far: FAR,
         leash: LEASH,
         retarget: true,
-        onAttempt: (t, res, contested) =>
+        onAttempt: (t, res, contested) => {
+            const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
                 ["kind", t.kind],
@@ -154,8 +157,12 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["ranged", t.ranged],
                 ["eta", math.floor(t.eta * 100) / 100],
                 ["contested", contested],
+                ["ol", ol],
+                ["od", od],
+                ["ow", ow],
                 ["msg", res.message],
-            ]),
+            ]);
+        },
     });
 }
 

@@ -336,6 +336,31 @@ do
 	check("lane_eq again in the next cycle", #events("lane_eq") == 3, #events("lane_eq"))
 end
 
+-- Slice lane-activity: what the bot could do this second, up to 12:00, for a live bot that is no human's ally.
+do
+	local H = fresh()
+	local enemy = MakeUnit({ pid = 7, team = 3 })
+	-- A world loaded earlier in this file replaces the stubs' unit table, so the extras go on the current one.
+	local U = getmetatable(enemy).__index
+	for name, fn in pairs(UnitMeta) do if U[name] == nil then U[name] = fn end end
+	function U:GetNearbyHeroes() return { enemy } end
+	function U:WasRecentlyDamagedByAnyHero() return true end
+	local dist = GetUnitToUnitDistance
+	GetUnitToUnitDistance = function() return 432.7 end
+	local b = MakeUnit({ pid = 1, team = 2, mode = BotMode.Laning })
+	T = 100
+	H.Telemetry.Tick(b)
+	local snap = events("snap")[1]
+	check("options: range, nearest enemy and hit on the snap", snap ~= nil and field(snap, "ar") ~= nil and field(snap, "ed") == "432" and field(snap, "hit") == "1", snap)
+	lines = {}
+	T = 721
+	H.Telemetry.Tick(b)
+	snap = events("snap")[1]
+	check("options: none past 12:00", snap ~= nil and field(snap, "ar") == nil and field(snap, "hit") == nil, snap)
+	GetUnitToUnitDistance = dist
+	U.GetNearbyHeroes, U.WasRecentlyDamagedByAnyHero = nil, nil
+end
+
 finish()
 
 -- Before/after runs: the bot line names the build and the position; snapshots carry kills and deaths.
