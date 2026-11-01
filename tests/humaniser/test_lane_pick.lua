@@ -19,21 +19,18 @@ do
 	check("pick: melee due now beats a ranged creep due in 1 s", Pick.Choose({ r, m }) == m)
 end
 
--- A core never gives up its own last hit to deny: an allied creep due now loses to an enemy creep due in 0.2 s,
--- but a deny due now beats a last hit a second away.
+-- Strict priority (user rule 01/11/2026): a reachable last hit beats a deny however much sooner the deny is due; a deny is
+-- taken only when no last hit is offered.
 do
 	local d, e = target("deny", 0), target("lasthit", 0.2)
 	check("pick: last hit beats a deny due slightly sooner", Pick.Choose({ d, e }) == e)
 	local late = target("lasthit", 1.0)
-	check("pick: deny due now beats a last hit 1 s away", Pick.Choose({ late, d }) == d)
-end
-
-
--- The ranged bias outweighs the last-hit bias: a ranged deny beats a melee last hit due 0.05 s sooner (with the
--- two biases swapped the last hit would win).
-do
-	local rd, ml = target("deny", 0.25, true), target("lasthit", 0.2)
-	check("pick: ranged deny beats a melee last hit due 0.05 s sooner", Pick.Choose({ ml, rd }) == rd)
+	check("pick: last hit 1 s away still beats a deny due now", Pick.Choose({ late, d }) == late)
+	check("pick: no last hit, the deny is chosen", Pick.Choose({ d }) == d)
+	local rd = target("deny", 0, true)
+	check("pick: a ranged deny never beats a melee last hit", Pick.Choose({ rd, late }) == late)
+	local far = target("lasthit", 0, false, 2, 1)
+	check("pick: an unreachable last hit does not block a deny", Pick.Choose({ far, d }) == d)
 end
 
 -- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even

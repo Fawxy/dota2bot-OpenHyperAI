@@ -2,8 +2,8 @@
 local ____exports = {}
 --- Seconds of eta a ranged or siege creep is preferred by (more gold and XP).
 ____exports.RANGED_BIAS = 0.4
---- Seconds of eta a last hit is preferred over a deny by (a core never gives up its last hit to deny).
-____exports.LAST_HIT_BIAS = 0.3
+--- Added to a deny's key so any last hit sorts before it.
+local DENY_OFFSET = 1000
 --- Seconds a swing needs after the walk into range (wind-up plus a little) for the creep to still be alive when it lands.
 -- A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
 -- were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
@@ -19,7 +19,7 @@ function ____exports.Choose(targets)
                     __continue3 = true
                     break
                 end
-                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) - (t.kind == "lasthit" and ____exports.LAST_HIT_BIAS or 0)
+                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
                 if key < bestKey then
                     bestKey = key
                     best = t
