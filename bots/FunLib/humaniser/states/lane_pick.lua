@@ -77,6 +77,33 @@ function ____exports.Options(bot)
     local lastHits, denies = countOffers(offers(bot))
     return lastHits, denies
 end
+--- A support's pick (slice l1-support-deny, user rule 02/11/2026): denies only, the reachable one with the earliest eta (ranged
+-- bias as Choose); the last hits laneTargets offers are left to OHA's own last-hit step.
+function ____exports.ChooseDeny(targets)
+    local best
+    local bestKey = math.huge
+    for ____, t in ipairs(targets) do
+        do
+            local __continue18
+            repeat
+                if t.kind ~= "deny" or t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
+                    __continue18 = true
+                    break
+                end
+                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
+                if key < bestKey then
+                    bestKey = key
+                    best = t
+                end
+                __continue18 = true
+            until true
+            if not __continue18 then
+                break
+            end
+        end
+    end
+    return best
+end
 local scans = {}
 local function scanOf(pid)
     local s = scans[pid]

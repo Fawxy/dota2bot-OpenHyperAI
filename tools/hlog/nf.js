@@ -226,7 +226,8 @@ const QUERIES = path.join(__dirname, 'queries');
 /**
  * Slice 5 (L.1) keys per lineup core position N (1-3), the mean of the two teams' posN at 10:00 (undefined when a team has no
  * such core): `conv_lposN` its own last hits over the enemy lane creeps that died within 1000 of it (@lasthit_cores core_lh /
- * near), and `dn_`, `lvl_`, `hph_at_10_lposN` from @core_costs. Conversion per team too (`conv_lposN_r`, `_d`): in OFF one
+ * near), and `dn_`, `lvl_`, `hph_at_10_lposN` from @core_costs; for the supports (pos 4-5) `dn_`, `lvl_`, `deaths_`,
+ * `hph_at_10_lposN_r` and `_d`, per team only. Conversion per team too (`conv_lposN_r`, `_d`): in OFF one
  * team's cores run OHA's last hits and the other Valve's, so a mean of the two can hide one.
  */
 function coreLane(store, file, gameNo) {
@@ -245,17 +246,24 @@ function coreLane(store, file, gameNo) {
         out[`conv_lpos${n}_d`] = conv(d);
         for (const f of ['dn', 'lvl', 'hph']) out[`${f}_at_10_lpos${n}`] = mean(cost[`2:${n}`]?.[f], cost[`3:${n}`]?.[f]);
     }
+    // Slice l1-support-deny: the supports' costs per team (a Radiant-only switch leaves Dire identical in both arms).
+    for (const n of [4, 5]) {
+        for (const f of ['dn', 'lvl', 'deaths', 'hph']) {
+            out[`${f}_at_10_lpos${n}_r`] = cost[`2:${n}`]?.[f] ?? undefined;
+            out[`${f}_at_10_lpos${n}_d`] = cost[`3:${n}`]?.[f] ?? undefined;
+        }
+    }
     return out;
 }
 
 /**
  * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the views creep_share and creep_guard (GOALS.md L.1,
- * LOGGING.md): `share`, `team_lhdn` (team last hits + denies), `core_lh`, `core_dn`, `deaths_t` (counts a hero still dead
+ * LOGGING.md): `share`, `team_lhdn` (team last hits + denies), `core_lh`, `core_dn`, `sup_lh`, `sup_dn` (pos 4-5), `deaths_t` (counts a hero still dead
  * at 10:00), `not_in_share`. Undefined for a team with no row (share and not_in_share are NULL on logs from before 406ee95).
  */
 function economy(store, file, gameNo) {
     const rows = store.query(`WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1))
-        SELECT g.team, s.share AS share, g.team_lh + g.team_dn AS team_lhdn, g.core_lh, g.core_dn, g.deaths, g.not_in_share
+        SELECT g.team, s.share AS share, g.team_lh + g.team_dn AS team_lhdn, g.core_lh, g.core_dn, g.sup_lh, g.sup_dn, g.deaths, g.not_in_share
         FROM creep_guard g LEFT JOIN creep_share s ON s.game_id = g.game_id AND s.team = g.team
         WHERE g.game_id = (SELECT game_id FROM gm)`, { file, game: gameNo });
     const out = {};
@@ -263,7 +271,7 @@ function economy(store, file, gameNo) {
         const sfx = r.team === 2 ? '_r' : r.team === 3 ? '_d' : null;
         if (!sfx) continue;
         for (const [k, f] of [['share', 'share'], ['team_lhdn', 'team_lhdn'], ['core_lh', 'core_lh'], ['core_dn', 'core_dn'],
-            ['deaths_t', 'deaths'], ['not_in_share', 'not_in_share']]) out[k + sfx] = r[f] === null ? undefined : r[f];
+            ['sup_lh', 'sup_lh'], ['sup_dn', 'sup_dn'], ['deaths_t', 'deaths'], ['not_in_share', 'not_in_share']]) out[k + sfx] = r[f] === null ? undefined : r[f];
     }
     return out;
 }

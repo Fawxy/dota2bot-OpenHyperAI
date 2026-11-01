@@ -1,5 +1,5 @@
--- Costs of a core's lane play at `until` (slice 5, KR L.1): one row per core (lineup position 1-3 of each team, as
--- @lasthit_cores) with its denies, level and deaths from the last ev=snap at or before `until`, and `hph`, the HP it has lost
+-- Costs of a laner's lane play at `until` (slice 5, KR L.1): one row per hero at lineup position 1-5 of each team (the cores as
+-- @lasthit_cores; the supports since slice l1-support-deny) with its denies, level and deaths from the last ev=snap at or before `until`, and `hph`, the HP it has lost
 -- to heroes since the game began (states/lane_metrics HeroLost, cumulative), from its last ev=lane_pos at or before `until`.
 -- ev=lane_pos is logged only while the bot is in the laning state, so `hph` is a lower bound for a core that left its lane;
 -- NULL when the build logs no lane_pos. Params: file (absolute log path, as in games.file), game (default 1), until (s, default 600).
@@ -17,6 +17,6 @@ SELECT l.team, l.pos, l.pid,
     (SELECT p.hph FROM ev_lane_pos p WHERE p.game_id = l.game_id AND p.pid = l.pid AND p.hph IS NOT NULL
         AND p.t <= coalesce(:until, 600) ORDER BY p.t DESC, p.seq DESC LIMIT 1) AS hph
 FROM lineup l
-WHERE l.game_id = (SELECT game_id FROM gm) AND l.pos BETWEEN 1 AND 3
+WHERE l.game_id = (SELECT game_id FROM gm) AND l.pos BETWEEN 1 AND 5
   AND EXISTS (SELECT 1 FROM ev_snap s WHERE s.game_id = l.game_id AND s.pid = l.pid AND s.x IS NOT NULL)
 ORDER BY l.team, l.pos

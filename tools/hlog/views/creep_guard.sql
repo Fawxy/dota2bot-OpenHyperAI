@@ -1,6 +1,7 @@
 -- Guard-rail counts for the L.1 creep-economy share (GOALS.md L.1), per game and team at 10:00 (last ev=snap of each hero at t < 600,
 -- the window creep_share uses).
--- team_lh, team_dn: last hits and denies of the team's heroes; core_lh, core_dn: the lineup pos 1-3 heroes only; deaths: hero deaths,
+-- team_lh, team_dn: last hits and denies of the team's heroes; core_lh, core_dn: the lineup pos 1-3 heroes only; sup_lh, sup_dn: the
+-- lineup pos 4-5 heroes only (slice l1-support-deny); deaths: hero deaths,
 -- plus one for a hero whose last snapshot is over 2.5 s before 10:00 while the game ran past it (bots log no snapshot while dead, so
 -- its counter has not risen yet: dynamic.js C.DEAD_GAP);
 -- not_in_share = (team_lh + team_dn) - (creep_share taken), a net figure: counter rises with no matching logged lane-creep death
@@ -27,13 +28,15 @@ last AS (
 h AS (
     SELECT l.game_id, w.team, l.pid, l.lh, l.dn,
         l.deaths + CASE WHEN 600 - l.t > 2.5 AND (SELECT tmax FROM gend e WHERE e.game_id = l.game_id) >= 600 THEN 1 ELSE 0 END AS deaths,
-        coalesce((SELECT n.pos BETWEEN 1 AND 3 FROM lineup n WHERE n.game_id = l.game_id AND n.pid = l.pid), 0) AS core
+        coalesce((SELECT n.pos BETWEEN 1 AND 3 FROM lineup n WHERE n.game_id = l.game_id AND n.pid = l.pid), 0) AS core,
+        coalesce((SELECT n.pos BETWEEN 4 AND 5 FROM lineup n WHERE n.game_id = l.game_id AND n.pid = l.pid), 0) AS sup
     FROM last l JOIN who w ON w.game_id = l.game_id AND w.pid = l.pid AND w.rn = 1
     WHERE l.rn = 1
 )
 SELECT h.game_id, h.team,
     sum(h.lh) AS team_lh, sum(h.dn) AS team_dn,
     sum(CASE WHEN h.core THEN h.lh ELSE 0 END) AS core_lh, sum(CASE WHEN h.core THEN h.dn ELSE 0 END) AS core_dn,
+    sum(CASE WHEN h.sup THEN h.lh ELSE 0 END) AS sup_lh, sum(CASE WHEN h.sup THEN h.dn ELSE 0 END) AS sup_dn,
     sum(h.deaths) AS deaths,
     CASE WHEN s.taken IS NULL THEN NULL ELSE sum(h.lh) + sum(h.dn) - s.taken END AS not_in_share
 FROM h LEFT JOIN creep_share s ON s.game_id = h.game_id AND s.team = h.team
