@@ -327,3 +327,19 @@ test('@lane_time: a build without the option fields reads NULL, not 0', () => {
     const r = s.query(fs.readFileSync(path.join(__dirname, '../queries/lane_time.sql'), 'utf8'), {})[0];
     assert.deepStrictEqual([r.secs, r.lane, r.lh_open, r.trade_open, r.hit_noreply], [1, 1, null, null, null]);
 });
+
+test('@lane_time: near and taken obey from; a siege creep target is a creep', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    s.ingest(log(dir, 'a.log', ['[HEV] t=-60 ev=bot pid=0 hero=h team=2 pos=1',
+        '[HEV] t=50 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0 p1d=100',
+        '[HEV] t=100 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4 tgt=npc_dota_badguys_siege',
+        '[HEV] t=120 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none p1d=100',
+        '[HEV] t=601 ev=snap pid=0 x=0 y=0 alive=1 hp=100 mode=laning d=0.4']));
+    s.refreshViews();
+    const sql = fs.readFileSync(path.join(__dirname, '../queries/lane_time.sql'), 'utf8');
+    const r = s.query(sql, {})[0];
+    assert.deepStrictEqual([r.creep, r.lane, r.near, r.taken], [1, 0, 1, 0], 'from 90: the death at 50 is out');
+    const all = s.query(sql, { from: 0 })[0];
+    assert.deepStrictEqual([all.near, all.taken], [2, 1]);
+});
