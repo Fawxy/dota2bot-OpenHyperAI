@@ -282,7 +282,8 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy
     { x: -8313, y: -553, dx: 0.71, dy: 0.71 }, // good_13: north-east, on to the west shrine (-7948,768)
     // evil_7: walks off south-east, on to the east shrine (8029,-1126), from a stand on its east side: the south-east stand
     // never saw the camp (visprobe1/2: seen east and north-east), and the pos4's single hit from 97-328 stacked 5 of 12
-    // fresh (fresh4c-6c, replay), the misses' neutrals mostly never on the bot.
+    // fresh (fresh4c-6c, replay), the misses' neutrals mostly never on the bot. Its 0.5 s earlier single hit
+    // (fresh6c) went with that stand: from the east stand hits at 54.7-55.1 came back to the box, 55.8 stacked (fresh7c).
     { x: 7928, y: -120, dx: 0.71, dy: -0.71, sx: 1, sy: 0 },
     { x: -1454, y: -3356, dx: 0, dy: -1 }, // good_5: south
     { x: -1983, y: -4815, dx: 1, dy: 0 }, // good_9: east
@@ -383,8 +384,6 @@ const PAIRS: Pair[] = [
  *  (EXIT_DIRS): back to the window middle. `judgement`, 1 s. */
 const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
     { x: 1922, y: -3975, s: 1 }, // good_15
-    // evil_7 (pos4 single, window 55-56): replay-graded misses hit at 56.0-56.5, stacks at 55.7-55.9 (fresh4c, fresh5c).
-    { x: 7928, y: -120, s: 0.5 },
 ];
 
 /** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */
