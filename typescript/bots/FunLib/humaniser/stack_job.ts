@@ -380,6 +380,8 @@ const PAIRS: Pair[] = [
  *  (EXIT_DIRS): back to the window middle. `judgement`, 1 s. */
 const SINGLE_EARLIER: { x: number; y: number; s: number }[] = [
     { x: 1922, y: -3975, s: 1 }, // good_15
+    // evil_7 (pos4 single, window 55-56): replay-graded misses hit at 56.0-56.5, stacks at 55.7-55.9 (fresh4c, fresh5c).
+    { x: 7928, y: -120, s: 0.5 },
 ];
 
 /** A single stack's hit second in the minute: Valve's window middle, less SINGLE_EARLIER at the camps it names. */
