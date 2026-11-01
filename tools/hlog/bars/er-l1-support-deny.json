@@ -1,10 +1,10 @@
 {
  "schema": "er-spec/1",
- "build": "d5edb1f",
+ "build": "ff798fa",
  "until": "10:00",
  "arms": {
   "on": {
-   "build": "d5edb1f",
+   "build": "ff798fa",
    "states": true,
    "ours": {
     "CoreLastHit": false,
@@ -13,7 +13,7 @@
    }
   },
   "off": {
-   "build": "542459b",
+   "build": "3203625",
    "states": true,
    "ours": {
     "CoreLastHit": false,
