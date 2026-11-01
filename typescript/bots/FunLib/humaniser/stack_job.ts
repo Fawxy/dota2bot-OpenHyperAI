@@ -91,8 +91,9 @@ export const SETTINGS = {
 // 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE). Overrides.Sweep = true
 // (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
 // attempt is on a fresh camp (`SweepNext`). Tier 2's fresh doubles: Overrides.Solo = "0,1," keeps several heroes, and
-// Overrides.StackEvery = 2 tries every second minute, so a console kill of all neutrals at the odd minutes' :30 leaves
-// each attempt a fresh camp. Scenario games only,
+// Overrides.StackEvery = 3 tries every third minute, and a console kill of all neutrals at :05 of the two minutes between
+// leaves each attempt a fresh camp (a camp found occupied at a :00 respawns only after one empty :00, replays
+// fresh2c/fresh4c 01/11/2026). Scenario games only,
 // never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
@@ -124,12 +125,12 @@ function awayMax(): number {
     return override("StackFar") === true ? math.huge : SETTINGS.AwayMax;
 }
 
-/** The minutes with an attempt: TriggerMinutes, or from 2 every minute (Overrides.StackEvery true) or every second one (2). */
+/** The minutes with an attempt: TriggerMinutes, or from 2 every minute (Overrides.StackEvery true) or every nth (a number). */
 export function Minutes(): number[] {
     const every = override("StackEvery");
-    if (every !== true && every !== 2) return SETTINGS.TriggerMinutes;
+    if (every !== true && typeof every !== "number") return SETTINGS.TriggerMinutes;
     const out: number[] = [];
-    for (let m = 2; m <= 60; m += every === 2 ? 2 : 1) out.push(m);
+    for (let m = 2; m <= 60; m += typeof every === "number" ? math.max(1, every) : 1) out.push(m);
     return out;
 }
 
