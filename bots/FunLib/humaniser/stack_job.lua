@@ -763,7 +763,7 @@ function setDir(sp)
     local ____array_2 = __TS__SparseArrayNew(unpack(override("ShrineLane") == true and SHRINE_LANE or ({})))
     __TS__SparseArrayPush(
         ____array_2,
-        unpack(override("TriSE") == true and TRI_SE or ({}))
+        unpack(override("TriNW") == true and ({}) or TRI_SE)
     )
     local first = {__TS__SparseArraySpread(____array_2)}
     local ____array_3 = __TS__SparseArrayNew(unpack(first))

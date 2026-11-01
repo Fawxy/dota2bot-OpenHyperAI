@@ -233,6 +233,17 @@
    "x1": "num",
    "y1": "num"
   },
+  "visprobe": {
+   "pid": "num",
+   "camp": "num",
+   "k": "num",
+   "x": "num",
+   "y": "num",
+   "reach": "num",
+   "seen": "num",
+   "vis": "num",
+   "night": "num"
+  },
   "stuck": {
    "pid": "num",
    "mode": "str",
@@ -504,7 +515,11 @@
    "fn59": "str",
    "ftrk": "str",
    "early": "num",
-   "fearly": "num"
+   "fearly": "num",
+   "win": "str",
+   "woff": "mixed",
+   "fwin": "str",
+   "fwoff": "mixed"
   },
   "lane_job_supply": {
    "pid": "num",
@@ -982,7 +997,9 @@
    "ftype": "text",
    "fn2": "text",
    "fn59": "text",
-   "ftrk": "text"
+   "ftrk": "text",
+   "win": "text",
+   "fwin": "text"
   },
   "ev_lane_job_supply": {
    "item": "text",

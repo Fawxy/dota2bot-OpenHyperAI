@@ -93,8 +93,8 @@ export const SETTINGS = {
 // other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
 // Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
 // AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
-// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriSE = true the Dire
-// triangle pair's south-east walk-off (TRI_SE), Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
+// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriNW = true the Dire
+// triangle pair's north-west walk-off instead of TRI_SE, Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
 // (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
 // attempt is on a fresh camp (`SweepNext`). Tier 2's fresh doubles: Overrides.Solo = "0,1," keeps several heroes, and
 // Overrides.StackEvery = 3 tries every third minute, and a console kill of all neutrals at :05 of the two minutes between
@@ -300,11 +300,13 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy
     { x: 1064, y: 2580, dx: 0.71, dy: 0.71 }, // evil_5: north-east
 ];
 
-/** Overrides.TriSE = true (solo harness, until the stack route choice row): evil_9, camp B of the Dire triangle pair, walks
- *  off south-east towards the secret shop, the easier route (user replay review of dsv2B/C, 02/11/2026); the derived walk-off
- *  runs north-west towards mid, and there evil_8's ancients turned back into their box out of sight, 750-880 from the origin
- *  at :59.9 (6 of 13 both stacked, dsv2). It stands on the side facing evil_8 (sx, sy): from a south-east stand the walk
- *  from A ran late 3 of 4 (`timeout:late`, triSEC), though A stacked 4 of 4. */
+/** evil_9, camp B of the Dire triangle pair, walks off south-east towards the secret shop, the easier route (user replay
+ *  review of dsv2B/C, 02/11/2026); the derived walk-off runs north-west towards mid, and there evil_8's ancients turned back
+ *  into their box out of sight, 750-880 from the origin at :59.9 (6 of 13 both stacked, dsv2). It stands on the side facing
+ *  evil_8 (sx, sy): from a south-east stand the walk from A ran late 3 of 4 (`timeout:late`, triSEC), though A stacked 4 of
+ *  4. Default since probe tri3 (02/11/2026, replay): both stacked 7 of 7 (A 8 of 8) against the north-west route's 4 of 6;
+ *  Overrides.TriNW = true keeps the north-west route for the stack route choice row. Overrides.TriLate (A 0.75 s later on
+ *  the north-west route) no longer fit the walk to B: all 7 minutes ran single. */
 const TRI_SE: { x: number; y: number; dx: number; dy: number; sx?: number; sy?: number }[] = [
     { x: 3392, y: -1408, dx: 0.71, dy: -0.71, sx: 0.55, sy: 0.83 },
 ];
@@ -320,7 +322,7 @@ const SHRINE_LANE: { x: number; y: number; dx: number; dy: number; sx?: number; 
 ];
 
 function setDir(sp: Camps.Spawner): { dx: number; dy: number; sx?: number; sy?: number } | undefined {
-    const first = [...(override("ShrineLane") === true ? SHRINE_LANE : []), ...(override("TriSE") === true ? TRI_SE : [])];
+    const first = [...(override("ShrineLane") === true ? SHRINE_LANE : []), ...(override("TriNW") === true ? [] : TRI_SE)];
     for (const e of [...first, ...EXIT_DIRS]) {
         if (math.abs(sp.location.x - e.x) <= 200 && math.abs(sp.location.y - e.y) <= 200) return e;
     }
