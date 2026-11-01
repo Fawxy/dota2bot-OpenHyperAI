@@ -1,6 +1,7 @@
 -- What each lineup hero was doing, one row per ev=snap (about one per second), to 12:00 (slice lane-activity).
--- activity, first match wins: hero (attack target is a hero), building, neutral, creep (a lane creep), retreat (mode), lane (laning
--- mode with no target), other (any other mode with no target). A target outranks the mode, so a swing during retreat reads as the swing.
+-- activity, first match wins: hero (attack target is a hero), building, neutral, creep (a lane creep or siege), retreat (mode), lane (laning
+-- mode with no recognised target), other (any other mode with no recognised target; a summon as target reads as no target).
+-- A target outranks the mode, so a swing during retreat reads as the swing.
 -- spike: laning at desire 0.85 or more, the last-hit desire of mode_laning_generic GetDesire.
 -- What it could do (builds from slice lane-activity on; NULL before): ol, od reachable last hits and denies on offer; ar attack
 -- range; ed nearest visible enemy hero within 1,200, NULL if none; hit by a hero in the last second.
@@ -10,7 +11,7 @@ SELECT s.game_id, s.seq, s.t, s.pid, l.team, l.pos, s.x, s.y, s.hp, s.mode, s.d,
     CASE WHEN s.tgt LIKE '%hero%' THEN 'hero'
          WHEN s.tgt LIKE '%tower%' OR s.tgt LIKE '%rax%' OR s.tgt LIKE '%fort%' OR s.tgt LIKE '%healers%' THEN 'building'
          WHEN s.tgt LIKE '%neutral%' THEN 'neutral'
-         WHEN s.tgt LIKE '%creep%' THEN 'creep'
+         WHEN s.tgt LIKE '%creep%' OR s.tgt LIKE '%siege%' THEN 'creep'
          WHEN s.mode = 'retreat' THEN 'retreat'
          WHEN s.mode = 'laning' THEN 'lane'
          ELSE 'other' END AS activity,

@@ -2,7 +2,7 @@
 -- Params: like (LIKE pattern on games.file, default every game), from and until (seconds, default 90 and 600).
 -- Second counts are snaps from the view lane_activity (about 1 per second). hero, creep, retreat, lane, other: seconds per activity.
 -- low_lane: seconds in laning below 35% HP; spike: seconds at the last-hit desire.
--- Choice against option (NULL on builds before the slice): lh_open seconds with a last hit on offer and how many of them it was
+-- Choice against option (NULL on builds before the slice; for pos 3-5 a last hit on offer is one no allied core can reach): lh_open seconds with a last hit on offer and how many of them it was
 -- attacking a creep (lh_open_creep); trade_open seconds with an enemy hero in range and no last hit on offer, and how many of them it
 -- was attacking a hero (trade_open_hero); hit_noreply seconds hit by a hero with one in range and not attacking a hero.
 -- near, taken: enemy lane creeps that died within 1,000 of the hero and those it got (pos 1-3 only: ev=creep_death has no p4, p5);
@@ -33,7 +33,7 @@ cd AS (
         sum(CASE l.pos WHEN 1 THEN c.p1d WHEN 2 THEN c.p2d ELSE c.p3d END <= 1000 AND CAST(c."by" AS TEXT) = CAST(l.pid AS TEXT)) AS taken
     FROM ev_creep_death c JOIN gm ON gm.game_id = c.game_id
     JOIN lineup l ON l.game_id = c.game_id AND l.team = c.team AND l.pos BETWEEN 1 AND 3
-    WHERE c.t < coalesce(:until, 600)
+    WHERE c.t >= coalesce(:from, 90) AND c.t < coalesce(:until, 600)
     GROUP BY c.game_id, l.pid
 )
 SELECT gm.file, a.game_id, a.team, a.pos, a.pid, a.secs, a.hero, a.creep, a.retreat, a.lane, a.other, a.low_lane, a.spike,

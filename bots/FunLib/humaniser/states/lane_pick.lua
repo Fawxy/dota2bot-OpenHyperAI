@@ -108,10 +108,15 @@ function ____exports.NotePick(pid, now, targets, chosen)
     s.ch = chosen ~= nil
     if chosen ~= nil then
         local lastHits, denies = countOffers(targets)
-        s.chosen = chosen
-        s.pickLastHits = lastHits
-        s.pickDenies = denies
-        s.seen = 0
+        if s.chosen ~= nil and (s.ph == "lasthit" or s.ph == "deny") then
+            s.next = {chosen = chosen, lastHits = lastHits, denies = denies}
+        else
+            s.next = nil
+            s.chosen = chosen
+            s.pickLastHits = lastHits
+            s.pickDenies = denies
+            s.seen = 0
+        end
     end
 end
 --- While an attempt waits (the body's scan, every 0.1 s): the most last hits other than its creep on offer, so a deny's cost can be read.
@@ -131,13 +136,24 @@ function ____exports.NoteWait(bot)
         s.seen = others
     end
 end
---- ev=lh's offer fields for the attempt that just ended: last hits and denies offered at its pick, most other last hits seen during it.
+--- ev=lh's offer fields for the attempt that just ended: last hits and denies offered at its pick, most other last hits seen during
+-- it. Call once per attempt: it then moves on to the pick a retarget held back.
 function ____exports.AttemptOffers(pid)
     local s = scans[pid]
     if s == nil then
         return nil, nil, nil
     end
-    return s.pickLastHits, s.pickDenies, s.seen
+    local lastHits = s.pickLastHits
+    local denies = s.pickDenies
+    local seen = s.seen
+    if s.next ~= nil then
+        s.chosen = s.next.chosen
+        s.pickLastHits = s.next.lastHits
+        s.pickDenies = s.next.denies
+        s.seen = 0
+        s.next = nil
+    end
+    return lastHits, denies, seen
 end
 --- `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any.
 function ____exports.Describe(pid, now)

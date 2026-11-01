@@ -75,6 +75,8 @@ interface Scan {
     pickLastHits?: number;
     pickDenies?: number;
     seen?: number;
+    /** A retarget's pick, held until the attempt it replaces has reported. */
+    next?: { chosen: Lib.Verbs.LaneTarget; lastHits: number; denies: number };
     /** The body's phase label (walk, hold, lasthit, deny). */
     ph?: string;
     /** When the body last asked whether it may last-hit, and its distance to the spot then. */
@@ -117,10 +119,16 @@ export function NotePick(pid: number, now: number, targets: Lib.Verbs.LaneTarget
     s.ch = chosen !== undefined;
     if (chosen !== undefined) {
         const [lastHits, denies] = countOffers(targets);
-        s.chosen = chosen;
-        s.pickLastHits = lastHits;
-        s.pickDenies = denies;
-        s.seen = 0;
+        // A retarget picks while the old attempt has not reported yet: its offers must reach its own ev=lh, so the new ones wait.
+        if (s.chosen !== undefined && (s.ph === "lasthit" || s.ph === "deny")) {
+            s.next = { chosen, lastHits, denies };
+        } else {
+            s.next = undefined;
+            s.chosen = chosen;
+            s.pickLastHits = lastHits;
+            s.pickDenies = denies;
+            s.seen = 0;
+        }
     }
 }
 
@@ -133,11 +141,24 @@ export function NoteWait(bot: Lib.TaskUnit): void {
     if (others > (s.seen ?? 0)) s.seen = others;
 }
 
-/** ev=lh's offer fields for the attempt that just ended: last hits and denies offered at its pick, most other last hits seen during it. */
+/**
+ * ev=lh's offer fields for the attempt that just ended: last hits and denies offered at its pick, most other last hits seen during
+ * it. Call once per attempt: it then moves on to the pick a retarget held back.
+ */
 export function AttemptOffers(pid: number): LuaMultiReturn<[number | undefined, number | undefined, number | undefined]> {
     const s = scans[pid];
     if (s === undefined) return $multi(undefined, undefined, undefined);
-    return $multi(s.pickLastHits, s.pickDenies, s.seen);
+    const lastHits = s.pickLastHits;
+    const denies = s.pickDenies;
+    const seen = s.seen;
+    if (s.next !== undefined) {
+        s.chosen = s.next.chosen;
+        s.pickLastHits = s.next.lastHits;
+        s.pickDenies = s.next.denies;
+        s.seen = 0;
+        s.next = undefined;
+    }
+    return $multi(lastHits, denies, seen);
 }
 
 /** `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. */
