@@ -157,11 +157,12 @@ do
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_13: stands south-west of the camp", stand.y < sp.location.y and stand.x < sp.location.x, stand.x .. "," .. stand.y)
 end
--- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north, evil_7 south.
+-- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north. evil_7's south-east route was
+-- blocked from a stand that sees the camp (fresh7c, fresh8c); it walks off north-east (vision probe test below).
 do
 	local H = world({})
 	local C = H.Lane.Camps
-	for _, c in ipairs({ { "good_13", -7948, 768 }, { "evil_7", 8029, -1126 } }) do
+	for _, c in ipairs({ { "good_13", -7948, 768 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
 		local shrine = Vector(c[2], c[3])
@@ -855,7 +856,7 @@ end
 do
 	local H = world()
 	local C = H.Lane.Camps
-	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 1, 0 } }) do
+	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 0.71, 0.71 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))
 		local dx, dy = stand.x - sp.location.x, stand.y - sp.location.y

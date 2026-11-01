@@ -280,11 +280,11 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy
     // the hit came from 161-162, 0 of 2 (sweepfar2a/2c); south-west keeps the user's southward route as near as it sees.
     { x: 8430, y: 1263, dx: -0.71, dy: -0.71 },
     { x: -8313, y: -553, dx: 0.71, dy: 0.71 }, // good_13: north-east, on to the west shrine (-7948,768)
-    // evil_7: walks off south-east, on to the east shrine (8029,-1126), from a stand on its east side: the south-east stand
-    // never saw the camp (visprobe1/2: seen east and north-east), and the pos4's single hit from 97-328 stacked 5 of 12
-    // fresh (fresh4c-6c, replay), the misses' neutrals mostly never on the bot. Its 0.5 s earlier single hit
-    // (fresh6c) went with that stand: from the east stand hits at 54.7-55.1 came back to the box, 55.8 stacked (fresh7c).
-    { x: 7928, y: -120, dx: 0.71, dy: -0.71, sx: 1, sy: 0 },
+    // evil_7: north-east, standing and walking off on the side that sees the camp (visprobe1/2: seen east and north-east).
+    // From the south-east stand (blind) the pos4 hit from 97-328 and stacked 5 of 12 fresh (fresh4c-6c); from an east stand
+    // the south-east walk-off was blocked: the bot stood at 8480,-224 at :59.9 with the neutrals on it at the box edge,
+    // 2 of 8 (fresh7c, fresh8c, replay).
+    { x: 7928, y: -120, dx: 0.71, dy: 0.71 },
     { x: -1454, y: -3356, dx: 0, dy: -1 }, // good_5: south
     { x: -1983, y: -4815, dx: 1, dy: 0 }, // good_9: east
     { x: -2880, y: 7376, dx: 0.71, dy: 0.71 }, // evil_11: north-east
