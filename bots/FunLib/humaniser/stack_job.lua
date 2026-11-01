@@ -861,10 +861,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue161
+            local __continue164
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue161 = true
+                    __continue164 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -878,9 +878,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue161 = true
+                __continue164 = true
             until true
-            if not __continue161 then
+            if not __continue164 then
                 break
             end
         end
@@ -990,11 +990,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue191
+            local __continue194
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue191 = true
+                    __continue194 = true
                     break
                 end
                 local name = (string.gsub(
@@ -1004,7 +1004,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue191 = true
+                    __continue194 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -1014,9 +1014,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue191 = true
+                __continue194 = true
             until true
-            if not __continue191 then
+            if not __continue194 then
                 break
             end
         end
@@ -1165,6 +1165,14 @@ local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 637
 --- Overrides.Solo names another hero: this one sits out the game in its fountain.
 function ____exports.Benched(bot)
     local solo = override("Solo")
+    if type(solo) == "string" then
+        for n in string.gmatch(solo, "%d+") do
+            if tonumber(n) == bot:GetPlayerID() then
+                return false
+            end
+        end
+        return true
+    end
     return type(solo) == "number" and solo >= 0 and bot:GetPlayerID() ~= solo
 end
 --- mode_farm_generic Think for a benched hero: walk to the fountain and stay. False when the hero is not benched.
@@ -1183,9 +1191,10 @@ end
 local function awayMax()
     return override("StackFar") == true and math.huge or ____exports.SETTINGS.AwayMax
 end
---- The minutes with an attempt: TriggerMinutes, or every minute from 2 with Overrides.StackEvery.
+--- The minutes with an attempt: TriggerMinutes, or from 2 every minute (Overrides.StackEvery true) or every nth (a number).
 function ____exports.Minutes()
-    if override("StackEvery") ~= true then
+    local every = override("StackEvery")
+    if every ~= true and type(every) ~= "number" then
         return ____exports.SETTINGS.TriggerMinutes
     end
     local out = {}
@@ -1193,7 +1202,7 @@ function ____exports.Minutes()
         local m = 2
         while m <= 60 do
             out[#out + 1] = m
-            m = m + 1
+            m = m + (type(every) == "number" and math.max(1, every) or 1)
         end
     end
     return out
@@ -1206,7 +1215,14 @@ EXIT_DIRS = {
     {x = -4824, y = 3915, dx = 0, dy = 1},
     {x = 8430, y = 1263, dx = -0.71, dy = -0.71},
     {x = -8313, y = -553, dx = 0.71, dy = 0.71},
-    {x = 7928, y = -120, dx = 0.71, dy = -0.71},
+    {
+        x = 7928,
+        y = -120,
+        dx = 0,
+        dy = 1,
+        sx = 0.71,
+        sy = 0.71
+    },
     {x = -1454, y = -3356, dx = 0, dy = -1},
     {x = -1983, y = -4815, dx = 1, dy = 0},
     {x = -2880, y = 7376, dx = 0.71, dy = 0.71},
@@ -1280,19 +1296,19 @@ local POS4_SINGLES = {{x = -8313, y = -553}, {x = 7928, y = -120}}
 local function campAt(team, x, y)
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue28
+            local __continue31
             repeat
                 if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
-                    __continue28 = true
+                    __continue31 = true
                     break
                 end
                 local d = Camps.ByIdx(s.idx, s.team)
                 if d ~= nil and d.stack ~= nil then
                     return d
                 end
-                __continue28 = true
+                __continue31 = true
             until true
-            if not __continue28 then
+            if not __continue31 then
                 break
             end
         end
@@ -1443,15 +1459,15 @@ local function SweepNext(bot)
     local stand
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue57
+            local __continue60
             repeat
                 if s.team ~= bot:GetTeam() or done[s.idx] or list ~= nil and not list[s.idx] or (Stacking.Window(s.idx)) == nil then
-                    __continue57 = true
+                    __continue60 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, s.team)
                 if data == nil or data.stack == nil then
-                    __continue57 = true
+                    __continue60 = true
                     break
                 end
                 local p = ____exports.Stand(s, data)
@@ -1464,9 +1480,9 @@ local function SweepNext(bot)
                 ) then
                     best, stand = data, p
                 end
-                __continue57 = true
+                __continue60 = true
             until true
-            if not __continue57 then
+            if not __continue60 then
                 break
             end
         end
@@ -1510,19 +1526,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue81
+            local __continue84
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue81 = true
+                    __continue84 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue81 = true
+                __continue84 = true
             until true
-            if not __continue81 then
+            if not __continue84 then
                 break
             end
         end
@@ -1618,22 +1634,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue105
+                local __continue108
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue105 = true
+                        __continue108 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue105 = true
+                    __continue108 = true
                 until true
-                if not __continue105 then
+                if not __continue108 then
                     break
                 end
             end
@@ -2135,10 +2151,10 @@ function ____exports.Desire(bot)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue226
+            local __continue229
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue226 = true
+                    __continue229 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2272,7 +2288,7 @@ function ____exports.Desire(bot)
                 running[pid] = a
                 return ____exports.SETTINGS.Desire
             until true
-            if not __continue226 then
+            if not __continue229 then
                 break
             end
         end
