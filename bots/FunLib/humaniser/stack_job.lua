@@ -1381,7 +1381,7 @@ function ____exports.PairFor(team, minute)
 end
 --- The walk from where A was hit to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
 -- so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only). A is hit from the
--- stand, or from attack range plus NeutralSpread of A's origin when the stand is further out.
+-- stand, or from attack range plus NeutralSpread of A's origin when the stand is further out; that walk in counts too.
 function ____exports.Fits(bot, d)
     local spa = Camps.SpawnerByIdx(d.a.campIdx)
     local spb = Camps.SpawnerByIdx(d.b.campIdx)
@@ -1395,10 +1395,10 @@ function ____exports.Fits(bot, d)
     ) / da
     local from = Vector(d.stand.x + (spa.location.x - d.stand.x) * inA, d.stand.y + (spa.location.y - d.stand.y) * inA, d.stand.z)
     local reach = bot:GetAttackRange() + (spb.max.x - spb.min.x) / 2
-    local walk = math.max(
+    local walk = (math.max(
         0,
         dist(from, spb.location) - reach
-    ) / math.max(
+    ) + inA * da) / math.max(
         1,
         bot:GetCurrentMovementSpeed()
     )

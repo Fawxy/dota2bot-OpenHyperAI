@@ -476,7 +476,7 @@ export function PairFor(team: number, minute: number): Double | undefined {
 /**
  * The walk from where A was hit to hitting B fits between the two hits: B's neutral is hit from attack range of its box,
  * so a ranged hero walks less than a melee one (EC-063's table: most pairs fit a ranged hero only). A is hit from the
- * stand, or from attack range plus NeutralSpread of A's origin when the stand is further out.
+ * stand, or from attack range plus NeutralSpread of A's origin when the stand is further out; that walk in counts too.
  */
 export function Fits(bot: Unit, d: Double): boolean {
     const spa = Camps.SpawnerByIdx(d.a.campIdx)!;
@@ -485,7 +485,9 @@ export function Fits(bot: Unit, d: Double): boolean {
     const inA = math.max(0, da - bot.GetAttackRange() - SETTINGS.NeutralSpread) / da;
     const from = Vector(d.stand.x + (spa.location.x - d.stand.x) * inA, d.stand.y + (spa.location.y - d.stand.y) * inA, d.stand.z);
     const reach = bot.GetAttackRange() + (spb.max.x - spb.min.x) / 2;
-    const walk = math.max(0, dist(from, spb.location) - reach) / math.max(1, bot.GetCurrentMovementSpeed());
+    // A walk in to A lands A's hit that much late (fix1A: earthshaker confirmed A at :53.0-:54.3 for a :52.5 plan, jakiro
+    // :51.6-:53.0 for :51.5; lion and lich, hitting from the stand, on time), so it counts too.
+    const walk = (math.max(0, dist(from, spb.location) - reach) + inA * da) / math.max(1, bot.GetCurrentMovementSpeed());
     return walk + SETTINGS.DoubleSlack <= d.sec - d.fsec;
 }
 

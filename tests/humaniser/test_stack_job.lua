@@ -603,6 +603,14 @@ do
 		check("good_8>good_7 from a stand near B: ranged fits", H.StackJob.Fits(bot, near))
 		bot.range = 150
 		check("good_8>good_7 from a stand near B: melee walks from its hit in A, no fit", not H.StackJob.Fits(bot, near))
+		-- The walk in to A counts (fix1A: A confirmed late by about it): a 400-range hero 900 from A's origin, on the far side
+		-- from B, walks in 350 first; at the speed where only the walk from its hit point would fit, it does not.
+		local far = { b = d.b, a = d.a, fsec = d.fsec, sec = d.sec, stand = Vector(a.x - (b.x - a.x) * 900 / ab, a.y - (b.y - a.y) * 900 / ab, 0) }
+		bot.range = 400
+		bot.speed = (ab + 550 - 400 - half) / (d.sec - d.fsec - 0.5) + 1
+		check("a walk in to A counts against the gap", not H.StackJob.Fits(bot, far))
+		bot.speed = (ab + 550 - 400 - half + 350) / (d.sec - d.fsec - 0.5) + 1
+		check("and fits when the gap covers it too", H.StackJob.Fits(bot, far))
 		bot.range = 550
 		bot.speed = nil
 	end
