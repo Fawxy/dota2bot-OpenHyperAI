@@ -296,6 +296,10 @@ const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy
     { x: -2880, y: 7376, dx: 0.71, dy: 0.71 }, // evil_11: north-east
     { x: 1224, y: 4176, dx: -1, dy: 0 }, // evil_4: west
     { x: 1064, y: 2580, dx: 0.71, dy: 0.71 }, // evil_5: north-east
+    // evil_9 (camp B of the Dire triangle pair): south-east, towards the secret shop, the easier route (user replay review of
+    // dsv2B/C, 02/11/2026). The derived walk-off ran north-west towards mid and the ancients of evil_8 turned back into their
+    // box out of sight, 750-880 from the origin at :59.9 (6 of 13 both stacked, dsv2).
+    { x: 3392, y: -1408, dx: 0.71, dy: -0.71 },
 ];
 
 /** The shrine pairs' other route (user 31/10/2026): straight between the two camps towards the lanes, Radiant east, Dire
