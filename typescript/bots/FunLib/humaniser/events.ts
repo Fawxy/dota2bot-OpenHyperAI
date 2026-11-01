@@ -32,6 +32,13 @@ export const BOT = {
     gold: "num",
     /** Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers. */
     lf: "str",
+    /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */
+    ol: "num",
+    od: "num",
+    /** Attack range, nearest visible enemy hero within 1,200 (absent if none), hit by a hero in the last second. */
+    ar: "num",
+    ed: "num",
+    hit: "bool",
     by: "str",
     order: "str",
 } as const;
@@ -711,6 +718,11 @@ export const EVENTS = {
         ranged: "bool",
         eta: "num",
         contested: "bool",
+        /** Reachable last hits and denies offered at this attempt's pick. */
+        ol: "num",
+        od: "num",
+        /** The most last hits other than this attempt's creep offered while it waited to swing. */
+        ow: "num",
         msg: "str",
     },
     job_exec: {

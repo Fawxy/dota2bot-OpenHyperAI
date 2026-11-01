@@ -60,4 +60,43 @@ do
 	check("lf: all offers skipped, none chosen", Pick.Describe(7, 10) == "ph=hold sc=0.5 aw=340 pk=0.0 n=1 sk=1 ch=0")
 end
 
+-- Slice lane-activity: what was on offer. A deny picked with a last hit arriving during its wait is what ev=lh's ow reports.
+do
+	local bot = { GetPlayerID = function() return 8 end }
+	local ol, od = Pick.Options(bot)
+	check("options: nothing before the bundle hands over its offers", ol == nil and od == nil)
+	local far = target("lasthit", 0, true, 1.2, 0.9)
+	local lh, dn = target("lasthit", 0.2), target("deny", 0)
+	local now = { far, lh, dn }
+	Pick.SetOffers(function() return now end)
+	ol, od = Pick.Options(bot)
+	check("options: counts obey the reach rule", ol == 1 and od == 1, tostring(ol) .. "/" .. tostring(od))
+
+	Pick.NotePick(8, 1, { dn }, dn)
+	Pick.NotePhase(8, "deny")
+	now = { dn }
+	Pick.NoteWait(bot)
+	local a, b, c = Pick.AttemptOffers(8)
+	check("offers: deny picked alone, no last hit seen yet", a == 0 and b == 1 and c == 0)
+	now = { dn, lh, target("lasthit", 0.5), far }
+	Pick.NoteWait(bot)
+	now = { dn, lh }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: the most other reachable last hits seen during the wait", a == 0 and b == 1 and c == 2, tostring(c))
+
+	Pick.NotePick(8, 2, { lh, dn }, lh)
+	Pick.NotePhase(8, "lasthit")
+	now = { lh, dn }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: the attempt's own creep is not another offer; a new pick resets", a == 1 and b == 1 and c == 0, tostring(c))
+
+	Pick.NotePhase(8, "hold")
+	now = { target("lasthit", 0), lh }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: not counted while holding", c == 0, tostring(c))
+end
+
 finish()

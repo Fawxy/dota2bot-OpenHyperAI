@@ -235,7 +235,11 @@ local body = __TS__Generator(function(bot, ctx)
                     DotaTime(),
                     spot ~= nil and GetUnitToLocationDistance(bot, spot) or nil
                 )
-                return ____exports.OwnsLastHit(bot)
+                local owns = ____exports.OwnsLastHit(bot)
+                if owns then
+                    LanePick.NoteWait(bot)
+                end
+                return owns
             end,
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets)
@@ -259,25 +263,31 @@ local body = __TS__Generator(function(bot, ctx)
             far = FAR,
             leash = LEASH,
             retarget = true,
-            onAttempt = function(t, res, contested) return Telemetry.Event(
-                "lh",
-                {
+            onAttempt = function(t, res, contested)
+                local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
+                Telemetry.Event(
+                    "lh",
                     {
-                        "pid",
-                        bot:GetPlayerID()
-                    },
-                    {"kind", t.kind},
-                    {"result", res.success and "ok" or "fail"},
-                    {"reason", res.reason},
-                    {"ranged", t.ranged},
-                    {
-                        "eta",
-                        math.floor(t.eta * 100) / 100
-                    },
-                    {"contested", contested},
-                    {"msg", res.message}
-                }
-            ) end
+                        {
+                            "pid",
+                            bot:GetPlayerID()
+                        },
+                        {"kind", t.kind},
+                        {"result", res.success and "ok" or "fail"},
+                        {"reason", res.reason},
+                        {"ranged", t.ranged},
+                        {
+                            "eta",
+                            math.floor(t.eta * 100) / 100
+                        },
+                        {"contested", contested},
+                        {"ol", ol},
+                        {"od", od},
+                        {"ow", ow},
+                        {"msg", res.message}
+                    }
+                )
+            end
         }
     ))
 end)
