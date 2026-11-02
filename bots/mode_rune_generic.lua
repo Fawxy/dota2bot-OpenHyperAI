@@ -953,4 +953,5 @@ function X.GetShrineOfWisdomTeam()
 	return nil
 end
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'rune', GetDesire) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_rune.GetDesire', GetDesire), E('mode_rune.Think', Think), E('mode_rune.OnStart', OnStart), E('mode_rune.OnEnd', OnEnd) end

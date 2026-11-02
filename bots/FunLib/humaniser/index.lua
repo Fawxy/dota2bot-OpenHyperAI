@@ -350,6 +350,7 @@ if Telemetry.GuardsEnabled() then
         }
     )
     Telemetry.GuardModule("Chooser", Chooser, {
+        Decide = none,
         FarmDesire = zero,
         FarmThink = no,
         Abort = none,

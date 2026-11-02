@@ -20,4 +20,5 @@ if local_mode_attack_generic ~= nil then
 	function Think() return local_mode_attack_generic.Think() end
 	function OnStart() return local_mode_attack_generic.OnStart() end
 	function OnEnd() return local_mode_attack_generic.OnEnd() end
+	do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'attack', GetDesire) end
 end

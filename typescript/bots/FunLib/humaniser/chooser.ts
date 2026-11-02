@@ -5,6 +5,7 @@
  * CANDIDATE(JobChooser): one job so far (StackJob); rune rotation is the second consumer.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 
 // All judgement; values moved unchanged from StackJob.
@@ -18,7 +19,35 @@ export const SETTINGS = {
 };
 
 /** The mode that hosts a running job. */
+export const HOST = "farm";
 export const HOST_MODE = BotMode.Farm;
+
+/**
+ * OHA's modes that may still take the hero during a job: mode name (the file's, without `mode_` and `_generic`) to what
+ * removes the entry. Designed to end up empty. Names, not BOT_MODE numbers: BotMode has no assemble-with-humans entry, and
+ * a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
+ */
+export const EXCEPTIONS: Record<string, string> = {
+    retreat: "our own retreat",
+    assemble: "our own human interface",
+    assemble_with_humans: "our own human interface",
+    attack: "our own fights, or a Valve fix",
+};
+
+/** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. The host's turn comes with the job's desire. */
+export function Decide(bot: Unit, mode: string): number | undefined {
+    if (!Ours.On("JobChooser") || !StackJob.Running(bot)) return undefined;
+    if (mode === HOST || EXCEPTIONS[mode] !== undefined) return undefined;
+    return 0;
+}
+
+/** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
+export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
+    return () => {
+        const v = Decide(bot, mode);
+        return v !== undefined ? v : inner();
+    };
+}
 
 /** Hero damage just now, checked every frame of a running job (1x probe s4p7: the pos5 was hit at 61% on the walk, kept
  *  going and died at the camp to two heroes). Not an enemy hero in reach: lane opponents walk within 600 of a laning pos5,

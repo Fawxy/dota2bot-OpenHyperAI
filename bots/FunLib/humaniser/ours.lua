@@ -41,6 +41,7 @@ ____exports.DEFAULTS = {
     LeaveCoreCreep = true,
     StackExecute = true,
     DoubleStack = true,
+    JobChooser = true,
     CoreLastHit = true,
     CoreLastHitDire = true
 }
