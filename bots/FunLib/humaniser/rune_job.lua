@@ -356,6 +356,11 @@ local function finish(bot, t, r, label)
         }
     )
 end
+--- OHA's own action holds the hero (a queued TP, a cast or channel): the host's Think does not step a job then
+-- (J.CanNotUseAction), so a trip started now ends `never_started` (probe rr2: a pos4 in its fountain with a queued TP).
+local function acting(bot)
+    return bot:NumQueuedActions() > 0 or bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility()
+end
 --- Every frame while the chooser asks: true while a trip runs or as one starts. `blocked` says why a start must wait (the
 -- chooser's checks, or a higher job's claim); `host` is the mode that will step the trip.
 function ____exports.Wants(bot, blocked, host)
@@ -375,7 +380,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue37
+            local __continue38
             repeat
                 local function skip(why)
                     handled[pid][key(kind, spawn)] = true
@@ -385,7 +390,7 @@ function ____exports.Wants(bot, blocked, host)
                 end
                 if not bot:IsAlive() then
                     gateWhy[pid] = "dead"
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 local t = tripFor(bot, kind, spawn, host)
@@ -393,7 +398,7 @@ function ____exports.Wants(bot, blocked, host)
                 if DotaTime() < leave then
                     return false
                 end
-                local why = blocked(bot)
+                local why = blocked(bot) or (acting(bot) and "acting" or nil)
                 if DotaTime() > leave + ____exports.SETTINGS.StartSlack then
                     return skip(gateWhy[pid] or why or "late")
                 end
@@ -421,7 +426,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue37 then
+            if not __continue38 then
                 break
             end
         end
@@ -454,20 +459,20 @@ function ____exports.ShrineTaken(team)
         local i = 1
         while i <= 5 do
             do
-                local __continue59
+                local __continue60
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= team then
-                        __continue59 = true
+                        __continue60 = true
                         break
                     end
                     local ____opt_2 = running[m:GetPlayerID()]
                     if (____opt_2 and ____opt_2.kind) == "wisdom" then
                         return true
                     end
-                    __continue59 = true
+                    __continue60 = true
                 until true
-                if not __continue59 then
+                if not __continue60 then
                     break
                 end
             end

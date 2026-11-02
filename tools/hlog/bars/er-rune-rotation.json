@@ -1,0 +1,17 @@
+{
+ "schema": "er-spec/1",
+ "build": "369bd44",
+ "until": "10:00",
+ "arms": {
+  "on": { "build": "369bd44", "states": true, "ours": { "RuneRotation": true } },
+  "off": { "build": "369bd44", "states": true, "ours": { "RuneRotation": false } }
+ },
+ "bars": [
+  { "id": "B1 clean trips on time (>= 85%, >= 30 clean)", "rule": "pooled", "num": "rune_clean_on_time", "den": "rune_clean", "min": 0.85, "minDen": 30, "cap": 6 },
+  { "id": "B2 deaths on a trip (0 every ON game)", "metric": "rune_deaths", "rule": "each", "max": 0 },
+  { "id": "G1 deaths before 10:00 (delta <= 3.1)", "metric": "deaths_before_10", "rule": "delta", "alpha": 0.025, "met": { "delta": { "le": 3.1 } } },
+  { "id": "G2 lane partners' level at 10:00 (delta >= -1.0)", "metric": "lane_partner_lvl10", "rule": "delta", "alpha": 0.025, "met": { "delta": { "ge": -1.0 } } },
+  { "id": "H1 lua_ours", "metric": "lua_ours", "rule": "each", "max": 0 },
+  { "id": "H1 console", "metric": "console", "rule": "mean", "cmp": "on<=off" }
+ ]
+}

@@ -178,6 +178,12 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
     ]);
 }
 
+/** OHA's own action holds the hero (a queued TP, a cast or channel): the host's Think does not step a job then
+ *  (J.CanNotUseAction), so a trip started now ends `never_started` (probe rr2: a pos4 in its fountain with a queued TP). */
+function acting(bot: Unit): boolean {
+    return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
+}
+
 /**
  * Every frame while the chooser asks: true while a trip runs or as one starts. `blocked` says why a start must wait (the
  * chooser's checks, or a higher job's claim); `host` is the mode that will step the trip.
@@ -203,7 +209,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const t = tripFor(bot, kind, spawn, host);
         const leave = leaveAt(bot, t);
         if (DotaTime() < leave) return false;
-        const why = blocked(bot);
+        const why = blocked(bot) ?? (acting(bot) ? "acting" : undefined);
         // The leave time moves with the bot, so it can pass the slack in one frame: name what holds it now, if anything.
         if (DotaTime() > leave + SETTINGS.StartSlack) return skip(gateWhy[pid] ?? why ?? "late");
         if (why !== undefined) {

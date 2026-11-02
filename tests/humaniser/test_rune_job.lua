@@ -169,6 +169,17 @@ do
 	check("enemy near: no trip, skip why=enemy-near", #lines(out, "job") == 0 and l ~= nil and field(l, "res") == "skip" and field(l, "why") == "enemy-near", l)
 end
 
+-- OHA's queued action holds the hero past its leave time (rr2 C, t=324.5: a queued TP, `never_started`): no start; held
+-- past the slack, the skip names it.
+do
+	local H = world()
+	local bot = hero(4, 4)
+	bot.queued = 1
+	local out = run(H, { bot }, 370)
+	local l = lines(out, "rune_job")[1]
+	check("queued action: no trip, skip why=acting", #lines(out, "job") == 0 and l ~= nil and field(l, "why") == "acting", l)
+end
+
 -- Switch off: no rune job, no line, and the stack ranks alone.
 do
 	local H = world({ rune = false })
