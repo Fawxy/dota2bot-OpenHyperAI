@@ -35,9 +35,18 @@ const BEHIND_BY = 0.15;
 const KILL_HP = 0.25;
 const MAX_WAVE = 3;
 const MAX_CREEPS_ON_ME = 2;
-/** A trade is a few hits, then back to the spot: at most TRADE_TIME s, then TRADE_REST s without one. */
-const TRADE_TIME = 3;
-const TRADE_REST = 3;
+/**
+ * Hysteresis for a running trade: the HP floor, the HP gap and the wave size each get this much slack (the wave one creep), so
+ * a trade on a border does not stop and start every frame.
+ */
+const KEEP_HP_SLACK = 0.05;
+const KEEP_WAVE_SLACK = 1;
+/**
+ * A trade has no time limit (user 03/11/2026): it ends when the exchange turns against the core, i.e. it has lost this share of
+ * its max HP more than the target lost since the trade began, or on any other end below.
+ */
+const LOSING_BY = 0.05;
+/** A kill window commits and ignores the exchange, so it keeps a time limit. */
 const KILL_TIME = 6;
 /** Reach beyond the bot's attack range (plus both bounding radii) within which a hero is a target. */
 const REACH = 100;
@@ -49,16 +58,28 @@ const LANE_WIDTH = 1200;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
-/** Whether a trade (or kill) is on against a target with these inputs, or why not. */
-export function Decide(i: Inputs): { kind?: Kind; respect?: Respect } {
+/**
+ * Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
+ * the borders get their slack.
+ */
+export function Decide(i: Inputs, running = false): { kind?: Kind; respect?: Respect } {
+    const slack = running ? KEEP_HP_SLACK : 0;
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
     if (i.targetHp <= KILL_HP && i.hp >= i.targetHp) return { kind: "kill" };
-    if (i.hp < MIN_HP) return { respect: "low_hp" };
-    if (i.hp < i.targetHp - BEHIND_BY) return { respect: "behind" };
+    if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
+    if (i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
-    if (i.enemyCreepsNear > MAX_WAVE) return { respect: "wave" };
+    if (i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
+}
+
+/**
+ * HP the core lost beyond what the target lost since `hp0`/`thp0`, as a share of the core's max HP (positive: losing).
+ * Absolute HP on both sides, so a big hero is not judged against a small one's fractions.
+ */
+export function Deficit(hp0: number, hp: number, thp0: number, thp: number, maxHp: number): number {
+    return (hp0 - hp - (thp0 - thp)) / math.max(1, maxHp);
 }
 
 interface Episode {
@@ -73,7 +94,11 @@ interface Episode {
 }
 
 const episodes: Record<number, Episode | undefined> = {};
-const restUntil: Record<number, number | undefined> = {};
+/**
+ * After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
+ * gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
+ */
+const recoverTo: Record<number, number | undefined> = {};
 /** Which arm this frame's GetDesire took: Think follows it. */
 const ownsFrame: Record<number, boolean | undefined> = {};
 
@@ -144,7 +169,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const pid = bot.GetPlayerID();
     episodes[pid] = undefined;
     const started = ep.startedAt !== undefined;
-    if (started) restUntil[pid] = now + TRADE_REST;
+    if (started && why === "losing") recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp;
     const killed = started && (ep.target.IsNull() || !ep.target.IsAlive());
     const thp = !ep.target.IsNull() && ep.target.IsAlive() ? ep.target.GetHealth() : 0;
     const i = ep.inputs;
@@ -186,12 +211,16 @@ export function Desire(bot: Unit): number | undefined {
         close(bot, ep, why, now);
         ep = undefined;
     }
-    if (now < (restUntil[pid] ?? -math.huge)) return 0;
     const target = nearestTarget(bot);
     if (target === undefined) return 0;
     const inputs = Gather(bot, target);
     const d = Decide(inputs);
     if (d.kind === undefined) return 0;
+    const gap = recoverTo[pid];
+    if (d.kind === "trade" && gap !== undefined) {
+        if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
+        recoverTo[pid] = undefined;
+    }
     episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), inputs };
     return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
 }
@@ -201,10 +230,14 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     const t: Unit = ep.target;
     if (!valid(t)) return ep.target.IsNull() || !ep.target.IsAlive() ? "target_dead" : "target_lost";
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
-    if (now - ep.startedAt > (ep.kind === "kill" ? KILL_TIME : TRADE_TIME)) return "time";
-    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
-    if (ep.kind === "trade" && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
-    const d = Decide(Gather(bot, ep.target));
+    if (ep.kind === "kill") {
+        if (now - ep.startedAt > KILL_TIME) return "time";
+    } else {
+        const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
+        if (GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
+        if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
+    }
+    const d = Decide(Gather(bot, ep.target), true);
     if (d.kind === undefined) return d.respect;
     return undefined;
 }
@@ -237,6 +270,6 @@ export function LastHitYieldsToRetreat(bot: Unit): boolean {
 
 export function Reset(): void {
     for (const k in episodes) episodes[k as unknown as number] = undefined;
-    for (const k in restUntil) restUntil[k as unknown as number] = undefined;
+    for (const k in recoverTo) recoverTo[k as unknown as number] = undefined;
     for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
 }

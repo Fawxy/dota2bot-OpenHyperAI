@@ -1,14 +1,19 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local frac, valid, keepWhy, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, TRADE_TIME, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LOST_AFTER
+local frac, valid, keepWhy, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LOST_AFTER
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
---- Whether a trade (or kill) is on against a target with these inputs, or why not.
-function ____exports.Decide(i)
+--- Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
+-- the borders get their slack.
+function ____exports.Decide(i, running)
+    if running == nil then
+        running = false
+    end
+    local slack = running and KEEP_HP_SLACK or 0
     if i.tower then
         return {respect = "tower"}
     end
@@ -18,19 +23,24 @@ function ____exports.Decide(i)
     if i.targetHp <= KILL_HP and i.hp >= i.targetHp then
         return {kind = "kill"}
     end
-    if i.hp < MIN_HP then
+    if i.hp < MIN_HP - slack then
         return {respect = "low_hp"}
     end
-    if i.hp < i.targetHp - BEHIND_BY then
+    if i.hp < i.targetHp - BEHIND_BY - slack then
         return {respect = "behind"}
     end
     if i.hitByCreeps >= MAX_CREEPS_ON_ME then
         return {respect = "creeps"}
     end
-    if i.enemyCreepsNear > MAX_WAVE then
+    if i.enemyCreepsNear > MAX_WAVE + (running and KEEP_WAVE_SLACK or 0) then
         return {respect = "wave"}
     end
     return {kind = "trade"}
+end
+--- HP the core lost beyond what the target lost since `hp0`/`thp0`, as a share of the core's max HP (positive: losing).
+-- Absolute HP on both sides, so a big hero is not judged against a small one's fractions.
+function ____exports.Deficit(hp0, hp, thp0, thp, maxHp)
+    return (hp0 - hp - (thp0 - thp)) / math.max(1, maxHp)
 end
 function frac(u)
     return u:GetHealth() / math.max(
@@ -58,19 +68,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue26
+            local __continue27
             repeat
                 if not c:IsAlive() then
-                    __continue26 = true
+                    __continue27 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue26 = true
+                __continue27 = true
             until true
-            if not __continue26 then
+            if not __continue27 then
                 break
             end
         end
@@ -78,10 +88,10 @@ function ____exports.Gather(bot, target)
     local tower = false
     for ____, t in ipairs(bot:GetNearbyTowers(TOWER_REACH + 1000, true)) do
         do
-            local __continue30
+            local __continue31
             repeat
                 if not t:IsAlive() then
-                    __continue30 = true
+                    __continue31 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= TOWER_REACH or GetUnitToUnitDistance(target, t) <= TOWER_REACH then
@@ -90,9 +100,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue30 = true
+                __continue31 = true
             until true
-            if not __continue30 then
+            if not __continue31 then
                 break
             end
         end
@@ -115,14 +125,29 @@ function keepWhy(bot, ep, now)
     if ep.startedAt == nil then
         return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
     end
-    if now - ep.startedAt > (ep.kind == "kill" and KILL_TIME or TRADE_TIME) then
-        return "time"
+    if ep.kind == "kill" then
+        if now - ep.startedAt > KILL_TIME then
+            return "time"
+        end
+    else
+        local reach = bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + REACH
+        if GetUnitToUnitDistance(bot, ep.target) > reach then
+            return "out_of_reach"
+        end
+        if ____exports.Deficit(
+            ep.hp0,
+            bot:GetHealth(),
+            ep.thp0,
+            ep.target:GetHealth(),
+            bot:GetMaxHealth()
+        ) > LOSING_BY then
+            return "losing"
+        end
     end
-    local reach = bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + REACH
-    if ep.kind == "trade" and GetUnitToUnitDistance(bot, ep.target) > reach then
-        return "out_of_reach"
-    end
-    local d = ____exports.Decide(____exports.Gather(bot, ep.target))
+    local d = ____exports.Decide(
+        ____exports.Gather(bot, ep.target),
+        true
+    )
     if d.kind == nil then
         return d.respect
     end
@@ -135,8 +160,9 @@ BEHIND_BY = 0.15
 KILL_HP = 0.25
 MAX_WAVE = 3
 MAX_CREEPS_ON_ME = 2
-TRADE_TIME = 3
-local TRADE_REST = 3
+KEEP_HP_SLACK = 0.05
+KEEP_WAVE_SLACK = 1
+LOSING_BY = 0.05
 KILL_TIME = 6
 REACH = 100
 NEAR = 1200
@@ -146,7 +172,9 @@ TOWER_REACH = 850
 local LANE_WIDTH = 1200
 LOST_AFTER = 1
 local episodes = {}
-local restUntil = {}
+--- After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
+-- gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
+local recoverTo = {}
 --- Which arm this frame's GetDesire took: Think follows it.
 local ownsFrame = {}
 --- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
@@ -166,10 +194,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue15
+            local __continue16
             repeat
                 if not valid(h) then
-                    __continue15 = true
+                    __continue16 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -177,9 +205,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue15 = true
+                __continue16 = true
             until true
-            if not __continue15 then
+            if not __continue16 then
                 break
             end
         end
@@ -190,8 +218,8 @@ local function close(bot, ep, why, now)
     local pid = bot:GetPlayerID()
     episodes[pid] = nil
     local started = ep.startedAt ~= nil
-    if started then
-        restUntil[pid] = now + TRADE_REST
+    if started and why == "losing" then
+        recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp
     end
     local killed = started and (ep.target:IsNull() or not ep.target:IsAlive())
     local thp = not ep.target:IsNull() and ep.target:IsAlive() and ep.target:GetHealth() or 0
@@ -264,9 +292,6 @@ function ____exports.Desire(bot)
         close(bot, ep, why, now)
         ep = nil
     end
-    if now < (restUntil[pid] or -math.huge) then
-        return 0
-    end
     local target = nearestTarget(bot)
     if target == nil then
         return 0
@@ -275,6 +300,13 @@ function ____exports.Desire(bot)
     local d = ____exports.Decide(inputs)
     if d.kind == nil then
         return 0
+    end
+    local gap = recoverTo[pid]
+    if d.kind == "trade" and gap ~= nil then
+        if inputs.hp - inputs.targetHp < gap - 0.000001 then
+            return 0
+        end
+        recoverTo[pid] = nil
     end
     episodes[pid] = {
         kind = d.kind,
@@ -324,8 +356,8 @@ function ____exports.Reset()
     for k in pairs(episodes) do
         episodes[k] = nil
     end
-    for k in pairs(restUntil) do
-        restUntil[k] = nil
+    for k in pairs(recoverTo) do
+        recoverTo[k] = nil
     end
     for k in pairs(ownsFrame) do
         ownsFrame[k] = nil

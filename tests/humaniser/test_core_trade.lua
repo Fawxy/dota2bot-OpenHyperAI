@@ -1,5 +1,6 @@
 -- Slice core-in-lane: a core's in-lane trades (states/core_trade). The decision rules over plain inputs, then one trade's life
--- through Desire/Think/OnEnd: a window attack mode never takes is logged lost, a taken trade stops at its time cap and rests,
+-- through Desire/Think/OnEnd: a window attack mode never takes is logged lost, a taken trade runs until the exchange turns, then
+-- waits for the HP gap to recover,
 -- and laning's last-hit desire yields to a retreat the core is already in.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
@@ -68,23 +69,36 @@ do
 end
 
 do
+	check("a running trade keeps going one creep past the wave limit that blocks a new one",
+		CoreTrade.Decide(inputs({ enemyCreepsNear = 4 }), true).kind == "trade" and CoreTrade.Decide(inputs({ enemyCreepsNear = 4 })).kind == nil)
+	check("a running trade keeps going just under the HP floor that blocks a new one",
+		CoreTrade.Decide(inputs({ hp = 0.47, targetHp = 0.4 }), true).kind == "trade" and CoreTrade.Decide(inputs({ hp = 0.47, targetHp = 0.4 })).kind == nil)
+	check("the slack has an end: well under the floor stops a running trade", CoreTrade.Decide(inputs({ hp = 0.4, targetHp = 0.4 }), true).respect == "low_hp")
+	check("deficit: the core lost 20 of 100 more than the target", near(CoreTrade.Deficit(500, 450, 600, 570, 250), 0.08))
+end
+
+do
 	CoreTrade.Reset()
 	bot.attacking = nil
+	bot.hp, enemy.hp = 80, 70
 	T = 200
 	CoreTrade.Desire(bot)
 	CoreTrade.Think(bot)
 	check("Think attacks the window's target", bot.attacking == enemy)
-	enemy.hp = 60
-	bot.hp = 75
-	T = 202
-	check("inside the time cap the trade keeps its desire", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	T = 203.5
-	check("past the 3 s cap the trade ends", CoreTrade.Desire(bot) == 0)
-	check("the end line carries HP traded both ways", last():find("result=done") and last():find("why=time") and last():find("hpd=5") and last():find("thpd=10"))
-	T = 205
-	check("then the core rests from trades though the window is still open", CoreTrade.Desire(bot) == 0)
-	T = 207
-	check("after the rest a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- An even exchange for 10 s: no time limit ends it.
+	bot.hp, enemy.hp = 72, 60
+	T = 210
+	check("an even trade keeps its desire however long it runs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- The core then loses 6 of 100 more than the target since the start: the exchange has turned.
+	bot.hp, enemy.hp = 58, 64
+	T = 211
+	check("a trade the core is losing by more than 5% of its HP ends", CoreTrade.Desire(bot) == 0)
+	check("the end line names it and carries HP traded both ways", last():find("result=done") and last():find("why=losing") and last():find("hpd=22") and last():find("thpd=6"))
+	-- The trade began at a gap of +0.10 (80 against 70); now 58 against 64 is -0.06.
+	T = 230
+	check("after a lost trade no new one opens while the core is behind its starting HP gap", CoreTrade.Desire(bot) == 0)
+	bot.hp = 74
+	check("once the gap is back a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 end
 
 do
