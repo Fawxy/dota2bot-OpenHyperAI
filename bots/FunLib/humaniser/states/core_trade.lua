@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, AGGRO_CLEAR, STEP_OUT_LIMIT, LOST_AFTER
+local frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, primedAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
@@ -134,7 +134,9 @@ function keepWhy(bot, ep, now)
             return "no_clear"
         end
         local reach = bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + REACH
-        if ep.stepSince == nil and GetUnitToUnitDistance(bot, ep.target) > reach then
+        local primed = primedAt[bot:GetPlayerID()]
+        local walkingIn = primed ~= nil and now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT
+        if ep.stepSince == nil and not walkingIn and GetUnitToUnitDistance(bot, ep.target) > reach then
             return "out_of_reach"
         end
         if ____exports.Deficit(
@@ -206,8 +208,8 @@ TOWER_REACH = 850
 --- Within this of its assigned lane's path the core is in lane (fight_read's LANE_WIDTH).
 local LANE_WIDTH = 1200
 AGGRO_CLEAR = 550
-local AGGRO_COOLDOWN = 3
-local COOLDOWN_LEFT = 0.3
+AGGRO_COOLDOWN = 3
+COOLDOWN_LEFT = 0.3
 STEP_OUT_LIMIT = 2
 LOST_AFTER = 1
 --- CANDIDATE(aggroFreeAttack): Support in lane's harass is the second consumer, then the engine's. What a trading hero does this
@@ -225,8 +227,7 @@ local episodes = {}
 local recoverTo = {}
 --- Which arm this frame's GetDesire took: Think follows it.
 local ownsFrame = {}
---- When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there).
-local primedAt = {}
+primedAt = {}
 --- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
 function ____exports.Owns(bot)
     return Ours.On("CoreTrade") and CoreLastHit.Applies(bot)

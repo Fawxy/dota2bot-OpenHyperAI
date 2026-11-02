@@ -153,6 +153,34 @@ do
 end
 
 do
+	-- The step out leaves the target out of reach; the order primed there must get to walk back in (cil2: 144 trades ended
+	-- out_of_reach 1.2 s in, most right after a prime).
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
+	bot.loc = Vector(0, 0)
+	local creeps = { MakeUnit({ pid = 21, team = 3, loc = Vector(300, 0) }) }
+	function Unit:GetNearbyLaneCreeps(r, enemies)
+		local out = {}
+		if enemies then for _, c in ipairs(creeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end end
+		return out
+	end
+	T = 450
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	bot.loc = Vector(-400, 0)
+	T = 450.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("primed from clear ground out of the target's reach", bot.orders == 1)
+	T = 451
+	check("walking back in under the primed cooldown keeps the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	T = 453.5
+	check("still out of reach once the cooldown no longer covers it: the trade ends", CoreTrade.Desire(bot) == 0 and last():find("why=out_of_reach"), last())
+	creeps = {}
+	function Unit:GetNearbyLaneCreeps() return {} end
+end
+
+do
 	-- Valve calls OnEnd while the active mode still reads attack: the trade's end names the mode that took the bot.
 	CoreTrade.Reset()
 	bot.hp, enemy.hp, bot.loc = 80, 70, Vector(0, 0)

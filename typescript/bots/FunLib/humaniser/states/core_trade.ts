@@ -276,8 +276,11 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
-        // A step out of the creeps moves away from the target on purpose.
-        if (ep.stepSince === undefined && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
+        // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
+        // cooldown covers the hits.
+        const primed = primedAt[bot.GetPlayerID()];
+        const walkingIn = primed !== undefined && now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT;
+        if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
     const d = Decide(Gather(bot, ep.target), true);
