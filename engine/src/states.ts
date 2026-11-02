@@ -133,28 +133,12 @@ function cancelOurs(bot: TaskUnit, s: BotStates, message: string): void {
     s.cancelling = false;
 }
 
-type Prior = (this: void, bot: TaskUnit, state: string, raw: number) => number | undefined;
-let priorFn: Prior | undefined;
-
-/**
- * A prior on every raw score (e.g. a team-phase bias), applied before stickiness and the job-break check; undefined
- * from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
- */
-export function SetPrior(fn: Prior | undefined): void {
-    priorFn = fn;
-}
-
 function scoreOf(bot: TaskUnit, spec: StateSpec): number | undefined {
     const [ok, v] = pcall(() => spec.score(bot));
     if (!ok) {
         getAdapter()?.log("states", "score " + spec.name + " error: " + tostring(v));
         return undefined;
     }
-    const prior = priorFn;
-    if (v === undefined || prior === undefined) return v;
-    const [pok, pv] = pcall(() => prior(bot, spec.name, v));
-    if (pok) return pv;
-    getAdapter()?.log("states", "prior " + spec.name + " error: " + tostring(pv));
     return v;
 }
 

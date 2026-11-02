@@ -2929,12 +2929,6 @@ function ____exports.Forget(bot)
     cancelOurs(bot, s, "forgotten")
     bots[bot:GetPlayerID()] = nil
 end
-local priorFn
---- A prior on every raw score (e.g. a team-phase bias), applied before stickiness and the job-break check; undefined
--- from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
-function ____exports.SetPrior(fn)
-    priorFn = fn
-end
 local function scoreOf(bot, spec)
     local ok, v = pcall(function() return spec.score(bot) end)
     if not ok then
@@ -2946,21 +2940,6 @@ local function scoreOf(bot, spec)
             )
         end
         return nil
-    end
-    local prior = priorFn
-    if v == nil or prior == nil then
-        return v
-    end
-    local pok, pv = pcall(function() return prior(bot, spec.name, v) end)
-    if pok then
-        return pv
-    end
-    local ____opt_2 = getAdapter()
-    if ____opt_2 ~= nil then
-        ____opt_2.log(
-            "states",
-            (("prior " .. spec.name) .. " error: ") .. tostring(pv)
-        )
     end
     return v
 end
@@ -3001,19 +2980,19 @@ local function select(bot, s, now)
     local curRaw
     for ____, spec in ipairs(s.specs) do
         do
-            local __continue32
+            local __continue28
             repeat
                 if (s.cooldownUntil[spec.name] or -math.huge) > now then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 if spec == cur and s.jobEnded then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 local raw = scoreOf(bot, spec)
                 if raw == nil then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 if spec == cur then
@@ -3025,9 +3004,9 @@ local function select(bot, s, now)
                     best = spec
                     bestRaw = raw
                 end
-                __continue32 = true
+                __continue28 = true
             until true
-            if not __continue32 then
+            if not __continue28 then
                 break
             end
         end
@@ -3174,9 +3153,9 @@ local function maybeStart(bot, s, now)
                     r,
                     info
                 )
-                local ____opt_10 = spec.onEnd
-                if ____opt_10 ~= nil then
-                    ____opt_10(r, info)
+                local ____opt_8 = spec.onEnd
+                if ____opt_8 ~= nil then
+                    ____opt_8(r, info)
                 end
             end
         },
