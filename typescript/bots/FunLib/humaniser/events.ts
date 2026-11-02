@@ -894,6 +894,46 @@ export const EVENTS = {
         hit: "num",
         idle: "num",
     },
+    // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
+    // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;
+    // div: the largest share of our wave seen attacking a neutral during the watch, n: that wave's size (0: never seen).
+    pull_job: {
+        pid: "num",
+        pos: "num",
+        lane: "num",
+        camp: "num",
+        slot: "num",
+        res: "str",
+        why: "str",
+        label: "str",
+        div: "num",
+        n: "num",
+        left: "num",
+        away: "num",
+        died: "num",
+        hit: "num",
+        idle: "num",
+    },
+    // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
+    // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
+    // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv
+    // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost).
+    choice: {
+        pid: "num",
+        kind: "str",
+        go: "num",
+        want: "num",
+        why: "str",
+        src: "str",
+        lane: "num",
+        slot: "num",
+        st: "str",
+        q: "num",
+        mv: "num",
+        cf: "num",
+        tw: "num",
+        ms: "num",
+    },
     gank: {
         pid: "num",
         pos: "num",

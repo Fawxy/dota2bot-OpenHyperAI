@@ -2,10 +2,11 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * Jobs: StackJob and RuneJob (slice rune-rotation), ranked per hero by priority; a running job is never interrupted by another.
+ * Jobs: StackJob, RuneJob (slice rune-rotation) and PullJob (slice support-lane), ranked per hero by priority; a running job is never interrupted by another.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 
@@ -74,7 +75,19 @@ const RUNE: Job = {
     NoteIdleHeld: (bot) => RuneJob.NoteIdleHeld(bot),
 };
 
-const JOBS: Job[] = [STACK, RUNE];
+const PULL: Job = {
+    name: "pull",
+    Priority: (bot) => PullJob.Priority(bot),
+    Claims: (bot) => PullJob.Claims(bot),
+    Wants: (bot, blocked, host) => PullJob.Wants(bot, blocked, host),
+    Running: (bot) => PullJob.Running(bot),
+    Step: (bot, host) => PullJob.Step(bot, host),
+    End: (bot, why) => PullJob.End(bot, why),
+    NoteHit: (bot) => PullJob.NoteHit(bot),
+    NoteIdleHeld: (bot) => PullJob.NoteIdleHeld(bot),
+};
+
+const JOBS: Job[] = [STACK, RUNE, PULL];
 
 /** The jobs that apply to this hero, highest priority first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {

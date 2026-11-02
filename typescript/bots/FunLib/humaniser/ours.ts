@@ -27,6 +27,9 @@ export const DEFAULTS = {
     SupportDenyDire: true,
     /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
     RuneRotation: true,
+    /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
+     *  the old camp-job pulls stop for those bots. Needs JobChooser. */
+    SupportPull: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
