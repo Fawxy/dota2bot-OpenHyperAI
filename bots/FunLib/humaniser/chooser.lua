@@ -1,39 +1,11 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local hit
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
-____exports.SETTINGS = {JobDesire = 0.92, MinHpFraction = 0.5, EnemyRadius = 600, HitWithin = 3}
---- The mode that hosts a running job.
-____exports.HOST = "farm"
-____exports.HOST_MODE = BotMode.Farm
---- OHA's modes that may still take the hero during a job: mode name (the file's, without `mode_` and `_generic`) to what
--- removes the entry. Designed to end up empty. Names, not BOT_MODE numbers: BotMode has no assemble-with-humans entry, and
--- a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
-____exports.EXCEPTIONS = {retreat = "our own retreat", assemble = "our own human interface", assemble_with_humans = "our own human interface", attack = "our own fights, or a Valve fix"}
---- A number replaces OHA's desire for `mode`; undefined lets OHA's code run. The host's turn comes with the job's desire.
-function ____exports.Decide(bot, mode)
-    if not Ours.On("JobChooser") or not StackJob.Running(bot) then
-        return nil
-    end
-    if mode == ____exports.HOST or ____exports.EXCEPTIONS[mode] ~= nil then
-        return nil
-    end
-    return 0
-end
---- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
-function ____exports.Gate(bot, mode, inner)
-    return function()
-        local v = ____exports.Decide(bot, mode)
-        return v ~= nil and v or inner()
-    end
-end
---- Hero damage just now, checked every frame of a running job (1x probe s4p7: the pos5 was hit at 61% on the walk, kept
--- going and died at the camp to two heroes). Not an enemy hero in reach: lane opponents walk within 600 of a laning pos5,
--- and that check ended 4 jobs 1-6 s after their start (probe s4p8). Not HP or mode: the camp's neutrals hit the bot by
--- design, and the mode is ours.
-local function hit(bot)
+function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
 --- Why the hero may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
@@ -54,21 +26,85 @@ function ____exports.MayStart(bot)
     end
     return nil
 end
---- mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero hit ends a
--- running job.
+____exports.SETTINGS = {JobDesire = 0.92, MinHpFraction = 0.5, EnemyRadius = 600, HitWithin = 3}
+--- The mode that hosts a running job.
+____exports.HOST = "farm"
+____exports.HOST_MODE = BotMode.Farm
+--- OHA's modes that may still take the hero during a job: mode name (the file's, without `mode_` and `_generic`) to what
+-- removes the entry. Designed to end up empty. Names, not BOT_MODE numbers: BotMode has no assemble-with-humans entry, and
+-- a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
+____exports.EXCEPTIONS = {retreat = "our own retreat", assemble = "our own human interface", assemble_with_humans = "our own human interface", attack = "our own fights, or a Valve fix"}
+--- The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
+-- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
+-- under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench.
+local function hostDesire(bot)
+    if StackJob.Benched(bot) or not StackJob.Wants(bot, ____exports.MayStart, ____exports.HOST_MODE) then
+        return nil
+    end
+    if StackJob.Running(bot) and hit(bot) then
+        StackJob.NoteHit(bot)
+        if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
+            StackJob.End(bot, "retreat")
+            return nil
+        end
+    end
+    return ____exports.SETTINGS.JobDesire
+end
+--- A number replaces OHA's desire for `mode`; undefined lets OHA's code run.
+function ____exports.Decide(bot, mode)
+    if not Ours.On("JobChooser") then
+        return nil
+    end
+    if mode == ____exports.HOST then
+        return hostDesire(bot)
+    end
+    if not StackJob.Running(bot) or ____exports.EXCEPTIONS[mode] ~= nil then
+        return nil
+    end
+    return 0
+end
+--- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
+function ____exports.Gate(bot, mode, inner)
+    return function()
+        local v = ____exports.Decide(bot, mode)
+        return v ~= nil and v or inner()
+    end
+end
+--- Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot
+-- fire. No step while the bot cannot act, as OHA's Think does first: StackJob's StallAfter depends on that skip.
+function ____exports.HostThink(bot, mode, inner, cannotAct)
+    return function()
+        if mode ~= ____exports.HOST or not Ours.On("JobChooser") or StackJob.Benched(bot) then
+            return inner()
+        end
+        if cannotAct(bot) then
+            return nil
+        end
+        local ____StackJob_Step_result_0
+        if StackJob.Step(bot, ____exports.HOST_MODE) then
+            ____StackJob_Step_result_0 = nil
+        else
+            ____StackJob_Step_result_0 = inner()
+        end
+        return ____StackJob_Step_result_0
+    end
+end
+--- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
+-- hit ends a running job. Switch on, the wrapper has already acted. Goes when the switch is retired.
 function ____exports.FarmDesire(bot)
-    if not StackJob.Wants(bot, ____exports.MayStart, ____exports.HOST_MODE) then
+    if Ours.On("JobChooser") or not StackJob.Wants(bot, ____exports.MayStart, ____exports.HOST_MODE) then
         return 0
     end
     if StackJob.Running(bot) and hit(bot) then
+        StackJob.NoteHit(bot)
         StackJob.End(bot, "hit")
         return 0
     end
     return ____exports.SETTINGS.JobDesire
 end
---- mode_farm_generic Think: steps the job; false when none runs.
+--- mode_farm_generic Think hook, switch off: steps the job; false when none runs. Switch on, the wrapper has already acted.
 function ____exports.FarmThink(bot)
-    return StackJob.Step(bot, ____exports.HOST_MODE)
+    return not Ours.On("JobChooser") and StackJob.Step(bot, ____exports.HOST_MODE)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)

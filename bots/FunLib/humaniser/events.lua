@@ -429,6 +429,14 @@ ____exports.EVENTS = {
         stacked = "bool",
         assumed = "bool"
     },
+    job = {
+        pid = "num",
+        job = "str",
+        phase = "str",
+        why = "str",
+        host = "num",
+        hit = "num"
+    },
     stack = {
         pid = "num",
         min = "num",

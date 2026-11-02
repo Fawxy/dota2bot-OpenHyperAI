@@ -1930,8 +1930,26 @@ local function look(bot, a)
     a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location))
     a.vis = IsLocationVisible(sp.location) and 1 or 0
 end
+--- One `ev=job` line at each end of a started attempt; `why` on the end line is the `ev=stack` line's.
+local function jobLine(bot, a, phase, why)
+    Telemetry.Event(
+        "job",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"job", "stack"},
+            {"phase", phase},
+            {"why", why},
+            {"host", a.host},
+            unpack(phase == "end" and ({{"hit", a.hit == true and 1 or 0}}) or ({}))
+        }
+    )
+end
 local function finish(bot, a, result)
     running[bot:GetPlayerID()] = nil
+    jobLine(bot, a, "end", result.success and "ok" or result.reason .. (result.message ~= nil and ":" .. result.message or ""))
     look(bot, a)
     local sp = Camps.SpawnerByIdx(a.campIdx)
     local landed = a.aggro ~= nil
@@ -2166,10 +2184,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue225
+            local __continue226
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue225 = true
+                    __continue226 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2255,7 +2273,13 @@ function ____exports.Wants(bot, blocked, host)
                     gateWhy[pid] = why
                     return false
                 end
-                local a = {minute = minute, campIdx = data.campIdx, type = data.type, startedAt = now}
+                local a = {
+                    minute = minute,
+                    campIdx = data.campIdx,
+                    type = data.type,
+                    startedAt = now,
+                    host = host
+                }
                 if fd ~= nil then
                     a.double = double and 1 or 0
                 end
@@ -2301,9 +2325,10 @@ function ____exports.Wants(bot, blocked, host)
                 prewalk[pid] = nil
                 gateWhy[pid] = nil
                 running[pid] = a
+                jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue225 then
+            if not __continue226 then
                 break
             end
         end
@@ -2333,6 +2358,13 @@ end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
         Tasks.Cancel(bot, "cancelled", why)
+    end
+end
+--- Hero damage landed during the job.
+function ____exports.NoteHit(bot)
+    local a = running[bot:GetPlayerID()]
+    if a ~= nil then
+        a.hit = true
     end
 end
 --- Counts an idle relocation the chooser held while the job ran (`idle` on the line).

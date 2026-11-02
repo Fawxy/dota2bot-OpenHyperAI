@@ -34,10 +34,28 @@ export const EXCEPTIONS: Record<string, string> = {
     attack: "our own fights, or a Valve fix",
 };
 
-/** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. The host's turn comes with the job's desire. */
+/**
+ * The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
+ * value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
+ * under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench.
+ */
+function hostDesire(bot: Unit): number | undefined {
+    if (StackJob.Benched(bot) || !StackJob.Wants(bot, MayStart, HOST_MODE)) return undefined;
+    if (StackJob.Running(bot) && hit(bot)) {
+        StackJob.NoteHit(bot);
+        if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) {
+            StackJob.End(bot, "retreat");
+            return undefined;
+        }
+    }
+    return SETTINGS.JobDesire;
+}
+
+/** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
 export function Decide(bot: Unit, mode: string): number | undefined {
-    if (!Ours.On("JobChooser") || !StackJob.Running(bot)) return undefined;
-    if (mode === HOST || EXCEPTIONS[mode] !== undefined) return undefined;
+    if (!Ours.On("JobChooser")) return undefined;
+    if (mode === HOST) return hostDesire(bot);
+    if (!StackJob.Running(bot) || EXCEPTIONS[mode] !== undefined) return undefined;
     return 0;
 }
 
@@ -46,6 +64,18 @@ export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
         const v = Decide(bot, mode);
         return v !== undefined ? v : inner();
+    };
+}
+
+/**
+ * Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot
+ * fire. No step while the bot cannot act, as OHA's Think does first: StackJob's StallAfter depends on that skip.
+ */
+export function HostThink(bot: Unit, mode: string, inner: () => any, cannotAct: (bot: Unit) => boolean): () => any {
+    return () => {
+        if (mode !== HOST || !Ours.On("JobChooser") || StackJob.Benched(bot)) return inner();
+        if (cannotAct(bot)) return undefined;
+        return StackJob.Step(bot, HOST_MODE) ? undefined : inner();
     };
 }
 
@@ -68,20 +98,21 @@ export function MayStart(bot: Unit): string | undefined {
     return undefined;
 }
 
-/** mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero hit ends a
- *  running job. */
+/** mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
+ *  hit ends a running job. Switch on, the wrapper has already acted. Goes when the switch is retired. */
 export function FarmDesire(bot: Unit): number {
-    if (!StackJob.Wants(bot, MayStart, HOST_MODE)) return 0;
+    if (Ours.On("JobChooser") || !StackJob.Wants(bot, MayStart, HOST_MODE)) return 0;
     if (StackJob.Running(bot) && hit(bot)) {
+        StackJob.NoteHit(bot);
         StackJob.End(bot, "hit");
         return 0;
     }
     return SETTINGS.JobDesire;
 }
 
-/** mode_farm_generic Think: steps the job; false when none runs. */
+/** mode_farm_generic Think hook, switch off: steps the job; false when none runs. Switch on, the wrapper has already acted. */
 export function FarmThink(bot: Unit): boolean {
-    return StackJob.Step(bot, HOST_MODE);
+    return !Ours.On("JobChooser") && StackJob.Step(bot, HOST_MODE);
 }
 
 /** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */

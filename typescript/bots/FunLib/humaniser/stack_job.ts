@@ -201,6 +201,10 @@ export interface Attempt {
     lane?: number;
     /** Idle relocations the chooser held while the job ran (`NoteIdleHeld`). */
     idle?: number;
+    /** Hero damage landed during the job (`NoteHit`): `hit` on the end line. */
+    hit?: boolean;
+    /** The mode hosting the job, for the `ev=job` lines. */
+    host?: number;
     /** Double stack: 1 when the attempt hits `first` before this camp; 0 when the camp has a partner but the walk between
      *  them does not fit (`Fits`); undefined when it has none or the switch is off. */
     double?: number;
@@ -942,8 +946,21 @@ function look(bot: Unit, a: Attempt): void {
     a.vis = IsLocationVisible(sp.location) ? 1 : 0;
 }
 
+/** One `ev=job` line at each end of a started attempt; `why` on the end line is the `ev=stack` line's. */
+function jobLine(bot: Unit, a: Attempt, phase: string, why: string): void {
+    Telemetry.Event("job", [
+        ["pid", bot.GetPlayerID()],
+        ["job", "stack"],
+        ["phase", phase],
+        ["why", why],
+        ["host", a.host],
+        ...(phase === "end" ? ([["hit", a.hit === true ? 1 : 0]] as Telemetry.Fields<"job">) : []),
+    ]);
+}
+
 function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
     running[bot.GetPlayerID()] = undefined;
+    jobLine(bot, a, "end", result.success ? "ok" : `${result.reason}${result.message !== undefined ? ":" + result.message : ""}`);
     look(bot, a);
     const sp = Camps.SpawnerByIdx(a.campIdx);
     // After a landed hit the box decides the result; before it, the attempt failed.
@@ -1189,7 +1206,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             gateWhy[pid] = why;
             return false;
         }
-        const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now };
+        const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now, host };
         if (fd !== undefined) a.double = double ? 1 : 0;
         a.dwhy = dwhy;
         if (double) a.first = { campIdx: fd!.a.campIdx, type: fd!.a.type, stand: fd!.stand, fsec: fd!.fsec, sec: fd!.sec };
@@ -1203,6 +1220,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         prewalk[pid] = undefined;
         gateWhy[pid] = undefined;
         running[pid] = a;
+        jobLine(bot, a, "start", "trigger");
         return true;
     }
     return false;
@@ -1276,6 +1294,12 @@ export function Running(bot: Unit): boolean {
 /** Ends a running job; its line reports `cancelled:<why>`. */
 export function End(bot: Unit, why: string): void {
     if (running[bot.GetPlayerID()] !== undefined) Tasks.Cancel(bot, "cancelled", why);
+}
+
+/** Hero damage landed during the job. */
+export function NoteHit(bot: Unit): void {
+    const a = running[bot.GetPlayerID()];
+    if (a !== undefined) a.hit = true;
 }
 
 /** Counts an idle relocation the chooser held while the job ran (`idle` on the line). */

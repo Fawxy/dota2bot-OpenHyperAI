@@ -503,6 +503,15 @@ export const EVENTS = {
         assumed: "bool",
     },
     // Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran.
+    // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
+    job: {
+        pid: "num",
+        job: "str",
+        phase: "str",
+        why: "str",
+        host: "num",
+        hit: "num",
+    },
     stack: {
         pid: "num",
         min: "num",

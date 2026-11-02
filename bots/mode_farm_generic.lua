@@ -1236,5 +1236,5 @@ function X.IsThereT3Detroyed()
 	return false;
 end
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
-do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'farm', GetDesire) end
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire, Think = C.Gate(GetBot(), 'farm', GetDesire), C.HostThink(GetBot(), 'farm', Think, J.CanNotUseAction) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_farm.GetDesire', GetDesire), E('mode_farm.Think', Think), E('mode_farm.OnStart', OnStart), E('mode_farm.OnEnd', OnEnd) end

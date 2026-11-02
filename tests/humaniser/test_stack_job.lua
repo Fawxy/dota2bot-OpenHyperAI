@@ -66,12 +66,20 @@ end
 
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
+-- Farm's GetDesire and Think as the file's wrapper line builds them; inner stands in for OHA's file past its hook lines.
+local function farmDesire(H, bot, inner)
+	return H.Chooser.Gate(bot, "farm", inner or function() return H.Chooser.FarmDesire(bot) end)()
+end
+local function farmThink(H, bot, inner, cannotAct)
+	return H.Chooser.HostThink(bot, "farm", inner or function() return H.Chooser.FarmThink(bot) end, cannotAct or function() return false end)()
+end
+
 -- One frame: farm's GetDesire, then its Think when farm wins. Moves arrive at once; a neutral hit turns on the bot.
 local function frame(H, bot, dt)
 	local n0 = #ACTIONS
-	if H.Chooser.FarmDesire(bot) > 0 then
+	if farmDesire(H, bot) > 0 then
 		bot.mode = FARM
-		H.Chooser.FarmThink(bot)
+		farmThink(H, bot)
 	else
 		bot.mode = LANING
 	end
@@ -211,7 +219,7 @@ do
 	end
 	local H, bot = world({ t = 233 })
 	bot.pos = 4
-	check("pos4: no job", H.Chooser.FarmDesire(bot) == 0)
+	check("pos4: no job", farmDesire(H, bot) == 0)
 	H, bot = world({ t = 233, ours = { StackExecute = false } })
 	local lines = capture(function() for _ = 1, 400 do frame(H, bot) end end)
 	check("switch off: no job and no line", #stackLines(lines) == 0 and bot.mode == LANING, #stackLines(lines))
@@ -420,7 +428,7 @@ do
 	MakeUnit({ pid = 11, team = 3, loc = Vector(SAFE_T1[RAD].x + 900, SAFE_T1[RAD].y) })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end))
-	check("lane opponent at 900: the job starts", #lines == 0 and H.Chooser.FarmDesire(bot) > 0)
+	check("lane opponent at 900: the job starts", #lines == 0 and farmDesire(H, bot) > 0)
 	check("attack mode: gate says busy", (function() bot.mode = dota.BotMode.Attack return H.Chooser.MayStart(bot) == "busy" end)())
 
 	H, bot = world({ t = 3 * 60 + 15 })
@@ -431,24 +439,24 @@ do
 		frame(H, bot)
 	end))
 	check("run abort: failed, cancelled:run", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:run", lines[1])
-	check("run abort: farm released", H.Chooser.FarmDesire(bot) == 0)
+	check("run abort: farm released", farmDesire(H, bot) == 0)
 
 	-- Hero damage mid-job ends it (1x probe s4p7: the pos5 walked on after hero hits and died at the camp); an enemy hero
 	-- in reach alone does not (probe s4p8: lane opponents ended 4 jobs 1-6 s after their start).
-	H, bot = world({ t = 3 * 60 + 15 })
+	H, bot = world({ t = 3 * 60 + 15, ours = { StackExecute = true, JobChooser = false } })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function()
 		while T < 3 * 60 + 50 do frame(H, bot) end
 		MakeUnit({ pid = 12, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) })
 		frame(H, bot)
 	end))
-	check("enemy in reach mid-job: the job runs on", #lines == 0 and H.Chooser.FarmDesire(bot) > 0, lines[1])
+	check("enemy in reach mid-job: the job runs on", #lines == 0 and farmDesire(H, bot) > 0, lines[1])
 	lines = stackLines(capture(function()
 		bot.heroHitAt = T
 		frame(H, bot)
 	end))
 	check("hero hit mid-job: failed, cancelled:hit", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:hit", lines[1])
-	check("hero hit mid-job: farm released", H.Chooser.FarmDesire(bot) == 0)
+	check("hero hit mid-job: farm released", farmDesire(H, bot) == 0)
 end
 
 -- A start held back by the gate goes ahead only with MinSlack s to spare (probe s4p5: starts at 0 s slack missed the window).
@@ -632,7 +640,7 @@ do
 	-- The pos4 runs no job with the double off (it stacks only its pairs).
 	local H2, b2 = world({ t = 3 * 60 + 40 })
 	b2.pos = 4
-	check("pos4, DoubleStack off: no job", H2.Chooser.FarmDesire(b2) == 0 and not H2.StackJob.Applies(b2))
+	check("pos4, DoubleStack off: no job", farmDesire(H2, b2) == 0 and not H2.StackJob.Applies(b2))
 end
 
 -- A full pos4 double from the Radiant offlane T1 at 5:5x: good_8 (ancient) then good_7.
@@ -906,6 +914,132 @@ do
 		local len = math.sqrt(dx * dx + dy * dy)
 		check(c[1] .. ": stand on the seeing side", (dx * c[3] + dy * c[4]) / len > 0.9, stand.x .. "," .. stand.y)
 	end
+end
+
+-- Slice job-chooser, switch on: the chooser hosts the job, retreat comes first, and a hero hit alone no longer ends it.
+do
+	local function running()
+		local H, bot = world({ t = 3 * 60 + 15 })
+		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+		capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end)
+		check("chooser: the job runs", H.StackJob.Running(bot))
+		return H, bot
+	end
+
+	local H, bot = running()
+	local lines = stackLines(capture(function() bot.heroHitAt = T frame(H, bot) end))
+	check("hero hit mid-job, on: no line, the job runs on", #lines == 0 and H.StackJob.Running(bot), lines[1])
+
+	H, bot = world({ t = 3 * 60 + 15 })
+	bot.heroHitAt = 1e9
+	lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
+	check("hero hit before the start, on: one skip why=hit", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "hit", lines[1])
+
+	-- Retreat first: at 0.976 (the lowest banked ending) retreat's own desire beats the job's through Valve's arbitration.
+	H, bot = running()
+	local retreat = H.Chooser.Gate(bot, "retreat", function() return 0.976 end)()
+	check("retreat passes the gate and beats the job", retreat == 0.976 and retreat > H.Chooser.SETTINGS.JobDesire, retreat)
+
+	H, bot = running()
+	bot.heroHitAt = T
+	bot.hp = 49
+	local d
+	lines = stackLines(capture(function() d = H.Chooser.Decide(bot, "farm") end))
+	check("hero hit at 49% HP: farm's next Decide is undefined", d == nil, d)
+	check("hero hit at 49% HP: failed, cancelled:retreat", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:retreat", lines[1])
+
+	H, bot = running()
+	bot.heroHitAt = T
+	bot.hp = 50
+	lines = stackLines(capture(function() frame(H, bot) end))
+	check("hero hit at 50% HP: the job runs on", #lines == 0 and H.StackJob.Running(bot), lines[1])
+
+	H, bot = running()
+	bot.hp = 10
+	lines = stackLines(capture(function() frame(H, bot) end))
+	check("neutrals alone at 10% HP: the job runs on", #lines == 0 and H.StackJob.Running(bot), lines[1])
+
+	-- OHA's farm is not entered during a job, so neither its defend-ping nor its run abort can fire.
+	H, bot = running()
+	local entered = false
+	local v = farmDesire(H, bot, function() entered = true return 0.5 end)
+	check("host desire during a job: JobDesire, OHA's farm not entered", v == 0.92 and not entered, v)
+
+	H, bot = running()
+	local innerThink = false
+	T = T + 0.1
+	farmThink(H, bot, function() innerThink = true end)
+	check("host Think during a job: the job steps, OHA's farm does not", not innerThink)
+	innerThink = false
+	local stepped = false
+	local step = H.StackJob.Step
+	H.StackJob.Step = function(...) stepped = true return step(...) end
+	farmThink(H, bot, function() innerThink = true end, function() return true end)
+	check("host Think, bot cannot act: neither runs", not innerThink and not stepped)
+	H.StackJob.Step = step
+	H, bot = world({ t = 100 })
+	innerThink = false
+	farmThink(H, bot, function() innerThink = true end)
+	check("host Think, no job: OHA's farm runs", innerThink)
+
+	-- The start checks still refuse, with OHA's farm in its run state or not: the wrapper comes first but danger does not start a job.
+	local function refused(setup, why)
+		local H1, b1 = world({ t = 3 * 60 + 15 })
+		setup(b1)
+		local ls = stackLines(capture(function()
+			while T < 3 * 60 + 58 do
+				farmDesire(H1, b1, function() return 1.1 end)
+				T = T + 0.1
+			end
+		end))
+		check("start refused on: " .. why, #ls == 1 and field(ls[1], "res") == "skip" and field(ls[1], "why") == why and not H1.StackJob.Running(b1), ls[1])
+	end
+	refused(function(b) b.hp = 40 end, "low-hp")
+	refused(function(b) MakeUnit({ pid = 10, team = 3, loc = Vector(b.loc.x + 300, b.loc.y) }) end, "enemy-near")
+	refused(function(b) b.mode = dota.BotMode.Attack end, "busy")
+
+	-- A benched hero (Overrides.Solo) stays with farm's own file: no job, its Think runs.
+	H, bot = world({ t = 3 * 60 + 40 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = { Solo = 0 }
+	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+	local benchDesire = farmDesire(H, bot, function() return 1.2 end)
+	innerThink = false
+	farmThink(H, bot, function() innerThink = true end)
+	check("benched: desire and Think stay with farm's file, no job", benchDesire == 1.2 and innerThink and not H.StackJob.Running(bot))
+	Customize.Overrides = nil
+
+	-- ev=job: one start and one end per attempt in both arms, with the stack line's why.
+	local function jobLines(ls) local r = {} for _, l in ipairs(ls) do if l:find("ev=job ", 1, true) then table.insert(r, l) end end return r end
+	for _, on in ipairs({ true, false }) do
+		local arm = on and "on" or "off"
+		local H1, b1 = world({ t = 3 * 60 + 15, ours = { StackExecute = true, JobChooser = on } })
+		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+		local ls = capture(function()
+			while T < 3 * 60 + 50 do frame(H1, b1) end
+			b1.heroHitAt = T
+			frame(H1, b1)
+			b1.heroHitAt = T
+			b1.hp = 40
+			frame(H1, b1)
+		end)
+		local js, st = jobLines(ls), stackLines(ls)
+		check("ev=job " .. arm .. ": one start, one end", #js == 2 and field(js[1], "phase") == "start" and field(js[2], "phase") == "end", #js)
+		check("ev=job " .. arm .. ": fields", field(js[1], "job") == "stack" and field(js[1], "pid") == "5" and tonumber(field(js[1], "host")) == FARM, js[1])
+		check("ev=job " .. arm .. ": why as on the stack line", field(js[2], "why") == field(st[1], "why") and field(js[2], "why") == (on and "cancelled:retreat" or "cancelled:hit"), js[2])
+		check("ev=job " .. arm .. ": hit=1 after a hero hit", field(js[2], "hit") == "1", js[2])
+	end
+	local H1, b1 = world({ t = 3 * 60 + 15 })
+	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+	local ls = capture(function()
+		while T < 3 * 60 + 50 do frame(H1, b1) end
+		H1.StackJob.End(b1, "test")
+	end)
+	check("ev=job: hit=0 with no hero hit", field(jobLines(ls)[2], "hit") == "0", jobLines(ls)[2])
+
+	-- The farm file's line builds both wrappers.
+	local farm = io.open(BOTS_ROOT .. "/bots/mode_farm_generic.lua", "r"):read("a")
+	check("farm: wrapper line hosts Think", farm:find("C.HostThink(GetBot(), 'farm', Think, J.CanNotUseAction)", 1, true) ~= nil)
 end
 
 finish()

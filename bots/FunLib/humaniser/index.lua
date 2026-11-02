@@ -344,6 +344,7 @@ if Telemetry.GuardsEnabled() then
             End = none,
             Running = no,
             NoteIdleHeld = none,
+            NoteHit = none,
             Benched = no,
             Bench = no,
             Minutes = function() return StackJob.SETTINGS.TriggerMinutes end
