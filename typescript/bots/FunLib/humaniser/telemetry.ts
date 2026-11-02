@@ -443,6 +443,9 @@ function trackLaneRead(team: number, now: number): void {
             ["dead", r.dead],
             ["ee", LaneRead.FormatEnemies(r.enemies)],
             ["ag", LaneRead.FormatAggro(r.aggro)],
+            ["cc", LaneRead.FormatCreeps(r.creeps)],
+            ["tw", r.towerTier],
+            ["twh", r.towerHp !== undefined ? math.floor(r.towerHp) : undefined],
         ]);
     }
 }

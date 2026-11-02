@@ -300,7 +300,10 @@ ____exports.EVENTS = {
         fy = "num",
         dead = "num",
         ee = "str",
-        ag = "str"
+        ag = "str",
+        cc = "str",
+        tw = "num",
+        twh = "num"
     },
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {

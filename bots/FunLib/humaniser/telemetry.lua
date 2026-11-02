@@ -569,6 +569,15 @@ local function trackLaneRead(team, now)
                 {
                     "ag",
                     LaneRead.FormatAggro(r.aggro)
+                },
+                {
+                    "cc",
+                    LaneRead.FormatCreeps(r.creeps)
+                },
+                {"tw", r.towerTier},
+                {
+                    "twh",
+                    r.towerHp ~= nil and math.floor(r.towerHp) or nil
                 }
             }
         )

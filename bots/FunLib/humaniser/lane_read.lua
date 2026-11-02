@@ -1,4 +1,17 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArraySort(self, compareFn)
+    if compareFn ~= nil then
+        table.sort(
+            self,
+            function(a, b) return compareFn(nil, a, b) < 0 end
+        )
+    else
+        table.sort(self)
+    end
+    return self
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -150,6 +163,35 @@ local function towerAmount(team, owner, lane)
     end
     return owner == Team.Radiant and 0 or 1
 end
+local function ownTower(team, lane)
+    local ids = TOWER_IDS[lane]
+    do
+        local i = 0
+        while i < #ids do
+            local tower = GetTower(team, ids[i + 1])
+            if tower ~= nil and tower ~= nil and tower:IsAlive() then
+                return {
+                    tier = i + 1,
+                    hp = tower:GetHealth()
+                }
+            end
+            i = i + 1
+        end
+    end
+    return {tier = 0}
+end
+function ____exports.CreepKind(name)
+    if (string.find(name, "siege", 1, true)) ~= nil then
+        return "s"
+    end
+    if (string.find(name, "ranged", 1, true)) ~= nil then
+        return "r"
+    end
+    if (string.find(name, "flag", 1, true)) ~= nil then
+        return "f"
+    end
+    return "m"
+end
 local function readEnemies(team, m, front)
     local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
     for ____, pid in ipairs(GetTeamPlayers(enemyTeam)) do
@@ -159,10 +201,10 @@ local function readEnemies(team, m, front)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue37
+            local __continue44
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue37 = true
+                    __continue44 = true
                     break
                 end
                 local pid = u:GetPlayerID()
@@ -180,9 +222,9 @@ local function readEnemies(team, m, front)
                     hp = maxHP > 0 and u:GetHealth() / maxHP or 0,
                     lvl = u:GetLevel()
                 }
-                __continue37 = true
+                __continue44 = true
             until true
-            if not __continue37 then
+            if not __continue44 then
                 break
             end
         end
@@ -190,21 +232,21 @@ local function readEnemies(team, m, front)
     local dead = 0
     for pid in pairs(m.enemyPids) do
         do
-            local __continue40
+            local __continue47
             repeat
                 local id = pid
                 if seen[id] == true then
-                    __continue40 = true
+                    __continue47 = true
                     break
                 end
                 if not IsHeroAlive(id) then
                     dead = dead + 1
-                    __continue40 = true
+                    __continue47 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)[1]
                 if info == nil then
-                    __continue40 = true
+                    __continue47 = true
                     break
                 end
                 enemies[#enemies + 1] = {
@@ -213,9 +255,9 @@ local function readEnemies(team, m, front)
                     seen = info.time_since_seen,
                     dist = dist2D(info.location, front)
                 }
-                __continue40 = true
+                __continue47 = true
             until true
-            if not __continue40 then
+            if not __continue47 then
                 break
             end
         end
@@ -229,15 +271,15 @@ local function readAggro(lane, m, enemyCreeps, front, now)
         local i = 1
         while i <= TEAM_SLOTS do
             do
-                local __continue45
+                local __continue52
                 repeat
                     local hero = GetTeamMember(i)
                     if hero == nil or hero == nil or hero:IsIllusion() or not hero:IsAlive() then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     if hero:GetAssignedLane() ~= lane and GetUnitToLocationDistance(hero, front) > near then
-                        __continue45 = true
+                        __continue52 = true
                         break
                     end
                     local n = 0
@@ -252,9 +294,9 @@ local function readAggro(lane, m, enemyCreeps, front, now)
                     end
                     local at = m.aggroAt[pid]
                     result[#result + 1] = {pid = pid, now = n, since = at ~= nil and now - at or nil}
-                    __continue45 = true
+                    __continue52 = true
                 until true
-                if not __continue45 then
+                if not __continue52 then
                     break
                 end
             end
@@ -289,7 +331,13 @@ function ____exports.Read(team, now)
         local near = emptyCreeps()
         local enemyNear = emptyCreeps()
         local censusAtEnemy = emptyCreeps()
+        local creeps = {}
         for ____, c in ipairs(own[lane]) do
+            creeps[#creeps + 1] = {
+                kind = ____exports.CreepKind(c.unit:GetUnitName()),
+                amount = c.amount,
+                hp = c.unit:GetHealth()
+            }
             addCreep(
                 census,
                 team,
@@ -330,6 +378,11 @@ function ____exports.Read(team, now)
         local ____readEnemies_result_1 = readEnemies(team, m, frontLoc)
         local enemies = ____readEnemies_result_1.enemies
         local dead = ____readEnemies_result_1.dead
+        __TS__ArraySort(
+            creeps,
+            function(____, a, b) return a.amount - b.amount end
+        )
+        local tower = ownTower(team, lane)
         local cycleSec = now % ____exports.WAVE_CYCLE
         reads[#reads + 1] = {
             team = team,
@@ -355,6 +408,9 @@ function ____exports.Read(team, now)
             ),
             census = census,
             censusAtEnemy = censusAtEnemy,
+            creeps = creeps,
+            towerTier = tower.tier,
+            towerHp = tower.hp,
             frontLoc = frontLoc
         }
     end
@@ -378,6 +434,14 @@ function ____exports.FormatAggro(aggro)
             "%.1f",
             math.floor(a.since * 10) / 10
         ))
+    end
+    return table.concat(out, ";")
+end
+--- The `cc` field of ev=lane_read: per own creep `kind:amount_in_thousandths:hp`, by amount, joined by `;`.
+function ____exports.FormatCreeps(creeps)
+    local out = {}
+    for ____, c in ipairs(creeps) do
+        out[#out + 1] = (((c.kind .. ":") .. tostring(math.floor(c.amount * 1000 + 0.5))) .. ":") .. tostring(math.floor(c.hp + 0.5))
     end
     return table.concat(out, ";")
 end
