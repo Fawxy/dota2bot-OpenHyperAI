@@ -1,4 +1,4 @@
--- Lane fronts and heroes' places along their lanes at a clock (replaces front.js). Amounts are absolute: 0 = Radiant's ancient, 1 = Dire's.
+-- Lane fronts and heroes' places along their lanes at a clock (replaces front.js). Amounts run 0 = Radiant's ancient to 1 = Dire's but are in the writing team's lane-path frame, so two teams' amounts for one place differ (LOGGING.md, debt lane-amount-frame): compare a team's rows with its own, and across teams by x, y.
 -- Params: file (absolute log path, as in games.file), game (default 1), t (seconds). Each row is the latest ev=front per team
 -- (kind 'front', who = team) or the latest ev=snap with a lane per hero (kind 'hero', who = pid) at or before t.
 -- Order matches front.js: fronts by team, heroes by pid.

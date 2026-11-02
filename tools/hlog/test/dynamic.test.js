@@ -68,6 +68,20 @@ function metricsOf(g) {
     }
 }
 
+/** The heroes of the game through the log store (dynamic.js heroes), each with `sec[s]` = { x, y, alive, mode } from
+ *  @dynamic_series (the per-second series the queries build on). */
+function seriesOf(g) {
+    const { store, file } = stored(g);
+    try {
+        const S = D.heroes(store, file, 1);
+        for (const r of store.query(sql('dynamic_series'), { file, game: 1 })) if (S[r.pid]) (S[r.pid].sec ??= {})[r.s] = { x: r.x, y: r.y, alive: r.alive, mode: r.mode };
+        return S;
+    } finally {
+        store.db.close();
+    }
+}
+const sql = name => fs.readFileSync(path.join(__dirname, '..', 'queries', `${name}.sql`), 'utf8');
+
 /** A hero standing at p, dead from `die` (no snapshots) until `back`, where it respawns in its fountain with deaths=1. */
 const dies = (pid, team, p, die, back, to = 700) =>
     bot(pid, team, t => (t <= die ? { p } : t < back ? null : { p: team === 2 ? FOUNTAIN : [7020, 6345], deaths: 1 }), 0, to);
@@ -84,7 +98,7 @@ test('a dead hero (snapshot gap across a deaths increment) cannot start an encou
     // Dire dies mid at 10 (no snapshots 11-19), respawns in fountain at 20. Radiant reaches mid at 12.
     const rad = () => bot(0, 2, t => ({ p: t < 12 ? [6000, -6000] : MID }), 0, 60);
     const g = game([rad(), dies(5, 3, MID, 10, 20, 60)]);
-    assert.strictEqual(D.series(g)[5].sec[15].alive, 0);
+    assert.strictEqual(seriesOf(g)[5].sec[15].alive, 0);
     assert.strictEqual(metricsOf(g).encounters_per_10min.before10, 0);
     // The same gap while the Dire hero is alive (no deaths increment, so the gap is not death) is an encounter.
     const alive = bot(5, 3, t => (t <= 10 || t >= 20 ? { p: MID } : null), 0, 60);
@@ -127,55 +141,65 @@ test('a death is dated before its snapshot gap; a bot dead at the end adds a dea
     const rows = store.query(fs.readFileSync(path.join(__dirname, '..', 'queries', 'dynamic_deaths.sql'), 'utf8'), { file, game: 1 });
     store.db.close();
     assert.deepStrictEqual(rows.map(r => [r.t, r.n]), [[50, 1], [100, 1]]);
-    assert.strictEqual(D.series(g)[0].sec[150].alive, 0);
+    assert.strictEqual(seriesOf(g)[0].sec[150].alive, 0);
     const m = metricsOf(g);
     assert.deepStrictEqual([m.deaths_total, m.deaths_before_10[2]], [2, 2]);
 });
 
 test('a rotation is 10+ s in another lane region before 10:00; shorter trips do not count', () => {
+    // Home is bot (1:00-5:00); each trip is after 5:00.
+    const rot = at => seriesOf(game([bot(0, 2, at)]))[0].rot10;
     const trip = (a, b) => t => ({ p: t >= a && t < b ? TOP : BOT });
-    const s1 = D.series(game([bot(0, 2, trip(400, 412))]))[0];
-    s1.home = 'bot';
-    assert.strictEqual(D.rotations(s1, 600), 1);
-    const s2 = D.series(game([bot(0, 2, trip(400, 408))]))[0];
-    s2.home = 'bot';
-    assert.strictEqual(D.rotations(s2, 600), 0);
+    assert.strictEqual(rot(trip(400, 410)), 1);
+    assert.strictEqual(rot(trip(400, 409)), 0);
     // 5 s top, 3 s jungle, 6 s top: the short jungle stretch keeps the run open (11 lane seconds).
-    const s3 = D.series(game([bot(0, 2, t => ({ p: t >= 400 && t < 405 ? TOP : t >= 405 && t < 408 ? JUNGLE : t >= 408 && t < 414 ? TOP : BOT }))]))[0];
-    s3.home = 'bot';
-    assert.strictEqual(D.rotations(s3, 600), 1);
-    // 6 s top then 6 s mid: a lane change closes the run, neither reaches 10 s.
-    const s4 = D.series(game([bot(0, 2, t => ({ p: t >= 400 && t < 406 ? TOP : t >= 406 && t < 412 ? MID : BOT }))]))[0];
-    s4.home = 'bot';
-    assert.strictEqual(D.rotations(s4, 600), 0);
+    assert.strictEqual(rot(t => ({ p: t >= 400 && t < 405 ? TOP : t >= 405 && t < 408 ? JUNGLE : t >= 408 && t < 414 ? TOP : BOT })), 1);
+    // 5 s top, 9 s jungle, 6 s top: the gap closes the run, neither part reaches 10 s.
+    assert.strictEqual(rot(t => ({ p: t >= 400 && t < 405 ? TOP : t >= 405 && t < 414 ? JUNGLE : t >= 414 && t < 420 ? TOP : BOT })), 0);
+    // 6 s top then 6 s mid: a lane change closes the run, neither reaches 10 s; 10 s top then 10 s mid is two.
+    assert.strictEqual(rot(t => ({ p: t >= 400 && t < 406 ? TOP : t >= 406 && t < 412 ? MID : BOT })), 0);
+    assert.strictEqual(rot(t => ({ p: t >= 400 && t < 410 ? TOP : t >= 410 && t < 420 ? MID : BOT })), 2);
+    // A run still open at 10:00 counts; one starting at 9:51 has 9 s before 10:00 and does not.
+    assert.strictEqual(rot(t => ({ p: t >= 590 ? TOP : BOT })), 1);
+    assert.strictEqual(rot(t => ({ p: t >= 591 ? TOP : BOT })), 0);
+    // A death closes the run: 6 s top, dead 20 s, then 6 s top again.
+    const died = t => (t < 400 ? { p: BOT } : t < 406 ? { p: TOP } : t < 426 ? null : t < 432 ? { p: TOP, deaths: 1 } : { p: BOT, deaths: 1 });
+    assert.strictEqual(rot(died), 0);
+    // No home lane (always in the jungle): none.
+    assert.strictEqual(rot(t => ({ p: t >= 400 && t < 420 ? TOP : JUNGLE })), 0);
 });
 
 test('lane exit is the first minute from 5:00 with under half of the next minute in the home lane', () => {
-    const s = D.series(game([bot(0, 2, t => ({ p: t < 480 ? BOT : JUNGLE }), 0, 900)]))[0];
-    s.home = 'bot';
-    assert.strictEqual(D.laneExit(s, 900), 480);
-    const stay = D.series(game([bot(0, 2, () => ({ p: BOT }), 0, 900)]))[0];
-    stay.home = 'bot';
-    assert.strictEqual(D.laneExit(stay, 900), undefined);
+    const exit = (at, to = 900) => seriesOf(game([bot(0, 2, at, 0, to)]))[0].lane_exit;
+    assert.strictEqual(exit(t => ({ p: t < 480 ? BOT : JUNGLE })), 480);
+    assert.strictEqual(exit(() => ({ p: BOT })), undefined);
     // A 40 s base trip in the 6:00 minute is not a lane exit.
-    const shop = D.series(game([bot(0, 2, t => ({ p: t >= 360 && t < 400 ? BASE : BOT }), 0, 900)]))[0];
-    shop.home = 'bot';
-    assert.strictEqual(D.laneExit(shop, 900), undefined);
+    assert.strictEqual(exit(t => ({ p: t >= 360 && t < 400 ? BASE : BOT })), undefined);
+    // 30 of 60 s in lane is half, not under half; 29 is under.
+    assert.strictEqual(exit(t => ({ p: t >= 420 && t < 450 ? JUNGLE : BOT })), undefined);
+    assert.strictEqual(exit(t => ({ p: t >= 420 && t < 451 ? JUNGLE : BOT })), 420);
+    // The minute must end by `end`: last snapshot 15:59 gives end 15:00, so leaving at 15:00 is not read; at 14:01 it is.
+    assert.strictEqual(exit(t => ({ p: t < 900 ? BOT : JUNGLE }), 959), undefined);
+    assert.strictEqual(exit(t => ({ p: t < 841 ? BOT : JUNGLE })), 840);
 });
 
 test('a teleport-sized jump landing by an ally is a TP join; a respawn or a TP to base is not', () => {
-    const ally = bot(1, 2, () => ({ p: TOP }), 600, 700);
-    const tp = bot(0, 2, t => ({ p: t < 650 ? BOT : TOP }), 600, 700);
-    let S = D.series(game([tp, ally]));
-    assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 1);
+    const joins = (...bots) => seriesOf(game(bots))[0].tp_joins;
+    const ally = bot(1, 2, () => ({ p: TOP }), 600, 760);
+    assert.strictEqual(joins(bot(0, 2, t => ({ p: t < 650 ? BOT : TOP }), 600, 760), ally), 1);
+    // No ally at the landing; an enemy there does not count.
+    assert.strictEqual(joins(bot(0, 2, t => ({ p: t < 650 ? BOT : TOP }), 600, 760), bot(5, 3, () => ({ p: TOP }), 600, 760)), 0);
+    // Two jumps 3 s apart both count; a jump back 2 s later is the same jump.
+    const bounce = d => t => ({ p: t < 650 ? BOT : t < 650 + d ? TOP : BOT });
+    const allyBoth = bot(1, 2, t => ({ p: t < 650 ? TOP : BOT }), 600, 760);
+    assert.strictEqual(joins(bot(0, 2, bounce(3), 600, 760), allyBoth), 1);
+    assert.strictEqual(joins(bot(0, 2, t => ({ p: t < 650 ? BOT : t < 653 ? TOP : BOT }), 600, 760), bot(1, 2, t => ({ p: t < 653 ? TOP : BOT }), 600, 760)), 2);
     // Dies on bot at 640, respawns at 660 in fountain next to an ally standing there.
-    const inFountain = bot(1, 2, () => ({ p: FOUNTAIN }), 600, 700);
-    const respawn = bot(0, 2, t => (t <= 640 ? { p: BOT } : t < 660 ? null : { p: FOUNTAIN, deaths: 1 }), 600, 700);
-    S = D.series(game([respawn, inFountain]));
-    assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 0);
-    const toBase = bot(0, 2, t => ({ p: t < 650 ? TOP : FOUNTAIN }), 600, 700);
-    S = D.series(game([toBase, inFountain]));
-    assert.strictEqual(D.tpJoins(S, S[0], 600, 700), 0);
+    const inFountain = bot(1, 2, () => ({ p: FOUNTAIN }), 600, 760);
+    assert.strictEqual(joins(bot(0, 2, t => (t <= 640 ? { p: BOT } : t < 660 ? null : { p: FOUNTAIN, deaths: 1 }), 600, 760), inFountain), 0);
+    assert.strictEqual(joins(bot(0, 2, t => ({ p: t < 650 ? TOP : FOUNTAIN }), 600, 760), inFountain), 0);
+    // Before 10:00 is not read.
+    assert.strictEqual(joins(bot(0, 2, t => ({ p: t < 550 ? BOT : TOP }), 500, 760), bot(1, 2, () => ({ p: TOP }), 500, 760)), 0);
 });
 
 test('the later of two snapshots at one time wins, for the series and for last hits at 10:00', () => {
@@ -264,6 +288,41 @@ test('dynamicMetrics: roles by last hits and home lane, deaths before 10:00, ste
     assert.strictEqual(m.lh_at_10.r1, 75);
 });
 
+test('ally steals: n defaults to 1, only before 10:00, the support and the core alive and within 700, per team', () => {
+    // Radiant as above: support 3 is 300 units from safe-lane core 1; support 4 stands 800 from off-lane core 2.
+    // Support 3 is dead 300-320; core 1 is dead 450-470 (both respawn in place with deaths=1).
+    const gone = (a, b) => t => t > a && t < b;
+    const rad = [
+        bot(0, 2, t => ({ p: MID, lh: Math.floor(t / 10) })),
+        bot(1, 2, t => (gone(450, 470)(t) ? null : { p: BOT, lh: Math.floor(t / 8), deaths: t >= 470 ? 1 : 0 })),
+        bot(2, 2, t => ({ p: TOP, lh: Math.floor(t / 20) })),
+        bot(3, 2, t => (gone(300, 320)(t) ? null : { p: [BOT[0] + 300, BOT[1]], lh: Math.floor(t / 60), deaths: t >= 320 ? 1 : 0 })),
+        bot(4, 2, t => ({ p: [TOP[0], TOP[1] + 800], lh: Math.floor(t / 100) })),
+    ];
+    // Dire: mid 5, safe (top) 6, off (bot) 7; support 8 next to core 6, support 9 alone.
+    const DT = [-128, 6016], DM = [524, 652], DB = [6269, -2240];
+    const dire = [
+        bot(5, 3, t => ({ p: DM, lh: Math.floor(t / 10) })),
+        bot(6, 3, t => ({ p: DT, lh: Math.floor(t / 8) })),
+        bot(7, 3, t => ({ p: DB, lh: Math.floor(t / 20) })),
+        bot(8, 3, t => ({ p: [DT[0] + 200, DT[1]], lh: Math.floor(t / 60) })),
+        bot(9, 3, t => ({ p: [DB[0], DB[1] + 2000], lh: Math.floor(t / 100) })),
+    ];
+    const lh = (t, pid, n) => ({ ev: 'lasthit', t, pid, ...(n === undefined ? {} : { n }) });
+    const events = [
+        lh(100, 3), lh(110, 3, 0), lh(120, 3, 3), lh(599.5, 3, 1), // 1 + 1 + 3 + 1
+        lh(600, 3, 1), // 10:00 is not before 10:00
+        lh(310, 3, 1), // the support is dead
+        lh(460, 3, 1), // the only core near is dead
+        lh(210, 4, 1), // core 800 away
+        lh(200, 1, 1), // a core's own last hit
+        lh(150, 8, 2), lh(160, 9, 1), // Dire: 2 next to its core, none alone
+    ];
+    const m = metricsOf(game([...rad, ...dire], events));
+    assert.deepStrictEqual([m.roles.r4, m.roles.r5, m.roles.d4, m.roles.d5], ['h3', 'h4', 'h8', 'h9']);
+    assert.deepStrictEqual(m.ally_creep_steals, { 2: 6, 3: 2 });
+});
+
 test('dynamicMetrics: lineup-position keys from ev=bot pos= sit beside the role keys; mismatches are counted', () => {
     // Behaviour roles: 0 mid (2), 1 safe (1), 2 off (3), 3 and 4 supports. The lineup swaps 1 and 2 (pos 3 and pos 1).
     const rad = [
@@ -315,18 +374,31 @@ test('dynamicMetrics: a game not in the store, or with no hero, throws', () => {
     assert.throws(() => metricsOf(game([], [{ ev: 'lua_error', t: 5, pid: 0 }])), /no hero with a team and a snapshot/);
 });
 
-// World events (slice 23).
+// World events (slice 23), through the log store (@dynamic_world).
 const ev = (name, t, f) => ({ ev: name, t, ...f });
 
+/** worldMetrics of the game through the log store, with `role` pid -> position. */
+function worldOf(g, role = {}) {
+    const { store, file } = stored(g);
+    try {
+        return D.worldMetrics(store, file, 1, D.heroes(store, file, 1), role);
+    } finally {
+        store.db.close();
+    }
+}
+
 test('world metrics: rune shares by the mid, sentries, smokes merged, events absent read undefined', () => {
-    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 800), bot(2, 2, () => ({ p: BOT }), 0, 800), bot(6, 3, () => ({ p: [6000, 6000] }), 0, 800)]));
+    const bots = [bot(1, 2, () => ({ p: MID }), 0, 800), bot(2, 2, () => ({ p: BOT }), 0, 800), bot(6, 3, () => ({ p: [6000, 6000] }), 0, 800)];
     const role = { 1: 2, 2: 4, 6: 2 };
     const events = [
         ev('rune_pickup', 120, { pid: 1, team: 2, kind: 'water' }),
         ev('rune_pickup', 240, { pid: 2, team: 2, kind: 'water' }),
         ev('rune_pickup', 360, { pid: 1, team: 2, kind: 'power' }),
+        ev('rune_pickup', 370, { pid: 1, team: 2, kind: 'bounty' }),
         ev('ward_place', 50, { pid: 2, team: 2, kind: 'sentry' }),
         ev('ward_place', 40, { pid: 2, team: 2, kind: 'obs' }),
+        ev('ward_place', 95, { pid: 6, team: 3, kind: 'sentry' }),
+        ev('ward_place', 60, { pid: 2, team: 2, kind: 'sentry' }),
         ev('smoke_use', 500, { pid: 1, team: 2 }),
         ev('smoke_use', 501, { pid: 2, team: 2 }),
         ev('smoke_use', 600, { pid: 1, team: 2 }),
@@ -334,31 +406,50 @@ test('world metrics: rune shares by the mid, sentries, smokes merged, events abs
         ev('smoke_use', 604, { pid: 1, team: 2 }),
         ev('smoke_use', -50, { pid: 1, team: 2 }),
     ];
-    const m = D.worldMetrics(game([], events), S, role, [], 800);
+    const m = worldOf(game(bots, events), role);
     assert.strictEqual(m.mid_water_rune_pct[2], 0.5);
     assert.strictEqual(m.mid_power_rune_pct[2], 1);
     assert.strictEqual(m.mid_power_rune_pct[3], undefined);
     assert.strictEqual(m.power_rune_pickups[2], 1);
-    assert.strictEqual(m.first_sentry_time.r4, 50);
-    assert.deepStrictEqual(m.sentry_by_90s, { 2: 1, 3: 0 });
+    assert.deepStrictEqual(m.first_sentry_time, { r4: 50 }, "the support's first sentry; pid 6 (role 2) is no support");
+    assert.deepStrictEqual(m.sentry_by_90s, { 2: 1, 3: 0 }, 'a sentry at 1:35 is not by 1:30');
     // 500/501 one group; 600/602 one group; 604 is 4 s after its group's first, so a new one; the pregame smoke is not counted.
-    assert.strictEqual(m.smoke_uses_per_team[2], 3);
-    const none = D.worldMetrics(game([], []), S, role, [], 800);
+    assert.deepStrictEqual(m.smoke_uses_per_team, { 2: 3, 3: 0 });
+    const none = worldOf(game(bots, []), role);
     assert.strictEqual(none.mid_power_rune_pct, undefined);
+    assert.strictEqual(none.first_sentry_time, undefined);
     assert.strictEqual(none.first_t1_time, undefined);
+    assert.strictEqual(none.towers_after_roshan_240, undefined);
 });
 
 test('world metrics: tp joins need distance, the 10:00-30:00 window and an ally at the landing', () => {
-    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 1900), bot(2, 2, () => ({ p: BOT }), 0, 1900)]));
-    const tp = (t, x, y, d) => ev('tp', t, { pid: 2, team: 2, x, y, dist: d });
-    const events = [tp(700, MID[0] + 300, MID[1], 5000), tp(800, MID[0], MID[1], 500), tp(500, MID[0], MID[1], 5000), tp(900, 6000, 6000, 5000)];
-    assert.strictEqual(D.worldMetrics(game([], events), S, {}, [], 1900).tp_joins_per_team_ev[2], 1);
+    const bots = [bot(1, 2, () => ({ p: MID }), 0, 1900), bot(2, 2, () => ({ p: BOT }), 0, 1900)];
+    const tp = (t, x, y, d, pid = 2) => ev('tp', t, { pid, team: 2, x, y, dist: d });
+    const joins = events => worldOf(game(bots, events)).tp_joins_per_team_ev[2];
+    assert.strictEqual(joins([tp(700, MID[0] + 300, MID[1], 5000), tp(800, MID[0], MID[1], 500), tp(500, MID[0], MID[1], 5000), tp(900, 6000, 6000, 5000)]), 1);
+    assert.strictEqual(joins([tp(700, MID[0] + 1201, MID[1], 5000)]), 0, 'landing 1201 from the ally');
+    assert.strictEqual(joins([tp(1800, MID[0], MID[1], 5000)]), 0, '30:00 is outside the window');
+    assert.strictEqual(joins([tp(700, MID[0], MID[1], 5000, 1)]), 0, 'the hero itself is no ally');
+    // Ally 3 stands at the jungle spot only at `when` (alive or not), elsewhere far away.
+    const ally = (when, alive = true) => bot(3, 2, t => (t === when ? { p: JUNGLE, alive } : { p: [6000, 6000] }), 0, 1900);
+    const at = (when, events, alive) => worldOf(game([...bots, ally(when, alive)], events)).tp_joins_per_team_ev[2];
+    assert.strictEqual(at(701, [tp(700.4, ...JUNGLE, 5000)]), 1, 'an ally there the second after counts');
+    assert.strictEqual(at(699, [tp(700.4, ...JUNGLE, 5000)]), 1, 'and the second before');
+    assert.strictEqual(at(702, [tp(700.4, ...JUNGLE, 5000)]), 0, 'two seconds after does not');
+    assert.strictEqual(at(700, [tp(700.4, ...JUNGLE, 5000)], false), 0, 'a dead ally does not');
+    assert.strictEqual(at(700, [ev('tp', 700.4, { pid: 2, team: 2, x: JUNGLE[0], y: JUNGLE[1] })]), 1, 'a tp with no dist is not a cancelled one');
 });
 
+/** A Dire bot standing at [6000, 6000] to `to` that dies (no snapshots for 30 s) at each time in `dies`. */
+const direDies = (pid, dies, to = 2000) =>
+    bot(pid, 3, t => {
+        if (dies.some(d => t > d && t < d + 30)) return null;
+        return { p: [6000, 6000], deaths: dies.filter(d => t >= d + 30).length };
+    }, 0, to);
+
 test('world metrics: first T1, cash-in after a 3+ kill burst, Roshan de-duplicated and followed by a tower', () => {
-    const S = D.series(game([bot(1, 2, () => ({ p: MID }), 0, 2000)]));
     // Radiant kills three Dire heroes at 900-920; a Dire tower falls at 1000 (cash-in). A later burst at 1500 has no tower.
-    const deaths = [900, 910, 920].map(t => ({ t, team: 3 })).concat([1500, 1505, 1510].map(t => ({ t, team: 3 })));
+    const bots = [bot(1, 2, () => ({ p: MID }), 0, 2000), direDies(6, [900, 1500]), direDies(7, [910, 1505]), direDies(8, [920, 1510])];
     const events = [
         ev('building_fall', 700, { team: 2, kind: 'tower', tier: 2 }),
         ev('building_fall', 650, { team: 3, kind: 'tower', tier: 1 }),
@@ -368,46 +459,56 @@ test('world metrics: first T1, cash-in after a 3+ kill burst, Roshan de-duplicat
         ev('aegis', 1203, { pid: 1, team: 2 }),
         ev('building_fall', 1300, { team: 2, kind: 'rax', id: 1 }),
         ev('building_fall', 1400, { team: 3, kind: 'tower', tier: 3 }),
+        ev('roshan_kill', 1700, { team: 2, at: 1699 }), // a second kill, followed by no fall
+        ev('roshan_kill', 1900, { team: 2, at: 1899 }), // under 240 s before the end (1980): not judged
+        ev('building_fall', 1950, { team: 3, kind: 'tower', tier: 3 }),
     ];
-    const m = D.worldMetrics(game([], events), S, {}, deaths, 2000);
+    const m = worldOf(game(bots, events));
     assert.strictEqual(m.first_t1_time, 650);
     assert.strictEqual(m.cash_in_kills_pct[2], 0.5);
     assert.strictEqual(m.cash_in_kills_pct[3], undefined);
     assert.strictEqual(m.first_roshan_time, 1200);
-    // The Radiant aegis team's own rax at 1300 does not count; the Dire tower at 1400 does.
-    assert.strictEqual(m.towers_after_roshan_240, 1);
+    // Two kills (1200 and 1200.2 share `at`): the Radiant aegis team's own rax at 1300 does not count, the Dire tower at 1400
+    // does; the kill at 1700 is followed by nothing.
+    assert.strictEqual(m.towers_after_roshan_240, 0.5);
+    // Without the Dire tower only the aegis team's own rax falls: the kill is not followed up.
+    assert.strictEqual(worldOf(game(bots, events.filter(e => e.t !== 1400))).towers_after_roshan_240, 0);
+    // With no aegis logged, any fall counts (the rax at 1300).
+    assert.strictEqual(worldOf(game(bots, events.filter(e => e.t !== 1400 && e.ev !== 'aegis'))).towers_after_roshan_240, 0.5);
+    // An aegis 31 s after the kill names no one, so the rax counts again; of two aegis lines the first names the killers.
+    const noTower = events.filter(e => e.t !== 1400 && e.ev !== 'aegis');
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1231, { pid: 1, team: 2 })])).towers_after_roshan_240, 0.5);
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1203, { pid: 6, team: 3 }), ev('aegis', 1204, { pid: 1, team: 2 })])).towers_after_roshan_240, 0.5);
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1203, { pid: 1, team: 2 }), ev('aegis', 1204, { pid: 6, team: 3 })])).towers_after_roshan_240, 0);
+});
+
+test('world metrics: three deaths at one second are one burst; 16 s apart they are not', () => {
+    const fall = ev('building_fall', 1000, { team: 3, kind: 'tower', tier: 2 });
+    const cash = (dies, f = fall) => worldOf(game([bot(1, 2, () => ({ p: MID }), 0, 2000), ...dies.map((d, i) => direDies(6 + i, [d]))], [f])).cash_in_kills_pct[2];
+    assert.strictEqual(cash([900, 900, 900]), 1);
+    assert.strictEqual(cash([900, 916, 932]), undefined, 'no burst');
+    assert.strictEqual(cash([900, 905]), undefined, 'two deaths are no burst');
+    assert.strictEqual(cash([900, 900, 900], { ...fall, t: 1020 }), 1, 'a fall 120 s after the burst cashes in');
+    assert.strictEqual(cash([900, 900, 900], { ...fall, t: 1021 }), 0, '121 s is too late');
+    assert.strictEqual(cash([1900, 1900, 1900], { ...fall, t: 1950 }), undefined, 'a burst under 120 s before the end (1980) is not judged');
 });
 
 test('wisdom proxy: a hero 3 s within 300 of the shrine by fill + 15 s takes it', () => {
     const SH = [-7948, 768];
     // Takes the 7:00 fill at 7:10-7:13; reaches the 14:00 fill at 14:20 (too late).
     const at = t => ({ p: (t >= 430 && t < 433) || (t >= 860 && t < 870) ? [SH[0] + 100, SH[1]] : TOP });
-    const S = D.series(game([bot(1, 2, at, 0, 900)]));
-    assert.strictEqual(D.wisdom(S, 2, 900), 0.5);
-    assert.strictEqual(D.wisdom(S, 2, 400), undefined);
-});
-
-test('auditedSteals: a support last hit counts when a logged core was attacking the creep or within range + 150', () => {
-    const S = D.series(game([bot(0, 2, () => ({ p: BOT })), bot(3, 2, () => ({ p: BOT }))]));
-    S[3].sec[100].mode = 'laning';
-    const lpos = { 0: 1, 3: 5 };
-    const death = (t, by, f) => ({ ev: 'creep_death', t, team: 2, kind: 'melee', by, ...f });
-    const events = [
-        death(100.2, 3, { p1d: 300, p1r: 150 }), // in range + 150: counted, with the support's mode
-        death(110, 3, { p1d: 900, p1r: 150, p1t: 1 }), // attacking: counted
-        death(120, 3, { p1d: 301, p1r: 150 }), // just beyond: not
-        death(130, 3, {}), // no core logged: not
-        death(140, 0, { p1d: 50, p1r: 150 }), // the core's own last hit: not
-        death(610, 3, { p1d: 50, p1r: 150 }), // after until: not
-    ];
-    const cases = D.auditedSteals({ events }, S, lpos, 600);
-    assert.deepStrictEqual(cases.map(c => c.t), [100.2, 110]);
-    assert.strictEqual(cases[0].mode, 'laning');
-    assert.deepStrictEqual(cases[1].cores, [{ core: 1, d: 900, r: 150, attacking: true }]);
-    const swung = D.auditedSteals({ events: [death(100.2, 3, { p1d: 300, p1r: 150, bm: 'attack', bs: 0.4 })] }, S, lpos, 600);
-    assert.deepStrictEqual([swung[0].mode, swung[0].snapMode, swung[0].swing], ['attack', 'laning', 0.4], 'bm (swing-start mode) wins over the snapshot');
-    assert.strictEqual(D.auditedSteals({ events: [] }, S, lpos, 600), undefined, 'no ev=creep_death: undefined, not 0');
-    assert.strictEqual(D.auditedSteals({ events }, S, {}, 600), undefined, 'no lineup positions: undefined');
+    assert.deepStrictEqual(worldOf(game([bot(1, 2, at, 0, 900)])).wisdom_rune_taken_within_15s, { 2: 0.5, 3: 0 });
+    // 2 s at the shrine is not a take.
+    const short = t => ({ p: t >= 430 && t < 432 ? [SH[0] + 100, SH[1]] : TOP });
+    assert.strictEqual(worldOf(game([bot(1, 2, short, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);
+    // A dead hero at the shrine takes nothing.
+    const dead = t => ({ p: t >= 430 && t < 433 ? [SH[0] + 100, SH[1]] : TOP, alive: !(t >= 430 && t < 433) });
+    assert.strictEqual(worldOf(game([bot(1, 2, dead, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);
+    // Three seconds with a gap between them are not a channel.
+    const gap = t => ({ p: [430, 432, 434].includes(t) ? [SH[0] + 100, SH[1]] : TOP });
+    assert.strictEqual(worldOf(game([bot(1, 2, gap, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);
+    // A game ending before 7:15 has no fill to take.
+    assert.deepStrictEqual(worldOf(game([bot(1, 2, at, 0, 400)])).wisdom_rune_taken_within_15s, { 2: undefined, 3: undefined });
 });
 
 /** stackAttempts of a log holding only the given ev=stack lines, through the log store. */

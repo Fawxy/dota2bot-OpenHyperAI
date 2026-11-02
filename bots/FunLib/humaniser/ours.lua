@@ -40,6 +40,7 @@ Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.DEFAULTS = {
     LeaveCoreCreep = true,
     StackExecute = true,
+    DoubleStack = true,
     CoreLastHit = true,
     CoreLastHitDire = true,
     SupportDeny = true,

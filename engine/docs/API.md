@@ -9,7 +9,7 @@ with no OHA code left, and the SDK holds only the kernel, engine facts (each cit
 `CLAUDE.md` hard rule 3). Nothing below is removed by this note; the sections stay accurate until their replacement lands.
 Slice 0b (29/10/2026) moved this package into the bot repo as `engine/`, moved the job verbs (with `campNeutral`, `aggroLead`,
 `runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Slice 5a moved the `nextLastHit` biases to bot
-code (`laneTargets` returns the facts; `laneFarm` takes `pick`). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
+code (`laneTargets` returns the facts; `laneFarm` takes `pick`). The debt row `phase-removal` (02/11/2026) removed `States.SetPrior` (no consumer after `Phase` was deleted). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
 incoming damage (2.2), per-patch camp and rune data. Jitter stays in `Skill`. Public verbs and facts will get contracts under
 `docs/contracts/`. Where this document names OHA files or values (the friction table, the Adapter table, the job verbs), read them
 as the current host's source, not as SDK vocabulary.
@@ -187,7 +187,7 @@ Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (
 | `SimpleHost.install/desire/think/onEnd/wrapMode/body/SetEnabled/ClaimOf` | standalone host |
 | `init`, `Supported` | adapter injection, coroutine probe |
 | `Verbs.holdAt` / `ctx.holdAt` | posture verb: keep near a moving point (tolerance, repath cadence + jitter, scatter, `hold` tag); never ends ok; scattered spots are built by the adapter's optional `vector(x, y, z)`. `step: [min, max]` makes each new spot an idle step of that length from the bot (kept within `scatter` of the point); `follow` (default tolerance/2) is how far the point must move to force a new spot before `repath` |
-| `States.define/configure/SetOwned/SetPrior/Tick/Step/Current/Forget` | behaviour states (below) |
+| `States.define/configure/SetOwned/Tick/Step/Current/Forget` | behaviour states (below) |
 
 ## Behaviour states (`States`, team slice 1)
 A bot has at most one state; each is `{ name, kind: "posture"|"job", host, floor?, tier?, preemptAfter?,
@@ -202,9 +202,7 @@ read at every selection) runs its body as task `state:<name>` on `host` (floor 0
 has withdrawn it is left at once (`why=n/a`). It never replaces another task. `States.Step(bot, host)` from the
 host's Think. Events through the adapter's optional `event(name, fields)` (else `log`): `state` (pid from to
 score owned why=start|best|n/a|break|ended|own|disown), `state_start` (pid state n gap after), `state_task`
-(pid state result reason msg label steps). `States.SetPrior(fn(bot, state, raw))` multiplies/replaces every raw
-score before stickiness and the job-break check (no consumer since `Phase` was deleted in slice 0b); a failing prior is
-logged, the raw score kept.
+(pid state result reason msg label steps).
 
 ## In-game checks outstanding
 Verified on 23/10/2026 (match 9057344728, OHA O2 stack task): bundle loads, a task's claim wins its host

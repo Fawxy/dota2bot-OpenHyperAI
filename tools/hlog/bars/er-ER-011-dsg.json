@@ -1,0 +1,9 @@
+{
+ "schema": "er-spec/1",
+ "build": "6408710",
+ "until": "12:10",
+ "bars": [
+  { "id": "S2a deaths during the job (5v5)", "metric": "stack_deaths", "rule": "each", "eq": 0 },
+  { "id": "H1 lua_ours (5v5)", "metric": "lua_ours", "rule": "each", "max": 0 }
+ ]
+}
