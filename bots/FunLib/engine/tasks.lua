@@ -2281,6 +2281,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     if opts == nil then
         opts = {}
     end
+    local dropped
     local near = opts.near or 600
     local far = opts.far or 1200
     local leash = opts.leash or 900
@@ -2345,13 +2346,17 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
             ____temp_6 = nil
         end
         target = ____temp_6
-        return target ~= nil
+        if target == nil and opts.dropLost then
+            dropped = true
+        end
+        return target ~= nil or dropped
     end
+    dropped = false
     local atSpot = false
     local passAt
     while true do
         do
-            local __continue22
+            local __continue23
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2396,12 +2401,13 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     if target == nil then
                         local d = spot() ~= nil and away() or nil
                         atSpot = d ~= nil and d <= (atSpot and far or near)
-                        __continue22 = true
+                        __continue23 = true
                         break
                     end
                 end
                 local t = target
                 target = nil
+                dropped = false
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
                 local ____t_creep_10 = t.creep
@@ -2416,8 +2422,8 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     interruptIf = function() return stop() or away() > leash or retarget(t) end
                 }
                 local res = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
-                if target ~= nil and res.reason == "interrupted" then
-                    res.message = (res.message or "") .. " sw=1"
+                if res.reason == "interrupted" and (target ~= nil or dropped) then
+                    res.message = ((res.message or "") .. " sw=") .. tostring(target ~= nil and 1 or 0)
                 end
                 if opts.onAttempt ~= nil then
                     opts.onAttempt(t, res, contested)
@@ -2425,9 +2431,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue22 = true
+                __continue23 = true
             until true
-            if not __continue22 then
+            if not __continue23 then
                 break
             end
         end
@@ -2929,12 +2935,6 @@ function ____exports.Forget(bot)
     cancelOurs(bot, s, "forgotten")
     bots[bot:GetPlayerID()] = nil
 end
-local priorFn
---- A prior on every raw score (e.g. a team-phase bias), applied before stickiness and the job-break check; undefined
--- from it makes the state not applicable. A failing prior is logged and the raw score used. Nil removes it.
-function ____exports.SetPrior(fn)
-    priorFn = fn
-end
 local function scoreOf(bot, spec)
     local ok, v = pcall(function() return spec.score(bot) end)
     if not ok then
@@ -2946,21 +2946,6 @@ local function scoreOf(bot, spec)
             )
         end
         return nil
-    end
-    local prior = priorFn
-    if v == nil or prior == nil then
-        return v
-    end
-    local pok, pv = pcall(function() return prior(bot, spec.name, v) end)
-    if pok then
-        return pv
-    end
-    local ____opt_2 = getAdapter()
-    if ____opt_2 ~= nil then
-        ____opt_2.log(
-            "states",
-            (("prior " .. spec.name) .. " error: ") .. tostring(pv)
-        )
     end
     return v
 end
@@ -3001,19 +2986,19 @@ local function select(bot, s, now)
     local curRaw
     for ____, spec in ipairs(s.specs) do
         do
-            local __continue32
+            local __continue28
             repeat
                 if (s.cooldownUntil[spec.name] or -math.huge) > now then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 if spec == cur and s.jobEnded then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 local raw = scoreOf(bot, spec)
                 if raw == nil then
-                    __continue32 = true
+                    __continue28 = true
                     break
                 end
                 if spec == cur then
@@ -3025,9 +3010,9 @@ local function select(bot, s, now)
                     best = spec
                     bestRaw = raw
                 end
-                __continue32 = true
+                __continue28 = true
             until true
-            if not __continue32 then
+            if not __continue28 then
                 break
             end
         end
@@ -3174,9 +3159,9 @@ local function maybeStart(bot, s, now)
                     r,
                     info
                 )
-                local ____opt_10 = spec.onEnd
-                if ____opt_10 ~= nil then
-                    ____opt_10(r, info)
+                local ____opt_8 = spec.onEnd
+                if ____opt_8 ~= nil then
+                    ____opt_8(r, info)
                 end
             end
         },

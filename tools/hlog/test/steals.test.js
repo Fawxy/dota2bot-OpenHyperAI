@@ -103,29 +103,27 @@ test('steals: a log with two games reads one game at a time; an unknown game thr
     assert.throws(() => run(two, 600, 3), /not in the store/);
 });
 
-test('steals: the query equals dynamic.js auditedSteals on a parsed log', () => {
+test("steals: dynamicMetrics carries the query's cases, and its lpos trust rule agrees with the query's lineup", () => {
     const text = log([
         [100.2, 'by=5 p1d=300 p1r=150 bm=attack bs=0.4'], [110, 'by=4 p1d=900 p1r=150 p1t=1'], [120, 'by=5 p1d=301 p1r=150'],
         [130, 'by=5'], [140, 'by=1 p1d=50 p1r=150'], [170, 'by=4 p2d=100 p2r=150 p3d=900 p3r=150 p3t=0'], [610, 'by=5 p1d=50 p1r=150'],
     ]);
-    const { parseLog } = require('../parse');
-    const strip = o => JSON.parse(JSON.stringify(o));
-    /** dynamicMetrics' lpos and the series for the log text, through an in-memory store as nf.js reads it. */
-    const lposOf = t => {
+    /** dynamicMetrics for the log text, through an in-memory store as nf.js reads it. */
+    const metrics = t => {
         const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-steals-')), 'a.log');
         fs.writeFileSync(f, t + '\n');
         const s = new Store(':memory:');
         s.ingest(f);
         s.refreshViews();
-        const out = { lpos: D.dynamicMetrics(s, f, 1).lpos, S: D.heroSeries(s, f, 1) };
+        const out = D.dynamicMetrics(s, f, 1);
         s.db.close();
         return out;
     };
-    const want = (t, until = 600) => { const { lpos, S } = lposOf(t); return D.auditedSteals(parseLog(t)[0], S, lpos, until); };
-    assert.ok(want(text).length > 0);
-    assert.deepStrictEqual(strip(run(text)), strip(want(text)));
-    // The lineup trust rule too: dynamicMetrics' lpos and the query's lineup agree on a team that is not trusted.
+    const m = metrics(text);
+    assert.ok(m.audited_steals.length > 0);
+    assert.deepStrictEqual(m.audited_steals, run(text));
+    // A team that is not trusted: no lpos keys in dynamicMetrics, and the query finds no lineup.
     const four = log([[100, 'by=5 p1d=100 p1r=150']], { drop: 2 });
-    assert.strictEqual(want(four), undefined);
-    assert.strictEqual(run(four), undefined);
+    const m4 = metrics(four);
+    assert.deepStrictEqual([Object.keys(m4.lpos).length, m4.audited_steals, run(four)], [0, undefined, undefined]);
 });

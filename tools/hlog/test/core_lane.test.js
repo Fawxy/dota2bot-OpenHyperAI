@@ -100,3 +100,16 @@ test('economy: share and not_in_share are numbers once the team logs own-side cr
     assert.ok(o.share_r >= 0 && o.share_r <= 1);
     assert.strictEqual(typeof o.not_in_share_r, 'number');
 });
+
+test('supports: per-team costs at 10:00 and their denies in the economy keys (slice l1-support-deny)', () => {
+    const sup = [line(0, 'bot pid=4 hero=h4 team=2 pos=5')];
+    for (let t = 1; t <= 650; t += 10) {
+        sup.push(line(t, `snap pid=4 x=${BOT[0]} y=${BOT[1]} alive=1 lh=${t < 600 ? 2 : 8} dn=${t < 600 ? 6 : 12} lvl=${t < 600 ? 4 : 6} deaths=${t < 600 ? 2 : 5}`));
+    }
+    const o = run(log(sup));
+    assert.deepStrictEqual([o.dn_at_10_lpos5_r, o.lvl_at_10_lpos5_r, o.deaths_at_10_lpos5_r], [6, 4, 2]);
+    assert.strictEqual(o.lvl_at_10_lpos5_d, undefined, 'no Dire pos 5: undefined, not 0');
+    assert.strictEqual(o.dn_at_10_lpos5, undefined, 'supports have no two-team mean key');
+    const e = runEconomy(log(sup));
+    assert.deepStrictEqual([e.sup_lh_r, e.sup_dn_r, e.core_dn_r], [2, 6, 4], 'the pos 5 counts as a support, not a core');
+});

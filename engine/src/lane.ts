@@ -28,6 +28,12 @@ export interface LaneFarmOpts {
      * and go for that one. Default false: an attempt waits for its creep up to its eta + 1.5 s.
      */
     retarget?: boolean;
+    /**
+     * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
+     * has nothing else, instead of waiting out its eta + 1.5 s. A creep drops out of the offers when the others' damage
+     * will kill it before a swing ordered now lands. Default false.
+     */
+    dropLost?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;
@@ -89,8 +95,10 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         // Handle identity holds across scans in game (contract laneFarm, evidence: ER-008 re-run s5c).
         for (const o of offered) if (o.creep === current.creep) return false;
         target = offered.length > 0 ? opts.pick(offered) : undefined;
-        return target !== undefined;
+        if (target === undefined && opts.dropLost) dropped = true;
+        return target !== undefined || dropped;
     };
+    let dropped = false;
     let atSpot = false;
     let passAt: number | undefined;
     while (true) {
@@ -121,6 +129,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         }
         const t = target;
         target = undefined;
+        dropped = false;
         const contested = enemyHeroNear(bot, opts.contestRadius ?? 1000);
         label(t.kind);
         const o: LastHitOpts = {
@@ -131,7 +140,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             interruptIf: () => stop() || away() > leash || retarget(t),
         };
         const res = t.kind === "lasthit" ? yield* lastHit(bot, o) : yield* deny(bot, o);
-        if (target !== undefined && res.reason === "interrupted") res.message = `${res.message ?? ""} sw=1`;
+        if (res.reason === "interrupted" && (target !== undefined || dropped)) res.message = `${res.message ?? ""} sw=${target !== undefined ? 1 : 0}`;
         if (opts.onAttempt !== undefined) opts.onAttempt(t, res, contested);
         if (res.reason === "dead") return res;
     }

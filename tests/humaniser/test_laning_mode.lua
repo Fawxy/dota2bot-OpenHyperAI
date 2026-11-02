@@ -130,6 +130,46 @@ do
 	check("a killable creep out of attack range reads as soon, not kill", bot.preThinkLastHit == "soon", tostring(bot.preThinkLastHit))
 end
 
+-- Ours.SupportDeny (slice l1-support-deny): the support's own lane steps run before every OHA step, and while the laning
+-- body owns the support's denies OHA's DenyThink stands aside; its last hit stays OHA's.
+do
+	local e = creep({ hp = 40, loc = Vector(100, 0) })
+	local bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { e }, supportStep = true })
+	GetDesire()
+	Think()
+	check("support step: it acts and no OHA step issues an order", bot.supportStepped == true and #bot.actions == 0, #bot.actions)
+	local own = creep({ hp = 40, loc = Vector(100, 0), team = 2 })
+	bot = load({ pos = 5, owned = true, ours = true, allyCreeps = { own }, bodyDenies = true })
+	GetDesire()
+	Think()
+	local hit = false
+	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == own then hit = true end end
+	check("body owns denies: OHA's DenyThink does not swing at the own creep", not hit)
+	bot = load({ pos = 5, owned = true, ours = true, allyCreeps = { own }, bodyDenies = false })
+	GetDesire()
+	Think()
+	hit = false
+	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == own then hit = true end end
+	check("body off: OHA's DenyThink still denies", hit)
+	local free = creep({ hp = 40, loc = Vector(100, 0) })
+	bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { free }, bodyDenies = true })
+	GetDesire()
+	Think()
+	hit = false
+	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == free then hit = true end end
+	check("body owns denies: the support's last hit with no core near stays OHA's", hit)
+	-- Core-time diagnosis (02/11/2026): the body's hold cancels a hero's own attacks, so a deny-only support keeps OHA's
+	-- positioning: the frame ends in PositionThink and the body is not stepped, even where it would act.
+	bot = load({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })
+	GetDesire()
+	Think()
+	check("body owns denies: OHA's PositionThink keeps the support's position", (bot.bodySteps or 0) == 0 and last(bot) ~= nil and last(bot).name == "MoveToLocation", bot.bodySteps)
+	bot = load({ pos = 1, owned = true, stepActs = true })
+	GetDesire()
+	Think()
+	check("not deny-only: the body's step still replaces PositionThink", bot.bodySteps == 1 and #bot.actions == 0, #bot.actions)
+end
+
 -- Ours.LeaveCoreCreep (slice 3): the switch alone makes a support own this Think(); off, it is Valve's (OHA) as before.
 do
 	LaningLoad({ pos = 5, ours = false })

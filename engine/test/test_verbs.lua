@@ -152,7 +152,8 @@ end
 -- lastHit --------------------------------------------------------------------
 
 do
-    local sim = world()
+    -- Seeded: the swing's skill roll is random, and the lead bound below holds for most rolls, not all.
+    local sim = world({ random = Sim.lcg(7) })
     local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 60, attackPoint = 0.3, speed = 300 }
     local creep = sim:addCreep{ x = 400, y = 0, hp = 300, drain = 100 }
     sim:addCreep{ x = 100, y = 0, hp = 900 } -- higher health; must not be picked

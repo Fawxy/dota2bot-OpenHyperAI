@@ -66,6 +66,24 @@ export function Options(bot: Lib.TaskUnit): LuaMultiReturn<[number | undefined, 
 }
 
 /**
+ * A support's pick (slice l1-support-deny, user rule 02/11/2026): denies only, the reachable one with the earliest eta (ranged
+ * bias as Choose); the last hits laneTargets offers are left to OHA's own last-hit step.
+ */
+export function ChooseDeny(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.LaneTarget | undefined {
+    let best: Lib.Verbs.LaneTarget | undefined;
+    let bestKey = Infinity;
+    for (const t of targets) {
+        if (t.kind !== "deny" || (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies)) continue;
+        const key = t.eta - (t.ranged ? RANGED_BIAS : 0);
+        if (key < bestKey) {
+            bestKey = key;
+            best = t;
+        }
+    }
+    return best;
+}
+
+/**
  * What the laning body last did about last hits, per player, for the snapshot's `lf` field (slice 5, missed-bar step 1:
  * creeps dying in the core's range with no attempt near them had no cause in the log). Telemetry only.
  */

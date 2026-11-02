@@ -12,6 +12,8 @@ import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
+import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as SupportLane from "bots/FunLib/humaniser/states/support_lane";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
@@ -67,14 +69,15 @@ function ownsAny(): boolean {
 
 /** Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think). */
 export function MayOwn(bot: Unit): boolean {
-    return IsEnabled() && ((ownTeam(bot) && ownsAny()) || CoreLastHit.Applies(bot));
+    return IsEnabled() && ((ownTeam(bot) && ownsAny()) || CoreLastHit.Applies(bot) || SupportDeny.Applies(bot));
 }
 
 // Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
 // Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
-    // Ours.CoreLastHit owns laning for pos1-3 (both teams unless Ours.CoreLastHitDire is false); MayOwn gives those bots this file's Lua Think.
-    if (state === Laning.NAME && CoreLastHit.Applies(bot)) return true;
+    // Ours.CoreLastHit owns laning for pos1-3 (both teams unless Ours.CoreLastHitDire is false), Ours.SupportDeny for pos4-5;
+    // MayOwn gives those bots this file's Lua Think.
+    if (state === Laning.NAME && (CoreLastHit.Applies(bot) || SupportDeny.Applies(bot))) return true;
     if (!ownTeam(bot)) return false;
     const list = ownList(state);
     if (list === undefined) return false;
@@ -166,7 +169,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
     if (!IsEnabled()) return;
-    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot)) return;
+    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot) && !SupportDeny.Applies(bot)) return;
     const l = lib();
     if (l === undefined) return;
     const pid = bot.GetPlayerID();
@@ -241,6 +244,30 @@ export function BodyBusy(bot: Unit): boolean {
     if (!BodyLastHits(bot)) return false;
     const label = Tasks.Current(bot)?.label;
     return label === "lasthit" || label === "deny";
+}
+
+function laningRunning(bot: Unit): boolean {
+    const cur = Tasks.Loaded()?.States.Current(bot as unknown as Lib.TaskUnit);
+    return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
+}
+
+/** True while the laning body runs for this bot and owns its denies only (Ours.SupportDeny): the Lua Think skips DenyThink. */
+export function BodyDenies(bot: Unit): boolean {
+    return IsEnabled() && Laning.OwnsDenyOnly(bot) && laningRunning(bot);
+}
+
+/**
+ * First thing in mode_laning_generic's Think for a support under our switches: the support's ordered lane steps
+ * (states/support_lane). True when one acted this frame.
+ */
+export function SupportStep(bot: Unit): boolean {
+    if (!IsEnabled() || !SupportLane.Applies(bot)) return false;
+    const acted = SupportLane.Step(bot, {
+        bodyRunning: () => laningRunning(bot),
+        bodyLabel: () => Tasks.Current(bot)?.label,
+        stepBody: () => Step(bot, BotMode.Laning),
+    });
+    return acted !== undefined;
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */

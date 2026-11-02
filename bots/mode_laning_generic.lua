@@ -351,6 +351,8 @@ if bOwnsThink then
 	function Think()
 		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
+		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, deny first) come before every step below.
+		if States.SupportStep(bot) then return end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 		if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
@@ -365,7 +367,7 @@ if bOwnsThink then
 		-- slice 4), it takes them and the denies itself in its Step below.
 		if not States.BodyLastHits(bot) then
 			if LastHitThink() then return end
-			if DenyThink() then return end
+			if not States.BodyDenies(bot) and DenyThink() then return end
 			if bHoldingForLastHit then
 				bot:Action_MoveToLocation(bot:GetLocation())
 				return
@@ -381,7 +383,9 @@ if bOwnsThink then
 			local_mode_laning_generic.Think()
 		end
 
-		if not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+		-- A support whose body owns only its denies keeps OHA's positioning: the body's hold would cancel its attacks on heroes
+		-- (docs/team/research/core-time-diagnosis.md), so the body is stepped only by its deny step above.
+		if States.BodyDenies(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 	end
 end
 

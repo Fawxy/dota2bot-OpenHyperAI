@@ -271,9 +271,12 @@ test('creep_guard: team and core last hits, denies and deaths at 10:00, and the 
     s.refreshViews();
     const r = s.query('SELECT * FROM creep_guard WHERE team = 2')[0];
     assert.deepStrictEqual([r.team_lh, r.team_dn, r.core_lh, r.core_dn, r.deaths, r.not_in_share], [13, 6, 10, 2, 3 + 2, 17]);
+    // the pos 5 (pid 7) is the support split; the pos 1 is not in it
+    assert.deepStrictEqual([r.sup_lh, r.sup_dn], [3, 4]);
     // pids 0 and 7 last seen at 590 (over 2.5 s before 10:00, game ran on): each still dead, +1 each
     const d = s.query('SELECT * FROM creep_guard WHERE team = 3')[0];
     assert.deepStrictEqual([d.team_lh, d.team_dn, d.core_lh, d.deaths, d.not_in_share], [13, 5, 11, 3, null], 'dire: human in the team columns only; pids 5 and 9 still dead at 10:00, pid 6 seen at 598; no share row');
+    assert.deepStrictEqual([d.sup_lh, d.sup_dn], [0, 0], 'dire: no lineup support, and the human is not counted as one');
 });
 
 test('creep_share: taken over (enemy creeps less enemy denies plus own creeps) per team, first 10:00 only', () => {

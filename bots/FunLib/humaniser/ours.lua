@@ -43,7 +43,9 @@ ____exports.DEFAULTS = {
     DoubleStack = true,
     JobChooser = true,
     CoreLastHit = true,
-    CoreLastHitDire = true
+    CoreLastHitDire = true,
+    SupportDeny = true,
+    SupportDenyDire = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
