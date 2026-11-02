@@ -284,6 +284,41 @@ test('dynamicMetrics: roles by last hits and home lane, deaths before 10:00, ste
     assert.strictEqual(m.lh_at_10.r1, 75);
 });
 
+test('ally steals: n defaults to 1, only before 10:00, the support and the core alive and within 700, per team', () => {
+    // Radiant as above: support 3 is 300 units from safe-lane core 1; support 4 stands 800 from off-lane core 2.
+    // Support 3 is dead 300-320; core 1 is dead 450-470 (both respawn in place with deaths=1).
+    const gone = (a, b) => t => t > a && t < b;
+    const rad = [
+        bot(0, 2, t => ({ p: MID, lh: Math.floor(t / 10) })),
+        bot(1, 2, t => (gone(450, 470)(t) ? null : { p: BOT, lh: Math.floor(t / 8), deaths: t >= 470 ? 1 : 0 })),
+        bot(2, 2, t => ({ p: TOP, lh: Math.floor(t / 20) })),
+        bot(3, 2, t => (gone(300, 320)(t) ? null : { p: [BOT[0] + 300, BOT[1]], lh: Math.floor(t / 60), deaths: t >= 320 ? 1 : 0 })),
+        bot(4, 2, t => ({ p: [TOP[0], TOP[1] + 800], lh: Math.floor(t / 100) })),
+    ];
+    // Dire: mid 5, safe (top) 6, off (bot) 7; support 8 next to core 6, support 9 alone.
+    const DT = [-128, 6016], DM = [524, 652], DB = [6269, -2240];
+    const dire = [
+        bot(5, 3, t => ({ p: DM, lh: Math.floor(t / 10) })),
+        bot(6, 3, t => ({ p: DT, lh: Math.floor(t / 8) })),
+        bot(7, 3, t => ({ p: DB, lh: Math.floor(t / 20) })),
+        bot(8, 3, t => ({ p: [DT[0] + 200, DT[1]], lh: Math.floor(t / 60) })),
+        bot(9, 3, t => ({ p: [DB[0], DB[1] + 2000], lh: Math.floor(t / 100) })),
+    ];
+    const lh = (t, pid, n) => ({ ev: 'lasthit', t, pid, ...(n === undefined ? {} : { n }) });
+    const events = [
+        lh(100, 3), lh(110, 3, 0), lh(120, 3, 3), lh(599.5, 3, 1), // 1 + 1 + 3 + 1
+        lh(600, 3, 1), // 10:00 is not before 10:00
+        lh(310, 3, 1), // the support is dead
+        lh(460, 3, 1), // the only core near is dead
+        lh(210, 4, 1), // core 800 away
+        lh(200, 1, 1), // a core's own last hit
+        lh(150, 8, 2), lh(160, 9, 1), // Dire: 2 next to its core, none alone
+    ];
+    const m = metricsOf(game([...rad, ...dire], events));
+    assert.deepStrictEqual([m.roles.r4, m.roles.r5, m.roles.d4, m.roles.d5], ['h3', 'h4', 'h8', 'h9']);
+    assert.deepStrictEqual(m.ally_creep_steals, { 2: 6, 3: 2 });
+});
+
 test('dynamicMetrics: lineup-position keys from ev=bot pos= sit beside the role keys; mismatches are counted', () => {
     // Behaviour roles: 0 mid (2), 1 safe (1), 2 off (3), 3 and 4 supports. The lineup swaps 1 and 2 (pos 3 and pos 1).
     const rad = [
