@@ -1,16 +1,15 @@
 // Dynamic-game metrics (GOALS O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
 // bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry, the encounter rule and the
 // rotation rule follow the replay moment index (research/replay-index/moments.js) so bot and replay moments compare.
-// Moving into the log store (docs/team/slices/retire-dynamic-a.md and retire-dynamic-b.md, parts A and B of three): the
-// per-second series, deaths, last hits at 10:00, home lanes, lineup positions, encounters, fights, idle episodes, the error
-// counts, rotations, lane exits, teleport joins and the last hits behind ally steals are the named queries `@dynamic_heroes`,
-// `@dynamic_game`, `@dynamic_deaths`, `@dynamic_series` and `@dynamic_lasthits` (rules in queries/fragments/hero_second.sql,
-// hero_death.sql and lane_label.sql). The world metrics and audited steals still read the parsed game's events here (part C).
+// Every metric reads the log store (docs/team/slices/retire-dynamic-a.md, -b.md and -c.md): the named queries `@dynamic_heroes`,
+// `@dynamic_game`, `@dynamic_lasthits`, `@dynamic_world`, `@steals` and `@stack_rows` (rules in queries/fragments/hero_second.sql,
+// hero_death.sql and lane_label.sql); `@dynamic_series` and `@dynamic_deaths` show the series and the deaths they build on.
+// Roles and the lineup trust check stay here. The constants `C` are the ones the queries' comments name.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { parseLog } = require('./parse');
+const { stealsFor } = require('./steals');
 
 const C = {
     R_AWARE: 1200, // heroes within this many units count as meeting
@@ -44,9 +43,6 @@ const C = {
     ROSH_FOLLOW: 240, // EC-014: tower within 240 s of Roshan
     AEGIS_AFTER: 30, // an aegis picked up this soon after a Roshan kill names the killing team
 };
-// mode_rune_generic's shrine spots (states/rotate.ts SHRINE).
-const SHRINE = { 2: [-7948, 768], 3: [8029, -1126] };
-
 // 7.41 tower and ancient positions from three validated pro replays (research/replay-index, extractor meta).
 const TOWERS = [
     [2, -3952, -6112], [2, -4640, -4144], [2, -6592, -3408], [2, -360, -6256], [2, 4860, -6379], [2, -3190, -2926],
@@ -99,21 +95,13 @@ function laneLabel(p) {
 const QUERIES = path.join(__dirname, 'queries');
 const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
 
-const at = (s, t) => s.sec[Math.floor(t)];
-const pos = snap => [snap.x, snap.y];
-const alive = snap => snap && snap.alive !== 0;
-
 /**
- * The heroes of one stored game (@dynamic_heroes) with their per-second series (@dynamic_series): pid -> { pid, hero, team,
- * lh10, home, rot10, lane_exit, tp_joins, ..., sec }, `sec[s]` = { x, y, alive, mode } from the latest snapshot at or before s
- * (alive 0 in a death gap). Fields the log lacks are undefined.
+ * The heroes of one stored game (@dynamic_heroes): pid -> { pid, hero, team, lpos, lh10, home, idle, rot10, lane_exit, tp_joins }.
+ * Fields the log lacks are undefined.
  */
-function heroSeries(store, file, gameNo = 1) {
-    const p = { file, game: gameNo };
+function heroes(store, file, gameNo = 1) {
     const und = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v ?? undefined]));
-    const S = Object.fromEntries(store.query(sqlOf('dynamic_heroes'), p).map(h => [h.pid, { ...und(h), sec: {} }]));
-    for (const r of store.query(sqlOf('dynamic_series'), p)) if (S[r.pid]) S[r.pid].sec[r.s] = und({ x: r.x, y: r.y, alive: r.alive, mode: r.mode });
-    return S;
+    return Object.fromEntries(store.query(sqlOf('dynamic_heroes'), { file, game: gameNo }).map(h => [h.pid, und(h)]));
 }
 
 /** Roles by behaviour (each hero's `lh10` and `home` from @dynamic_heroes): per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
@@ -137,30 +125,6 @@ function roles(S, warnings = []) {
     return out;
 }
 
-/**
- * Audited steals (slice 3, KR H.2) from ev=creep_death: a lane creep last-hit before `until` by an own pos4/pos5 (lineup
- * position) while an own core logged on it was attacking it (p<N>t=1) or within its attack range + AUDIT_BUF. One case per
- * creep, with the support's ev=snap mode. Undefined when the game has no ev=creep_death (older builds) or no lineup positions.
- */
-function auditedSteals(game, S, lpos, until) {
-    const deaths = game.events.filter(e => e.ev === 'creep_death');
-    if (!deaths.length || !Object.keys(lpos).length) return undefined;
-    const cases = [];
-    for (const d of deaths) {
-        if (d.t >= until || !(lpos[d.by] >= 4)) continue;
-        const cores = Object.keys(d).map(k => k.match(/^p(\d+)d$/)).filter(Boolean).map(m => Number(m[1]));
-        const why = cores
-            .map(c => ({ core: c, d: d[`p${c}d`], r: d[`p${c}r`], attacking: d[`p${c}t`] === 1 }))
-            .filter(c => c.attacking || c.d <= c.r + C.AUDIT_BUF);
-        if (!why.length) continue;
-        const snap = S[d.by] ? at(S[d.by], d.t) : undefined;
-        // The mode when the killing swing started (`bm`, logged from build after f5be4cb); else the last snapshot's.
-        const snapMode = snap ? snap.mode : undefined;
-        cases.push({ t: d.t, team: d.team, pid: d.by, pos: lpos[d.by], mode: d.bm !== undefined ? d.bm : snapMode, snapMode, swing: d.bs, kind: d.kind, cores: why });
-    }
-    return cases;
-}
-
 // The fields of an ev=stack attempt, in the order stacks.js --json has always printed them.
 const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'before', 'after', 'fresh', 'away', 'death',
     'vis', 'box59', 'pulled59', 'bot59', 'vis59', 'exit59', 'hitd', 'tgt2', 'tgt59', 'strict59',
@@ -182,22 +146,19 @@ function stackAttempts(store, file, gameNo = 1, until = Infinity) {
 
 /**
  * All dynamic metrics for one game of the log store (`file` as in games.file, already ingested). `end` is the last whole minute
- * of snapshots. `parsed` is that game from parseLog (read from `file` when omitted): the part-C metrics still read its events.
+ * of snapshots.
  */
-function dynamicMetrics(store, file, gameNo = 1, parsed) {
+function dynamicMetrics(store, file, gameNo = 1) {
     if (!store.query('SELECT 1 FROM games WHERE file = ? AND game = ?', file, gameNo).length) {
         throw new Error(`dynamicMetrics: ${file} game ${gameNo} is not in the store (the path must be absolute, as in games.file; ingest it first)`);
     }
     const p = { file, game: gameNo };
-    const S = heroSeries(store, file, gameNo);
+    const S = heroes(store, file, gameNo);
     if (!Object.keys(S).length) throw new Error(`dynamicMetrics: ${file} game ${gameNo} has no hero with a team and a snapshot`);
     const G = store.query(sqlOf('dynamic_game'), p)[0];
-    const game = parsed || parseLog(fs.readFileSync(file, 'utf8'))[gameNo - 1];
     const end = G.end;
     const warnings = [];
     const role = roles(S, warnings);
-    const deaths = [];
-    for (const d of store.query(sqlOf('dynamic_deaths'), p)) for (let k = 0; k < d.n; k++) deaths.push({ t: d.t, team: d.team });
     const team = t => Object.values(S).filter(s => s.team === t);
     const perTeam = f => ({ 2: f(team(2), 2), 3: f(team(3), 3) });
     const sum = (arr, f) => arr.reduce((a, s) => a + f(s), 0);
@@ -232,7 +193,8 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         core_lane_exit_time: byRole(s => (role[s.pid] === 1 || role[s.pid] === 3 ? s.lane_exit : undefined)),
         tp_joins_per_team: perTeam(ts => sum(ts, s => s.tp_joins)),
         ally_creep_steals: perTeam((ts, t) => sum(lasthits.filter(l => S[l.pid].team === t), l => l.n)),
-        audited_steals: auditedSteals(game, S, lpos, 600),
+        // Undefined when the game has no ev=creep_death or no trusted lineup (@steals applies the lpos rule above itself).
+        audited_steals: stealsFor(store, file, gameNo, 600),
         stacks: stackAttempts(store, file, gameNo, end + 1),
         idle_10s: sum(Object.values(S), s => s.idle),
         lua_error: G.lua_error_ours + G.console_lines,
@@ -247,102 +209,40 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? s.lane_exit : undefined)),
         role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
         // Lineup position where pos= is trusted (lpos), else the behavioural role.
-        ...worldMetrics(game, S, { ...role, ...lpos }, deaths, end),
+        ...worldMetrics(store, file, gameNo, S, { ...role, ...lpos }),
         warnings,
     };
 }
 
-/** World-event metrics (slice 23 definitions) from ev=rune_pickup, ward_place, smoke_use, tp, building_fall, roshan_kill and
- *  aegis, plus the shrine proxy from snapshots. Logs without these events give undefined counts (pre-slice-23 builds), except
- *  the snapshot-only wisdom proxy. */
-function worldMetrics(game, S, role, deaths, end) {
-    const of = ev => game.events.filter(e => e.ev === ev);
-    const has = ev => of(ev).length > 0;
-    const world = ['rune_pickup', 'ward_place', 'building_fall', 'tp'].some(has);
+/** World-event metrics (slice 23 definitions; the rules are in queries/dynamic_world.sql) for the heroes S of one stored game, with
+ *  `role` pid -> position. Logs without ev=rune_pickup, ward_place, building_fall or tp give undefined counts (pre-slice-23
+ *  builds), except the snapshot-only wisdom proxy. */
+function worldMetrics(store, file, gameNo, S, role) {
+    const rows = store.query(sqlOf('dynamic_world'), { file, game: gameNo });
+    const G = rows.find(r => r.kind === 'game');
+    const T = Object.fromEntries(rows.filter(r => r.kind === 'team').map(r => [r.team, r]));
+    const world = G.world === 1;
     const perTeam = f => (world ? { 2: f(2), 3: f(3) } : undefined);
-    const share = (xs, pred) => (xs.length ? xs.filter(pred).length / xs.length : undefined);
-    const isMid = e => role[e.pid] === 2;
-    const runes = (team, kind) => of('rune_pickup').filter(e => e.team === team && e.kind === kind);
-    const wards = of('ward_place');
-    const falls = of('building_fall').sort((a, b) => a.t - b.t);
-    const t1 = falls.find(e => e.kind === 'tower' && e.tier === 1);
-    // Roshan: both loggers report a kill; one kill per distinct kill time. Timed by log time t (within 1 s of the kill):
-    // the time base of GetRoshanKillTime (`at`) is unverified.
-    const roshans = [];
-    for (const e of of('roshan_kill').sort((a, b) => a.t - b.t)) if (!roshans.some(r => r.at === e.at)) roshans.push(e);
-    const aegis = of('aegis');
+    const frac = (n, of) => (of ? n / of : undefined);
+    const sum = xs => xs.reduce((a, r) => a + r.n, 0);
+    const runes = (team, kind) => rows.filter(r => r.kind === 'rune' && r.team === team && r.rune === kind);
+    const midShare = (team, kind) => frac(sum(runes(team, kind).filter(r => role[r.pid] === 2)), sum(runes(team, kind)));
+    const sentry = Object.fromEntries(rows.filter(r => r.kind === 'sentry').map(r => [r.pid, r.t]));
     const byRole = f => Object.fromEntries(Object.values(S).filter(s => role[s.pid] >= 4).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
     return {
-        mid_power_rune_pct: perTeam(t => share(runes(t, 'power'), isMid)),
-        mid_water_rune_pct: perTeam(t => share(runes(t, 'water'), isMid)),
-        power_rune_pickups: perTeam(t => runes(t, 'power').length),
-        wisdom_rune_taken_within_15s: { 2: wisdom(S, 2, end), 3: wisdom(S, 3, end) },
-        first_sentry_time: world ? byRole(s => wards.find(e => e.kind === 'sentry' && e.pid === s.pid)?.t) : undefined,
-        sentry_by_90s: perTeam(t => (wards.some(e => e.kind === 'sentry' && e.team === t && e.t <= C.SENTRY_BY) ? 1 : 0)),
-        smoke_uses_per_team: perTeam(t => {
-            // From the horn (pregame smokes are not map movement); a smoke within SMOKE_MERGE s of a group's first joins it.
-            let n = 0, first = -Infinity;
-            for (const e of of('smoke_use').filter(e => e.team === t && e.t >= 0).sort((a, b) => a.t - b.t)) {
-                if (e.t - first > C.SMOKE_MERGE) {
-                    n++;
-                    first = e.t;
-                }
-            }
-            return n;
-        }),
-        tp_joins_per_team_ev: perTeam(t =>
-            of('tp').filter(e => {
-                if (e.team !== t || e.t < 600 || e.t >= 1800 || e.dist <= C.TP_MOVED) return false;
-                return Object.values(S).some(o => {
-                    if (o.pid === e.pid || o.team !== t) return false;
-                    for (let u = Math.floor(e.t) - 1; u <= Math.floor(e.t) + 1; u++) if (alive(o.sec[u]) && dist(pos(o.sec[u]), [e.x, e.y]) <= C.TP_JOIN_R) return true;
-                    return false;
-                });
-            }).length),
-        first_t1_time: world ? t1?.t : undefined,
-        cash_in_kills_pct: perTeam(t => {
-            // Bursts by team t: 3+ deaths of the other team, <= FIGHT_GAP s apart.
-            const bursts = [];
-            let run = [];
-            for (const d of deaths.filter(d => d.team !== t)) {
-                if (run.length && d.t - run[run.length - 1].t > C.FIGHT_GAP) {
-                    if (run.length >= C.FIGHT_MIN_DEATHS) bursts.push(run[run.length - 1].t);
-                    run = [];
-                }
-                run.push(d);
-            }
-            if (run.length >= C.FIGHT_MIN_DEATHS) bursts.push(run[run.length - 1].t);
-            const open = bursts.filter(b => b + C.CASH_IN <= end);
-            return share(open, b => falls.some(f => f.team !== t && f.t > b && f.t <= b + C.CASH_IN));
-        }),
-        first_roshan_time: world ? roshans[0]?.t : undefined,
-        towers_after_roshan_240: world
-            ? share(roshans.filter(r => r.t + C.ROSH_FOLLOW <= end), r => {
-                  const a = aegis.find(e => e.t >= r.t && e.t <= r.t + C.AEGIS_AFTER);
-                  return falls.some(f => f.t > r.t && f.t <= r.t + C.ROSH_FOLLOW && (a === undefined || f.team !== a.team));
-              })
-            : undefined,
+        mid_power_rune_pct: perTeam(t => midShare(t, 'power')),
+        mid_water_rune_pct: perTeam(t => midShare(t, 'water')),
+        power_rune_pickups: perTeam(t => sum(runes(t, 'power'))),
+        wisdom_rune_taken_within_15s: { 2: frac(T[2].taken, T[2].fills), 3: frac(T[3].taken, T[3].fills) },
+        first_sentry_time: world ? byRole(s => sentry[s.pid]) : undefined,
+        sentry_by_90s: perTeam(t => T[t].sentry90),
+        smoke_uses_per_team: perTeam(t => T[t].smokes),
+        tp_joins_per_team_ev: perTeam(t => T[t].tpj),
+        first_t1_time: world ? G.t1 ?? undefined : undefined,
+        cash_in_kills_pct: perTeam(t => frac(T[t].cashed, T[t].bursts)),
+        first_roshan_time: world ? G.rosh ?? undefined : undefined,
+        towers_after_roshan_240: world ? frac(G.rosh_ok, G.rosh_open) : undefined,
     };
 }
 
-/** Share of a shrine's fills (from WISDOM_FIRST every WISDOM_FIRST, up to end - WISDOM_LATE) that some hero takes: within
- *  WISDOM_R of the shrine for WISDOM_CHANNEL consecutive seconds, the run starting by fill + WISDOM_LATE. Snapshot proxy. */
-function wisdom(S, shrineTeam, end) {
-    const fills = [];
-    for (let f = C.WISDOM_FIRST; f + C.WISDOM_LATE <= end; f += C.WISDOM_FIRST) fills.push(f);
-    if (!fills.length) return undefined;
-    const spot = SHRINE[shrineTeam];
-    const taken = f => {
-        for (let t0 = f; t0 <= f + C.WISDOM_LATE; t0++) {
-            const there = s => {
-                for (let u = t0; u < t0 + C.WISDOM_CHANNEL; u++) if (!alive(s.sec[u]) || dist(pos(s.sec[u]), spot) > C.WISDOM_R) return false;
-                return true;
-            };
-            if (Object.values(S).some(there)) return true;
-        }
-        return false;
-    };
-    return fills.filter(taken).length / fills.length;
-}
-
-module.exports = { POLY, dynamicMetrics, heroSeries, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, roles, C };
+module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, worldMetrics, laneLabel, roles, C };

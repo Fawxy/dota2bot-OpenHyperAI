@@ -275,7 +275,7 @@ function stackNoAggro(s) {
 
 /** One manifest game with its parsed game and the store holding its log (storeFor): the flat metrics and the gate's problems. */
 function nfGame(g, game, store) {
-    const m = dynamicMetrics(store, path.resolve(g.log), game.index, game);
+    const m = dynamicMetrics(store, path.resolve(g.log), game.index);
     const flat = { ...flatten(m), ...coreLane(store, path.resolve(g.log), game.index), ...economy(store, path.resolve(g.log), game.index) };
     return { ...g, flat, problems: gate(game, m, flat), monitors: { first_t1_time: m.first_t1_time, first_roshan_time: m.first_roshan_time } };
 }
