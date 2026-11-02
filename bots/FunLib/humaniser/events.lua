@@ -709,6 +709,22 @@ ____exports.EVENTS = {
         dies = "num",
         msg = "str"
     },
+    trade = {
+        pid = "num",
+        kind = "str",
+        tgt = "num",
+        result = "str",
+        why = "str",
+        dur = "num",
+        hpd = "num",
+        thpd = "num",
+        hp = "num",
+        thp = "num",
+        en = "num",
+        al = "num",
+        cr = "num",
+        mode = "num"
+    },
     job_exec = {
         pid = "num",
         kind = "str",

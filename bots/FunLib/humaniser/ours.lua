@@ -43,6 +43,7 @@ ____exports.DEFAULTS = {
     DoubleStack = true,
     JobChooser = true,
     CoreLastHit = true,
+    CoreTrade = true,
     CoreLastHitDire = true,
     SupportDeny = true,
     SupportDenyDire = true,
