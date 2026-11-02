@@ -1,10 +1,10 @@
 {
  "schema": "er-spec/1",
- "build": "369bd44",
+ "build": "fff875e",
  "until": "10:00",
  "arms": {
-  "on": { "build": "369bd44", "states": true, "ours": { "RuneRotation": true } },
-  "off": { "build": "369bd44", "states": true, "ours": { "RuneRotation": false } }
+  "on": { "build": "fff875e", "states": true, "ours": { "RuneRotation": true } },
+  "off": { "build": "fff875e", "states": true, "ours": { "RuneRotation": false } }
  },
  "bars": [
   { "id": "B1 clean trips on time (>= 85%, >= 30 clean)", "rule": "pooled", "num": "rune_clean_on_time", "den": "rune_clean", "min": 0.85, "minDen": 30, "cap": 6 },
