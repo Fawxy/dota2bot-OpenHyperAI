@@ -33,6 +33,10 @@ export interface EnemyRead {
     /** HP share and level, only when visible. */
     hp?: number;
     lvl?: number;
+    /** Distance to our nearest alive tower on the lane (-1 when all are down), from the same location as `dist`. */
+    towerDist: number;
+    /** Distance to each allied hero in the lane (the `aggro` set), by pid. */
+    allyDist: [number, number][];
 }
 
 export interface AggroRead {
@@ -73,6 +77,10 @@ export interface LaneRead {
     censusAtEnemy: Creeps;
     /** Every own creep in the lane, by amount: the start state a lane forecast restarts from. */
     creeps: CensusCreep[];
+    /** Every visible enemy lane creep in the lane, by amount: the fogged reading's start state (slice lane-read-ec). */
+    enemyCreeps: CensusCreep[];
+    /** Alive enemy heroes with no last-seen spot: never seen this game, so `enemies` cannot list them. */
+    neverSeen: number[];
     /** Our nearest alive tower on the lane: tier 1-3 and HP, tier 0 and no HP when all three are down. */
     towerTier: number;
     towerHp?: number;
@@ -204,11 +212,11 @@ function towerAmount(team: number, owner: number, lane: Lane): number {
     return owner === Team.Radiant ? 0 : 1;
 }
 
-function ownTower(team: number, lane: Lane): { tier: number; hp?: number } {
+function ownTower(team: number, lane: Lane): { tier: number; hp?: number; loc?: Vector } {
     const ids = TOWER_IDS[lane];
     for (let i = 0; i < ids.length; i++) {
         const tower = GetTower(team, ids[i]);
-        if (tower !== null && tower !== undefined && tower.IsAlive()) return { tier: i + 1, hp: tower.GetHealth() };
+        if (tower !== null && tower !== undefined && tower.IsAlive()) return { tier: i + 1, hp: tower.GetHealth(), loc: tower.GetLocation() };
     }
     return { tier: 0 };
 }
@@ -220,11 +228,28 @@ export function CreepKind(name: string): string {
     return "m";
 }
 
-function readEnemies(team: number, m: TeamMemory, front: Vector): { enemies: EnemyRead[]; dead: number } {
+const MAX_PLAYER_ID = 23;
+
+interface Place {
+    front: Vector;
+    tower?: Vector;
+    allies: [number, Vector][];
+}
+
+function placed(pid: number, visible: boolean, seen: number, loc: Vector, p: Place): EnemyRead {
+    const allyDist: [number, number][] = [];
+    for (const [aid, aloc] of p.allies) allyDist.push([aid, dist2D(loc, aloc)]);
+    return { pid, visible, seen, dist: dist2D(loc, p.front), towerDist: p.tower !== undefined ? dist2D(loc, p.tower) : -1, allyDist };
+}
+
+function readEnemies(team: number, m: TeamMemory, p: Place): { enemies: EnemyRead[]; dead: number; neverSeen: number[] } {
     const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    // GetTeamPlayers is empty for a bot-only team in practice mode, so ids seen in the unit list are remembered too.
+    // GetTeamPlayers is empty for a bot-only team in practice mode, so ids seen in the unit list are remembered too, and
+    // GetTeamForPlayer finds the ids never seen at all.
     for (const pid of GetTeamPlayers(enemyTeam)) m.enemyPids[pid] = true;
+    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) if (GetTeamForPlayer(pid) === enemyTeam) m.enemyPids[pid] = true;
     const enemies: EnemyRead[] = [];
+    const neverSeen: number[] = [];
     const seen: Record<number, boolean> = {};
     for (const u of GetUnitList(UnitType.EnemyHeroes)) {
         if (!u.CanBeSeen() || !u.IsAlive() || u.IsIllusion()) continue;
@@ -232,7 +257,10 @@ function readEnemies(team: number, m: TeamMemory, front: Vector): { enemies: Ene
         m.enemyPids[pid] = true;
         seen[pid] = true;
         const maxHP = u.GetMaxHealth();
-        enemies.push({ pid, visible: true, seen: 0, dist: dist2D(u.GetLocation(), front), hp: maxHP > 0 ? u.GetHealth() / maxHP : 0, lvl: u.GetLevel() });
+        const e = placed(pid, true, 0, u.GetLocation(), p);
+        e.hp = maxHP > 0 ? u.GetHealth() / maxHP : 0;
+        e.lvl = u.GetLevel();
+        enemies.push(e);
     }
     let dead = 0;
     for (const [pid] of pairs(m.enemyPids)) {
@@ -243,15 +271,20 @@ function readEnemies(team: number, m: TeamMemory, front: Vector): { enemies: Ene
             continue;
         }
         const info = GetHeroLastSeenInfo(id)[0];
-        if (info === undefined) continue;
-        enemies.push({ pid: id, visible: false, seen: info.time_since_seen, dist: dist2D(info.location, front) });
+        if (info === undefined) {
+            neverSeen.push(id);
+            continue;
+        }
+        enemies.push(placed(id, false, info.time_since_seen, info.location, p));
     }
-    return { enemies, dead };
+    neverSeen.sort((a, b) => a - b);
+    return { enemies, dead, neverSeen };
 }
 
-function readAggro(lane: Lane, m: TeamMemory, enemyCreeps: Placed[], front: Vector, now: number): AggroRead[] {
+function readAggro(lane: Lane, m: TeamMemory, enemyCreeps: Placed[], front: Vector, now: number): { aggro: AggroRead[]; allies: [number, Vector][] } {
     const near = LaneConfig.Settings().Radii.AllyNearFront;
     const result: AggroRead[] = [];
+    const allies: [number, Vector][] = [];
     for (let i = 1; i <= TEAM_SLOTS; i++) {
         const hero = GetTeamMember(i);
         if (hero === null || hero === undefined || hero.IsIllusion() || !hero.IsAlive()) continue;
@@ -262,8 +295,9 @@ function readAggro(lane: Lane, m: TeamMemory, enemyCreeps: Placed[], front: Vect
         if (n > 0) m.aggroAt[pid] = now;
         const at = m.aggroAt[pid];
         result.push({ pid, now: n, since: at !== undefined ? now - at : undefined });
+        allies.push([pid, hero.GetLocation()]);
     }
-    return result;
+    return { aggro: result, allies };
 }
 
 /** One reading per lane for `team`, which must be the calling script's team. */
@@ -287,16 +321,22 @@ export function Read(team: number, now: number): LaneRead[] {
         const enemyNear = emptyCreeps();
         const censusAtEnemy = emptyCreeps();
         const creeps: CensusCreep[] = [];
+        const enemyCreeps: CensusCreep[] = [];
         for (const c of own[lane]) {
             creeps.push({ kind: CreepKind(c.unit.GetUnitName()), amount: c.amount, hp: c.unit.GetHealth() });
             addCreep(census, team, c.unit, c.amount, c.loc);
             if (dist2D(c.loc, frontLoc) <= radius) addCreep(near, team, c.unit, c.amount, c.loc);
             if (dist2D(c.loc, enemyFrontLoc) <= radius) addCreep(censusAtEnemy, team, c.unit, c.amount, c.loc);
         }
-        for (const c of foes[lane]) if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount, c.loc);
-        const { enemies, dead } = readEnemies(team, m, frontLoc);
-        creeps.sort((a, b) => a.amount - b.amount);
+        for (const c of foes[lane]) {
+            enemyCreeps.push({ kind: CreepKind(c.unit.GetUnitName()), amount: c.amount, hp: c.unit.GetHealth() });
+            if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount, c.loc);
+        }
         const tower = ownTower(team, lane);
+        const { aggro, allies } = readAggro(lane, m, foes[lane], frontLoc, now);
+        const { enemies, dead, neverSeen } = readEnemies(team, m, { front: frontLoc, tower: tower.loc, allies });
+        creeps.sort((a, b) => a.amount - b.amount);
+        enemyCreeps.sort((a, b) => a.amount - b.amount);
         const cycleSec = now % WAVE_CYCLE;
         reads.push({
             team,
@@ -313,10 +353,12 @@ export function Read(team: number, now: number): LaneRead[] {
             nextWaveIn: WAVE_CYCLE - cycleSec,
             enemies,
             dead,
-            aggro: readAggro(lane, m, foes[lane], frontLoc, now),
+            aggro,
             census,
             censusAtEnemy,
             creeps,
+            enemyCreeps,
+            neverSeen,
             towerTier: tower.tier,
             towerHp: tower.hp,
             frontLoc,
@@ -342,6 +384,20 @@ export function FormatEnemies(enemies: EnemyRead[]): string {
 export function FormatAggro(aggro: AggroRead[]): string {
     const out: string[] = [];
     for (const a of aggro) out.push(`${a.pid}:${a.now}:${a.since === undefined ? "-1" : string.format("%.1f", math.floor(a.since * 10) / 10)}`);
+    return out.join(";");
+}
+
+/**
+ * The `ed` field of ev=lane_read, in `ee`'s order: per enemy `pid:dist_to_our_tower:ally=dist,...` (-1 when our towers on
+ * the lane are down; the ally list is empty with no ally in the lane), from the same spot as `ee`'s distance.
+ */
+export function FormatEnemyDistances(enemies: EnemyRead[]): string {
+    const out: string[] = [];
+    for (const e of enemies) {
+        const allies: string[] = [];
+        for (const [pid, d] of e.allyDist) allies.push(`${pid}=${math.floor(d)}`);
+        out.push(`${e.pid}:${math.floor(e.towerDist)}:${allies.join(",")}`);
+    }
     return out.join(";");
 }
 

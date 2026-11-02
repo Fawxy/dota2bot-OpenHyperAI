@@ -26,6 +26,7 @@ function GetTeam() return CURRENT_TEAM end
 TELEPORTS, TELEPORT_READS = {}, 0
 function GetIncomingTeleports() TELEPORT_READS = TELEPORT_READS + 1 return TELEPORTS end
 function GetTeamPlayers(team) local r = {} for _, u in ipairs(UNITS[team]) do table.insert(r, u.pid) end return r end
+function GetTeamForPlayer(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return t end end end return -1 end
 function GetTeamMember(i) return UNITS[CURRENT_TEAM][i] end
 function GetHeroLevel(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.level end end end return 0 end
 function IsPlayerBot(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.pid == pid then return u.bot end end end return true end

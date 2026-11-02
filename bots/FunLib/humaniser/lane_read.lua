@@ -172,7 +172,8 @@ local function ownTower(team, lane)
             if tower ~= nil and tower ~= nil and tower:IsAlive() then
                 return {
                     tier = i + 1,
-                    hp = tower:GetHealth()
+                    hp = tower:GetHealth(),
+                    loc = tower:GetLocation()
                 }
             end
             i = i + 1
@@ -192,39 +193,68 @@ function ____exports.CreepKind(name)
     end
     return "m"
 end
-local function readEnemies(team, m, front)
+local MAX_PLAYER_ID = 23
+local function placed(pid, visible, seen, loc, p)
+    local allyDist = {}
+    for ____, ____value in ipairs(p.allies) do
+        local aid = ____value[1]
+        local aloc = ____value[2]
+        allyDist[#allyDist + 1] = {
+            aid,
+            dist2D(loc, aloc)
+        }
+    end
+    return {
+        pid = pid,
+        visible = visible,
+        seen = seen,
+        dist = dist2D(loc, p.front),
+        towerDist = p.tower ~= nil and dist2D(loc, p.tower) or -1,
+        allyDist = allyDist
+    }
+end
+local function readEnemies(team, m, p)
     local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
     for ____, pid in ipairs(GetTeamPlayers(enemyTeam)) do
         m.enemyPids[pid] = true
     end
+    do
+        local pid = 0
+        while pid <= MAX_PLAYER_ID do
+            if GetTeamForPlayer(pid) == enemyTeam then
+                m.enemyPids[pid] = true
+            end
+            pid = pid + 1
+        end
+    end
     local enemies = {}
+    local neverSeen = {}
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue44
+            local __continue49
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue44 = true
+                    __continue49 = true
                     break
                 end
                 local pid = u:GetPlayerID()
                 m.enemyPids[pid] = true
                 seen[pid] = true
                 local maxHP = u:GetMaxHealth()
-                enemies[#enemies + 1] = {
-                    pid = pid,
-                    visible = true,
-                    seen = 0,
-                    dist = dist2D(
-                        u:GetLocation(),
-                        front
-                    ),
-                    hp = maxHP > 0 and u:GetHealth() / maxHP or 0,
-                    lvl = u:GetLevel()
-                }
-                __continue44 = true
+                local e = placed(
+                    pid,
+                    true,
+                    0,
+                    u:GetLocation(),
+                    p
+                )
+                e.hp = maxHP > 0 and u:GetHealth() / maxHP or 0
+                e.lvl = u:GetLevel()
+                enemies[#enemies + 1] = e
+                __continue49 = true
             until true
-            if not __continue44 then
+            if not __continue49 then
                 break
             end
         end
@@ -232,54 +262,61 @@ local function readEnemies(team, m, front)
     local dead = 0
     for pid in pairs(m.enemyPids) do
         do
-            local __continue47
+            local __continue52
             repeat
                 local id = pid
                 if seen[id] == true then
-                    __continue47 = true
+                    __continue52 = true
                     break
                 end
                 if not IsHeroAlive(id) then
                     dead = dead + 1
-                    __continue47 = true
+                    __continue52 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)[1]
                 if info == nil then
-                    __continue47 = true
+                    neverSeen[#neverSeen + 1] = id
+                    __continue52 = true
                     break
                 end
-                enemies[#enemies + 1] = {
-                    pid = id,
-                    visible = false,
-                    seen = info.time_since_seen,
-                    dist = dist2D(info.location, front)
-                }
-                __continue47 = true
+                enemies[#enemies + 1] = placed(
+                    id,
+                    false,
+                    info.time_since_seen,
+                    info.location,
+                    p
+                )
+                __continue52 = true
             until true
-            if not __continue47 then
+            if not __continue52 then
                 break
             end
         end
     end
-    return {enemies = enemies, dead = dead}
+    __TS__ArraySort(
+        neverSeen,
+        function(____, a, b) return a - b end
+    )
+    return {enemies = enemies, dead = dead, neverSeen = neverSeen}
 end
 local function readAggro(lane, m, enemyCreeps, front, now)
     local near = LaneConfig.Settings().Radii.AllyNearFront
     local result = {}
+    local allies = {}
     do
         local i = 1
         while i <= TEAM_SLOTS do
             do
-                local __continue52
+                local __continue58
                 repeat
                     local hero = GetTeamMember(i)
                     if hero == nil or hero == nil or hero:IsIllusion() or not hero:IsAlive() then
-                        __continue52 = true
+                        __continue58 = true
                         break
                     end
                     if hero:GetAssignedLane() ~= lane and GetUnitToLocationDistance(hero, front) > near then
-                        __continue52 = true
+                        __continue58 = true
                         break
                     end
                     local n = 0
@@ -294,16 +331,20 @@ local function readAggro(lane, m, enemyCreeps, front, now)
                     end
                     local at = m.aggroAt[pid]
                     result[#result + 1] = {pid = pid, now = n, since = at ~= nil and now - at or nil}
-                    __continue52 = true
+                    allies[#allies + 1] = {
+                        pid,
+                        hero:GetLocation()
+                    }
+                    __continue58 = true
                 until true
-                if not __continue52 then
+                if not __continue58 then
                     break
                 end
             end
             i = i + 1
         end
     end
-    return result
+    return {aggro = result, allies = allies}
 end
 --- One reading per lane for `team`, which must be the calling script's team.
 function ____exports.Read(team, now)
@@ -332,6 +373,7 @@ function ____exports.Read(team, now)
         local enemyNear = emptyCreeps()
         local censusAtEnemy = emptyCreeps()
         local creeps = {}
+        local enemyCreeps = {}
         for ____, c in ipairs(own[lane]) do
             creeps[#creeps + 1] = {
                 kind = ____exports.CreepKind(c.unit:GetUnitName()),
@@ -365,6 +407,11 @@ function ____exports.Read(team, now)
             end
         end
         for ____, c in ipairs(foes[lane]) do
+            enemyCreeps[#enemyCreeps + 1] = {
+                kind = ____exports.CreepKind(c.unit:GetUnitName()),
+                amount = c.amount,
+                hp = c.unit:GetHealth()
+            }
             if dist2D(c.loc, frontLoc) <= radius then
                 addCreep(
                     enemyNear,
@@ -375,14 +422,28 @@ function ____exports.Read(team, now)
                 )
             end
         end
-        local ____readEnemies_result_1 = readEnemies(team, m, frontLoc)
-        local enemies = ____readEnemies_result_1.enemies
-        local dead = ____readEnemies_result_1.dead
+        local tower = ownTower(team, lane)
+        local ____readAggro_result_1 = readAggro(
+            lane,
+            m,
+            foes[lane],
+            frontLoc,
+            now
+        )
+        local aggro = ____readAggro_result_1.aggro
+        local allies = ____readAggro_result_1.allies
+        local ____readEnemies_result_2 = readEnemies(team, m, {front = frontLoc, tower = tower.loc, allies = allies})
+        local enemies = ____readEnemies_result_2.enemies
+        local dead = ____readEnemies_result_2.dead
+        local neverSeen = ____readEnemies_result_2.neverSeen
         __TS__ArraySort(
             creeps,
             function(____, a, b) return a.amount - b.amount end
         )
-        local tower = ownTower(team, lane)
+        __TS__ArraySort(
+            enemyCreeps,
+            function(____, a, b) return a.amount - b.amount end
+        )
         local cycleSec = now % ____exports.WAVE_CYCLE
         reads[#reads + 1] = {
             team = team,
@@ -399,16 +460,12 @@ function ____exports.Read(team, now)
             nextWaveIn = ____exports.WAVE_CYCLE - cycleSec,
             enemies = enemies,
             dead = dead,
-            aggro = readAggro(
-                lane,
-                m,
-                foes[lane],
-                frontLoc,
-                now
-            ),
+            aggro = aggro,
             census = census,
             censusAtEnemy = censusAtEnemy,
             creeps = creeps,
+            enemyCreeps = enemyCreeps,
+            neverSeen = neverSeen,
             towerTier = tower.tier,
             towerHp = tower.hp,
             frontLoc = frontLoc
@@ -434,6 +491,21 @@ function ____exports.FormatAggro(aggro)
             "%.1f",
             math.floor(a.since * 10) / 10
         ))
+    end
+    return table.concat(out, ";")
+end
+--- The `ed` field of ev=lane_read, in `ee`'s order: per enemy `pid:dist_to_our_tower:ally=dist,...` (-1 when our towers on
+-- the lane are down; the ally list is empty with no ally in the lane), from the same spot as `ee`'s distance.
+function ____exports.FormatEnemyDistances(enemies)
+    local out = {}
+    for ____, e in ipairs(enemies) do
+        local allies = {}
+        for ____, ____value in ipairs(e.allyDist) do
+            local pid = ____value[1]
+            local d = ____value[2]
+            allies[#allies + 1] = (tostring(pid) .. "=") .. tostring(math.floor(d))
+        end
+        out[#out + 1] = (((tostring(e.pid) .. ":") .. tostring(math.floor(e.towerDist))) .. ":") .. table.concat(allies, ",")
     end
     return table.concat(out, ";")
 end

@@ -49,6 +49,8 @@ declare global {
 
     function GetHeroLastSeenInfo(nPlayerID: number): LastSeenInfo[];
 
+    function GetTeamForPlayer(nPlayerID: number): Team;
+
     function DebugDrawCircle(vCenter: Vector, fRadius: number, nRed: number, nGreen: number, nBlue: number): void;
 
     /** Screen-space text; drawn for the current frame only. */
