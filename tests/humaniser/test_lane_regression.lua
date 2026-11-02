@@ -336,7 +336,7 @@ do
 			IsCore = function() return true end, IsEarlyGame = function() return true end,
 			IsValidHero = function(u) return u ~= nil end, GetDistanceFromEnemyFountain = function() return 9000 end,
 			Utils = { IsTeamPushingSecondTierOrHighGround = function() return false end, CountEnemyHeroesNear = function() return 0 end },
-			Humaniser = { Lane = laneFacade, Intent = intent or PASSTHROUGH, Transitions = transitions or NO_TRANSITIONS },
+			Humaniser = { Lane = laneFacade, Intent = intent or PASSTHROUGH, Transitions = transitions or NO_TRANSITIONS, RuneJob = { Owns = function() return false end } },
 		}, { __index = function() return function() return false end end })
 		package.loaded["bots/FunLib/jmz_func"] = J
 		package.loaded["bots/Customize/general"] = { Enable = false }

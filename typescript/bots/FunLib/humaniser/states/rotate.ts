@@ -321,7 +321,7 @@ export function Spec(
         preemptAfter: 1,
         score: () => {
             // Slice rune-rotation: the rune job (the job chooser) takes these trips.
-            if (owned === undefined || owned(bot, NAME)) return Ours.On("RuneRotation") ? undefined : scoreAny(bot);
+            if (owned === undefined || owned(bot, NAME)) return Ours.On("RuneRotation") && Ours.On("JobChooser") ? undefined : scoreAny(bot);
             return shadow !== undefined ? shadow(bot) : undefined;
         },
         guard: () => danger(bot),

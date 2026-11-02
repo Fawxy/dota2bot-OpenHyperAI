@@ -76,6 +76,7 @@ local function load(contest, opts)
 			HoldsRune = function() return false end,
 		},
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
+		RuneJob = { Owns = function() return opts.runeJobOwns == true end },
 	}
 	local J = setmetatable({
 		GetHP = function() return 1 end,
@@ -116,6 +117,10 @@ do
 	-- One ally nearby, so the outnumbered exit does not decide this.
 	load(0.6, { enemies = { hero({ loc = Vector(-900, 900) }) }, allies = { hero({ loc = Vector(-300, 0) }) } })
 	check("enemy about to take the rune: no contest", GetDesire() == 0)
+
+	-- Ours.RuneRotation: the rune job owns this hero's power spawn (its trip ran or was skipped), so OHA does not send it.
+	load(0, { runeJobOwns = true })
+	check("power spawn owned by the rune job: no OHA power desire", GetDesire() == 0 and base > 0)
 
 	local human = hero({ loc = Vector(-600, 600), isBot = false })
 	load(0.6, { allies = { human } })

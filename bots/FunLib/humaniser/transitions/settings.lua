@@ -140,7 +140,7 @@ function ____exports.IsActive()
     return Config.IsFeatureEnabled("Transitions")
 end
 function ____exports.IsOn(flag)
-    if flag == "Rotation" and Ours.On("RuneRotation") then
+    if flag == "Rotation" and Ours.On("RuneRotation") and Ours.On("JobChooser") then
         return false
     end
     return ____exports.IsActive() and ____exports.Get()[flag] == true

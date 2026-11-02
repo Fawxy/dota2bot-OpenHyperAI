@@ -491,13 +491,13 @@ function ____exports.Spec(bot, owned, shadow)
         preemptAfter = 1,
         score = function()
             if owned == nil or owned(bot, ____exports.NAME) then
-                local ____Ours_On_result_5
-                if Ours.On("RuneRotation") then
-                    ____Ours_On_result_5 = nil
+                local ____temp_5
+                if Ours.On("RuneRotation") and Ours.On("JobChooser") then
+                    ____temp_5 = nil
                 else
-                    ____Ours_On_result_5 = scoreAny(bot)
+                    ____temp_5 = scoreAny(bot)
                 end
-                return ____Ours_On_result_5
+                return ____temp_5
             end
             local ____temp_6
             if shadow ~= nil then

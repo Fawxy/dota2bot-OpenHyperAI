@@ -155,6 +155,7 @@ ____exports.SETTINGS = {
     StartSlack = 3,
     PathFactor = 1.2,
     LateBy = {power = 5, wisdom = 15},
+    OwnFor = {power = 120, wisdom = 420},
     ShrineChannel = 3,
     ShrineRadius = 300
 }
@@ -389,6 +390,9 @@ function ____exports.Wants(bot, blocked, host)
                     return false
                 end
                 if not bot:IsAlive() then
+                    if DotaTime() >= spawn then
+                        return skip("dead")
+                    end
                     gateWhy[pid] = "dead"
                     __continue38 = true
                     break
@@ -453,26 +457,42 @@ function ____exports.NoteIdleHeld(bot)
         t.idle = (t.idle or 0) + 1
     end
 end
---- A teammate of `team` is on a shrine trip: OHA's own wisdom logic leaves the shrine to it.
+--- This hero's spawn of `kind` is the job's to decide now, taken or skipped: OHA's rune mode stands aside (review 03/11/2026:
+-- after a skip, OHA's wisdom branch walked the same pos4 to the shrine in 12 of 16 cases).
+function ____exports.Owns(bot, kind)
+    if not ____exports.Applies(bot) then
+        return false
+    end
+    local now = DotaTime()
+    for ____, ____value in ipairs(____exports.SETTINGS.Trips[LaneConfig.PositionOf(bot) or 0] or ({})) do
+        local k = ____value[1]
+        local spawn = ____value[2]
+        if k == kind and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.OwnFor[k] then
+            return true
+        end
+    end
+    return false
+end
+--- A teammate of `team` owns the shrine spawn (on its trip, or the job skipped it): OHA's own wisdom logic leaves the shrine.
 function ____exports.ShrineTaken(team)
     do
         local i = 1
         while i <= 5 do
             do
-                local __continue60
+                local __continue66
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= team then
-                        __continue60 = true
+                        __continue66 = true
                         break
                     end
                     local ____opt_2 = running[m:GetPlayerID()]
-                    if (____opt_2 and ____opt_2.kind) == "wisdom" then
+                    if (____opt_2 and ____opt_2.kind) == "wisdom" or ____exports.Owns(m, "wisdom") then
                         return true
                     end
-                    __continue60 = true
+                    __continue66 = true
                 until true
-                if not __continue60 then
+                if not __continue66 then
                     break
                 end
             end

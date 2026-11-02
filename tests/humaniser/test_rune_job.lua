@@ -106,7 +106,22 @@ do
 		end
 	end)
 	check("shrine taken while the pos4's trip runs", taken)
-	check("shrine free once it ended", not H.RuneJob.Running(bot) and not H.RuneJob.ShrineTaken(RAD))
+	check("trip ended, the spawn still ours: OHA's wisdom logic keeps out", not H.RuneJob.Running(bot) and H.RuneJob.ShrineTaken(RAD))
+	T = 840
+	check("shrine free for OHA from the next shrine spawn", not H.RuneJob.ShrineTaken(RAD))
+end
+
+-- A skipped trip is still the job's decision (review 03/11/2026: after a skip, OHA's wisdom branch walked the pos4 to the
+-- shrine in 12 of 16 cases): OHA's rune mode stays out of that spawn.
+do
+	local H = world({ t = 395 })
+	local bot = hero(4, 4)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) })
+	local out = run(H, { bot }, 440)
+	local l = lines(out, "rune_job")[1]
+	check("enemy near at the shrine trigger: skipped", l ~= nil and field(l, "kind") == "wisdom" and field(l, "res") == "skip", l)
+	check("skipped shrine: OHA's wisdom logic keeps out", H.RuneJob.ShrineTaken(RAD))
+	check("skipped 6:00 power spawn (window past): no longer owned at 8:00", (function() T = 480 return not H.RuneJob.Owns(bot, "power") end)())
 end
 
 -- Ranking: pos4's pending rune claim holds its stack back; pos5's stack holds its rune back.
@@ -167,6 +182,7 @@ do
 	local out = run(H, { bot }, 370)
 	local l = lines(out, "rune_job")[1]
 	check("enemy near: no trip, skip why=enemy-near", #lines(out, "job") == 0 and l ~= nil and field(l, "res") == "skip" and field(l, "why") == "enemy-near", l)
+	check("enemy near: the power spawn stays the job's, OHA's power branch keeps out", H.RuneJob.Owns(bot, "power"))
 end
 
 -- OHA's queued action holds the hero past its leave time (rr2 C, t=324.5: a queued TP, `never_started`): no start; held
@@ -178,6 +194,16 @@ do
 	local out = run(H, { bot }, 370)
 	local l = lines(out, "rune_job")[1]
 	check("queued action: no trip, skip why=acting", #lines(out, "job") == 0 and l ~= nil and field(l, "why") == "acting", l)
+end
+
+-- Dead through the spawn: the trip ends with its line (review 03/11/2026: it used to expire silently).
+do
+	local H = world()
+	local bot = hero(4, 4)
+	bot.alive = false
+	local out = run(H, { bot }, 362)
+	local l = lines(out, "rune_job")[1]
+	check("dead at 6:00: one skip line, why=dead", l ~= nil and field(l, "kind") == "power" and field(l, "why") == "dead" and #lines(out, "rune_job") == 1, l)
 end
 
 -- Switch off: no rune job, no line, and the stack ranks alone.

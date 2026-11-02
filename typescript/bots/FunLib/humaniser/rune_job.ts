@@ -31,6 +31,9 @@ export const SETTINGS = {
     PathFactor: 1.2,
     /** Not at the spot this long after the spawn: the verb ends `timeout:late`. Power: the verb's default. */
     LateBy: { power: 5, wisdom: 15 } as Record<Kind, number>,
+    /** After its spawn, the trip's decision stays ours until that rune's next spawn (power every 2 min, the next shrine at 14:00):
+     *  OHA's rune mode does not send the hero there, whether the trip ran or was skipped. */
+    OwnFor: { power: 120, wisdom: 420 } as Record<Kind, number>,
     /** Liquipedia/7.41: stand within 300 of the shrine for 3 s. */
     ShrineChannel: 3,
     ShrineRadius: 300,
@@ -203,6 +206,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             return false;
         };
         if (!bot.IsAlive()) {
+            // Still dead at the spawn: the trip cannot arrive, so it ends here with its line, not silently at the window's end.
+            if (DotaTime() >= spawn) return skip("dead");
             gateWhy[pid] = "dead";
             continue;
         }
@@ -262,12 +267,23 @@ export function NoteIdleHeld(bot: Unit): void {
     if (t !== undefined) t.idle = (t.idle ?? 0) + 1;
 }
 
-/** A teammate of `team` is on a shrine trip: OHA's own wisdom logic leaves the shrine to it. */
+/** This hero's spawn of `kind` is the job's to decide now, taken or skipped: OHA's rune mode stands aside (review 03/11/2026:
+ *  after a skip, OHA's wisdom branch walked the same pos4 to the shrine in 12 of 16 cases). */
+export function Owns(bot: Unit, kind: Kind): boolean {
+    if (!Applies(bot)) return false;
+    const now = DotaTime();
+    for (const [k, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
+        if (k === kind && now >= spawn - SETTINGS.ClaimFrom && now < spawn + SETTINGS.OwnFor[k]) return true;
+    }
+    return false;
+}
+
+/** A teammate of `team` owns the shrine spawn (on its trip, or the job skipped it): OHA's own wisdom logic leaves the shrine. */
 export function ShrineTaken(team: number): boolean {
     for (let i = 1; i <= 5; i++) {
         const m = GetTeamMember(i);
         if (m === undefined || m === null || m.GetTeam() !== team) continue;
-        if (running[m.GetPlayerID()]?.kind === "wisdom") return true;
+        if (running[m.GetPlayerID()]?.kind === "wisdom" || Owns(m, "wisdom")) return true;
     }
     return false;
 }

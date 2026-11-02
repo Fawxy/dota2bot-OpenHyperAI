@@ -182,7 +182,8 @@ export function IsActive(): boolean {
 
 export function IsOn(flag: TransitionFlag): boolean {
     // Slice rune-rotation: our rune job replaces the support's power-rune rotation.
-    if (flag === "Rotation" && Ours.On("RuneRotation")) return false;
+    // The rune job needs the chooser (RuneJob.Applies): with the chooser off, the old rotation stays.
+    if (flag === "Rotation" && Ours.On("RuneRotation") && Ours.On("JobChooser")) return false;
     return IsActive() && Get()[flag] === true;
 }
 
