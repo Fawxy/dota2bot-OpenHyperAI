@@ -43,6 +43,13 @@ export interface AggroRead {
     since?: number;
 }
 
+/** One of our own lane creeps: kind m(elee), r(anged), s(iege) or f(lagbearer), absolute amount and HP. */
+export interface CensusCreep {
+    kind: string;
+    amount: number;
+    hp: number;
+}
+
 export interface LaneRead {
     team: number;
     lane: Lane;
@@ -64,6 +71,11 @@ export interface LaneRead {
     census: Creeps;
     /** Our own creeps near the enemy's front: the enemy reading's `enemyNear` without fog, for its self-check. */
     censusAtEnemy: Creeps;
+    /** Every own creep in the lane, by amount: the start state a lane forecast restarts from. */
+    creeps: CensusCreep[];
+    /** Our nearest alive tower on the lane: tier 1-3 and HP, tier 0 and no HP when all three are down. */
+    towerTier: number;
+    towerHp?: number;
     frontLoc: Vector;
 }
 
@@ -192,6 +204,22 @@ function towerAmount(team: number, owner: number, lane: Lane): number {
     return owner === Team.Radiant ? 0 : 1;
 }
 
+function ownTower(team: number, lane: Lane): { tier: number; hp?: number } {
+    const ids = TOWER_IDS[lane];
+    for (let i = 0; i < ids.length; i++) {
+        const tower = GetTower(team, ids[i]);
+        if (tower !== null && tower !== undefined && tower.IsAlive()) return { tier: i + 1, hp: tower.GetHealth() };
+    }
+    return { tier: 0 };
+}
+
+export function CreepKind(name: string): string {
+    if (string.find(name, "siege", 1, true)[0] !== undefined) return "s";
+    if (string.find(name, "ranged", 1, true)[0] !== undefined) return "r";
+    if (string.find(name, "flag", 1, true)[0] !== undefined) return "f";
+    return "m";
+}
+
 function readEnemies(team: number, m: TeamMemory, front: Vector): { enemies: EnemyRead[]; dead: number } {
     const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
     // GetTeamPlayers is empty for a bot-only team in practice mode, so ids seen in the unit list are remembered too.
@@ -258,13 +286,17 @@ export function Read(team: number, now: number): LaneRead[] {
         const near = emptyCreeps();
         const enemyNear = emptyCreeps();
         const censusAtEnemy = emptyCreeps();
+        const creeps: CensusCreep[] = [];
         for (const c of own[lane]) {
+            creeps.push({ kind: CreepKind(c.unit.GetUnitName()), amount: c.amount, hp: c.unit.GetHealth() });
             addCreep(census, team, c.unit, c.amount, c.loc);
             if (dist2D(c.loc, frontLoc) <= radius) addCreep(near, team, c.unit, c.amount, c.loc);
             if (dist2D(c.loc, enemyFrontLoc) <= radius) addCreep(censusAtEnemy, team, c.unit, c.amount, c.loc);
         }
         for (const c of foes[lane]) if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount, c.loc);
         const { enemies, dead } = readEnemies(team, m, frontLoc);
+        creeps.sort((a, b) => a.amount - b.amount);
+        const tower = ownTower(team, lane);
         const cycleSec = now % WAVE_CYCLE;
         reads.push({
             team,
@@ -284,6 +316,9 @@ export function Read(team: number, now: number): LaneRead[] {
             aggro: readAggro(lane, m, foes[lane], frontLoc, now),
             census,
             censusAtEnemy,
+            creeps,
+            towerTier: tower.tier,
+            towerHp: tower.hp,
             frontLoc,
         });
     }
@@ -307,5 +342,12 @@ export function FormatEnemies(enemies: EnemyRead[]): string {
 export function FormatAggro(aggro: AggroRead[]): string {
     const out: string[] = [];
     for (const a of aggro) out.push(`${a.pid}:${a.now}:${a.since === undefined ? "-1" : string.format("%.1f", math.floor(a.since * 10) / 10)}`);
+    return out.join(";");
+}
+
+/** The `cc` field of ev=lane_read: per own creep `kind:amount_in_thousandths:hp`, by amount, joined by `;`. */
+export function FormatCreeps(creeps: CensusCreep[]): string {
+    const out: string[] = [];
+    for (const c of creeps) out.push(`${c.kind}:${math.floor(c.amount * 1000 + 0.5)}:${math.floor(c.hp + 0.5)}`);
     return out.join(";");
 }

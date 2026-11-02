@@ -359,7 +359,10 @@
    "fy": "num",
    "dead": "num",
    "ee": "str",
-   "ag": "str"
+   "ag": "str",
+   "cc": "str",
+   "tw": "num",
+   "twh": "num"
   },
   "lane_tech": {
    "pid": "num",
@@ -991,7 +994,8 @@
   },
   "ev_lane_read": {
    "ee": "text",
-   "ag": "text"
+   "ag": "text",
+   "cc": "text"
   },
   "ev_lane_tech": {
    "tech": "text",
