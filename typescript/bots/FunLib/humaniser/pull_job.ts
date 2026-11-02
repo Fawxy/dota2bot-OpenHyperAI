@@ -58,6 +58,8 @@ interface Pull {
     sampledAt?: number;
     wave: number;
     peak: number;
+    near?: number;
+    neutrals: number;
 }
 
 interface Decision {
@@ -222,6 +224,8 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["died", bot.IsAlive() ? 0 : 1],
         ["hit", p.hit === true ? 1 : 0],
         ["idle", p.idle],
+        ["wd", p.near !== undefined ? math.floor(p.near + 0.5) : undefined],
+        ["nn", p.neutrals],
     ]);
 }
 
@@ -247,6 +251,14 @@ function sample(p: Pull): void {
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     const radii = LaneConfig.Settings().Radii;
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+        if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
+        const d = GetUnitToLocationDistance(c, p.plan.meet);
+        if (p.near === undefined || d < p.near) p.near = d;
+    }
+    let nn = 0;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
+    p.neutrals = math.max(p.neutrals, nn);
     let n = 0;
     for (const c of laneCreepsNear(p.plan.meet, radii.MeetWatch)) if (onNeutral(c)) n++;
     if (n === 0) return;
@@ -348,7 +360,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     // The wave left its barracks by now: its lead says how early or late it really is (pull_timing's LiveShift).
     const aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0 };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0 };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

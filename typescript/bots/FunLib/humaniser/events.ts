@@ -896,7 +896,9 @@ export const EVENTS = {
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;
-    // div: the largest share of our wave seen attacking a neutral during the watch, n: that wave's size (0: never seen).
+    // div: the largest share of our wave seen attacking a neutral during the watch, n: that wave's size (0: never seen);
+    // wd: the nearest any of our lane creeps came to the meet point during lead and watch, nn: the most neutrals seen within
+    // the watch radius of it (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
     pull_job: {
         pid: "num",
         pos: "num",
@@ -913,6 +915,8 @@ export const EVENTS = {
         died: "num",
         hit: "num",
         idle: "num",
+        wd: "num",
+        nn: "num",
     },
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;

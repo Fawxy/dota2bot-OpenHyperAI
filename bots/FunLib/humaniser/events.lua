@@ -776,7 +776,9 @@ ____exports.EVENTS = {
         away = "num",
         died = "num",
         hit = "num",
-        idle = "num"
+        idle = "num",
+        wd = "num",
+        nn = "num"
     },
     choice = {
         pid = "num",

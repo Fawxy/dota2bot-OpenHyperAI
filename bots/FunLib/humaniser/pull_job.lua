@@ -411,7 +411,12 @@ local function finish(bot, p, r, label)
                 bot:IsAlive() and 0 or 1
             },
             {"hit", p.hit == true and 1 or 0},
-            {"idle", p.idle}
+            {"idle", p.idle},
+            {
+                "wd",
+                p.near ~= nil and math.floor(p.near + 0.5) or nil
+            },
+            {"nn", p.neutrals}
         }
     )
 end
@@ -453,6 +458,32 @@ local function sample(p)
     end
     p.sampledAt = now
     local radii = LaneConfig.Settings().Radii
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        do
+            local __continue54
+            repeat
+                if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue54 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(c, p.plan.meet)
+                if p.near == nil or d < p.near then
+                    p.near = d
+                end
+                __continue54 = true
+            until true
+            if not __continue54 then
+                break
+            end
+        end
+    end
+    local nn = 0
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        if u:IsAlive() and GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch then
+            nn = nn + 1
+        end
+    end
+    p.neutrals = math.max(p.neutrals, nn)
     local n = 0
     for ____, c in ipairs(laneCreepsNear(p.plan.meet, radii.MeetWatch)) do
         if onNeutral(c) then
@@ -585,7 +616,8 @@ function ____exports.Wants(bot, blocked, host)
         left = now,
         host = host,
         wave = 0,
-        peak = 0
+        peak = 0,
+        neutrals = 0
     }
     local ok = Tasks.Start(
         bot,
