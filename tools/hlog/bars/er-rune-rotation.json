@@ -3,7 +3,7 @@
  "build": "fff875e",
  "until": "10:00",
  "arms": {
-  "on": { "build": "7f74385", "states": true, "ours": { "RuneRotation": true } },
+  "on": { "build": "25a0075", "states": true, "ours": { "RuneRotation": true } },
   "off": { "build": "fff875e", "states": true, "ours": { "RuneRotation": false } }
  },
  "bars": [
