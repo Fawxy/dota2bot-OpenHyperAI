@@ -203,8 +203,9 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const t = tripFor(bot, kind, spawn, host);
         const leave = leaveAt(bot, t);
         if (DotaTime() < leave) return false;
-        if (DotaTime() > leave + SETTINGS.StartSlack) return skip(gateWhy[pid] ?? "late");
         const why = blocked(bot);
+        // The leave time moves with the bot, so it can pass the slack in one frame: name what holds it now, if anything.
+        if (DotaTime() > leave + SETTINGS.StartSlack) return skip(gateWhy[pid] ?? why ?? "late");
         if (why !== undefined) {
             gateWhy[pid] = why;
             return false;

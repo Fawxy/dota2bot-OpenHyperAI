@@ -393,10 +393,10 @@ function ____exports.Wants(bot, blocked, host)
                 if DotaTime() < leave then
                     return false
                 end
-                if DotaTime() > leave + ____exports.SETTINGS.StartSlack then
-                    return skip(gateWhy[pid] or "late")
-                end
                 local why = blocked(bot)
+                if DotaTime() > leave + ____exports.SETTINGS.StartSlack then
+                    return skip(gateWhy[pid] or why or "late")
+                end
                 if why ~= nil then
                     gateWhy[pid] = why
                     return false

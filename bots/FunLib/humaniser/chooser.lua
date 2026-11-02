@@ -118,6 +118,15 @@ local function hostDesire(bot)
     end
     local cur = runningJob(bot)
     if cur ~= nil then
+        for ____, j in ipairs(ranked(bot)) do
+            if j ~= cur then
+                j.Wants(
+                    bot,
+                    function() return cur.name end,
+                    ____exports.HOST_MODE
+                )
+            end
+        end
         if not cur.Wants(bot, ____exports.MayStart, ____exports.HOST_MODE) then
             return nil
         end

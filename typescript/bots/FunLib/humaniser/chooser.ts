@@ -109,6 +109,8 @@ function hostDesire(bot: Unit): number | undefined {
     if (StackJob.Benched(bot)) return undefined;
     const cur = runningJob(bot);
     if (cur !== undefined) {
+        // The waiting jobs still see their triggers, so a trigger that passes during this job is skipped naming it.
+        for (const j of ranked(bot)) if (j !== cur) j.Wants(bot, () => cur.name, HOST_MODE);
         if (!cur.Wants(bot, MayStart, HOST_MODE)) return undefined;
         if (hit(bot)) {
             cur.NoteHit(bot);

@@ -131,6 +131,20 @@ do
 	check("pos5: one skip line naming the stack", skip ~= nil and field(skip, "res") == "skip" and field(skip, "why") == "stack", skip)
 end
 
+-- A trigger that passes while another job runs is skipped naming that job (rr1: two bare `late` skips).
+do
+	local H = world({ stack = true, t = 300 })
+	local p5 = hero(5, 5)
+	H.StackJob.Applies = function() return true end
+	H.StackJob.Pending = function() return T < 375 end
+	H.StackJob.Running = function() return T < 375 end
+	H.StackJob.Wants = function() return T < 375 end
+	H.StackJob.Step = function() return T < 375 end
+	local out = run(H, { p5 }, 380)
+	local skip = lines(out, "rune_job")[1]
+	check("pos5: its 6:00 trigger passed during its stack: skip why=stack", skip ~= nil and field(skip, "why") == "stack" and #lines(out, "rune_job") == 1, skip)
+end
+
 -- Pos5 with no stack takes the power spot the pos4's trip does not have.
 do
 	local H = world()
