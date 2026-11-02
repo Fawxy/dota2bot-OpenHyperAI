@@ -578,6 +578,18 @@ local function trackLaneRead(team, now)
                 {
                     "twh",
                     r.towerHp ~= nil and math.floor(r.towerHp) or nil
+                },
+                {
+                    "ec",
+                    LaneRead.FormatCreeps(r.enemyCreeps)
+                },
+                {
+                    "ed",
+                    LaneRead.FormatEnemyDistances(r.enemies)
+                },
+                {
+                    "ns",
+                    table.concat(r.neverSeen, ";")
                 }
             }
         )

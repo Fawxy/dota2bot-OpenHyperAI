@@ -362,7 +362,10 @@
    "ag": "str",
    "cc": "str",
    "tw": "num",
-   "twh": "num"
+   "twh": "num",
+   "ec": "str",
+   "ed": "str",
+   "ns": "str"
   },
   "lane_tech": {
    "pid": "num",
@@ -995,7 +998,10 @@
   "ev_lane_read": {
    "ee": "text",
    "ag": "text",
-   "cc": "text"
+   "cc": "text",
+   "ec": "text",
+   "ed": "text",
+   "ns": "text"
   },
   "ev_lane_tech": {
    "tech": "text",

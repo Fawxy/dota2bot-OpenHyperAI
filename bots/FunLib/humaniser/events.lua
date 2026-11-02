@@ -303,7 +303,10 @@ ____exports.EVENTS = {
         ag = "str",
         cc = "str",
         tw = "num",
-        twh = "num"
+        twh = "num",
+        ec = "str",
+        ed = "str",
+        ns = "str"
     },
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {

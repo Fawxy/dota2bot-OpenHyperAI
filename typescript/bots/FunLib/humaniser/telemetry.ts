@@ -446,6 +446,9 @@ function trackLaneRead(team: number, now: number): void {
             ["cc", LaneRead.FormatCreeps(r.creeps)],
             ["tw", r.towerTier],
             ["twh", r.towerHp !== undefined ? math.floor(r.towerHp) : undefined],
+            ["ec", LaneRead.FormatCreeps(r.enemyCreeps)],
+            ["ed", LaneRead.FormatEnemyDistances(r.enemies)],
+            ["ns", r.neverSeen.join(";")],
         ]);
     }
 }

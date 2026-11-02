@@ -338,6 +338,8 @@ export const EVENTS = {
      * else seconds since seen; hp percent), dead enemies; ag per allied hero `pid:now:since` (since -1 if never).
      * cc every own creep in the lane by ascending amount `kind:amount_in_thousandths:hp` (kind m/r/s/f), tw/twh our nearest alive tower's tier
      * (0 when all are down) and HP (slice lane-census, for the lane forecast's start state and tower crash timing).
+     * Slice lane-read-ec: ec every visible enemy lane creep in the lane, as cc; ed per enemy in ee's order
+     * `pid:dist_to_our_tower:ally=dist,...` (-1 with no tower); ns alive enemy pids never seen, joined by `;`.
      */
     lane_read: {
         team: "num",
@@ -369,6 +371,9 @@ export const EVENTS = {
         cc: "str",
         tw: "num",
         twh: "num",
+        ec: "str",
+        ed: "str",
+        ns: "str",
     },
     lane_tech: {
         pid: "num",

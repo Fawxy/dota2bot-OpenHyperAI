@@ -54,11 +54,13 @@ do
 		and d.censusAtEnemy.power > r.enemyNear.power, d.censusAtEnemy.count)
 end
 
--- D4: with GetTeamPlayers empty for the bot-only enemy team, an enemy seen once is still counted when it goes missing.
+-- D4: with GetTeamPlayers empty for the bot-only enemy team (and no id from GetTeamForPlayer), an enemy seen once is
+-- still counted when it goes missing.
 do
 	local R = fresh()
-	local savedPlayers = GetTeamPlayers
+	local savedPlayers, savedTeamFor = GetTeamPlayers, GetTeamForPlayer
 	GetTeamPlayers = function(team) if team == 3 then return {} end return savedPlayers(team) end
+	GetTeamForPlayer = function() return -1 end
 	OBSERVER = 1
 	MakeUnit({ pid = 1, team = 2, loc = Vector(0, -5000) }).lane = Lane.Bot
 	local enemy = MakeUnit({ pid = 7, team = 3, loc = Vector(500, -5000), level = 3, hp = 40 })
@@ -66,7 +68,7 @@ do
 	enemy.hiddenFrom = { [1] = true }
 	LAST_SEEN[7] = { location = Vector(2000, -5000), time_since_seen = 6 }
 	local later = bot(R.Read(2, 106))
-	GetTeamPlayers = savedPlayers
+	GetTeamPlayers, GetTeamForPlayer = savedPlayers, savedTeamFor
 	check("seen enemy is read with HP and level", #first.enemies == 1 and first.enemies[1].visible and near(first.enemies[1].hp, 0.4)
 		and first.enemies[1].lvl == 3)
 	local miss = later.enemies[1]
@@ -124,6 +126,50 @@ do
 	TOWERS_W[2][dota.Tower.Bot3] = dead1
 	local gone = bot(R.Read(2, 101))
 	check("tower: all three down reads tier 0 and no HP", gone.towerTier == 0 and gone.towerHp == nil, gone.towerTier)
+end
+
+-- Slice lane-read-ec. M5: an enemy never seen has no last-seen spot, so ee cannot list it; ns does, found through
+-- GetTeamForPlayer although GetTeamPlayers is empty. ed measures each listed enemy to our nearest tower and to the allies in
+-- the lane, from the last-seen spot when it is missing.
+do
+	local R = fresh()
+	local savedPlayers = GetTeamPlayers
+	GetTeamPlayers = function(team) if team == 3 then return {} end return savedPlayers(team) end
+	OBSERVER = 1
+	MakeUnit({ pid = 1, team = 2, loc = Vector(x(0.4), -5000) }).lane = Lane.Bot
+	MakeUnit({ pid = 2, team = 2, loc = Vector(x(0.5), 5000) }).lane = Lane.Top
+	local seen = MakeUnit({ pid = 7, team = 3, loc = Vector(x(0.6), -5000) })
+	seen.hiddenFrom = { [1] = true }
+	LAST_SEEN[7] = { location = Vector(x(0.6), -5000), time_since_seen = 4 }
+	MakeUnit({ pid = 8, team = 3, loc = Vector(x(0.9), -5000) }).hiddenFrom = { [1] = true }
+	local deadUnseen = MakeUnit({ pid = 9, team = 3, loc = Vector(x(0.9), 5000) })
+	deadUnseen.hiddenFrom = { [1] = true }
+	deadUnseen.alive = false
+	local r = bot(R.Read(2, 100))
+	GetTeamPlayers = savedPlayers
+	check("ns: the alive enemy never seen, found with GetTeamPlayers empty", #r.neverSeen == 1 and r.neverSeen[1] == 8, #r.neverSeen)
+	check("the never-seen dead enemy counts dead, not missing", r.dead == 1, r.dead)
+	local e = r.enemies[1]
+	check("ed: missing enemy measured from its last spot to our bot T1 (amount 0.3)", #r.enemies == 1 and near(e.towerDist, 0.3 * 14000), e and e.towerDist)
+	check("ed: only the ally in this lane, from the same spot", #e.allyDist == 1 and e.allyDist[1][1] == 1 and near(e.allyDist[1][2], 0.2 * 14000))
+	check("ed string in ee's order", R.FormatEnemyDistances(r.enemies) == "7:4200:1=2800", R.FormatEnemyDistances(r.enemies))
+	TOWERS_W[2][dota.Tower.Bot1] = { IsAlive = function() return false end }
+	TOWERS_W[2][dota.Tower.Bot2] = TOWERS_W[2][dota.Tower.Bot1]
+	TOWERS_W[2][dota.Tower.Bot3] = TOWERS_W[2][dota.Tower.Bot1]
+	check("ed: -1 with every tower on the lane down", bot(R.Read(2, 101)).enemies[1].towerDist == -1)
+end
+
+-- ec: the visible enemy creeps in the lane, wherever they are (not only near our front), in cc's format; fogged ones are out.
+do
+	local R = fresh()
+	LANE_FRONT[2][Lane.Bot] = 0.3
+	MakeCreep({ team = 3, x = x(0.7), y = -5000, hp = 300, name = "npc_dota_creep_badguys_ranged" })
+	MakeCreep({ team = 3, x = x(0.55), y = -5000, hp = 550 })
+	MakeCreep({ team = 3, x = x(0.6), y = -5000 }).unseen = true
+	MakeCreep({ team = 3, x = x(0.55), y = 5000 })
+	local r = bot(R.Read(2, 100))
+	check("ec: visible enemy bot-lane creeps by amount, far from our front too", R.FormatCreeps(r.enemyCreeps) == "m:550:550;r:700:300", R.FormatCreeps(r.enemyCreeps))
+	check("near-front counts are unchanged by ec", r.enemyNear.count == 0, r.enemyNear.count)
 end
 
 finish()
