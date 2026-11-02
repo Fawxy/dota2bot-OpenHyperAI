@@ -12,8 +12,9 @@ const { Store, LOGS } = require('./store');
 const { parseLog } = require('./parse');
 const D = require('./dynamic');
 
-/** The old module's result in this one's shape: part A added `deaths_total`. */
-function oldMetrics(OLD, game) {
+/** The old module's result in this one's shape: part A added `deaths_total` and the store arguments. */
+function oldMetrics(OLD, store, g, game) {
+    if (OLD.dynamicMetrics.length > 1) return OLD.dynamicMetrics(store, g.file, g.game, game);
     const m = OLD.dynamicMetrics(game);
     if (OLD.deathTimes) m.deaths_total = OLD.deathTimes(OLD.series(game)).length;
     return m;
@@ -35,7 +36,7 @@ function main(argv) {
         if (!fs.existsSync(g.file)) continue;
         const game = (parsed[g.file] = parsed[g.file] || parseLog(fs.readFileSync(g.file, 'utf8')))[g.game - 1];
         let a, b, ea, eb;
-        try { a = oldMetrics(OLD, game); } catch (e) { ea = e.message; }
+        try { a = oldMetrics(OLD, store, g, game); } catch (e) { ea = e.message; }
         try { b = D.dynamicMetrics(store, g.file, g.game, game); } catch (e) { eb = e.message; }
         if (ea && eb) n.bothThrow++;
         else {
