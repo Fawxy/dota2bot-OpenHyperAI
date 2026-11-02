@@ -50,6 +50,7 @@ local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
+local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
@@ -297,8 +298,11 @@ CampJobs.SetExecutor({
     Step = function(bot) return stepFarm(bot, CAMP_STATES) end
 })
 --- mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
--- team (an owned trip is on the shrine this fill).
+-- team (an owned trip is on the shrine this fill), or the rune job holds the shrine for it (slice rune-rotation).
 function ____exports.WisdomOwned(bot)
+    if RuneJob.ShrineHeld(bot) then
+        return true
+    end
     if not ____exports.IsEnabled() then
         return false
     end

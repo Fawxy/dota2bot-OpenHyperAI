@@ -234,6 +234,8 @@ function GetDesire()
 				return Gate('bounty', BOT_MODE_DESIRE_NONE)
 			else
 				-- Power rune / water rune
+				-- Ours.RuneRotation: this hero's power spawn is the rune job's to decide, taken or skipped.
+				if J.Humaniser.RuneJob.Owns(bot, 'power') then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
 				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
 				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end

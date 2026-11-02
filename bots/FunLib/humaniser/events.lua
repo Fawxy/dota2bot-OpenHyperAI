@@ -745,6 +745,22 @@ ____exports.EVENTS = {
         taken = "num",
         away = "num"
     },
+    rune_job = {
+        pid = "num",
+        pos = "num",
+        kind = "str",
+        spawn = "num",
+        res = "str",
+        why = "str",
+        label = "str",
+        side = "str",
+        left = "num",
+        arr = "num",
+        away = "num",
+        died = "num",
+        hit = "num",
+        idle = "num"
+    },
     gank = {
         pid = "num",
         pos = "num",

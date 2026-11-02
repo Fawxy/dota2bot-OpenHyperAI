@@ -32,7 +32,7 @@ export function Enabled(): boolean {
 
 /** A switch whose job runs on the bundle (StackJob, slice 4): it loads the bundle through `ForOurs` with the humaniser off. */
 function oursOn(): boolean {
-    return Ours.On("StackExecute");
+    return Ours.On("StackExecute") || Ours.On("RuneRotation");
 }
 
 /** An allied core (position 1-3, not the bot) within 1600 that can take the creep itself. */

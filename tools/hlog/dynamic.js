@@ -144,6 +144,23 @@ function stackAttempts(store, file, gameNo = 1, until = Infinity) {
         .map(r => Object.fromEntries(STACK_KEYS.map(k => [k, k === 'death' ? r.death_flag === 1 : r[k] ?? undefined])));
 }
 
+/** Rune trips and skips of one stored game (the rune_jobs view, slice rune-rotation); empty when no log has ev=rune_job. */
+function runeJobs(store, file, gameNo = 1) {
+    if (!store.kinds.has('ev_rune_job')) return [];
+    if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'rune_jobs'").length) store.refreshViews();
+    return store.query('SELECT pid, pos, kind, spawn, res, why, started, interrupted, on_time, died FROM rune_jobs WHERE file = ? AND game = ? ORDER BY t, pid', file, gameNo);
+}
+
+/** Mean level at 10:00 of the pos1 and pos3 of both teams (the rotators' lane partners; slice rune-rotation's G2), or
+ *  undefined when the game has no snap at minute 10 or no lineup. */
+function lanePartnerLvl10(store, file, gameNo = 1) {
+    if (!store.kinds.has('ev_snap') || !store.kinds.has('ev_bot')) return undefined;
+    if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'hero_minute'").length) store.refreshViews();
+    const r = store.query(`SELECT avg(h.lvl) AS lv, count(*) AS n FROM hero_minute h JOIN lineup l ON l.game_id = h.game_id AND l.pid = h.pid
+        WHERE h.file = ? AND h.game = ? AND h.minute = 10 AND l.pos IN (1, 3)`, file, gameNo)[0];
+    return r && r.n > 0 ? r.lv : undefined;
+}
+
 /** Ended jobs of one stored game (the job_ends view, slice job-chooser); empty when no log in the store has ev=job. */
 function jobEnds(store, file, gameNo = 1) {
     if (!store.kinds.has('ev_job')) return [];
@@ -204,6 +221,8 @@ function dynamicMetrics(store, file, gameNo = 1) {
         audited_steals: stealsFor(store, file, gameNo, 600),
         stacks: stackAttempts(store, file, gameNo, end + 1),
         job_ends: jobEnds(store, file, gameNo),
+        rune_jobs: runeJobs(store, file, gameNo),
+        lane_partner_lvl10: lanePartnerLvl10(store, file, gameNo),
         idle_10s: sum(Object.values(S), s => s.idle),
         lua_error: G.lua_error_ours + G.console_lines,
         lua_error_ours: G.lua_error_ours,
@@ -253,4 +272,4 @@ function worldMetrics(store, file, gameNo, S, role) {
     };
 }
 
-module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, jobEnds, worldMetrics, laneLabel, roles, C };
+module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, jobEnds, runeJobs, lanePartnerLvl10, worldMetrics, laneLabel, roles, C };

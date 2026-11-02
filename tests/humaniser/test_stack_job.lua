@@ -32,6 +32,9 @@ local function world(o)
 	if o.ours ~= nil then Customize.Ours = o.ours end
 	-- Slice 4's single-stack tests run with the double off; the double-stack tests below pass double = true.
 	if Customize.Ours ~= nil then Customize.Ours.DoubleStack = o.double == true end
+	-- The 6:00 rune claim (slice rune-rotation) holds the pos4's 5:5x stack back; these tests run the stack alone unless rune = true.
+	Customize.Ours = Customize.Ours or {}
+	Customize.Ours.RuneRotation = o.rune == true
 	T = o.t or 200
 	CURRENT_TEAM = 2
 	FOGGED = o.fogged

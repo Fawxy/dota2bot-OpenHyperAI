@@ -18,6 +18,7 @@ import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
+import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
@@ -214,9 +215,10 @@ CampJobs.SetExecutor({
 
 /**
  * mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
- * team (an owned trip is on the shrine this fill).
+ * team (an owned trip is on the shrine this fill), or the rune job holds the shrine for it (slice rune-rotation).
  */
 export function WisdomOwned(bot: Unit): boolean {
+    if (RuneJob.ShrineHeld(bot)) return true;
     if (!IsEnabled()) return false;
     return (Owns(bot, Rotate.NAME) && Rotate.OnTrip(bot)) || Rotate.ShrineTaken(bot.GetTeam());
 }

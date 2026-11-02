@@ -14,6 +14,7 @@ import type * as Lib from "bots/FunLib/engine/tasks";
 import type * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -319,7 +320,8 @@ export function Spec(
         // A trip that cannot be stepped for this long lost to another mode (fight, retreat) and is restarted later.
         preemptAfter: 1,
         score: () => {
-            if (owned === undefined || owned(bot, NAME)) return scoreAny(bot);
+            // Slice rune-rotation: the rune job (the job chooser) takes these trips.
+            if (owned === undefined || owned(bot, NAME)) return Ours.On("RuneRotation") && Ours.On("JobChooser") ? undefined : scoreAny(bot);
             return shadow !== undefined ? shadow(bot) : undefined;
         },
         guard: () => danger(bot),

@@ -76,6 +76,7 @@ local function load(contest, opts)
 			HoldsRune = function() return false end,
 		},
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
+		RuneJob = { Owns = function() return opts.runeJobOwns == true end },
 	}
 	local J = setmetatable({
 		GetHP = function() return 1 end,
@@ -117,6 +118,10 @@ do
 	load(0.6, { enemies = { hero({ loc = Vector(-900, 900) }) }, allies = { hero({ loc = Vector(-300, 0) }) } })
 	check("enemy about to take the rune: no contest", GetDesire() == 0)
 
+	-- Ours.RuneRotation: the rune job owns this hero's power spawn (its trip ran or was skipped), so OHA does not send it.
+	load(0, { runeJobOwns = true })
+	check("power spawn owned by the rune job: no OHA power desire", GetDesire() == 0 and base > 0)
+
 	local human = hero({ loc = Vector(-600, 600), isBot = false })
 	load(0.6, { allies = { human } })
 	check("human ally near the rune: deferred despite the contest", GetDesire() == 0)
@@ -131,6 +136,10 @@ local FAR_POWER = midWorld(Vector(-6000, 6000), Vector(1800, 0))
 
 local function realHumaniser(transitions)
 	local H = LaneFresh({ Enable = true }, { transitions = transitions or { Enable = true } })
+	-- OHA's rotation is the OFF arm of slice rune-rotation.
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	C.Ours.RuneRotation = false
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return T < 600 end })
 	return H
 end

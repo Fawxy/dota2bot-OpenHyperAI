@@ -139,6 +139,9 @@ function UnitMeta:GetAttackTarget() return self.target end
 -- Casting: u.casting is the ability handle being cast; ACTIVE_ABILITY_CALLS counts reads for kill-switch tests.
 ACTIVE_ABILITY_CALLS = 0
 function UnitMeta:IsCastingAbility() return self.casting ~= nil end
+function UnitMeta:IsUsingAbility() return false end
+function UnitMeta:IsChanneling() return self.channeling == true end
+function UnitMeta:NumQueuedActions() return self.queued or 0 end
 function UnitMeta:GetCurrentActiveAbility() ACTIVE_ABILITY_CALLS = ACTIVE_ABILITY_CALLS + 1 return self.casting end
 function UnitMeta:GetAttackDamage() return self.dmg or 50 end
 function UnitMeta:GetAttackRange() return self.range or 550 end

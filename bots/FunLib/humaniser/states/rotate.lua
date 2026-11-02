@@ -124,6 +124,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -490,15 +491,21 @@ function ____exports.Spec(bot, owned, shadow)
         preemptAfter = 1,
         score = function()
             if owned == nil or owned(bot, ____exports.NAME) then
-                return scoreAny(bot)
+                local ____temp_5
+                if Ours.On("RuneRotation") and Ours.On("JobChooser") then
+                    ____temp_5 = nil
+                else
+                    ____temp_5 = scoreAny(bot)
+                end
+                return ____temp_5
             end
-            local ____temp_5
+            local ____temp_6
             if shadow ~= nil then
-                ____temp_5 = shadow(bot)
+                ____temp_6 = shadow(bot)
             else
-                ____temp_5 = nil
+                ____temp_6 = nil
             end
-            return ____temp_5
+            return ____temp_6
         end,
         guard = function() return danger(bot) end,
         onEnd = function(r, info) return ended(bot, r, info) end,

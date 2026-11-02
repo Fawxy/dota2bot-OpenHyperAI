@@ -1,6 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 ____exports.DEFAULTS = {
     Enable = true,
     MidRunes = true,
@@ -139,6 +140,9 @@ function ____exports.IsActive()
     return Config.IsFeatureEnabled("Transitions")
 end
 function ____exports.IsOn(flag)
+    if flag == "Rotation" and Ours.On("RuneRotation") and Ours.On("JobChooser") then
+        return false
+    end
     return ____exports.IsActive() and ____exports.Get()[flag] == true
 end
 function ____exports.Lerp(pair, skill)

@@ -1,5 +1,14 @@
 -- Support power-rune rotations (task 12, Task 4): pos 4 / pos 5 leave lane for the power rune near our mid.
 dofile(HARNESS_DIR .. "/lane_world.lua")
+-- OHA's power-rune rotation is the switch-off arm of slice rune-rotation (Ours.RuneRotation).
+local laneFresh = LaneFresh
+LaneFresh = function(...)
+	local H = laneFresh(...)
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	C.Ours.RuneRotation = false
+	return H
+end
 local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode, Rune = dota.Lane, dota.BotMode, dota.Rune
 

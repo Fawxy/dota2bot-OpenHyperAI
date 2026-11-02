@@ -876,6 +876,24 @@ export const EVENTS = {
         taken: "num",
         away: "num",
     },
+    // Slice rune-rotation: one line per rune trip or skip (RuneJob). res ok|fail|skip; why: the verb's end reason or the
+    // skip's gate; arr: when the bot reached the spot (wait or channel label); died: dead at the trip's end.
+    rune_job: {
+        pid: "num",
+        pos: "num",
+        kind: "str",
+        spawn: "num",
+        res: "str",
+        why: "str",
+        label: "str",
+        side: "str",
+        left: "num",
+        arr: "num",
+        away: "num",
+        died: "num",
+        hit: "num",
+        idle: "num",
+    },
     gank: {
         pid: "num",
         pos: "num",

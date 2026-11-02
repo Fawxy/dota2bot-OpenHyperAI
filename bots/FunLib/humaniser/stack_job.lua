@@ -2335,6 +2335,24 @@ function ____exports.Wants(bot, blocked, host)
     end
     return false
 end
+--- True while an attempt runs or a trigger minute is still open for this bot (the job chooser's claim between jobs).
+function ____exports.Pending(bot)
+    if not ____exports.Applies(bot) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    if running[pid] ~= nil then
+        return true
+    end
+    local now = DotaTime()
+    for ____, minute in ipairs(____exports.Minutes()) do
+        local ____opt_41 = handled[pid]
+        if (____opt_41 and ____opt_41[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
+            return true
+        end
+    end
+    return false
+end
 --- Steps the job; false when none runs.
 function ____exports.Step(bot, host)
     if visionProbe(bot) then
