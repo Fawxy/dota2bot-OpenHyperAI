@@ -227,6 +227,18 @@ do
 	check("chooser off: the job owns no spawn", H.RuneJob.Priority(bot) == nil and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
 end
 
+-- The old rotation (OHA's power-rune rotation in transitions) gives way only when the rune job can run (review L4, 03/11/2026).
+do
+	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = { Enable = true } })
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = { RuneRotation = true, JobChooser = false }
+	check("chooser off: the old rotation stays on", H.Transitions.Settings.IsOn("Rotation"))
+	C.Ours.JobChooser = true
+	check("chooser on: the old rotation is off, for every spawn", not H.Transitions.Settings.IsOn("Rotation"))
+	C.Ours.RuneRotation = false
+	check("rune switch off: the old rotation is back", H.Transitions.Settings.IsOn("Rotation"))
+end
+
 -- Positions 1-3 never get a trip.
 do
 	local H = world()
