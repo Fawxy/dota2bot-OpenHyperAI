@@ -42,17 +42,18 @@ test('core trades: taken, won and lost windows per core; trades past until and s
 
 test('core deaths: each death of a core before until gets the first matching cause', () => {
     const snaps = [];
-    // pid 1 dies at 150 during a trade, at 250 after a retreat cut back to the last-hit desire, at 350 under the Dire mid T1,
-    // at 450 laning, at 550 farming; at 650 past until.
+    // No snaps while dead: a death is the last snap before the count rises (the respawn snap 30 s later). pid 1 dies at 145 during a
+    // trade, at 244 after a retreat cut back to the last-hit desire, at 345 under the Dire mid T1, at 445 laning, at 545 farming;
+    // at 645, past until.
     const at = (t, mode, deaths, x = 0, y = -3000, d = 0.4) => snaps.push(line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=30 mode=${mode} d=${d} deaths=${deaths}`));
-    at(140, 'laning', 0); at(150, 'laning', 1);
-    at(240, 'retreat', 1); at(244, 'laning', 1, 0, -3000, 0.9); at(250, 'laning', 2);
-    at(345, 'laning', 2, 524, 600); at(350, 'laning', 3);
-    at(445, 'laning', 3); at(450, 'laning', 4);
-    at(545, 'farm', 4); at(550, 'farm', 5);
-    at(645, 'laning', 5); at(650, 'laning', 6);
+    at(140, 'laning', 0); at(145, 'laning', 0); at(175, 'laning', 1);
+    at(240, 'retreat', 1); at(244, 'laning', 1, 0, -3000, 0.9); at(274, 'laning', 2);
+    at(345, 'laning', 2, 524, 600); at(375, 'laning', 3);
+    at(445, 'laning', 3); at(475, 'laning', 4);
+    at(545, 'farm', 4); at(575, 'farm', 5);
+    at(645, 'laning', 5); at(675, 'laning', 6);
     const out = run('core_deaths', [line(0, 'bot pid=1 hero=h1 team=2 pos=1'), ...snaps, trade(146, 'done', 300, 50, 3)]);
-    assert.deepStrictEqual(out.map(r => [r.t, r.cause]), [[150, 'trade'], [250, 'cut'], [350, 'tower'], [450, 'lane'], [550, 'farm']]);
+    assert.deepStrictEqual(out.map(r => [r.t, r.cause]), [[145, 'trade'], [244, 'cut'], [345, 'tower'], [445, 'lane'], [545, 'farm']]);
 });
 
 test('core deaths: the tower table equals dynamic.js TOWERS', () => {
