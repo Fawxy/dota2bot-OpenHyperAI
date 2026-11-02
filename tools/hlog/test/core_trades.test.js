@@ -21,9 +21,9 @@ function run(name, lines, params = {}) {
     return out;
 }
 
-const trade = (t, result, hpd, thpd, dur = 2) => line(t, `trade pid=1 kind=trade tgt=6 result=${result} why=time dur=${dur} hpd=${hpd} thpd=${thpd} hp=0.8 thp=0.7 en=1 al=1 cr=1 mode=2`);
+const trade = (t, result, hpd, thpd, dur = 2, ag = 0) => line(t, `trade pid=1 kind=trade tgt=6 result=${result} why=losing dur=${dur} hpd=${hpd} thpd=${thpd} hp=0.8 thp=0.7 en=1 al=1 cr=1 ag=${ag} mode=2`);
 
-test('core trades: taken, won and lost windows per core; trades past until and support rows are not counted', () => {
+test('core trades: taken, won, aggroed and lost windows per core; trades past until and support rows are not counted', () => {
     const out = run('core_trades', [
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         line(0, 'bot pid=4 hero=h4 team=2 pos=4'),
@@ -31,13 +31,13 @@ test('core trades: taken, won and lost windows per core; trades past until and s
         line(101, 'snap pid=1 x=0 y=0 alive=1 mode=laning deaths=1 ol=0 ar=500 ed=400'),
         line(100, 'snap pid=4 x=0 y=0 alive=1 mode=laning deaths=0'),
         trade(110, 'done', 50, 120),
-        trade(120, 'done', 90, 40),
+        trade(120, 'done', 90, 40, 2, 2),
         trade(130, 'kill', 30, 200),
         trade(140, 'lost', 0, 0, 0),
         trade(700, 'done', 1, 100),
     ]);
-    assert.deepStrictEqual(out.map(r => [r.pid, r.taken, r.won, r.kills, r.lost, r.hpd, r.thpd, r.hero, r.trade_open, r.trade_open_hero, r.deaths]),
-        [[1, 3, 2, 1, 1, 170, 360, 1, 2, 1, 1]]);
+    assert.deepStrictEqual(out.map(r => [r.pid, r.taken, r.won, r.kills, r.lost, r.hpd, r.thpd, r.aggroed, r.hero, r.trade_open, r.trade_open_hero, r.deaths]),
+        [[1, 3, 2, 1, 1, 170, 360, 1, 1, 2, 1, 1]]);
 });
 
 test('core deaths: each death of a core before until gets the first matching cause', () => {
