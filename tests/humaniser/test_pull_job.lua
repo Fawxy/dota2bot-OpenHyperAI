@@ -92,6 +92,37 @@ do
 	check("end: the hero is handed back to lane", not w.H.PullJob.Running(w.sup) and w.sup.mode == LANING)
 end
 
+-- A pull that ends ok: the wave's later creeps reach the neutrals after the job has handed the hero back, so the line waits
+-- for the trail and carries both shares (sp2: pulls logged at div 0.25 moved the lane back the most).
+do
+	local w = world({ reading = OUT })
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local out, wave, ended = {}, {}, nil
+	capture(function()
+		while T < 140 and ended == nil do
+			frame(w)
+			-- The wave walks with the hero, so it is at the meet point while the hero watches there.
+			if #wave == 0 and w.H.PullJob.Running(w.sup) then
+				for i = 1, 4 do wave[i] = MakeCreep({ team = 2, x = 0, y = 0 }) end
+				wave[1].target = kobold
+			end
+			for _, c in ipairs(wave) do c.loc = Vector(w.sup.loc.x, w.sup.loc.y) end
+			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
+		end
+	end)
+	local atEnd = ended ~= nil and #lines(out, "pull_job") or -1
+	check("ok pull: the job ended with the wave there", ended ~= nil and #wave == 4, ended)
+	for i = 2, 4 do wave[i].target = kobold end
+	out = run(w, (ended or 0) + 1)
+	check("ok pull: no line while the trail runs", atEnd == 0 and #lines(out, "pull_job") == 0, out[1])
+	out = run(w, (ended or 0) + 30)
+	local pulls = lines(out, "pull_job")
+	check("ok pull: one line after the trail, div from the job, dt with the creeps that came later", #pulls == 1
+		and field(pulls[1], "res") == "ok" and tonumber(field(pulls[1], "div")) == 0.25 and tonumber(field(pulls[1], "dt")) == 1, pulls[1])
+end
+
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
 for _, case in ipairs({
 	{ "IN", { state = "IN", clash = 7000, move = -500, q = 0.3, tower = false } },

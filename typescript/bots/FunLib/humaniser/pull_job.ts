@@ -34,6 +34,10 @@ export const SETTINGS = {
     /** Our creeps within MeetWatch of the meet point are watched; a creep attacking a neutral is diverted. Wave size: our
      *  creeps within WaveSize when the first one is seen diverted (camp_jobs' sample, LaneConfig Radii). */
     WatchEvery: 0.25,
+    /** After a job that ended ok, keep sampling the wave this long past the later of the job end and the wave's due time:
+     *  the job ends 3 s after the wave is due, while its later creeps are still reaching the neutrals (sp2: pulls logged at
+     *  div 0.25 moved the lane back the most, 1.65 of the T1-T1 stretch in 30 s). */
+    TrailSec: 10,
 };
 
 interface Plan {
@@ -68,13 +72,20 @@ interface Decision {
     reading?: LanePush.Reading;
 }
 
+interface Trail {
+    pull: Pull;
+    fields: Telemetry.Fields<"pull_job">;
+    until: number;
+}
+
 const running: Record<number, Pull | undefined> = {};
+const trailing: Record<number, Trail | undefined> = {};
 const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, handled, decided, gateWhy] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -208,7 +219,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
     const why = r.success ? "ok" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
     jobLine(bot, p, "end", why);
     const r1 = (x: number) => math.floor(x * 10) / 10;
-    Telemetry.Event("pull_job", [
+    const fields: Telemetry.Fields<"pull_job"> = [
         ["pid", bot.GetPlayerID()],
         ["pos", LaneConfig.PositionOf(bot)],
         ["lane", bot.GetAssignedLane()],
@@ -217,7 +228,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["res", r.success ? "ok" : "fail"],
         ["why", why],
         ["label", label ?? p.label],
-        ["div", p.wave > 0 ? math.floor((p.peak / p.wave) * 100 + 0.5) / 100 : 0],
+        ["div", share(p)],
         ["n", p.wave],
         ["left", r1(p.left)],
         ["away", r1(DotaTime() - p.left)],
@@ -226,7 +237,29 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["idle", p.idle],
         ["wd", p.near !== undefined ? math.floor(p.near + 0.5) : undefined],
         ["nn", p.neutrals],
-    ]);
+    ];
+    if (!r.success) {
+        Telemetry.Event("pull_job", fields);
+        return;
+    }
+    const now = DotaTime();
+    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, p.plan.waveAt ?? now) + SETTINGS.TrailSec };
+}
+
+function share(p: Pull): number {
+    return p.wave > 0 ? math.floor((p.peak / p.wave) * 100 + 0.5) / 100 : 0;
+}
+
+/** Samples a finished pull's wave until its trail ends, then writes its line with `dt`. A new pull's start writes it first. */
+function trail(pid: number, flush: boolean): void {
+    const tr = trailing[pid];
+    if (tr === undefined) return;
+    if (!flush && DotaTime() < tr.until) {
+        sampleWave(tr.pull);
+        return;
+    }
+    trailing[pid] = undefined;
+    Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
 }
 
 function laneCreepsNear(center: Vector, radius: number): Unit[] {
@@ -259,6 +292,18 @@ function sample(p: Pull): void {
     let nn = 0;
     for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
     p.neutrals = math.max(p.neutrals, nn);
+    countDiverted(p);
+}
+
+function sampleWave(p: Pull): void {
+    const now = DotaTime();
+    if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
+    p.sampledAt = now;
+    countDiverted(p);
+}
+
+function countDiverted(p: Pull): void {
+    const radii = LaneConfig.Settings().Radii;
     let n = 0;
     for (const c of laneCreepsNear(p.plan.meet, radii.MeetWatch)) if (onNeutral(c)) n++;
     if (n === 0) return;
@@ -327,6 +372,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
+    trail(pid, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
     const p = planFor(bot, now);
@@ -360,6 +406,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     // The wave left its barracks by now: its lead says how early or late it really is (pull_timing's LiveShift).
     const aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    trail(pid, true);
     const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0 };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)

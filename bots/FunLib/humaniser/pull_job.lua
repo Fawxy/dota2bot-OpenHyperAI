@@ -1,5 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -59,10 +84,6 @@ local function __TS__DelegatedYield(iterable)
     end
 end
 
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
 local __TS__Unpack = table.unpack or unpack
 
 local __TS__Generator
@@ -98,7 +119,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local running
+local share, laneCreepsNear, onNeutral, sampleWave, countDiverted, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -111,6 +132,65 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function share(p)
+    return p.wave > 0 and math.floor(p.peak / p.wave * 100 + 0.5) / 100 or 0
+end
+function laneCreepsNear(center, radius)
+    local out = {}
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        do
+            local __continue51
+            repeat
+                if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue51 = true
+                    break
+                end
+                if GetUnitToLocationDistance(c, center) <= radius then
+                    out[#out + 1] = c
+                end
+                __continue51 = true
+            until true
+            if not __continue51 then
+                break
+            end
+        end
+    end
+    return out
+end
+function onNeutral(c)
+    local t = c:GetAttackTarget()
+    return t ~= nil and t ~= nil and t:GetTeam() == Team.Neutral
+end
+function sampleWave(p)
+    local now = DotaTime()
+    if p.sampledAt ~= nil and now - p.sampledAt < ____exports.SETTINGS.WatchEvery then
+        return
+    end
+    p.sampledAt = now
+    countDiverted(p)
+end
+function countDiverted(p)
+    local radii = LaneConfig.Settings().Radii
+    local n = 0
+    for ____, c in ipairs(laneCreepsNear(p.plan.meet, radii.MeetWatch)) do
+        if onNeutral(c) then
+            n = n + 1
+        end
+    end
+    if n == 0 then
+        return
+    end
+    if p.wave == 0 then
+        p.wave = math.max(
+            1,
+            #laneCreepsNear(p.plan.meet, radii.WaveSize)
+        )
+    end
+    p.peak = math.max(
+        p.peak,
+        math.min(n, p.wave)
+    )
+end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
@@ -122,14 +202,22 @@ ____exports.SETTINGS = {
     PartnerHp = 0.5,
     PartnerRadius = 900,
     PartnerGank = 3,
-    WatchEvery = 0.25
+    WatchEvery = 0.25,
+    TrailSec = 10
 }
 running = {}
+local trailing = {}
 local handled = {}
 local decided = {}
 local gateWhy = {}
 function ____exports.ResetCache()
-    for ____, t in ipairs({running, handled, decided, gateWhy}) do
+    for ____, t in ipairs({
+        running,
+        trailing,
+        handled,
+        decided,
+        gateWhy
+    }) do
         for k in pairs(t) do
             t[k] = nil
         end
@@ -373,78 +461,84 @@ local function finish(bot, p, r, label)
     local function r1(x)
         return math.floor(x * 10) / 10
     end
-    Telemetry.Event(
-        "pull_job",
+    local fields = {
         {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {
-                "pos",
-                LaneConfig.PositionOf(bot)
-            },
-            {
-                "lane",
-                bot:GetAssignedLane()
-            },
-            {"camp", p.plan.camp.campIdx},
-            {"slot", p.plan.slot},
-            {"res", r.success and "ok" or "fail"},
-            {"why", why},
-            {"label", label or p.label},
-            {
-                "div",
-                p.wave > 0 and math.floor(p.peak / p.wave * 100 + 0.5) / 100 or 0
-            },
-            {"n", p.wave},
-            {
-                "left",
-                r1(p.left)
-            },
-            {
-                "away",
-                r1(DotaTime() - p.left)
-            },
-            {
-                "died",
-                bot:IsAlive() and 0 or 1
-            },
-            {"hit", p.hit == true and 1 or 0},
-            {"idle", p.idle},
-            {
-                "wd",
-                p.near ~= nil and math.floor(p.near + 0.5) or nil
-            },
-            {"nn", p.neutrals}
+            "pid",
+            bot:GetPlayerID()
+        },
+        {
+            "pos",
+            LaneConfig.PositionOf(bot)
+        },
+        {
+            "lane",
+            bot:GetAssignedLane()
+        },
+        {"camp", p.plan.camp.campIdx},
+        {"slot", p.plan.slot},
+        {"res", r.success and "ok" or "fail"},
+        {"why", why},
+        {"label", label or p.label},
+        {
+            "div",
+            share(p)
+        },
+        {"n", p.wave},
+        {
+            "left",
+            r1(p.left)
+        },
+        {
+            "away",
+            r1(DotaTime() - p.left)
+        },
+        {
+            "died",
+            bot:IsAlive() and 0 or 1
+        },
+        {"hit", p.hit == true and 1 or 0},
+        {"idle", p.idle},
+        {
+            "wd",
+            p.near ~= nil and math.floor(p.near + 0.5) or nil
+        },
+        {"nn", p.neutrals}
+    }
+    if not r.success then
+        Telemetry.Event("pull_job", fields)
+        return
+    end
+    local now = DotaTime()
+    trailing[bot:GetPlayerID()] = {
+        pull = p,
+        fields = fields,
+        ["until"] = math.max(now, p.plan.waveAt or now) + ____exports.SETTINGS.TrailSec
+    }
+end
+--- Samples a finished pull's wave until its trail ends, then writes its line with `dt`. A new pull's start writes it first.
+local function trail(pid, flush)
+    local tr = trailing[pid]
+    if tr == nil then
+        return
+    end
+    if not flush and DotaTime() < tr["until"] then
+        sampleWave(tr.pull)
+        return
+    end
+    trailing[pid] = nil
+    local ____Telemetry_Event_10 = Telemetry.Event
+    local ____array_9 = __TS__SparseArrayNew(unpack(tr.fields))
+    __TS__SparseArrayPush(
+        ____array_9,
+        {
+            "dt",
+            share(tr.pull)
         }
     )
-end
-local function laneCreepsNear(center, radius)
-    local out = {}
-    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
-        do
-            local __continue46
-            repeat
-                if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue46 = true
-                    break
-                end
-                if GetUnitToLocationDistance(c, center) <= radius then
-                    out[#out + 1] = c
-                end
-                __continue46 = true
-            until true
-            if not __continue46 then
-                break
-            end
-        end
-    end
-    return out
-end
-local function onNeutral(c)
-    local t = c:GetAttackTarget()
-    return t ~= nil and t ~= nil and t:GetTeam() == Team.Neutral
+    ____Telemetry_Event_10(
+        "pull_job",
+        {__TS__SparseArraySpread(____array_9)}
+    )
 end
 --- During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
 -- is seen on a neutral).
@@ -460,19 +554,19 @@ local function sample(p)
     local radii = LaneConfig.Settings().Radii
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue54
+            local __continue59
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue54 = true
+                    __continue59 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, p.plan.meet)
                 if p.near == nil or d < p.near then
                     p.near = d
                 end
-                __continue54 = true
+                __continue59 = true
             until true
-            if not __continue54 then
+            if not __continue59 then
                 break
             end
         end
@@ -484,25 +578,7 @@ local function sample(p)
         end
     end
     p.neutrals = math.max(p.neutrals, nn)
-    local n = 0
-    for ____, c in ipairs(laneCreepsNear(p.plan.meet, radii.MeetWatch)) do
-        if onNeutral(c) then
-            n = n + 1
-        end
-    end
-    if n == 0 then
-        return
-    end
-    if p.wave == 0 then
-        p.wave = math.max(
-            1,
-            #laneCreepsNear(p.plan.meet, radii.WaveSize)
-        )
-    end
-    p.peak = math.max(
-        p.peak,
-        math.min(n, p.wave)
-    )
+    countDiverted(p)
 end
 local function verbCamp(p)
     local radii = LaneConfig.Settings().Radii
@@ -565,6 +641,7 @@ function ____exports.Wants(bot, blocked, host)
     if running[pid] ~= nil then
         return true
     end
+    trail(pid, false)
     if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return false
     end
@@ -611,6 +688,7 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) or 0)
+    trail(pid, true)
     local pull = {
         plan = p,
         left = now,

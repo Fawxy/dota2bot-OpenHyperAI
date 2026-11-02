@@ -778,7 +778,8 @@ ____exports.EVENTS = {
         hit = "num",
         idle = "num",
         wd = "num",
-        nn = "num"
+        nn = "num",
+        dt = "num"
     },
     choice = {
         pid = "num",
