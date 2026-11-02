@@ -1,0 +1,69 @@
+{
+ "schema": "er-spec/1",
+ "build": "a90e849d",
+ "until": "10:00",
+ "arms": {
+  "on": {
+   "build": "a90e849d",
+   "set": [
+    "Ours.JobChooser=true"
+   ],
+   "ours": {
+    "JobChooser": true
+   },
+   "states": true
+  },
+  "off": {
+   "build": "a90e849d",
+   "set": [
+    "Ours.JobChooser=false"
+   ],
+   "ours": {
+    "JobChooser": false
+   },
+   "states": true
+  }
+ },
+ "bars": [
+  {
+   "id": "B1 jobs ended by a gated OHA mode, ON",
+   "metric": "job_oha_gated",
+   "rule": "each",
+   "eq": 0
+  },
+  {
+   "id": "B2 cancelled:hit, ON",
+   "metric": "stack_cancelled_hit",
+   "rule": "each",
+   "eq": 0
+  },
+  {
+   "id": "guard deaths during a job per game (delta <= 0.10)",
+   "metric": "stack_deaths",
+   "rule": "delta",
+   "alpha": 0.025,
+   "met": {
+    "delta": {
+     "le": 0.1
+    }
+   }
+  },
+  {
+   "id": "guard deaths before 10:00 (delta <= 3.1)",
+   "metric": "deaths_before_10",
+   "rule": "delta",
+   "alpha": 0.025,
+   "met": {
+    "delta": {
+     "le": 3.1
+    }
+   }
+  },
+  {
+   "id": "H1 lua_ours",
+   "metric": "lua_ours",
+   "rule": "each",
+   "max": 0
+  }
+ ]
+}

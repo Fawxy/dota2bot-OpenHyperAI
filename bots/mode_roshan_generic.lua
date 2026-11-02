@@ -184,4 +184,5 @@ function GetDesireHelper()
     return BOT_ACTION_DESIRE_NONE
 end
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'roshan', GetDesire) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire = E('mode_roshan.GetDesire', GetDesire) end

@@ -242,7 +242,7 @@ Customize.Humaniser = {
 -- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
 -- SupportDeny (slice l1-support-deny): pos4-5 go for every own creep they can deny, before anything else in lane, whatever the
 -- core is doing. SupportDenyDire: false keeps the Dire supports on OHA's deny when SupportDeny is on (Radiant only).
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

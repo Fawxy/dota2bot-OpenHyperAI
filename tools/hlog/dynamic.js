@@ -144,6 +144,13 @@ function stackAttempts(store, file, gameNo = 1, until = Infinity) {
         .map(r => Object.fromEntries(STACK_KEYS.map(k => [k, k === 'death' ? r.death_flag === 1 : r[k] ?? undefined])));
 }
 
+/** Ended jobs of one stored game (the job_ends view, slice job-chooser); empty when no log in the store has ev=job. */
+function jobEnds(store, file, gameNo = 1) {
+    if (!store.kinds.has('ev_job')) return [];
+    if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'job_ends'").length) store.refreshViews();
+    return store.query('SELECT why, class, hit, pid, t FROM job_ends WHERE file = ? AND game = ?', file, gameNo);
+}
+
 /**
  * All dynamic metrics for one game of the log store (`file` as in games.file, already ingested). `end` is the last whole minute
  * of snapshots.
@@ -196,6 +203,7 @@ function dynamicMetrics(store, file, gameNo = 1) {
         // Undefined when the game has no ev=creep_death or no trusted lineup (@steals applies the lpos rule above itself).
         audited_steals: stealsFor(store, file, gameNo, 600),
         stacks: stackAttempts(store, file, gameNo, end + 1),
+        job_ends: jobEnds(store, file, gameNo),
         idle_10s: sum(Object.values(S), s => s.idle),
         lua_error: G.lua_error_ours + G.console_lines,
         lua_error_ours: G.lua_error_ours,
@@ -245,4 +253,4 @@ function worldMetrics(store, file, gameNo, S, role) {
     };
 }
 
-module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, worldMetrics, laneLabel, roles, C };
+module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, jobEnds, worldMetrics, laneLabel, roles, C };

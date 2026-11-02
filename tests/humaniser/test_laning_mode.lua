@@ -4,6 +4,33 @@ local creep, hero, load = LaningCreep, LaningHero, LaningLoad
 
 local function last(bot) return bot.actions[#bot.actions] end
 
+-- Slice job-chooser: 25 s of gated frames leave laning's desire as if it had never been skipped (the wrapper skips OHA's file).
+do
+	local function world(gate)
+		T = 200
+		return load({ pos = 3, owned = true, enemyCreeps = { creep({ hp = 40, loc = Vector(100, 0) }) }, chooser = gate })
+	end
+	world()
+	T = 225
+	local never = GetDesire()
+	local gated = true
+	local entered = false
+	world({ Gate = function(_, _, inner) return function()
+		if gated then return 0 end
+		entered = true
+		return inner()
+	end end })
+	local allZero = true
+	while T < 225 do
+		if GetDesire() ~= 0 then allZero = false end
+		T = T + 0.1
+	end
+	T = 225
+	gated = false
+	check("laning, gated for 25 s: 0 and OHA's code not run", allZero and not entered)
+	check("laning after a gated period: as if never gated", near(GetDesire(), never), never)
+end
+
 do
 	local c = creep({ hp = 40, loc = Vector(100, 0) })
 	load({ pos = 3, owned = true, enemyCreeps = { c } })

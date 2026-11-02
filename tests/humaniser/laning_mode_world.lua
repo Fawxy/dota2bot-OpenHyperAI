@@ -80,6 +80,8 @@ function LaningLoad(opts)
 	package.loaded['bots/FunLib/humaniser/lane_config'] = { PositionOf = function(u) return u.pos end }
 	package.loaded['bots/FunLib/humaniser/ours'] = { On = function() return opts.ours == true end }
 	package.loaded['bots/FunLib/humaniser/etiquette'] = nil
+	-- The mode file's wrapper line, with the humaniser stubbed: no job, so OHA's code always runs. A test of the gate passes its own.
+	package.loaded['bots/FunLib/humaniser/index'] = { Chooser = opts.chooser or { Gate = function(_, _, inner) return inner end } }
 	-- A fixture's negative control runs an older bots/ without the module; the old mode file never reads it then.
 	local okEtiquette, Etiquette = pcall(require, 'bots/FunLib/humaniser/etiquette')
 	if not okEtiquette then Etiquette = { Applies = function() return false end } end

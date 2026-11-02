@@ -176,4 +176,5 @@ function X.IsStronger(bot, enemy)
 	return EPower > BPower;
 end
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'secret_shop', GetDesire) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_secret_shop.GetDesire', GetDesire), E('mode_secret_shop.Think', Think), E('mode_secret_shop.OnStart', OnStart), E('mode_secret_shop.OnEnd', OnEnd) end

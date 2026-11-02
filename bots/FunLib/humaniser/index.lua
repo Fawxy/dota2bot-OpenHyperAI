@@ -23,6 +23,7 @@ local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
+local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
@@ -46,6 +47,7 @@ ____exports.Telemetry = Telemetry
 ____exports.Ours = Ours
 ____exports.Etiquette = Etiquette
 ____exports.StackJob = StackJob
+____exports.Chooser = Chooser
 ____exports.Tasks = Tasks
 ____exports.States = States
 local OVERLAY_REFRESH = 0.25
@@ -339,17 +341,28 @@ if Telemetry.GuardsEnabled() then
         "StackJob",
         StackJob,
         {
-            Desire = zero,
-            Think = no,
-            Abort = none,
-            HoldsRun = no,
-            HoldsIdle = no,
+            Wants = no,
+            Step = no,
+            End = none,
+            Running = no,
+            NoteIdleHeld = none,
+            NoteHit = none,
             Benched = no,
             Bench = no,
-            HoldsCasts = no,
             Minutes = function() return StackJob.SETTINGS.TriggerMinutes end
         }
     )
+    Telemetry.GuardModule("Chooser", Chooser, {
+        Decide = none,
+        FarmDesire = zero,
+        FarmThink = no,
+        Abort = none,
+        HoldsRun = no,
+        HoldsIdle = no,
+        HoldsCasts = no,
+        Benched = no,
+        Bench = no
+    })
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

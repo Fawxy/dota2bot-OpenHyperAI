@@ -2016,4 +2016,5 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_nevermore'] = function ()
 	return BOT_MODE_DESIRE_NONE
 end
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'roam', GetDesire) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think, OnStart, OnEnd = E('mode_roam.GetDesire', GetDesire), E('mode_roam.Think', Think), E('mode_roam.OnStart', OnStart), E('mode_roam.OnEnd', OnEnd) end

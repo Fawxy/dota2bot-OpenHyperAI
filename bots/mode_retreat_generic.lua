@@ -715,7 +715,7 @@ function X.ShouldRun()
         and bot:DistanceFromFountain() > 3000
         -- Hook (slice double-stack): a stack job's one hit on an ancient is not farming it; in dsolo4b/4c this 6.21 s run
         -- cut every ancient double at the hit with the bot at full HP and no enemy near. The job's own Gate still runs.
-        and not J.Humaniser.StackJob.HoldsRun(bot)
+        and not J.Humaniser.Chooser.HoldsRun(bot)
     then
         return 6.21
     end
@@ -784,5 +784,6 @@ function X.ConsiderCompleteItem()
 end
 
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
+do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'retreat', GetDesire) end
 do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire = E('mode_retreat.GetDesire', GetDesire) end
 return X

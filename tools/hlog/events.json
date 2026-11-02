@@ -501,6 +501,14 @@
    "stacked": "bool",
    "assumed": "bool"
   },
+  "job": {
+   "pid": "num",
+   "job": "str",
+   "phase": "str",
+   "why": "str",
+   "host": "num",
+   "hit": "num"
+  },
   "stack": {
    "pid": "num",
    "min": "num",
@@ -1045,6 +1053,11 @@
   "ev_lane_stack": {
    "type": "text",
    "grade": "text"
+  },
+  "ev_job": {
+   "job": "text",
+   "phase": "text",
+   "why": "text"
   },
   "ev_stack": {
    "res": "text",

@@ -192,6 +192,42 @@ do
     T.eq("no dropLost: the attempt waits until the creep is taken", off[1] and off[1].reason, "taken_by_other")
 end
 
+-- A gap in the steps: the host stops stepping laneFarm for 25 s (the bot in another mode, a job for one) with an attempt open.
+-- The next step ends that attempt, by its clock or because the creep is gone; the old attempt is never resumed.
+local function gapped(keepAttackers)
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(9), skill = function() return 1 end, attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+    local a = sim:addCreep{ x = 100, y = 0, hp = 75, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    local others = {}
+    for i = 1, 5 do
+        others[i] = sim:addCreep{ x = 0, y = 200 + i * 30, team = 2, damage = 20, attackPoint = 0.467, autoAttack = true,
+            secondsPerAttack = 1, firstSwingAt = 0.3, attackTarget = a, passive = true }
+    end
+    local attempts = {}
+    local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { pick = soonest,
+        onAttempt = function(t, r) attempts[#attempts + 1] = { creep = t.creep, reason = r.reason, at = sim.t } end })
+    -- 0.2 s in: the attempt is open, waiting for the others' first hits (0.3 s + 0.467 s).
+    while sim.t < 0.2 do g:next() sim:step(DT) end
+    local before = #attempts
+    if not keepAttackers then for _, o in ipairs(others) do sim:kill(o) end end
+    local gapEnd = sim.t + 25
+    while sim.t < gapEnd do sim:step(DT) end
+    g:next()
+    return attempts, before, gapEnd, a
+end
+do
+    local kept, before, gapEnd = gapped(true)
+    T.eq("gap, creep killed meanwhile: no attempt ended before the gap", before, 0)
+    T.check("gap, creep killed meanwhile: the first step after it ends the attempt (" .. tostring(kept[1] and kept[1].reason) .. ")",
+        kept[1] ~= nil and kept[1].reason ~= "ok" and kept[1].at >= gapEnd)
+    local alive, before2, gapEnd2, a = gapped(false)
+    T.eq("gap, creep alive: no attempt ended before the gap", before2, 0)
+    T.check("gap, creep alive: the attempt was open on the creep", alive[1] ~= nil and alive[1].creep == a)
+    T.eq("gap, creep alive: ended by its clock on the first step after it", alive[1] and alive[1].reason, "timeout")
+    T.check("gap, creep alive: at that step", alive[1] ~= nil and alive[1].at >= gapEnd2)
+end
+
 -- Death ends it; interruptIf ends it.
 do
     local sim, bot = wave(3)
