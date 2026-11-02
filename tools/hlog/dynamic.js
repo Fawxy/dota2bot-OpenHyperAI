@@ -270,6 +270,13 @@ function stackAttempts(store, file, gameNo = 1, until = Infinity) {
         .map(r => Object.fromEntries(STACK_KEYS.map(k => [k, k === 'death' ? r.death_flag === 1 : r[k] ?? undefined])));
 }
 
+/** Ended jobs of one stored game (the job_ends view, slice job-chooser); empty when no log in the store has ev=job. */
+function jobEnds(store, file, gameNo = 1) {
+    if (!store.kinds.has('ev_job')) return [];
+    if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'job_ends'").length) store.refreshViews();
+    return store.query('SELECT why, class, hit, pid, t FROM job_ends WHERE file = ? AND game = ?', file, gameNo);
+}
+
 /**
  * All dynamic metrics for one game of the log store (`file` as in games.file, already ingested). `end` is the last whole minute
  * of snapshots. `parsed` is that game from parseLog (read from `file` when omitted): the part-B and C metrics still use it.
@@ -328,6 +335,7 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
         audited_steals: auditedSteals(game, S, lpos, 600),
         stacks: stackAttempts(store, file, gameNo, end + 1),
+        job_ends: jobEnds(store, file, gameNo),
         idle_10s: sum(Object.values(H), h => h.idle),
         lua_error: G.lua_error_ours + G.console_lines,
         lua_error_ours: G.lua_error_ours,
@@ -439,4 +447,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, worldMetrics, wisdom, laneLabel, rotations, laneExit, tpJoins, series, roles, C };
+module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, jobEnds, worldMetrics, wisdom, laneLabel, rotations, laneExit, tpJoins, series, roles, C };

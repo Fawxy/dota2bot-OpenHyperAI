@@ -46,6 +46,9 @@ function flatten(m) {
         stack_clean: m.stacks.filter(s => s.res !== 'skip' && !stackInterrupted(s)).length,
         stack_interrupted: m.stacks.filter(s => s.res !== 'skip' && stackInterrupted(s)).length,
         stack_deaths: m.stacks.filter(s => s.death).length,
+        // Slice job-chooser's bars: jobs ended by an OHA mode the chooser should shut out, and by the old hit cancel.
+        job_oha_gated: (m.job_ends ?? []).filter(j => j.class === 'oha-gated').length,
+        stack_cancelled_hit: m.stacks.filter(s => s.why === 'cancelled:hit').length,
         // Slice stack-hit: hit orders never confirmed (OHA's idle relocation replaced the attack in slice 4's four), and the
         // relocations the job held (ev=stack idle; NULL on older builds).
         stack_noaggro: m.stacks.filter(stackNoAggro).length,

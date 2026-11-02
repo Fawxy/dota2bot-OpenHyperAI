@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { Store, INGEST_VERSION, DECLARED, versionOf } = require('../store');
 
+const { jobEnds } = require('../dynamic');
 const QUERY = fs.readFileSync(path.join(__dirname, '../queries/stack_attempts.sql'), 'utf8');
 
 function tmp() {
@@ -179,6 +180,25 @@ test('stack view keeps stackCause results when a column also holds text and when
         '[HEV] t=220 ev=stack pid=1 min=3 res=stacked why=x box59=odd vis59=odd'])]);
     assert.strictEqual(s.colsOf('ev_stack').get('box59'), 'text');
     assert.deepStrictEqual(s.query('SELECT cause FROM stack_attempts ORDER BY t').map(r => r.cause), ['3', 'no-spawn', null]);
+});
+
+test('job_ends sorts what ended each job', () => {
+    const s = new Store(':memory:');
+    const f = log(tmp(), 'j.log', ['[HEV] t=-60 ev=bot pid=1 hero=lion team=2 schema=2 build=0123456', '[HEV] t=-60 ev=bot pid=2 hero=muerta team=2',
+        '[HEV] t=99 ev=job pid=1 job=stack phase=start why=trigger host=17',
+        '[HEV] t=100 ev=job pid=1 job=stack phase=end why=preempted:mode=7 host=17 hit=0',
+        '[HEV] t=110 ev=job pid=1 job=stack phase=end why=preempted:mode=2 host=17 hit=1',
+        '[HEV] t=120 ev=job pid=2 job=stack phase=end why=preempted:mode=2 host=17 hit=0',
+        '[HEV] t=130 ev=job pid=1 job=stack phase=end why=cancelled:retreat host=17 hit=1',
+        '[HEV] t=140 ev=job pid=1 job=stack phase=end why=cancelled:run host=17 hit=0',
+        '[HEV] t=150 ev=job pid=1 job=stack phase=end why=ok host=17 hit=0']);
+    s.ingestAll([f]);
+    assert.deepStrictEqual(s.query('SELECT why, class, hit FROM job_ends ORDER BY t').map(r => [r.why, r.class, r.hit]), [
+        ['preempted:mode=7', 'oha-gated', 0], ['preempted:mode=2', 'valve', 1], ['preempted:mode=2', 'exception', 0],
+        ['cancelled:retreat', 'exception', 1], ['cancelled:run', 'oha-gated', 0], ['ok', 'other', 0]]);
+    const file = s.query('SELECT file FROM games')[0].file;
+    assert.strictEqual(jobEnds(s, file, 1).filter(j => j.class === 'oha-gated').length, 2);
+    assert.deepStrictEqual(jobEnds(new Store(':memory:'), file, 1), []);
 });
 
 test('fields named like a row key do not overwrite it', () => {

@@ -1037,6 +1037,15 @@ do
 	end)
 	check("ev=job: hit=0 with no hero hit", field(jobLines(ls)[2], "hit") == "0", jobLines(ls)[2])
 
+	-- A run state from before a job ends by its clock and on OnEnd, so skipping OHA's farm during the job leaves it no longer.
+	local farmSrc = io.open(BOTS_ROOT .. "/bots/mode_farm_generic.lua", "r"):read("a")
+	local helper = farmSrc:match("function GetDesireHelper%(%)(.-)\nend\n")
+	local clock = helper and helper:find("DotaTime() < runTime + shouldRunTime", 1, true)
+	local clear = helper and helper:find("runMode = false", 1, true)
+	check("farm after a job: runMode ends by its clock on the next desire", clock ~= nil and clear ~= nil and clock < clear)
+	local onEnd = farmSrc:match("function OnEnd%(%)(.-)\nend\n")
+	check("farm after a job: OnEnd clears runMode", onEnd ~= nil and onEnd:find("runMode = false", 1, true) ~= nil)
+
 	-- The farm file's line builds both wrappers.
 	local farm = io.open(BOTS_ROOT .. "/bots/mode_farm_generic.lua", "r"):read("a")
 	check("farm: wrapper line hosts Think", farm:find("C.HostThink(GetBot(), 'farm', Think, J.CanNotUseAction)", 1, true) ~= nil)
