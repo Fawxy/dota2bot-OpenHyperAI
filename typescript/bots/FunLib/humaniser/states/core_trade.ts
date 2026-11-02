@@ -101,6 +101,8 @@ interface Episode {
     startedAt?: number;
     hp0: number;
     thp0: number;
+    /** The target's HP when last seen: an unseen target's handle reads as dead (cil3: 61 of 69 `kill` lines had no death). */
+    thpSeen: number;
     inputs: Inputs;
     /** When the current step out of the creeps began, while one runs. */
     stepSince?: number;
@@ -203,8 +205,8 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     episodes[pid] = undefined;
     const started = ep.startedAt !== undefined;
     if (started && why === "losing") recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp;
-    const killed = started && (ep.target.IsNull() || !ep.target.IsAlive());
-    const thp = !ep.target.IsNull() && ep.target.IsAlive() ? ep.target.GetHealth() : 0;
+    const killed = started && !IsHeroAlive(ep.tpid);
+    const thp = killed ? 0 : valid(ep.target) ? ep.target.GetHealth() : ep.thpSeen;
     const i = ep.inputs;
     Telemetry.Event("trade", [
         ["pid", pid],
@@ -262,14 +264,16 @@ export function Desire(bot: Unit): number | undefined {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
         recoverTo[pid] = undefined;
     }
-    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
+    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
     return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
 }
 
 /** Why a running episode ends now, or undefined to keep it. */
 function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     const t: Unit = ep.target;
-    if (!valid(t)) return ep.target.IsNull() || !ep.target.IsAlive() ? "target_dead" : "target_lost";
+    if (!IsHeroAlive(ep.tpid)) return "target_dead";
+    if (!valid(t)) return "target_lost";
+    ep.thpSeen = t.GetHealth();
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
     if (ep.kind === "kill") {
         if (now - ep.startedAt > KILL_TIME) return "time";

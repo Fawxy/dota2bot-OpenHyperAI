@@ -119,9 +119,13 @@ function ____exports.Gather(bot, target)
 end
 function keepWhy(bot, ep, now)
     local t = ep.target
-    if not valid(t) then
-        return (ep.target:IsNull() or not ep.target:IsAlive()) and "target_dead" or "target_lost"
+    if not IsHeroAlive(ep.tpid) then
+        return "target_dead"
     end
+    if not valid(t) then
+        return "target_lost"
+    end
+    ep.thpSeen = t:GetHealth()
     if ep.startedAt == nil then
         return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
     end
@@ -165,19 +169,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue74
+            local __continue75
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue74 = true
+                __continue75 = true
             until true
-            if not __continue74 then
+            if not __continue75 then
                 break
             end
         end
@@ -289,8 +293,8 @@ local function close(bot, ep, why, now)
     if started and why == "losing" then
         recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp
     end
-    local killed = started and (ep.target:IsNull() or not ep.target:IsAlive())
-    local thp = not ep.target:IsNull() and ep.target:IsAlive() and ep.target:GetHealth() or 0
+    local killed = started and not IsHeroAlive(ep.tpid)
+    local thp = killed and 0 or (valid(ep.target) and ep.target:GetHealth() or ep.thpSeen)
     local i = ep.inputs
     Telemetry.Event(
         "trade",
@@ -399,6 +403,7 @@ function ____exports.Desire(bot)
         offeredAt = now,
         hp0 = bot:GetHealth(),
         thp0 = target:GetHealth(),
+        thpSeen = target:GetHealth(),
         inputs = inputs,
         primes = 0,
         stepOuts = 0,
@@ -424,19 +429,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue64
+            local __continue65
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue64 = true
+                    __continue65 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue64 = true
+                __continue65 = true
             until true
-            if not __continue64 then
+            if not __continue65 then
                 break
             end
         end

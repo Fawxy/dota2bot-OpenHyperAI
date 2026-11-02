@@ -56,6 +56,8 @@ function Unit:GetNearbyTowers() return {} end
 function Unit:GetAttackTarget() return self.attacking end
 function Unit:Action_AttackUnit(u) self.attacking = u self.orders = (self.orders or 0) + 1 end
 function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
+-- The game's per-player answer; a unit handle out of sight reads as dead (below).
+function IsHeroAlive(pid) return pid == enemy.pid and not enemy.dead or pid == bot.pid end
 
 local function last() return lines[#lines] or "" end
 
@@ -195,6 +197,33 @@ do
 	local away = bot.moves[#bot.moves]
 	check("a creep with no location is skipped: the core still steps out away from the located one", ok and away ~= nil and away.x > 0, tostring(err))
 	function Unit:GetNearbyLaneCreeps() return {} end
+end
+
+do
+	-- cil3 A_on_4 t=89.3: a target at 77% HP left sight, its handle read as dead, and the trade logged a kill with all its HP.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.loc = 80, 70, nil, Vector(0, 0)
+	T = 700
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	enemy.hp = 60
+	T = 701
+	CoreTrade.Desire(bot)
+	enemy.alive = false
+	T = 702
+	CoreTrade.Desire(bot)
+	check("a target out of sight but alive ends as lost from sight, with the HP it had when last seen",
+		last():find("result=done") and last():find("why=target_lost") and last():find("thpd=10"), last())
+	enemy.alive = true
+	CoreTrade.Reset()
+	T = 710
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	enemy.alive, enemy.dead = false, true
+	T = 711
+	CoreTrade.Desire(bot)
+	check("a target the game says is dead ends as a kill", last():find("result=kill") and last():find("why=target_dead"), last())
+	enemy.alive, enemy.dead = true, nil
 end
 
 do
