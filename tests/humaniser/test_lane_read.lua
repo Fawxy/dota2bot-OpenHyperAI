@@ -15,7 +15,8 @@ end
 
 local function bot(reads) for _, r in ipairs(reads) do if r.lane == Lane.Bot then return r end end end
 
--- Fronts are team-relative in LANE_FRONT; both at absolute 0.6 means the wave meets past mid, towards Dire's T1.
+-- Fronts are team-relative in LANE_FRONT; both at absolute 0.6 means the wave meets past mid, towards Dire's T1. The stub
+-- shares one lane path between the teams, so here Dire's conversion lands exactly; in game it does not (debt lane-amount-frame).
 do
 	local R = fresh()
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.6, 0.4
@@ -24,7 +25,7 @@ do
 	local dire = bot(R.Read(3, 100))
 	check("radiant reads the meet halfway to Dire's tower", near(rad.eq, 0.5), rad.eq)
 	check("dire's script reads the same meet as halfway back to its own tower", near(dire.eq, -0.5), dire.eq)
-	check("both scripts log fronts in the absolute frame", near(rad.ourFront, dire.enemyFront) and near(rad.ourFront, 0.6), dire.enemyFront)
+	check("dire's team-relative front is converted to the Radiant-based amount", near(rad.ourFront, dire.enemyFront) and near(rad.ourFront, 0.6), dire.enemyFront)
 end
 
 -- Advantage reads creeps near our front and only visible enemies; the census counts every own creep in the lane.
@@ -89,19 +90,16 @@ do
 	check("aggro drops and the clock runs", after.now == 0 and near(after.since, 3.5), after.since)
 end
 
--- Arrival: the median second in the cycle at which three enemy creeps first reach our front, over finished cycles.
+-- The ee and ag strings are parsed by hlog @lane_read_check (its store test uses the same shapes).
 do
 	local R = fresh()
-	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
-	local function wave() for i = 1, 3 do MakeCreep({ team = 3, x = x(0.5) + 10 * i, y = -5000 }) end end
-	local function clear() CREEPS[3] = {} end
-	R.Read(2, 120)
-	wave() R.Read(2, 132) clear()
-	R.Read(2, 150)
-	wave() R.Read(2, 164) clear()
-	local r = bot(R.Read(2, 181))
-	check("no arrival history before a wave", bot(fresh().Read(2, 120)).arrivalSec == nil)
-	check("median of seconds 12 and 14", r.arrivalSec == 13, r.arrivalSec)
+	local ee = R.FormatEnemies({
+		{ pid = 7, visible = false, seen = 12.6, dist = 1500.9 },
+		{ pid = 8, visible = true, seen = 0, dist = 300.2, hp = 0.504, lvl = 3 },
+	})
+	check("ee: missing as pid:secs:dist, visible as pid:v:dist:hp%:lvl", ee == "7:12:1500;8:v:300:50:3", ee)
+	local ag = R.FormatAggro({ { pid = 1, now = 2, since = 0 }, { pid = 2, now = 0, since = 3.56 }, { pid = 3, now = 0 } })
+	check("ag: pid:now:since, -1 when never", ag == "1:2:0.0;2:0:3.5;3:0:-1", ag)
 end
 
 finish()

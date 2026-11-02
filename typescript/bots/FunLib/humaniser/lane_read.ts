@@ -12,8 +12,6 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneGeom from "bots/FunLib/humaniser/lane_geom";
 
 export const WAVE_CYCLE = 30;
-const ARRIVAL_CREEPS = 3;
-const ARRIVAL_HISTORY = 3;
 const TEAM_SLOTS = 5;
 
 export interface Creeps {
@@ -59,7 +57,6 @@ export interface LaneRead {
     theirTower: number;
     cycleSec: number;
     nextWaveIn: number;
-    arrivalSec?: number;
     enemies: EnemyRead[];
     dead: number;
     aggro: AggroRead[];
@@ -70,16 +67,9 @@ export interface LaneRead {
     frontLoc: Vector;
 }
 
-interface LaneTrack {
-    cycle: number;
-    arrivalSec?: number;
-    arrivals: number[];
-}
-
 interface TeamMemory {
     enemyPids: Record<number, boolean>;
     aggroAt: Record<number, number>;
-    tracks: Record<number, LaneTrack>;
 }
 
 const LANES: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
@@ -100,7 +90,7 @@ export function Reset(): void {
 function memoryFor(team: number): TeamMemory {
     let m = memory[team];
     if (m === undefined) {
-        m = { enemyPids: {}, aggroAt: {}, tracks: {} };
+        m = { enemyPids: {}, aggroAt: {} };
         memory[team] = m;
     }
     return m;
@@ -133,14 +123,6 @@ export function Advantage(allyPower: number, enemyPower: number): number {
 export function Leads(team: number, a: number | undefined, b: number): number {
     if (a === undefined) return b;
     return team === Team.Radiant ? math.max(a, b) : math.min(a, b);
-}
-
-function median(list: number[]): number | undefined {
-    if (list.length === 0) return undefined;
-    const sorted = [...list];
-    sorted.sort((a, b) => a - b);
-    const n = sorted.length;
-    return n % 2 === 1 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
 }
 
 function emptyCreeps(): Creeps {
@@ -195,11 +177,11 @@ function byLane(units: Unit[], visibleOnly: boolean): Record<number, Placed[]> {
 }
 
 /** Absolute amount of `owner`'s nearest alive tower on `lane`; its base end (0 or 1) when all three are down. */
-function towerAmount(owner: number, lane: Lane): number {
+function towerAmount(team: number, owner: number, lane: Lane): number {
     for (const id of TOWER_IDS[lane]) {
         const tower = GetTower(owner, id);
         if (tower === null || tower === undefined || !tower.IsAlive()) continue;
-        const key = `${owner}:${id}`;
+        const key = `${team}:${owner}:${id}`;
         let amount = towerAmounts[key];
         if (amount === undefined) {
             amount = absAmount(lane, tower.GetLocation()).amount;
@@ -256,25 +238,6 @@ function readAggro(lane: Lane, m: TeamMemory, enemyCreeps: Placed[], front: Vect
     return result;
 }
 
-function track(m: TeamMemory, lane: Lane, now: number, enemyNearCount: number): LaneTrack {
-    let t = m.tracks[lane];
-    const cycle = math.floor(now / WAVE_CYCLE);
-    if (t === undefined) {
-        t = { cycle, arrivals: [] };
-        m.tracks[lane] = t;
-    }
-    if (cycle !== t.cycle) {
-        if (t.arrivalSec !== undefined) {
-            t.arrivals.push(t.arrivalSec);
-            if (t.arrivals.length > ARRIVAL_HISTORY) table.remove(t.arrivals, 1);
-        }
-        t.cycle = cycle;
-        t.arrivalSec = undefined;
-    }
-    if (t.arrivalSec === undefined && enemyNearCount >= ARRIVAL_CREEPS) t.arrivalSec = now % WAVE_CYCLE;
-    return t;
-}
-
 /** One reading per lane for `team`, which must be the calling script's team. */
 export function Read(team: number, now: number): LaneRead[] {
     const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
@@ -288,8 +251,8 @@ export function Read(team: number, now: number): LaneRead[] {
         const enemyFrontLoc = GetLaneFrontLocation(enemyTeam, lane, 0);
         const ourFront = absAmount(lane, frontLoc).amount;
         const enemyFront = absAmount(lane, enemyFrontLoc).amount;
-        const ourTower = towerAmount(team, lane);
-        const theirTower = towerAmount(enemyTeam, lane);
+        const ourTower = towerAmount(team, team, lane);
+        const theirTower = towerAmount(team, enemyTeam, lane);
         const meet = LaneGeom.MeetAmount(ourFront, enemyFront, ourTower, theirTower);
         const census = emptyCreeps();
         const near = emptyCreeps();
@@ -301,7 +264,6 @@ export function Read(team: number, now: number): LaneRead[] {
             if (dist2D(c.loc, enemyFrontLoc) <= radius) addCreep(censusAtEnemy, team, c.unit, c.amount, c.loc);
         }
         for (const c of foes[lane]) if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount, c.loc);
-        const t = track(m, lane, now, enemyNear.count);
         const { enemies, dead } = readEnemies(team, m, frontLoc);
         const cycleSec = now % WAVE_CYCLE;
         reads.push({
@@ -317,7 +279,6 @@ export function Read(team: number, now: number): LaneRead[] {
             theirTower,
             cycleSec,
             nextWaveIn: WAVE_CYCLE - cycleSec,
-            arrivalSec: median(t.arrivals),
             enemies,
             dead,
             aggro: readAggro(lane, m, foes[lane], frontLoc, now),
@@ -327,4 +288,24 @@ export function Read(team: number, now: number): LaneRead[] {
         });
     }
     return reads;
+}
+
+/**
+ * The `ee` field of ev=lane_read, parsed by hlog query `@lane_read_check`: per enemy `pid:v:dist:hp%:lvl` when visible,
+ * `pid:secs_since_seen:dist` when not, joined by `;`.
+ */
+export function FormatEnemies(enemies: EnemyRead[]): string {
+    const out: string[] = [];
+    for (const e of enemies) {
+        const head = `${e.pid}:${e.visible ? "v" : math.floor(e.seen)}:${math.floor(e.dist)}`;
+        out.push(e.visible ? `${head}:${math.floor((e.hp ?? 0) * 100 + 0.5)}:${e.lvl}` : head);
+    }
+    return out.join(";");
+}
+
+/** The `ag` field of ev=lane_read: per allied hero `pid:creeps_on_it_now:secs_since_last` (-1 never), joined by `;`. */
+export function FormatAggro(aggro: AggroRead[]): string {
+    const out: string[] = [];
+    for (const a of aggro) out.push(`${a.pid}:${a.now}:${a.since === undefined ? "-1" : string.format("%.1f", math.floor(a.since * 10) / 10)}`);
+    return out.join(";");
 }

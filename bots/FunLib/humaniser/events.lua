@@ -266,7 +266,6 @@ ____exports.EVENTS = {
         ot = "num",
         et = "num",
         cyc = "num",
-        arr = "num",
         cn = "num",
         chp = "num",
         cpw = "num",

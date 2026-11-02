@@ -2,7 +2,8 @@
 -- Params: like (LIKE pattern on games.file, default every game), from and until (seconds, default 90 and 600).
 -- C1 creep advantage: n1 readings, adv_mae mean |adv - adv_true|, adv_02 share within 0.2, fogged share with fewer enemy creeps
 --   seen near our front than were there.
--- C2 meeting point: n2 readings with creeps on both sides, meet_mean mean map distance (meet_err), meet_500 share within 500.
+-- C2 meeting point: n2 readings with creeps on both sides, meet_mean mean map distance (meet_err: the two fronts' midpoint
+--   against the lead creeps'), meet_500 share within 500.
 -- C3 outcome: n3 readings with adv off 1 by 0.2 or more and a 10 s window before the next spawn where the two sides lost
 --   different creep HP; agree share where the side adv favoured lost less; agree3_mid the same with the wave between the
 --   towers (|eq| < 0.6). Near a tower the tower decides who loses HP whatever adv says (game lr1: enemy lost more in 84-100%

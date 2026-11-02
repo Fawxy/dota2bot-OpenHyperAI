@@ -308,7 +308,7 @@ export const EVENTS = {
      * Slice lane-read, once a second per team and lane to 12:00, both arms. Amounts run from Radiant's ancient (0) but along
      * the writing team's lane path, so they are comparable within one team's lines only (lr1: Dire's read 0.07-0.16 lower).
      * adv 0..2 and a/e/ap/ep over creeps near our front (enemy ones visible only); of/ef fronts, ot/et nearest alive towers;
-     * cyc second in the 30 s cycle, arr median enemy arrival second; cn/chp/cpw/cl own creeps in the whole lane (count, HP,
+     * cyc second in the 30 s cycle; cn/chp/cpw/cl own creeps in the whole lane (count, HP,
      * HP-weighted power, lead amount, lead map position clx/cly): the other team's ground truth; cnn/cnp own creeps near the enemy's front (count, power),
      * the enemy reading's e/ep without fog; fx/fy our front's map position. ee per enemy `pid:v|seen:dist[:hp:lvl]` (v = visible,
      * else seconds since seen; hp percent), dead enemies; ag per allied hero `pid:now:since` (since -1 if never).
@@ -327,7 +327,6 @@ export const EVENTS = {
         ot: "num",
         et: "num",
         cyc: "num",
-        arr: "num",
         cn: "num",
         chp: "num",
         cpw: "num",

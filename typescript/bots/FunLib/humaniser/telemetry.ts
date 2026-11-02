@@ -416,13 +416,6 @@ function r3(v: number | undefined): number | undefined {
 function trackLaneRead(team: number, now: number): void {
     if (now < 0 || now > LANE_READ_UNTIL) return;
     for (const r of LaneRead.Read(team, now)) {
-        const ee: string[] = [];
-        for (const e of r.enemies) {
-            const head = `${e.pid}:${e.visible ? "v" : math.floor(e.seen)}:${math.floor(e.dist)}`;
-            ee.push(e.visible ? `${head}:${pct(e.hp ?? 0, 1)}:${e.lvl}` : head);
-        }
-        const ag: string[] = [];
-        for (const a of r.aggro) ag.push(`${a.pid}:${a.now}:${a.since === undefined ? -1 : math.floor(a.since * 10) / 10}`);
         Event("lane_read", [
             ["team", team],
             ["lane", r.lane],
@@ -437,7 +430,6 @@ function trackLaneRead(team: number, now: number): void {
             ["ot", r3(r.ourTower)],
             ["et", r3(r.theirTower)],
             ["cyc", math.floor(r.cycleSec * 10) / 10],
-            ["arr", r.arrivalSec],
             ["cn", r.census.count],
             ["chp", r.census.hp],
             ["cpw", math.floor(r.census.power)],
@@ -449,8 +441,8 @@ function trackLaneRead(team: number, now: number): void {
             ["fx", math.floor(r.frontLoc.x)],
             ["fy", math.floor(r.frontLoc.y)],
             ["dead", r.dead],
-            ["ee", ee.join(";")],
-            ["ag", ag.join(";")],
+            ["ee", LaneRead.FormatEnemies(r.enemies)],
+            ["ag", LaneRead.FormatAggro(r.aggro)],
         ]);
     }
 }

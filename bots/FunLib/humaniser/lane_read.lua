@@ -1,17 +1,4 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
--- Lua Library inline imports
-local function __TS__ArraySort(self, compareFn)
-    if compareFn ~= nil then
-        table.sort(
-            self,
-            function(a, b) return compareFn(nil, a, b) < 0 end
-        )
-    else
-        table.sort(self)
-    end
-    return self
-end
--- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -22,8 +9,6 @@ local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneGeom = require(GetScriptDirectory().."/FunLib/humaniser/lane_geom")
 ____exports.WAVE_CYCLE = 30
-local ARRIVAL_CREEPS = 3
-local ARRIVAL_HISTORY = 3
 local TEAM_SLOTS = 5
 local LANES = {Lane.Top, Lane.Mid, Lane.Bot}
 local TOWER_IDS = {[Lane.Top] = {Tower.Top1, Tower.Top2, Tower.Top3}, [Lane.Mid] = {Tower.Mid1, Tower.Mid2, Tower.Mid3}, [Lane.Bot] = {Tower.Bot1, Tower.Bot2, Tower.Bot3}}
@@ -36,7 +21,7 @@ end
 local function memoryFor(team)
     local m = memory[team]
     if m == nil then
-        m = {enemyPids = {}, aggroAt = {}, tracks = {}}
+        m = {enemyPids = {}, aggroAt = {}}
         memory[team] = m
     end
     return m
@@ -74,18 +59,6 @@ function ____exports.Leads(team, a, b)
     end
     return team == Team.Radiant and math.max(a, b) or math.min(a, b)
 end
-local function median(list)
-    if #list == 0 then
-        return nil
-    end
-    local sorted = {unpack(list)}
-    __TS__ArraySort(
-        sorted,
-        function(____, a, b) return a - b end
-    )
-    local n = #sorted
-    return n % 2 == 1 and sorted[(n - 1) / 2 + 1] or (sorted[n / 2] + sorted[n / 2 + 1]) / 2
-end
 local function emptyCreeps()
     return {count = 0, hp = 0, power = 0}
 end
@@ -113,14 +86,14 @@ local function byLane(units, visibleOnly)
     local assign = LaneConfig.Settings().Radii.LaneAssign
     for ____, unit in ipairs(units) do
         do
-            local __continue24
+            local __continue21
             repeat
                 if visibleOnly and not unit:CanBeSeen() then
-                    __continue24 = true
+                    __continue21 = true
                     break
                 end
                 if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
-                    __continue24 = true
+                    __continue21 = true
                     break
                 end
                 local loc = unit:GetLocation()
@@ -139,9 +112,9 @@ local function byLane(units, visibleOnly)
                     local ____out_best_0 = out[best]
                     ____out_best_0[#____out_best_0 + 1] = {unit = unit, loc = loc, amount = bestAmount}
                 end
-                __continue24 = true
+                __continue21 = true
             until true
-            if not __continue24 then
+            if not __continue21 then
                 break
             end
         end
@@ -149,17 +122,17 @@ local function byLane(units, visibleOnly)
     return out
 end
 --- Absolute amount of `owner`'s nearest alive tower on `lane`; its base end (0 or 1) when all three are down.
-local function towerAmount(owner, lane)
+local function towerAmount(team, owner, lane)
     for ____, id in ipairs(TOWER_IDS[lane]) do
         do
-            local __continue33
+            local __continue30
             repeat
                 local tower = GetTower(owner, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue33 = true
+                    __continue30 = true
                     break
                 end
-                local key = (tostring(owner) .. ":") .. tostring(id)
+                local key = (((tostring(team) .. ":") .. tostring(owner)) .. ":") .. tostring(id)
                 local amount = towerAmounts[key]
                 if amount == nil then
                     amount = absAmount(
@@ -170,7 +143,7 @@ local function towerAmount(owner, lane)
                 end
                 return amount
             until true
-            if not __continue33 then
+            if not __continue30 then
                 break
             end
         end
@@ -186,10 +159,10 @@ local function readEnemies(team, m, front)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue40
+            local __continue37
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue40 = true
+                    __continue37 = true
                     break
                 end
                 local pid = u:GetPlayerID()
@@ -207,9 +180,9 @@ local function readEnemies(team, m, front)
                     hp = maxHP > 0 and u:GetHealth() / maxHP or 0,
                     lvl = u:GetLevel()
                 }
-                __continue40 = true
+                __continue37 = true
             until true
-            if not __continue40 then
+            if not __continue37 then
                 break
             end
         end
@@ -217,21 +190,21 @@ local function readEnemies(team, m, front)
     local dead = 0
     for pid in pairs(m.enemyPids) do
         do
-            local __continue43
+            local __continue40
             repeat
                 local id = pid
                 if seen[id] == true then
-                    __continue43 = true
+                    __continue40 = true
                     break
                 end
                 if not IsHeroAlive(id) then
                     dead = dead + 1
-                    __continue43 = true
+                    __continue40 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)[1]
                 if info == nil then
-                    __continue43 = true
+                    __continue40 = true
                     break
                 end
                 enemies[#enemies + 1] = {
@@ -240,9 +213,9 @@ local function readEnemies(team, m, front)
                     seen = info.time_since_seen,
                     dist = dist2D(info.location, front)
                 }
-                __continue43 = true
+                __continue40 = true
             until true
-            if not __continue43 then
+            if not __continue40 then
                 break
             end
         end
@@ -256,15 +229,15 @@ local function readAggro(lane, m, enemyCreeps, front, now)
         local i = 1
         while i <= TEAM_SLOTS do
             do
-                local __continue48
+                local __continue45
                 repeat
                     local hero = GetTeamMember(i)
                     if hero == nil or hero == nil or hero:IsIllusion() or not hero:IsAlive() then
-                        __continue48 = true
+                        __continue45 = true
                         break
                     end
                     if hero:GetAssignedLane() ~= lane and GetUnitToLocationDistance(hero, front) > near then
-                        __continue48 = true
+                        __continue45 = true
                         break
                     end
                     local n = 0
@@ -279,9 +252,9 @@ local function readAggro(lane, m, enemyCreeps, front, now)
                     end
                     local at = m.aggroAt[pid]
                     result[#result + 1] = {pid = pid, now = n, since = at ~= nil and now - at or nil}
-                    __continue48 = true
+                    __continue45 = true
                 until true
-                if not __continue48 then
+                if not __continue45 then
                     break
                 end
             end
@@ -289,29 +262,6 @@ local function readAggro(lane, m, enemyCreeps, front, now)
         end
     end
     return result
-end
-local function track(m, lane, now, enemyNearCount)
-    local t = m.tracks[lane]
-    local cycle = math.floor(now / ____exports.WAVE_CYCLE)
-    if t == nil then
-        t = {cycle = cycle, arrivals = {}}
-        m.tracks[lane] = t
-    end
-    if cycle ~= t.cycle then
-        if t.arrivalSec ~= nil then
-            local ____t_arrivals_1 = t.arrivals
-            ____t_arrivals_1[#____t_arrivals_1 + 1] = t.arrivalSec
-            if #t.arrivals > ARRIVAL_HISTORY then
-                table.remove(t.arrivals, 1)
-            end
-        end
-        t.cycle = cycle
-        t.arrivalSec = nil
-    end
-    if t.arrivalSec == nil and enemyNearCount >= ARRIVAL_CREEPS then
-        t.arrivalSec = now % ____exports.WAVE_CYCLE
-    end
-    return t
 end
 --- One reading per lane for `team`, which must be the calling script's team.
 function ____exports.Read(team, now)
@@ -332,8 +282,8 @@ function ____exports.Read(team, now)
         local enemyFrontLoc = GetLaneFrontLocation(enemyTeam, lane, 0)
         local ourFront = absAmount(lane, frontLoc).amount
         local enemyFront = absAmount(lane, enemyFrontLoc).amount
-        local ourTower = towerAmount(team, lane)
-        local theirTower = towerAmount(enemyTeam, lane)
+        local ourTower = towerAmount(team, team, lane)
+        local theirTower = towerAmount(team, enemyTeam, lane)
         local meet = LaneGeom.MeetAmount(ourFront, enemyFront, ourTower, theirTower)
         local census = emptyCreeps()
         local near = emptyCreeps()
@@ -377,10 +327,9 @@ function ____exports.Read(team, now)
                 )
             end
         end
-        local t = track(m, lane, now, enemyNear.count)
-        local ____readEnemies_result_2 = readEnemies(team, m, frontLoc)
-        local enemies = ____readEnemies_result_2.enemies
-        local dead = ____readEnemies_result_2.dead
+        local ____readEnemies_result_1 = readEnemies(team, m, frontLoc)
+        local enemies = ____readEnemies_result_1.enemies
+        local dead = ____readEnemies_result_1.dead
         local cycleSec = now % ____exports.WAVE_CYCLE
         reads[#reads + 1] = {
             team = team,
@@ -395,7 +344,6 @@ function ____exports.Read(team, now)
             theirTower = theirTower,
             cycleSec = cycleSec,
             nextWaveIn = ____exports.WAVE_CYCLE - cycleSec,
-            arrivalSec = median(t.arrivals),
             enemies = enemies,
             dead = dead,
             aggro = readAggro(
@@ -411,5 +359,26 @@ function ____exports.Read(team, now)
         }
     end
     return reads
+end
+--- The `ee` field of ev=lane_read, parsed by hlog query `@lane_read_check`: per enemy `pid:v:dist:hp%:lvl` when visible,
+-- `pid:secs_since_seen:dist` when not, joined by `;`.
+function ____exports.FormatEnemies(enemies)
+    local out = {}
+    for ____, e in ipairs(enemies) do
+        local head = (((tostring(e.pid) .. ":") .. tostring(e.visible and "v" or math.floor(e.seen))) .. ":") .. tostring(math.floor(e.dist))
+        out[#out + 1] = e.visible and (((head .. ":") .. tostring(math.floor((e.hp or 0) * 100 + 0.5))) .. ":") .. tostring(e.lvl) or head
+    end
+    return table.concat(out, ";")
+end
+--- The `ag` field of ev=lane_read: per allied hero `pid:creeps_on_it_now:secs_since_last` (-1 never), joined by `;`.
+function ____exports.FormatAggro(aggro)
+    local out = {}
+    for ____, a in ipairs(aggro) do
+        out[#out + 1] = (((tostring(a.pid) .. ":") .. tostring(a.now)) .. ":") .. (a.since == nil and "-1" or string.format(
+            "%.1f",
+            math.floor(a.since * 10) / 10
+        ))
+    end
+    return table.concat(out, ";")
 end
 return ____exports

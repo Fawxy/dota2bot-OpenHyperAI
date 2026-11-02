@@ -3,8 +3,9 @@
 -- other team's census is that team's creeps without fog.
 -- adv_true: advantage over the same creeps near our front, with the enemy's own count of its creeps there (cnp) in place
 --   of the ones we could see (ep). 550 is lane_config ForecastModel.PowerFloor, as in lane_read Advantage.
--- meet_err: map distance between where the reading puts the meet (midpoint of the two teams' wave fronts, the input of eq)
---   and where the creeps met (midpoint of the two lead creeps, whole lane); NULL when either side has no creep in the lane.
+-- meet_err: map distance between the midpoint of the two teams' wave fronts (Valve's GetLaneFrontLocation, which lane_read
+--   reads eq from) and where the creeps met (midpoint of the two lead creeps, whole lane); NULL when either side has no creep
+--   in the lane. It checks the fronts, not eq itself: MeetAmount (which may use one front) and EqPos are checked in E0 only.
 --   By map position, not lane amount: each team's script measures amounts along its own lane path, so the two teams'
 --   amounts for one place differ (game lr1: Dire's 0.07-0.16 lower).
 -- hp_lost, ehp_lost: own and enemy creep HP lost in the lane over the next 10 s; NULL unless the window ends before the next
