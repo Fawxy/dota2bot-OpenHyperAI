@@ -1,10 +1,11 @@
 // Dynamic-game metrics (GOALS O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
 // bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry, the encounter rule and the
 // rotation rule follow the replay moment index (research/replay-index/moments.js) so bot and replay moments compare.
-// Moving into the log store (docs/team/slices/retire-dynamic-a.md, part A of three): the per-second series, deaths, last hits
-// at 10:00, home lanes, lineup positions, encounters, fights, idle episodes and the error counts are the named queries
-// `@dynamic_heroes`, `@dynamic_game` and `@dynamic_deaths` (rules in queries/fragments/hero_second.sql, hero_death.sql and
-// lane_label.sql). Rotations, lane exits, teleports, steals and the world metrics still read the parsed game (`series`) here.
+// Moving into the log store (docs/team/slices/retire-dynamic-a.md and retire-dynamic-b.md, parts A and B of three): the
+// per-second series, deaths, last hits at 10:00, home lanes, lineup positions, encounters, fights, idle episodes, the error
+// counts, rotations, lane exits, teleport joins and the last hits behind ally steals are the named queries `@dynamic_heroes`,
+// `@dynamic_game`, `@dynamic_deaths`, `@dynamic_series` and `@dynamic_lasthits` (rules in queries/fragments/hero_second.sql,
+// hero_death.sql and lane_label.sql). The world metrics and audited steals still read the parsed game's events here (part C).
 'use strict';
 
 const fs = require('fs');
@@ -95,41 +96,27 @@ function laneLabel(p) {
     return best;
 }
 
-/** True when the gap after snapshot i is dead time: bots log no snapshot while dead, so a gap > DEAD_GAP that crosses a
- *  deaths increment, or that runs to the end of the game (`last`), is a death. */
-function deadAfter(snaps, i, last) {
-    const a = snaps[i], b = snaps[i + 1];
-    if (!b) return last - a.t > C.DEAD_GAP;
-    return b.t - a.t > C.DEAD_GAP && typeof b.deaths === 'number' && b.deaths > (a.deaths || 0);
-}
-
-/** Per bot: snapshots resampled to whole seconds up to the last snapshot of any bot. Each second holds the latest snap at or
- *  before it, or during a death gap (deadAfter) a copy of it with alive=0. */
-function series(game) {
-    const out = {};
-    const bots = Object.values(game.bots).filter(b => b.team !== undefined && b.snaps.some(s => typeof s.x === 'number'));
-    const last = Math.max(...bots.map(b => Math.max(...b.snaps.map(s => s.t))));
-    for (const b of bots) {
-        const snaps = b.snaps.filter(s => typeof s.x === 'number').sort((a, c) => a.t - c.t);
-        const sec = {};
-        let i = 0, dead;
-        for (let t = Math.ceil(snaps[0].t); t <= Math.floor(last); t++) {
-            while (i + 1 < snaps.length && snaps[i + 1].t <= t) i++;
-            if (t > snaps[i].t && deadAfter(snaps, i, last)) {
-                if (!dead || dead.from !== snaps[i]) dead = { ...snaps[i], alive: 0, from: snaps[i] };
-                sec[t] = dead;
-            } else sec[t] = snaps[i];
-        }
-        out[b.pid] = { pid: b.pid, hero: b.hero, team: b.team, sec, snaps, last };
-    }
-    return out;
-}
+const QUERIES = path.join(__dirname, 'queries');
+const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
 
 const at = (s, t) => s.sec[Math.floor(t)];
 const pos = snap => [snap.x, snap.y];
 const alive = snap => snap && snap.alive !== 0;
 
-/** Roles by behaviour (each hero's `lh10` and `home` set from @dynamic_heroes): per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
+/**
+ * The heroes of one stored game (@dynamic_heroes) with their per-second series (@dynamic_series): pid -> { pid, hero, team,
+ * lh10, home, rot10, lane_exit, tp_joins, ..., sec }, `sec[s]` = { x, y, alive, mode } from the latest snapshot at or before s
+ * (alive 0 in a death gap). Fields the log lacks are undefined.
+ */
+function heroSeries(store, file, gameNo = 1) {
+    const p = { file, game: gameNo };
+    const und = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v ?? undefined]));
+    const S = Object.fromEntries(store.query(sqlOf('dynamic_heroes'), p).map(h => [h.pid, { ...und(h), sec: {} }]));
+    for (const r of store.query(sqlOf('dynamic_series'), p)) if (S[r.pid]) S[r.pid].sec[r.s] = und({ x: r.x, y: r.y, alive: r.alive, mode: r.mode });
+    return S;
+}
+
+/** Roles by behaviour (each hero's `lh10` and `home` from @dynamic_heroes): per team, the three top last-hitters at 10:00 are cores (mid core pos 2, safe-lane core pos 1,
  *  off-lane core pos 3), the other two supports (more last hits = pos 4). Avoids the bots-mode Dire pos= artefact.
  *  Fallbacks (no mid core, no safe-lane core) are reported in `warnings`. */
 function roles(S, warnings = []) {
@@ -148,80 +135,6 @@ function roles(S, warnings = []) {
         [[mid, 2], [p1, 1], [p3, 3], [sups[0], 4], [sups[1], 5]].forEach(([s, r]) => s && (out[s.pid] = r));
     }
     return out;
-}
-
-/** Rotations before `until` (moments.js rule): from 1:00, a run of >= ROT_MIN_S seconds in one lane region other than home;
- *  up to ROT_GAP s of river or jungle keep the run open (not counted), and another lane, base or death closes it. */
-function rotations(s, until) {
-    if (!s.home) return 0;
-    let n = 0, run = null, gap = 0;
-    const close = () => {
-        if (run && run.n >= C.ROT_MIN_S) n++;
-        run = null;
-        gap = 0;
-    };
-    for (let t = 60; t <= until; t++) {
-        const snap = s.sec[t];
-        const L = t < until && alive(snap) ? laneLabel(pos(snap)) : 'x';
-        if ((L === 'top' || L === 'mid' || L === 'bot') && L !== s.home) {
-            if (run && run.L !== L) close();
-            if (!run) run = { L, n: 0 };
-            run.n++;
-            gap = 0;
-        } else if (run && L === 'other' && ++gap <= C.ROT_GAP) {
-            // a short river or jungle stretch keeps the run open
-        } else close();
-    }
-    return n;
-}
-
-/** First whole minute >= 5:00 after which under half of the next 60 s (alive and outside base) is in the home lane;
- *  undefined if never. */
-function laneExit(s, until) {
-    if (!s.home) return undefined;
-    for (let t = 300; t + 60 <= until; t += 60) {
-        let inLane = 0, seen = 0;
-        for (let u = t; u < t + 60; u++) {
-            const snap = s.sec[u];
-            if (!alive(snap)) continue;
-            const L = laneLabel(pos(snap));
-            if (L === 'base') continue;
-            seen++;
-            if (L === s.home) inLane++;
-        }
-        if (seen > 0 && inLane / seen < 0.5) return t;
-    }
-    return undefined;
-}
-
-/** Teleport-like jumps (>= TP_JUMP within TP_WINDOW, alive throughout) landing outside base within TP_JOIN_R of an alive ally. */
-function tpJoins(S, s, from, to) {
-    let n = 0;
-    for (let t = from; t < to; t++) {
-        const a = s.sec[t - C.TP_WINDOW], b = s.sec[t];
-        if (!alive(a) || !alive(b) || dist(pos(a), pos(b)) < C.TP_JUMP) continue;
-        // The jump must not start at a respawn (dead at any second in the window).
-        let dead = false;
-        for (let u = t - C.TP_WINDOW; u <= t; u++) if (!alive(s.sec[u])) dead = true;
-        if (dead || laneLabel(pos(b)) === 'base') continue;
-        const ally = Object.values(S).some(o => o !== s && o.team === s.team && alive(o.sec[t]) && dist(pos(o.sec[t]), pos(b)) <= C.TP_JOIN_R);
-        if (ally) n++;
-        t += C.TP_WINDOW; // one jump counts once
-    }
-    return n;
-}
-
-/** Support last hits (from ev=lasthit; any unit, not only creeps) before `until` while an allied core is within STEAL_R. */
-function steals(game, S, role, until) {
-    let n = 0;
-    for (const e of game.events) {
-        if (e.ev !== 'lasthit' || e.t >= until || !S[e.pid] || !(role[e.pid] >= 4)) continue;
-        const me = at(S[e.pid], e.t);
-        if (!alive(me)) continue;
-        const near = Object.values(S).some(o => o.team === S[e.pid].team && role[o.pid] <= 3 && alive(at(o, e.t)) && dist(pos(at(o, e.t)), pos(me)) <= C.STEAL_R);
-        if (near) n += e.n || 1;
-    }
-    return n;
 }
 
 /**
@@ -247,9 +160,6 @@ function auditedSteals(game, S, lpos, until) {
     }
     return cases;
 }
-
-const QUERIES = path.join(__dirname, 'queries');
-const sqlOf = name => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
 
 // The fields of an ev=stack attempt, in the order stacks.js --json has always printed them.
 const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'before', 'after', 'fresh', 'away', 'death',
@@ -279,25 +189,18 @@ function jobEnds(store, file, gameNo = 1) {
 
 /**
  * All dynamic metrics for one game of the log store (`file` as in games.file, already ingested). `end` is the last whole minute
- * of snapshots. `parsed` is that game from parseLog (read from `file` when omitted): the part-B and C metrics still use it.
+ * of snapshots. `parsed` is that game from parseLog (read from `file` when omitted): the part-C metrics still read its events.
  */
 function dynamicMetrics(store, file, gameNo = 1, parsed) {
     if (!store.query('SELECT 1 FROM games WHERE file = ? AND game = ?', file, gameNo).length) {
         throw new Error(`dynamicMetrics: ${file} game ${gameNo} is not in the store (the path must be absolute, as in games.file; ingest it first)`);
     }
     const p = { file, game: gameNo };
-    const H = Object.fromEntries(store.query(sqlOf('dynamic_heroes'), p).map(h => [h.pid, h]));
-    if (!Object.keys(H).length) throw new Error(`dynamicMetrics: ${file} game ${gameNo} has no hero with a team and a snapshot`);
+    const S = heroSeries(store, file, gameNo);
+    if (!Object.keys(S).length) throw new Error(`dynamicMetrics: ${file} game ${gameNo} has no hero with a team and a snapshot`);
     const G = store.query(sqlOf('dynamic_game'), p)[0];
     const game = parsed || parseLog(fs.readFileSync(file, 'utf8'))[gameNo - 1];
-    const S = series(game);
-    const pids = Object.keys(S).join();
-    if (pids !== Object.keys(H).join()) throw new Error(`dynamicMetrics: series heroes ${pids} differ from @dynamic_heroes ${Object.keys(H).join()}`);
-    for (const s of Object.values(S)) Object.assign(s, { hero: H[s.pid].hero ?? undefined, lh10: H[s.pid].lh10, home: H[s.pid].home ?? undefined });
     const end = G.end;
-    // Parts B and C still walk the JS series up to `end`: the two time bases must agree.
-    const jsEnd = Math.floor(Object.values(S)[0].last / 60) * 60;
-    if (jsEnd !== end) throw new Error(`dynamicMetrics: series end ${jsEnd} differs from @dynamic_game end ${end}`);
     const warnings = [];
     const role = roles(S, warnings);
     const deaths = [];
@@ -308,7 +211,7 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
     const byRole = f => Object.fromEntries(Object.values(S).map(s => [`${s.team === 2 ? 'r' : 'd'}${role[s.pid]}`, f(s)]));
     // Lineup position: pos= of the last ev=bot line (a role change re-emits it). Trusted only where pos= is (lineups.md).
     const lpos = {};
-    for (const s of Object.values(S)) if (H[s.pid].lpos !== null) lpos[s.pid] = H[s.pid].lpos;
+    for (const s of Object.values(S)) if (s.lpos !== undefined) lpos[s.pid] = s.lpos;
     // A team whose positions are not exactly 1-5 (e.g. a pre-Dire-fix log, all Dire pos=1) gets no lpos keys.
     for (const t of [2, 3]) {
         const ps = team(t).map(s => lpos[s.pid]).sort().join();
@@ -318,6 +221,9 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         }
     }
     const byLpos = f => Object.fromEntries(Object.values(S).filter(s => lpos[s.pid]).map(s => [`${s.team === 2 ? 'r' : 'd'}${lpos[s.pid]}`, f(s)]));
+    // Ally steals: a support's last hits before 10:00 with an allied core alive within STEAL_R (@dynamic_lasthits).
+    const lasthits = store.query(sqlOf('dynamic_lasthits'), p)
+        .filter(l => role[l.pid] >= 4 && String(l.near ?? '').split(',').some(o => o !== '' && role[o] <= 3));
     const rate = n => (end > 600 ? (n * 600) / (end - 600) : undefined);
     return {
         end,
@@ -329,14 +235,14 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         deaths_total: G.deaths,
         encounters_per_10min: { before10: G.enc10, after10: rate(G.enc_after) },
         fights_per_10min: { before10: G.fights10, after10: rate(G.fights_after) },
-        rotation_attempts_per_team_10: perTeam(ts => sum(ts, s => rotations(s, 600))),
-        core_lane_exit_time: byRole(s => (role[s.pid] === 1 || role[s.pid] === 3 ? laneExit(s, end) : undefined)),
-        tp_joins_per_team: perTeam(ts => sum(ts, s => tpJoins(S, s, 600, end))),
-        ally_creep_steals: perTeam(ts => steals(game, Object.fromEntries(ts.map(s => [s.pid, s])), role, 600)),
+        rotation_attempts_per_team_10: perTeam(ts => sum(ts, s => s.rot10)),
+        core_lane_exit_time: byRole(s => (role[s.pid] === 1 || role[s.pid] === 3 ? s.lane_exit : undefined)),
+        tp_joins_per_team: perTeam(ts => sum(ts, s => s.tp_joins)),
+        ally_creep_steals: perTeam((ts, t) => sum(lasthits.filter(l => S[l.pid].team === t), l => l.n)),
         audited_steals: auditedSteals(game, S, lpos, 600),
         stacks: stackAttempts(store, file, gameNo, end + 1),
         job_ends: jobEnds(store, file, gameNo),
-        idle_10s: sum(Object.values(H), h => h.idle),
+        idle_10s: sum(Object.values(S), s => s.idle),
         lua_error: G.lua_error_ours + G.console_lines,
         lua_error_ours: G.lua_error_ours,
         console_errors: G.console_errors,
@@ -346,7 +252,7 @@ function dynamicMetrics(store, file, gameNo = 1, parsed) {
         console_censored: G.error_squelches > 0,
         lpos,
         lh_at_10_lpos: byLpos(s => s.lh10),
-        core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? laneExit(s, end) : undefined)),
+        core_lane_exit_time_lpos: byLpos(s => (lpos[s.pid] === 1 || lpos[s.pid] === 3 ? s.lane_exit : undefined)),
         role_mismatch: Object.values(S).filter(s => lpos[s.pid] && lpos[s.pid] !== role[s.pid]).length,
         // Lineup position where pos= is trusted (lpos), else the behavioural role.
         ...worldMetrics(game, S, { ...role, ...lpos }, deaths, end),
@@ -447,4 +353,4 @@ function wisdom(S, shrineTeam, end) {
     return fills.filter(taken).length / fills.length;
 }
 
-module.exports = { POLY, dynamicMetrics, auditedSteals, stackAttempts, jobEnds, worldMetrics, wisdom, laneLabel, rotations, laneExit, tpJoins, series, roles, C };
+module.exports = { POLY, dynamicMetrics, heroSeries, auditedSteals, stackAttempts, jobEnds, worldMetrics, wisdom, laneLabel, roles, C };
