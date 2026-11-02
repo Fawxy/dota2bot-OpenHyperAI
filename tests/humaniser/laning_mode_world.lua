@@ -115,7 +115,14 @@ function LaningLoad(opts)
 		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
 		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
-		States = { MayOwn = function() return false end, SetLaneSpot = function() end, Step = function() return false end, BodyLastHits = function() return false end, BodyBusy = function() return false end },
+		States = {
+			MayOwn = function() return false end, SetLaneSpot = function() end,
+			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
+			BodyBusy = function() return false end,
+			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the denies.
+			SupportStep = function() if opts.supportStep then bot.supportStepped = true return true end return false end,
+			BodyDenies = function() return opts.bodyDenies == true end,
+		},
 	}
 	local J = setmetatable({
 		GetPosition = function(u) return u.pos end,

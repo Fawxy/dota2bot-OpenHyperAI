@@ -30,6 +30,9 @@ local function world(opts)
 	local states = opts.states or { Enable = true, Shadow = true, Teams = "all", Own = opts.own or { stack = { 5 }, pull = { 5 } } }
 	local H = LaneFresh(opts.cfg or { Enable = true }, { skill = opts.skill or 1, debug = true, telemetry = { Enable = true },
 		transitions = { Caution = false }, states = states })
+	-- Ours.SupportDeny (slice l1-support-deny) owns a support's laning state; these cases test the job states with it off.
+	package.loaded["bots/FunLib/custom_loader"].Ours = package.loaded["bots/FunLib/custom_loader"].Ours or {}
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportDeny = opts.supportDeny == true
 	T = opts.t or 100
 	CURRENT_TEAM = 2
 	OBSERVER = 5

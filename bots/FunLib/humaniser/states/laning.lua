@@ -107,6 +107,8 @@ local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
+local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
 local NEAR = 600
@@ -207,6 +209,38 @@ function ____exports.OwnsLastHit(bot)
     end
     return false
 end
+--- Whether the body takes this bot's denies only, its last hits staying OHA's (Ours.SupportDeny).
+function ____exports.OwnsDenyOnly(bot)
+    return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
+end
+local function choose(bot, targets)
+    local ____OwnsDenyOnly_result_11
+    if ____exports.OwnsDenyOnly(bot) then
+        ____OwnsDenyOnly_result_11 = LanePick.ChooseDeny(targets)
+    else
+        ____OwnsDenyOnly_result_11 = LanePick.Choose(targets)
+    end
+    return ____OwnsDenyOnly_result_11
+end
+--- A deny the body would go for now: what its own scan would pick (same laneTargets query and pick), within the leash of
+-- the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
+function ____exports.DenyOffered(bot)
+    if not ____exports.OwnsDenyOnly(bot) then
+        return false
+    end
+    local spot = ____exports.Spot(bot)
+    if spot ~= nil and GetUnitToLocationDistance(bot, spot) > LEASH then
+        return false
+    end
+    local verbs = Tasks.Verbs()
+    if verbs == nil then
+        return false
+    end
+    return LanePick.ChooseDeny(verbs.laneTargets(
+        bot,
+        {within = ____exports.Settings().LastHitWithin}
+    )) ~= nil
+end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk"
     local hold = sdk and ({
@@ -235,7 +269,7 @@ local body = __TS__Generator(function(bot, ctx)
                     DotaTime(),
                     spot ~= nil and GetUnitToLocationDistance(bot, spot) or nil
                 )
-                local owns = ____exports.OwnsLastHit(bot)
+                local owns = ____exports.OwnsLastHit(bot) or ____exports.OwnsDenyOnly(bot)
                 if owns then
                     LanePick.NoteWait(bot)
                 end
@@ -243,7 +277,7 @@ local body = __TS__Generator(function(bot, ctx)
             end,
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets)
-                local chosen = LanePick.Choose(targets)
+                local chosen = choose(bot, targets)
                 LanePick.NotePick(
                     bot:GetPlayerID(),
                     DotaTime(),
@@ -263,6 +297,7 @@ local body = __TS__Generator(function(bot, ctx)
             far = FAR,
             leash = LEASH,
             retarget = true,
+            dropLost = ____exports.OwnsDenyOnly(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
                 Telemetry.Event(
@@ -284,6 +319,14 @@ local body = __TS__Generator(function(bot, ctx)
                         {"ol", ol},
                         {"od", od},
                         {"ow", ow},
+                        {
+                            "walk",
+                            math.floor(t.walk * 100) / 100
+                        },
+                        {
+                            "dies",
+                            t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+                        },
                         {"msg", res.message}
                     }
                 )

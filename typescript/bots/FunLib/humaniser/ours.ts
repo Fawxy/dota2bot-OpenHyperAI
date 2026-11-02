@@ -19,6 +19,10 @@ export const DEFAULTS = {
     CoreLastHit: true,
     /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
     CoreLastHitDire: true,
+    /** Slice l1-support-deny: pos4-5 go for every own creep they can deny, before anything else in lane (states/support_deny). */
+    SupportDeny: true,
+    /** With SupportDeny on, false keeps the Dire supports on OHA's deny (Radiant only), as CoreLastHitDire. */
+    SupportDenyDire: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

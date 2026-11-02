@@ -33,6 +33,18 @@ do
 	check("pick: an unreachable last hit does not block a deny", Pick.Choose({ far, d }) == d)
 end
 
+-- Slice l1-support-deny (user rule 02/11/2026): a support's pick is denies only, earliest eta with the ranged bias; last hits
+-- are left to OHA's own step, and the reach rule still applies.
+do
+	local e, d = target("lasthit", 0), target("deny", 0.5)
+	check("deny pick: a deny is chosen over a last hit due sooner", Pick.ChooseDeny({ e, d }) == d)
+	check("deny pick: last hits only, nothing chosen", Pick.ChooseDeny({ e }) == nil)
+	local d2, rd = target("deny", 0.2), target("deny", 0.5, true)
+	check("deny pick: the ranged deny beats a melee one due 0.3 s sooner", Pick.ChooseDeny({ d2, rd }) == rd)
+	local far = target("deny", 0, false, 1.2, 0.9)
+	check("deny pick: a deny dead before the support arrives is skipped", Pick.ChooseDeny({ far, d }) == d)
+end
+
 -- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even
 -- though the pick would otherwise take it; one the bot can reach and swing at before it dies is kept.
 do

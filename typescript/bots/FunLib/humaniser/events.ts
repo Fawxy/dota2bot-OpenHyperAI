@@ -812,6 +812,9 @@ export const EVENTS = {
         od: "num",
         /** The most last hits other than this attempt's creep offered while it waited to swing. */
         ow: "num",
+        /** At the pick: seconds to walk into attack range, and until the others kill the creep (laneTargets facts). */
+        walk: "num",
+        dies: "num",
         msg: "str",
     },
     job_exec: {

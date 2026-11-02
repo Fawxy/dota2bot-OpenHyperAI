@@ -19,6 +19,10 @@ local function world(opts)
 	package.loaded[BUNDLE] = nil
 	local states = opts.states or { Enable = true, Shadow = true, Teams = "all", Own = { rotate = { 4 } } }
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true }, transitions = { Enable = true }, states = states })
+	-- Ours.SupportDeny (slice l1-support-deny) owns a support's laning state; these cases test the job states with it off,
+	-- and the cases marked "with support deny" turn it on.
+	package.loaded["bots/FunLib/custom_loader"].Ours = package.loaded["bots/FunLib/custom_loader"].Ours or {}
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportDeny = opts.supportDeny == true
 	T = opts.T or 380
 	CURRENT_TEAM = 2
 	local w = { H = H }
@@ -93,6 +97,22 @@ do
 	check("wisdom: stood within 300 of the shrine", dist(w.p4.loc, SHRINE) <= 300)
 	check("wisdom: state left after the trip", (w.H.States.Describe(w.p4) or ""):sub(1, 6) ~= "rotate", w.H.States.Describe(w.p4))
 	check("wisdom: no second trip for the same fill", #events(lines, "state_start") == 1)
+end
+
+-- With support deny: the laning state is owned for the pos 4 too, and the wisdom trip still starts once, on time, and ends ok.
+do
+	local w = world({ supportDeny = true })
+	local lines = capture(function() while T < 440 do frame(w, w.p4) end end)
+	local starts = {}
+	for _, l in ipairs(events(lines, "state_start")) do if l:find("state=rotate", 1, true) then table.insert(starts, l) end end
+	local expectLeave = 420 - 4 - dist(TOP, SHRINE) * 1.2 / 300
+	local laning = false
+	for _, l in ipairs(events(lines, "state_start")) do if l:find("pid=4 state=laning", 1, true) then laning = true end end
+	check("with support deny: the pos 4's laning state was owned and started", laning)
+	check("with support deny: rotate started once", #starts == 1, #starts)
+	check("with support deny: left lane on time", starts[1] ~= nil and num(starts[1], "t") >= expectLeave - 1e-6 and num(starts[1], "t") - expectLeave <= 0.35, starts[1])
+	local ev = events(lines, "wisdom")[1]
+	check("with support deny: trip ended ok", ev ~= nil and ev:find("result=ok", 1, true) ~= nil, ev)
 end
 
 -- Before its leave time the pos 4 stays in lane: no state, no task.

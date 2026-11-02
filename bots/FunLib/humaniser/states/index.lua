@@ -44,6 +44,8 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
+local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local SupportLane = require(GetScriptDirectory().."/FunLib/humaniser/states/support_lane")
 local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
@@ -66,7 +68,7 @@ function ownTeam(bot)
     return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
 end
 function owns(bot, state)
-    if state == Laning.NAME and CoreLastHit.Applies(bot) then
+    if state == Laning.NAME and (CoreLastHit.Applies(bot) or SupportDeny.Applies(bot)) then
         return true
     end
     if not ownTeam(bot) then
@@ -132,7 +134,7 @@ local function ownsAny()
 end
 --- Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think).
 function ____exports.MayOwn(bot)
-    return ____exports.IsEnabled() and (ownTeam(bot) and ownsAny() or CoreLastHit.Applies(bot))
+    return ____exports.IsEnabled() and (ownTeam(bot) and ownsAny() or CoreLastHit.Applies(bot) or SupportDeny.Applies(bot))
 end
 --- States by name in registration order; registering an existing name replaces it in place.
 local registry = {}
@@ -249,7 +251,7 @@ function ____exports.Tick(bot)
     if not ____exports.IsEnabled() then
         return
     end
-    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) and not CoreLastHit.Applies(bot) then
+    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) and not CoreLastHit.Applies(bot) and not SupportDeny.Applies(bot) then
         return
     end
     local l = lib()
@@ -322,6 +324,34 @@ function ____exports.BodyBusy(bot)
     local label = ____opt_14 and ____opt_14.label
     return label == "lasthit" or label == "deny"
 end
+local function laningRunning(bot)
+    local ____opt_16 = Tasks.Loaded()
+    local cur = ____opt_16 and ____opt_16.States.Current(bot)
+    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
+end
+--- True while the laning body runs for this bot and owns its denies only (Ours.SupportDeny): the Lua Think skips DenyThink.
+function ____exports.BodyDenies(bot)
+    return ____exports.IsEnabled() and Laning.OwnsDenyOnly(bot) and laningRunning(bot)
+end
+--- First thing in mode_laning_generic's Think for a support under our switches: the support's ordered lane steps
+-- (states/support_lane). True when one acted this frame.
+function ____exports.SupportStep(bot)
+    if not ____exports.IsEnabled() or not SupportLane.Applies(bot) then
+        return false
+    end
+    local acted = SupportLane.Step(
+        bot,
+        {
+            bodyRunning = function() return laningRunning(bot) end,
+            bodyLabel = function()
+                local ____opt_18 = Tasks.Current(bot)
+                return ____opt_18 and ____opt_18.label
+            end,
+            stepBody = function() return ____exports.Step(bot, BotMode.Laning) end
+        }
+    )
+    return acted ~= nil
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)
@@ -330,8 +360,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_16 = Tasks.Loaded()
-    local cur = ____opt_16 and ____opt_16.States.Current(bot)
+    local ____opt_20 = Tasks.Loaded()
+    local cur = ____opt_20 and ____opt_20.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports
