@@ -1003,6 +1003,7 @@ function X.ShouldRun(bot)
 		and DotaTime() > 30
 		and DotaTime() < 8 * 60
 		and enemyFountainDistance < 8111
+		and not J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) -- our core's trade rule decides in lane (Ours.CoreTrade)
 	then
 		if botTarget ~= nil and botTarget:IsHero()
 		   and J.GetHP(botTarget) > 0.35
@@ -1041,7 +1042,8 @@ function X.ShouldRun(bot)
 	and botTarget ~= nil
 	and J.GetHP(botTarget) > J.GetHP(bot) - 0.15
 	and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)
-	and not J.Humaniser.Chooser.HoldsRun(bot) then
+	and not J.Humaniser.Chooser.HoldsRun(bot)
+	and not J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) then -- as above
 		return 2;
 	end
 
