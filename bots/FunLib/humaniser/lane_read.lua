@@ -89,12 +89,16 @@ end
 local function emptyCreeps()
     return {count = 0, hp = 0, power = 0}
 end
-local function addCreep(c, team, unit, amount)
+local function addCreep(c, team, unit, amount, loc)
     local hp = unit:GetHealth()
     c.count = c.count + 1
     c.hp = c.hp + hp
     c.power = c.power + hp * ____exports.CreepWeight(unit:GetUnitName())
-    c.lead = ____exports.Leads(team, c.lead, amount)
+    local lead = ____exports.Leads(team, c.lead, amount)
+    if lead ~= c.lead then
+        c.lead = lead
+        c.leadLoc = loc
+    end
 end
 function ____exports.IsLaneCreepName(name)
     for ____, part in ipairs({"creep_goodguys", "creep_badguys", "goodguys_siege", "badguys_siege"}) do
@@ -109,14 +113,14 @@ local function byLane(units, visibleOnly)
     local assign = LaneConfig.Settings().Radii.LaneAssign
     for ____, unit in ipairs(units) do
         do
-            local __continue23
+            local __continue24
             repeat
                 if visibleOnly and not unit:CanBeSeen() then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
-                    __continue23 = true
+                    __continue24 = true
                     break
                 end
                 local loc = unit:GetLocation()
@@ -135,9 +139,9 @@ local function byLane(units, visibleOnly)
                     local ____out_best_0 = out[best]
                     ____out_best_0[#____out_best_0 + 1] = {unit = unit, loc = loc, amount = bestAmount}
                 end
-                __continue23 = true
+                __continue24 = true
             until true
-            if not __continue23 then
+            if not __continue24 then
                 break
             end
         end
@@ -148,11 +152,11 @@ end
 local function towerAmount(owner, lane)
     for ____, id in ipairs(TOWER_IDS[lane]) do
         do
-            local __continue32
+            local __continue33
             repeat
                 local tower = GetTower(owner, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue32 = true
+                    __continue33 = true
                     break
                 end
                 local key = (tostring(owner) .. ":") .. tostring(id)
@@ -166,7 +170,7 @@ local function towerAmount(owner, lane)
                 end
                 return amount
             until true
-            if not __continue32 then
+            if not __continue33 then
                 break
             end
         end
@@ -182,10 +186,10 @@ local function readEnemies(team, m, front)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue39
+            local __continue40
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue39 = true
+                    __continue40 = true
                     break
                 end
                 local pid = u:GetPlayerID()
@@ -203,9 +207,9 @@ local function readEnemies(team, m, front)
                     hp = maxHP > 0 and u:GetHealth() / maxHP or 0,
                     lvl = u:GetLevel()
                 }
-                __continue39 = true
+                __continue40 = true
             until true
-            if not __continue39 then
+            if not __continue40 then
                 break
             end
         end
@@ -213,21 +217,21 @@ local function readEnemies(team, m, front)
     local dead = 0
     for pid in pairs(m.enemyPids) do
         do
-            local __continue42
+            local __continue43
             repeat
                 local id = pid
                 if seen[id] == true then
-                    __continue42 = true
+                    __continue43 = true
                     break
                 end
                 if not IsHeroAlive(id) then
                     dead = dead + 1
-                    __continue42 = true
+                    __continue43 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)[1]
                 if info == nil then
-                    __continue42 = true
+                    __continue43 = true
                     break
                 end
                 enemies[#enemies + 1] = {
@@ -236,9 +240,9 @@ local function readEnemies(team, m, front)
                     seen = info.time_since_seen,
                     dist = dist2D(info.location, front)
                 }
-                __continue42 = true
+                __continue43 = true
             until true
-            if not __continue42 then
+            if not __continue43 then
                 break
             end
         end
@@ -252,15 +256,15 @@ local function readAggro(lane, m, enemyCreeps, front, now)
         local i = 1
         while i <= TEAM_SLOTS do
             do
-                local __continue47
+                local __continue48
                 repeat
                     local hero = GetTeamMember(i)
                     if hero == nil or hero == nil or hero:IsIllusion() or not hero:IsAlive() then
-                        __continue47 = true
+                        __continue48 = true
                         break
                     end
                     if hero:GetAssignedLane() ~= lane and GetUnitToLocationDistance(hero, front) > near then
-                        __continue47 = true
+                        __continue48 = true
                         break
                     end
                     local n = 0
@@ -275,9 +279,9 @@ local function readAggro(lane, m, enemyCreeps, front, now)
                     end
                     local at = m.aggroAt[pid]
                     result[#result + 1] = {pid = pid, now = n, since = at ~= nil and now - at or nil}
-                    __continue47 = true
+                    __continue48 = true
                 until true
-                if not __continue47 then
+                if not __continue48 then
                     break
                 end
             end
@@ -336,17 +340,41 @@ function ____exports.Read(team, now)
         local enemyNear = emptyCreeps()
         local censusAtEnemy = emptyCreeps()
         for ____, c in ipairs(own[lane]) do
-            addCreep(census, team, c.unit, c.amount)
+            addCreep(
+                census,
+                team,
+                c.unit,
+                c.amount,
+                c.loc
+            )
             if dist2D(c.loc, frontLoc) <= radius then
-                addCreep(near, team, c.unit, c.amount)
+                addCreep(
+                    near,
+                    team,
+                    c.unit,
+                    c.amount,
+                    c.loc
+                )
             end
             if dist2D(c.loc, enemyFrontLoc) <= radius then
-                addCreep(censusAtEnemy, team, c.unit, c.amount)
+                addCreep(
+                    censusAtEnemy,
+                    team,
+                    c.unit,
+                    c.amount,
+                    c.loc
+                )
             end
         end
         for ____, c in ipairs(foes[lane]) do
             if dist2D(c.loc, frontLoc) <= radius then
-                addCreep(enemyNear, enemyTeam, c.unit, c.amount)
+                addCreep(
+                    enemyNear,
+                    enemyTeam,
+                    c.unit,
+                    c.amount,
+                    c.loc
+                )
             end
         end
         local t = track(m, lane, now, enemyNear.count)

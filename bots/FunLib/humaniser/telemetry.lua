@@ -550,6 +550,14 @@ local function trackLaneRead(team, now)
                     "cl",
                     r3(r.census.lead)
                 },
+                {
+                    "clx",
+                    r.census.leadLoc ~= nil and math.floor(r.census.leadLoc.x) or nil
+                },
+                {
+                    "cly",
+                    r.census.leadLoc ~= nil and math.floor(r.census.leadLoc.y) or nil
+                },
                 {"cnn", r.censusAtEnemy.count},
                 {
                     "cnp",

@@ -1,6 +1,8 @@
 /**
  * Lane read (slice lane-read): one reading per (team, lane) of what the lane holds now, for later lane decisions to read.
- * Facts only, no scores and no decisions. Amounts are absolute (0 at Radiant's ancient). It reads the calling script's team:
+ * Facts only, no scores and no decisions. Amounts are in Radiant's direction (0 at Radiant's ancient) but each team's script
+ * measures along its own lane path, so the two teams' amounts for one place differ (mid by about 0.16 in game lr1): compare
+ * amounts only within one team's reading, and across teams by map position. It reads the calling script's team:
  * GetUnitList and GetTeamMember answer for that team only, so Read(team) must run from a script of that team.
  * Not gated by LaneConfig.IsActive (the old claims-based plan flags), so it outlives them; it imports nothing that logs.
  */
@@ -18,8 +20,9 @@ export interface Creeps {
     count: number;
     hp: number;
     power: number;
-    /** Absolute amount of the creep furthest towards the enemy base; undefined with no creep. */
+    /** Amount of the creep furthest towards the enemy base, and its map position; undefined with no creep. */
     lead?: number;
+    leadLoc?: Vector;
 }
 
 export interface EnemyRead {
@@ -144,12 +147,16 @@ function emptyCreeps(): Creeps {
     return { count: 0, hp: 0, power: 0 };
 }
 
-function addCreep(c: Creeps, team: number, unit: Unit, amount: number): void {
+function addCreep(c: Creeps, team: number, unit: Unit, amount: number, loc: Vector): void {
     const hp = unit.GetHealth();
     c.count++;
     c.hp += hp;
     c.power += hp * CreepWeight(unit.GetUnitName());
-    c.lead = Leads(team, c.lead, amount);
+    const lead = Leads(team, c.lead, amount);
+    if (lead !== c.lead) {
+        c.lead = lead;
+        c.leadLoc = loc;
+    }
 }
 
 export function IsLaneCreepName(name: string): boolean {
@@ -289,11 +296,11 @@ export function Read(team: number, now: number): LaneRead[] {
         const enemyNear = emptyCreeps();
         const censusAtEnemy = emptyCreeps();
         for (const c of own[lane]) {
-            addCreep(census, team, c.unit, c.amount);
-            if (dist2D(c.loc, frontLoc) <= radius) addCreep(near, team, c.unit, c.amount);
-            if (dist2D(c.loc, enemyFrontLoc) <= radius) addCreep(censusAtEnemy, team, c.unit, c.amount);
+            addCreep(census, team, c.unit, c.amount, c.loc);
+            if (dist2D(c.loc, frontLoc) <= radius) addCreep(near, team, c.unit, c.amount, c.loc);
+            if (dist2D(c.loc, enemyFrontLoc) <= radius) addCreep(censusAtEnemy, team, c.unit, c.amount, c.loc);
         }
-        for (const c of foes[lane]) if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount);
+        for (const c of foes[lane]) if (dist2D(c.loc, frontLoc) <= radius) addCreep(enemyNear, enemyTeam, c.unit, c.amount, c.loc);
         const t = track(m, lane, now, enemyNear.count);
         const { enemies, dead } = readEnemies(team, m, frontLoc);
         const cycleSec = now % WAVE_CYCLE;

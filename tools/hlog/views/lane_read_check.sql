@@ -3,23 +3,26 @@
 -- other team's census is that team's creeps without fog.
 -- adv_true: advantage over the same creeps near our front, with the enemy's own count of its creeps there (cnp) in place
 --   of the ones we could see (ep). 550 is lane_config ForecastModel.PowerFloor, as in lane_read Advantage.
--- eq_true: the meeting point as the midpoint of the two lead creeps (whole lane), on the same tower scale as eq; NULL when
---   either side has no creep in the lane.
+-- meet_err: map distance between where the reading puts the meet (midpoint of the two teams' wave fronts, the input of eq)
+--   and where the creeps met (midpoint of the two lead creeps, whole lane); NULL when either side has no creep in the lane.
+--   By map position, not lane amount: each team's script measures amounts along its own lane path, so the two teams'
+--   amounts for one place differ (game lr1: Dire's 0.07-0.16 lower).
 -- hp_lost, ehp_lost: own and enemy creep HP lost in the lane over the next 10 s; NULL unless the window ends before the next
 --   spawn (cyc < 20), since a spawn adds HP.
--- ensure: ev_lane_read(team, lane, adv, eq, a, e, ap, ep, of, ef, ot, et, cyc, cn, chp, cpw, cl, cnn, cnp, fx, fy, ee)
+-- ensure: ev_lane_read(team, lane, adv, eq, a, e, ap, ep, of, ef, ot, et, cyc, cn, chp, cpw, cl, clx, cly, cnn, cnp, fx, fy, ee)
 WITH firsts AS (
     SELECT game_id, CAST(t AS INTEGER) AS sec, team, lane, min(seq) AS seq FROM ev_lane_read GROUP BY 1, 2, 3, 4
 ),
-x AS (
+x AS MATERIALIZED (
     SELECT f.sec, l.* FROM firsts f JOIN ev_lane_read l ON l.game_id = f.game_id AND l.seq = f.seq
 )
 SELECT a.game_id, a.sec, a.team, a.lane, a.cyc,
     a.adv, 1.0 + (a.ap - b.cnp) * 1.0 / (a.ap + b.cnp + 550) AS adv_true,
     a.e AS e_seen, b.cnn AS e_true,
     a.eq,
-    CASE WHEN a.cn > 0 AND b.cn > 0 AND a.et <> a.ot
-        THEN max(-1.0, min(1.0, 2.0 * ((a.cl + b.cl) / 2.0 - a.ot) / (a.et - a.ot) - 1)) END AS eq_true,
+    CASE WHEN a.cn > 0 AND b.cn > 0 AND a.clx IS NOT NULL AND b.clx IS NOT NULL
+        THEN sqrt(((a.fx + b.fx) - (a.clx + b.clx)) * ((a.fx + b.fx) - (a.clx + b.clx))
+                + ((a.fy + b.fy) - (a.cly + b.cly)) * ((a.fy + b.fy) - (a.cly + b.cly))) / 2.0 END AS meet_err,
     CASE WHEN a.cyc < 20 THEN a.chp - a2.chp END AS hp_lost,
     CASE WHEN a.cyc < 20 THEN b.chp - b2.chp END AS ehp_lost,
     a.fx, a.fy, a.ee

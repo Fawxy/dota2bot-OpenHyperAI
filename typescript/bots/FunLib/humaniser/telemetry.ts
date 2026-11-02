@@ -442,6 +442,8 @@ function trackLaneRead(team: number, now: number): void {
             ["chp", r.census.hp],
             ["cpw", math.floor(r.census.power)],
             ["cl", r3(r.census.lead)],
+            ["clx", r.census.leadLoc !== undefined ? math.floor(r.census.leadLoc.x) : undefined],
+            ["cly", r.census.leadLoc !== undefined ? math.floor(r.census.leadLoc.y) : undefined],
             ["cnn", r.censusAtEnemy.count],
             ["cnp", math.floor(r.censusAtEnemy.power)],
             ["fx", math.floor(r.frontLoc.x)],

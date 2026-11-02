@@ -330,6 +330,8 @@
    "chp": "num",
    "cpw": "num",
    "cl": "num",
+   "clx": "num",
+   "cly": "num",
    "cnn": "num",
    "cnp": "num",
    "fx": "num",
