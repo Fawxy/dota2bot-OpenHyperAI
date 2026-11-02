@@ -110,18 +110,18 @@ test('steals: the query equals dynamic.js auditedSteals on a parsed log', () => 
     ]);
     const { parseLog } = require('../parse');
     const strip = o => JSON.parse(JSON.stringify(o));
-    /** dynamicMetrics' lpos for the log text, through an in-memory store as nf.js reads it. */
+    /** dynamicMetrics' lpos and the series for the log text, through an in-memory store as nf.js reads it. */
     const lposOf = t => {
         const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-steals-')), 'a.log');
         fs.writeFileSync(f, t + '\n');
         const s = new Store(':memory:');
         s.ingest(f);
         s.refreshViews();
-        const lpos = D.dynamicMetrics(s, f, 1).lpos;
+        const out = { lpos: D.dynamicMetrics(s, f, 1).lpos, S: D.heroSeries(s, f, 1) };
         s.db.close();
-        return lpos;
+        return out;
     };
-    const want = (t, until = 600) => { const g = parseLog(t)[0]; return D.auditedSteals(g, D.series(g), lposOf(t), until); };
+    const want = (t, until = 600) => { const { lpos, S } = lposOf(t); return D.auditedSteals(parseLog(t)[0], S, lpos, until); };
     assert.ok(want(text).length > 0);
     assert.deepStrictEqual(strip(run(text)), strip(want(text)));
     // The lineup trust rule too: dynamicMetrics' lpos and the query's lineup agree on a team that is not trusted.
