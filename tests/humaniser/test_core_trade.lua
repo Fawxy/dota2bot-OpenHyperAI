@@ -153,6 +153,24 @@ do
 end
 
 do
+	-- Valve calls OnEnd while the active mode still reads attack: the trade's end names the mode that took the bot.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.loc = 80, 70, Vector(0, 0)
+	T = 500
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	bot.mode = 2
+	local n = #lines
+	CoreTrade.OnEnd(bot)
+	check("OnEnd alone logs nothing yet", #lines == n)
+	bot.mode, bot.desire = BOT_MODE_RETREAT, 0.8
+	T = 500.1
+	CoreTrade.Desire(bot)
+	check("the next Desire closes it with the mode that took over and its desire", last():find("why=mode_4") and last():find("md=0.8"), last())
+	bot.mode, bot.desire = LANING, 0
+end
+
+do
 	CoreTrade.Reset()
 	world.laning = false
 	T = 300

@@ -108,6 +108,8 @@ interface Episode {
     stepOuts: number;
     /** Most enemy lane creeps attacking the core at once during the trade. */
     aggro: number;
+    /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
+    ended?: boolean;
 }
 
 export type AggroAction = "attack" | "prime" | "step_out";
@@ -222,6 +224,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["so", ep.stepOuts],
         ["ag", ep.aggro],
         ["mode", bot.GetActiveMode()],
+        ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
     ]);
 }
 
@@ -239,6 +242,10 @@ export function Desire(bot: Unit): number | undefined {
         return bot.IsAlive() ? undefined : 0;
     }
     ownsFrame[pid] = true;
+    if (ep !== undefined && ep.ended) {
+        close(bot, ep, `mode_${bot.GetActiveMode()}`, now);
+        ep = undefined;
+    }
     if (ep !== undefined) {
         const why = keepWhy(bot, ep, now);
         if (why === undefined) return ep.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
@@ -344,10 +351,10 @@ function stepOutPoint(bot: Unit, creeps: Unit[]): Vector {
     return Vector(x + (dx / n) * (AGGRO_CLEAR + 100), y + (dy / n) * (AGGRO_CLEAR + 100), me.z);
 }
 
-/** Attack mode lost the bot to another mode: a running trade ends there. */
+/** Attack mode lost the bot to another mode: a running trade ends there (closed by the next Desire, which can name that mode). */
 export function OnEnd(bot: Unit): void {
     const ep = episodes[bot.GetPlayerID()];
-    if (ep !== undefined && ep.startedAt !== undefined) close(bot, ep, `mode_${bot.GetActiveMode()}`, DotaTime());
+    if (ep !== undefined && ep.startedAt !== undefined) ep.ended = true;
 }
 
 /**

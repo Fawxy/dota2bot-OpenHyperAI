@@ -726,7 +726,8 @@ ____exports.EVENTS = {
         pr = "num",
         so = "num",
         ag = "num",
-        mode = "num"
+        mode = "num",
+        md = "num"
     },
     job_exec = {
         pid = "num",

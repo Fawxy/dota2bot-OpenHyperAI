@@ -308,6 +308,10 @@ local function close(bot, ep, why, now)
             {
                 "mode",
                 bot:GetActiveMode()
+            },
+            {
+                "md",
+                math.floor(bot:GetActiveModeDesire() * 100) / 100
             }
         }
     )
@@ -337,6 +341,15 @@ function ____exports.Desire(bot)
         return ____bot_IsAlive_result_0
     end
     ownsFrame[pid] = true
+    if ep ~= nil and ep.ended then
+        close(
+            bot,
+            ep,
+            "mode_" .. tostring(bot:GetActiveMode()),
+            now
+        )
+        ep = nil
+    end
     if ep ~= nil then
         local why = keepWhy(bot, ep, now)
         if why == nil then
@@ -393,19 +406,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue63
+            local __continue64
             repeat
                 if not c:IsAlive() then
-                    __continue63 = true
+                    __continue64 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue63 = true
+                __continue64 = true
             until true
-            if not __continue63 then
+            if not __continue64 then
                 break
             end
         end
@@ -434,16 +447,11 @@ function ____exports.Think(bot)
         bot:Action_AttackUnit(ep.target, false)
     end
 end
---- Attack mode lost the bot to another mode: a running trade ends there.
+--- Attack mode lost the bot to another mode: a running trade ends there (closed by the next Desire, which can name that mode).
 function ____exports.OnEnd(bot)
     local ep = episodes[bot:GetPlayerID()]
     if ep ~= nil and ep.startedAt ~= nil then
-        close(
-            bot,
-            ep,
-            "mode_" .. tostring(bot:GetActiveMode()),
-            DotaTime()
-        )
+        ep.ended = true
     end
 end
 --- Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death

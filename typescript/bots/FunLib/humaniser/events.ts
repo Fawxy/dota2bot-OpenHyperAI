@@ -857,8 +857,9 @@ export const EVENTS = {
         pr: "num",
         so: "num",
         ag: "num",
-        /** The bot's active mode at the end. */
+        /** The bot's active mode at the end, and its desire. */
         mode: "num",
+        md: "num",
     },
     job_exec: {
         pid: "num",
