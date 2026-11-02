@@ -36,7 +36,7 @@ export const SETTINGS = {
     WatchEvery: 0.25,
     /** After a job that ended ok, keep sampling the wave this long past the later of the job end and the wave's due time:
      *  the job ends 3 s after the wave is due, while its later creeps are still reaching the neutrals (sp2: pulls logged at
-     *  div 0.25 moved the lane back the most, 1.65 of the T1-T1 stretch in 30 s). */
+     *  div 0.25 moved the lane back the most, `eq` -1.65 in 30 s, about 0.8 of the T1-T1 stretch). */
     TrailSec: 10,
 };
 
