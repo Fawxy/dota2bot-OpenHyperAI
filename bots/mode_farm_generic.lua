@@ -103,7 +103,8 @@ function GetDesireHelper()
 			runMode = false;
 		end
 		
-		shouldRunTime = X.ShouldRun(bot);
+		-- Our core's lane context decides when to back off in its lane (Ours.CoreTrade); none of ShouldRun's runs apply there.
+		shouldRunTime = J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) and 0 or X.ShouldRun(bot);
 		if shouldRunTime ~= 0
 		then
 			if runTime == 0 then 
@@ -1003,7 +1004,6 @@ function X.ShouldRun(bot)
 		and DotaTime() > 30
 		and DotaTime() < 8 * 60
 		and enemyFountainDistance < 8111
-		and not J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) -- our core's trade rule decides in lane (Ours.CoreTrade)
 	then
 		if botTarget ~= nil and botTarget:IsHero()
 		   and J.GetHP(botTarget) > 0.35
@@ -1042,8 +1042,7 @@ function X.ShouldRun(bot)
 	and botTarget ~= nil
 	and J.GetHP(botTarget) > J.GetHP(bot) - 0.15
 	and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)
-	and not J.Humaniser.Chooser.HoldsRun(bot)
-	and not J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) then -- as above
+	and not J.Humaniser.Chooser.HoldsRun(bot) then
 		return 2;
 	end
 
