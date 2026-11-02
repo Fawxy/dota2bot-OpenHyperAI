@@ -7,7 +7,7 @@
  * Events emitted from a team-wide context (order posts, pings, commands) repeat once per module instance;
  * tools/hlog de-duplicates them.
  */
-import { Barracks, GameState, Lane, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Barracks, BotMode, GameState, Lane, Rune, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
@@ -17,6 +17,7 @@ import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 
@@ -404,9 +405,52 @@ function trackFront(team: number): void {
     Event("front", fields);
 }
 
+/** The laning stage the lane read serves is over by 12:00; past it the event would only grow the log. */
+const LANE_READ_UNTIL = 720;
+
+function r3(v: number | undefined): number | undefined {
+    return v === undefined ? undefined : math.floor(v * 1000 + 0.5) / 1000;
+}
+
+/** Slice lane-read: one ev=lane_read per lane for the calling script's team, to LANE_READ_UNTIL. */
+function trackLaneRead(team: number, now: number): void {
+    if (now < 0 || now > LANE_READ_UNTIL) return;
+    for (const r of LaneRead.Read(team, now)) {
+        Event("lane_read", [
+            ["team", team],
+            ["lane", r.lane],
+            ["adv", r3(r.adv)],
+            ["eq", r3(r.eq)],
+            ["a", r.near.count],
+            ["e", r.enemyNear.count],
+            ["ap", math.floor(r.near.power)],
+            ["ep", math.floor(r.enemyNear.power)],
+            ["of", r3(r.ourFront)],
+            ["ef", r3(r.enemyFront)],
+            ["ot", r3(r.ourTower)],
+            ["et", r3(r.theirTower)],
+            ["cyc", math.floor(r.cycleSec * 10) / 10],
+            ["cn", r.census.count],
+            ["chp", r.census.hp],
+            ["cpw", math.floor(r.census.power)],
+            ["cl", r3(r.census.lead)],
+            ["clx", r.census.leadLoc !== undefined ? math.floor(r.census.leadLoc.x) : undefined],
+            ["cly", r.census.leadLoc !== undefined ? math.floor(r.census.leadLoc.y) : undefined],
+            ["cnn", r.censusAtEnemy.count],
+            ["cnp", math.floor(r.censusAtEnemy.power)],
+            ["fx", math.floor(r.frontLoc.x)],
+            ["fy", math.floor(r.frontLoc.y)],
+            ["dead", r.dead],
+            ["ee", LaneRead.FormatEnemies(r.enemies)],
+            ["ag", LaneRead.FormatAggro(r.aggro)],
+        ]);
+    }
+}
+
 // Own guards, so a failure reads as where=Telemetry.Lane|Telemetry.Front and drops only these fields or this event.
 const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
 const guardedFront = Guard("Telemetry.Front", trackFront);
+const guardedLaneRead = Guard("Telemetry.LaneRead", trackLaneRead);
 
 function unitFields(unit: Unit): UnitPair[] {
     const loc = unit.GetLocation();
@@ -430,6 +474,36 @@ function unitFields(unit: Unit): UnitPair[] {
     return fields;
 }
 
+/** Options are logged up to here: past the laning stage they would only grow the log. */
+const OPTIONS_UNTIL = 720;
+const ENEMY_RADIUS = 1200;
+
+/**
+ * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero, hit by a hero.
+ * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only. Skipped for an ally of a
+ * human, where the offers would run the etiquette filter, whose decisions log themselves.
+ */
+function optionFields(bot: Unit): BotPair[] {
+    if (DotaTime() > OPTIONS_UNTIL || !bot.IsAlive() || Difficulty.IsAllyOfHuman(bot)) return [];
+    const [ol, od] = LanePick.Options(bot as unknown as Parameters<typeof LanePick.Options>[0]);
+    let nearest: number | undefined;
+    for (const h of bot.GetNearbyHeroes(ENEMY_RADIUS, true, BotMode.None) ?? []) {
+        if (h.IsAlive()) {
+            const d = GetUnitToUnitDistance(bot, h);
+            if (nearest === undefined || d < nearest) nearest = d;
+        }
+    }
+    return [
+        ["ol", ol],
+        ["od", od],
+        ["ar", bot.GetAttackRange()],
+        ["ed", nearest !== undefined ? math.floor(nearest) : undefined],
+        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
+    ];
+}
+
+const guardedOptionFields = Guard("Telemetry.Options", optionFields, () => []);
+
 function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
     fields.push(["mode", HDebug.ModeName(bot.GetActiveMode())]);
@@ -437,6 +511,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
     fields.push(["gold", bot.GetGold()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
+    for (const f of guardedOptionFields(bot)) fields.push(f);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);
@@ -738,6 +813,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
         ]);
     w.roshanAt = killedAt;
     guardedFront(team);
+    guardedLaneRead(team, now);
 }
 
 /** Smoke, teleport and aegis edges for one hero (bot or human). */
@@ -804,6 +880,9 @@ interface CreepDeath {
 }
 interface CreepTrack {
     creeps: LuaTable<Unit, CreepSeen>;
+    // Own lane creeps seen last frame (slice creep-economy): a death near an own hero is ev=own_creep_death.
+    own: LuaTable<Unit, CreepSeen>;
+    ownDenies: Record<number, number>;
     // Handles logged as deaths: one seen alive again was a creep that left vision (ev=creep_revive, the WO-025 G2 gate).
     dead: LuaTable<Unit, CreepSeen>;
     lastHits: Record<number, number>;
@@ -864,7 +943,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
+        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -958,6 +1037,50 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         if (kind === undefined) continue;
         const loc = u.GetLocation();
         c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
+    }
+    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
+    // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
+    // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
+    // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
+    const ownAlive = new LuaTable<Unit, boolean>();
+    const ownList: Unit[] = [];
+    for (const u of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+        if (u === null || u === undefined || !u.IsAlive()) continue;
+        ownList.push(u);
+        ownAlive.set(u, true);
+    }
+    const ownDeaths: CreepDeath[] = [];
+    for (const [creep, seen] of c.own) {
+        if (ownAlive.get(creep) === true) continue;
+        c.own.delete(creep);
+        if (seen.hp > DEATH_MAX_HP) continue;
+        const d: CreepDeath = { creep, seen };
+        for (const h of heroes) {
+            if (deathDistance(h, d) <= DEATH_NEAR) {
+                ownDeaths.push(d);
+                break;
+            }
+        }
+    }
+    for (const h of heroes) {
+        const [ok, dn] = pcall(() => (h as unknown as StatsUnit).GetDenies());
+        const n = ok && type(dn) === "number" ? rise(c.ownDenies, h.GetPlayerID(), dn as number) : 0;
+        if (n > 0) claimDeaths(ownDeaths, h, n, tostring(h.GetPlayerID()));
+    }
+    for (const d of ownDeaths)
+        Event("own_creep_death", [
+            ["team", team],
+            ["kind", d.seen.kind],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+        ]);
+    for (const u of ownList) {
+        const kind = creepKind(u.GetUnitName());
+        if (kind === undefined) continue;
+        const loc = u.GetLocation();
+        c.own.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
     }
 }
 

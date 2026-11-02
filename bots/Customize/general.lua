@@ -236,9 +236,11 @@ Customize.Humaniser = {
 -- Decisions taken over from OHA, one kill switch each (false = OHA's own decision). Defaults: FunLib/humaniser/ours.lua.
 -- LeaveCoreCreep (slice 3): pos4/pos5 leave a lane creep an allied core can take.
 -- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
--- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body; off since
--- ER-008's FAIL (no better than OHA, more deaths).
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = false }
+-- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body. On by user
+-- decision 02/11/2026 although worse than OHA on the creep-economy bar (ER-008, ER-009, ER-010 FAIL: share flat, more deaths):
+-- our code ends up enabled; the row stays open for fixes (set false for OHA's laning).
+-- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = true, CoreLastHitDire = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

@@ -32,6 +32,13 @@ export const BOT = {
     gold: "num",
     /** Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers. */
     lf: "str",
+    /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */
+    ol: "num",
+    od: "num",
+    /** Attack range, nearest visible enemy hero within 1,200 (absent if none), hit by a hero in the last second. */
+    ar: "num",
+    ed: "num",
+    hit: "bool",
     by: "str",
     order: "str",
 } as const;
@@ -184,6 +191,14 @@ export const EVENTS = {
         p3t: "bool",
         p3a: "num",
     },
+    own_creep_death: {
+        team: "num",
+        kind: "str",
+        x: "num",
+        y: "num",
+        hp: "num",
+        by: "mixed",
+    },
     player: {
         pid: "num",
         hero: "str",
@@ -312,6 +327,43 @@ export const EVENTS = {
         feq: "num",
         a: "num",
         e: "num",
+    },
+    /**
+     * Slice lane-read, once a second per team and lane to 12:00, both arms. Amounts run from Radiant's ancient (0) but along
+     * the writing team's lane path, so they are comparable within one team's lines only (lr1: Dire's read 0.07-0.16 lower).
+     * adv 0..2 and a/e/ap/ep over creeps near our front (enemy ones visible only); of/ef fronts, ot/et nearest alive towers;
+     * cyc second in the 30 s cycle; cn/chp/cpw/cl own creeps in the whole lane (count, HP,
+     * HP-weighted power, lead amount, lead map position clx/cly): the other team's ground truth; cnn/cnp own creeps near the enemy's front (count, power),
+     * the enemy reading's e/ep without fog; fx/fy our front's map position. ee per enemy `pid:v|seen:dist[:hp:lvl]` (v = visible,
+     * else seconds since seen; hp percent), dead enemies; ag per allied hero `pid:now:since` (since -1 if never).
+     */
+    lane_read: {
+        team: "num",
+        lane: "num",
+        adv: "num",
+        eq: "num",
+        a: "num",
+        e: "num",
+        ap: "num",
+        ep: "num",
+        of: "num",
+        ef: "num",
+        ot: "num",
+        et: "num",
+        cyc: "num",
+        cn: "num",
+        chp: "num",
+        cpw: "num",
+        cl: "num",
+        clx: "num",
+        cly: "num",
+        cnn: "num",
+        cnp: "num",
+        fx: "num",
+        fy: "num",
+        dead: "num",
+        ee: "str",
+        ag: "str",
     },
     lane_tech: {
         pid: "num",
@@ -755,6 +807,11 @@ export const EVENTS = {
         ranged: "bool",
         eta: "num",
         contested: "bool",
+        /** Reachable last hits and denies offered at this attempt's pick. */
+        ol: "num",
+        od: "num",
+        /** The most last hits other than this attempt's creep offered while it waited to swing. */
+        ow: "num",
         msg: "str",
     },
     job_exec: {

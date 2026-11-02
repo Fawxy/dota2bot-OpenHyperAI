@@ -9,6 +9,7 @@ local JobVerbs = require(GetScriptDirectory().."/FunLib/humaniser/job_verbs")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -135,7 +136,9 @@ local function loadBundle(ours)
     if ok and type(res) == "table" then
         lib = res
         lib.init(adapter)
-        JobVerbs.Bind(lib, adapter);
+        JobVerbs.Bind(lib, adapter)
+        local verbs = lib.Verbs
+        LanePick.SetOffers(function(bot) return verbs.laneTargets(bot, {within = 1}) end);
         (rawPrint or print)(support .. "ok")
     else
         (rawPrint or print)((support .. "fail ") .. tostring(res))

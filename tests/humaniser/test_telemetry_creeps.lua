@@ -10,9 +10,10 @@ function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetLastAttackTime() return self.attackAt or -1 end
 function UnitMeta:GetGold() return 600 end
 
-CREEPS, ENEMIES = {}, {}
+CREEPS, ENEMIES, OWN = {}, {}, {}
 function GetUnitList(kind)
 	if kind == UnitType.EnemyCreeps then return CREEPS end
+	if kind == UnitType.AlliedCreeps then return OWN end
 	if kind == UnitType.EnemyHeroes then return ENEMIES end
 	return {}
 end
@@ -22,7 +23,7 @@ function GetBarracks() return nil end
 local lines
 local function fresh()
 	ResetWorld()
-	CREEPS, ENEMIES = {}, {}
+	CREEPS, ENEMIES, OWN = {}, {}, {}
 	CURRENT_TEAM = 2
 	local H = FreshHumaniser({ Enable = false, Telemetry = { Enable = true } })
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
@@ -44,7 +45,7 @@ local function tick(H, units, t)
 	for _, u in ipairs(units) do H.Telemetry.Tick(u) end
 end
 -- A creep handle that raises once removed, as the engine's does (BACKLOG 0.14).
-local function creep(name, loc, hp)
+local function creep(name, loc, hp, list)
 	local c = { name = name, loc = loc, hp = hp }
 	local function live(f) return function(self, ...) if self.removed then error("Invalid object passed to " .. f) end return self["_" .. f](self, ...) end end
 	c._GetUnitName = function(self) return self.name end
@@ -53,11 +54,13 @@ local function creep(name, loc, hp)
 	c._GetMaxHealth = function() return 100 end
 	c._IsAlive = function() return true end
 	for _, f in ipairs({ "GetUnitName", "GetLocation", "GetHealth", "GetMaxHealth", "IsAlive" }) do c[f] = live(f) end
-	table.insert(CREEPS, c)
+	table.insert(list or CREEPS, c)
 	return c
 end
 local function kill(c)
-	for i, u in ipairs(CREEPS) do if u == c then table.remove(CREEPS, i) end end
+	for _, l in ipairs({ CREEPS, OWN }) do
+		for i, u in ipairs(l) do if u == c then table.remove(l, i) end end
+	end
 	c.removed = true
 end
 
@@ -174,6 +177,43 @@ do
 	check("seen again: one creep_revive", #r == 1 and field(r[1], "kind") == "melee", r[1])
 	tick(H, { core }, 200.3)
 	check("revive logged once", #events("creep_revive") == 1, #events("creep_revive"))
+end
+
+-- Own lane creeps (slice creep-economy): ev=own_creep_death names our own deny; an own creep that dies with no deny rise
+-- (an enemy last hit, tower or creep kill) is by none; one above half health that vanishes left vision; far ones, enemy
+-- creeps and neutrals are not own deaths.
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	core.pos = 1
+	local sup = MakeUnit({ pid = 2, loc = Vector(100, 0) })
+	sup.pos = 5
+	local denied = creep("npc_dota_creep_goodguys_melee", Vector(150, 0), 30, OWN)
+	local taken = creep("npc_dota_creep_goodguys_ranged", Vector(-200, 0), 20, OWN)
+	local healthy = creep("npc_dota_creep_goodguys_melee", Vector(120, 0), 90, OWN)
+	local far = creep("npc_dota_creep_goodguys_melee", Vector(5000, 0), 10, OWN)
+	local theirs = creep("npc_dota_creep_badguys_melee", Vector(100, 0), 10)
+	tick(H, { core, sup }, 100)
+	kill(denied)
+	kill(taken)
+	kill(healthy)
+	kill(far)
+	kill(theirs)
+	core.dn = 1
+	local ok, err = pcall(tick, H, { core, sup }, 100.1)
+	check("removed own creep handles are never read", ok, err)
+	local e = events("own_creep_death")
+	check("two own deaths near a hero", #e == 2, #e)
+	local byKind = {}
+	for _, l in ipairs(e) do byKind[field(l, "kind")] = field(l, "by") end
+	check("the melee one was denied by the core", byKind.melee == "1", byKind.melee)
+	check("the ranged one died to someone else: by none", byKind.ranged == "none", byKind.ranged)
+	check("the enemy creep is a creep_death, not an own death", #events("creep_death") == 1, #events("creep_death"))
+	local late = creep("npc_dota_creep_goodguys_melee", Vector(100, 0), 5, OWN)
+	tick(H, { core, sup }, 721)
+	kill(late)
+	tick(H, { core, sup }, 721.1)
+	check("nothing after CreepDeathUntil", #events("own_creep_death") == 2, #events("own_creep_death"))
 end
 
 finish()

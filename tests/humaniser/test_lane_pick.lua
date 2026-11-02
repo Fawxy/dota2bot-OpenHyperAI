@@ -19,21 +19,18 @@ do
 	check("pick: melee due now beats a ranged creep due in 1 s", Pick.Choose({ r, m }) == m)
 end
 
--- A core never gives up its own last hit to deny: an allied creep due now loses to an enemy creep due in 0.2 s,
--- but a deny due now beats a last hit a second away.
+-- Strict priority (user rule 01/11/2026): a reachable last hit beats a deny however much sooner the deny is due; a deny is
+-- taken only when no last hit is offered.
 do
 	local d, e = target("deny", 0), target("lasthit", 0.2)
 	check("pick: last hit beats a deny due slightly sooner", Pick.Choose({ d, e }) == e)
 	local late = target("lasthit", 1.0)
-	check("pick: deny due now beats a last hit 1 s away", Pick.Choose({ late, d }) == d)
-end
-
-
--- The ranged bias outweighs the last-hit bias: a ranged deny beats a melee last hit due 0.05 s sooner (with the
--- two biases swapped the last hit would win).
-do
-	local rd, ml = target("deny", 0.25, true), target("lasthit", 0.2)
-	check("pick: ranged deny beats a melee last hit due 0.05 s sooner", Pick.Choose({ ml, rd }) == rd)
+	check("pick: last hit 1 s away still beats a deny due now", Pick.Choose({ late, d }) == late)
+	check("pick: no last hit, the deny is chosen", Pick.Choose({ d }) == d)
+	local rd = target("deny", 0, true)
+	check("pick: a ranged deny never beats a melee last hit", Pick.Choose({ rd, late }) == late)
+	local far = target("lasthit", 0, false, 2, 1)
+	check("pick: an unreachable last hit does not block a deny", Pick.Choose({ far, d }) == d)
 end
 
 -- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even
@@ -61,6 +58,66 @@ do
 	check("lf: phase, ages, distance and offers", Pick.Describe(7, 10) == "ph=hold sc=0.5 aw=340 pk=2.0 n=2 sk=1 ch=1")
 	Pick.NotePick(7, 10, { far }, Pick.Choose({ far }))
 	check("lf: all offers skipped, none chosen", Pick.Describe(7, 10) == "ph=hold sc=0.5 aw=340 pk=0.0 n=1 sk=1 ch=0")
+end
+
+-- Slice lane-activity: what was on offer. A deny picked with a last hit arriving during its wait is what ev=lh's ow reports.
+do
+	local bot = { GetPlayerID = function() return 8 end }
+	local ol, od = Pick.Options(bot)
+	check("options: nothing before the bundle hands over its offers", ol == nil and od == nil)
+	local far = target("lasthit", 0, true, 1.2, 0.9)
+	local lh, dn = target("lasthit", 0.2), target("deny", 0)
+	local now = { far, lh, dn }
+	Pick.SetOffers(function() return now end)
+	ol, od = Pick.Options(bot)
+	check("options: counts obey the reach rule", ol == 1 and od == 1, tostring(ol) .. "/" .. tostring(od))
+
+	Pick.NotePick(8, 1, { dn }, dn)
+	Pick.NotePhase(8, "deny")
+	now = { dn }
+	Pick.NoteWait(bot)
+	local a, b, c = Pick.AttemptOffers(8)
+	check("offers: deny picked alone, no last hit seen yet", a == 0 and b == 1 and c == 0)
+	now = { dn, lh, target("lasthit", 0.5), far }
+	Pick.NoteWait(bot)
+	now = { dn, lh }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: the most other reachable last hits seen during the wait", a == 0 and b == 1 and c == 2, tostring(c))
+
+	Pick.NotePhase(8, "hold")
+	Pick.NotePick(8, 2, { lh, dn }, lh)
+	Pick.NotePhase(8, "lasthit")
+	now = { lh, dn }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: the attempt's own creep is not another offer; a new pick resets", a == 1 and b == 1 and c == 0, tostring(c))
+
+	Pick.NotePhase(8, "hold")
+	now = { target("lasthit", 0), lh }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("offers: not counted while holding", c == 0, tostring(c))
+
+	-- Review H1: a retarget picks before the old attempt reports. The old attempt keeps its own offers; the next attempt gets the new pick's.
+	local lh2 = target("lasthit", 0.3)
+	Pick.NotePhase(8, "hold")
+	Pick.NotePick(8, 3, { dn }, dn)
+	Pick.NotePhase(8, "deny")
+	now = { dn, lh2 }
+	Pick.NoteWait(bot)
+	Pick.NotePick(8, 4, { lh2 }, lh2) -- retarget: the deny creep is gone, the last hit is chosen
+	a, b, c = Pick.AttemptOffers(8)
+	check("retarget: the old deny reports its own offers", a == 0 and b == 1 and c == 1, tostring(a) .. "/" .. tostring(b) .. "/" .. tostring(c))
+	Pick.NotePhase(8, "lasthit")
+	now = { lh2 }
+	Pick.NoteWait(bot)
+	a, b, c = Pick.AttemptOffers(8)
+	check("retarget: the next attempt reports the held pick", a == 1 and b == 0 and c == 0, tostring(a) .. "/" .. tostring(b) .. "/" .. tostring(c))
+	-- A retarget that picks nothing leaves the attempt as it was.
+	Pick.NotePick(8, 5, {}, nil)
+	a, b, c = Pick.AttemptOffers(8)
+	check("retarget: no new pick, offers unchanged", a == 1 and b == 0 and c == 0)
 end
 
 finish()

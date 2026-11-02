@@ -40,6 +40,11 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     act = "num",
     gold = "num",
     lf = "str",
+    ol = "num",
+    od = "num",
+    ar = "num",
+    ed = "num",
+    hit = "bool",
     by = "str",
     order = "str"
 })
@@ -161,6 +166,14 @@ ____exports.EVENTS = {
         p3t = "bool",
         p3a = "num"
     },
+    own_creep_death = {
+        team = "num",
+        kind = "str",
+        x = "num",
+        y = "num",
+        hp = "num",
+        by = "mixed"
+    },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
     game_end = {pid = "num", radiantAncient = "bool", direAncient = "bool"},
@@ -260,6 +273,34 @@ ____exports.EVENTS = {
         feq = "num",
         a = "num",
         e = "num"
+    },
+    lane_read = {
+        team = "num",
+        lane = "num",
+        adv = "num",
+        eq = "num",
+        a = "num",
+        e = "num",
+        ap = "num",
+        ep = "num",
+        of = "num",
+        ef = "num",
+        ot = "num",
+        et = "num",
+        cyc = "num",
+        cn = "num",
+        chp = "num",
+        cpw = "num",
+        cl = "num",
+        clx = "num",
+        cly = "num",
+        cnn = "num",
+        cnp = "num",
+        fx = "num",
+        fy = "num",
+        dead = "num",
+        ee = "str",
+        ag = "str"
     },
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {
@@ -647,6 +688,9 @@ ____exports.EVENTS = {
         ranged = "bool",
         eta = "num",
         contested = "bool",
+        ol = "num",
+        od = "num",
+        ow = "num",
         msg = "str"
     },
     job_exec = {

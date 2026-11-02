@@ -65,6 +65,16 @@ test('deaths near a core are split by killer and, when lost, by what the core wa
     assert.strictEqual(run(g).cores.r5, undefined, 'supports are not cores');
 });
 
+test('an enemy deny named by the other team (own_creep_death) reads enemy_deny, not creep_or_tower', () => {
+    const g = inOrder(log([
+        [301, 'by=none p1d=100 p1r=150 p1t=1 p1a=0.9'], // denied by Dire pid 7, named only in the Dire log
+        [310, 'by=none p1d=100 p1r=150 p1t=1 p1a=0.9'], // nobody named: tower or creep
+    ]), line(301, `own_creep_death team=3 kind=melee x=${BOT[0]} y=${BOT[1] + 100} hp=0.1 by=7`));
+    const r = run(g).cores.r1;
+    assert.deepStrictEqual(r.killers, { core_lh: 0, ally_lh: 0, enemy_deny: 1, creep_or_tower: 1 });
+    assert.strictEqual(r.conversion, 0, 'the conversion denominator is unchanged');
+});
+
 test('gates: G1 drops a core, G2/G5 drop a game, and the until cut', () => {
     const g = log([[301, 'by=1 p1d=100 p1t=1'], [302, 'by=none p1d=100'], [700, 'by=1 p1d=100']], 2);
     const res = run(g);
