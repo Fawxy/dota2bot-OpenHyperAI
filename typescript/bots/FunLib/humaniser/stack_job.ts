@@ -1,12 +1,12 @@
 /**
  * Stack execution (slice 4, switch Ours.StackExecute, KR S.2a): on a placeholder trigger (minutes 3, 5 and 7) the
- * pos5 stacks its nearest own-side camp with the `stack` job verb, then watches the box for the outcome. OHA has no
- * stacking code; with the switch off the pos5 never stacks. Hosted by mode_farm_generic (Desire, Think, Abort).
+ * pos5 stacks its nearest own-side camp with the `stack` job verb, then watches the box for the outcome. With the switch
+ * off the pos5 never stacks. The chooser (`hum/chooser.ts`) starts, hosts and ends it (Wants, Step, End).
  * One `ev=stack` line per trigger minute: the attempt's result, or `res=skip` with the reason no job started.
  * When to stack, and who, is S.2b: it replaces TRIGGER_MINUTES and keeps the job and its result line.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -36,13 +36,7 @@ export const SETTINGS = {
     ApproachLead: 6,
     /** Distance from the camp origin the job steps in to when it sees nothing from the stand point. */
     ApproachDist: 250,
-    MinHpFraction: 0.5,
-    /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
-    EnemyRadius: 600,
-    HitWithin: 3,
-    /** Above OHA's ward (0.83) and laning, below a serious retreat (0.94-1.1); s4 validation game. */
-    Desire: 0.92,
-    /** Seconds without a step before the job counts as stalled. Farm's Think skips the step while the bot cannot act; the
+    /** Seconds without a step before the job counts as stalled. The host skips the step while the bot cannot act; the
      *  engine's default 2 ended 3 good_2 attempts after the hit (`preempted:stalled`, s4solo5; the camp's centaur khan
      *  stuns). */
     StallAfter: 4,
@@ -117,7 +111,7 @@ export function Benched(bot: Unit): boolean {
     return typeof solo === "number" && solo >= 0 && bot.GetPlayerID() !== solo;
 }
 
-/** mode_farm_generic Think for a benched hero: walk to the fountain and stay. False when the hero is not benched. */
+/** A benched hero's step: walk to the fountain and stay. False when the hero is not benched. */
 export function Bench(bot: Unit): boolean {
     if (!Benched(bot)) return false;
     const [x, y, z] = FOUNTAIN[bot.GetTeam()];
@@ -205,7 +199,7 @@ export interface Attempt {
      *  walk-off dragged a wave into the camp, a partial pull (user watching s4solo7ab: evil_1's north-west route pulled the
      *  top lane twice; nothing in the log showed it). */
     lane?: number;
-    /** OHA idle relocations the job held while it ran (`HoldsIdle`). */
+    /** Idle relocations the chooser held while the job ran (`NoteIdleHeld`). */
     idle?: number;
     /** Double stack: 1 when the attempt hits `first` before this camp; 0 when the camp has a partner but the walk between
      *  them does not fit (`Fits`); undefined when it has none or the switch is off. */
@@ -575,7 +569,7 @@ export function ResetCache(): void {
     for (const k in exits) delete exits[k];
 }
 
-/** The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`). */
+/** The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`). */
 export function Applies(bot: Unit): boolean {
     if (!Ours.On("StackExecute")) return false;
     const pos = LaneConfig.PositionOf(bot);
@@ -610,25 +604,6 @@ export function Nearest(team: number, loc: Vector): LuaMultiReturn<[Camps.CampJo
         }
     }
     return $multi(best, stand);
-}
-
-/** Hero damage just now, checked every frame of a running job (1x probe s4p7: the pos5 was hit at 61% on the walk, kept
- *  going and died at the camp to two heroes). Not an enemy hero in reach: lane opponents walk within 600 of a laning pos5,
- *  and that check ended 4 jobs 1-6 s after their start (probe s4p8). Not HP or mode: the camp's neutrals hit the bot by
- *  design, and the mode is ours. */
-function Threat(bot: Unit): string | undefined {
-    return bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin) ? "hit" : undefined;
-}
-
-/** Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
- *  hero just now, or fighting or retreating. */
-export function Gate(bot: Unit): string | undefined {
-    if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
-    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
-    if (Threat(bot) !== undefined) return "hit";
-    const mode = bot.GetActiveMode();
-    if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
-    return undefined;
 }
 
 /** The stack verb's plan for `data` in `minute`: the hit lands on the camp's stack second of that minute. */
@@ -817,7 +792,7 @@ function phase(bot: Unit, a: Attempt, l: string): void {
     }
 }
 
-/** Every frame of a running job, from Desire: farm's Think does not run while the bot casts (J.CanNotUseAction). */
+/** Every frame of a running job, from Wants: the host does not step the job while the bot casts. */
 function track(bot: Unit, a: Attempt): void {
     const ab = bot.GetCurrentActiveAbility();
     const name = ab !== null && ab !== undefined ? ab.GetName() : undefined;
@@ -1151,19 +1126,17 @@ function visionProbe(bot: Unit): boolean {
     return true;
 }
 
-/** mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides). */
-export function Desire(bot: Unit): number {
-    if (!Applies(bot)) return 0;
+/** Every frame: true while the job runs or as it starts. `blocked` says why a start must wait; `host` is the mode that
+ *  will step the job. */
+export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
+    if (!Applies(bot)) return false;
     logCamps();
-    if (override("VisionProbe") === true) return DotaTime() >= 60 && (probe[bot.GetPlayerID()] === undefined || probe[bot.GetPlayerID()].points[probe[bot.GetPlayerID()].i] !== undefined) ? SETTINGS.Desire : 0;
+    if (override("VisionProbe") === true) return DotaTime() >= 60 && (probe[bot.GetPlayerID()] === undefined || probe[bot.GetPlayerID()].points[probe[bot.GetPlayerID()].i] !== undefined);
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) {
         track(bot, running[pid]!);
-        const threat = Threat(bot);
-        if (threat === undefined) return SETTINGS.Desire;
-        Tasks.Cancel(bot, "cancelled", threat);
-        return 0;
+        return true;
     }
     const now = DotaTime();
     handled[pid] = handled[pid] ?? {};
@@ -1183,7 +1156,7 @@ export function Desire(bot: Unit): number {
                 ["res", "skip"],
                 ["why", why],
             ]);
-            return 0;
+            return false;
         };
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
         // A double starts from camp A: its stand point and hit second set the start.
@@ -1204,24 +1177,24 @@ export function Desire(bot: Unit): number {
             if (double) [aggroAt, walk, lead, data, stand] = [fAt, fWalk, SETTINGS.DoubleLead, fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
         }
         const sweep = override("Sweep") === true;
-        if (now < aggroAt - walk - lead) return sweep && prewalk[pid] !== undefined ? SETTINGS.Desire : 0;
+        if (now < aggroAt - walk - lead) return sweep && prewalk[pid] !== undefined;
         if (now > aggroAt - walk - SETTINGS.MinSlack) {
             if (!sweep) return skip(gateWhy[pid] ?? "late");
             prewalk[pid] = stand;
-            return SETTINGS.Desire;
+            return true;
         }
         if (minute * 60 + 60 + SETTINGS.FarEnd - now > awayMax()) return skip("far");
-        const why = Gate(bot);
+        const why = blocked(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;
-            return 0;
+            return false;
         }
         const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now };
         if (fd !== undefined) a.double = double ? 1 : 0;
         a.dwhy = dwhy;
         if (double) a.first = { campIdx: fd!.a.campIdx, type: fd!.a.type, stand: fd!.stand, fsec: fd!.fsec, sec: fd!.sec };
         const plan = Plan(bot, data, stand, minute, a);
-        const ok = Tasks.Start(bot, { name: "stack", host: BotMode.Farm, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
+        const ok = Tasks.Start(bot, { name: "stack", host, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
             body(bot, plan, a, ctx)
         );
         if (!ok) return skip("refused");
@@ -1230,12 +1203,11 @@ export function Desire(bot: Unit): number {
         prewalk[pid] = undefined;
         gateWhy[pid] = undefined;
         running[pid] = a;
-        return SETTINGS.Desire;
+        return true;
     }
-    return 0;
+    return false;
 }
 
-/** mode_farm_generic Think: steps the job; false when none runs. */
 /** At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log. */
 /** The hit neutral's distance to the camp origin, or undefined when it is gone or unseen. */
 function targetDist(a: Attempt): number | undefined {
@@ -1284,7 +1256,8 @@ function sample59(bot: Unit, a: Attempt): void {
     a.exit59 = path !== undefined && path.length > 0 ? math.floor(GetUnitToLocationDistance(bot, path[path.length - 1])) : undefined;
 }
 
-export function Think(bot: Unit): boolean {
+/** Steps the job; false when none runs. */
+export function Step(bot: Unit, host: number): boolean {
     if (visionProbe(bot)) return true;
     const pre = prewalk[bot.GetPlayerID()];
     if (running[bot.GetPlayerID()] === undefined && pre !== undefined) {
@@ -1293,44 +1266,20 @@ export function Think(bot: Unit): boolean {
     }
     const a = running[bot.GetPlayerID()];
     if (a === undefined) return false;
-    return Tasks.Step(bot, BotMode.Farm);
+    return Tasks.Step(bot, host);
 }
 
-/**
- * mode_farm_generic's ShouldRun: neutrals hitting the pos5 during its stack are not a reason to run; the job's exit is its
- * retreat. OHA's creep clause (level < 5, hit by a creep, HP < 0.7) cancelled 5 of 9 attempts after the hit (probe s4p4).
- */
-export function HoldsRun(bot: Unit): boolean {
+export function Running(bot: Unit): boolean {
     return running[bot.GetPlayerID()] !== undefined;
 }
 
-/**
- * ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
- * branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
- * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
- * An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast.
- */
-export function HoldsCasts(bot: Unit): boolean {
-    if (Benched(bot)) return true;
-    if (running[bot.GetPlayerID()] === undefined) return false;
-    return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
-}
-
-/**
- * jmz_func CheckBotIdleState (called from team_roam's GetDesire whatever mode is active): a bot in farm mode that moved
- * under 100 in 3 s gets ClearActions and an attack-move to its lane front. A stack job stands still at its stand point by
- * design, and when the check fell inside the 2 s after the hit order it replaced the attack: all 4 slice 4 `no-aggro` misses
- * (attack-move from the order to the miss, s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55). True while the job
- * runs, counted on the attempt.
- */
-export function HoldsIdle(bot: Unit): boolean {
-    const a = running[bot.GetPlayerID()];
-    if (a === undefined) return false;
-    a.idle = (a.idle ?? 0) + 1;
-    return true;
-}
-
-/** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */
-export function Abort(bot: Unit, why: string): void {
+/** Ends a running job; its line reports `cancelled:<why>`. */
+export function End(bot: Unit, why: string): void {
     if (running[bot.GetPlayerID()] !== undefined) Tasks.Cancel(bot, "cancelled", why);
+}
+
+/** Counts an idle relocation the chooser held while the job ran (`idle` on the line). */
+export function NoteIdleHeld(bot: Unit): void {
+    const a = running[bot.GetPlayerID()];
+    if (a !== undefined) a.idle = (a.idle ?? 0) + 1;
 }

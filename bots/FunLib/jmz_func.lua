@@ -6594,7 +6594,7 @@ function J.CheckBotIdleState()
 				or botMode == BOT_MODE_ITEM
 				or botMode == BOT_MODE_FARM then
 					-- Ours.StackExecute: a running stack job stands still by design; the relocation replaced its hit order.
-					local bHeld = J.Humaniser.StackJob.HoldsIdle(bot)
+					local bHeld = J.Humaniser.Chooser.HoldsIdle(bot)
 					J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)
 					if bHeld then
 						botState.idleCount = 0

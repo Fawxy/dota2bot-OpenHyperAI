@@ -742,7 +742,6 @@ end
 local ____exports = {}
 local override, setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, winField, winOff, targetDist, sample59, Customize, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
@@ -861,10 +860,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue164
+            local __continue158
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue164 = true
+                    __continue158 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -878,9 +877,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue164 = true
+                __continue158 = true
             until true
-            if not __continue164 then
+            if not __continue158 then
                 break
             end
         end
@@ -990,11 +989,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue194
+            local __continue188
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue194 = true
+                    __continue188 = true
                     break
                 end
                 local name = (string.gsub(
@@ -1004,7 +1003,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue194 = true
+                    __continue188 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -1014,9 +1013,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue194 = true
+                __continue188 = true
             until true
-            if not __continue194 then
+            if not __continue188 then
                 break
             end
         end
@@ -1162,10 +1161,6 @@ ____exports.SETTINGS = {
     MinSlack = 3,
     ApproachLead = 6,
     ApproachDist = 250,
-    MinHpFraction = 0.5,
-    EnemyRadius = 600,
-    HitWithin = 3,
-    Desire = 0.92,
     StallAfter = 4,
     PreemptAfter = 1,
     ExitTowardLane = true,
@@ -1196,7 +1191,7 @@ function ____exports.Benched(bot)
     end
     return type(solo) == "number" and solo >= 0 and bot:GetPlayerID() ~= solo
 end
---- mode_farm_generic Think for a benched hero: walk to the fountain and stay. False when the hero is not benched.
+--- A benched hero's step: walk to the fountain and stay. False when the hero is not benched.
 function ____exports.Bench(bot)
     if not ____exports.Benched(bot) then
         return false
@@ -1554,7 +1549,7 @@ function ____exports.ResetCache()
         __TS__Delete(exits, k)
     end
 end
---- The switch is on and `bot` is OHA position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`).
+--- The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`).
 function ____exports.Applies(bot)
     if not Ours.On("StackExecute") then
         return false
@@ -1599,31 +1594,6 @@ function ____exports.Nearest(team, loc)
         end
     end
     return best, stand
-end
---- Hero damage just now, checked every frame of a running job (1x probe s4p7: the pos5 was hit at 61% on the walk, kept
--- going and died at the camp to two heroes). Not an enemy hero in reach: lane opponents walk within 600 of a laning pos5,
--- and that check ended 4 jobs 1-6 s after their start (probe s4p8). Not HP or mode: the camp's neutrals hit the bot by
--- design, and the mode is ours.
-local function Threat(bot)
-    return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin) and "hit" or nil
-end
---- Why the pos5 may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
--- hero just now, or fighting or retreating.
-function ____exports.Gate(bot)
-    if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
-        return "low-hp"
-    end
-    if #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) > 0 then
-        return "enemy-near"
-    end
-    if Threat(bot) ~= nil then
-        return "hit"
-    end
-    local mode = bot:GetActiveMode()
-    if mode == BotMode.Attack or mode == BotMode.Retreat then
-        return "busy"
-    end
-    return nil
 end
 --- The verb's camp for `sp`, waiting at `stand`; `others` are neutrals that are not this camp (a double's camp A).
 local function campFor(bot, sp, stand, others, pile)
@@ -1675,22 +1645,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue108
+                local __continue102
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue108 = true
+                        __continue102 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue108 = true
+                    __continue102 = true
                 until true
-                if not __continue108 then
+                if not __continue102 then
                     break
                 end
             end
@@ -1858,7 +1828,7 @@ local body = __TS__Generator(function(bot, plan, a, ctx)
     end
     return {success = true, reason = "ok"}
 end)
---- Every frame of a running job, from Desire: farm's Think does not run while the bot casts (J.CanNotUseAction).
+--- Every frame of a running job, from Wants: the host does not step the job while the bot casts.
 local function track(bot, a)
     local ab = bot:GetCurrentActiveAbility()
     local name = ab ~= nil and ab ~= nil and ab:GetName() or nil
@@ -2176,34 +2146,30 @@ local function visionProbe(bot)
     bot:Action_MoveToLocation(p.at)
     return true
 end
---- mode_farm_generic GetDesire: the job's desire while it runs or as it starts, else 0 (OHA decides).
-function ____exports.Desire(bot)
+--- Every frame: true while the job runs or as it starts. `blocked` says why a start must wait; `host` is the mode that
+-- will step the job.
+function ____exports.Wants(bot, blocked, host)
     if not ____exports.Applies(bot) then
-        return 0
+        return false
     end
     logCamps()
     if override("VisionProbe") == true then
-        return DotaTime() >= 60 and (probe[bot:GetPlayerID()] == nil or probe[bot:GetPlayerID()].points[probe[bot:GetPlayerID()].i + 1] ~= nil) and ____exports.SETTINGS.Desire or 0
+        return DotaTime() >= 60 and (probe[bot:GetPlayerID()] == nil or probe[bot:GetPlayerID()].points[probe[bot:GetPlayerID()].i + 1] ~= nil)
     end
     local pid = bot:GetPlayerID()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
         track(bot, running[pid])
-        local threat = Threat(bot)
-        if threat == nil then
-            return ____exports.SETTINGS.Desire
-        end
-        Tasks.Cancel(bot, "cancelled", threat)
-        return 0
+        return true
     end
     local now = DotaTime()
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue232
+            local __continue225
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue232 = true
+                    __continue225 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2235,7 +2201,7 @@ function ____exports.Desire(bot)
                     handled[pid][minute] = true
                     gateWhy[pid] = nil
                     log(bot, minute, {{"res", "skip"}, {"why", why}})
-                    return 0
+                    return false
                 end
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
@@ -2272,22 +2238,22 @@ function ____exports.Desire(bot)
                 end
                 local sweep = override("Sweep") == true
                 if now < aggroAt - walk - lead then
-                    return sweep and prewalk[pid] ~= nil and ____exports.SETTINGS.Desire or 0
+                    return sweep and prewalk[pid] ~= nil
                 end
                 if now > aggroAt - walk - ____exports.SETTINGS.MinSlack then
                     if not sweep then
                         return skip(gateWhy[pid] or "late")
                     end
                     prewalk[pid] = stand
-                    return ____exports.SETTINGS.Desire
+                    return true
                 end
                 if minute * 60 + 60 + ____exports.SETTINGS.FarEnd - now > awayMax() then
                     return skip("far")
                 end
-                local why = ____exports.Gate(bot)
+                local why = blocked(bot)
                 if why ~= nil then
                     gateWhy[pid] = why
-                    return 0
+                    return false
                 end
                 local a = {minute = minute, campIdx = data.campIdx, type = data.type, startedAt = now}
                 if fd ~= nil then
@@ -2314,7 +2280,7 @@ function ____exports.Desire(bot)
                     bot,
                     {
                         name = "stack",
-                        host = BotMode.Farm,
+                        host = host,
                         preemptAfter = ____exports.SETTINGS.PreemptAfter,
                         stallAfter = ____exports.SETTINGS.StallAfter,
                         onEnd = function(result) return finish(bot, a, result) end
@@ -2335,16 +2301,17 @@ function ____exports.Desire(bot)
                 prewalk[pid] = nil
                 gateWhy[pid] = nil
                 running[pid] = a
-                return ____exports.SETTINGS.Desire
+                return true
             until true
-            if not __continue232 then
+            if not __continue225 then
                 break
             end
         end
     end
-    return 0
+    return false
 end
-function ____exports.Think(bot)
+--- Steps the job; false when none runs.
+function ____exports.Step(bot, host)
     if visionProbe(bot) then
         return true
     end
@@ -2357,43 +2324,22 @@ function ____exports.Think(bot)
     if a == nil then
         return false
     end
-    return Tasks.Step(bot, BotMode.Farm)
+    return Tasks.Step(bot, host)
 end
---- mode_farm_generic's ShouldRun: neutrals hitting the pos5 during its stack are not a reason to run; the job's exit is its
--- retreat. OHA's creep clause (level < 5, hit by a creep, HP < 0.7) cancelled 5 of 9 attempts after the hit (probe s4p4).
-function ____exports.HoldsRun(bot)
+function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
---- ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
--- branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
--- neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
--- An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast.
-function ____exports.HoldsCasts(bot)
-    if ____exports.Benched(bot) then
-        return true
-    end
-    if running[bot:GetPlayerID()] == nil then
-        return false
-    end
-    return #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) == 0
-end
---- jmz_func CheckBotIdleState (called from team_roam's GetDesire whatever mode is active): a bot in farm mode that moved
--- under 100 in 3 s gets ClearActions and an attack-move to its lane front. A stack job stands still at its stand point by
--- design, and when the check fell inside the 2 s after the hit order it replaced the attack: all 4 slice 4 `no-aggro` misses
--- (attack-move from the order to the miss, s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55). True while the job
--- runs, counted on the attempt.
-function ____exports.HoldsIdle(bot)
-    local a = running[bot:GetPlayerID()]
-    if a == nil then
-        return false
-    end
-    a.idle = (a.idle or 0) + 1
-    return true
-end
---- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
-function ____exports.Abort(bot, why)
+--- Ends a running job; its line reports `cancelled:<why>`.
+function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
         Tasks.Cancel(bot, "cancelled", why)
+    end
+end
+--- Counts an idle relocation the chooser held while the job ran (`idle` on the line).
+function ____exports.NoteIdleHeld(bot)
+    local a = running[bot:GetPlayerID()]
+    if a ~= nil then
+        a.idle = (a.idle or 0) + 1
     end
 end
 return ____exports

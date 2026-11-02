@@ -24,9 +24,10 @@ import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
+import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, Chooser };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -194,7 +195,8 @@ if (Telemetry.GuardsEnabled()) {
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
     Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
     // An error leaves the farm mode to OHA (no job desire, no owned Think).
-    Telemetry.GuardModule("StackJob", StackJob, { Desire: zero, Think: no, Abort: none, HoldsRun: no, HoldsIdle: no, Benched: no, Bench: no, HoldsCasts: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
+    Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
+    Telemetry.GuardModule("Chooser", Chooser, { FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

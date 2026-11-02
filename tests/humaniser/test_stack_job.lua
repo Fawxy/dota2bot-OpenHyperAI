@@ -69,9 +69,9 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 -- One frame: farm's GetDesire, then its Think when farm wins. Moves arrive at once; a neutral hit turns on the bot.
 local function frame(H, bot, dt)
 	local n0 = #ACTIONS
-	if H.StackJob.Desire(bot) > 0 then
+	if H.Chooser.FarmDesire(bot) > 0 then
 		bot.mode = FARM
-		H.StackJob.Think(bot)
+		H.Chooser.FarmThink(bot)
 	else
 		bot.mode = LANING
 	end
@@ -211,7 +211,7 @@ do
 	end
 	local H, bot = world({ t = 233 })
 	bot.pos = 4
-	check("pos4: no job", H.StackJob.Desire(bot) == 0)
+	check("pos4: no job", H.Chooser.FarmDesire(bot) == 0)
 	H, bot = world({ t = 233, ours = { StackExecute = false } })
 	local lines = capture(function() for _ = 1, 400 do frame(H, bot) end end)
 	check("switch off: no job and no line", #stackLines(lines) == 0 and bot.mode == LANING, #stackLines(lines))
@@ -291,11 +291,11 @@ end
 do
 	local before, during, enemy = nil, false, nil
 	stackRun({ onFrame = function(H, bot)
-		if before == nil then before = H.StackJob.HoldsCasts(bot) end
-		if H.StackJob.HoldsRun(bot) and H.StackJob.HoldsCasts(bot) then during = true end
-		if H.StackJob.HoldsRun(bot) and enemy == nil and T >= 3 * 60 + 56 then
+		if before == nil then before = H.Chooser.HoldsCasts(bot) end
+		if H.Chooser.HoldsRun(bot) and H.Chooser.HoldsCasts(bot) then during = true end
+		if H.Chooser.HoldsRun(bot) and enemy == nil and T >= 3 * 60 + 56 then
 			local e = MakeUnit({ pid = 12, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) })
-			enemy = H.StackJob.HoldsCasts(bot)
+			enemy = H.Chooser.HoldsCasts(bot)
 			e.alive = false
 			for i, u in ipairs(UNITS[3]) do if u == e then table.remove(UNITS[3], i) break end end
 		end
@@ -377,7 +377,7 @@ end
 -- StandApproach from the origin StandApproachLead s before the hit, as camp_jobs does, and still stacks.
 do
 	local held = false
-	local lines = stackRun({ blind = true, onFrame = function(H, bot) held = held or H.StackJob.HoldsRun(bot) end })
+	local lines = stackRun({ blind = true, onFrame = function(H, bot) held = held or H.Chooser.HoldsRun(bot) end })
 	check("HoldsRun while the job runs (OHA's creep clause skipped)", held)
 	check("unseen from the stand: still stacked", field(lines[1], "res") == "stacked", lines[1])
 	check("unseen from the stand: hit inside the window", tonumber(field(lines[1], "aggro") or "99") <= 58, lines[1])
@@ -389,9 +389,9 @@ end
 do
 	local before, during, calls = nil, false, 0
 	local lines = stackRun({ onFrame = function(H, bot)
-		if before == nil then before = H.StackJob.HoldsIdle(bot) end
-		if H.StackJob.HoldsRun(bot) and T >= 3 * 60 + 50 and T < 3 * 60 + 53 then
-			during = H.StackJob.HoldsIdle(bot) or during
+		if before == nil then before = H.Chooser.HoldsIdle(bot) end
+		if H.Chooser.HoldsRun(bot) and T >= 3 * 60 + 50 and T < 3 * 60 + 53 then
+			during = H.Chooser.HoldsIdle(bot) or during
 			calls = calls + 1
 		end
 	end })
@@ -403,7 +403,7 @@ do
 	check("no hold asked: idle=0", field(plain[1], "idle") == "0", plain[1])
 	local src = io.open(HARNESS_DIR .. "/../../bots/FunLib/jmz_func.lua", "r"):read("a")
 	local body = src:match("function J%.CheckBotIdleState%(%)(.-)\nend\n")
-	local hook = body and body:find("J.Humaniser.StackJob.HoldsIdle(bot)", 1, true)
+	local hook = body and body:find("J.Humaniser.Chooser.HoldsIdle(bot)", 1, true)
 	local clear = body and body:find("bot:Action_ClearActions(true)", 1, true)
 	check("CheckBotIdleState asks HoldsIdle before it clears the bot's actions", hook ~= nil and clear ~= nil and hook < clear)
 	check("CheckBotIdleState logs ev=oha_idle", body ~= nil and body:find("J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)", 1, true) ~= nil)
@@ -420,18 +420,18 @@ do
 	MakeUnit({ pid = 11, team = 3, loc = Vector(SAFE_T1[RAD].x + 900, SAFE_T1[RAD].y) })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end))
-	check("lane opponent at 900: the job starts", #lines == 0 and H.StackJob.Desire(bot) > 0)
-	check("attack mode: gate says busy", (function() bot.mode = dota.BotMode.Attack return H.StackJob.Gate(bot) == "busy" end)())
+	check("lane opponent at 900: the job starts", #lines == 0 and H.Chooser.FarmDesire(bot) > 0)
+	check("attack mode: gate says busy", (function() bot.mode = dota.BotMode.Attack return H.Chooser.MayStart(bot) == "busy" end)())
 
 	H, bot = world({ t = 3 * 60 + 15 })
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	lines = stackLines(capture(function()
 		while T < 3 * 60 + 50 do frame(H, bot) end
-		H.StackJob.Abort(bot, "run")
+		H.Chooser.Abort(bot, "run")
 		frame(H, bot)
 	end))
 	check("run abort: failed, cancelled:run", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:run", lines[1])
-	check("run abort: farm released", H.StackJob.Desire(bot) == 0)
+	check("run abort: farm released", H.Chooser.FarmDesire(bot) == 0)
 
 	-- Hero damage mid-job ends it (1x probe s4p7: the pos5 walked on after hero hits and died at the camp); an enemy hero
 	-- in reach alone does not (probe s4p8: lane opponents ended 4 jobs 1-6 s after their start).
@@ -442,13 +442,13 @@ do
 		MakeUnit({ pid = 12, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) })
 		frame(H, bot)
 	end))
-	check("enemy in reach mid-job: the job runs on", #lines == 0 and H.StackJob.Desire(bot) > 0, lines[1])
+	check("enemy in reach mid-job: the job runs on", #lines == 0 and H.Chooser.FarmDesire(bot) > 0, lines[1])
 	lines = stackLines(capture(function()
 		bot.heroHitAt = T
 		frame(H, bot)
 	end))
 	check("hero hit mid-job: failed, cancelled:hit", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:hit", lines[1])
-	check("hero hit mid-job: farm released", H.StackJob.Desire(bot) == 0)
+	check("hero hit mid-job: farm released", H.Chooser.FarmDesire(bot) == 0)
 end
 
 -- A start held back by the gate goes ahead only with MinSlack s to spare (probe s4p5: starts at 0 s slack missed the window).
@@ -477,19 +477,19 @@ end
 do
 	local H, bot = world()
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
-	check("solo off: nobody benched", not H.StackJob.Benched(bot) and not H.StackJob.Bench(bot))
+	check("solo off: nobody benched", not H.Chooser.Benched(bot) and not H.Chooser.Bench(bot))
 	check("solo off: trigger minutes", #H.StackJob.Minutes() == 3 and H.StackJob.Minutes()[1] == 3)
 	Customize.Overrides = { Solo = 5 }
-	check("solo is this hero: not benched", not H.StackJob.Benched(bot))
+	check("solo is this hero: not benched", not H.Chooser.Benched(bot))
 	local other = MakeUnit({ pid = 6, team = 3, loc = Vector(0, 0, 0) })
-	check("another hero: benched", H.StackJob.Benched(other) and H.StackJob.Bench(other))
+	check("another hero: benched", H.Chooser.Benched(other) and H.Chooser.Bench(other))
 	local mv = ActionsOf(6, "MoveToLocation")
 	local to = mv[#mv] and mv[#mv].args[1]
 	check("benched: walks to its own fountain", to ~= nil and to.x > 6000 and to.y > 6000, to and (to.x .. "," .. to.y) or "no move")
 	local home = MakeUnit({ pid = 1, team = 2, loc = Vector(-6600, -6300, 0) })
-	check("benched at the fountain: no move", H.StackJob.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
+	check("benched at the fountain: no move", H.Chooser.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
 	Customize.Overrides = { Solo = 0 }
-	check("solo pid 0 counts", H.StackJob.Benched(bot))
+	check("solo pid 0 counts", H.Chooser.Benched(bot))
 	Customize.Overrides = { StackEvery = true }
 	local m = H.StackJob.Minutes()
 	check("stack every: from 2:00, each minute", m[1] == 2 and m[2] == 3 and m[3] == 4)
@@ -502,10 +502,10 @@ do
 	m = H.StackJob.Minutes()
 	check("stack every 3: every third minute from 2:00", m[1] == 2 and m[2] == 5 and m[3] == 8)
 	Customize.Overrides = { Solo = "0,5," }
-	check("solo list: a listed hero plays", not H.StackJob.Benched(bot))
-	check("solo list: an unlisted one is benched", H.StackJob.Benched(other))
+	check("solo list: a listed hero plays", not H.Chooser.Benched(bot))
+	check("solo list: an unlisted one is benched", H.Chooser.Benched(other))
 	Customize.Overrides = { Solo = "50," }
-	check("solo list: pid 5 is not 50's 5", H.StackJob.Benched(bot))
+	check("solo list: pid 5 is not 50's 5", H.Chooser.Benched(bot))
 	Customize.Overrides = nil
 end
 
@@ -514,26 +514,34 @@ do
 	local function source(rel) return io.open(BOTS_ROOT .. '/' .. rel, 'r'):read('a') end
 	local function has(text, needle) return text:find(needle, 1, true) ~= nil end
 	local farm = source('bots/mode_farm_generic.lua')
-	local desire = farm:find('J.Humaniser.StackJob.Desire(bot)', 1, true)
+	local desire = farm:find('J.Humaniser.Chooser.FarmDesire(bot)', 1, true)
 	check('farm: stack desire before the camp-job desire', desire ~= nil and desire < farm:find('J.Humaniser.Lane.CampJobDesire(bot)', 1, true))
 	check('farm: stack desire returned when owned', has(farm, 'if nStackDesire > 0 then return nStackDesire end'))
-	local think = farm:find('J.Humaniser.StackJob.Think(bot)', 1, true)
+	local think = farm:find('J.Humaniser.Chooser.FarmThink(bot)', 1, true)
 	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
-	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.StackJob.Abort(bot, "run")'))
+	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.Chooser.Abort(bot, "run")'))
 	-- A benched hero (Overrides.Solo) wins farm before OHA's run and defend-ping checks, and its Think comes first.
-	local bench = farm:find('if J.Humaniser.StackJob.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end', 1, true)
+	local bench = farm:find('if J.Humaniser.Chooser.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end', 1, true)
 	check('farm: bench desire first', bench ~= nil and bench < farm:find('function GetDesireHelper', 1, true))
-	local benchThink = farm:find('if J.Humaniser.StackJob.Bench(bot) then return end', 1, true)
+	local benchThink = farm:find('if J.Humaniser.Chooser.Bench(bot) then return end', 1, true)
 	check('farm: bench Think before the stack Think', benchThink ~= nil and benchThink < think)
 	local usage = source('bots/ability_item_usage_generic.lua')
-	local _, holds = usage:gsub('if J.Humaniser.StackJob.HoldsCasts%(bot%) then return end', '')
+	local _, holds = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot%) then return end', '')
 	check('usage: spells and items held for the stack job and the bench', holds == 2, holds)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
-	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.StackJob.HoldsRun(bot) then"))
+	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then"))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
-	local abort = farm:find('J.Humaniser.StackJob.Abort(bot, "defend-ping")', 1, true)
+	local abort = farm:find('J.Humaniser.Chooser.Abort(bot, "defend-ping")', 1, true)
 	check('farm: a defend ping aborts the job', ping ~= nil and abort ~= nil and abort > ping and abort - ping < 200, tostring(ping) .. ' ' .. tostring(abort))
+	-- Slice job-chooser: the job never names OHA or modes, and OHA's files reach it only through the chooser.
+	local jobSrc = source('typescript/bots/FunLib/humaniser/stack_job.ts')
+	for _, word in ipairs({ 'BotMode', 'GetActiveMode', 'OHA', 'mode_farm', 'ability_item', 'jmz_func' }) do
+		check('StackJob does not mention ' .. word, not has(jobSrc, word))
+	end
+	for _, rel in ipairs({ 'bots/mode_farm_generic.lua', 'bots/mode_retreat_generic.lua', 'bots/ability_item_usage_generic.lua', 'bots/FunLib/jmz_func.lua' }) do
+		check(rel .. ' calls no job', not has(source(rel), 'Humaniser.StackJob'))
+	end
 end
 
 -- Slice double-stack (Ours.DoubleStack): the safe-lane partners (EC-063), the fit of the walk from A to B's hit, and one
@@ -624,7 +632,7 @@ do
 	-- The pos4 runs no job with the double off (it stacks only its pairs).
 	local H2, b2 = world({ t = 3 * 60 + 40 })
 	b2.pos = 4
-	check("pos4, DoubleStack off: no job", H2.StackJob.Desire(b2) == 0 and not H2.StackJob.Applies(b2))
+	check("pos4, DoubleStack off: no job", H2.Chooser.FarmDesire(b2) == 0 and not H2.StackJob.Applies(b2))
 end
 
 -- A full pos4 double from the Radiant offlane T1 at 5:5x: good_8 (ancient) then good_7.
@@ -663,7 +671,7 @@ do
 	Customize.Overrides = Customize.Overrides or {}
 	Customize.Overrides.StackFar = true
 	local started = false
-	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) if H.StackJob.HoldsRun(bot) then started = true end end end))
+	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) if H.Chooser.HoldsRun(bot) then started = true end end end))
 	Customize.Overrides.StackFar = false
 	check("StackFar: good_13's single starts from the T1", started)
 	check("StackFar: the line is good_13, no double", lines[1] ~= nil and tonumber(field(lines[1], "camp")) == idxOf("good_13") and field(lines[1], "double") == nil, lines[1])
