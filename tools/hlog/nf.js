@@ -52,6 +52,9 @@ function flatten(m) {
         // Slice rune-rotation's bars: started trips, those on time, deaths on a trip; the lane partners' level at 10:00.
         rune_trips: (m.rune_jobs ?? []).filter(r => r.started === 1).length,
         rune_on_time: (m.rune_jobs ?? []).filter(r => r.on_time === 1).length,
+        rune_clean: (m.rune_jobs ?? []).filter(r => r.started === 1 && r.interrupted === 0).length,
+        rune_clean_on_time: (m.rune_jobs ?? []).filter(r => r.interrupted === 0 && r.on_time === 1).length,
+        rune_interrupted: (m.rune_jobs ?? []).filter(r => r.interrupted === 1).length,
         rune_deaths: (m.rune_jobs ?? []).filter(r => r.started === 1 && r.died === 1).length,
         rune_skips: (m.rune_jobs ?? []).filter(r => r.started === 0).length,
         lane_partner_lvl10: m.lane_partner_lvl10,

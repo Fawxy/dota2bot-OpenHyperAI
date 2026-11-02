@@ -148,7 +148,7 @@ function stackAttempts(store, file, gameNo = 1, until = Infinity) {
 function runeJobs(store, file, gameNo = 1) {
     if (!store.kinds.has('ev_rune_job')) return [];
     if (!store.query("SELECT 1 FROM sqlite_temp_master WHERE type = 'view' AND name = 'rune_jobs'").length) store.refreshViews();
-    return store.query('SELECT pid, pos, kind, spawn, res, why, started, on_time, died FROM rune_jobs WHERE file = ? AND game = ? ORDER BY t, pid', file, gameNo);
+    return store.query('SELECT pid, pos, kind, spawn, res, why, started, interrupted, on_time, died FROM rune_jobs WHERE file = ? AND game = ? ORDER BY t, pid', file, gameNo);
 }
 
 /** Mean level at 10:00 of the pos1 and pos3 of both teams (the rotators' lane partners; slice rune-rotation's G2), or

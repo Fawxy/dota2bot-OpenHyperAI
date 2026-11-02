@@ -206,14 +206,15 @@ test('rune_jobs counts started trips, on time by spawn + 2, and deaths on a trip
     const f = log(tmp(), 'r.log', ['[HEV] t=-60 ev=bot pid=4 hero=lion team=2 pos=4 schema=2 build=0123456', '[HEV] t=-60 ev=bot pid=3 hero=axe team=2 pos=3',
         '[HEV] t=361 ev=rune_job pid=4 pos=4 kind=power spawn=360 res=fail why=no_target:rune label=pickup side=top left=340 arr=355 away=21 died=0 hit=0',
         '[HEV] t=365 ev=rune_job pid=5 pos=5 kind=power spawn=360 res=skip why=stack',
+        '[HEV] t=365 ev=rune_job pid=5 pos=5 kind=power spawn=360 res=fail why=preempted:mode=4 label=travel left=340 away=2 died=0 hit=0',
         '[HEV] t=366 ev=rune_job pid=4 pos=4 kind=wisdom spawn=420 res=fail why=timeout:late label=travel left=400 away=26 died=1 hit=1',
         '[HEV] t=424 ev=rune_job pid=4 pos=4 kind=wisdom spawn=420 res=ok why=ok label=channel left=400 arr=422 away=24 died=0 hit=0',
         '[HEV] t=600 ev=snap pid=3 human=0 lvl=6', '[HEV] t=600 ev=snap pid=4 human=0 lvl=5']);
     s.ingestAll([f]);
     const file = s.query('SELECT file FROM games')[0].file;
     const rows = runeJobs(s, file, 1);
-    assert.deepStrictEqual(rows.map(r => [r.kind, r.started, r.on_time, r.died]), [
-        ['power', 1, 1, 0], ['power', 0, 0, 0], ['wisdom', 1, 0, 1], ['wisdom', 1, 1, 0]]);
+    assert.deepStrictEqual(rows.map(r => [r.kind, r.started, r.interrupted, r.on_time, r.died]), [
+        ['power', 1, 0, 1, 0], ['power', 0, 0, 0, 0], ['power', 1, 1, 0, 0], ['wisdom', 1, 0, 0, 1], ['wisdom', 1, 0, 1, 0]]);
     assert.strictEqual(lanePartnerLvl10(s, file, 1), 6);
     assert.deepStrictEqual(runeJobs(new Store(':memory:'), file, 1), []);
 });
