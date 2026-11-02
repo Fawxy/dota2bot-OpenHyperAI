@@ -162,11 +162,28 @@ function stepOutPoint(bot, creeps)
     local me = bot:GetLocation()
     local x = 0
     local y = 0
+    local seen = 0
     for ____, c in ipairs(creeps) do
-        local l = c:GetLocation()
-        x = x + l.x / #creeps
-        y = y + l.y / #creeps
+        do
+            local __continue74
+            repeat
+                local l = c:GetLocation()
+                if l == nil then
+                    __continue74 = true
+                    break
+                end
+                x = x + l.x
+                y = y + l.y
+                seen = seen + 1
+                __continue74 = true
+            until true
+            if not __continue74 then
+                break
+            end
+        end
     end
+    x = seen > 0 and x / seen or me.x
+    y = seen > 0 and y / seen or me.y
     local dx = me.x - x
     local dy = me.y - y
     local len = math.sqrt(dx * dx + dy * dy)
@@ -409,7 +426,7 @@ function ____exports.Think(bot)
         do
             local __continue64
             repeat
-                if not c:IsAlive() then
+                if c:IsNull() or not c:IsAlive() or not c:CanBeSeen() then
                     __continue64 = true
                     break
                 end
