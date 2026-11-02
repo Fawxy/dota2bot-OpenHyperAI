@@ -9,7 +9,7 @@ with no OHA code left, and the SDK holds only the kernel, engine facts (each cit
 `CLAUDE.md` hard rule 3). Nothing below is removed by this note; the sections stay accurate until their replacement lands.
 Slice 0b (29/10/2026) moved this package into the bot repo as `engine/`, moved the job verbs (with `campNeutral`, `aggroLead`,
 `runeArriveBy`, `runeLeaveAt`, their OHA defaults and wording) to bot code and deleted `Phase`. Slice 5a moved the `nextLastHit` biases to bot
-code (`laneTargets` returns the facts; `laneFarm` takes `pick`). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
+code (`laneTargets` returns the facts; `laneFarm` takes `pick`). The debt row `phase-removal` (02/11/2026) removed `States.SetPrior` (no consumer after `Phase` was deleted). Scheduled to be added: one travel ETA and rune timing (BACKLOG 1.2), kill timing and
 incoming damage (2.2), per-patch camp and rune data. Jitter stays in `Skill`. Public verbs and facts will get contracts under
 `docs/contracts/`. Where this document names OHA files or values (the friction table, the Adapter table, the job verbs), read them
 as the current host's source, not as SDK vocabulary.
