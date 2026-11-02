@@ -102,4 +102,28 @@ do
 	check("ag: pid:now:since, -1 when never", ag == "1:2:0.0;2:0:3.5;3:0:-1", ag)
 end
 
+-- Census per creep (cc) and our nearest tower (tw/twh): the lane forecast restarts from these, so kinds, order and the
+-- tower that counts must be right. Creeps outside the lane and enemy creeps are left out.
+do
+	local R = fresh()
+	MakeCreep({ team = 2, x = x(0.45), y = -5000, hp = 300, name = "npc_dota_creep_goodguys_ranged_upgraded" })
+	MakeCreep({ team = 2, x = x(0.5), y = -5000, hp = 412.6 })
+	MakeCreep({ team = 2, x = x(0.2), y = -5000, hp = 900, name = "npc_dota_goodguys_siege" })
+	MakeCreep({ team = 2, x = x(0.48), y = -5000, name = "npc_dota_creep_goodguys_flagbearer" })
+	MakeCreep({ team = 2, x = x(0.5), y = 5000 })
+	MakeCreep({ team = 3, x = x(0.55), y = -5000 })
+	local dead1 = { IsAlive = function() return false end }
+	TOWERS_W[2][dota.Tower.Bot1] = dead1
+	TOWERS_W[2][dota.Tower.Bot2] = { IsAlive = function() return true end, GetHealth = function() return 2100 end,
+		GetLocation = function() return Vector(x(0.2), -5000) end }
+	local r = bot(R.Read(2, 100))
+	local cc = R.FormatCreeps(r.creeps)
+	check("cc: own bot-lane creeps by amount with kind and HP", cc == "s:200:900;r:450:300;f:480:550;m:500:413", cc)
+	check("tower: T1 down, so T2 and its HP", r.towerTier == 2 and r.towerHp == 2100, r.towerTier)
+	TOWERS_W[2][dota.Tower.Bot2] = dead1
+	TOWERS_W[2][dota.Tower.Bot3] = dead1
+	local gone = bot(R.Read(2, 101))
+	check("tower: all three down reads tier 0 and no HP", gone.towerTier == 0 and gone.towerHp == nil, gone.towerTier)
+end
+
 finish()

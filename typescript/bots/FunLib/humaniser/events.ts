@@ -336,6 +336,8 @@ export const EVENTS = {
      * HP-weighted power, lead amount, lead map position clx/cly): the other team's ground truth; cnn/cnp own creeps near the enemy's front (count, power),
      * the enemy reading's e/ep without fog; fx/fy our front's map position. ee per enemy `pid:v|seen:dist[:hp:lvl]` (v = visible,
      * else seconds since seen; hp percent), dead enemies; ag per allied hero `pid:now:since` (since -1 if never).
+     * cc every own creep in the lane by ascending amount `kind:amount_in_thousandths:hp` (kind m/r/s/f), tw/twh our nearest alive tower's tier
+     * (0 when all are down) and HP (slice lane-census, for the lane forecast's start state and tower crash timing).
      */
     lane_read: {
         team: "num",
@@ -364,6 +366,9 @@ export const EVENTS = {
         dead: "num",
         ee: "str",
         ag: "str",
+        cc: "str",
+        tw: "num",
+        twh: "num",
     },
     lane_tech: {
         pid: "num",
