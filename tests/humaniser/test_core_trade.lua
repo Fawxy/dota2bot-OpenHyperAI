@@ -181,20 +181,19 @@ do
 end
 
 do
-	-- cil2 A_on_1 t=776.3: a listed creep that had dropped from sight returned no location and Think raised.
+	-- cil2 A_on_1 t=776.3: a creep listed as alive returned no location and Think raised.
 	CoreTrade.Reset()
 	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
 	bot.loc = Vector(0, 0)
 	local seen = MakeUnit({ pid = 22, team = 3, loc = Vector(-300, 0) })
 	local fogged = MakeUnit({ pid = 23, team = 3, loc = Vector(-200, 0) })
 	function fogged:GetLocation() return nil end
-	function fogged:CanBeSeen() return false end
 	function Unit:GetNearbyLaneCreeps(r, enemies) return enemies and { seen, fogged } or {} end
 	T = 600
 	CoreTrade.Desire(bot)
 	local ok, err = pcall(CoreTrade.Think, bot)
 	local away = bot.moves[#bot.moves]
-	check("a creep with no location is skipped: the core still steps out away from the seen one", ok and away ~= nil and away.x > 0, tostring(err))
+	check("a creep with no location is skipped: the core still steps out away from the located one", ok and away ~= nil and away.x > 0, tostring(err))
 	function Unit:GetNearbyLaneCreeps() return {} end
 end
 

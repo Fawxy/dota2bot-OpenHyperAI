@@ -426,7 +426,7 @@ function ____exports.Think(bot)
         do
             local __continue64
             repeat
-                if c:IsNull() or not c:IsAlive() or not c:CanBeSeen() then
+                if c:IsNull() or not c:IsAlive() then
                     __continue64 = true
                     break
                 end

@@ -302,8 +302,7 @@ export function Think(bot: Unit): void {
     const creeps: Unit[] = [];
     let onMe = 0;
     for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) {
-        // cil2 (A_on_1 t=776.3, B_on_2 t=377.1): a listed creep that had dropped from sight returned no location.
-        if (c.IsNull() || !c.IsAlive() || !c.CanBeSeen()) continue;
+        if (c.IsNull() || !c.IsAlive()) continue;
         creeps.push(c);
         if (c.GetAttackTarget() === bot) onMe++;
     }
@@ -339,6 +338,7 @@ function stepOutPoint(bot: Unit, creeps: Unit[]): Vector {
     let y = 0;
     let seen = 0;
     for (const c of creeps) {
+        // cil2 (A_on_1 t=776.3, B_on_2 t=377.1): a creep the query listed as alive returned no location; cause not known.
         const l = c.GetLocation() as Vector | undefined;
         if (l === undefined) continue;
         x += l.x;
