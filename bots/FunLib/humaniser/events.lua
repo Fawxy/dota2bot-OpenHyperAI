@@ -723,6 +723,9 @@ ____exports.EVENTS = {
         en = "num",
         al = "num",
         cr = "num",
+        pr = "num",
+        so = "num",
+        ag = "num",
         mode = "num"
     },
     job_exec = {

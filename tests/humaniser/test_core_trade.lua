@@ -102,6 +102,57 @@ do
 end
 
 do
+	check("aggro: inside its own order's cooldown the core just attacks", CoreTrade.AggroPlan(10, 8, 3) == "attack")
+	check("aggro: cooldown over and no creep within 550: a fresh order primes it", CoreTrade.AggroPlan(10, 7, 0) == "prime")
+	check("aggro: cooldown over with creeps near: step out before ordering", CoreTrade.AggroPlan(10, 7, 2) == "step_out")
+	check("aggro: the last 0.3 s of the cooldown is not relied on", CoreTrade.AggroPlan(10, 7.25, 2) == "step_out")
+end
+
+do
+	-- One trade beside an enemy creep: step out, prime clear of it, hit inside the cooldown, step out again when it runs low.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
+	bot.loc = Vector(0, 0)
+	local creepUnit = MakeUnit({ pid = 20, team = 3, loc = Vector(-300, 0) })
+	local creeps = { creepUnit }
+	function Unit:GetNearbyLaneCreeps(r, enemies)
+		local out = {}
+		if enemies then for _, c in ipairs(creeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end end
+		return out
+	end
+	T = 400
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	local away = bot.moves[#bot.moves]
+	check("creep within 550 and no cooldown: the core steps out, away from the creep, without an attack order",
+		bot.orders == 0 and away ~= nil and away.x > 0)
+	bot.loc = Vector(300, 0)
+	T = 400.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("clear of the creep: one attack order primes the cooldown", bot.orders == 1 and bot.attacking == enemy)
+	bot.loc = Vector(0, 0)
+	T = 402
+	CoreTrade.Desire(bot)
+	local moves = #bot.moves
+	CoreTrade.Think(bot)
+	check("back beside the creep inside the cooldown: it keeps hitting, no step out, no new order", #bot.moves == moves and bot.orders == 1)
+	T = 403.3
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("cooldown running low beside the creep: it steps out again", #bot.moves == moves + 1)
+	creepUnit.attacking = bot
+	T = 403.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = 406
+	CoreTrade.Desire(bot)
+	check("a step out that never clears ends the trade, which logs its primes, step outs and peak aggro",
+		last():find("why=no_clear") and last():find("pr=1") and last():find("so=2") and last():find("ag=1"), last())
+	creeps = {}
+end
+
+do
 	CoreTrade.Reset()
 	world.laning = false
 	T = 300

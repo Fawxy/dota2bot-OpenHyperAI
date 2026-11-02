@@ -853,6 +853,10 @@ export const EVENTS = {
         en: "num",
         al: "num",
         cr: "num",
+        /** Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once. */
+        pr: "num",
+        so: "num",
+        ag: "num",
         /** The bot's active mode at the end. */
         mode: "num",
     },

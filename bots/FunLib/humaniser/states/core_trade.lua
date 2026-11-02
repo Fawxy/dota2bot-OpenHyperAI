@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local frac, valid, keepWhy, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LOST_AFTER
+local frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, NEAR, CREEP_AGGRO, TOWER_REACH, AGGRO_CLEAR, STEP_OUT_LIMIT, LOST_AFTER
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
@@ -68,19 +68,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue27
+            local __continue29
             repeat
                 if not c:IsAlive() then
-                    __continue27 = true
+                    __continue29 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue27 = true
+                __continue29 = true
             until true
-            if not __continue27 then
+            if not __continue29 then
                 break
             end
         end
@@ -88,10 +88,10 @@ function ____exports.Gather(bot, target)
     local tower = false
     for ____, t in ipairs(bot:GetNearbyTowers(TOWER_REACH + 1000, true)) do
         do
-            local __continue31
+            local __continue33
             repeat
                 if not t:IsAlive() then
-                    __continue31 = true
+                    __continue33 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= TOWER_REACH or GetUnitToUnitDistance(target, t) <= TOWER_REACH then
@@ -100,9 +100,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue31 = true
+                __continue33 = true
             until true
-            if not __continue31 then
+            if not __continue33 then
                 break
             end
         end
@@ -130,8 +130,11 @@ function keepWhy(bot, ep, now)
             return "time"
         end
     else
+        if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
+            return "no_clear"
+        end
         local reach = bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + REACH
-        if GetUnitToUnitDistance(bot, ep.target) > reach then
+        if ep.stepSince == nil and GetUnitToUnitDistance(bot, ep.target) > reach then
             return "out_of_reach"
         end
         if ____exports.Deficit(
@@ -153,6 +156,38 @@ function keepWhy(bot, ep, now)
     end
     return nil
 end
+function stepOutPoint(bot, creeps)
+    local me = bot:GetLocation()
+    local x = 0
+    local y = 0
+    for ____, c in ipairs(creeps) do
+        local l = c:GetLocation()
+        x = x + l.x / #creeps
+        y = y + l.y / #creeps
+    end
+    local dx = me.x - x
+    local dy = me.y - y
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len < 1 then
+        local back = GetLocationAlongLane(
+            bot:GetAssignedLane(),
+            math.max(
+                0,
+                GetAmountAlongLane(
+                    bot:GetAssignedLane(),
+                    me
+                ).amount - 0.05
+            )
+        )
+        dx = back.x - me.x
+        dy = back.y - me.y
+    end
+    local n = math.max(
+        1,
+        math.sqrt(dx * dx + dy * dy)
+    )
+    return Vector(x + dx / n * (AGGRO_CLEAR + 100), y + dy / n * (AGGRO_CLEAR + 100), me.z)
+end
 ____exports.DESIRE_TRADE = 0.6
 ____exports.DESIRE_KILL = 0.75
 MIN_HP = 0.5
@@ -170,13 +205,28 @@ CREEP_AGGRO = 500
 TOWER_REACH = 850
 --- Within this of its assigned lane's path the core is in lane (fight_read's LANE_WIDTH).
 local LANE_WIDTH = 1200
+AGGRO_CLEAR = 550
+local AGGRO_COOLDOWN = 3
+local COOLDOWN_LEFT = 0.3
+STEP_OUT_LIMIT = 2
 LOST_AFTER = 1
+--- CANDIDATE(aggroFreeAttack): Support in lane's harass is the second consumer, then the engine's. What a trading hero does this
+-- frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
+-- order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
+function ____exports.AggroPlan(now, primedAt, creepsWithinClear)
+    if primedAt ~= nil and now - primedAt < AGGRO_COOLDOWN - COOLDOWN_LEFT then
+        return "attack"
+    end
+    return creepsWithinClear == 0 and "prime" or "step_out"
+end
 local episodes = {}
 --- After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
 -- gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
 local recoverTo = {}
 --- Which arm this frame's GetDesire took: Think follows it.
 local ownsFrame = {}
+--- When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there).
+local primedAt = {}
 --- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
 function ____exports.Owns(bot)
     return Ours.On("CoreTrade") and CoreLastHit.Applies(bot)
@@ -194,10 +244,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue16
+            local __continue18
             repeat
                 if not valid(h) then
-                    __continue16 = true
+                    __continue18 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -205,9 +255,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue16 = true
+                __continue18 = true
             until true
-            if not __continue16 then
+            if not __continue18 then
                 break
             end
         end
@@ -252,6 +302,9 @@ local function close(bot, ep, why, now)
             {"en", i.enemiesNear},
             {"al", i.alliesNear},
             {"cr", i.enemyCreepsNear},
+            {"pr", ep.primes},
+            {"so", ep.stepOuts},
+            {"ag", ep.aggro},
             {
                 "mode",
                 bot:GetActiveMode()
@@ -315,7 +368,10 @@ function ____exports.Desire(bot)
         offeredAt = now,
         hp0 = bot:GetHealth(),
         thp0 = target:GetHealth(),
-        inputs = inputs
+        inputs = inputs,
+        primes = 0,
+        stepOuts = 0,
+        aggro = 0
     }
     return d.kind == "kill" and ____exports.DESIRE_KILL or ____exports.DESIRE_TRADE
 end
@@ -324,14 +380,57 @@ function ____exports.OwnsFrame(bot)
     return ownsFrame[bot:GetPlayerID()] == true
 end
 function ____exports.Think(bot)
-    local ep = episodes[bot:GetPlayerID()]
+    local pid = bot:GetPlayerID()
+    local ep = episodes[pid]
     if ep == nil or not valid(ep.target) then
         return
     end
+    local now = DotaTime()
     if ep.startedAt == nil then
-        ep.startedAt = DotaTime()
+        ep.startedAt = now
+    end
+    local creeps = {}
+    local onMe = 0
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
+        do
+            local __continue63
+            repeat
+                if not c:IsAlive() then
+                    __continue63 = true
+                    break
+                end
+                creeps[#creeps + 1] = c
+                if c:GetAttackTarget() == bot then
+                    onMe = onMe + 1
+                end
+                __continue63 = true
+            until true
+            if not __continue63 then
+                break
+            end
+        end
+    end
+    ep.aggro = math.max(ep.aggro, onMe)
+    local plan = ep.kind == "kill" and "attack" or ____exports.AggroPlan(now, primedAt[pid], #creeps)
+    if plan == "step_out" then
+        if ep.stepSince == nil then
+            ep.stepSince = now
+            ep.stepOuts = ep.stepOuts + 1
+        end
+        bot:Action_MoveToLocation(stepOutPoint(bot, creeps))
+        return
+    end
+    ep.stepSince = nil
+    if plan == "prime" then
+        primedAt[pid] = now
+        ep.primes = ep.primes + 1
+        bot:Action_AttackUnit(ep.target, false)
+        return
     end
     if bot:GetAttackTarget() ~= ep.target then
+        if ep.kind == "kill" then
+            primedAt[pid] = now
+        end
         bot:Action_AttackUnit(ep.target, false)
     end
 end
@@ -358,6 +457,9 @@ function ____exports.Reset()
     end
     for k in pairs(recoverTo) do
         recoverTo[k] = nil
+    end
+    for k in pairs(primedAt) do
+        primedAt[k] = nil
     end
     for k in pairs(ownsFrame) do
         ownsFrame[k] = nil

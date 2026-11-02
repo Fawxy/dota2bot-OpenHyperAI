@@ -6,7 +6,7 @@
  * always wins the frame. Inputs follow EC-045 (creeps in the area, no fighting in a big enemy wave or under their tower)
  * and EC-053 (lane creeps acquire a hero attacker within about 500); every threshold is `judgement`.
  */
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -55,6 +55,17 @@ const CREEP_AGGRO = 500;
 const TOWER_REACH = 850;
 /** Within this of its assigned lane's path the core is in lane (fight_read's LANE_WIDTH). */
 const LANE_WIDTH = 1200;
+/**
+ * Creep aggro (EC-053, Liquipedia Lane_Creeps 7.41f): an attack order on an enemy hero draws enemy lane creeps within 500 of the
+ * ordering hero and starts a 3 s cooldown even when none are near; attack animations within 500 draw them too, except while that
+ * cooldown runs. So an order given clear of creeps buys up to 3 s of hits near them with no aggro. CLEAR adds 50 for creeps
+ * moving during the order's latency; COOLDOWN_LEFT stops relying on the cooldown 0.3 s before it ends.
+ */
+const AGGRO_CLEAR = 550;
+const AGGRO_COOLDOWN = 3;
+const COOLDOWN_LEFT = 0.3;
+/** A step out of the creeps that has not cleared them in this long ends the trade (`no_clear`). */
+const STEP_OUT_LIMIT = 2;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
@@ -91,6 +102,24 @@ interface Episode {
     hp0: number;
     thp0: number;
     inputs: Inputs;
+    /** When the current step out of the creeps began, while one runs. */
+    stepSince?: number;
+    primes: number;
+    stepOuts: number;
+    /** Most enemy lane creeps attacking the core at once during the trade. */
+    aggro: number;
+}
+
+export type AggroAction = "attack" | "prime" | "step_out";
+
+/**
+ * CANDIDATE(aggroFreeAttack): Support in lane's harass is the second consumer, then the engine's. What a trading hero does this
+ * frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
+ * order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
+ */
+export function AggroPlan(now: number, primedAt: number | undefined, creepsWithinClear: number): AggroAction {
+    if (primedAt !== undefined && now - primedAt < AGGRO_COOLDOWN - COOLDOWN_LEFT) return "attack";
+    return creepsWithinClear === 0 ? "prime" : "step_out";
 }
 
 const episodes: Record<number, Episode | undefined> = {};
@@ -101,6 +130,8 @@ const episodes: Record<number, Episode | undefined> = {};
 const recoverTo: Record<number, number | undefined> = {};
 /** Which arm this frame's GetDesire took: Think follows it. */
 const ownsFrame: Record<number, boolean | undefined> = {};
+/** When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there). */
+const primedAt: Record<number, number | undefined> = {};
 
 /** Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it). */
 export function Owns(bot: Unit): boolean {
@@ -187,6 +218,9 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["en", i.enemiesNear],
         ["al", i.alliesNear],
         ["cr", i.enemyCreepsNear],
+        ["pr", ep.primes],
+        ["so", ep.stepOuts],
+        ["ag", ep.aggro],
         ["mode", bot.GetActiveMode()],
     ]);
 }
@@ -221,7 +255,7 @@ export function Desire(bot: Unit): number | undefined {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
         recoverTo[pid] = undefined;
     }
-    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), inputs };
+    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
     return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
 }
 
@@ -233,8 +267,10 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     if (ep.kind === "kill") {
         if (now - ep.startedAt > KILL_TIME) return "time";
     } else {
+        if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
-        if (GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
+        // A step out of the creeps moves away from the target on purpose.
+        if (ep.stepSince === undefined && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
     const d = Decide(Gather(bot, ep.target), true);
@@ -248,10 +284,64 @@ export function OwnsFrame(bot: Unit): boolean {
 }
 
 export function Think(bot: Unit): void {
-    const ep = episodes[bot.GetPlayerID()];
+    const pid = bot.GetPlayerID();
+    const ep = episodes[pid];
     if (ep === undefined || !valid(ep.target)) return;
-    if (ep.startedAt === undefined) ep.startedAt = DotaTime();
-    if (bot.GetAttackTarget() !== ep.target) bot.Action_AttackUnit(ep.target, false);
+    const now = DotaTime();
+    if (ep.startedAt === undefined) ep.startedAt = now;
+    const creeps: Unit[] = [];
+    let onMe = 0;
+    for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) {
+        if (!c.IsAlive()) continue;
+        creeps.push(c);
+        if (c.GetAttackTarget() === bot) onMe++;
+    }
+    ep.aggro = math.max(ep.aggro, onMe);
+    // A kill window commits: it attacks whatever the creeps do.
+    const plan = ep.kind === "kill" ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
+    if (plan === "step_out") {
+        if (ep.stepSince === undefined) {
+            ep.stepSince = now;
+            ep.stepOuts++;
+        }
+        bot.Action_MoveToLocation(stepOutPoint(bot, creeps));
+        return;
+    }
+    ep.stepSince = undefined;
+    if (plan === "prime") {
+        primedAt[pid] = now;
+        ep.primes++;
+        bot.Action_AttackUnit(ep.target, false);
+        return;
+    }
+    if (bot.GetAttackTarget() !== ep.target) {
+        // An order inside the cooldown draws nothing and does not restart it.
+        if (ep.kind === "kill") primedAt[pid] = now;
+        bot.Action_AttackUnit(ep.target, false);
+    }
+}
+
+/** AGGRO_CLEAR + 100 from the creeps' centre, on the far side from them. */
+function stepOutPoint(bot: Unit, creeps: Unit[]): Vector {
+    const me = bot.GetLocation();
+    let x = 0;
+    let y = 0;
+    for (const c of creeps) {
+        const l = c.GetLocation();
+        x += l.x / creeps.length;
+        y += l.y / creeps.length;
+    }
+    let dx = me.x - x;
+    let dy = me.y - y;
+    const len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1) {
+        // Standing on the centre: step back along the lane towards our own side.
+        const back = GetLocationAlongLane(bot.GetAssignedLane(), math.max(0, GetAmountAlongLane(bot.GetAssignedLane(), me).amount - 0.05));
+        dx = back.x - me.x;
+        dy = back.y - me.y;
+    }
+    const n = math.max(1, math.sqrt(dx * dx + dy * dy));
+    return Vector(x + (dx / n) * (AGGRO_CLEAR + 100), y + (dy / n) * (AGGRO_CLEAR + 100), me.z);
 }
 
 /** Attack mode lost the bot to another mode: a running trade ends there. */
@@ -271,5 +361,6 @@ export function LastHitYieldsToRetreat(bot: Unit): boolean {
 export function Reset(): void {
     for (const k in episodes) episodes[k as unknown as number] = undefined;
     for (const k in recoverTo) recoverTo[k as unknown as number] = undefined;
+    for (const k in primedAt) primedAt[k as unknown as number] = undefined;
     for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
 }
