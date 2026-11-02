@@ -430,6 +430,14 @@ test('world metrics: tp joins need distance, the 10:00-30:00 window and an ally 
     assert.strictEqual(joins([tp(700, MID[0] + 1201, MID[1], 5000)]), 0, 'landing 1201 from the ally');
     assert.strictEqual(joins([tp(1800, MID[0], MID[1], 5000)]), 0, '30:00 is outside the window');
     assert.strictEqual(joins([tp(700, MID[0], MID[1], 5000, 1)]), 0, 'the hero itself is no ally');
+    // Ally 3 stands at the jungle spot only at `when` (alive or not), elsewhere far away.
+    const ally = (when, alive = true) => bot(3, 2, t => (t === when ? { p: JUNGLE, alive } : { p: [6000, 6000] }), 0, 1900);
+    const at = (when, events, alive) => worldOf(game([...bots, ally(when, alive)], events)).tp_joins_per_team_ev[2];
+    assert.strictEqual(at(701, [tp(700.4, ...JUNGLE, 5000)]), 1, 'an ally there the second after counts');
+    assert.strictEqual(at(699, [tp(700.4, ...JUNGLE, 5000)]), 1, 'and the second before');
+    assert.strictEqual(at(702, [tp(700.4, ...JUNGLE, 5000)]), 0, 'two seconds after does not');
+    assert.strictEqual(at(700, [tp(700.4, ...JUNGLE, 5000)], false), 0, 'a dead ally does not');
+    assert.strictEqual(at(700, [ev('tp', 700.4, { pid: 2, team: 2, x: JUNGLE[0], y: JUNGLE[1] })]), 1, 'a tp with no dist is not a cancelled one');
 });
 
 /** A Dire bot standing at [6000, 6000] to `to` that dies (no snapshots for 30 s) at each time in `dies`. */
@@ -452,6 +460,8 @@ test('world metrics: first T1, cash-in after a 3+ kill burst, Roshan de-duplicat
         ev('building_fall', 1300, { team: 2, kind: 'rax', id: 1 }),
         ev('building_fall', 1400, { team: 3, kind: 'tower', tier: 3 }),
         ev('roshan_kill', 1700, { team: 2, at: 1699 }), // a second kill, followed by no fall
+        ev('roshan_kill', 1900, { team: 2, at: 1899 }), // under 240 s before the end (1980): not judged
+        ev('building_fall', 1950, { team: 3, kind: 'tower', tier: 3 }),
     ];
     const m = worldOf(game(bots, events));
     assert.strictEqual(m.first_t1_time, 650);
@@ -465,6 +475,11 @@ test('world metrics: first T1, cash-in after a 3+ kill burst, Roshan de-duplicat
     assert.strictEqual(worldOf(game(bots, events.filter(e => e.t !== 1400))).towers_after_roshan_240, 0);
     // With no aegis logged, any fall counts (the rax at 1300).
     assert.strictEqual(worldOf(game(bots, events.filter(e => e.t !== 1400 && e.ev !== 'aegis'))).towers_after_roshan_240, 0.5);
+    // An aegis 31 s after the kill names no one, so the rax counts again; of two aegis lines the first names the killers.
+    const noTower = events.filter(e => e.t !== 1400 && e.ev !== 'aegis');
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1231, { pid: 1, team: 2 })])).towers_after_roshan_240, 0.5);
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1203, { pid: 6, team: 3 }), ev('aegis', 1204, { pid: 1, team: 2 })])).towers_after_roshan_240, 0.5);
+    assert.strictEqual(worldOf(game(bots, [...noTower, ev('aegis', 1203, { pid: 1, team: 2 }), ev('aegis', 1204, { pid: 6, team: 3 })])).towers_after_roshan_240, 0);
 });
 
 test('world metrics: three deaths at one second are one burst; 16 s apart they are not', () => {
@@ -475,6 +490,7 @@ test('world metrics: three deaths at one second are one burst; 16 s apart they a
     assert.strictEqual(cash([900, 905]), undefined, 'two deaths are no burst');
     assert.strictEqual(cash([900, 900, 900], { ...fall, t: 1020 }), 1, 'a fall 120 s after the burst cashes in');
     assert.strictEqual(cash([900, 900, 900], { ...fall, t: 1021 }), 0, '121 s is too late');
+    assert.strictEqual(cash([1900, 1900, 1900], { ...fall, t: 1950 }), undefined, 'a burst under 120 s before the end (1980) is not judged');
 });
 
 test('wisdom proxy: a hero 3 s within 300 of the shrine by fill + 15 s takes it', () => {
@@ -485,6 +501,9 @@ test('wisdom proxy: a hero 3 s within 300 of the shrine by fill + 15 s takes it'
     // 2 s at the shrine is not a take.
     const short = t => ({ p: t >= 430 && t < 432 ? [SH[0] + 100, SH[1]] : TOP });
     assert.strictEqual(worldOf(game([bot(1, 2, short, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);
+    // A dead hero at the shrine takes nothing.
+    const dead = t => ({ p: t >= 430 && t < 433 ? [SH[0] + 100, SH[1]] : TOP, alive: !(t >= 430 && t < 433) });
+    assert.strictEqual(worldOf(game([bot(1, 2, dead, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);
     // Three seconds with a gap between them are not a channel.
     const gap = t => ({ p: [430, 432, 434].includes(t) ? [SH[0] + 100, SH[1]] : TOP });
     assert.strictEqual(worldOf(game([bot(1, 2, gap, 0, 900)])).wisdom_rune_taken_within_15s[2], 0);

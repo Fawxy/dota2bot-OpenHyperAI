@@ -75,7 +75,7 @@ function flatten(m) {
 /** Output gate for one game: deaths vs kills, lh_at_10 vs laningMetrics, missing metrics. Returns problem strings. */
 function gate(game, m, flat) {
     const problems = [];
-    // Deaths found by deathTimes (counter increments plus bots dead at the end) against hero kills on the scoreboard. Deaths to
+    // Deaths found by the hero_death rule (dynamic_game `deaths`) (counter increments plus bots dead at the end) against hero kills on the scoreboard. Deaths to
     // towers, creeps and neutrals credit no kill, so deaths above kills are expected; the check flags a gap either way, and only
     // kills above deaths would suggest a missed death.
     let kills = 0;
