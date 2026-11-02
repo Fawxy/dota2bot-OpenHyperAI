@@ -239,12 +239,14 @@ Customize.Humaniser = {
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body. On by user
 -- decision 02/11/2026 although worse than OHA on the creep-economy bar (ER-008, ER-009, ER-010 FAIL: share flat, more deaths):
 -- our code ends up enabled; the row stays open for fixes (set false for OHA's laning).
+-- CoreTrade (slice core-in-lane): with CoreLastHit on, the cores' attack mode is ours in lane (trades on enemy heroes) and
+-- OHA's Lua port of the attack mode outside lane; false leaves Valve's attack mode.
 -- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
 -- SupportDeny (slice l1-support-deny): pos4-5 go for every own creep they can deny, before anything else in lane, whatever the
 -- core is doing. SupportDenyDire: false keeps the Dire supports on OHA's deny when SupportDeny is on (Radiant only).
 -- RuneRotation (slice rune-rotation): pos4 to the 6:00 power rune and its own 7:00 wisdom shrine, pos5 to the 6:00 rune when
 -- it has no stack that minute; hosted by the job chooser (needs JobChooser). Off: OHA's rune mode and the rotation nudges.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, RuneRotation = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, RuneRotation = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

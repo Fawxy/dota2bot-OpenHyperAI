@@ -117,6 +117,8 @@ function LaningLoad(opts)
 		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
 		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
+		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
+		CoreTrade = { LastHitYieldsToRetreat = function() return opts.retreating == true end },
 		States = {
 			MayOwn = function() return false end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,

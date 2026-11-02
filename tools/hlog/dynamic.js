@@ -272,4 +272,4 @@ function worldMetrics(store, file, gameNo, S, role) {
     };
 }
 
-module.exports = { POLY, dynamicMetrics, heroes, stackAttempts, jobEnds, runeJobs, lanePartnerLvl10, worldMetrics, laneLabel, roles, C };
+module.exports = { POLY, TOWERS, dynamicMetrics, heroes, stackAttempts, jobEnds, runeJobs, lanePartnerLvl10, worldMetrics, laneLabel, roles, C };

@@ -80,9 +80,11 @@ do
 		local _, n = src:gsub("C%.Gate%(", "")
 		check(m .. ": one wrapper", n == 1, n)
 		if m == "attack" then
-			local block = src:find("if local_mode_attack_generic ~= nil then", 1, true)
-			local def = src:find("function GetDesire()", 1, true)
-			check("attack: wrapper inside the override block, after its GetDesire", block ~= nil and def ~= nil and at ~= nil and block < def and def < at)
+			-- Two branches define GetDesire (Ours.CoreTrade, then the buggy-hero override); one guarded wrapper after both.
+			local block = src:find("elseif local_mode_attack_generic ~= nil then", 1, true)
+			local def = src:find("function GetDesire()", block or 1, true)
+			local guard = src:find("if GetDesire ~= nil then", 1, true)
+			check("attack: wrapper after both branches' GetDesire, only where one is defined", block ~= nil and def ~= nil and guard ~= nil and at ~= nil and block < def and def < guard and guard < at)
 		else
 			local e = src:find("telemetry').Entry", 1, true)
 			check(m .. ": wrapper above its telemetry line", at ~= nil and e ~= nil and at < e)

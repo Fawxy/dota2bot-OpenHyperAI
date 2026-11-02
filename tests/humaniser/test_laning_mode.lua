@@ -39,6 +39,8 @@ do
 	check("unowned laning: a pos 3 keeps upstream's desire", not near(GetDesire(), 0.9), GetDesire())
 	load({ pos = 3, owned = true, enemyCreeps = { creep({ hp = 400 }) } })
 	check("owned laning: nothing killable, no 0.9", not near(GetDesire(), 0.9), GetDesire())
+	load({ pos = 3, owned = true, retreating = true, enemyCreeps = { c } })
+	check("owned laning: a core of ours already retreating keeps the retreat over a killable creep", not near(GetDesire(), 0.9), GetDesire())
 end
 
 do
