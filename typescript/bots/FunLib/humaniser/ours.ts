@@ -19,6 +19,11 @@ export const DEFAULTS = {
      * decision 02/11/2026 although ER-008/009/010 FAILed against OHA (share flat, more deaths): our code ends up enabled.
      */
     CoreLastHit: true,
+    /**
+     * Slice core-in-lane: with CoreLastHit on, the core's attack mode is ours in lane (trades, states/core_trade) and OHA's Lua
+     * port outside it; false leaves Valve's attack mode (sub-switch for debugging).
+     */
+    CoreTrade: true,
     /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
     CoreLastHitDire: true,
     /** Slice l1-support-deny: pos4-5 go for every own creep they can deny, before anything else in lane (states/support_deny). */

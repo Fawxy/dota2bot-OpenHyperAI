@@ -1,0 +1,270 @@
+-- Slice core-in-lane: a core's in-lane trades (states/core_trade). The decision rules over plain inputs, then one trade's life
+-- through Desire/Think/OnEnd: a window attack mode never takes is logged lost, a taken trade runs until the exchange turns, then
+-- waits for the HP gap to recover,
+-- and laning's last-hit desire yields to a retreat the core is already in.
+dofile(HARNESS_DIR .. "/dota_stubs.lua")
+ResetWorld()
+local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true } })
+local lines = {}
+H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+
+local world = { laning = true, applies = true }
+package.loaded["bots/FunLib/humaniser/transitions/phase"] = { IsLaningFor = function() return world.laning end }
+package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return world.applies end }
+package.loaded["bots/FunLib/humaniser/states/core_trade"] = nil
+local CoreTrade = require("bots/FunLib/humaniser/states/core_trade")
+
+local function inputs(o)
+	local i = { hp = 0.8, targetHp = 0.7, enemiesNear = 1, alliesNear = 1, enemyCreepsNear = 1, hitByCreeps = 0, tower = false }
+	for k, v in pairs(o or {}) do i[k] = v end
+	return i
+end
+
+do
+	check("even lane, healthy, small wave: trade", CoreTrade.Decide(inputs()).kind == "trade")
+	check("their tower covers us or the target: no trade, not even for a kill",
+		CoreTrade.Decide(inputs({ tower = true, targetHp = 0.1 })).respect == "tower")
+	check("more of them than us in reach: no trade, not even for a kill",
+		CoreTrade.Decide(inputs({ enemiesNear = 2, targetHp = 0.1 })).respect == "outnumbered")
+	check("a target at a quarter HP is a kill even with our HP under the trade floor",
+		CoreTrade.Decide(inputs({ hp = 0.3, targetHp = 0.2, enemyCreepsNear = 6 })).kind == "kill")
+	check("a low target is not a kill when we are lower still", CoreTrade.Decide(inputs({ hp = 0.15, targetHp = 0.2 })).kind == nil)
+	check("under half HP: no trade", CoreTrade.Decide(inputs({ hp = 0.45, targetHp = 0.4 })).respect == "low_hp")
+	check("well behind the target on HP: no trade", CoreTrade.Decide(inputs({ hp = 0.6, targetHp = 0.9 })).respect == "behind")
+	check("two creeps already on us: no trade", CoreTrade.Decide(inputs({ hitByCreeps = 2 })).respect == "creeps")
+	check("inside a big enemy wave: no trade", CoreTrade.Decide(inputs({ enemyCreepsNear = 4 })).respect == "wave")
+end
+
+-- A world for Desire: one core, one enemy hero in reach, nothing else nearby.
+local LANING = 1
+local function hero(pid, team, x, hp)
+	local u = MakeUnit({ pid = pid, team = team, loc = Vector(x, 0), hp = hp, mode = LANING })
+	u.range = 500
+	u.lane = 2
+	return u
+end
+local bot = hero(1, 2, 0, 80)
+local enemy = hero(6, 3, 400, 70)
+local Unit = getmetatable(bot)
+function Unit:GetBoundingRadius() return 24 end
+function Unit:GetNearbyHeroes(r, enemies)
+	if enemies then return GetUnitToUnitDistance(self, enemy) <= r and { enemy } or {} end
+	return { self }
+end
+function Unit:GetNearbyLaneCreeps() return {} end
+function Unit:GetNearbyTowers() return {} end
+function Unit:GetAttackTarget() return self.attacking end
+function Unit:Action_AttackUnit(u) self.attacking = u self.orders = (self.orders or 0) + 1 end
+function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
+-- The game's per-player answer; a unit handle out of sight reads as dead (below).
+function IsHeroAlive(pid) return pid == enemy.pid and not enemy.dead or pid == bot.pid end
+
+local function last() return lines[#lines] or "" end
+
+do
+	T = 100
+	check("in lane with a trade on: our trade desire", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.OwnsFrame(bot))
+	T = 101.5
+	local n = #lines
+	CoreTrade.Desire(bot)
+	check("a window attack mode did not take within 1 s is logged lost", #lines == n + 1 and last():find("ev=trade") and last():find("result=lost") and last():find("why=not_taken"))
+end
+
+do
+	check("a running trade keeps going one creep past the wave limit that blocks a new one",
+		CoreTrade.Decide(inputs({ enemyCreepsNear = 4 }), true).kind == "trade" and CoreTrade.Decide(inputs({ enemyCreepsNear = 4 })).kind == nil)
+	check("a running trade keeps going just under the HP floor that blocks a new one",
+		CoreTrade.Decide(inputs({ hp = 0.47, targetHp = 0.4 }), true).kind == "trade" and CoreTrade.Decide(inputs({ hp = 0.47, targetHp = 0.4 })).kind == nil)
+	check("the slack has an end: well under the floor stops a running trade", CoreTrade.Decide(inputs({ hp = 0.4, targetHp = 0.4 }), true).respect == "low_hp")
+	check("deficit: the core lost 20 of 100 more than the target", near(CoreTrade.Deficit(500, 450, 600, 570, 250), 0.08))
+end
+
+do
+	CoreTrade.Reset()
+	bot.attacking = nil
+	bot.hp, enemy.hp = 80, 70
+	T = 200
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("Think attacks the window's target", bot.attacking == enemy)
+	-- An even exchange for 10 s: no time limit ends it.
+	bot.hp, enemy.hp = 72, 60
+	T = 210
+	check("an even trade keeps its desire however long it runs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- The core then loses 6 of 100 more than the target since the start: the exchange has turned.
+	bot.hp, enemy.hp = 58, 64
+	T = 211
+	check("a trade the core is losing by more than 5% of its HP ends", CoreTrade.Desire(bot) == 0)
+	check("the end line names it and carries HP traded both ways", last():find("result=done") and last():find("why=losing") and last():find("hpd=22") and last():find("thpd=6"))
+	-- The trade began at a gap of +0.10 (80 against 70); now 58 against 64 is -0.06.
+	T = 230
+	check("after a lost trade no new one opens while the core is behind its starting HP gap", CoreTrade.Desire(bot) == 0)
+	bot.hp = 74
+	check("once the gap is back a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+end
+
+do
+	check("aggro: inside its own order's cooldown the core just attacks", CoreTrade.AggroPlan(10, 8, 3) == "attack")
+	check("aggro: cooldown over and no creep within 550: a fresh order primes it", CoreTrade.AggroPlan(10, 7, 0) == "prime")
+	check("aggro: cooldown over with creeps near: step out before ordering", CoreTrade.AggroPlan(10, 7, 2) == "step_out")
+	check("aggro: the last 0.3 s of the cooldown is not relied on", CoreTrade.AggroPlan(10, 7.25, 2) == "step_out")
+end
+
+do
+	-- One trade beside an enemy creep: step out, prime clear of it, hit inside the cooldown, step out again when it runs low.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
+	bot.loc = Vector(0, 0)
+	local creepUnit = MakeUnit({ pid = 20, team = 3, loc = Vector(-300, 0) })
+	local creeps = { creepUnit }
+	function Unit:GetNearbyLaneCreeps(r, enemies)
+		local out = {}
+		if enemies then for _, c in ipairs(creeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end end
+		return out
+	end
+	T = 400
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	local away = bot.moves[#bot.moves]
+	check("creep within 550 and no cooldown: the core steps out, away from the creep, without an attack order",
+		bot.orders == 0 and away ~= nil and away.x > 0)
+	bot.loc = Vector(300, 0)
+	T = 400.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("clear of the creep: one attack order primes the cooldown", bot.orders == 1 and bot.attacking == enemy)
+	bot.loc = Vector(0, 0)
+	T = 402
+	CoreTrade.Desire(bot)
+	local moves = #bot.moves
+	CoreTrade.Think(bot)
+	check("back beside the creep inside the cooldown: it keeps hitting, no step out, no new order", #bot.moves == moves and bot.orders == 1)
+	T = 403.3
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("cooldown running low beside the creep: it steps out again", #bot.moves == moves + 1)
+	creepUnit.attacking = bot
+	T = 403.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = 406
+	CoreTrade.Desire(bot)
+	check("a step out that never clears ends the trade, which logs its primes, step outs and peak aggro",
+		last():find("why=no_clear") and last():find("pr=1") and last():find("so=2") and last():find("ag=1"), last())
+	creeps = {}
+end
+
+do
+	-- The step out leaves the target out of reach; the order primed there must get to walk back in (cil2: 144 trades ended
+	-- out_of_reach 1.2 s in, most right after a prime).
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
+	bot.loc = Vector(0, 0)
+	local creeps = { MakeUnit({ pid = 21, team = 3, loc = Vector(300, 0) }) }
+	function Unit:GetNearbyLaneCreeps(r, enemies)
+		local out = {}
+		if enemies then for _, c in ipairs(creeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end end
+		return out
+	end
+	T = 450
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	bot.loc = Vector(-400, 0)
+	T = 450.5
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("primed from clear ground out of the target's reach", bot.orders == 1)
+	T = 451
+	check("walking back in under the primed cooldown keeps the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	T = 453.5
+	check("still out of reach once the cooldown no longer covers it: the trade ends", CoreTrade.Desire(bot) == 0 and last():find("why=out_of_reach"), last())
+	creeps = {}
+	function Unit:GetNearbyLaneCreeps() return {} end
+end
+
+do
+	-- cil2 A_on_1 t=776.3: a creep listed as alive returned no location and Think raised.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.moves, bot.orders = 80, 70, nil, {}, 0
+	bot.loc = Vector(0, 0)
+	local seen = MakeUnit({ pid = 22, team = 3, loc = Vector(-300, 0) })
+	local fogged = MakeUnit({ pid = 23, team = 3, loc = Vector(-200, 0) })
+	function fogged:GetLocation() return nil end
+	function Unit:GetNearbyLaneCreeps(r, enemies) return enemies and { seen, fogged } or {} end
+	T = 600
+	CoreTrade.Desire(bot)
+	local ok, err = pcall(CoreTrade.Think, bot)
+	local away = bot.moves[#bot.moves]
+	check("a creep with no location is skipped: the core still steps out away from the located one", ok and away ~= nil and away.x > 0, tostring(err))
+	function Unit:GetNearbyLaneCreeps() return {} end
+end
+
+do
+	-- cil3 A_on_4 t=89.3: a target at 77% HP left sight, its handle read as dead, and the trade logged a kill with all its HP.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.attacking, bot.loc = 80, 70, nil, Vector(0, 0)
+	T = 700
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	enemy.hp = 60
+	T = 701
+	CoreTrade.Desire(bot)
+	enemy.alive = false
+	T = 702
+	CoreTrade.Desire(bot)
+	check("a target out of sight but alive ends as lost from sight, with the HP it had when last seen",
+		last():find("result=done") and last():find("why=target_lost") and last():find("thpd=10"), last())
+	enemy.alive = true
+	CoreTrade.Reset()
+	T = 710
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	enemy.alive, enemy.dead = false, true
+	T = 711
+	CoreTrade.Desire(bot)
+	check("a target the game says is dead ends as a kill", last():find("result=kill") and last():find("why=target_dead"), last())
+	enemy.alive, enemy.dead = true, nil
+end
+
+do
+	-- Valve calls OnEnd while the active mode still reads attack: the trade's end names the mode that took the bot.
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.loc = 80, 70, Vector(0, 0)
+	T = 500
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	bot.mode = 2
+	local n = #lines
+	CoreTrade.OnEnd(bot)
+	check("OnEnd alone logs nothing yet", #lines == n)
+	bot.mode, bot.desire = BOT_MODE_RETREAT, 0.8
+	T = 500.1
+	CoreTrade.Desire(bot)
+	check("the next Desire closes it with the mode that took over and its desire", last():find("why=mode_4") and last():find("md=0.8"), last())
+	bot.mode, bot.desire = LANING, 0
+end
+
+do
+	CoreTrade.Reset()
+	world.laning = false
+	T = 300
+	check("out of the laning phase: no desire of ours, OHA's port decides", CoreTrade.Desire(bot) == nil and not CoreTrade.OwnsFrame(bot))
+	world.laning = true
+	bot.loc = Vector(0, 0)
+	local along = GetAmountAlongLane
+	GetAmountAlongLane = function() return { amount = 0.5, distance = 2000 } end
+	check("laning phase but away from its lane: OHA's port decides", CoreTrade.Desire(bot) == nil)
+	GetAmountAlongLane = along
+end
+
+do
+	bot.mode = BOT_MODE_RETREAT
+	check("a core already retreating keeps its retreat over a last hit", CoreTrade.LastHitYieldsToRetreat(bot))
+	bot.mode = LANING
+	check("a laning core still takes the last-hit desire", not CoreTrade.LastHitYieldsToRetreat(bot))
+	bot.mode = BOT_MODE_RETREAT
+	world.applies = false
+	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYieldsToRetreat(bot))
+end
+
+finish()

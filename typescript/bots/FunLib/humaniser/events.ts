@@ -836,6 +836,31 @@ export const EVENTS = {
         dies: "num",
         msg: "str",
     },
+    /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
+    trade: {
+        pid: "num",
+        kind: "str",
+        tgt: "num",
+        result: "str",
+        why: "str",
+        dur: "num",
+        /** HP the bot and the target lost from the trade's start to its end. */
+        hpd: "num",
+        thpd: "num",
+        /** Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500. */
+        hp: "num",
+        thp: "num",
+        en: "num",
+        al: "num",
+        cr: "num",
+        /** Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once. */
+        pr: "num",
+        so: "num",
+        ag: "num",
+        /** The bot's active mode at the end, and its desire. */
+        mode: "num",
+        md: "num",
+    },
     job_exec: {
         pid: "num",
         kind: "str",

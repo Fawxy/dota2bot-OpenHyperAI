@@ -29,6 +29,7 @@ local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
+local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -54,6 +55,7 @@ ____exports.PullJob = PullJob
 ____exports.Chooser = Chooser
 ____exports.Tasks = Tasks
 ____exports.States = States
+____exports.CoreTrade = CoreTrade
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -329,6 +331,14 @@ if Telemetry.GuardsEnabled() then
         BodyBusy = no,
         BodyDenies = no,
         SupportStep = no
+    })
+    Telemetry.GuardModule("CoreTrade", CoreTrade, {
+        Owns = no,
+        Desire = none,
+        OwnsFrame = no,
+        Think = none,
+        OnEnd = none,
+        LastHitYieldsToRetreat = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(
