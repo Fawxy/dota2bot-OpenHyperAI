@@ -8,6 +8,7 @@ import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as LaneGeom from "bots/FunLib/humaniser/lane_geom";
 
 export interface CreepSummary {
     count: number;
@@ -169,21 +170,8 @@ function median(list: number[]): number | undefined {
     return n % 2 === 1 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
 }
 
-export function EqPos(meetAmount: number, ourTower: number, theirTower: number): number {
-    const span = theirTower - ourTower;
-    if (span === 0) return 0;
-    return clamp((2 * (meetAmount - ourTower)) / span - 1, -1, 1);
-}
-
-/** A front behind its own side's tower has no wave in lane (it reads that side's base), so the other front is the meet. */
-export function MeetAmount(ourFront: number, enemyFront: number, ourTower: number, theirTower: number): number {
-    const span = theirTower - ourTower;
-    const oursOut = (ourFront - ourTower) * span < 0;
-    const theirsOut = (enemyFront - theirTower) * span > 0;
-    if (oursOut && !theirsOut) return enemyFront;
-    if (theirsOut && !oursOut) return ourFront;
-    return (ourFront + enemyFront) / 2;
-}
+export const EqPos = LaneGeom.EqPos;
+export const MeetAmount = LaneGeom.MeetAmount;
 
 export function CreepWeight(name: string): number {
     const w = LaneConfig.Settings().ForecastModel.TypeWeight;

@@ -343,3 +343,34 @@ test('@lane_time: near and taken obey from; a siege creep target is a creep', ()
     const all = s.query(sql, { from: 0 })[0];
     assert.deepStrictEqual([all.near, all.taken], [2, 1]);
 });
+
+test('lane_read_check and @lane_read_check: the reading against the other team\'s census and ev=snap', () => {
+    const dir = tmp();
+    const s = new Store(':memory:');
+    const L = (t, team, o) => `[HEV] t=${t} ev=lane_read team=${team} lane=3 adv=${o.adv} eq=${o.eq} a=3 e=${o.e} ap=${o.ap} ep=500` +
+        ` of=0.5 ef=0.5 ot=${o.ot} et=${o.et} cyc=${t % 30} cn=${o.cn} chp=${o.chp} cpw=${o.chp} cl=${o.cl} cnn=${o.cnn} cnp=${o.cnp}` +
+        ` clx=${o.clx} cly=-5000 fx=${o.fx} fy=-5000 dead=0` + (o.ee ? ` ee=${o.ee}` : '');
+    // Fronts meet at x = 100; the lead creeps at x = 700 and -300 meet at 200. Amounts differ by frame and are not used.
+    const rad = { adv: 1.3, eq: 0.4, e: 2, ap: 1000, ot: 0.3, et: 0.7, cn: 4, cl: 0.55, clx: 700, fx: 0, cnn: 3, cnp: 900 };
+    const dire = { adv: 0.9, eq: -0.2, e: 3, ap: 1200, ot: 0.55, et: 0.15, cn: 3, cl: 0.35, clx: -300, fx: 200, cnn: 3, cnp: 1500 };
+    s.ingest(log(dir, 'a.log', [
+        '[HEV] t=-60 ev=bot pid=0 hero=h0 team=2 pos=1',
+        L(100.2, 2, { ...rad, chp: 2000, ee: '7:12:1500;8:v:300:50:3;9:40:5000' }),
+        L(100.4, 2, { ...rad, chp: 9999 }),                                  // second line in the same second: the first counts
+        L(100.6, 3, { ...dire, chp: 1500 }),
+        L(110.1, 2, { ...rad, chp: 1800 }),
+        L(110.3, 3, { ...dire, chp: 1000 }),
+        '[HEV] t=100.5 ev=snap pid=7 x=1000 y=-5000 alive=1 hp=80',          // missing, truly 1,000 from the front
+        '[HEV] t=100.5 ev=snap pid=9 x=-1500 y=-5000 alive=1 hp=80',         // missing, read 5,000 away, truly 1,500
+    ]));
+    s.refreshViews();
+    const r = s.query('SELECT * FROM lane_read_check WHERE team = 2 AND sec = 100')[0];
+    assert.ok(Math.abs(r.adv_true - (1 + (1000 - 1500) / (1000 + 1500 + 550))) < 1e-9, 'enemy creeps counted by their own census');
+    assert.deepStrictEqual([r.e_seen, r.e_true], [2, 3]);
+    assert.strictEqual(r.meet_err, 100, 'fronts meet at 100, the lead creeps at 200');
+    assert.deepStrictEqual([r.hp_lost, r.ehp_lost], [200, 500]);
+    const q = s.query(fs.readFileSync(path.join(__dirname, '../queries/lane_read_check.sql'), 'utf8'), {})[0];
+    assert.deepStrictEqual([q.n1, q.n2, q.meet_mean, q.meet_500, q.n3, q.agree3, q.fogged], [4, 4, 100, 1, 1, 1, 0.5],
+        'dire\'s 0.9 is within 0.2 of even');
+    assert.deepStrictEqual([q.n4, q.near4, q.recall4, q.precision4], [2, 2, 0.5, 1]);
+});
