@@ -45,7 +45,8 @@ ____exports.DEFAULTS = {
     CoreLastHit = true,
     CoreLastHitDire = true,
     SupportDeny = true,
-    SupportDenyDire = true
+    SupportDenyDire = true,
+    RuneRotation = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

@@ -23,6 +23,8 @@ local function world(opts)
 	-- and the cases marked "with support deny" turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = package.loaded["bots/FunLib/custom_loader"].Ours or {}
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportDeny = opts.supportDeny == true
+	-- The old rotate state and OHA's rotation (the OFF arm of slice rune-rotation): the rune job's switch is off here.
+	package.loaded["bots/FunLib/custom_loader"].Ours.RuneRotation = false
 	T = opts.T or 380
 	CURRENT_TEAM = 2
 	local w = { H = H }

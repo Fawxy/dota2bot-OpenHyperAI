@@ -25,6 +25,8 @@ export const DEFAULTS = {
     SupportDeny: true,
     /** With SupportDeny on, false keeps the Dire supports on OHA's deny (Radiant only), as CoreLastHitDire. */
     SupportDenyDire: true,
+    /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
+    RuneRotation: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

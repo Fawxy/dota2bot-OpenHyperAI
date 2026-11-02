@@ -2,10 +2,11 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * CANDIDATE(JobChooser): one job so far (StackJob); rune rotation is the second consumer.
+ * Jobs: StackJob and RuneJob (slice rune-rotation), ranked per hero by priority; a running job is never interrupted by another.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 
 // All judgement; values moved unchanged from StackJob.
@@ -34,28 +35,108 @@ export const EXCEPTIONS: Record<string, string> = {
     attack: "our own fights, or a Valve fix",
 };
 
+/** One job the chooser hosts: when it wants the hero, how it steps, how it ends. */
+interface Job {
+    name: string;
+    /** Rank against the hero's other jobs; undefined when the job never applies to it. */
+    Priority(this: void, bot: Unit): number | undefined;
+    /** Running, or a trigger still open: lower-ranked jobs do not start. */
+    Claims(this: void, bot: Unit): boolean;
+    Wants(this: void, bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean;
+    Running(this: void, bot: Unit): boolean;
+    Step(this: void, bot: Unit, host: number): boolean;
+    End(this: void, bot: Unit, why: string): void;
+    NoteHit(this: void, bot: Unit): void;
+    NoteIdleHeld(this: void, bot: Unit): void;
+}
+
+const STACK: Job = {
+    name: "stack",
+    Priority: (bot) => (StackJob.Applies(bot) ? SETTINGS.JobDesire : undefined),
+    Claims: (bot) => StackJob.Pending(bot),
+    Wants: (bot, blocked, host) => StackJob.Wants(bot, blocked, host),
+    Running: (bot) => StackJob.Running(bot),
+    Step: (bot, host) => StackJob.Step(bot, host),
+    End: (bot, why) => StackJob.End(bot, why),
+    NoteHit: (bot) => StackJob.NoteHit(bot),
+    NoteIdleHeld: (bot) => StackJob.NoteIdleHeld(bot),
+};
+
+const RUNE: Job = {
+    name: "rune",
+    Priority: (bot) => RuneJob.Priority(bot),
+    Claims: (bot) => RuneJob.Claims(bot),
+    Wants: (bot, blocked, host) => RuneJob.Wants(bot, blocked, host),
+    Running: (bot) => RuneJob.Running(bot),
+    Step: (bot, host) => RuneJob.Step(bot, host),
+    End: (bot, why) => RuneJob.End(bot, why),
+    NoteHit: (bot) => RuneJob.NoteHit(bot),
+    NoteIdleHeld: (bot) => RuneJob.NoteIdleHeld(bot),
+};
+
+const JOBS: Job[] = [STACK, RUNE];
+
+/** The jobs that apply to this hero, highest priority first (a tie keeps JOBS order). */
+function ranked(bot: Unit): Job[] {
+    const out: [Job, number][] = [];
+    for (const j of JOBS) {
+        const p = j.Priority(bot);
+        if (p !== undefined) out.push([j, p]);
+    }
+    for (let i = 1; i < out.length; i++) {
+        for (let k = i; k > 0 && out[k][1] > out[k - 1][1]; k--) [out[k], out[k - 1]] = [out[k - 1], out[k]];
+    }
+    return out.map((e) => e[0]);
+}
+
+function runningJob(bot: Unit): Job | undefined {
+    for (const j of JOBS) if (j.Running(bot)) return j;
+    return undefined;
+}
+
+/** Any of our jobs runs for this hero. */
+export function Running(bot: Unit): boolean {
+    return runningJob(bot) !== undefined;
+}
+
 /**
  * The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
  * value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
- * under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench.
+ * under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
+ * rank order; a start waits while a higher-ranked job claims the hero (`why=<job>` in the waiting job's skip line).
  */
 function hostDesire(bot: Unit): number | undefined {
-    if (StackJob.Benched(bot) || !StackJob.Wants(bot, MayStart, HOST_MODE)) return undefined;
-    if (StackJob.Running(bot) && hit(bot)) {
-        StackJob.NoteHit(bot);
-        if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) {
-            StackJob.End(bot, "retreat");
-            return undefined;
+    if (StackJob.Benched(bot)) return undefined;
+    const cur = runningJob(bot);
+    if (cur !== undefined) {
+        if (!cur.Wants(bot, MayStart, HOST_MODE)) return undefined;
+        if (hit(bot)) {
+            cur.NoteHit(bot);
+            if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) {
+                cur.End(bot, "retreat");
+                return undefined;
+            }
         }
+        return SETTINGS.JobDesire;
     }
-    return SETTINGS.JobDesire;
+    const jobs = ranked(bot);
+    for (let i = 0; i < jobs.length; i++) {
+        const blocked = (b: Unit): string | undefined => {
+            const why = MayStart(b);
+            if (why !== undefined) return why;
+            for (let k = 0; k < i; k++) if (jobs[k].Claims(b)) return jobs[k].name;
+            return undefined;
+        };
+        if (jobs[i].Wants(bot, blocked, HOST_MODE)) return SETTINGS.JobDesire;
+    }
+    return undefined;
 }
 
 /** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
 export function Decide(bot: Unit, mode: string): number | undefined {
     if (!Ours.On("JobChooser")) return undefined;
     if (mode === HOST) return hostDesire(bot);
-    if (!StackJob.Running(bot) || EXCEPTIONS[mode] !== undefined) return undefined;
+    if (!Running(bot) || EXCEPTIONS[mode] !== undefined) return undefined;
     return 0;
 }
 
@@ -75,7 +156,7 @@ export function HostThink(bot: Unit, mode: string, inner: () => any, cannotAct: 
     return () => {
         if (mode !== HOST || !Ours.On("JobChooser") || StackJob.Benched(bot)) return inner();
         if (cannotAct(bot)) return undefined;
-        return StackJob.Step(bot, HOST_MODE) ? undefined : inner();
+        return (runningJob(bot) ?? STACK).Step(bot, HOST_MODE) ? undefined : inner();
     };
 }
 
@@ -117,7 +198,7 @@ export function FarmThink(bot: Unit): boolean {
 
 /** OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`. */
 export function Abort(bot: Unit, why: string): void {
-    StackJob.End(bot, why);
+    runningJob(bot)?.End(bot, why);
 }
 
 /**
@@ -125,7 +206,7 @@ export function Abort(bot: Unit, why: string): void {
  * retreat. OHA's creep clause (level < 5, hit by a creep, HP < 0.7) cancelled 5 of 9 attempts after the hit (probe s4p4).
  */
 export function HoldsRun(bot: Unit): boolean {
-    return StackJob.Running(bot);
+    return Running(bot);
 }
 
 /**
@@ -136,7 +217,7 @@ export function HoldsRun(bot: Unit): boolean {
  */
 export function HoldsCasts(bot: Unit): boolean {
     if (StackJob.Benched(bot)) return true;
-    if (!StackJob.Running(bot)) return false;
+    if (!Running(bot)) return false;
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }
 
@@ -148,8 +229,9 @@ export function HoldsCasts(bot: Unit): boolean {
  * runs, counted on the attempt.
  */
 export function HoldsIdle(bot: Unit): boolean {
-    if (!StackJob.Running(bot)) return false;
-    StackJob.NoteIdleHeld(bot);
+    const cur = runningJob(bot);
+    if (cur === undefined) return false;
+    cur.NoteIdleHeld(bot);
     return true;
 }
 

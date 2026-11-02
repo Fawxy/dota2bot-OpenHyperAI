@@ -22,7 +22,7 @@ function ____exports.Enabled()
 end
 --- A switch whose job runs on the bundle (StackJob, slice 4): it loads the bundle through `ForOurs` with the humaniser off.
 local function oursOn()
-    return Ours.On("StackExecute")
+    return Ours.On("StackExecute") or Ours.On("RuneRotation")
 end
 --- An allied core (position 1-3, not the bot) within 1600 that can take the creep itself.
 local function CoreCanTake(bot, creep, allies)

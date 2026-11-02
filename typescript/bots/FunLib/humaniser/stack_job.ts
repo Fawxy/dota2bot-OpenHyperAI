@@ -1226,6 +1226,18 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     return false;
 }
 
+/** True while an attempt runs or a trigger minute is still open for this bot (the job chooser's claim between jobs). */
+export function Pending(bot: Unit): boolean {
+    if (!Applies(bot)) return false;
+    const pid = bot.GetPlayerID();
+    if (running[pid] !== undefined) return true;
+    const now = DotaTime();
+    for (const minute of Minutes()) {
+        if (handled[pid]?.[minute] !== true && now >= minute * 60 + SETTINGS.LookFrom && now < minute * 60 + 60) return true;
+    }
+    return false;
+}
+
 /** At :59.5 of the attempt's minute: the state Valve's spawn check sees, so a `not_stacked` names its cause in the log. */
 /** The hit neutral's distance to the camp origin, or undefined when it is gone or unseen. */
 function targetDist(a: Attempt): number | undefined {

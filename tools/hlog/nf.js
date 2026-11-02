@@ -49,6 +49,12 @@ function flatten(m) {
         // Slice job-chooser's bars: jobs ended by an OHA mode the chooser should shut out, and by the old hit cancel.
         job_oha_gated: (m.job_ends ?? []).filter(j => j.class === 'oha-gated').length,
         stack_cancelled_hit: m.stacks.filter(s => s.why === 'cancelled:hit').length,
+        // Slice rune-rotation's bars: started trips, those on time, deaths on a trip; the lane partners' level at 10:00.
+        rune_trips: (m.rune_jobs ?? []).filter(r => r.started === 1).length,
+        rune_on_time: (m.rune_jobs ?? []).filter(r => r.on_time === 1).length,
+        rune_deaths: (m.rune_jobs ?? []).filter(r => r.started === 1 && r.died === 1).length,
+        rune_skips: (m.rune_jobs ?? []).filter(r => r.started === 0).length,
+        lane_partner_lvl10: m.lane_partner_lvl10,
         // Slice stack-hit: hit orders never confirmed (OHA's idle relocation replaced the attack in slice 4's four), and the
         // relocations the job held (ev=stack idle; NULL on older builds).
         stack_noaggro: m.stacks.filter(stackNoAggro).length,

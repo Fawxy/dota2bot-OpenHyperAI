@@ -4,6 +4,7 @@
  * Lerp pairs are { Low, High } and interpolate on the bot's skill (Low at skill 0, High at skill 1).
  */
 import * as Config from "bots/FunLib/humaniser/config";
+import * as Ours from "bots/FunLib/humaniser/ours";
 
 export type TransitionFlag = "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase" | "LostLane";
 export interface LerpPair {
@@ -180,6 +181,8 @@ export function IsActive(): boolean {
 }
 
 export function IsOn(flag: TransitionFlag): boolean {
+    // Slice rune-rotation: our rune job replaces the support's power-rune rotation.
+    if (flag === "Rotation" && Ours.On("RuneRotation")) return false;
     return IsActive() && Get()[flag] === true;
 }
 

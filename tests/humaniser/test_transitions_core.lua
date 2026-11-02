@@ -1,4 +1,13 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
+-- OHA's power-rune rotation is the switch-off arm of slice rune-rotation (Ours.RuneRotation).
+local laneFresh = LaneFresh
+LaneFresh = function(...)
+	local H = laneFresh(...)
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	C.Ours.RuneRotation = false
+	return H
+end
 local dota = require("bots/ts_libs/dota/index")
 
 local function bot()

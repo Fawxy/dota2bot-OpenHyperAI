@@ -131,6 +131,10 @@ local FAR_POWER = midWorld(Vector(-6000, 6000), Vector(1800, 0))
 
 local function realHumaniser(transitions)
 	local H = LaneFresh({ Enable = true }, { transitions = transitions or { Enable = true } })
+	-- OHA's rotation is the OFF arm of slice rune-rotation.
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	C.Ours.RuneRotation = false
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return T < 600 end })
 	return H
 end
