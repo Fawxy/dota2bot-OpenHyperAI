@@ -98,17 +98,18 @@ end
 do
 	local H = world({ t = 395 })
 	local bot = hero(4, 4)
-	local taken = false
+	local mate = hero(1, 1, Vector(-4000, 4000))
+	local held = false
 	capture(function()
 		while T < 425 do
 			frame(H, { bot })
-			if H.RuneJob.Running(bot) and H.RuneJob.ShrineTaken(RAD) then taken = true end
+			if H.RuneJob.Running(bot) and H.States.WisdomOwned(mate) then held = true end
 		end
 	end)
-	check("shrine taken while the pos4's trip runs", taken)
-	check("trip ended, the spawn still ours: OHA's wisdom logic keeps out", not H.RuneJob.Running(bot) and H.RuneJob.ShrineTaken(RAD))
+	check("trip on the shrine: OHA's wisdom logic keeps the teammate out", held)
+	check("trip ended: the pos4's spawn still the job's, the teammate free", not H.RuneJob.Running(bot) and H.States.WisdomOwned(bot) and not H.States.WisdomOwned(mate))
 	T = 840
-	check("shrine free for OHA from the next shrine spawn", not H.RuneJob.ShrineTaken(RAD))
+	check("pos4 free for OHA from the next shrine spawn", not H.States.WisdomOwned(bot))
 end
 
 -- A skipped trip is still the job's decision (review 03/11/2026: after a skip, OHA's wisdom branch walked the pos4 to the
@@ -116,11 +117,13 @@ end
 do
 	local H = world({ t = 395 })
 	local bot = hero(4, 4)
+	local mate = hero(1, 1, Vector(-4000, 4000))
 	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) })
 	local out = run(H, { bot }, 440)
 	local l = lines(out, "rune_job")[1]
 	check("enemy near at the shrine trigger: skipped", l ~= nil and field(l, "kind") == "wisdom" and field(l, "res") == "skip", l)
-	check("skipped shrine: OHA's wisdom logic keeps out", H.RuneJob.ShrineTaken(RAD))
+	check("skipped shrine: OHA's wisdom logic keeps the pos4 out", H.States.WisdomOwned(bot))
+	check("skipped shrine: the teammate stays OHA's to send (follow-up review 03/11/2026)", not H.States.WisdomOwned(mate))
 	check("skipped 6:00 power spawn (window past): no longer owned at 8:00", (function() T = 480 return not H.RuneJob.Owns(bot, "power") end)())
 end
 
@@ -212,6 +215,16 @@ do
 	local bot = hero(4, 4)
 	local out = run(H, { bot }, 425)
 	check("switch off: no rune line, no rune job", #lines(out, "rune_job") == 0 and #lines(out, "job") == 0 and H.RuneJob.Priority(bot) == nil)
+	check("switch off: OHA's rune mode keeps both spawns", not H.RuneJob.Owns(bot, "power") and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
+end
+
+-- The rune job needs the chooser: RuneRotation on with JobChooser off leaves the spawns to OHA (and the old rotation).
+do
+	local H = world()
+	package.loaded["bots/FunLib/custom_loader"].Ours.JobChooser = false
+	local bot = hero(4, 4)
+	T = 400
+	check("chooser off: the job owns no spawn", H.RuneJob.Priority(bot) == nil and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
 end
 
 -- Positions 1-3 never get a trip.

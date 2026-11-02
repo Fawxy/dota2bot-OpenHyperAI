@@ -278,12 +278,15 @@ export function Owns(bot: Unit, kind: Kind): boolean {
     return false;
 }
 
-/** A teammate of `team` owns the shrine spawn (on its trip, or the job skipped it): OHA's own wisdom logic leaves the shrine. */
-export function ShrineTaken(team: number): boolean {
+/** OHA's own wisdom logic leaves the shrine to `bot`: its own spawn is the job's (taken or skipped), or a teammate's trip is on
+ *  the shrine. Only the job's hero is held past a skip; the rest of the team stays OHA's (follow-up review 03/11/2026: a
+ *  team-wide hold left the shrine untaken after a skip, 9 of 30 within 15 s against OFF's 14). */
+export function ShrineHeld(bot: Unit): boolean {
+    if (Owns(bot, "wisdom")) return true;
     for (let i = 1; i <= 5; i++) {
         const m = GetTeamMember(i);
-        if (m === undefined || m === null || m.GetTeam() !== team) continue;
-        if (running[m.GetPlayerID()]?.kind === "wisdom" || Owns(m, "wisdom")) return true;
+        if (m === undefined || m === null || m.GetTeam() !== bot.GetTeam()) continue;
+        if (running[m.GetPlayerID()]?.kind === "wisdom") return true;
     }
     return false;
 }

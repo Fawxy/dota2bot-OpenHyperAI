@@ -473,26 +473,31 @@ function ____exports.Owns(bot, kind)
     end
     return false
 end
---- A teammate of `team` owns the shrine spawn (on its trip, or the job skipped it): OHA's own wisdom logic leaves the shrine.
-function ____exports.ShrineTaken(team)
+--- OHA's own wisdom logic leaves the shrine to `bot`: its own spawn is the job's (taken or skipped), or a teammate's trip is on
+-- the shrine. Only the job's hero is held past a skip; the rest of the team stays OHA's (follow-up review 03/11/2026: a
+-- team-wide hold left the shrine untaken after a skip, 9 of 30 within 15 s against OFF's 14).
+function ____exports.ShrineHeld(bot)
+    if ____exports.Owns(bot, "wisdom") then
+        return true
+    end
     do
         local i = 1
         while i <= 5 do
             do
-                local __continue66
+                local __continue67
                 repeat
                     local m = GetTeamMember(i)
-                    if m == nil or m == nil or m:GetTeam() ~= team then
-                        __continue66 = true
+                    if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
+                        __continue67 = true
                         break
                     end
                     local ____opt_2 = running[m:GetPlayerID()]
-                    if (____opt_2 and ____opt_2.kind) == "wisdom" or ____exports.Owns(m, "wisdom") then
+                    if (____opt_2 and ____opt_2.kind) == "wisdom" then
                         return true
                     end
-                    __continue66 = true
+                    __continue67 = true
                 until true
-                if not __continue66 then
+                if not __continue67 then
                     break
                 end
             end

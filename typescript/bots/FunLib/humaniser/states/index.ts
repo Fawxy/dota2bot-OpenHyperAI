@@ -215,10 +215,10 @@ CampJobs.SetExecutor({
 
 /**
  * mode_rune_generic: OHA's own wisdom logic stands aside for this bot (its shrine trip is the state's) or for the
- * team (an owned trip is on the shrine this fill), or a rune job is on the shrine (slice rune-rotation).
+ * team (an owned trip is on the shrine this fill), or the rune job holds the shrine for it (slice rune-rotation).
  */
 export function WisdomOwned(bot: Unit): boolean {
-    if (RuneJob.ShrineTaken(bot.GetTeam())) return true;
+    if (RuneJob.ShrineHeld(bot)) return true;
     if (!IsEnabled()) return false;
     return (Owns(bot, Rotate.NAME) && Rotate.OnTrip(bot)) || Rotate.ShrineTaken(bot.GetTeam());
 }
