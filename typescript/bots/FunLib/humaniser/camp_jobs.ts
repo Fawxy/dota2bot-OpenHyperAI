@@ -20,6 +20,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
 
@@ -507,6 +508,8 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     if (!hpOk(bot)) return false;
     if (req.kind === "contest") return startContest(bot, req);
     if (PULL_KINDS[req.kind] !== true) return false;
+    // Ours.SupportPull: our pull job decides and runs this bot's pulls; a human's order still goes through here.
+    if (req.forced !== true && PullJob.Applies(bot)) return false;
     const data = Camps.ByIdx(req.campIdx, bot.GetTeam());
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;

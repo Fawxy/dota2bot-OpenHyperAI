@@ -241,6 +241,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 function settings()
@@ -277,17 +278,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue273
+            local __continue274
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue273 = true
+                    __continue274 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue273 = true
+                    __continue274 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -298,9 +299,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue273 = true
+                __continue274 = true
             until true
-            if not __continue273 then
+            if not __continue274 then
                 break
             end
         end
@@ -956,6 +957,9 @@ function ____exports.Start(bot, req)
         return startContest(bot, req)
     end
     if PULL_KINDS[req.kind] ~= true then
+        return false
+    end
+    if req.forced ~= true and PullJob.Applies(bot) then
         return false
     end
     local data = Camps.ByIdx(
@@ -2180,10 +2184,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue301
+            local __continue302
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue301 = true
+                    __continue302 = true
                     break
                 end
                 if dist2D(
@@ -2192,9 +2196,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue301 = true
+                __continue302 = true
             until true
-            if not __continue301 then
+            if not __continue302 then
                 break
             end
         end
@@ -2233,10 +2237,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue310
+            local __continue311
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue310 = true
+                    __continue311 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2246,9 +2250,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue310 = true
+                __continue311 = true
             until true
-            if not __continue310 then
+            if not __continue311 then
                 break
             end
         end
@@ -2289,19 +2293,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue325
+            local __continue326
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue325 = true
+                    __continue326 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue325 = true
+                __continue326 = true
             until true
-            if not __continue325 then
+            if not __continue326 then
                 break
             end
         end

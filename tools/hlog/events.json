@@ -897,6 +897,42 @@
    "hit": "num",
    "idle": "num"
   },
+  "pull_job": {
+   "pid": "num",
+   "pos": "num",
+   "lane": "num",
+   "camp": "num",
+   "slot": "num",
+   "res": "str",
+   "why": "str",
+   "label": "str",
+   "div": "num",
+   "n": "num",
+   "left": "num",
+   "away": "num",
+   "died": "num",
+   "hit": "num",
+   "idle": "num",
+   "wd": "num",
+   "nn": "num",
+   "dt": "num"
+  },
+  "choice": {
+   "pid": "num",
+   "kind": "str",
+   "go": "num",
+   "want": "num",
+   "why": "str",
+   "src": "str",
+   "lane": "num",
+   "slot": "num",
+   "st": "str",
+   "q": "num",
+   "mv": "num",
+   "cf": "num",
+   "tw": "num",
+   "ms": "num"
+  },
   "gank": {
    "pid": "num",
    "pos": "num",
@@ -1255,6 +1291,17 @@
    "why": "text",
    "label": "text",
    "side": "text"
+  },
+  "ev_pull_job": {
+   "res": "text",
+   "why": "text",
+   "label": "text"
+  },
+  "ev_choice": {
+   "kind": "text",
+   "why": "text",
+   "src": "text",
+   "st": "text"
   },
   "ev_gank": {
    "score": "text",
