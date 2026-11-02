@@ -1,0 +1,9 @@
+{
+ "schema": "er-spec/1",
+ "build": "6408710",
+ "until": "10:10",
+ "bars": [
+  { "id": "S2a deaths during the job (solo harness)", "metric": "stack_deaths", "rule": "each", "eq": 0, "arms": ["solodire"] },
+  { "id": "H1 lua_ours (solo harness)", "metric": "lua_ours", "rule": "each", "max": 0, "arms": ["solodire"] }
+ ]
+}

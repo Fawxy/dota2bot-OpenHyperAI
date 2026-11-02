@@ -240,14 +240,15 @@ Customize.Humaniser = {
 -- decision 02/11/2026 although worse than OHA on the creep-economy bar (ER-008, ER-009, ER-010 FAIL: share flat, more deaths):
 -- our code ends up enabled; the row stays open for fixes (set false for OHA's laning).
 -- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, CoreLastHit = true, CoreLastHitDire = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, CoreLastHit = true, CoreLastHitDire = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
 -- RoleByHero: all-bot teams take positions by hero weight, not slot order (dota_bot_populate lineups; hero_selection.lua).
 -- Solo (pid, -1 = off): every other hero sits in its fountain, so one pos5 stacks alone; StackEvery: the stack job tries every
--- minute from 2:00 (slice 4 diagnosis, scenario games only; StackJob.Bench, StackJob.Minutes).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false }
+-- minute from 2:00 (slice 4 diagnosis, scenario games only; StackJob.Bench, StackJob.Minutes); StackFar: no 25 s away skip
+-- (slice double-stack: execution apart from getting there; scenario games only).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

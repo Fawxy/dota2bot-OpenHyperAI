@@ -10,6 +10,8 @@ export const DEFAULTS = {
     LeaveCoreCreep: true,
     /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
     StackExecute: true,
+    /** Slice double-stack: the stack job hits a listed partner camp first, so one minute stacks two camps (StackJob). */
+    DoubleStack: true,
     /**
      * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). On by user
      * decision 02/11/2026 although ER-008/009/010 FAILed against OHA (share flat, more deaths): our code ends up enabled.

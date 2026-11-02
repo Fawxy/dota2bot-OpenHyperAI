@@ -30,6 +30,8 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	if o.ours ~= nil then Customize.Ours = o.ours end
+	-- Slice 4's single-stack tests run with the double off; the double-stack tests below pass double = true.
+	if Customize.Ours ~= nil then Customize.Ours.DoubleStack = o.double == true end
 	T = o.t or 200
 	CURRENT_TEAM = 2
 	FOGGED = o.fogged
@@ -142,9 +144,71 @@ do
 	local stand = H.StackJob.Stand(sp, data)
 	check("evil_1: stands north of the camp", stand.y > sp.location.y and math.abs(stand.x - sp.location.x) < 50, stand.x .. "," .. stand.y)
 end
+-- evil_13, the Dire shrine pair's easy camp (user replay review of dsolo4b, 31/10/2026): south, towards the offlane, not
+-- north-west towards mid; south-west since 01/11/2026, where its stand sees the camp (visprobe1/2).
+do
+	local H = world()
+	local C = H.Lane.Camps
+	local sp = C.SpawnerByIdx(idxOf("evil_13"))
+	local data = C.ByIdx(sp.idx, sp.team)
+	local exit = H.StackJob.ExitPath(sp, data)[1]
+	local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
+	check("evil_13: walk-off south-west", dy < -500 and dx < -500, exit.x .. "," .. exit.y)
+	local stand = H.StackJob.Stand(sp, data)
+	check("evil_13: stands south-west of the camp", stand.y < sp.location.y and stand.x < sp.location.x, stand.x .. "," .. stand.y)
+end
+-- The shrine pairs' camp B walks on to its wisdom shrine (user 31/10/2026): good_13 north. evil_7's south-east route was
+-- blocked from a stand that sees the camp (fresh7c, fresh8c), north-east ran into the map edge (fresh9c); it stands
+-- north-east (vision probe test below) and walks off north, clear of evil_13's box.
+do
+	local H = world({})
+	local C = H.Lane.Camps
+	local e7 = C.SpawnerByIdx(idxOf("evil_7"))
+	local ex = H.StackJob.ExitPath(e7, C.ByIdx(e7.idx, e7.team))[1]
+	check("evil_7: walk-off north, west of evil_13's box", ex.y > e7.location.y + 800 and ex.x < 8192, ex.x .. "," .. ex.y)
+	for _, c in ipairs({ { "good_13", -7948, 768 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
+		local shrine = Vector(c[2], c[3])
+		check(c[1] .. ": walk-off towards its shrine", dist(exit, shrine) < dist(sp.location, shrine), exit.x .. "," .. exit.y)
+		local stand = H.StackJob.Stand(sp, C.ByIdx(sp.idx, sp.team))
+		check(c[1] .. ": stands east of the camp (the walk from A passes B's east side)", stand.x > sp.location.x + 200, stand.x .. "," .. stand.y)
+	end
+end
+
+-- Overrides.ShrineLane: the shrine pairs' lane route (user 31/10/2026), Radiant's B walks off east, Dire's west.
+do
+	local H = world({})
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.ShrineLane = true
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_13", 1 }, { "evil_7", -1 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
+		local dx, dy = exit.x - sp.location.x, exit.y - sp.location.y
+		check(c[1] .. ": ShrineLane walk-off " .. (c[2] > 0 and "east" or "west"), dx * c[2] > 800 and math.abs(dy) < 50, exit.x .. "," .. exit.y)
+	end
+	-- Dire stands on the north side, between the camps (lsolo4b/4c: the west stand missed every hit).
+	local sp = C.SpawnerByIdx(idxOf("evil_7"))
+	local stand = H.StackJob.Stand(sp, C.ByIdx(sp.idx, sp.team))
+	check("evil_7: ShrineLane stands north of the camp", stand.y > sp.location.y + 200 and math.abs(stand.x - sp.location.x) < 300, stand.x .. "," .. stand.y)
+	Customize.Overrides.ShrineLane = false
+end
 
 -- Only the pos5 with the switch on; switch off (the OFF arm) never stacks.
 do
+	do
+		-- ev=camp: one line per spawner with its box, once per game (hlog stacktruth.js grades replays with it).
+		local H0, bot0 = world({ t = 233 })
+		local camps = {}
+		for _, l in ipairs(capture(function() for _ = 1, 3 do frame(H0, bot0) end end)) do
+			if l:find("ev=camp ", 1, true) then table.insert(camps, l) end
+		end
+		local g1 = camps[idxOf("good_1")]
+		check("ev=camp: one line per spawner, once", #camps == #MAP, #camps)
+		check("ev=camp: good_1's box", g1 ~= nil and field(g1, "x0") == "3828" and field(g1, "y1") == "-4877" and field(g1, "type") == "small", g1)
+	end
 	local H, bot = world({ t = 233 })
 	bot.pos = 4
 	check("pos4: no job", H.StackJob.Desire(bot) == 0)
@@ -157,9 +221,12 @@ end
 -- A full stack at 3:5x on good_1: starts in time, hit inside the window, outcome stacked, away <= 25 s.
 local function stackRun(o)
 	o = o or {}
-	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged })
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double, at = o.at })
+	if o.range then bot.range = o.range end
 	local camp = SPAWNERS[idxOf("good_1")].location
-	neutrals(camp, 3)
+	neutrals(camp, o.bN or 3)
+	local first = SPAWNERS[idxOf("good_2")].location
+	if o.double then MakeNeutral({ x = first.x, y = first.y }) MakeNeutral({ x = first.x + 20, y = first.y }) end
 	local lines = capture(function()
 		-- blind: until the hit a neutral is seen only within 350 of the bot (trees or high ground; lich saw evil_1 from 274, not 428).
 		local function step()
@@ -168,8 +235,9 @@ local function stackRun(o)
 			frame(H, bot)
 		end
 		while T < 4 * 60 do step() end
-		if not o.noSpawn then neutrals(camp, 3) end
-		while T < 4 * 60 + 8 do step() end
+		if not o.noSpawn and not o.noBSpawn then neutrals(camp, 3) end
+		if o.double and not o.noSpawn then MakeNeutral({ x = first.x + 40, y = first.y }) end
+		while T < 4 * 60 + (o.tail or 8) do step() end
 	end)
 	return stackLines(lines), H, bot
 end
@@ -287,12 +355,14 @@ do
 	check("unreachable stand: waited (arr) before the hit", tonumber(field(lines[1], "arr")) ~= nil and tonumber(field(lines[1], "arr")) < tonumber(field(lines[1], "hit0") or "0"), lines[1])
 end
 
--- A camp too far for KR S.2's 25 s away (s4 A_on_4 3:31: lich out of lane, a 14.6 s walk to camp 23, away 30.7): the
--- minute is skipped as far when the job would start, and no job runs.
+-- A camp far from the bot (s4 A_on_4 3:31: lich out of lane, a 14.6 s walk to camp 23, away 30.7): skipped as far under
+-- KR S.2's old 25 s away; no blanket limit since 02/11/2026 (user), so the job runs and is never skipped `far`.
 do
 	local H, bot = world({ t = 3 * 60 + 15, at = Vector(6000, 6000) })
-	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
-	check("far camp: one skip line, far", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "far", lines[1])
+	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) end end))
+	local far = false
+	for _, l in ipairs(lines) do if field(l, "why") == "far" then far = true end end
+	check("far camp: no far skip", #lines >= 1 and not far, lines[1])
 end
 
 -- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
@@ -428,6 +498,14 @@ do
 		while T < 4 * 60 + 59 do frame(H, bot) end
 	end))
 	check("stack every: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
+	Customize.Overrides = { StackEvery = 3 }
+	m = H.StackJob.Minutes()
+	check("stack every 3: every third minute from 2:00", m[1] == 2 and m[2] == 5 and m[3] == 8)
+	Customize.Overrides = { Solo = "0,5," }
+	check("solo list: a listed hero plays", not H.StackJob.Benched(bot))
+	check("solo list: an unlisted one is benched", H.StackJob.Benched(other))
+	Customize.Overrides = { Solo = "50," }
+	check("solo list: pid 5 is not 50's 5", H.StackJob.Benched(bot))
 	Customize.Overrides = nil
 end
 
@@ -456,6 +534,370 @@ do
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.StackJob.Abort(bot, "defend-ping")', 1, true)
 	check('farm: a defend ping aborts the job', ping ~= nil and abort ~= nil and abort > ping and abort - ping < 200, tostring(ping) .. ' ' .. tostring(abort))
+end
+
+-- Slice double-stack (Ours.DoubleStack): the safe-lane partners (EC-063), the fit of the walk from A to B's hit, and one
+-- minute that stacks both camps.
+do
+	local H, bot = world({ double = true })
+	local C = H.Lane.Camps
+	local function partner(name)
+		local sp = C.SpawnerByIdx(idxOf(name))
+		local p = H.StackJob.Partner(C.ByIdx(sp.idx, sp.team))
+		return p and MAP[p.a.campIdx][1]
+	end
+	check("good_1's partner is good_2", partner("good_1") == "good_2", partner("good_1"))
+	check("evil_2's partner is evil_1", partner("evil_2") == "evil_1", partner("evil_2"))
+	check("good_5 has no partner", partner("good_5") == nil, partner("good_5"))
+	-- From camp A too (ds1: the pos5 stood nearer good_2 or evil_1 in 14 of 20 started attempts); B stays the small camp.
+	local fromA = H.StackJob.Partner(C.ByIdx(idxOf("good_2"), RAD))
+	check("from good_2: the pair, B good_1", fromA ~= nil and MAP[fromA.a.campIdx][1] == "good_2" and MAP[fromA.b.campIdx][1] == "good_1")
+	local function fits(a, b, range)
+		bot.range = range
+		local sb = C.SpawnerByIdx(idxOf(b))
+		local d = H.StackJob.Partner(C.ByIdx(sb.idx, sb.team))
+		return d ~= nil and MAP[d.a.campIdx][1] == a and H.StackJob.Fits(bot, d)
+	end
+	-- EC-063's table: evil_1 then evil_2 fits a ranged hero only.
+	check("good_2 then good_1 fits ranged", fits("good_2", "good_1", 550))
+	-- EC-063 had it fit a melee hero too; with good_1 hit at :55 (dsvA, 02/11/2026) a melee one at 300 runs single.
+	check("good_2 then good_1 does not fit melee at 300", not fits("good_2", "good_1", 150))
+	check("evil_1 then evil_2 fits ranged", fits("evil_1", "evil_2", 550))
+	check("evil_1 then evil_2 does not fit melee", not fits("evil_1", "evil_2", 150))
+	local d = H.StackJob.Partner(C.ByIdx(idxOf("good_1"), RAD))
+	-- Solo runs on f215060: B was hit about 1 s after its plan, so both hits moved earlier (good_2 before its own 52-54).
+	check("hits: good_2 at 51-52, good_1 in 55-56", d.fsec >= 51 and d.fsec < 52 and d.sec >= 55 and d.sec <= 56, d.fsec .. " " .. d.sec)
+end
+
+-- The pos4's offlane camps: each ancient camp and its neighbour as a pair (user 31/10/2026), and each wisdom shrine's large
+-- camp single (user 01/11/2026: the shrine double dropped); one per trigger minute in turn; A's stand faces B. Fit for a
+-- 550-range hero per E1 (31/10/2026): good_8 then good_7 fits, evil_8 then evil_9 does not (EC-063's weakest pair).
+do
+	local H, bot = world({ double = true })
+	local seen, single = { [RAD] = {}, [DIRE] = {} }, { [RAD] = {}, [DIRE] = {} }
+	for _, team in ipairs({ RAD, DIRE }) do
+		for _, minute in ipairs({ 3, 5, 7 }) do
+			local job = H.StackJob.Pos4For(team, minute)
+			local d = job[2]
+			if d then seen[team][MAP[d.a.campIdx][1] .. ">" .. MAP[d.b.campIdx][1]] = d else single[team][MAP[job[1].campIdx][1]] = true end
+			local pf = H.StackJob.PairFor(team, minute)
+			check("PairFor agrees with Pos4For", (pf and pf.b.campIdx) == (d and d.b.campIdx))
+		end
+	end
+	check("pos4 radiant: pair good_8>good_7, single good_13", seen[RAD]["good_8>good_7"] ~= nil and single[RAD]["good_13"] and next(seen[RAD], next(seen[RAD])) == nil)
+	check("pos4 dire: pair evil_8>evil_9, single evil_7", seen[DIRE]["evil_8>evil_9"] ~= nil and single[DIRE]["evil_7"] and next(seen[DIRE], next(seen[DIRE])) == nil)
+	check("pos4: minutes 3 and 5 take different camps", H.StackJob.Pos4For(RAD, 3)[1].campIdx ~= H.StackJob.Pos4For(RAD, 5)[1].campIdx)
+	bot.range = 550
+	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
+	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
+	check("evil_8>evil_9 does not fit ranged", not fitsPair(DIRE, "evil_8>evil_9"))
+	-- The walk counts from where A is hit (dsvA: earthshaker walked 430 into good_8's box from its stand): from a stand 650
+	-- from A's origin towards B, a 550-range hero hits A there and fits; a melee one hits from 300 and does not.
+	do
+		local d = seen[RAD]["good_8>good_7"]
+		local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+		local ab = dist(a, b)
+		local near = { b = d.b, a = d.a, fsec = d.fsec, sec = d.sec, stand = Vector(a.x + (b.x - a.x) * 650 / ab, a.y + (b.y - a.y) * 650 / ab, 0) }
+		local half = (H.Lane.Camps.SpawnerByIdx(d.b.campIdx).max.x - H.Lane.Camps.SpawnerByIdx(d.b.campIdx).min.x) / 2
+		-- The speed at which a 550-range hero's walk from the stand takes the whole gap less the slack.
+		bot.speed = math.max(1, ab - 650 - 550 - half) / (d.sec - d.fsec - 0.5) + 1
+		bot.range = 550
+		check("good_8>good_7 from a stand near B: ranged fits", H.StackJob.Fits(bot, near))
+		bot.range = 150
+		check("good_8>good_7 from a stand near B: melee walks from its hit in A, no fit", not H.StackJob.Fits(bot, near))
+		-- The walk in to A counts (fix1A: A confirmed late by about it): a 400-range hero 900 from A's origin, on the far side
+		-- from B, walks in 350 first; at the speed where only the walk from its hit point would fit, it does not.
+		local far = { b = d.b, a = d.a, fsec = d.fsec, sec = d.sec, stand = Vector(a.x - (b.x - a.x) * 900 / ab, a.y - (b.y - a.y) * 900 / ab, 0) }
+		bot.range = 400
+		bot.speed = (ab + 550 - 400 - half) / (d.sec - d.fsec - 0.5) + 1
+		check("a walk in to A counts against the gap", not H.StackJob.Fits(bot, far))
+		bot.speed = (ab + 550 - 400 - half + 350) / (d.sec - d.fsec - 0.5) + 1
+		check("and fits when the gap covers it too", H.StackJob.Fits(bot, far))
+		bot.range = 550
+		bot.speed = nil
+	end
+	for k, d in pairs(seen[RAD]) do
+		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
+		check(k .. ": A's stand faces B", dist(d.stand, spb.location) < dist(spa.location, spb.location), k)
+		check(k .. ": A's hit by :54, before B's", d.fsec <= 54 and d.fsec < d.sec, k)
+	end
+	-- The pos4 runs no job with the double off (it stacks only its pairs).
+	local H2, b2 = world({ t = 3 * 60 + 40 })
+	b2.pos = 4
+	check("pos4, DoubleStack off: no job", H2.StackJob.Desire(b2) == 0 and not H2.StackJob.Applies(b2))
+end
+
+-- A full pos4 double from the Radiant offlane T1 at 5:5x: good_8 (ancient) then good_7.
+do
+	local H, bot = world({ t = 5 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local d = H.StackJob.PairFor(RAD, 5)
+	check("pos4 minute 5: good_8 then good_7", MAP[d.a.campIdx][1] == "good_8" and MAP[d.b.campIdx][1] == "good_7")
+	local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+	MakeNeutral({ x = a.x, y = a.y }) MakeNeutral({ x = a.x + 20, y = a.y })
+	neutrals(b, 3)
+	local lines = stackLines(capture(function()
+		while T < 6 * 60 do frame(H, bot) end
+		neutrals(b, 3) MakeNeutral({ x = a.x + 40, y = a.y })
+		while T < 6 * 60 + 8 do frame(H, bot) end
+	end))
+	local l = lines[1]
+	check("pos4 good_8>good_7: double=1, both stacked", l ~= nil and field(l, "double") == "1" and field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	check("pos4 good_8>good_7: away at most 25 s, no death", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25 and field(l, "death") == "0", l)
+	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
+	check("pos4 good_8>good_7: A hit near its second, B near its own (1 s for the confirm)", fag ~= nil and ag ~= nil and math.abs(fag - d.fsec) <= 1 and ag >= d.sec - 0.5 and ag <= d.sec + 1, l)
+	-- Each confirmed hit carries its camp's Valve window and the offset from it (user 02/11/2026).
+	check("pos4 good_8>good_7: win and fwin, woff and fwoff numbers", field(l, "win") ~= "?" and field(l, "fwin") ~= "?" and tonumber(field(l, "woff")) ~= nil and tonumber(field(l, "fwoff")) ~= nil, l)
+end
+
+-- Reach (E1, 31/10/2026): from the Radiant offlane T1 the shrine's large camp good_13 (minute 3, single since 01/11/2026)
+-- plans over 25 s away, which skipped the minute as far until the away limit went (user 02/11/2026): now the job runs.
+do
+	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
+	check("pos4 shrine camp from the T1: no far skip", #lines >= 1 and field(lines[1], "why") ~= "far", lines[1])
+end
+-- Overrides.StackFar (scenario games only): the same minute starts good_13's single instead.
+do
+	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.StackFar = true
+	local started = false
+	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) if H.StackJob.HoldsRun(bot) then started = true end end end))
+	Customize.Overrides.StackFar = false
+	check("StackFar: good_13's single starts from the T1", started)
+	check("StackFar: the line is good_13, no double", lines[1] ~= nil and tonumber(field(lines[1], "camp")) == idxOf("good_13") and field(lines[1], "double") == nil, lines[1])
+end
+
+
+do
+	local lines, H = stackRun({ double = true })
+	local l = lines[1]
+	check("double: one line for the minute", #lines == 1, #lines)
+	check("double: double=1, camp A good_2", field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
+	check("double: both camps stacked", field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
+	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
+	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
+	check("double: A hit within 1 s of its second, B within -1 to +1.5 s of its own (the confirm)", math.abs(fag - pd.fsec) <= 1 and ag >= pd.sec - 1 and ag <= pd.sec + 1.5, l)
+	check("double: A before 2, B before 3", field(l, "fbefore") == "2" and field(l, "before") == "3", l)
+	-- trk/ftrk (user replay review of shsolo4b): each pulled neutral's furthest distance and the second it gave up.
+	local trk, ftrk = field(l, "trk"), field(l, "ftrk")
+	check("double: trk and ftrk list name:max:drop", trk ~= nil and trk:match("^[%w_]+:%d+:[%w%.%-]+") ~= nil and ftrk ~= nil and ftrk:match("^[%w_]+:%d+:[%w%.%-]+") ~= nil, tostring(trk) .. " | " .. tostring(ftrk))
+	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
+	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
+	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
+	-- ds2: A's spawn read 0 with no record of its neutrals; now A's neutrals at +2 s and :59.5, and A's box seen in the watch.
+	local _, a2 = (field(l, "fn2") or ""):gsub("kobold:%d+:", "")
+	local _, a59 = (field(l, "fn59") or ""):gsub("kobold:%d+:", "")
+	check("double: fn2 and fn59 list A's two neutrals, fseen=1", a2 == 2 and a59 == 2 and field(l, "fseen") == "1", l)
+end
+
+-- Stacks already in the box block each other (EC-066): a double hits a camp PileEarlier (0.5) s earlier per stack past the
+-- first, PileSize (4) visible neutrals each; sdsolo5a/5c B stacked 1 of 12 with 7 or more neutrals in it. Singles unchanged.
+do
+	local base = stackRun({ double = true })[1]
+	local piled = stackRun({ double = true, bN = 9 })[1]
+	local ag0, ag1 = tonumber(field(base, "aggro")), tonumber(field(piled, "aggro"))
+	check("pile: early=0 with 3 in B, early=1 with 9", field(base, "early") == "0" and field(piled, "early") == "1", piled)
+	check("pile: A (2 neutrals) not pulled forward", field(piled, "fearly") == "0", piled)
+	check("pile: B hit about 1 s earlier", ag0 ~= nil and ag1 ~= nil and ag0 - ag1 >= 0.6 and ag0 - ag1 <= 1.4, ag0 .. " " .. tostring(ag1))
+	local single0, single1 = stackRun()[1], stackRun({ bN = 9 })[1]
+	check("pile: a single stack's hit is unchanged", field(single1, "early") == nil and math.abs(tonumber(field(single0, "aggro")) - tonumber(field(single1, "aggro"))) < 0.2, single1)
+end
+
+-- dsolo4b-5c (31/10/2026): A was read only after B stacked, so a B that did not stack left A unread and logged as
+-- not_stacked. Now B is read for BReadFor, then the watch walks to A and reads it.
+-- Under AwayMax that walk does not fit (A is ~1,100 from B's stand), so this runs with Overrides.StackFar as the solo games do.
+do
+	local lines = stackRun({ double = true, noBSpawn = true, tail = 15, onFrame = function()
+		local C = package.loaded["bots/FunLib/custom_loader"]
+		C.Overrides = C.Overrides or {}
+		C.Overrides.StackFar = true
+	end })
+	package.loaded["bots/FunLib/custom_loader"].Overrides.StackFar = false
+	local l = lines[1]
+	check("B not stacked: the watch still reads A (StackFar)", field(l, "res") == "not_stacked" and field(l, "fres") == "stacked" and tonumber(field(l, "fchk")) ~= nil, l)
+end
+-- A's box never in sight after :00: fres=unseen, not not_stacked.
+do
+	-- tail: with no away limit (02/11/2026) the watch is not cut short and walks on to A, so its line comes later.
+	local lines = stackRun({ double = true, tail = 15, fogged = function(v)
+		local g2 = SPAWNERS[idxOf("good_2")].location
+		return T >= 4 * 60 and math.abs(v.x - g2.x) < 1 and math.abs(v.y - g2.y) < 1
+	end })
+	local l = lines[1]
+	check("A unread after :00: fres=unseen, fchk=?", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fchk") == "?", l)
+end
+
+-- User replay review of dsolo4b (31/10/2026): the pos4 tanked camp A from its arrival, 3 s before the hit. A double's wait
+-- keeps WaitClear (850) from A's visible neutrals, then walks in on the lead; the hit still lands in A's window.
+do
+	local minD = math.huge
+	local lines = stackRun({ double = true, onFrame = function(H, bot)
+		if T >= 3 * 60 + 40 and T < 3 * 60 + 51 then
+			local a = SPAWNERS[idxOf("good_2")].location
+			for _, n in ipairs(NEUTRALS) do
+				if dist(n.loc, a) < 300 then minD = math.min(minD, dist(bot.loc, n.loc)) end
+			end
+		end
+	end })
+	local l = lines[1]
+	check("wait clear: at least ~825 from A's neutrals until :51", minD >= 820, minD)
+	check("wait clear: both stacked, A hit in 50.5-52.5, fauto=?", field(l, "fres") == "stacked" and field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 50.5 and tonumber(field(l, "faggro")) <= 52.5 and field(l, "fauto") == "?", l)
+	check("wait clear: fhit0 and fhpa logged", tonumber(field(l, "fhit0")) ~= nil and tonumber(field(l, "fhpa")) ~= nil, l)
+end
+
+-- Nearer good_2 than good_1 (ds1: 8 of 10 Radiant starts): still the pair, logged on good_1 with good_2 as camp A.
+do
+	local lines = stackRun({ double = true, at = Vector(4700, -3000) })
+	local l = lines[1]
+	check("near good_2: double on good_1 after good_2, both stacked", field(l, "double") == "1" and tonumber(field(l, "camp")) == idxOf("good_1") and tonumber(field(l, "fcamp")) == idxOf("good_2") and field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+end
+-- And single with the double off: slice 4 stacks the nearest camp, good_2.
+do
+	local H, bot = world({ t = 3 * 60 + 15, at = Vector(4700, -3000) })
+	local data = H.StackJob.Nearest(RAD, bot.loc)
+	check("near good_2, double off: nearest good_2", MAP[data.campIdx][1] == "good_2", MAP[data.campIdx][1])
+end
+
+-- B's hit skips A's neutrals: they chase the bot into B's box margin and target it, which must not count as B's hit.
+do
+	local moved = false
+	-- After A's hit (~:52.5) its two neutrals arrive in B's margin, nearer the bot than B's own, and target it.
+	local lines = stackRun({ double = true, onFrame = function(H, bot)
+		if moved or T < 3 * 60 + 54 then return end
+		moved = true
+		local c = SPAWNERS[idxOf("good_1")].location
+		for _, m in ipairs(NEUTRALS) do
+			if dist(m.loc, SPAWNERS[idxOf("good_2")].location) < 100 then
+				m.loc = Vector(c.x + 280, c.y)
+				m.target = bot
+			end
+		end
+	end })
+	local l = lines[1]
+	check("chasers in B's margin: B still hit (before 3, a good_1 neutral)", moved and field(l, "before") == "3" and field(l, "res") == "stacked", l)
+end
+
+-- A walk from A to B that does not fit the gap (melee on evil_1 then evil_2, above; forced here with the slack): the
+-- minute runs single on good_1 with double=0 dwhy=walk.
+do
+	local slack = nil
+	local lines = stackRun({ double = true, onFrame = function(H)
+		if slack == nil then slack = H.StackJob.SETTINGS.DoubleSlack H.StackJob.SETTINGS.DoubleSlack = 10 end
+	end })
+	local H = world()
+	H.StackJob.SETTINGS.DoubleSlack = slack
+	local l = lines[1]
+	check("no fit: single on good_1 stacked, double=0 dwhy=walk", field(l, "res") == "stacked" and tonumber(field(l, "camp")) == idxOf("good_1") and field(l, "double") == "0" and field(l, "dwhy") == "walk" and field(l, "fcamp") == nil, l)
+end
+
+-- Switch off: no double fields at all (slice 4's line).
+do
+	local lines = stackRun({})
+	check("DoubleStack off: no double field", field(lines[1], "double") == nil, lines[1])
+end
+
+-- Overrides.Sweep (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, nearest untried first, so every
+-- attempt is on a fresh camp; ancients are in the sweep.
+do
+	local H, bot = world({ t = 2 * 60 + 15 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = true, true, true
+	for _, s in ipairs(SPAWNERS) do if s.team == RAD then neutrals(s.location, 2) end end
+	local lines = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H, bot) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = false, false, false
+	local seen, started, dup = {}, 0, false
+	for _, l in ipairs(lines) do
+		if field(l, "res") ~= "skip" then
+			local c = field(l, "camp")
+			if seen[c] then dup = true end
+			seen[c], started = true, started + 1
+		end
+	end
+	check("sweep: a job most minutes from 2:00 to 5:00", started >= 3, started)
+	check("sweep: no camp twice", not dup, table.concat(lines, " | "))
+	-- Overrides.SweepCamps: only the listed camp numbers.
+	local H2, b2 = world({ t = 2 * 60 + 15 })
+	local only = idxOf("good_5") .. "," .. idxOf("good_9")
+	Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, only
+	local l2 = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H2, b2) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	local okCamps, started2 = true, 0
+	for _, l in ipairs(l2) do
+		if field(l, "res") ~= "skip" then
+			started2 = started2 + 1
+			local c = tonumber(field(l, "camp"))
+			if c ~= idxOf("good_5") and c ~= idxOf("good_9") then okCamps = false end
+		end
+	end
+	check("SweepCamps: only the listed camps, each once", okCamps and started2 >= 1 and started2 <= 2, table.concat(l2, " | "))
+	-- A far camp (sweepfara/c: skipped late every minute): the bot walks to its stand and stacks it a minute later.
+	local H3, b3 = world({ t = 2 * 60 + 15, at = Vector(6000, 6000) })
+	Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, tostring(idxOf("good_5")) .. ","
+	local l3 = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H3, b3) end end))
+	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	local late = false
+	for _, l in ipairs(l3) do if field(l, "why") == "late" then late = true end end
+	check("sweep: a far camp is walked to, not skipped late", not late and #l3 >= 1 and tonumber(field(l3[1], "camp")) == idxOf("good_5"), table.concat(l3, " | "))
+end
+
+-- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle, good_13's 0.5 s (dsvA); others unchanged.
+do
+	local H = world()
+	local C, S = H.Lane.Camps, H.Lane.Stacking
+	for _, c in ipairs({ { "good_15", RAD, 1 }, { "good_13", RAD, 0.5 }, { "evil_7", DIRE, 0 }, { "evil_4", DIRE, 0 }, { "evil_5", DIRE, 0 }, { "good_9", RAD, 0 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
+		local d = C.ByIdx(idxOf(c[1]), c[2])
+		check(c[1] .. ": single hit " .. c[3] .. " s before the window middle", math.abs(S.AggroSec(d) - H.StackJob.SingleSec(d) - c[3]) < 1e-6, H.StackJob.SingleSec(d))
+	end
+end
+
+-- Overrides.VisionProbe (KR S.2a tier 1, 01/11/2026): from 1:00 the pos5 visits each own-side camp, nearest first, and logs
+-- at its stand point and 8 points round the box whether the camp's neutrals are in sight; nothing is hit.
+do
+	local H, bot = world({ t = 59 })
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	Customize.Overrides = Customize.Overrides or {}
+	Customize.Overrides.VisionProbe = true
+	local oldVis, oldTod = IsLocationVisible, GetTimeOfDay
+	IsLocationVisible, GetTimeOfDay = function() return true end, function() return 0.5 end
+	local g1 = SPAWNERS[idxOf("good_1")].location
+	neutrals(g1, 3)
+	local lines = {}
+	for _, l in ipairs(capture(function() while T < 120 do frame(H, bot) end end)) do
+		if l:find("ev=visprobe ", 1, true) then table.insert(lines, l) end
+	end
+	Customize.Overrides.VisionProbe = false
+	IsLocationVisible, GetTimeOfDay = oldVis, oldTod
+	check("visprobe: nothing before 1:00, then a line per point", #lines >= 9, #lines)
+	local camp, ks, attacked = lines[1] and field(lines[1], "camp"), {}, false
+	for i = 1, 9 do if lines[i] and field(lines[i], "camp") == camp then ks[tonumber(field(lines[i], "k"))] = true end end
+	for k = -1, 7 do check("visprobe: first camp has point k=" .. k, ks[k] == true) end
+	for _, a in ipairs(ACTIONS) do if a.pid == bot.pid and a.kind == "AttackUnit" then attacked = true end end
+	check("visprobe: no hit", not attacked)
+	check("visprobe: the first camp is the nearest (good_1 from the safe T1)", tonumber(camp) == idxOf("good_1"), camp)
+	local seen = 0
+	for i = 1, 9 do seen = seen + tonumber(field(lines[i], "seen") or 0) end
+	check("visprobe: good_1's neutrals counted in sight", seen > 0, seen)
+end
+
+-- Vision probe (visprobe1, 01/11/2026): five camps stand on a side that sees their neutrals, and walk off that way.
+do
+	local H = world()
+	local C = H.Lane.Camps
+	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 0.71, 0.71 } }) do
+		local sp = C.SpawnerByIdx(idxOf(c[1]))
+		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))
+		local dx, dy = stand.x - sp.location.x, stand.y - sp.location.y
+		local len = math.sqrt(dx * dx + dy * dy)
+		check(c[1] .. ": stand on the seeing side", (dx * c[3] + dy * c[4]) / len > 0.9, stand.x .. "," .. stand.y)
+	end
 end
 
 finish()
