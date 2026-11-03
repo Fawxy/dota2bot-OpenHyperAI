@@ -10,8 +10,15 @@
  * HP margin, outside every enemy tower's range plus the hold's drift, and no further back than the XP limit (1,000 from the
  * preferred point). With no candidate inside the XP limit that keeps them all, the furthest back that keeps the tower limit. Without a visible enemy wave (between waves,
  * walking out) the preferred point is 100 behind our front and the hero and tower limits apply.
+ *
+ * Our own tower covers the ground in its range (Ours.LaneSpotTower): an enemy creep in its range that is attacking something
+ * other than us keeps only HELD_RING, and an enemy hero our tower is attacking, or one that would have to stand inside our
+ * tower's range to hit the point, keeps only its attack reach plus TOWER_REACT_SECS of movement, with no MIN_REACH floor.
+ * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
+ * core's spot for 54 of 79, the hero reach for 15.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
+import { On } from "bots/FunLib/humaniser/ours";
 
 export const MELEE_RING = 520;
 export const RANGED_RING = 620;
@@ -50,6 +57,16 @@ const REACT_SECS = 1.5;
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
  */
 const MIN_REACH = 800;
+/**
+ * An enemy creep under our tower that is attacking our tower or our creeps does not turn on us for standing near it (judgement:
+ * lane creeps keep a target until it dies; EC-053 gives acquisition about 500 for a creep without one). HELD_RING keeps the
+ * hero clear of the creep's body and its 100 melee reach.
+ */
+const HELD_RING = 200;
+/** Movement allowed for an enemy hero that our tower punishes for attacking us (judgement): a step in, not a chase. */
+const TOWER_REACT_SECS = 0.5;
+/** Our tower's attack range when the API gives none. */
+const OWN_TOWER_RANGE = 700;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
@@ -63,6 +80,21 @@ export interface SpotInfo {
     why: Why;
     /** The HP margin on the creep rings this frame. */
     margin: number;
+    /** 1 when the spot breaks a limit our tower relaxed (it stands closer than it would without our tower), else 0. */
+    covered: number;
+}
+
+/** Our towers' cover this frame: what each limit becomes under it. */
+export interface Cover {
+    towers: { at: Vector; range: number }[];
+    /** Per creep (in `creeps` order): held by our tower, so its ring is HELD_RING. */
+    held: boolean[];
+    /** Per hero (in `heroes` order): our tower is attacking it. */
+    tanking: boolean[];
+    /** Per hero: its reach where our tower covers the point (attack reach plus TOWER_REACT_SECS of movement). */
+    near: number[];
+    /** Per hero: attack range plus both radii, what it needs to hit us without moving. */
+    hit: number[];
 }
 
 function sub(a: Vector, b: Vector): [number, number] {
@@ -133,28 +165,79 @@ export function HeroReach(self: Unit, enemy: Unit): number {
     return math.max(MIN_REACH, enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT_SECS * enemy.GetCurrentMovementSpeed());
 }
 
+/** Whether every point an enemy needs (within `hit` of `p`) to attack `p` lies inside one of our towers' range. */
+function covers(cover: Cover, p: Vector, hit: number): boolean {
+    for (const t of cover.towers) if (d2(p, t.at) + hit <= t.range) return true;
+    return false;
+}
+
 /**
  * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
- * `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order.
+ * `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order;
+ * `cover`, when given, relaxes them under our towers.
  */
-export function Breaks(p: Vector, creeps: Unit[], towers: Unit[], margin = 0, heroes: Unit[] = [], reach: number[] = []): Why | undefined {
+export function Breaks(
+    p: Vector,
+    creeps: Unit[],
+    towers: Unit[],
+    margin = 0,
+    heroes: Unit[] = [],
+    reach: number[] = [],
+    cover?: Cover,
+): Why | undefined {
     let hp = false;
     for (let i = 0; i < heroes.length; i++) {
         const h = heroes[i];
         if (!alive(h)) continue;
+        let r = reach[i];
+        if (cover !== undefined && (cover.tanking[i] || covers(cover, p, cover.hit[i]))) r = cover.near[i];
         const dist = d2(p, h.GetLocation());
-        if (dist < reach[i]) return "hero";
-        if (dist < reach[i] + margin) hp = true;
+        if (dist < r) return "hero";
+        if (dist < r + margin) hp = true;
     }
-    for (const c of creeps) {
+    for (let i = 0; i < creeps.length; i++) {
+        const c = creeps[i];
         if (!alive(c)) continue;
-        const ring = isRangedCreep(c) ? RANGED_RING : MELEE_RING;
+        const ring = cover !== undefined && cover.held[i] ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
         const dist = d2(p, c.GetLocation());
         if (dist < ring) return "creep";
         if (dist < ring + margin) hp = true;
     }
     if (breaksTower(p, towers)) return "tower";
     return hp ? "hp" : undefined;
+}
+
+/** Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near. */
+function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined {
+    if (!On("LaneSpotTower")) return undefined;
+    const towers: Cover["towers"] = [];
+    const targets: Unit[] = [];
+    for (const t of bot.GetNearbyTowers(1600, false)) {
+        if (!alive(t)) continue;
+        towers.push({ at: t.GetLocation(), range: t.GetAttackRange() ?? OWN_TOWER_RANGE });
+        const target = t.GetAttackTarget();
+        if (target !== undefined && target !== null) targets.push(target);
+    }
+    if (towers.length === 0) return undefined;
+    const held: boolean[] = [];
+    for (const c of creeps) {
+        const target = c.GetAttackTarget();
+        let inRange = false;
+        for (const t of towers) if (d2(c.GetLocation(), t.at) <= t.range + c.GetBoundingRadius()) inRange = true;
+        held.push(inRange && target !== undefined && target !== null && target !== bot);
+    }
+    const tanking: boolean[] = [];
+    const near: number[] = [];
+    const hit: number[] = [];
+    for (const h of heroes) {
+        let tanked = false;
+        for (const u of targets) if (u === h) tanked = true;
+        tanking.push(tanked);
+        const r = h.GetAttackRange() + h.GetBoundingRadius() + bot.GetBoundingRadius();
+        hit.push(r);
+        near.push(r + TOWER_REACT_SECS * h.GetCurrentMovementSpeed());
+    }
+    return { towers, held, tanking, near, hit };
 }
 
 function breaksTower(p: Vector, towers: Unit[]): boolean {
@@ -234,9 +317,11 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     }
 
     const margin = HpMargin(bot.GetHealth() / math.max(1, bot.GetMaxHealth()));
+    const cover = coverFor(bot, creeps, heroes);
+    const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach) !== undefined ? 1 : 0);
     const pref = Vector(px, py, front.z);
-    const first = Breaks(pref, creeps, towers, margin, heroes, reach);
-    if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin };
+    const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover);
+    if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin, covered: covered(pref) };
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
     let best: Vector | undefined;
@@ -257,7 +342,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
                 keep = p;
                 keepPushed = k;
             }
-            if (Breaks(p, creeps, towers, margin, heroes, reach) === undefined) {
+            if (Breaks(p, creeps, towers, margin, heroes, reach, cover) === undefined) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;
@@ -266,8 +351,8 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
         if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
     if (best === undefined) {
-        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin };
-        return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin };
+        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin, covered: 0 };
+        return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin, covered: 0 };
     }
-    return { spot: best, pushed: bestPushed, anchor, why: first, margin };
+    return { spot: best, pushed: bestPushed, anchor, why: first, margin, covered: covered(best) };
 }

@@ -170,6 +170,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["pushed", info?.pushed],
         ["why", info?.why],
         ["hm", info !== undefined ? math.floor(info.margin) : undefined],
+        ["ut", info?.covered],
         ["sx", spot !== undefined ? math.floor(spot.x) : undefined],
         ["sy", spot !== undefined ? math.floor(spot.y) : undefined],
         ["hph", LaneMetrics.HeroLost(bot)],
