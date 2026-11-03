@@ -511,10 +511,15 @@ interface TaggedState {
     farthest?: number;
 }
 
+/** CANDIDATE(stale): same as ally_last_hit's. A tagged neutral that died is freed, and IsAlive on its handle throws. */
+function stale(u: Unit): boolean {
+    return ((u as any).IsNull !== undefined && u.IsNull()) || !u.IsAlive();
+}
+
 function taggedState(bot: Unit, p: Pull, ours: Unit[]): TaggedState {
     const s: TaggedState = { alive: 0, onPuller: 0, onCreep: 0 };
     for (const u of p.tagged ?? []) {
-        if (!u.IsAlive()) continue;
+        if (stale(u)) continue;
         s.alive++;
         const k = targetKind(bot, u.GetAttackTarget());
         if (k === "p") s.onPuller++;
@@ -548,7 +553,7 @@ function trackTagged(bot: Unit, p: Pull): void {
     let left = 0;
     let home = 0;
     for (const u of p.tagged) {
-        if (!u.IsAlive()) continue;
+        if (stale(u)) continue;
         const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
         const peak = math.max(p.peaks.get(u) ?? 0, h);
         p.peaks.set(u, peak);
