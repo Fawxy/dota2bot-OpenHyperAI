@@ -241,13 +241,14 @@ function ____exports.DenyOffered(bot)
 end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk" or ____exports.OwnsSpot(bot)
+    local tight = ____exports.OwnsSpot(bot)
     local hold = sdk and ({
         tolerance = 40,
         repath = 1.05,
         jitter = 0.85,
-        scatter = 130,
-        step = {50, 150},
-        follow = 150,
+        scatter = tight and 40 or 130,
+        step = tight and ({30, 60}) or ({50, 150}),
+        follow = tight and 50 or 150,
         hold = "state:laning"
     }) or ({
         tolerance = 100,

@@ -4,7 +4,8 @@
  *
  * A preferred point (a ranged core at attack range - 50 from the lowest-HP enemy creep, a melee core just behind our front,
  * both shifted away from the nearest enemy hero; a support towards its approach line), then the candidate nearest to it that
- * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus REACT), outside
+ * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus a second of
+ * its movement), outside
  * the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the HP margin, outside every enemy tower's range,
  * and no further back than the XP limit. Without a visible enemy wave (between waves, walking out)
  * the preferred point is our front and only the tower ring applies.
@@ -35,10 +36,11 @@ const HP_SAFE = 0.5;
 const HP_LOW = 0.25;
 const HP_MARGIN = 300;
 /**
- * Ground an enemy hero closes before its hit lands, added to its attack reach (judgement, step 0 as corrected by review
- * 2026-11-03-lane-positioning-step0-9ca4381: idle cores lost 1.6-3 HP-% a second with an enemy hero within 800, 0.2 beyond 1,000).
+ * Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
+ * with a fixed 150: cores held where the hero limit placed them 400-800 from an enemy hero and lost 0.7-1.1 HP-% a second
+ * there, against 0.3 at 800-1,200.
  */
-const REACT = 150;
+const REACT_SECS = 1.0;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
@@ -82,9 +84,9 @@ export function HpMargin(hpFrac: number): number {
     return (HP_MARGIN * (HP_SAFE - hpFrac)) / (HP_SAFE - HP_LOW);
 }
 
-/** How close `self` may stand to an enemy hero: its attack reach to us plus REACT. */
+/** How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement. */
 export function HeroReach(self: Unit, enemy: Unit): number {
-    return enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT;
+    return enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT_SECS * enemy.GetCurrentMovementSpeed();
 }
 
 /**

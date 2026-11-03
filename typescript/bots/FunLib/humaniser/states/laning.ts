@@ -142,8 +142,11 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const sdk = Settings().Spot === "sdk" || OwnsSpot(bot);
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in
     // 50-150 steps every 0.6-1.5 s (knowledge.md 1.1 idle motion) and follows the wave in 150-unit jumps.
+    // A core on our spot (Ours.LaneSpot) stands at the edge of an enemy hero's reach, so its shuffle and follow stay small:
+    // lposchk1's 130 scatter and 150 follow left it up to ~280 inside that edge.
+    const tight = OwnsSpot(bot);
     const hold: Lib.Verbs.HoldOpts = sdk
-        ? { tolerance: 40, repath: 1.05, jitter: 0.85, scatter: 130, step: [50, 150], follow: 150, hold: "state:laning" }
+        ? { tolerance: 40, repath: 1.05, jitter: 0.85, scatter: tight ? 40 : 130, step: tight ? [30, 60] : [50, 150], follow: tight ? 50 : 150, hold: "state:laning" }
         : { tolerance: 100, repath: 1, jitter: 0.3, scatter: 50, hold: "state:laning" };
     return yield* ctx.laneFarm(() => Spot(bot) as unknown as Lib.Vec | undefined, {
         hold,

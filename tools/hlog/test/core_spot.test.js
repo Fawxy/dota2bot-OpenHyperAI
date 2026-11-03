@@ -20,7 +20,7 @@ function run(lines) {
     return out;
 }
 
-test('core spot: idle seconds and HP lost inside the enemy wave ring and outside it, tower seconds, our spot by deciding limit', () => {
+test('core spot: idle seconds and HP lost inside the enemy wave ring and outside it, walks to a last hit apart, tower seconds, our spot by deciding limit', () => {
     const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1'), line(0, 'bot pid=4 hero=h4 team=2 pos=4')];
     // Core pid 1 on the bot lane, the enemy front at x=1400 throughout:
     //   100-104 idle 400 from the front (inside 520), an enemy hero 600 away, losing 10 a second
@@ -38,10 +38,12 @@ test('core spot: idle seconds and HP lost inside the enemy wave ring and outside
         hp -= t < 105 ? 10 : t < 110 ? 2 : t < 112 ? 5 : 0;
     }
     lines.push(line(101, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=3 why=creep hm=0 hph=0'));
+    // The body walks to a last hit at 105 (lane_pos every 2 s): 105 and 106 are the picker's, 4 HP-% lost, not the spot's.
+    lines.push(line(105, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front hph=0 label=lasthit'));
     lines.push(line(106, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=0 why=pref hm=0 hph=0'));
     lines.push(line(107, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=5 why=hp hm=200 hph=0'));
     lines.push(line(108, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=4 why=hero hm=0 hph=0'));
     const out = run(lines);
-    assert.deepStrictEqual(out.map(r => [r.pid, r.idle, r.ring, r.ring_hpl, r.out_hpl, r.tower, r.near, r.near_hpl, r.hpl, r.why_pref, r.why_hero, r.why_creep, r.why_hp]),
-        [[1, 12, 5, 50, 10, 2, 5, 50, 60, 1, 1, 1, 1]]);
+    assert.deepStrictEqual(out.map(r => [r.pid, r.lh_walk, r.lh_walk_hpl, r.idle, r.ring, r.ring_hpl, r.out_hpl, r.tower, r.near, r.near_hpl, r.hpl, r.why_pref, r.why_hero, r.why_creep, r.why_hp]),
+        [[1, 2, 4, 10, 5, 50, 6, 2, 5, 50, 56, 1, 1, 1, 1]]);
 });

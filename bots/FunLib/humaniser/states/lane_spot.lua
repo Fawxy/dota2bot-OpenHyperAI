@@ -27,9 +27,10 @@ local QUERY = 1400
 local HP_SAFE = 0.5
 local HP_LOW = 0.25
 local HP_MARGIN = 300
---- Ground an enemy hero closes before its hit lands, added to its attack reach (judgement, step 0 as corrected by review
--- 2026-11-03-lane-positioning-step0-9ca4381: idle cores lost 1.6-3 HP-% a second with an enemy hero within 800, 0.2 beyond 1,000).
-local REACT = 150
+--- Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
+-- with a fixed 150: cores held where the hero limit placed them 400-800 from an enemy hero and lost 0.7-1.1 HP-% a second
+-- there, against 0.3 at 800-1,200.
+local REACT_SECS = 1
 local function sub(a, b)
     return {a.x - b.x, a.y - b.y}
 end
@@ -61,9 +62,9 @@ function ____exports.HpMargin(hpFrac)
     end
     return HP_MARGIN * (HP_SAFE - hpFrac) / (HP_SAFE - HP_LOW)
 end
---- How close `self` may stand to an enemy hero: its attack reach to us plus REACT.
+--- How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement.
 function ____exports.HeroReach(____self, enemy)
-    return enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT
+    return enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT_SECS * enemy:GetCurrentMovementSpeed()
 end
 --- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
 -- `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order.
