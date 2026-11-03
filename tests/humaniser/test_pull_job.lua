@@ -99,8 +99,8 @@ do
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local out, wave, ended = {}, {}, nil
-	capture(function()
+	local wave, ended = {}, nil
+	local out = capture(function()
 		while T < 140 and ended == nil do
 			frame(w)
 			-- The wave walks with the hero, so it is at the meet point while the hero watches there.
@@ -112,15 +112,85 @@ do
 			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
 		end
 	end)
+	local watch
+	for _, l in ipairs(lines(out, "pull_watch")) do if field(l, "ph") == "watch" and field(l, "won") == "1" then watch = l end end
+	check("ok pull: a watch sample names one creep of four on the neutral, and the neutral left at its camp (out of nn) on the puller", watch ~= nil
+		and field(watch, "wc") == "4" and field(watch, "nn") == "0" and field(watch, "nt") == "p" and tonumber(field(watch, "nh")) == 0
+		and tonumber(field(watch, "nd")) > 0, watch)
 	local atEnd = ended ~= nil and #lines(out, "pull_job") or -1
 	check("ok pull: the job ended with the wave there", ended ~= nil and #wave == 4, ended)
 	for i = 2, 4 do wave[i].target = kobold end
 	out = run(w, (ended or 0) + 1)
 	check("ok pull: no line while the trail runs", atEnd == 0 and #lines(out, "pull_job") == 0, out[1])
+	local trailed = lines(out, "pull_watch")
+	check("ok pull: the trail goes on sampling, now with all four creeps on the neutral", #trailed >= 1
+		and field(trailed[#trailed], "ph") == "trail" and field(trailed[#trailed], "won") == "4", trailed[#trailed])
 	out = run(w, (ended or 0) + 30)
 	local pulls = lines(out, "pull_job")
 	check("ok pull: one line after the trail, div from the job, dt with the creeps that came later", #pulls == 1
 		and field(pulls[1], "res") == "ok" and tonumber(field(pulls[1], "div")) == 0.25 and tonumber(field(pulls[1], "dt")) == 1, pulls[1])
+end
+
+-- The neutrals walk back and the wave follows them into the camp, out of the meet point's watch radius: it still counts
+-- (pw1: Radiant safe small, camp about 1100 from its meet point, logged undiverted while the camp's neutrals hit our wave;
+-- ~/.dotactl/logs/2026-11-03T00-27-18-pw1_B_on_2.log t=549.2, slot 530.4).
+do
+	local w = world({ reading = OUT })
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local far = math.sqrt((meet.x - SMALL.x) ^ 2 + (meet.y - SMALL.y) ^ 2) > w.H.Lane.Config.Settings().Radii.MeetWatch
+	local wave, ended = {}, nil
+	capture(function()
+		while T < 140 and ended == nil do
+			frame(w)
+			if #wave == 0 and w.H.PullJob.Running(w.sup) then
+				for i = 1, 4 do wave[i] = MakeCreep({ team = 2, x = SMALL.x + 50 * i, y = SMALL.y, target = kobold }) end
+			end
+			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
+		end
+	end)
+	local out = run(w, (ended or 0) + 30)
+	local pulls = lines(out, "pull_job")
+	check("camp fight: the camp lies outside the meet point's watch, and the wave fighting there is diverted", far and #pulls == 1
+		and tonumber(field(pulls[1], "div")) == 1 and tonumber(field(pulls[1], "n")) == 4, pulls[1])
+end
+
+-- An early wave moves the hit earlier (LiveShift): the support leaves that much earlier, so a pull it starts can still be
+-- made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
+-- ~/.dotactl/logs/2026-11-03T00-51-30-pw2_A_on_1.log t=108.8).
+do
+	local function startAt(shift)
+		local w = world({ reading = OUT })
+		local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+		local live = PT.LiveShift
+		PT.LiveShift = function() return shift end
+		local at
+		capture(function() while T < 90 and at == nil do frame(w) if w.H.PullJob.Running(w.sup) then at = T end end end)
+		PT.LiveShift = live
+		return at
+	end
+	local on, early = startAt(0), startAt(-4)
+	check("early wave: the pull starts 4 s earlier than on time", on ~= nil and early ~= nil and math.abs((on - early) - 4) < 0.15, tostring(on) .. " " .. tostring(early))
+	-- Held back (partner low) until 6 s after that early leave time: past the moved hit's late limit (leave + Early 2 +
+	-- JobStartLate 2), short of the unshifted slot's (4 s later): the pull is skipped as late, not started.
+	local w = world({ reading = OUT, coreHp = 30 })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
+	enemy.lane, enemy.pos = Lane.Bot, 3
+	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+	local live = PT.LiveShift
+	PT.LiveShift = function() return -4 end
+	local out = capture(function()
+		while T < 90 do
+			if early ~= nil and T >= early + 6 then enemy.loc = Vector(9000, 9000) end
+			frame(w)
+		end
+	end)
+	PT.LiveShift = live
+	local choice = lines(out, "choice")
+	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
+		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
 end
 
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.

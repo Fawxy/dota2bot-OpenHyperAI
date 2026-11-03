@@ -801,6 +801,25 @@ ____exports.EVENTS = {
         nn = "num",
         dt = "num"
     },
+    pull_watch = {
+        pid = "num",
+        slot = "num",
+        ph = "str",
+        wc = "num",
+        won = "num",
+        whe = "num",
+        wcr = "num",
+        wid = "num",
+        wd = "num",
+        nn = "num",
+        ntp = "num",
+        ntc = "num",
+        ntx = "num",
+        nd = "num",
+        nh = "num",
+        nt = "str",
+        pd = "num"
+    },
     choice = {
         pid = "num",
         kind = "str",

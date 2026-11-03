@@ -31,13 +31,18 @@ export const SETTINGS = {
     PartnerHp: 0.5,
     PartnerRadius: 900,
     PartnerGank: 3,
-    /** Our creeps within MeetWatch of the meet point are watched; a creep attacking a neutral is diverted. Wave size: our
-     *  creeps within WaveSize when the first one is seen diverted (camp_jobs' sample, LaneConfig Radii). */
+    /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
+     *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
+     *  LaneConfig Radii). */
     WatchEvery: 0.25,
     /** After a job that ended ok, keep sampling the wave this long past the later of the job end and the wave's due time:
      *  the job ends 3 s after the wave is due, while its later creeps are still reaching the neutrals (sp2: pulls logged at
      *  div 0.25 moved the lane back the most, `eq` -1.65 in 30 s, about 0.8 of the T1-T1 stretch). */
     TrailSec: 10,
+    /** `ev=pull_watch` cadence: one line per pull per this many seconds from the lead to the end of the trail. */
+    WatchLogEvery: 1,
+    /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
+    WatchNeutralSearch: 3000,
 };
 
 interface Plan {
@@ -60,6 +65,7 @@ interface Pull {
     hit?: boolean;
     idle?: number;
     sampledAt?: number;
+    watchedAt?: number;
     wave: number;
     peak: number;
     near?: number;
@@ -251,22 +257,27 @@ function share(p: Pull): number {
 }
 
 /** Samples a finished pull's wave until its trail ends, then writes its line with `dt`. A new pull's start writes it first. */
-function trail(pid: number, flush: boolean): void {
+function trail(bot: Unit, flush: boolean): void {
+    const pid = bot.GetPlayerID();
     const tr = trailing[pid];
     if (tr === undefined) return;
     if (!flush && DotaTime() < tr.until) {
         sampleWave(tr.pull);
+        watchLine(bot, tr.pull, "trail");
         return;
     }
     trailing[pid] = undefined;
     Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
 }
 
-function laneCreepsNear(center: Vector, radius: number): Unit[] {
+/** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
+ *  into the camp and fights there (pw1: the Radiant safe small camp sits about 1100 from its meet point, so a watch of the
+ *  meet point alone logged those waves as never diverted). */
+function laneCreepsNear(p: Plan, radius: number): Unit[] {
     const out: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
-        if (GetUnitToLocationDistance(c, center) <= radius) out.push(c);
+        if (GetUnitToLocationDistance(c, p.meet) <= radius || GetUnitToLocationDistance(c, p.spawner.location) <= radius) out.push(c);
     }
     return out;
 }
@@ -278,8 +289,9 @@ function onNeutral(c: Unit): boolean {
 
 /** During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
  *  is seen on a neutral). */
-function sample(p: Pull): void {
+function sample(bot: Unit, p: Pull): void {
     if (p.label !== "lead" && p.label !== "watch") return;
+    watchLine(bot, p, p.label);
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
@@ -305,10 +317,92 @@ function sampleWave(p: Pull): void {
 function countDiverted(p: Pull): void {
     const radii = LaneConfig.Settings().Radii;
     let n = 0;
-    for (const c of laneCreepsNear(p.plan.meet, radii.MeetWatch)) if (onNeutral(c)) n++;
+    for (const c of laneCreepsNear(p.plan, radii.MeetWatch)) if (onNeutral(c)) n++;
     if (n === 0) return;
-    if (p.wave === 0) p.wave = math.max(1, laneCreepsNear(p.plan.meet, radii.WaveSize).length);
+    if (p.wave === 0) p.wave = math.max(1, laneCreepsNear(p.plan, radii.WaveSize).length);
     p.peak = math.max(p.peak, math.min(n, p.wave));
+}
+
+function targetKind(bot: Unit, t: Unit | null | undefined): string {
+    if (t === undefined || t === null) return "x";
+    if (t === bot) return "p";
+    if (t.IsHero()) return "h";
+    if (t.IsCreep()) return "c";
+    return "o";
+}
+
+/**
+ * One `ev=pull_watch` sample: what our creeps near the meet point or the camp origin attack, and where the neutrals are and what they attack
+ * (slice support-lane open item: waves at the meet point with neutrals near that never hit one). `nd`, `nh`, `nt` describe
+ * the neutral closest to any of our creeps near the meet point (or to the meet point when none is), counted or not in `nn`.
+ */
+function watchLine(bot: Unit, p: Pull, ph: string): void {
+    const now = DotaTime();
+    if (p.watchedAt !== undefined && now - p.watchedAt < SETTINGS.WatchLogEvery) return;
+    p.watchedAt = now;
+    const radii = LaneConfig.Settings().Radii;
+    const meet = p.plan.meet;
+    const ours = laneCreepsNear(p.plan, radii.MeetWatch);
+    let won = 0;
+    let whe = 0;
+    let wcr = 0;
+    let wid = 0;
+    let wd: number | undefined;
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+        if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
+        const d = GetUnitToLocationDistance(c, meet);
+        if (wd === undefined || d < wd) wd = d;
+    }
+    for (const c of ours) {
+        const t = c.GetAttackTarget();
+        if (t === undefined || t === null) wid++;
+        else if (t.GetTeam() === Team.Neutral) won++;
+        else if (t.IsHero()) whe++;
+        else wcr++;
+    }
+    let nn = 0;
+    let ntp = 0;
+    let ntc = 0;
+    let ntx = 0;
+    let best: Unit | undefined;
+    let nd = math.huge;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive()) continue;
+        let d = GetUnitToLocationDistance(u, meet);
+        if (d > SETTINGS.WatchNeutralSearch) continue;
+        if (d <= radii.WaveSize) {
+            nn++;
+            const k = targetKind(bot, u.GetAttackTarget());
+            if (k === "p") ntp++;
+            else if (k === "c") ntc++;
+            else if (k === "x") ntx++;
+        }
+        for (const c of ours) d = math.min(d, GetUnitToUnitDistance(u, c));
+        if (d < nd) {
+            nd = d;
+            best = u;
+        }
+    }
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    Telemetry.Event("pull_watch", [
+        ["pid", bot.GetPlayerID()],
+        ["slot", p.plan.slot],
+        ["ph", ph],
+        ["wc", ours.length],
+        ["won", won],
+        ["whe", whe],
+        ["wcr", wcr],
+        ["wid", wid],
+        ["wd", r0(wd)],
+        ["nn", nn],
+        ["ntp", ntp],
+        ["ntc", ntc],
+        ["ntx", ntx],
+        ["nd", best !== undefined ? r0(nd) : undefined],
+        ["nh", best !== undefined ? r0(GetUnitToLocationDistance(best, p.plan.spawner.location)) : undefined],
+        ["nt", best !== undefined ? targetKind(bot, best.GetAttackTarget()) : undefined],
+        ["pd", bot.IsAlive() ? r0(GetUnitToLocationDistance(bot, meet)) : undefined],
+    ]);
 }
 
 function verbCamp(p: Plan): JobVerbs.Camp {
@@ -372,13 +466,17 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
-    trail(pid, false);
+    trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    if (now < p.slot - walk - SETTINGS.Early) return false;
+    // Once our wave is out its lead says how early or late it really is (pull_timing's LiveShift); the leave time, the late
+    // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
+    // the hit having moved up to LiveMaxShift earlier).
+    const hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
@@ -396,7 +494,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         return false;
     }
     const why = blocked(bot) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
-    if (now + walk > p.slot + LaneConfig.Settings().Timing.JobStartLate) {
+    if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
     }
@@ -404,9 +502,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         gateWhy[pid] = why;
         return false;
     }
-    // The wave left its barracks by now: its lead says how early or late it really is (pull_timing's LiveShift).
-    const aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
-    trail(pid, true);
+    const aggroAt = hitAt;
+    trail(bot, true);
     const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0 };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
@@ -424,7 +521,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
 export function Step(bot: Unit, host: number): boolean {
     const p = running[bot.GetPlayerID()];
     if (p === undefined) return false;
-    sample(p);
+    sample(bot, p);
     return Tasks.Step(bot, host);
 }
 
