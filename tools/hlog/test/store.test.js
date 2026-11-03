@@ -237,6 +237,26 @@ test('pull_attempts: diverted at div 0.75, the start choice by slot, the lane eq
     assert.strictEqual(rows[1].eq0, null);
 });
 
+test('pull_watch_cases: the arrival sample names why an ok pull was not diverted', () => {
+    const s = new Store(':memory:');
+    const W = (t, slot, f) => `[HEV] t=${t} ev=pull_watch pid=5 slot=${slot} ph=watch ${f}`;
+    const J = (t, slot, div) => `[HEV] t=${t} ev=pull_job pid=5 pos=5 lane=3 camp=1 slot=${slot} res=ok why=ok label=watch div=${div} n=4 left=${slot - 10} away=14 died=0 hit=0 dt=${div}`;
+    const f = log(tmp(), 'w.log', ['[HEV] t=-60 ev=bot pid=5 hero=lion team=2 pos=5 schema=2 build=0123456',
+        '[HEV] t=95 ev=choice pid=5 kind=pull go=1 want=1 src=own lane=3 slot=100 st=OUT',
+        // 100: the wave arrives at 108 with the kobolds back at camp, 900 from it; the earlier sample (wave 600 away) is not the arrival.
+        W(106, 100, 'wc=0 won=0 wd=600 nn=2 ntc=0 nd=300 nh=500 nt=p'), W(108, 100, 'wc=4 won=0 wd=200 nn=0 ntc=0 nd=900 nh=100 nt=x'), J(115, 100, 0),
+        // 200: neutrals 300 from our creeps at arrival and none of ours on them; 300: two of four fought; 400: diverted.
+        W(208, 200, 'wc=4 won=0 wd=100 nn=3 ntc=0 nd=300 nh=900 nt=p'), J(215, 200, 0),
+        W(308, 300, 'wc=4 won=2 wd=100 nn=3 ntc=1 nd=200 nh=900 nt=c'), J(315, 300, 0.5),
+        W(408, 400, 'wc=4 won=4 wd=100 nn=3 ntc=1 nd=100 nh=900 nt=c'), J(415, 400, 1),
+        // 500: the wave never came within 300 of the meet point.
+        W(508, 500, 'wc=0 won=0 wd=700 nn=3 nd=700 nh=900 nt=p'), J(515, 500, 0)]);
+    s.ingestAll([f]);
+    const rows = s.query('SELECT slot, cause, a_nd, arr_after FROM pull_watch_cases ORDER BY slot');
+    assert.deepStrictEqual(rows.map(r => [r.slot, r.cause]), [[100, 'home'], [200, 'near-no-fight'], [300, 'partial'], [400, 'diverted'], [500, 'no-wave']]);
+    assert.deepStrictEqual([rows[0].a_nd, rows[0].arr_after], [900, 8]);
+});
+
 test('fields named like a row key do not overwrite it', () => {
     const dir = tmp();
     const s = new Store(':memory:', { views: null });
