@@ -927,6 +927,10 @@ export const EVENTS = {
     // MeetWatch (800) of it, where ev=pull_watch's nn uses WaveSize (1200) (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
     // dt: div's share kept sampling for PullJob TrailSec after the job (the wave goes on fighting once the puller has left;
     // the line is written when that trail ends, so `t` is up to TrailSec after the job end); absent on a failed job.
+    // cn, cs, chp, cv, cdmg, php: the camp and the puller at the start, as on ev=choice (on a
+    // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
+    // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
+    // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
     pull_job: {
         pid: "num",
         pos: "num",
@@ -946,6 +950,12 @@ export const EVENTS = {
         wd: "num",
         nn: "num",
         dt: "num",
+        cn: "num",
+        cs: "num",
+        chp: "num",
+        cv: "num",
+        cdmg: "num",
+        php: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -974,7 +984,10 @@ export const EVENTS = {
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
     // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv
-    // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost).
+    // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
+    // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
+    // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
+    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve).
     choice: {
         pid: "num",
         kind: "str",
@@ -990,6 +1003,12 @@ export const EVENTS = {
         cf: "num",
         tw: "num",
         ms: "num",
+        cn: "num",
+        cs: "num",
+        chp: "num",
+        cv: "num",
+        cdmg: "num",
+        php: "num",
     },
     gank: {
         pid: "num",

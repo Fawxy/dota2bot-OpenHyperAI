@@ -5,7 +5,7 @@
  * `pull_timing`), walks it with the job verb `pull` and logs one `ev=pull_job` line per started pull.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -43,7 +43,43 @@ export const SETTINGS = {
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
     WatchNeutralSearch: 3000,
+    /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
+     *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
+     *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
+     *  counts double (pw3_C_on_3 t=262.5: 8 neutrals, the one death); with none returned, one spawn at DefaultDps. All
+     *  `judgement`. */
+    HitShare: 0.5,
+    StartReserve: 0.3,
+    DefaultDps: { small: 40, medium: 60, large: 80, ancient: 150 } as Record<Camps.CampType, number>,
+    /** Seconds of exposure when the camp has no wave timing. */
+    DefaultExposure: 8,
+    /** After the hit (lead and watch), the puller steps back towards our tower when neutrals hit it and its HP after
+     *  BailGrace seconds of their damage is under BailReserve of its max; it keeps stepping back while they still hit it, at
+     *  most BailFor seconds, then the job ends `interrupted:bail`. The horizon is short on purpose: a puller walking the lead
+     *  takes a small part of the camp's damage, so projecting it to the wave's arrival bailed at full HP (pc1: 12 bails,
+     *  all about 1 s after the hit, at 58-100% HP). `judgement`. */
+    BailReserve: 0.25,
+    BailGrace: 2,
+    BailFor: 6,
+    /** Neutrals within this of the puller are the ones that can be hitting it. */
+    BailScan: 1200,
+    /** With no tower of ours on the lane, step this far straight away from the neutrals. */
+    BailStep: 700,
 };
+
+/** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the camp's
+ *  origin visible to our team (its neutrals stand there; the box corners plus margin were never all visible in pc1). */
+interface CampState {
+    n: number;
+    seen: number;
+    hp: number;
+    vis: boolean;
+    /** The neutrals returned, for the damage estimate. */
+    units: Unit[];
+    /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
+    dmg?: number;
+    php?: number;
+}
 
 interface Plan {
     camp: Camps.CampJobData;
@@ -70,6 +106,8 @@ interface Pull {
     peak: number;
     near?: number;
     neutrals: number;
+    hitAt: number;
+    start: CampState;
 }
 
 interface Decision {
@@ -157,6 +195,85 @@ function travel(bot: Unit, p: Plan): number {
     return (GetUnitToLocationDistance(bot, p.stand) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
 }
 
+export function CampStateOf(spawner: Camps.Spawner): CampState {
+    const m = LaneConfig.Settings().Radii.BoxMargin;
+    const lo = spawner.min;
+    const hi = spawner.max;
+    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), units: [] };
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive()) continue;
+        const p = u.GetLocation();
+        if (p === undefined || p === null) continue;
+        if (p.x < lo.x - m || p.x > hi.x + m || p.y < lo.y - m || p.y > hi.y + m) continue;
+        s.n++;
+        if (u.CanBeSeen()) s.seen++;
+        s.hp += u.GetHealth();
+        s.units.push(u);
+    }
+    return s;
+}
+
+/**
+ * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
+ * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
+ * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`).
+ */
+export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
+    const period = LaneConfig.Settings().Timing.PullPeriod;
+    if (s.n === 0 && s.vis && math.floor(hitAt / period) <= math.floor(now / period)) return "empty";
+    return undefined;
+}
+
+/** The camp's expected damage on `bot` over the pull (SETTINGS HitShare, DefaultDps). */
+export function CampDamage(bot: Unit, s: CampState, type: Camps.CampType, waveAfter: number | undefined): number {
+    const exposure = (waveAfter ?? SETTINGS.DefaultExposure) * SETTINGS.HitShare;
+    if (s.units.length === 0) return SETTINGS.DefaultDps[type] * exposure;
+    let dmg = 0;
+    for (const u of s.units) dmg += u.GetEstimatedDamageToTarget(true, bot, exposure, DamageType.All);
+    return dmg;
+}
+
+/** The puller cannot take the camp: its expected damage would leave less than StartReserve of max HP. */
+function campDmgGate(bot: Unit, dmg: number): string | undefined {
+    return bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.StartReserve ? "camp-dmg" : undefined;
+}
+
+/** Where the puller steps back to while neutrals are about to kill it (SETTINGS BailReserve), else undefined. */
+function bailPoint(bot: Unit): Vector | undefined {
+    if (!bot.IsAlive()) return undefined;
+    const at = bot.GetLocation();
+    let dps = 0;
+    let cx = 0;
+    let cy = 0;
+    let k = 0;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive() || u.GetAttackTarget() !== bot || GetUnitToUnitDistance(u, bot) > SETTINGS.BailScan) continue;
+        dps += u.GetEstimatedDamageToTarget(true, bot, 1, DamageType.All);
+        const l = u.GetLocation();
+        cx += l.x;
+        cy += l.y;
+        k++;
+    }
+    if (k === 0) return undefined;
+    if (bot.GetHealth() - dps * SETTINGS.BailGrace >=bot.GetMaxHealth() * SETTINGS.BailReserve) return undefined;
+    const tower = ourTower(bot);
+    if (tower !== undefined) return tower;
+    const dx = at.x - cx / k;
+    const dy = at.y - cy / k;
+    const d = math.max(1, math.sqrt(dx * dx + dy * dy));
+    return Vector(at.x + (dx * SETTINGS.BailStep) / d, at.y + (dy * SETTINGS.BailStep) / d, at.z);
+}
+
+/** Our first standing tower on the bot's lane, outermost first. */
+function ourTower(bot: Unit): Vector | undefined {
+    const ids = bot.GetAssignedLane() === Lane.Top ? [Tower.Top1, Tower.Top2, Tower.Top3] : [Tower.Bot1, Tower.Bot2, Tower.Bot3];
+    for (const id of ids) {
+        const t = GetTower(bot.GetTeam(), id);
+        if (t !== null && t !== undefined && t.IsAlive()) return t.GetLocation();
+    }
+    return undefined;
+}
+
 /** The reading wants a pull: our clash point moves out (towards their tower), or holds past the middle on their side. */
 export function Wanted(r: LanePush.Reading | undefined): boolean {
     if (r === undefined) return false;
@@ -188,7 +305,19 @@ function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
 }
 
-function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined): void {
+function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    return [
+        ["cn", s.n],
+        ["cs", s.seen],
+        ["chp", r0(s.hp)],
+        ["cv", s.vis ? 1 : 0],
+        ["cdmg", r0(s.dmg)],
+        ["php", r0(s.php)],
+    ];
+}
+
+function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined, camp: CampState): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
     Telemetry.Event("choice", [
@@ -206,6 +335,7 @@ function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined
         ["cf", r1(r?.cf)],
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
         ["ms", r?.ms],
+        ...campFields(camp),
     ]);
 }
 
@@ -243,6 +373,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["idle", p.idle],
         ["wd", p.near !== undefined ? math.floor(p.near + 0.5) : undefined],
         ["nn", p.neutrals],
+        ...campFields(p.start),
     ];
     if (!r.success) {
         Telemetry.Event("pull_job", fields);
@@ -422,9 +553,12 @@ function verbCamp(p: Plan): JobVerbs.Camp {
     };
 }
 
-function verbPlan(p: Plan, aggroAt: number): JobVerbs.PullPlan {
+function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
+    const p = pull.plan;
     const s = LaneConfig.Settings();
     return {
+        bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
+        bailFor: SETTINGS.BailFor,
         camp: verbCamp(p),
         aggroAt,
         lead: p.lead as unknown as Lib.Vec[],
@@ -447,7 +581,7 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
         },
         urgent: ctx.urgent,
     };
-    return yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(p.plan, aggroAt), hooks);
+    return yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(bot, p, aggroAt), hooks);
 }
 
 /** The pull side of the lane path: our walking wave is everything of ours short of the meet point (the counterfactual). */
@@ -484,16 +618,19 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         decided[pid] = d;
         gateWhy[pid] = undefined;
     }
+    const camp = CampStateOf(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
         handled[pid] = p.slot;
         gateWhy[pid] = undefined;
-        choiceLine(bot, d!, go, why);
+        choiceLine(bot, d!, go, why, camp);
     };
     if (!d.want) {
         done(false, d.reading === undefined ? "no-read" : "lane");
         return false;
     }
-    const why = blocked(bot) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
+    camp.php = bot.GetHealth();
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -504,7 +641,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0 };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );
@@ -521,6 +658,19 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
 export function Step(bot: Unit, host: number): boolean {
     const p = running[bot.GetPlayerID()];
     if (p === undefined) return false;
+    // Before the hit the walk may bring the camp into sight: stop there rather than hit an empty camp or one it cannot take.
+    if (p.label === undefined || p.label === "travel" || p.label === "wait") {
+        const s = CampStateOf(p.plan.spawner);
+        s.dmg = CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter);
+        s.php = bot.GetHealth();
+        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
+        if (why !== undefined) {
+            // The pull_job line then carries the camp that cancelled it, not the one at the start.
+            p.start = s;
+            End(bot, why);
+            return false;
+        }
+    }
     sample(bot, p);
     return Tasks.Step(bot, host);
 }

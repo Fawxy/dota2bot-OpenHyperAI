@@ -56,6 +56,8 @@ function CreepMeta:GetTeam() return self.team end
 -- Creep and tower damage default to 0 so worlds that do not set it keep the kill check's incoming damage at 0.
 function CreepMeta:GetAttackDamage() return self.dmg or 0 end
 function CreepMeta:GetAttackSpeed() return self.aspd or 1 end
+-- `dps`: the damage per second Valve's estimate gives against any target (default 0).
+function CreepMeta:GetEstimatedDamageToTarget(current, target, duration) return (self.dps or 0) * duration end
 function CreepMeta:IsHero() return false end
 function CreepMeta:IsCreep() return true end
 function CreepMeta:IsNull() return self.removed == true end

@@ -9,6 +9,10 @@ local Lane, FARM, LANING = dota.Lane, dota.BotMode.Farm, dota.BotMode.Laning
 local SMALL = Vector(-1600, -6200)
 local PATH = { { -9400, -5000 }, { 7000, -5000 } }
 
+-- The camp's box out of our team's sight (an empty box then says nothing about the camp), as in lane before a ward or a
+-- puller is near; `visible` worlds see it.
+local function campFog(v) return math.abs(v.x - SMALL.x) < 600 and math.abs(v.y - SMALL.y) < 600 end
+
 local function capture(fn)
 	local printed, old = {}, print
 	print = function(s) table.insert(printed, tostring(s)) end
@@ -31,6 +35,8 @@ local function world(o)
 	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 } } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	FOGGED = not o.visible and campFog or nil
 	CURRENT_TEAM = 2
 	OBSERVER = 1
 	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
@@ -39,7 +45,7 @@ local function world(o)
 	H.PullJob.ResetCache()
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
-	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y) })
+	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
 	local core = MakeUnit({ pid = 1, team = 2, loc = Vector(0, -5000), hp = o.coreHp })
 	core.lane, core.pos = Lane.Bot, 1
@@ -71,7 +77,6 @@ end
 local function run(w, untilT) return capture(function() while T < untilT do frame(w) end end) end
 
 local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, tower = false, cf = -420, ms = 3.1 }
-
 -- The lane pushes out: at the leave time the support reads the lane once, starts, walks to the camp under the farm host.
 do
 	local w = world({ reading = OUT })
@@ -240,6 +245,93 @@ do
 	check("switch on: a human-ordered pull still starts", w.H.Lane.CampJobs.Start(w.sup, { kind = "full_pull", campIdx = 1, forced = true }))
 	w = world({ reading = OUT, on = false })
 	check("switch off: no pull job, the old full pull starts", not w.H.PullJob.Applies(w.sup) and w.H.Lane.CampJobs.Start(w.sup, { kind = "full_pull", campIdx = 1 }))
+end
+
+-- An empty camp the team sees whole is not pulled, unless a spawn minute comes before the hit (pw3: `no-camp` 19 of 89
+-- starts); out of sight, an empty box says nothing and the pull goes (the first test above).
+do
+	local w = world({ reading = OUT, visible = true })
+	local out = run(w, 90)
+	local choice = lines(out, "choice")
+	check("empty, seen: no start, why=empty, the probe says nothing there in a visible box", #lines(out, "job") == 0 and #choice == 1
+		and field(choice[1], "why") == "empty" and field(choice[1], "cn") == "0" and field(choice[1], "cv") == "1", choice[1])
+	local s = { n = 0, seen = 0, hp = 0, vis = true, units = {} }
+	check("empty, seen, a spawn minute before the hit: no gate", w.H.PullJob.CampGate(s, 58, 63) == nil and w.H.PullJob.CampGate(s, 61, 78) == "empty")
+end
+
+-- A camp the puller cannot take is not pulled: its estimated damage over the pull would leave less than StartReserve of
+-- max HP. Eight neutrals (a stacked camp) against a single spawn's three, same puller (pw3_C_on_3 t=262.5, the one death:
+-- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log).
+do
+	local function camp(k)
+		local w = world({ reading = OUT, visible = true })
+		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
+		local out = run(w, 80)
+		return lines(out, "choice")[1], #lines(out, "job")
+	end
+	local stacked, jobsS = camp(8)
+	local single, jobs1 = camp(3)
+	check("stacked camp in sight: no start, why=camp-dmg, the probe counts its 8 neutrals", jobsS == 0 and field(stacked, "why") == "camp-dmg"
+		and field(stacked, "cn") == "8" and field(stacked, "cv") == "1", stacked)
+	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "3", single)
+end
+
+-- A camp out of sight at the start (the API returns nothing, so the estimate is one spawn at DefaultDps) that the walk
+-- finds stacked: the job ends `cancelled:camp-dmg` before the hit, and its line carries the camp it saw on the walk.
+-- This is the in-game path for a fogged stacked camp like the pw3 death (review 2026-11-03-pull-camp-5f7d8a4 M1).
+do
+	local w = world({ reading = OUT })
+	local seen
+	local out = capture(function()
+		while T < 120 and not (seen and not w.H.PullJob.Running(w.sup)) do
+			if not seen and w.H.PullJob.Running(w.sup) then
+				seen = T
+				for i = 1, 8 do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
+			end
+			frame(w)
+		end
+	end)
+	local pull = lines(out, "pull_job")[1]
+	check("walk finds a stacked camp: cancelled:camp-dmg before the hit, with the walk's camp", seen ~= nil
+		and field(pull, "why") == "cancelled:camp-dmg" and field(pull, "cn") == "8" and (field(pull, "label") or "travel") ~= "aggro", pull)
+end
+
+-- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked
+-- towards our tower and the job's pull_job line.
+local function hitAfterPull(hp, dps)
+	local w = world({ reading = OUT })
+	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 90, team = 2, loc = Vector(3000, -5500) })
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local bailed
+	local out = capture(function()
+		while T < 140 and not ((bailed or T > 79) and not w.H.PullJob.Running(w.sup)) do
+			if T >= 79 and not bailed then kobold.dps, w.sup.hp, kobold.loc = dps, hp, Vector(w.sup.loc.x + 100, w.sup.loc.y) end
+			local n0 = #ACTIONS
+			frame(w)
+			for i = n0 + 1, #ACTIONS do
+				local a = ACTIONS[i]
+				if a.pid == 5 and a.kind == "MoveToLocation" and a.args[1].x == 3000 then bailed = true end
+			end
+			if bailed then kobold.target = nil end
+		end
+	end)
+	TOWERS_W[2][dota.Tower.Bot1] = nil
+	return bailed, lines(out, "pull_job")[1]
+end
+
+-- About to die (60 HP, 40 dps): it steps back while hit, then the job ends `interrupted:bail` with the puller alive.
+do
+	local bailed, pull = hitAfterPull(60, 40)
+	check("bail: the puller walked towards our tower while hit", bailed == true)
+	check("bail: the job ended interrupted:bail, alive", field(pull, "why") == "interrupted:bail" and field(pull, "died") == "0", pull)
+end
+
+-- A puller with HP to spare keeps leading although the camp's dps over the whole lead would take it under the reserve:
+-- pc1 bailed 12 times about 1 s after the hit at 58-100% HP (~/.dotactl/logs/2026-11-03T02-37-32-pc1_B_on_2.log t=590.3).
+do
+	local bailed, pull = hitAfterPull(330, 80)
+	check("no bail with HP to spare: the lead goes on", not bailed and field(pull, "why") ~= "interrupted:bail", pull)
 end
 
 finish()

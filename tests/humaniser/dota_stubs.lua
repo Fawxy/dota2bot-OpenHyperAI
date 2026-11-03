@@ -54,7 +54,7 @@ function Unit:IsChanneling() return false end
 function Unit:GetActiveMode() return self.mode end
 function Unit:GetActiveModeDesire() return self.desire or 0 end
 function Unit:GetHealth() return self.hp end
-function Unit:GetMaxHealth() return 100 end
+function Unit:GetMaxHealth() return self.maxhp or 100 end
 function Unit:GetMana() return self.mana or 100 end
 function Unit:GetMaxMana() return self.maxmana or 100 end
 function Unit:GetRespawnTime() return self.respawn or 0 end

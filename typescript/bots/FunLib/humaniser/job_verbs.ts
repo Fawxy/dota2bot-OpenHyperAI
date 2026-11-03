@@ -47,6 +47,7 @@ const STAND_STUCK_S = 1.5;
 const STAND_STUCK_GAIN = 25;
 const LEAD_MAX_AFTER_AGGRO = 15;
 const WATCH_SEC = 8;
+const BAIL_FOR = 6;
 /** Seconds early to arrive at a rune (players aim for 3-5 s). */
 const RUNE_EARLY = 4;
 /** Fraction of `early` kept at skill 0 (1 at skill 1): low-skill bots cut rune timings finer. */
@@ -349,6 +350,25 @@ export interface PullPlan extends AggroOpts {
     watchUntil?: number;
     /** Absolute time the lead must be done by. Default aggroAt + 15. */
     leadDeadline?: number;
+    /** Checked every frame of the lead and watch: a point to step back to while the camp is hitting the bot too hard (the
+     *  host's call), else undefined. The bot walks to it while it is returned, at most `bailFor` s, then the verb fails
+     *  `interrupted` "bail". */
+    bail?: (this: void) => Vec | undefined;
+    /** Default 6. */
+    bailFor?: number;
+}
+
+function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
+    h.label?.("bail");
+    const until = now() + (p.bailFor ?? BAIL_FOR);
+    while (now() < until) {
+        if (!bot.IsAlive()) return fail("dead");
+        const to = p.bail!();
+        if (to === undefined) break;
+        bot.Action_MoveToLocation(to);
+        yield;
+    }
+    return fail("interrupted", "bail");
 }
 
 /**
@@ -374,7 +394,9 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
             timeout: math.huge,
             stuckSecs: 3,
             deadline: p.leadDeadline ?? p.aggroAt + err + LEAD_MAX_AFTER_AGGRO,
+            interruptIf: p.bail !== undefined ? () => p.bail!() !== undefined : undefined,
         });
+        if (!led.success && led.reason === "interrupted" && p.bail !== undefined) return yield* stepBack(bot, p, h);
         if (!led.success) return fail(led.reason, "lead");
     }
     h.urgent?.(false);
@@ -385,6 +407,7 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
         if (now() >= until) return ok();
+        if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
         if (dist(bot.GetLocation(), spot) > arrive) bot.Action_MoveToLocation(spot);
         else hold(bot, "job_watch");
         yield;

@@ -915,7 +915,13 @@
    "idle": "num",
    "wd": "num",
    "nn": "num",
-   "dt": "num"
+   "dt": "num",
+   "cn": "num",
+   "cs": "num",
+   "chp": "num",
+   "cv": "num",
+   "cdmg": "num",
+   "php": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -950,7 +956,13 @@
    "mv": "num",
    "cf": "num",
    "tw": "num",
-   "ms": "num"
+   "ms": "num",
+   "cn": "num",
+   "cs": "num",
+   "chp": "num",
+   "cv": "num",
+   "cdmg": "num",
+   "php": "num"
   },
   "gank": {
    "pid": "num",
