@@ -924,7 +924,7 @@ export const EVENTS = {
     // div: the largest share of our wave seen attacking a neutral during the watch (creeps within the watch radius of the meet
     // point or of the camp origin), n: that wave's size (0: never seen);
     // wd: the nearest any of our lane creeps came to the meet point during lead and watch, nn: the most neutrals seen within
-    // the watch radius of it (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
+    // MeetWatch (800) of it, where ev=pull_watch's nn uses WaveSize (1200) (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
     // dt: div's share kept sampling for PullJob TrailSec after the job (the wave goes on fighting once the puller has left;
     // the line is written when that trail ends, so `t` is up to TrailSec after the job end); absent on a failed job.
     pull_job: {

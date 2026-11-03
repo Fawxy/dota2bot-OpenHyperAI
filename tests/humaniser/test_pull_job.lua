@@ -173,6 +173,24 @@ do
 	end
 	local on, early = startAt(0), startAt(-4)
 	check("early wave: the pull starts 4 s earlier than on time", on ~= nil and early ~= nil and math.abs((on - early) - 4) < 0.15, tostring(on) .. " " .. tostring(early))
+	-- Held back (partner low) until 6 s after that early leave time: past the moved hit's late limit (leave + Early 2 +
+	-- JobStartLate 2), short of the unshifted slot's (4 s later): the pull is skipped as late, not started.
+	local w = world({ reading = OUT, coreHp = 30 })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
+	enemy.lane, enemy.pos = Lane.Bot, 3
+	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+	local live = PT.LiveShift
+	PT.LiveShift = function() return -4 end
+	local out = capture(function()
+		while T < 90 do
+			if early ~= nil and T >= early + 6 then enemy.loc = Vector(9000, 9000) end
+			frame(w)
+		end
+	end)
+	PT.LiveShift = live
+	local choice = lines(out, "choice")
+	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
+		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
 end
 
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.

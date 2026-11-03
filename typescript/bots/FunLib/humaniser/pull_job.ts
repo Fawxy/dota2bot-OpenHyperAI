@@ -31,8 +31,9 @@ export const SETTINGS = {
     PartnerHp: 0.5,
     PartnerRadius: 900,
     PartnerGank: 3,
-    /** Our creeps within MeetWatch of the meet point are watched; a creep attacking a neutral is diverted. Wave size: our
-     *  creeps within WaveSize when the first one is seen diverted (camp_jobs' sample, LaneConfig Radii). */
+    /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
+     *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
+     *  LaneConfig Radii). */
     WatchEvery: 0.25,
     /** After a job that ended ok, keep sampling the wave this long past the later of the job end and the wave's due time:
      *  the job ends 3 s after the wave is due, while its later creeps are still reaching the neutrals (sp2: pulls logged at
@@ -331,7 +332,7 @@ function targetKind(bot: Unit, t: Unit | null | undefined): string {
 }
 
 /**
- * One `ev=pull_watch` sample: what our creeps near the meet point attack, and where the neutrals are and what they attack
+ * One `ev=pull_watch` sample: what our creeps near the meet point or the camp origin attack, and where the neutrals are and what they attack
  * (slice support-lane open item: waves at the meet point with neutrals near that never hit one). `nd`, `nh`, `nt` describe
  * the neutral closest to any of our creeps near the meet point (or to the meet point when none is), counted or not in `nn`.
  */
