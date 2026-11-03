@@ -24,7 +24,7 @@ const lines = [
     line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
     line(0, 'bot pid=4 hero=h4 team=2 pos=4'),
     line(0, 'bot pid=9 hero=h9 team=3 pos=5'),
-    // tower beats a core that swung on it.
+    // under our tower (place tower) and a core swung on it: core_on there.
     line(100, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none tw=1 p1d=300 p1r=150 p1t=1'),
     // core_on: the core was attacking it (p1a set, p1t 0).
     line(110, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none tw=0 p1d=300 p1r=150 p1t=0 p1a=0.4'),
@@ -59,19 +59,36 @@ const lines = [
     line(700, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none tw=1'),
 ];
 
-test('each no-one death gets the first cause that holds: tower, core_on, pulled (the other team\'s ok pull, 0-30 s, within 800), core_reach, sup_reach (a live snap within 1.5 s), camp (within 600), no_reach', () => {
+test('each no-one death gets a place from tw and the first cause that holds: core_on, pulled (the other team\'s ok pull, 0-30 s, within 800), core_reach, sup_reach (a live snap within 1.5 s), camp (within 600), no_reach', () => {
     const s = store(lines);
-    const v = s.query('SELECT t, cause, core FROM lane_waste ORDER BY t');
-    assert.deepStrictEqual(v.map(r => [r.t, r.cause]), [
-        [100, 'tower'], [110, 'core_on'], [121, 'core_reach'], [131, 'sup_reach'], [141, 'no_reach'],
-        [150, 'camp'], [160, 'no_reach'], [169, 'core_reach'], [200, 'pulled'], [201, 'core_on'], [202, 'core_reach'], [212, 'core_reach'], [700, 'tower'],
+    const v = s.query('SELECT t, place, cause, core FROM lane_waste ORDER BY t');
+    assert.deepStrictEqual(v.map(r => [r.t, r.place, r.cause]), [
+        [100, 'tower', 'core_on'], [110, 'open', 'core_on'], [121, 'open', 'core_reach'], [131, 'open', 'sup_reach'],
+        [141, 'open', 'no_reach'], [150, 'open', 'camp'], [160, 'untagged', 'no_reach'], [169, 'open', 'core_reach'],
+        [200, 'open', 'pulled'], [201, 'open', 'core_on'], [202, 'open', 'core_reach'], [212, 'open', 'core_reach'],
+        [700, 'tower', 'no_reach'],
     ]);
     assert.strictEqual(v.find(r => r.t === 141).core, 'near');
     assert.strictEqual(v.find(r => r.t === 160).core, 'none');
-    const [r] = s.query(sql, {});
+    const out = s.query(sql, {});
     s.db.close();
-    assert.deepStrictEqual([r.deaths, r.waste, r.tower, r.core_on, r.pulled, r.core_reach, r.sup_reach, r.camp, r.no_reach, r.nr_core_near, r.untagged],
-        [13, 12, 1, 2, 1, 4, 1, 1, 2, 1, 1], 'until 600 drops t=700; the t=160 death has no tw');
+    const cols = r => [r.deaths, r.waste, r.core_on, r.pulled, r.core_reach, r.sup_reach, r.camp, r.no_reach, r.nr_core_near];
+    assert.deepStrictEqual(out.map(r => [r.place, ...cols(r)]), [
+        ['tower', 1, 1, 1, 0, 0, 0, 0, 0, 0],
+        ['open', 11, 10, 2, 1, 4, 1, 1, 1, 1],
+        ['untagged', 1, 1, 0, 0, 0, 0, 0, 1, 0],
+    ], 'until 600 drops t=700; our last hit at t=220 is an open death, not waste');
+});
+
+test('a build without tw has only untagged rows, so its tower creeps never read as open-lane waste', () => {
+    const s = store([
+        line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
+        line(100, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none p1d=300 p1r=150 p1t=1'),
+        line(110, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=1 p1d=100 p1r=150 p1t=1'),
+    ]);
+    const out = s.query(sql, {});
+    s.db.close();
+    assert.deepStrictEqual(out.map(r => [r.place, r.deaths, r.waste, r.core_on]), [['untagged', 2, 1, 1]]);
 });
 
 test('the camp table equals camp_boxes.json spawn points', () => {
