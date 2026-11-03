@@ -927,7 +927,8 @@ export const EVENTS = {
     // MeetWatch (800) of it, where ev=pull_watch's nn uses WaveSize (1200) (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
     // dt: div's share kept sampling for PullJob TrailSec after the job (the wave goes on fighting once the puller has left;
     // the line is written when that trail ends, so `t` is up to TrailSec after the job end); absent on a failed job.
-    // cn, cs, chp, cv, cdmg, php: the camp and the puller at the start, as on ev=choice. why cancelled:empty /
+    // cn, cs, chp, cv, cdmg, php: the camp and the puller at the start, as on ev=choice (on a
+    // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
     // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
     pull_job: {

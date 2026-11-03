@@ -661,8 +661,12 @@ export function Step(bot: Unit, host: number): boolean {
     // Before the hit the walk may bring the camp into sight: stop there rather than hit an empty camp or one it cannot take.
     if (p.label === undefined || p.label === "travel" || p.label === "wait") {
         const s = CampStateOf(p.plan.spawner);
-        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter));
+        s.dmg = CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter);
+        s.php = bot.GetHealth();
+        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
+            // The pull_job line then carries the camp that cancelled it, not the one at the start.
+            p.start = s;
             End(bot, why);
             return false;
         }

@@ -1086,15 +1086,15 @@ function ____exports.Step(bot, host)
     end
     if p.label == nil or p.label == "travel" or p.label == "wait" then
         local s = ____exports.CampStateOf(p.plan.spawner)
+        s.dmg = ____exports.CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter)
+        s.php = bot:GetHealth()
         local why = ____exports.CampGate(
             s,
             DotaTime(),
             p.hitAt
-        ) or campDmgGate(
-            bot,
-            ____exports.CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter)
-        )
+        ) or campDmgGate(bot, s.dmg)
         if why ~= nil then
+            p.start = s
             ____exports.End(bot, why)
             return false
         end

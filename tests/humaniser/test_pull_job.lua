@@ -264,16 +264,36 @@ end
 -- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log).
 do
 	local function camp(k)
-		local w = world({ reading = OUT, supHp = 100 })
-		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 6 end
+		local w = world({ reading = OUT, visible = true })
+		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
 		local out = run(w, 80)
 		return lines(out, "choice")[1], #lines(out, "job")
 	end
 	local stacked, jobsS = camp(8)
 	local single, jobs1 = camp(3)
-	check("stacked camp: no start, why=camp-dmg, the probe counts its 8 neutrals in fog", jobsS == 0 and field(stacked, "why") == "camp-dmg"
-		and field(stacked, "cn") == "8" and field(stacked, "cv") == "0", stacked)
+	check("stacked camp in sight: no start, why=camp-dmg, the probe counts its 8 neutrals", jobsS == 0 and field(stacked, "why") == "camp-dmg"
+		and field(stacked, "cn") == "8" and field(stacked, "cv") == "1", stacked)
 	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "3", single)
+end
+
+-- A camp out of sight at the start (the API returns nothing, so the estimate is one spawn at DefaultDps) that the walk
+-- finds stacked: the job ends `cancelled:camp-dmg` before the hit, and its line carries the camp it saw on the walk.
+-- This is the in-game path for a fogged stacked camp like the pw3 death (review 2026-11-03-pull-camp-5f7d8a4 M1).
+do
+	local w = world({ reading = OUT })
+	local seen
+	local out = capture(function()
+		while T < 120 and not (seen and not w.H.PullJob.Running(w.sup)) do
+			if not seen and w.H.PullJob.Running(w.sup) then
+				seen = T
+				for i = 1, 8 do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
+			end
+			frame(w)
+		end
+	end)
+	local pull = lines(out, "pull_job")[1]
+	check("walk finds a stacked camp: cancelled:camp-dmg before the hit, with the walk's camp", seen ~= nil
+		and field(pull, "why") == "cancelled:camp-dmg" and field(pull, "cn") == "8" and (field(pull, "label") or "travel") ~= "aggro", pull)
 end
 
 -- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked
