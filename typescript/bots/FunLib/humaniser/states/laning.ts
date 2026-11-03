@@ -161,6 +161,27 @@ function claimOf(pid: number, creep: Lib.TaskCreep): LaneClaims.Claim | undefine
     return undefined;
 }
 
+/**
+ * Where each bot's attempt creep was last seen alive, for its ev=lh (`cx`, `cy`, `ca`): a creep that died ends the attempt,
+ * and a dead creep's handle no longer answers, so the end reads the place from the last scan that offered it.
+ */
+const seen: Record<number, { creep: Lib.TaskCreep; x: number; y: number; t: number } | undefined> = {};
+
+function noteSeen(pid: number, creep: Lib.TaskCreep): void {
+    const at = creep.GetLocation();
+    seen[pid] = { creep, x: at.x, y: at.y, t: DotaTime() };
+}
+
+function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number | undefined, number | undefined] {
+    if (creep.IsAlive()) {
+        const at = creep.GetLocation();
+        return [math.floor(at.x), math.floor(at.y), 0];
+    }
+    const s = seen[pid];
+    if (s === undefined || s.creep !== creep) return [undefined, undefined, undefined];
+    return [math.floor(s.x), math.floor(s.y), math.floor((DotaTime() - s.t) * 100) / 100];
+}
+
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
     return LanePick.Choose(targets, current, claimsFor(bot));
 }
@@ -197,6 +218,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         within: Settings().LastHitWithin,
         pick: (targets, current) => {
             const chosen = choose(bot, targets, current);
+            if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
             // A scan that stays on the attempt's creep is not a pick (the offers at the pick stay the attempt's).
             if (current === undefined || chosen === undefined || chosen.creep !== current.creep) {
                 LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
@@ -220,6 +242,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             const claim = OwnsSupportHits(bot) ? claimOf(bot.GetPlayerID(), t.creep) : undefined;
+            const [cx, cy, ca] = placeOf(bot.GetPlayerID(), t.creep);
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
                 ["kind", t.kind],
@@ -234,6 +257,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["walk", math.floor(t.walk * 100) / 100],
                 ["dies", t.dies === math.huge ? -1 : math.floor(t.dies * 100) / 100],
                 ["claim", claim],
+                ["cx", cx],
+                ["cy", cy],
+                ["ca", ca],
                 ["msg", res.message],
             ]);
         },

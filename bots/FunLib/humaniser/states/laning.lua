@@ -264,6 +264,37 @@ local function claimOf(pid, creep)
     end
     return nil
 end
+--- Where each bot's attempt creep was last seen alive, for its ev=lh (`cx`, `cy`, `ca`): a creep that died ends the attempt,
+-- and a dead creep's handle no longer answers, so the end reads the place from the last scan that offered it.
+local seen = {}
+local function noteSeen(pid, creep)
+    local at = creep:GetLocation()
+    seen[pid] = {
+        creep = creep,
+        x = at.x,
+        y = at.y,
+        t = DotaTime()
+    }
+end
+local function placeOf(pid, creep)
+    if creep:IsAlive() then
+        local at = creep:GetLocation()
+        return {
+            math.floor(at.x),
+            math.floor(at.y),
+            0
+        }
+    end
+    local s = seen[pid]
+    if s == nil or s.creep ~= creep then
+        return {nil, nil, nil}
+    end
+    return {
+        math.floor(s.x),
+        math.floor(s.y),
+        math.floor((DotaTime() - s.t) * 100) / 100
+    }
+end
 local function choose(bot, targets, current)
     return LanePick.Choose(
         targets,
@@ -330,6 +361,12 @@ local body = __TS__Generator(function(bot, ctx)
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets, current)
                 local chosen = choose(bot, targets, current)
+                if chosen ~= nil then
+                    noteSeen(
+                        bot:GetPlayerID(),
+                        chosen.creep
+                    )
+                end
                 if current == nil or chosen == nil or chosen.creep ~= current.creep then
                     LanePick.NotePick(
                         bot:GetPlayerID(),
@@ -375,6 +412,10 @@ local body = __TS__Generator(function(bot, ctx)
                     ____OwnsSupportHits_result_12 = nil
                 end
                 local claim = ____OwnsSupportHits_result_12
+                local cx, cy, ca = unpack(placeOf(
+                    bot:GetPlayerID(),
+                    t.creep
+                ))
                 Telemetry.Event(
                     "lh",
                     {
@@ -403,6 +444,9 @@ local body = __TS__Generator(function(bot, ctx)
                             t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
                         },
                         {"claim", claim},
+                        {"cx", cx},
+                        {"cy", cy},
+                        {"ca", ca},
                         {"msg", res.message}
                     }
                 )

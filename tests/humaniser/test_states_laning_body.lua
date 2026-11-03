@@ -215,6 +215,10 @@ do
 	for _, l in ipairs(events) do if l:find("ev=lh ", 1, true) then lh = l end end
 	if lh == nil then for _, l in ipairs(events) do print("  " .. l) end end
 	check("body: ev=lh reported ok", lh ~= nil and lh:find("result=ok", 1, true) ~= nil and lh:find("kind=lasthit", 1, true) ~= nil, lh)
+	-- The creep is dead at the end, so its place comes from the last scan that offered it, with that reading's age.
+	local ca = lh and tonumber(lh:match(" ca=([%d.]+)"))
+	check("body: ev=lh places the dead creep from its last scan", lh ~= nil and lh:find(" cx=-200 ", 1, true) ~= nil
+		and lh:find(" cy=0 ", 1, true) ~= nil and ca ~= nil and ca > 0, lh)
 	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
 end
 

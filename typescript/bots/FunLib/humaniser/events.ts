@@ -836,6 +836,10 @@ export const EVENTS = {
         dies: "num",
         /** A support's claim on the creep (states/lane_claims): `deny`, `free` (no core near enough), `busy` (its core in an attempt on another creep). */
         claim: "str",
+        /** The creep's place at the end (alive), or at the last scan that offered it (dead): `ca` seconds since it was read (0 alive). */
+        cx: "num",
+        cy: "num",
+        ca: "num",
         msg: "str",
     },
     /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
