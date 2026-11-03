@@ -73,8 +73,97 @@ function ____exports.NoteOf(pid, creep)
     local n = notes[pid]
     return n ~= nil and n.creep == creep and n or nil
 end
---- The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
--- attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
+--- The verdict on one tower's target and, on `go`, the pre-hit. A function with early returns rather than a loop body with
+-- `continue`: TSTL's Lua 5.1 `continue` (a `repeat ... until true` block) put a statement after the loop's `break`, which LuaJIT
+-- (Dota) refuses to compile, so the module and everything requiring it failed to load in game (prhchk1, 04/11/2026).
+local function consider(bot, me, verbs, target)
+    if not target:IsAlive() or target:GetTeam() == bot:GetTeam() or not target:IsCreep() or target:IsHero() then
+        return {nil, nil}
+    end
+    local creep = target
+    local speed = math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    local walk = math.max(
+        0,
+        GetUnitToUnitDistance(bot, target) - bot:GetAttackRange()
+    ) / speed
+    if walk > LanePick.MAX_WALK then
+        return {{verdict = "far"}, nil}
+    end
+    local f = verbs.hpForecast(me, creep, ____exports.HORIZON)
+    if f.unphasedTower then
+        return {{verdict = "phase", creep = creep}, nil}
+    end
+    local t0 = walk + verbs.ownHitTime(me, creep)
+    local ____this_1
+    ____this_1 = me
+    local ____opt_0 = ____this_1.GetSecondsPerAttack
+    local period = ____opt_0 and ____opt_0(____this_1) or 1.7
+    local ____this_3
+    ____this_3 = me
+    local ____opt_2 = ____this_3.GetBaseDamageVariance
+    local variance = ____opt_2 and ____opt_2(____this_3) or 0
+    local lo = target:GetActualIncomingDamage(
+        bot:GetAttackDamage() - variance,
+        DamageType.Physical
+    )
+    local hi = target:GetActualIncomingDamage(
+        bot:GetAttackDamage() + variance,
+        DamageType.Physical
+    )
+    local function hpAt(t)
+        return verbs.forecastHp(f, t)
+    end
+    local verdict = ____exports.Decide(
+        hpAt,
+        ____exports.HORIZON,
+        t0,
+        period,
+        lo,
+        hi
+    )
+    if verdict == "go" then
+        for ____, o in ipairs(verbs.laneTargets(me, {within = t0 + period, deny = false})) do
+            if o.creep ~= creep and LanePick.Reachable(o) and o.eta <= t0 + period then
+                verdict = "lh"
+            end
+        end
+    end
+    local note = {
+        verdict = verdict,
+        creep = creep,
+        hp = f.hp,
+        t0 = t0,
+        lo = lo
+    }
+    if verdict ~= "go" then
+        return {note, nil}
+    end
+    local dies = math.huge
+    do
+        local t = 0
+        while t <= ____exports.HORIZON and dies == math.huge do
+            if hpAt(t) <= 0 then
+                dies = t
+            end
+            t = t + ____exports.STEP
+        end
+    end
+    return {
+        note,
+        {
+            creep = creep,
+            kind = "prehit",
+            eta = walk,
+            due = 0,
+            walk = walk,
+            dies = dies,
+            ranged = LanePick.IsRanged(creep)
+        }
+    }
+end
 function ____exports.Find(bot, verbs)
     if not ____exports.Applies(bot) then
         return nil
@@ -84,106 +173,13 @@ function ____exports.Find(bot, verbs)
     local best
     local note
     for ____, tower in ipairs(bot:GetNearbyTowers(TOWER_RADIUS, false) or ({})) do
-        do
-            local __continue20
-            repeat
-                local target = tower:GetAttackTarget()
-                if target == nil or target == nil or not target:IsAlive() or target:GetTeam() == bot:GetTeam() then
-                    __continue20 = true
-                    break
-                end
-                if not target:IsCreep() or target:IsHero() then
-                    __continue20 = true
-                    break
-                end
-                local creep = target
-                local speed = math.max(
-                    100,
-                    bot:GetCurrentMovementSpeed()
-                )
-                local walk = math.max(
-                    0,
-                    GetUnitToUnitDistance(bot, target) - bot:GetAttackRange()
-                ) / speed
-                if walk > LanePick.MAX_WALK then
-                    note = note or ({verdict = "far"})
-                    __continue20 = true
-                    break
-                end
-                local f = verbs.hpForecast(me, creep, ____exports.HORIZON)
-                if f.unphasedTower then
-                    note = {verdict = "phase", creep = creep}
-                    __continue20 = true
-                    break
-                end
-                local t0 = walk + verbs.ownHitTime(me, creep)
-                local ____opt_0 = me.GetSecondsPerAttack
-                local period = ____opt_0 and ____opt_0(me) or 1.7
-                local ____opt_2 = me.GetBaseDamageVariance
-                local variance = ____opt_2 and ____opt_2(me) or 0
-                local lo = target:GetActualIncomingDamage(
-                    bot:GetAttackDamage() - variance,
-                    DamageType.Physical
-                )
-                local hi = target:GetActualIncomingDamage(
-                    bot:GetAttackDamage() + variance,
-                    DamageType.Physical
-                )
-                local function hpAt(t)
-                    return verbs.forecastHp(f, t)
-                end
-                local verdict = ____exports.Decide(
-                    hpAt,
-                    ____exports.HORIZON,
-                    t0,
-                    period,
-                    lo,
-                    hi
-                )
-                if verdict == "go" then
-                    for ____, o in ipairs(verbs.laneTargets(me, {within = t0 + period, deny = false})) do
-                        if o.creep ~= creep and LanePick.Reachable(o) and o.eta <= t0 + period then
-                            verdict = "lh"
-                        end
-                    end
-                end
-                note = {
-                    verdict = verdict,
-                    creep = creep,
-                    hp = f.hp,
-                    t0 = t0,
-                    lo = lo
-                }
-                if verdict ~= "go" then
-                    __continue20 = true
-                    break
-                end
-                local dies = math.huge
-                do
-                    local t = 0
-                    while t <= ____exports.HORIZON do
-                        if hpAt(t) <= 0 then
-                            dies = t
-                            break
-                        end
-                        t = t + ____exports.STEP
-                    end
-                end
-                best = {
-                    creep = creep,
-                    kind = "prehit",
-                    eta = walk,
-                    due = 0,
-                    walk = walk,
-                    dies = dies,
-                    ranged = LanePick.IsRanged(creep)
-                }
-                break
-                __continue20 = true
-            until true
-            if not __continue20 then
-                break
+        local target = tower:GetAttackTarget()
+        if best == nil and target ~= nil and target ~= nil then
+            local n, pre = unpack(consider(bot, me, verbs, target))
+            if n ~= nil and (note == nil or n.verdict ~= "far") then
+                note = n
             end
+            best = pre
         end
     end
     if note ~= nil then

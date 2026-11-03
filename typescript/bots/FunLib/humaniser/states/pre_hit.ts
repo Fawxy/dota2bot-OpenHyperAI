@@ -107,6 +107,39 @@ export function NoteOf(pid: number, creep: Lib.TaskCreep): Note | undefined {
  * The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
  * attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
  */
+/**
+ * The verdict on one tower's target and, on `go`, the pre-hit. A function with early returns rather than a loop body with
+ * `continue`: TSTL's Lua 5.1 `continue` (a `repeat ... until true` block) put a statement after the loop's `break`, which LuaJIT
+ * (Dota) refuses to compile, so the module and everything requiring it failed to load in game (prhchk1, 04/11/2026).
+ */
+function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, target: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
+    if (!target.IsAlive() || target.GetTeam() === bot.GetTeam() || !target.IsCreep() || target.IsHero()) return [undefined, undefined];
+    const creep = target as unknown as Lib.TaskCreep;
+    const speed = math.max(100, bot.GetCurrentMovementSpeed());
+    const walk = math.max(0, GetUnitToUnitDistance(bot, target) - bot.GetAttackRange()) / speed;
+    if (walk > LanePick.MAX_WALK) return [{ verdict: "far" }, undefined];
+    const f = verbs.hpForecast(me, creep, HORIZON);
+    if (f.unphasedTower) return [{ verdict: "phase", creep }, undefined];
+    const t0 = walk + verbs.ownHitTime(me, creep);
+    const period = me.GetSecondsPerAttack?.() ?? 1.7;
+    const variance = me.GetBaseDamageVariance?.() ?? 0;
+    const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
+    const hi = target.GetActualIncomingDamage(bot.GetAttackDamage() + variance, DamageType.Physical);
+    const hpAt = (t: number): number => verbs.forecastHp(f, t);
+    let verdict = Decide(hpAt, HORIZON, t0, period, lo, hi);
+    if (verdict === "go") {
+        // Our attack is busy until t0 + period: a last hit on another creep due before then would be lost to it.
+        for (const o of verbs.laneTargets(me, { within: t0 + period, deny: false })) {
+            if (o.creep !== creep && LanePick.Reachable(o) && o.eta <= t0 + period) verdict = "lh";
+        }
+    }
+    const note: Note = { verdict, creep, hp: f.hp, t0, lo };
+    if (verdict !== "go") return [note, undefined];
+    let dies = math.huge;
+    for (let t = 0; t <= HORIZON && dies === math.huge; t += STEP) if (hpAt(t) <= 0) dies = t;
+    return [note, { creep, kind: "prehit", eta: walk, due: 0, walk, dies, ranged: LanePick.IsRanged(creep) }];
+}
+
 export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget | undefined {
     if (!Applies(bot)) return undefined;
     const pid = bot.GetPlayerID();
@@ -115,44 +148,12 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
     let note: Note | undefined;
     for (const tower of bot.GetNearbyTowers(TOWER_RADIUS, false) ?? []) {
         const target = tower.GetAttackTarget();
-        if (target === undefined || target === null || !target.IsAlive() || target.GetTeam() === bot.GetTeam()) continue;
-        if (!target.IsCreep() || target.IsHero()) continue;
-        const creep = target as unknown as Lib.TaskCreep;
-        const speed = math.max(100, bot.GetCurrentMovementSpeed());
-        const walk = math.max(0, GetUnitToUnitDistance(bot, target) - bot.GetAttackRange()) / speed;
-        if (walk > LanePick.MAX_WALK) {
-            note = note ?? { verdict: "far" };
-            continue;
+        if (best === undefined && target !== undefined && target !== null) {
+            const [n, pre] = consider(bot, me, verbs, target);
+            // A far creep's verdict never hides a nearer one's.
+            if (n !== undefined && (note === undefined || n.verdict !== "far")) note = n;
+            best = pre;
         }
-        const f = verbs.hpForecast(me, creep, HORIZON);
-        if (f.unphasedTower) {
-            note = { verdict: "phase", creep };
-            continue;
-        }
-        const t0 = walk + verbs.ownHitTime(me, creep);
-        const period = me.GetSecondsPerAttack?.() ?? 1.7;
-        const variance = me.GetBaseDamageVariance?.() ?? 0;
-        const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
-        const hi = target.GetActualIncomingDamage(bot.GetAttackDamage() + variance, DamageType.Physical);
-        const hpAt = (t: number): number => verbs.forecastHp(f, t);
-        let verdict = Decide(hpAt, HORIZON, t0, period, lo, hi);
-        if (verdict === "go") {
-            // Our attack is busy until t0 + period: a last hit on another creep due before then would be lost to it.
-            for (const o of verbs.laneTargets(me, { within: t0 + period, deny: false })) {
-                if (o.creep !== creep && LanePick.Reachable(o) && o.eta <= t0 + period) verdict = "lh";
-            }
-        }
-        note = { verdict, creep, hp: f.hp, t0, lo };
-        if (verdict !== "go") continue;
-        let dies = math.huge;
-        for (let t = 0; t <= HORIZON; t += STEP) {
-            if (hpAt(t) <= 0) {
-                dies = t;
-                break;
-            }
-        }
-        best = { creep, kind: "prehit", eta: walk, due: 0, walk, dies, ranged: LanePick.IsRanged(creep) };
-        break;
     }
     if (note !== undefined) {
         notes[pid] = note;

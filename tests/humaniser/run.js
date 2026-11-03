@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { newState, doFile, getGlobal } = require('./harness');
+const { compileAll } = require('./luajit_compile');
 
 const here = __dirname;
 
@@ -27,7 +28,7 @@ function runOne(file) {
     }
 }
 
-function runAll(files, jobs, verbose) {
+function runAll(files, jobs, verbose, full) {
     const results = new Array(files.length);
     let next = 0, printed = 0, failedFiles = 0, checks = 0, failedChecks = 0;
     const flush = () => {
@@ -48,7 +49,19 @@ function runAll(files, jobs, verbose) {
             }
         }
         if (printed === files.length) {
-            console.log(`files ${files.length}, failing ${failedFiles}; checks ${checks}, failing ${failedChecks}`);
+            // The full suite also compiles every bot file with the real LuaJIT (skipped without it): Dota's VM refuses Lua
+            // that fengari and luaparse accept (luajit_compile.js).
+            let compile = '';
+            if (full) {
+                const r = compileAll(path.join(here, '..', '..', 'bots'));
+                if (r === undefined) compile = '; luajit compile skipped (not installed)';
+                else {
+                    for (const f of r.failures) console.log(`LUAJIT FAIL: ${f}`);
+                    if (r.failures.length > 0) failedFiles++;
+                    compile = `; luajit compiled ${r.files} bot files, ${r.failures.length} failing`;
+                }
+            }
+            console.log(`files ${files.length}, failing ${failedFiles}; checks ${checks}, failing ${failedChecks}${compile}`);
             process.exit(failedFiles > 0 ? 1 : 0);
         }
     };
@@ -83,5 +96,5 @@ if (args[0] === '--one') {
     }
     const files = args.length > 0 ? args.map(f => path.resolve(f)) : fs.readdirSync(here).filter(f => /^test_.*\.lua$/.test(f)).map(f => path.join(here, f));
     if (files.length === 0) process.exit(0);
-    runAll(files, jobs, verbose);
+    runAll(files, jobs, verbose, args.length === 0);
 }
