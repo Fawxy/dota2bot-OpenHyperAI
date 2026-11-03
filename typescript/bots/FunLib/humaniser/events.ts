@@ -942,9 +942,12 @@ export const EVENTS = {
     // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh), ht the game time the verb's hit
     // was confirmed (label lead began; absent when it never got there). The camp's own neutrals are tagged at ht (in its
     // box, or attacking the puller within PullJob TagRadius); on them, sampled every PullJob WatchEvery to the trail's end:
-    // gh the farthest any came from the camp origin, na the first time one came within PullJob Acquire of our lane creeps,
-    // gu the first time none attacked the puller or any creep while one was still alive (they gave up), gd the nearest of
-    // them to our lane creeps at gu, wa the first time our lane creeps came within PullJob ArriveR of the meet point.
+    // g4 the first time one was past PullJob Left (400, EC-084: the give-up timer starts there), gh the farthest any came
+    // from the camp origin, na the first time one came within PullJob Acquire of our lane creeps, gu the first time every
+    // tagged neutral that went past Left was back PullJob HomeMargin from its own farthest point with no attack target (they
+    // gave up; a chasing neutral out of attack range also reads no target, so movement decides), gd the nearest of them to
+    // our lane creeps at gu, wa the first time a lane creep not already there at ht came within PullJob ArriveR of the meet
+    // point.
     pull_job: {
         pid: "num",
         pos: "num",
@@ -972,6 +975,7 @@ export const EVENTS = {
         php: "num",
         sh: "num",
         ht: "num",
+        g4: "num",
         gh: "num",
         na: "num",
         gu: "num",
@@ -983,8 +987,8 @@ export const EVENTS = {
     // else, wid idle; wd the nearest of our lane creeps to the meet point. Neutrals within WaveSize of it: nn, of them ntp on the
     // puller, ntc on a creep, ntx idle; the neutral within WatchNeutralSearch nearest our creeps there (the meet point when none): nd its distance, nh its
     // distance from its camp origin, nt its target (p puller, h other hero, c creep, o other, x none). pd: the puller to the meet point.
-    // Slice pull-diag: the camp's own neutrals tagged at the hit (see pull_job): tn alive, tp of them on the puller, tc on a
-    // creep, td the nearest of them to our lane creeps near the watch (to the meet point when none), th the farthest of them
+    // Slice pull-diag: the camp's own neutrals tagged at the hit (see pull_job): tn alive, tp of them attacking the puller
+    // (in attack range; a chase out of range reads no target, as for ntp/nt), tc on a creep, td the nearest of them to our lane creeps near the watch (to the meet point when none), th the farthest of them
     // from the camp origin. nd/nh/nt above may name another camp's neutral (nh over 3000 in banked logs).
     pull_watch: {
         pid: "num",

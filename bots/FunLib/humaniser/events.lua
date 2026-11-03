@@ -813,6 +813,7 @@ ____exports.EVENTS = {
         php = "num",
         sh = "num",
         ht = "num",
+        g4 = "num",
         gh = "num",
         na = "num",
         gu = "num",

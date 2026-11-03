@@ -48,6 +48,11 @@ export const SETTINGS = {
     TagRadius: 1200,
     Acquire: 500,
     ArriveR: 300,
+    /** A tagged neutral counts once it is Left from its camp origin (EC-084: the 5 s give-up timer starts past 400); it is
+     *  walking home once it is HomeMargin back from its own farthest point. A chasing neutral out of attack range reports
+     *  no attack target (review 2026-11-04-pull-diag H1), so giving up is read from movement. */
+    Left: 400,
+    HomeMargin: 150,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -116,6 +121,11 @@ interface Pull {
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
     tagged?: Unit[];
+    /** Per tagged neutral: its farthest distance from the camp origin so far. */
+    peaks?: Map<Unit, number>;
+    /** Lane creeps already within ArriveR of the meet point at the hit (they do not set `wa`). */
+    early?: Unit[];
+    g4?: number;
     gh?: number;
     na?: number;
     gu?: number;
@@ -389,6 +399,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
         ["ht", p.hat],
+        ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
         ["na", p.na],
         ["gu", p.gu],
@@ -456,7 +467,7 @@ function sample(bot: Unit, p: Pull): void {
     for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
     p.neutrals = math.max(p.neutrals, nn);
     countDiverted(p);
-    trackTagged(bot, p);
+    pcall(trackTagged, bot, p);
 }
 
 function sampleWave(bot: Unit, p: Pull): void {
@@ -464,7 +475,7 @@ function sampleWave(bot: Unit, p: Pull): void {
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
-    trackTagged(bot, p);
+    pcall(trackTagged, bot, p);
 }
 
 /** At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only. */
@@ -476,6 +487,11 @@ function tagCamp(bot: Unit, p: Pull): void {
         if (u.GetAttackTarget() === bot) tagged.push(u);
     }
     p.tagged = tagged;
+    p.peaks = new Map();
+    p.early = [];
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+        if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
+    }
 }
 
 interface TaggedState {
@@ -505,19 +521,35 @@ function taggedState(bot: Unit, p: Pull, ours: Unit[]): TaggedState {
 
 function trackTagged(bot: Unit, p: Pull): void {
     const now = DotaTime();
-    if (p.wa === undefined) {
+    if (p.wa === undefined && p.early !== undefined) {
         for (const c of GetUnitList(UnitType.AlliedCreeps)) {
-            if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) {
+            if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName()) || p.early.indexOf(c) >= 0) continue;
+            if (GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) {
                 p.wa = now;
                 break;
             }
         }
     }
-    if (p.tagged === undefined) return;
+    if (p.tagged === undefined || p.peaks === undefined) return;
     const s = taggedState(bot, p, laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch));
     if (s.farthest !== undefined && (p.gh === undefined || s.farthest > p.gh)) p.gh = s.farthest;
     if (p.na === undefined && s.nearest !== undefined && s.nearest <= SETTINGS.Acquire && s.alive > 0) p.na = now;
-    if (p.gu === undefined && s.alive > 0 && s.onPuller === 0 && s.onCreep === 0) {
+    // Only neutrals that left their camp count (box members that never followed stay out); give-up is every one of them
+    // back HomeMargin from its own peak with no attack target at all.
+    let left = 0;
+    let home = 0;
+    for (const u of p.tagged) {
+        if (!u.IsAlive()) continue;
+        const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
+        const peak = math.max(p.peaks.get(u) ?? 0, h);
+        p.peaks.set(u, peak);
+        if (peak <= SETTINGS.Left) continue;
+        if (p.g4 === undefined) p.g4 = now;
+        left++;
+        const t = u.GetAttackTarget();
+        if (h < peak - SETTINGS.HomeMargin && (t === undefined || t === null)) home++;
+    }
+    if (p.gu === undefined && left > 0 && home === left) {
         p.gu = now;
         p.gd = s.nearest;
     }
@@ -670,7 +702,8 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
         label: (l) => {
             ctx.label(l);
             p.label = l;
-            if (l === "lead" && p.hat === undefined) tagCamp(bot, p);
+            // Diagnostics only: an error here must not end the pull (review 2026-11-04-pull-diag L3).
+            if (l === "lead" && p.hat === undefined) pcall(tagCamp, bot, p);
         },
         urgent: ctx.urgent,
     };

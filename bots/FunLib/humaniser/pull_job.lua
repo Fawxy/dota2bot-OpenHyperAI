@@ -50,10 +50,11 @@ local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
     return -1
 end
 
-local function __TS__StringAccess(self, index)
-    if index >= 0 and index < #self then
-        return string.sub(self, index + 1, index + 1)
-    end
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
 end
 
 local __TS__Symbol, Symbol
@@ -72,6 +73,200 @@ do
         species = __TS__Symbol("Symbol.species"),
         toStringTag = __TS__Symbol("Symbol.toStringTag")
     }
+end
+
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local Map
+do
+    Map = __TS__Class()
+    Map.name = "Map"
+    function Map.prototype.____constructor(self, entries)
+        self[Symbol.toStringTag] = "Map"
+        self.items = {}
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if entries == nil then
+            return
+        end
+        local iterable = entries
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                local value = result.value
+                self:set(value[1], value[2])
+            end
+        else
+            local array = entries
+            for ____, kvp in ipairs(array) do
+                self:set(kvp[1], kvp[2])
+            end
+        end
+    end
+    function Map.prototype.clear(self)
+        self.items = {}
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Map.prototype.delete(self, key)
+        local contains = self:has(key)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[key]
+            local previous = self.previousKey[key]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[key] = nil
+            self.previousKey[key] = nil
+        end
+        self.items[key] = nil
+        return contains
+    end
+    function Map.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, self.items[key], key, self)
+        end
+    end
+    function Map.prototype.get(self, key)
+        return self.items[key]
+    end
+    function Map.prototype.has(self, key)
+        return self.nextKey[key] ~= nil or self.lastKey == key
+    end
+    function Map.prototype.set(self, key, value)
+        local isNewValue = not self:has(key)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        self.items[key] = value
+        if self.firstKey == nil then
+            self.firstKey = key
+            self.lastKey = key
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = key
+            self.previousKey[key] = self.lastKey
+            self.lastKey = key
+        end
+        return self
+    end
+    Map.prototype[Symbol.iterator] = function(self)
+        return self:entries()
+    end
+    function Map.prototype.entries(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, items[key]}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.values(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = items[key]}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    Map[Symbol.species] = Map
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
 end
 
 local function __TS__DelegatedYield(iterable)
@@ -208,16 +403,16 @@ function sampleWave(bot, p)
     end
     p.sampledAt = now
     countDiverted(p)
-    trackTagged(bot, p)
+    pcall(trackTagged, bot, p)
 end
 function taggedState(bot, p, ours)
     local s = {alive = 0, onPuller = 0, onCreep = 0}
     for ____, u in ipairs(p.tagged or ({})) do
         do
-            local __continue102
+            local __continue105
             repeat
                 if not u:IsAlive() then
-                    __continue102 = true
+                    __continue105 = true
                     break
                 end
                 s.alive = s.alive + 1
@@ -244,9 +439,9 @@ function taggedState(bot, p, ours)
                 if s.farthest == nil or h > s.farthest then
                     s.farthest = h
                 end
-                __continue102 = true
+                __continue105 = true
             until true
-            if not __continue102 then
+            if not __continue105 then
                 break
             end
         end
@@ -255,15 +450,28 @@ function taggedState(bot, p, ours)
 end
 function trackTagged(bot, p)
     local now = DotaTime()
-    if p.wa == nil then
+    if p.wa == nil and p.early ~= nil then
         for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
-            if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
-                p.wa = now
-                break
+            do
+                local __continue116
+                repeat
+                    if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) or __TS__ArrayIndexOf(p.early, c) >= 0 then
+                        __continue116 = true
+                        break
+                    end
+                    if GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
+                        p.wa = now
+                        break
+                    end
+                    __continue116 = true
+                until true
+                if not __continue116 then
+                    break
+                end
             end
         end
     end
-    if p.tagged == nil then
+    if p.tagged == nil or p.peaks == nil then
         return
     end
     local s = taggedState(
@@ -280,7 +488,42 @@ function trackTagged(bot, p)
     if p.na == nil and s.nearest ~= nil and s.nearest <= ____exports.SETTINGS.Acquire and s.alive > 0 then
         p.na = now
     end
-    if p.gu == nil and s.alive > 0 and s.onPuller == 0 and s.onCreep == 0 then
+    local left = 0
+    local home = 0
+    for ____, u in ipairs(p.tagged) do
+        do
+            local __continue123
+            repeat
+                if not u:IsAlive() then
+                    __continue123 = true
+                    break
+                end
+                local h = GetUnitToLocationDistance(u, p.plan.spawner.location)
+                local peak = math.max(
+                    p.peaks:get(u) or 0,
+                    h
+                )
+                p.peaks:set(u, peak)
+                if peak <= ____exports.SETTINGS.Left then
+                    __continue123 = true
+                    break
+                end
+                if p.g4 == nil then
+                    p.g4 = now
+                end
+                left = left + 1
+                local t = u:GetAttackTarget()
+                if h < peak - ____exports.SETTINGS.HomeMargin and (t == nil or t == nil) then
+                    home = home + 1
+                end
+                __continue123 = true
+            until true
+            if not __continue123 then
+                break
+            end
+        end
+    end
+    if p.gu == nil and left > 0 and home == left then
         p.gu = now
         p.gd = s.nearest
     end
@@ -338,19 +581,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue133
+            local __continue143
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue133 = true
+                    __continue143 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue133 = true
+                __continue143 = true
             until true
-            if not __continue133 then
+            if not __continue143 then
                 break
             end
         end
@@ -375,15 +618,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue143
+            local __continue153
             repeat
                 if not u:IsAlive() then
-                    __continue143 = true
+                    __continue153 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue143 = true
+                    __continue153 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -410,9 +653,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue143 = true
+                __continue153 = true
             until true
-            if not __continue143 then
+            if not __continue153 then
                 break
             end
         end
@@ -420,8 +663,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_17 = Telemetry.Event
-    local ____array_16 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_18 = Telemetry.Event
+    local ____array_17 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -442,22 +685,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_13
-    if best ~= nil then
-        ____temp_13 = r0(nd)
-    else
-        ____temp_13 = nil
-    end
-    __TS__SparseArrayPush(____array_16, {"nd", ____temp_13})
     local ____temp_14
     if best ~= nil then
-        ____temp_14 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_14 = r0(nd)
     else
         ____temp_14 = nil
     end
+    __TS__SparseArrayPush(____array_17, {"nd", ____temp_14})
+    local ____temp_15
+    if best ~= nil then
+        ____temp_15 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+    else
+        ____temp_15 = nil
+    end
     __TS__SparseArrayPush(
-        ____array_16,
-        {"nh", ____temp_14},
+        ____array_17,
+        {"nh", ____temp_15},
         {
             "nt",
             best ~= nil and targetKind(
@@ -466,20 +709,20 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_15
+    local ____bot_IsAlive_result_16
     if bot:IsAlive() then
-        ____bot_IsAlive_result_15 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_16 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_15 = nil
+        ____bot_IsAlive_result_16 = nil
     end
     __TS__SparseArrayPush(
-        ____array_16,
-        {"pd", ____bot_IsAlive_result_15},
+        ____array_17,
+        {"pd", ____bot_IsAlive_result_16},
         unpack(taggedFields(bot, p, ours))
     )
-    ____Telemetry_Event_17(
+    ____Telemetry_Event_18(
         "pull_watch",
-        {__TS__SparseArraySpread(____array_16)}
+        {__TS__SparseArraySpread(____array_17)}
     )
 end
 function taggedFields(bot, p, ours)
@@ -527,6 +770,8 @@ ____exports.SETTINGS = {
     TagRadius = 1200,
     Acquire = 500,
     ArriveR = 300,
+    Left = 400,
+    HomeMargin = 150,
     HitShare = 0.5,
     StartReserve = 0.3,
     DefaultDps = {small = 40, medium = 60, large = 80, ancient = 150},
@@ -985,6 +1230,7 @@ local function finish(bot, p, r, label)
             math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
         },
         {"ht", p.hat},
+        {"g4", p.g4},
         {
             "gh",
             p.gh ~= nil and math.floor(p.gh + 0.5) or nil
@@ -1076,7 +1322,7 @@ local function sample(bot, p)
     end
     p.neutrals = math.max(p.neutrals, nn)
     countDiverted(p)
-    trackTagged(bot, p)
+    pcall(trackTagged, bot, p)
 end
 --- At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only.
 local function tagCamp(bot, p)
@@ -1101,6 +1347,14 @@ local function tagCamp(bot, p)
         end
     end
     p.tagged = tagged
+    p.peaks = __TS__New(Map)
+    p.early = {}
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
+            local ____p_early_13 = p.early
+            ____p_early_13[#____p_early_13 + 1] = c
+        end
+    end
 end
 local function verbCamp(p)
     local radii = LaneConfig.Settings().Radii
@@ -1141,7 +1395,7 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
             ctx.label(l)
             p.label = l
             if l == "lead" and p.hat == nil then
-                tagCamp(bot, p)
+                pcall(tagCamp, bot, p)
             end
         end,
         urgent = ctx.urgent
