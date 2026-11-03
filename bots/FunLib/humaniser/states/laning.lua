@@ -233,8 +233,37 @@ local function claimsFor(bot)
         return ____temp_11
     end
 end
---- The claim on the creep of each support's last pick, for its ev=lh (`claim`): held until that creep's attempt reports.
+--- The claims on each support's last few picks, for its ev=lh (`claim`): a retarget picks the next creep before the attempt it
+-- replaces reports, so the claim is looked up by creep.
 local claims = {}
+local CLAIMS_KEPT = 4
+local function noteClaim(pid, creep, claim)
+    local list = claims[pid]
+    if list == nil then
+        list = {}
+        claims[pid] = list
+    end
+    list[#list + 1] = {creep = creep, claim = claim}
+    if #list > CLAIMS_KEPT then
+        table.remove(list, 1)
+    end
+end
+local function claimOf(pid, creep)
+    local list = claims[pid]
+    if list == nil then
+        return nil
+    end
+    do
+        local i = #list - 1
+        while i >= 0 do
+            if list[i + 1].creep == creep then
+                return list[i + 1].claim
+            end
+            i = i - 1
+        end
+    end
+    return nil
+end
 local function choose(bot, targets, current)
     return LanePick.Choose(
         targets,
@@ -309,14 +338,15 @@ local body = __TS__Generator(function(bot, ctx)
                         chosen
                     )
                     if chosen ~= nil and ____exports.OwnsSupportHits(bot) then
-                        claims[bot:GetPlayerID()] = {
-                            creep = chosen.creep,
-                            claim = LaneClaims.SupportClaim(
+                        noteClaim(
+                            bot:GetPlayerID(),
+                            chosen.creep,
+                            LaneClaims.SupportClaim(
                                 bot,
                                 chosen,
                                 ____exports.Settings().LastHitWithin
                             )
-                        }
+                        )
                     end
                 end
                 return chosen
@@ -335,14 +365,16 @@ local body = __TS__Generator(function(bot, ctx)
             dropLost = ____exports.OwnsSupportHits(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
-                local held = claims[bot:GetPlayerID()]
-                local ____temp_12
-                if held ~= nil and held.creep == t.creep then
-                    ____temp_12 = held.claim
+                local ____OwnsSupportHits_result_12
+                if ____exports.OwnsSupportHits(bot) then
+                    ____OwnsSupportHits_result_12 = claimOf(
+                        bot:GetPlayerID(),
+                        t.creep
+                    )
                 else
-                    ____temp_12 = nil
+                    ____OwnsSupportHits_result_12 = nil
                 end
-                local claim = ____temp_12
+                local claim = ____OwnsSupportHits_result_12
                 Telemetry.Event(
                     "lh",
                     {

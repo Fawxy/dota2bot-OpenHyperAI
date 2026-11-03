@@ -50,6 +50,8 @@ do
 	check("claims: a claimed last hit beats a deny due sooner", Pick.Choose({ d2, e, claimed }, nil, mine) == claimed)
 	-- A waited-on creep the claims no longer give the bot (its core became free for it) is left for the best that is mine.
 	check("claims: a waited-on creep no longer mine is left for a deny", Pick.Choose({ e, d }, e, denies) == d)
+	-- ...and with nothing else mine the answer is nil, which the engine's laneFarm (dropLost) takes as a release.
+	check("claims: a waited-on creep no longer mine, nothing else mine: released (nil)", Pick.Choose({ e }, e, denies) == nil)
 end
 
 -- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even

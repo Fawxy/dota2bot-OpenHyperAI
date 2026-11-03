@@ -33,8 +33,9 @@ export interface LaneFarmOpts {
     retarget?: boolean;
     /**
      * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
-     * has nothing else, instead of waiting out its eta + 1.5 s. A creep drops out of the offers when the others' damage
-     * will kill it before a swing ordered now lands. Default false.
+     * has nothing else, instead of waiting out its eta + 1.5 s, and when its creep is still offered but `pick(offers,
+     * current)` answers undefined (the caller releases it). A creep drops out of the offers when the others' damage will kill
+     * it before a swing ordered now lands. Default false.
      */
     dropLost?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
@@ -103,6 +104,12 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         for (const o of offered) if (o.creep === current.creep) still = o;
         if (still !== undefined) {
             const next = opts.pick(offered, still);
+            // With dropLost, a pick that no longer answers the creep it waits on releases it (the caller's claim on it ended,
+            // or it can no longer be reached): the attempt ends sw=0 before its swing.
+            if (next === undefined && opts.dropLost) {
+                dropped = true;
+                return true;
+            }
             if (next === undefined || next.creep === current.creep) return false;
             target = next;
             return true;

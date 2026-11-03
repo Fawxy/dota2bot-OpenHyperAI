@@ -32,8 +32,9 @@ export interface LaneFarmOpts {
     retarget?: boolean;
     /**
      * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
-     * has nothing else, instead of waiting out its eta + 1.5 s. A creep drops out of the offers when the others' damage
-     * will kill it before a swing ordered now lands. Default false.
+     * has nothing else, instead of waiting out its eta + 1.5 s, and when its creep is still offered but `pick(offers,
+     * current)` answers undefined (the caller releases it). A creep drops out of the offers when the others' damage will kill
+     * it before a swing ordered now lands. Default false.
      */
     dropLost?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */

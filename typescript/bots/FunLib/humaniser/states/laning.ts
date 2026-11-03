@@ -137,8 +137,29 @@ function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean
     return (t) => (t.kind === "deny" ? true : lastHits && LaneClaims.SupportClaim(bot, t, within) !== undefined);
 }
 
-/** The claim on the creep of each support's last pick, for its ev=lh (`claim`): held until that creep's attempt reports. */
-const claims: Record<number, { creep: Lib.TaskCreep; claim: LaneClaims.Claim | undefined } | undefined> = {};
+/**
+ * The claims on each support's last few picks, for its ev=lh (`claim`): a retarget picks the next creep before the attempt it
+ * replaces reports, so the claim is looked up by creep.
+ */
+const claims: Record<number, { creep: Lib.TaskCreep; claim: LaneClaims.Claim | undefined }[] | undefined> = {};
+const CLAIMS_KEPT = 4;
+
+function noteClaim(pid: number, creep: Lib.TaskCreep, claim: LaneClaims.Claim | undefined): void {
+    let list = claims[pid];
+    if (list === undefined) {
+        list = [];
+        claims[pid] = list;
+    }
+    list.push({ creep, claim });
+    if (list.length > CLAIMS_KEPT) list.shift();
+}
+
+function claimOf(pid: number, creep: Lib.TaskCreep): LaneClaims.Claim | undefined {
+    const list = claims[pid];
+    if (list === undefined) return undefined;
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].creep === creep) return list[i].claim;
+    return undefined;
+}
 
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
     return LanePick.Choose(targets, current, claimsFor(bot));
@@ -180,7 +201,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             if (current === undefined || chosen === undefined || chosen.creep !== current.creep) {
                 LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
                 if (chosen !== undefined && OwnsSupportHits(bot)) {
-                    claims[bot.GetPlayerID()] = { creep: chosen.creep, claim: LaneClaims.SupportClaim(bot, chosen, Settings().LastHitWithin) };
+                    noteClaim(bot.GetPlayerID(), chosen.creep, LaneClaims.SupportClaim(bot, chosen, Settings().LastHitWithin));
                 }
             }
             return chosen;
@@ -198,8 +219,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         dropLost: OwnsSupportHits(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
-            const held = claims[bot.GetPlayerID()];
-            const claim = held !== undefined && held.creep === t.creep ? held.claim : undefined;
+            const claim = OwnsSupportHits(bot) ? claimOf(bot.GetPlayerID(), t.creep) : undefined;
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
                 ["kind", t.kind],

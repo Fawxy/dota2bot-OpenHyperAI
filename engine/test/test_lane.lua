@@ -245,6 +245,39 @@ do
     T.eq("no dropLost: the attempt waits until the creep is taken", off[1] and off[1].reason, "taken_by_other")
 end
 
+-- Slice support-lane-hits: a pick that stops answering the creep it waits on while that creep is still offered (a support
+-- whose core came for it) releases it with `dropLost` (sw=0, before the swing); without `dropLost` undefined keeps the wait.
+local function released(dropLost)
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(9), skill = function() return 1 end, attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+    -- Not killable yet and nothing else hitting it: offered for the whole run, so only the pick's answer can end the wait.
+    local a = sim:addCreep{ x = 100, y = 0, hp = 200, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    sim:addCreep{ x = 0, y = 200, team = 2, damage = 30, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+        firstSwingAt = 0, attackTarget = a, passive = true }
+    local mine = true
+    local pick = function(targets, current)
+        if not mine then return nil end
+        return soonest(targets)
+    end
+    local attempts, lastLabel = {}, nil
+    local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { pick = pick, retarget = true, dropLost = dropLost, within = 5,
+        label = function(l) lastLabel = l end,
+        onAttempt = function(t, r) attempts[#attempts + 1] = { creep = t.creep, reason = r.reason, msg = r.message, at = sim.t } end })
+    for _ = 1, math.floor(0.5 / DT) do g:next() sim:step(DT) end
+    mine = false
+    for _ = 1, math.floor(0.5 / DT) do g:next() sim:step(DT) end
+    return attempts, a, lastLabel
+end
+do
+    local on, a = released(true)
+    T.eq("released: the attempt was on the creep", on[1] and on[1].creep, a)
+    T.check("released, dropLost: ended sw=0 once the pick stopped answering it (" .. tostring(on[1] and on[1].msg) .. ")",
+        on[1] ~= nil and on[1].reason == "interrupted" and on[1].msg:find("sw=0") ~= nil and on[1].at < 0.5 + 0.3)
+    local off, _, label = released(false)
+    T.check("released, no dropLost: undefined keeps the wait (still in the attempt, none ended)", off[1] == nil and label == "lasthit", label)
+end
+
 -- A gap in the steps: the host stops stepping laneFarm for 25 s (the bot in another mode, a job for one) with an attempt open.
 -- The next step ends that attempt, by its clock or because the creep is gone; the old attempt is never resumed.
 local function gapped(keepAttackers)
