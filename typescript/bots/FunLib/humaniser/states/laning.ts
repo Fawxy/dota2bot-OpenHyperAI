@@ -124,8 +124,8 @@ export function OwnsDenyOnly(bot: Unit): boolean {
     return !OwnsLastHit(bot) && SupportDeny.Applies(bot);
 }
 
-function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.LaneTarget | undefined {
-    return OwnsDenyOnly(bot) ? LanePick.ChooseDeny(targets) : LanePick.Choose(targets);
+function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
+    return OwnsDenyOnly(bot) ? LanePick.ChooseDeny(targets) : LanePick.Choose(targets, current);
 }
 
 /**
@@ -158,9 +158,10 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             return owns;
         },
         within: Settings().LastHitWithin,
-        pick: (targets) => {
-            const chosen = choose(bot, targets);
-            LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
+        pick: (targets, current) => {
+            const chosen = choose(bot, targets, current);
+            // A scan that stays on the attempt's creep is not a pick (the offers at the pick stay the attempt's).
+            if (current === undefined || chosen === undefined || chosen.creep !== current.creep) LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
             return chosen;
         },
         label: (l) => {

@@ -3,7 +3,7 @@
  * rule 01/11/2026): any reachable last hit beats every deny; denies are taken only when no last hit is offered. Within a kind
  * the earliest eta wins, a ranged or siege creep counting as RANGED_BIAS sooner, so a melee creep due now still beats a ranged
  * one due much later. Bias is `judgement`. A creep that will be dead before the bot can walk into range and swing is skipped
- * (slice 5).
+ * (slice 5), as is one more than MAX_WALK away (slice lane-last-hits).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 
@@ -17,12 +17,42 @@ const DENY_OFFSET = 1000;
  * were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
  */
 export const ARRIVE_SLACK = 0.45;
+/**
+ * The longest walk into range a pick commits to. Check run llhchk2 (03/11/2026, 5 normal games, skill 1): attempts
+ * picked in range landed 0.61 of the time, under a second's walk 0.53, one to two seconds 0.34, beyond 0.19 (denies
+ * 0.32 / 0.29 / 0.10 / 0.00), and 70% of the creeps that died in a core's range with no attempt died while the body
+ * was inside such an attempt, so the chase cost the near creeps too. `judgement`.
+ */
+export const MAX_WALK = 1.0;
 
-export function Choose(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.LaneTarget | undefined {
+/** The reach rule: a creep in range always; one to walk to only when the walk is short and it outlives the walk and a swing. */
+function reachable(t: Lib.Verbs.LaneTarget): boolean {
+    if (t.walk <= 0) return true;
+    return t.walk <= MAX_WALK && t.walk + ARRIVE_SLACK < t.dies;
+}
+/** A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`. */
+export const DUE_NOW = 0.2;
+/**
+ * A waited-on creep due within this is kept: our swing at the other would not have landed before it is due, so the
+ * attempt in hand is as good (about a hero's wind-up plus a frame). Beyond it the sure creep is taken and the waited-on
+ * one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
+ * probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
+ */
+export const SWITCH_GAP = 0.5;
+
+/**
+ * The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+ * taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
+ * never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
+ * with no attempt died while the body waited on another creep that was still on offer.
+ */
+export function Choose(this: void, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
     let best: Lib.Verbs.LaneTarget | undefined;
     let bestKey = Infinity;
+    let cur: Lib.Verbs.LaneTarget | undefined;
     for (const t of targets) {
-        if (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies) continue;
+        if (current !== undefined && t.creep === current.creep) cur = t;
+        if (!reachable(t)) continue;
         // A deny's key is pushed past any last hit's (eta is seconds, never near DENY_OFFSET), so denies win only alone.
         const key = t.eta - (t.ranged ? RANGED_BIAS : 0) + (t.kind === "lasthit" ? 0 : DENY_OFFSET);
         if (key < bestKey) {
@@ -30,7 +60,10 @@ export function Choose(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.L
             best = t;
         }
     }
-    return best;
+    if (cur === undefined || best === undefined || best.creep === cur.creep) return best;
+    if (cur.kind === "deny" && best.kind === "lasthit") return best;
+    if (best.kind === "deny") return cur;
+    return best.eta <= DUE_NOW && cur.eta >= SWITCH_GAP ? best : cur;
 }
 
 /** How many of `targets` are reachable last hits and reachable denies (the reach rule above), and how many last hits other than `except`. */
@@ -39,7 +72,7 @@ function countOffers(targets: Lib.Verbs.LaneTarget[], except?: Lib.Verbs.LaneTar
     let denies = 0;
     let otherLastHits = 0;
     for (const t of targets) {
-        if (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies) continue;
+        if (!reachable(t)) continue;
         if (t.kind === "lasthit") {
             lastHits++;
             if (except === undefined || t.creep !== except.creep) otherLastHits++;
@@ -73,7 +106,7 @@ export function ChooseDeny(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Ver
     let best: Lib.Verbs.LaneTarget | undefined;
     let bestKey = Infinity;
     for (const t of targets) {
-        if (t.kind !== "deny" || (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies)) continue;
+        if (t.kind !== "deny" || !reachable(t)) continue;
         const key = t.eta - (t.ranged ? RANGED_BIAS : 0);
         if (key < bestKey) {
             bestKey = key;
@@ -132,7 +165,7 @@ export function NotePick(pid: number, now: number, targets: Lib.Verbs.LaneTarget
     s.pickAt = now;
     s.n = targets.length;
     let sk = 0;
-    for (const t of targets) if (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies) sk++;
+    for (const t of targets) if (!reachable(t)) sk++;
     s.sk = sk;
     s.ch = chosen !== undefined;
     if (chosen !== undefined) {

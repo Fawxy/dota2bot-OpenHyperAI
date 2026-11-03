@@ -8,15 +8,42 @@ local DENY_OFFSET = 1000
 -- A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
 -- were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
 ____exports.ARRIVE_SLACK = 0.45
-function ____exports.Choose(targets)
+--- The longest walk into range a pick commits to. Check run llhchk2 (03/11/2026, 5 normal games, skill 1): attempts
+-- picked in range landed 0.61 of the time, under a second's walk 0.53, one to two seconds 0.34, beyond 0.19 (denies
+-- 0.32 / 0.29 / 0.10 / 0.00), and 70% of the creeps that died in a core's range with no attempt died while the body
+-- was inside such an attempt, so the chase cost the near creeps too. `judgement`.
+____exports.MAX_WALK = 1
+--- The reach rule: a creep in range always; one to walk to only when the walk is short and it outlives the walk and a swing.
+local function reachable(t)
+    if t.walk <= 0 then
+        return true
+    end
+    return t.walk <= ____exports.MAX_WALK and t.walk + ____exports.ARRIVE_SLACK < t.dies
+end
+--- A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`.
+____exports.DUE_NOW = 0.2
+--- A waited-on creep due within this is kept: our swing at the other would not have landed before it is due, so the
+-- attempt in hand is as good (about a hero's wind-up plus a frame). Beyond it the sure creep is taken and the waited-on
+-- one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
+-- probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
+____exports.SWITCH_GAP = 0.5
+--- The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+-- taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
+-- never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
+-- with no attempt died while the body waited on another creep that was still on offer.
+function ____exports.Choose(targets, current)
     local best
     local bestKey = math.huge
+    local cur
     for ____, t in ipairs(targets) do
         do
-            local __continue3
+            local __continue5
             repeat
-                if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
-                    __continue3 = true
+                if current ~= nil and t.creep == current.creep then
+                    cur = t
+                end
+                if not reachable(t) then
+                    __continue5 = true
                     break
                 end
                 local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
@@ -24,14 +51,23 @@ function ____exports.Choose(targets)
                     bestKey = key
                     best = t
                 end
-                __continue3 = true
+                __continue5 = true
             until true
-            if not __continue3 then
+            if not __continue5 then
                 break
             end
         end
     end
-    return best
+    if cur == nil or best == nil or best.creep == cur.creep then
+        return best
+    end
+    if cur.kind == "deny" and best.kind == "lasthit" then
+        return best
+    end
+    if best.kind == "deny" then
+        return cur
+    end
+    return best.eta <= ____exports.DUE_NOW and cur.eta >= ____exports.SWITCH_GAP and best or cur
 end
 --- How many of `targets` are reachable last hits and reachable denies (the reach rule above), and how many last hits other than `except`.
 local function countOffers(targets, except)
@@ -40,10 +76,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue8
+            local __continue14
             repeat
-                if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
-                    __continue8 = true
+                if not reachable(t) then
+                    __continue14 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -54,9 +90,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue8 = true
+                __continue14 = true
             until true
-            if not __continue8 then
+            if not __continue14 then
                 break
             end
         end
@@ -84,10 +120,10 @@ function ____exports.ChooseDeny(targets)
     local bestKey = math.huge
     for ____, t in ipairs(targets) do
         do
-            local __continue18
+            local __continue24
             repeat
-                if t.kind ~= "deny" or t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
-                    __continue18 = true
+                if t.kind ~= "deny" or not reachable(t) then
+                    __continue24 = true
                     break
                 end
                 local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
@@ -95,9 +131,9 @@ function ____exports.ChooseDeny(targets)
                     bestKey = key
                     best = t
                 end
-                __continue18 = true
+                __continue24 = true
             until true
-            if not __continue18 then
+            if not __continue24 then
                 break
             end
         end
@@ -127,7 +163,7 @@ function ____exports.NotePick(pid, now, targets, chosen)
     s.n = #targets
     local sk = 0
     for ____, t in ipairs(targets) do
-        if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
+        if not reachable(t) then
             sk = sk + 1
         end
     end

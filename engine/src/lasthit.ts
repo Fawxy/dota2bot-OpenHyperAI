@@ -19,12 +19,20 @@ const RANGED_PRIORITY_SKILL = 0.6;
 /** Extra seconds a lapse delays the swing, on top of the normal timing error. */
 const LAPSE_MIN = 0.15;
 const LAPSE_MAX = 0.4;
-/**
- * Seconds a hit must land before ours to be relied on (one frame at 30 fps); grows with the observed frame
- * time, since bots think less often per game second at high timescales.
- */
+/** Seconds a hit must land before ours to be relied on: one server tick at 30 fps. */
 const MIN_MARGIN = 0.034;
+/**
+ * The frame margin: 1.2x the observed gap between the frames the verb is stepped at (MIN_MARGIN to MAX_MARGIN).
+ * It only bounds how early in the attack cooldown an order may be given; the prediction horizon uses MIN_MARGIN.
+ */
 const MAX_MARGIN = 0.3;
+/**
+ * Seconds of the creep's HP history the observed damage rate is read over (at least one lane creep attack cycle, 1 s,
+ * with room for the hits to be unevenly spaced), and the least history it needs (under one creep hit apart: shorter
+ * and a single hit reads as a huge rate).
+ */
+const OBSERVE_WINDOW = 1.5;
+const OBSERVE_MIN = 0.3;
 /** Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s). */
 const SEEN_AHEAD = 0.45;
 /** An attack order may be given this long before the cooldown ends: Dota queues it and the swing starts on time. */
@@ -111,23 +119,23 @@ function isRanged(u: TaskAttacker): boolean {
 }
 
 /**
- * Raw damage of `a`'s current attack on `creep` if it lands within `horizon` seconds, else 0. UNVERIFIED
+ * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up. UNVERIFIED
  * in-game: reads the wind-up left as (attackPoint - animCycle) * secondsPerAttack, which treats
  * the attack point as a fraction of the attack cycle.
  */
-function windupDamage(a: TaskAttacker, creep: TaskCreep, horizon: number): number {
-    if (a.GetAnimActivity === undefined) return 0;
+function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
+    if (a.GetAnimActivity === undefined) return undefined;
     const act = a.GetAnimActivity();
-    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) return 0;
-    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return 0;
+    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) return undefined;
+    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
     const cycle = a.GetAnimCycle();
     const point = a.GetAttackPoint();
-    if (cycle >= point) return 0;
+    if (cycle >= point) return undefined;
     let t = (point - cycle) * (a.GetSecondsPerAttack?.() ?? 1);
     if (isRanged(a)) {
         t += math.max(0, dist(a.GetLocation(), creep.GetLocation()) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!();
     }
-    return t <= horizon ? (a.GetAttackDamage?.() ?? 0) : 0;
+    return t;
 }
 
 /**
@@ -139,9 +147,15 @@ export function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number)
     return physical(creep, scanAttackers(bot, creep, horizon).raw);
 }
 
-/** Damage per second (after armour) of every visible attacker of either team currently targeting the creep. */
-export function incomingDps(bot: TaskUnit, creep: TaskCreep): number {
-    return physical(creep, scanAttackers(bot, creep, 0).dps);
+/**
+ * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those
+ * not winding up an attack now (their next hit lands at an unknown time within one attack cycle, so it is
+ * extrapolated; an attacker in its wind-up is credited with that hit by `incomingDamage` and its next one comes a
+ * cycle later, beyond any horizon the verbs use).
+ */
+export function incomingDps(bot: TaskUnit, creep: TaskCreep): { dps: number; between: number } {
+    const s = scanAttackers(bot, creep, 0);
+    return { dps: physical(creep, s.dps), between: physical(creep, s.between) };
 }
 
 function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, TaskAttacker[]> {
@@ -170,9 +184,10 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     return by;
 }
 
-function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number } {
+function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
     let raw = 0;
     let dps = 0;
+    let between = 0;
     for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
         const c = p.caster;
         if (p.is_attack === true && c !== undefined && c !== null && c !== (bot as unknown) && !(c.IsNull?.() ?? false)) {
@@ -182,10 +197,14 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
     }
     for (const a of attackersByTarget(bot, nearby(bot)).get(creep as TaskAttacker) ?? []) {
         if (a === (creep as TaskAttacker)) continue;
-        raw += windupDamage(a, creep, horizon);
-        dps += (a.GetAttackDamage?.() ?? 0) / (a.GetSecondsPerAttack?.() ?? 1);
+        const land = windupLanding(a, creep);
+        const damage = a.GetAttackDamage?.() ?? 0;
+        if (land !== undefined && land <= horizon) raw += damage;
+        const rate = damage / (a.GetSecondsPerAttack?.() ?? 1);
+        dps += rate;
+        if (land === undefined) between += rate;
     }
-    return { raw, dps };
+    return { raw, dps, between };
 }
 
 /**
@@ -277,19 +296,30 @@ interface Belief {
  * What the bot believes about a swing ordered now. A negative timing shift shortens the horizon (late swing);
  * a positive one extends it with the attackers' DPS, i.e. counts hits that have not started yet (early swing):
  * the visible prediction alone cannot over-anticipate, so without that extrapolation early errors vanish.
+ * `observedDps` is the creep's measured HP loss per second while the caller watched it (0 when unknown). The part
+ * of it the attacker index does not account for (observed minus the indexed attackers' DPS) is damage from
+ * attackers the index misses (fogged, untracked), extrapolated over the horizon; where the index sees every
+ * attacker the belief is unchanged, so the seen wind-ups keep their phase information. In the lane-only
+ * calibration games (llhscn1, 03/11/2026) the seen hits came to about half the damage that landed before our hit.
  */
-function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, margin: number = MIN_MARGIN): Belief {
+function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDps: number = 0): Belief {
     const tHit = ownHitTime(bot, creep);
     const regen = creep.GetHealthRegen?.() ?? 0;
     const hp = creep.GetHealth();
-    // Only hits landing at least `margin` before ours are relied on: one landing in the same frame as ours may
-    // be applied after it, and the creep survives our swing.
-    // Beyond SEEN_AHEAD, hits that land before ours have not started their wind-up yet: extrapolate the current
-    // attackers' DPS over that part of the horizon (without it, ranged swings with 0.6-1 s horizons come late).
-    const relied = math.max(0, tHit - margin);
-    const dps = incomingDps(bot, creep);
+    // Only hits landing at least one server tick before ours are relied on: one landing in the same tick may be
+    // applied after ours, and the creep survives our swing. (The margin is not the host's think gap: a hit landing
+    // 0.1 s before ours is applied before it however rarely the body is stepped; tying the two together made the
+    // verb ignore every hit in the last 0.2 s before its own and swing late, llhscn1.)
+    // Beyond SEEN_AHEAD, hits that land before ours have not started their wind-up yet: extrapolate the DPS of
+    // the attackers between swings over that part of the horizon (without it, ranged swings with 0.6-1 s horizons
+    // come late). An attacker already winding up is credited with that hit above and not extrapolated too: counting
+    // both read a 0.6-1 s horizon 12-30 HP too heavy and swung early (llhscn2, half the swings past 0.6 s missed).
+    const relied = math.max(0, tHit - MIN_MARGIN);
+    const { dps, between } = incomingDps(bot, creep);
+    // The observed loss already includes regen (a negative regen is a drain the model counts below).
+    const unseen = math.max(0, observedDps + regen - dps);
     const certain = hp + regen * tHit - incomingDamage(bot, creep, relied);
-    const visible = certain - math.max(0, relied - SEEN_AHEAD) * dps;
+    const visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied;
     let believed = visible;
     let width = 0;
     let eps = 0;
@@ -298,8 +328,8 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, margin: nu
         width = Skill.lastHitError(bot);
         eps = r.eps;
         if (r.shift < 0) {
-            const h = math.max(0, tHit - margin + r.shift);
-            believed = hp + regen * h - incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * dps;
+            const h = math.max(0, relied + r.shift);
+            believed = hp + regen * h - incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * between - unseen * h;
         } else if (r.shift > 0) {
             believed = visible + regen * r.shift - dps * r.shift;
         }
@@ -402,7 +432,7 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number,
     if (!b.survives) return undefined;
     const walk = math.max(0, dist(bot.GetLocation(), c.GetLocation()) - bot.GetAttackRange()) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
-    const dps = incomingDps(bot, c) + math.max(0, -(c.GetHealthRegen?.() ?? 0));
+    const dps = incomingDps(bot, c).dps + math.max(0, -(c.GetHealthRegen?.() ?? 0));
     const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
     if (margin <= 0) return [0, walk, dies];
     if (dps <= 0) return undefined;
@@ -497,10 +527,33 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     };
     let lastFrame: number | undefined;
     let margin = MIN_MARGIN;
+    // In-game calibration: the mean gap between the frames this verb saw (how often the host steps the body).
+    let gapSum = 0;
+    let gapN = 0;
+    // The damage actually landing on the creep, seen attackers or not: its HP as this verb saw it over the last
+    // OBSERVE_WINDOW seconds, read as a lower bound on the rate (the loss over the window less one hit, the largest
+    // single-frame drop seen). The window average over-reads by up to one hit whenever it does not divide the hit
+    // period, and an over-read swings early while an under-read of the same size still lands (a swing's believed
+    // HP at landing is at most one frame of damage under the kill, but the whole own damage above zero).
+    const seen: { t: number; hp: number }[] = [];
+    let observedDps = 0;
     while (true) {
         const t = now();
-        if (lastFrame !== undefined && t > lastFrame) margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
+        if (lastFrame !== undefined && t > lastFrame) {
+            margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
+            gapSum += t - lastFrame;
+            gapN++;
+        }
         lastFrame = t;
+        if (!gone(creep)) {
+            const hp = creep.GetHealth();
+            seen.push({ t, hp });
+            while (seen.length > 1 && t - seen[1].t >= OBSERVE_WINDOW) table.remove(seen, 1);
+            const span = t - seen[0].t;
+            let biggest = 0;
+            for (let i = 1; i < seen.length; i++) biggest = math.max(biggest, seen[i - 1].hp - seen[i].hp);
+            observedDps = span >= OBSERVE_MIN ? math.max(0, (seen[0].hp - hp - biggest) / span) : 0;
+        }
         if (!bot.IsAlive()) return early(fail("dead"));
         if (gone(creep)) return early(fail(lostReason(enemyOnIt)));
         if (opts.interruptIf !== undefined && opts.interruptIf()) return early(fail("interrupted"));
@@ -515,12 +568,12 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
             // An order given during the attack cooldown starts the swing later than the prediction's horizon
             // covers (hits not yet wound up are unseen), so the decision waits until the swing can start.
             if ((mode === "lasthit" || deniable(creep)) && cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE)) {
-                const b = believe(bot, creep, true, margin);
+                const b = believe(bot, creep, true, observedDps);
                 held = string.format("wait hp=%d pred=%d mine=%d", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine));
                 if (due(b)) {
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
-                    diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin);
+                    diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
                     bot.Action_AttackUnit(creep, true);
                     break;
                 }
@@ -535,15 +588,28 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // outcome is judged against the predicted landing time instead: a creep lost before it was taken by someone
     // else; one alive (or killed by someone else) after it was missed.
     const landBy = (): boolean => now() - swingAt >= tHit;
+    // Calibration of the prediction against the game (docs/API.md "Message"): when the attack fired (`fa`, from
+    // GetLastAttackTime rising; -1 never seen) and the creep's HP on the first frame at or past the predicted
+    // landing (`lhp`; 0 gone, -1 never reached), beside the frame gap (`fg`).
+    const atk0 = bot.GetLastAttackTime?.();
+    let fireAt: number | undefined;
+    let landHp: number | undefined;
     const out = (r: Result): Result => {
         const hp = gone(creep) ? 0 : math.floor(creep.GetHealth());
-        r.message = string.format("%s end=%d dt=%.2f", diag, hp, now() - swingAt);
+        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0);
         return r;
     };
     while (true) {
         yield;
+        if (fireAt === undefined && atk0 !== undefined && bot.GetLastAttackTime!() > atk0) fireAt = now() - swingAt;
+        if (landHp === undefined && landBy()) landHp = gone(creep) ? 0 : math.floor(creep.GetHealth());
         if (counter() > baseline) return out(ok());
-        if (gone(creep)) return out(fail(landBy() ? "missed" : lostReason(enemyOnIt)));
+        // Gone with no credit: a late swing (someone else's hit took it) unless ours had fired by the predicted
+        // landing. A creep that dies during our wind-up cancels the attack, so "gone past the landing time" alone
+        // said `missed` for swings that were late by a fraction of a frame (half of llhscn1's `missed`).
+        // Gone after our landing with the attack fired, or still alive at the landing: our hit did not kill it (missed).
+        // Gone before, or at the landing with no attack fired (killed in our wind-up): someone else took it.
+        if (gone(creep)) return out(fail(landBy() && (fireAt !== undefined || (landHp ?? 0) > 0) ? "missed" : lostReason(enemyOnIt)));
         if (!bot.IsAlive()) return fail("dead");
         if (now() - swingAt > tHit + CONFIRM_SLACK) return out(fail("missed"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);

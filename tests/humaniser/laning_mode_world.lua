@@ -4,7 +4,7 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 BOT_MODE_LANING, BOT_MODE_NONE = 1, 0
-BOT_MODE_DESIRE_NONE, BOT_ACTION_DESIRE_NONE = 0, 0
+BOT_MODE_DESIRE_NONE, BOT_ACTION_DESIRE_NONE, BOT_MODE_DESIRE_ABSOLUTE = 0, 0, 1
 ITEM_SLOT_TYPE_MAIN = 0
 DAMAGE_TYPE_PHYSICAL = 1
 GAMEMODE_1V1MID, GAMEMODE_MO = 11, 12
@@ -117,6 +117,8 @@ function LaningLoad(opts)
 		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
 		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
+		-- Slice lane-last-hits: opts.laneOnly is a lane-only scenario game (Overrides.LaneOnly).
+		Overrides = { LaneOnly = function() return opts.laneOnly == true end },
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
 		CoreTrade = { LastHitYieldsToRetreat = function() return opts.retreating == true end },
 		States = {

@@ -13,6 +13,7 @@ local hit
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
@@ -250,9 +251,10 @@ end
 --- ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
 -- branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
 -- neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
--- An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast.
+-- An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast, nor does
+-- anyone in a lane-only game (Overrides.LaneOnly: spells on creeps would change the last-hit contest under test).
 function ____exports.HoldsCasts(bot)
-    if StackJob.Benched(bot) then
+    if StackJob.Benched(bot) or Overrides.LaneOnly() then
         return true
     end
     if not ____exports.Running(bot) then

@@ -182,4 +182,21 @@ do
 	check("switch on: a pos1 bot is not taken over", Think == nil)
 end
 
+-- Overrides.LaneOnly (slice lane-last-hits): the lane-only harness holds every bot in laning above every other mode and runs
+-- only the last-hit steps and the position, never the techniques, etiquette or harass.
+do
+	local c = creep({ hp = 400, loc = Vector(100, 0) })
+	local bot = load({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { c } })
+	check("lane-only: laning bids above absolute with nothing killable", GetDesire() > 1, GetDesire())
+	Think()
+	check("lane-only: the techniques' PreThink is skipped", bot.preThinkLastHit == nil)
+	check("lane-only: the body is stepped and, acting nothing, OHA's position moves the bot", bot.bodySteps == 1 and last(bot) ~= nil and last(bot).name == "MoveToLocation", bot.bodySteps)
+	bot = load({ pos = 3, owned = true, laneOnly = true, stepActs = true, enemyCreeps = { c } })
+	GetDesire()
+	Think()
+	check("lane-only: a body step that acts ends the frame", bot.bodySteps == 1 and #bot.actions == 0, #bot.actions)
+	load({ pos = 3, owned = true, enemyCreeps = { c } })
+	check("not lane-only: laning keeps upstream's desire with nothing killable", GetDesire() < 1, GetDesire())
+end
+
 finish()

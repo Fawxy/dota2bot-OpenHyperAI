@@ -8,12 +8,12 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-import Customize = require("bots/FunLib/custom_loader");
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -97,9 +97,7 @@ export const SETTINGS = {
 // never a verdict.
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
 
-function override(key: string): unknown {
-    return (Customize as any).Overrides?.[key];
-}
+const override = Overrides.Get;
 
 /** Overrides.Solo names another hero: this one sits out the game in its fountain. */
 export function Benched(bot: Unit): boolean {
