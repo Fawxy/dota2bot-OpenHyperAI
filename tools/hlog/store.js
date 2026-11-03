@@ -24,8 +24,8 @@ const emitWarning = process.emitWarning;
 process.emitWarning = (w, ...rest) => (/SQLite/.test(typeof w === 'string' ? w : w && w.message) ? undefined : emitWarning.call(process, w, ...rest));
 const { DatabaseSync } = require('node:sqlite');
 
-const DB = path.join(os.homedir(), '.dotactl', 'hlog.sqlite');
-const LOGS = path.join(os.homedir(), '.dotactl', 'logs');
+const HOME = path.join(os.homedir(), '.dotactl');
+const LOGS = path.join(HOME, 'logs');
 const VIEWS = path.join(__dirname, 'views');
 const FRAGMENTS = path.join(__dirname, 'queries', 'fragments');
 
@@ -56,6 +56,25 @@ const kindsHash = kinds => {
     return h;
 };
 const versionOf = kinds => INGEST_VERSION * 100000 + kindsHash(kinds);
+
+// One store file per store version: worktrees whose events.json differs would otherwise empty and rebuild one shared store
+// in turn (about a minute each on the full log bank) while other sessions read it half full.
+const STORE_RE = /^hlog-\d+\.sqlite$/;
+const storeFile = (version = versionOf(DECLARED), dir = HOME) => path.join(dir, `hlog-${version}.sqlite`);
+const DB = storeFile();
+const STALE_MS = 7 * 24 * 3600 * 1000;
+
+/** Deletes the other version stores beside `file` that no Store has opened for STALE_MS (each open touches its file). */
+function sweep(file, now = Date.now()) {
+    const dir = path.dirname(file);
+    for (const f of fs.readdirSync(dir).filter(f => STORE_RE.test(f) && f !== path.basename(file))) {
+        const p = path.join(dir, f);
+        let st;
+        try { st = fs.statSync(p); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+        if (now - st.mtimeMs < STALE_MS) continue;
+        for (const x of ['', '-wal', '-shm']) fs.rmSync(p + x, { force: true });
+    }
+}
 const KEEP_TEXT = new Set(['build', 'text', 'msg']); // parse.js STRING_KEYS: never read true/false as 1/0 there
 const RESERVED = new Set(['game_id', 'log_id', 'seq', 't']);
 const BUSY_MS = 30000;
@@ -87,10 +106,20 @@ class Store {
         if (version !== versionOf(kinds)) this.rebuild();
         this.loadKinds();
         this.refreshViews();
+        if (file !== ':memory:' && STORE_RE.test(path.basename(file))) {
+            const now = new Date();
+            fs.utimesSync(file, now, now);
+            sweep(file, now.getTime());
+        }
     }
 
     rebuild() {
         this.db.exec('BEGIN IMMEDIATE');
+        // Two processes can open a new store file at once: the second must not empty what the first has built since.
+        if (this.db.prepare('PRAGMA user_version').get().user_version === versionOf(this.declared)) {
+            this.db.exec('COMMIT');
+            return;
+        }
         for (const { name } of this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()) {
             this.db.exec(`DROP TABLE ${q(name)}`);
         }
@@ -191,16 +220,26 @@ class Store {
     ingest(file) {
         file = path.resolve(file);
         const st = fs.statSync(file);
-        const row = this.db.prepare('SELECT * FROM logs WHERE file = ?').get(file);
-        if (row && row.size === st.size && row.mtime === st.mtimeMs) return false;
-        const text = fs.readFileSync(file, 'utf8');
-        const hash = crypto.createHash('sha1').update(text).digest('hex');
-        if (row && row.hash === hash) {
-            this.db.prepare('UPDATE logs SET size = ?, mtime = ? WHERE log_id = ?').run(st.size, st.mtimeMs, row.log_id);
-            return false;
-        }
+        const rowOf = () => this.db.prepare('SELECT * FROM logs WHERE file = ?').get(file);
+        const current = row => row && row.size === st.size && row.mtime === st.mtimeMs;
+        if (current(rowOf())) return false;
         this.db.exec('BEGIN IMMEDIATE');
         try {
+            // Read again under the write lock: another hlog process may have ingested this log, or added tables and
+            // columns, since this one looked.
+            const row = rowOf();
+            this.loadKinds();
+            let same = current(row);
+            const text = same ? '' : fs.readFileSync(file, 'utf8');
+            const hash = same ? '' : crypto.createHash('sha1').update(text).digest('hex');
+            if (!same && row && row.hash === hash) {
+                this.db.prepare('UPDATE logs SET size = ?, mtime = ? WHERE log_id = ?').run(st.size, st.mtimeMs, row.log_id);
+                same = true;
+            }
+            if (same) {
+                this.db.exec('COMMIT');
+                return false;
+            }
             if (row) this.drop(row.log_id);
             const logId = Number(this.db.prepare('INSERT INTO logs (file, size, mtime, hash) VALUES (?, ?, ?, ?)')
                 .run(file, st.size, st.mtimeMs, hash).lastInsertRowid);
@@ -355,4 +394,4 @@ function expand(args) {
     return out;
 }
 
-module.exports = { Store, DB, LOGS, INGEST_VERSION, DECLARED, versionOf, q };
+module.exports = { Store, DB, LOGS, INGEST_VERSION, DECLARED, versionOf, storeFile, STALE_MS, q };
