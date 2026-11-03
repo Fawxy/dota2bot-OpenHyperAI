@@ -4,6 +4,8 @@
 -- the one before; lane_pos comes every 2 s): those belong to the last-hit picker, not the spot, and are counted apart.
 --   lh_walk     idle snapshots spent walking to a last hit or deny;  lh_walk_hpl  HP-% points lost from them
 --   idle        the other idle snapshots (the spot's)
+--   off         idle snapshots more than 300 from the spot (lane_pos `d`): chased off it, or walking to a spot that moved;
+--   off_hpl     HP-% points lost from them (attribution: the spot's point against getting to it)
 --   ring        idle within 520 of the enemy team's lane front on the hero's lane (EC-053 creep acquisition around the enemy wave's lead)
 --   ring_hpl    HP-% points lost from those snapshots to the next one (creeps, heroes and towers alike)
 --   out_hpl     the same for idle snapshots outside that ring
@@ -35,17 +37,18 @@ tw (team, x, y) AS (VALUES
     (3, 4944, 4776), (3, -128, 6016), (3, -5275, 6036), (3, 2496, 2112), (3, 524, 652), (3, 6400, 384), (3, 6336, 3032),
     (3, 3552, 5776), (3, 4272, 3759), (3, 5280, 4432), (3, 6269, -2240)),
 lb0 AS MATERIALIZED (
-    SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh
+    SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
     FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3
 ),
--- Each sample covers its own second and the next.
+-- Each sample covers its own second and the next (its own second's distance first).
 lb AS MATERIALIZED (
-    SELECT game_id, pid, sec, max(lh) AS lh FROM (SELECT game_id, pid, sec, lh FROM lb0 UNION ALL SELECT game_id, pid, sec + 1, lh FROM lb0)
+    SELECT game_id, pid, sec, max(lh) AS lh, coalesce(max(CASE WHEN nxt = 0 THEN d END), max(d)) AS d
+    FROM (SELECT game_id, pid, sec, lh, d, 0 AS nxt FROM lb0 UNION ALL SELECT game_id, pid, sec + 1, lh, d, 1 FROM lb0)
     GROUP BY 1, 2, 3
 ),
 i AS (
     SELECT a.*,
-        coalesce(lb.lh, 0) AS lhw,
+        coalesce(lb.lh, 0) AS lhw, coalesce(lb.d > 300, 0) AS off,
         (SELECT CASE a.ln WHEN 'top' THEN (fr.topx - a.x) * (fr.topx - a.x) + (fr.topy - a.y) * (fr.topy - a.y)
                           WHEN 'mid' THEN (fr.midx - a.x) * (fr.midx - a.x) + (fr.midy - a.y) * (fr.midy - a.y)
                           WHEN 'bot' THEN (fr.botx - a.x) * (fr.botx - a.x) + (fr.boty - a.y) * (fr.boty - a.y) END
@@ -68,6 +71,7 @@ r AS (
         sum(CASE WHEN i.lhw THEN 0 ELSE i.twr END) AS tower, sum(CASE WHEN i.lhw THEN 0 ELSE coalesce(i.ed < 800, 0) END) AS near,
         sum(CASE WHEN i.ed < 800 AND NOT i.lhw THEN i.lost ELSE 0 END) AS near_hpl,
         sum(CASE WHEN i.lhw THEN 0 ELSE i.lost END) AS hpl,
+        sum(i.off AND NOT i.lhw) AS off, sum(CASE WHEN i.off AND NOT i.lhw THEN i.lost ELSE 0 END) AS off_hpl,
         round(60.0 * sum(CASE WHEN i.lhw THEN 0 ELSE coalesce(i.ring, 0) END) / max(1, sum(NOT i.lhw)), 1) AS per_min,
         p.why_pref, p.why_hero, p.why_creep, p.why_hp, p.why_tower, p.why_xp
     FROM i JOIN gm ON gm.game_id = i.game_id JOIN lineup l ON l.game_id = i.game_id AND l.pid = i.pid

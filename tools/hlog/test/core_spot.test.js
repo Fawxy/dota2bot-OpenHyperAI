@@ -42,8 +42,9 @@ test('core spot: idle seconds and HP lost inside the enemy wave ring and outside
     lines.push(line(105, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front hph=0 label=lasthit'));
     lines.push(line(106, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=0 why=pref hm=0 hph=0'));
     lines.push(line(107, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=5 why=hp hm=200 hph=0'));
-    lines.push(line(108, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=4 why=hero hm=0 hph=0'));
+    // At 108 the core is 400 from its spot: 108 and 109 are off it, 4 HP-% lost.
+    lines.push(line(108, 'lane_pos pid=1 d=400 owned=1 running=1 mode=2 spot=front pushed=4 why=hero hm=0 hph=0'));
     const out = run(lines);
-    assert.deepStrictEqual(out.map(r => [r.pid, r.lh_walk, r.lh_walk_hpl, r.idle, r.ring, r.ring_hpl, r.out_hpl, r.tower, r.near, r.near_hpl, r.hpl, r.why_pref, r.why_hero, r.why_creep, r.why_hp]),
-        [[1, 2, 4, 10, 5, 50, 6, 2, 5, 50, 56, 1, 1, 1, 1]]);
+    assert.deepStrictEqual(out.map(r => [r.pid, r.lh_walk, r.lh_walk_hpl, r.idle, r.ring, r.ring_hpl, r.out_hpl, r.tower, r.near, r.near_hpl, r.hpl, r.off, r.off_hpl, r.why_pref, r.why_hero, r.why_creep, r.why_hp]),
+        [[1, 2, 4, 10, 5, 50, 6, 2, 5, 50, 56, 2, 4, 1, 1, 1, 1]]);
 });
