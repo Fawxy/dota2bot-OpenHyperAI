@@ -1,7 +1,8 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 2 (slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`) / engine (main loop)
+name / version / owner:  hpForecast / 3 (slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
+                `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2) / engine (main loop)
 layer:          game fact (no choice, no action)
 intent:         A creep's HP over the next seconds from the hits the attacker index already sees, for a caller that plans
                 beyond the one swing lastHit makes.
@@ -14,15 +15,17 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
                 (GetAnimActivity / GetAnimCycle / GetAttackPoint, as windupLanding: UNVERIFIED that the attack point is a
                 fraction of the attack cycle), GetNearbyTowers / GetNearbyHeroes for the attacker kinds.
 result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
-                unphasedHits[{ damage, period, first }] }.
+                unphasedHits[{ damage, period, first, last }] }.
                 hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
                 horizon, and for a tower or lane creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
                 from 0.45 s on. unphasedTower: a tower is among those. unphasedHits: the same attackers one by one, `first`
-                the earliest their next hit can land (attack point x cycle, as windupLeft reads it, plus flight); the
-                latest is first + period. forecastHp = hp + regen t - hits by t - the unknown-phase hits: `spread`
-                unphased max(0, t - 0.45) (default, as lastHit's belief), `early` each at first and every period after,
-                `late` one period later. Below 0 means dead by then. The real HP lies between `early` and `late`.
+                the earliest their next hit can land (attack point x cycle, as windupLeft reads it, plus flight), `last` the
+                latest (one cycle plus flight: with no wind-up seen the attacker is in backswing or cooldown). forecastHp = hp
+                + regen t - hits by t - the unknown-phase hits: `spread` unphased max(0, t - 0.45) (default, as lastHit's
+                belief), `early` each at first and every period after, `late` at last and every period after. Below 0 means
+                dead by then. The real HP lies between `early` and `late` while each such attacker is in range and its
+                wind-up readable (one still walking to the creep can land later).
 assumptions:    repeats keep today's distance and so flight time; an attacker stays on the creep (UNVERIFIED in-game: towers
                 re-target on hero aggro or when the creep leaves range); heroes are not repeated (their attacks are choices).
 outcomes:       none (a query); an empty forecast (hits {}, unphased 0) when no one attacks the creep.

@@ -40,18 +40,21 @@ export interface HpForecast {
     /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
     unphasedTower: boolean;
     /**
-     * The same attackers one by one: damage after armour, attack cycle, and `first`, the earliest their next hit can land (a
-     * wind-up from now, plus flight for a ranged one); the latest is `first` + `period` (a wind-up that starts one cycle from now).
+     * The same attackers one by one: damage after armour, attack cycle, `first` the earliest their next hit can land (a wind-up
+     * from now, plus flight for a ranged one) and `last` the latest (one cycle from now, plus flight: no wind-up is seen, so the
+     * attacker is in its backswing or cooldown and its last hit landed by now). The bracket assumes the attacker is in range and
+     * its wind-up readable; one still walking to the creep can land later.
      */
     unphasedHits: {
         damage: number;
         period: number;
         first: number;
+        last: number;
     }[];
 }
 /**
  * How `forecastHp` places the hits of the attackers whose phase is unknown: `spread` evenly from SEEN_AHEAD on (as the last-hit
- * belief), `early` each one's next hit at its `first` and every cycle after, `late` one cycle later than `early`.
+ * belief), `early` each one's next hit at its `first` and every cycle after, `late` at its `last` and every cycle after.
  */
 export type ForecastSchedule = "spread" | "early" | "late";
 /**

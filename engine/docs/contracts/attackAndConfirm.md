@@ -20,6 +20,8 @@ timing:         one Action_AttackUnit per target; a target that dies or vanishes
 skill:          none.
 consumers:      laneFarm's `prehit` (aggroConfirms false); bot job verbs (aggro draws, pull, stack: default); engine testing
                 helper.
-status:         in-game-verified for aggro (API.md: ordered at 713.4, ok at 714.6 with GetLastAttackTime risen);
-                aggroConfirms false offline-verified (test_prehit), in game: prhchk1.
+status:         offline-verified (aggroConfirms false: engine test_prehit). Notes: aggro confirmation was seen in game on
+                23/10/2026 (dotactl log 2026-10-23T07-11-27-sdk_stack_aggro_diag_3.log, API.md "In-game checks
+                outstanding"), a diagnostic, not a check run; aggroConfirms false in game: slice pre-hit check runs
+                (prhchk2 on). In-game-verified once a run named in the pre-hit slice file shows it.
 ```

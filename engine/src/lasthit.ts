@@ -261,15 +261,17 @@ export interface HpForecast {
     /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
     unphasedTower: boolean;
     /**
-     * The same attackers one by one: damage after armour, attack cycle, and `first`, the earliest their next hit can land (a
-     * wind-up from now, plus flight for a ranged one); the latest is `first` + `period` (a wind-up that starts one cycle from now).
+     * The same attackers one by one: damage after armour, attack cycle, `first` the earliest their next hit can land (a wind-up
+     * from now, plus flight for a ranged one) and `last` the latest (one cycle from now, plus flight: no wind-up is seen, so the
+     * attacker is in its backswing or cooldown and its last hit landed by now). The bracket assumes the attacker is in range and
+     * its wind-up readable; one still walking to the creep can land later.
      */
-    unphasedHits: { damage: number; period: number; first: number }[];
+    unphasedHits: { damage: number; period: number; first: number; last: number }[];
 }
 
 /**
  * How `forecastHp` places the hits of the attackers whose phase is unknown: `spread` evenly from SEEN_AHEAD on (as the last-hit
- * belief), `early` each one's next hit at its `first` and every cycle after, `late` one cycle later than `early`.
+ * belief), `early` each one's next hit at its `first` and every cycle after, `late` at its `last` and every cycle after.
  */
 export type ForecastSchedule = "spread" | "early" | "late";
 
@@ -305,7 +307,7 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
     }
     let unphased = 0;
     let unphasedTower = false;
-    const unphasedHits: { damage: number; period: number; first: number }[] = [];
+    const unphasedHits: { damage: number; period: number; first: number; last: number }[] = [];
     for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
         if (a === (creep as TaskAttacker)) continue;
         const kind = kindOf(a);
@@ -320,9 +322,8 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         if (last === undefined) {
             unphased += damage / period;
             if (kind === "tower") unphasedTower = true;
-            let first = (a.GetAttackPoint?.() ?? 0) * period;
-            if (isRanged(a)) first += math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!();
-            unphasedHits.push({ damage, period, first });
+            const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
+            unphasedHits.push({ damage, period, first: (a.GetAttackPoint?.() ?? 0) * period + flight, last: period + flight });
             continue;
         }
         if (kind === "hero" || period <= 0) continue;
@@ -338,7 +339,7 @@ export function forecastHp(f: HpForecast, t: number, schedule: ForecastSchedule 
     if (schedule === "spread") hp -= f.unphased * math.max(0, t - SEEN_AHEAD);
     else {
         for (const u of f.unphasedHits) {
-            const first = schedule === "early" ? u.first : u.first + u.period;
+            const first = schedule === "early" ? u.first : u.last;
             if (t >= first && u.period > 0) hp -= u.damage * (math.floor((t - first) / u.period) + 1);
         }
     }

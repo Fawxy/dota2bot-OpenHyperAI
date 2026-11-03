@@ -92,7 +92,15 @@ do
         n = n + 1
     end
     T.check("schedules: the sim's HP within [early, late] at every step (" .. n .. " steps)", inside)
-    T.check("schedules: early is below late once the first hit could land", V.forecastHp(f, 1.0, "early") < V.forecastHp(f, 1.0, "late"))
+    -- Exact bounds (review 6ed766b F3): `early` lands at one wind-up (0.467 s), `late` at one cycle (1 s); the real landing
+    -- (0.933 s from the forecast) lies between.
+    local u = f.unphasedHits[1]
+    T.near("schedules: first is one wind-up", u.first, 0.467, 1e-9)
+    T.near("schedules: last is one cycle", u.last, 1.0, 1e-9)
+    T.eq("schedules: early untouched just before first", V.forecastHp(f, u.first - 0.01, "early"), 300)
+    T.eq("schedules: early hit at first", V.forecastHp(f, u.first, "early"), 280)
+    T.eq("schedules: late untouched just before last", V.forecastHp(f, u.last - 0.01, "late"), 300)
+    T.eq("schedules: late hit at last", V.forecastHp(f, u.last, "late"), 280)
 end
 
 -- The bot's own projectile in flight counts (a pre-hit it already fired).
