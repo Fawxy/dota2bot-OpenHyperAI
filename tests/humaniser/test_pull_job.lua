@@ -276,18 +276,17 @@ do
 	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "3", single)
 end
 
--- After the hit, neutrals hitting the puller harder than it can take until the wave arrives: it steps back towards our
--- tower while they still hit it, then the job ends `interrupted:bail` with the puller alive.
-do
+-- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked
+-- towards our tower and the job's pull_job line.
+local function hitAfterPull(hp, dps)
 	local w = world({ reading = OUT })
 	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 90, team = 2, loc = Vector(3000, -5500) })
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
 	local bailed
 	local out = capture(function()
-		while T < 140 and not (bailed and not w.H.PullJob.Running(w.sup)) do
-			-- After the hit (slot 78.5) the kobold hits the puller hard enough to kill it before the wave arrives.
-			if T >= 82 and not bailed then kobold.dps, w.sup.hp, kobold.loc = 40, 60, Vector(w.sup.loc.x + 100, w.sup.loc.y) end
+		while T < 140 and not ((bailed or T > 79) and not w.H.PullJob.Running(w.sup)) do
+			if T >= 79 and not bailed then kobold.dps, w.sup.hp, kobold.loc = dps, hp, Vector(w.sup.loc.x + 100, w.sup.loc.y) end
 			local n0 = #ACTIONS
 			frame(w)
 			for i = n0 + 1, #ACTIONS do
@@ -297,10 +296,22 @@ do
 			if bailed then kobold.target = nil end
 		end
 	end)
-	local pulls = lines(out, "pull_job")
-	check("bail: the puller walked towards our tower while hit", bailed == true)
-	check("bail: the job ended interrupted:bail, alive", #pulls == 1 and field(pulls[1], "why") == "interrupted:bail" and field(pulls[1], "died") == "0", pulls[1])
 	TOWERS_W[2][dota.Tower.Bot1] = nil
+	return bailed, lines(out, "pull_job")[1]
+end
+
+-- About to die (60 HP, 40 dps): it steps back while hit, then the job ends `interrupted:bail` with the puller alive.
+do
+	local bailed, pull = hitAfterPull(60, 40)
+	check("bail: the puller walked towards our tower while hit", bailed == true)
+	check("bail: the job ended interrupted:bail, alive", field(pull, "why") == "interrupted:bail" and field(pull, "died") == "0", pull)
+end
+
+-- A puller with HP to spare keeps leading although the camp's dps over the whole lead would take it under the reserve:
+-- pc1 bailed 12 times about 1 s after the hit at 58-100% HP (~/.dotactl/logs/2026-11-03T02-37-32-pc1_B_on_2.log t=590.3).
+do
+	local bailed, pull = hitAfterPull(330, 80)
+	check("no bail with HP to spare: the lead goes on", not bailed and field(pull, "why") ~= "interrupted:bail", pull)
 end
 
 finish()

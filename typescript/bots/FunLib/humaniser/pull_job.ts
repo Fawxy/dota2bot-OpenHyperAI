@@ -53,9 +53,11 @@ export const SETTINGS = {
     DefaultDps: { small: 40, medium: 60, large: 80, ancient: 150 } as Record<Camps.CampType, number>,
     /** Seconds of exposure when the camp has no wave timing. */
     DefaultExposure: 8,
-    /** After the hit (lead and watch), the puller steps back towards our tower when neutrals hit it and its HP now, or its HP
-     *  after their damage until the wave reaches the meet point plus BailGrace, is under BailReserve of its max; it keeps
-     *  stepping back while they still hit it, at most BailFor seconds, then the job ends `interrupted:bail`. `judgement`. */
+    /** After the hit (lead and watch), the puller steps back towards our tower when neutrals hit it and its HP after
+     *  BailGrace seconds of their damage is under BailReserve of its max; it keeps stepping back while they still hit it, at
+     *  most BailFor seconds, then the job ends `interrupted:bail`. The horizon is short on purpose: a puller walking the lead
+     *  takes a small part of the camp's damage, so projecting it to the wave's arrival bailed at full HP (pc1: 12 bails,
+     *  all about 1 s after the hit, at 58-100% HP). `judgement`. */
     BailReserve: 0.25,
     BailGrace: 2,
     BailFor: 6,
@@ -65,8 +67,8 @@ export const SETTINGS = {
     BailStep: 700,
 };
 
-/** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the whole box
- *  (origin and corners) visible to our team. */
+/** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the camp's
+ *  origin visible to our team (its neutrals stand there; the box corners plus margin were never all visible in pc1). */
 interface CampState {
     n: number;
     seen: number;
@@ -197,7 +199,7 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
     const m = LaneConfig.Settings().Radii.BoxMargin;
     const lo = spawner.min;
     const hi = spawner.max;
-    const s: CampState = { n: 0, seen: 0, hp: 0, vis: true, units: [] };
+    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), units: [] };
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive()) continue;
         const p = u.GetLocation();
@@ -208,14 +210,13 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
         s.hp += u.GetHealth();
         s.units.push(u);
     }
-    for (const v of [spawner.location, lo, hi, Vector(lo.x, hi.y, 0), Vector(hi.x, lo.y, 0)]) if (!IsLocationVisible(v)) s.vis = false;
     return s;
 }
 
 /**
- * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned in a box the team sees whole, and no spawn minute
- * before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says nothing unless the
- * API returns fogged neutrals (the start probe `cn`/`cs`/`cv` tells).
+ * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
+ * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
+ * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`).
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
     const period = LaneConfig.Settings().Timing.PullPeriod;
@@ -238,9 +239,8 @@ function campDmgGate(bot: Unit, dmg: number): string | undefined {
 }
 
 /** Where the puller steps back to while neutrals are about to kill it (SETTINGS BailReserve), else undefined. */
-function bailPoint(bot: Unit, p: Pull): Vector | undefined {
+function bailPoint(bot: Unit): Vector | undefined {
     if (!bot.IsAlive()) return undefined;
-    const now = DotaTime();
     const at = bot.GetLocation();
     let dps = 0;
     let cx = 0;
@@ -255,9 +255,7 @@ function bailPoint(bot: Unit, p: Pull): Vector | undefined {
         k++;
     }
     if (k === 0) return undefined;
-    const left = math.max(0, (p.plan.waveAt ?? now) - now) + SETTINGS.BailGrace;
-    const floor = bot.GetMaxHealth() * SETTINGS.BailReserve;
-    if (bot.GetHealth() >= floor && bot.GetHealth() - dps * left >= floor) return undefined;
+    if (bot.GetHealth() - dps * SETTINGS.BailGrace >=bot.GetMaxHealth() * SETTINGS.BailReserve) return undefined;
     const tower = ourTower(bot);
     if (tower !== undefined) return tower;
     const dx = at.x - cx / k;
@@ -559,7 +557,7 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     return {
-        bail: () => bailPoint(bot, pull) as unknown as Lib.Vec | undefined,
+        bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
         camp: verbCamp(p),
         aggroAt,

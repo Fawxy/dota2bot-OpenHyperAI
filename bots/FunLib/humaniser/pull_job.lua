@@ -154,18 +154,18 @@ function laneCreepsNear(p, radius)
     local out = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue82
+            local __continue79
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue82 = true
+                    __continue79 = true
                     break
                 end
                 if GetUnitToLocationDistance(c, p.meet) <= radius or GetUnitToLocationDistance(c, p.spawner.location) <= radius then
                     out[#out + 1] = c
                 end
-                __continue82 = true
+                __continue79 = true
             until true
-            if not __continue82 then
+            if not __continue79 then
                 break
             end
         end
@@ -237,19 +237,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue112
+            local __continue109
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue112 = true
+                    __continue109 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue112 = true
+                __continue109 = true
             until true
-            if not __continue112 then
+            if not __continue109 then
                 break
             end
         end
@@ -274,15 +274,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue122
+            local __continue119
             repeat
                 if not u:IsAlive() then
-                    __continue122 = true
+                    __continue119 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue122 = true
+                    __continue119 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -309,9 +309,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue122 = true
+                __continue119 = true
             until true
-            if not __continue122 then
+            if not __continue119 then
                 break
             end
         end
@@ -545,7 +545,7 @@ function ____exports.CampStateOf(spawner)
         n = 0,
         seen = 0,
         hp = 0,
-        vis = true,
+        vis = IsLocationVisible(spawner.location),
         units = {}
     }
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
@@ -579,22 +579,11 @@ function ____exports.CampStateOf(spawner)
             end
         end
     end
-    for ____, v in ipairs({
-        spawner.location,
-        lo,
-        hi,
-        Vector(lo.x, hi.y, 0),
-        Vector(hi.x, lo.y, 0)
-    }) do
-        if not IsLocationVisible(v) then
-            s.vis = false
-        end
-    end
     return s
 end
---- `empty` when the camp holds nothing to pull at `hitAt`: nothing returned in a box the team sees whole, and no spawn minute
--- before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says nothing unless the
--- API returns fogged neutrals (the start probe `cn`/`cs`/`cv` tells).
+--- `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
+-- spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
+-- nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`).
 function ____exports.CampGate(s, now, hitAt)
     local period = LaneConfig.Settings().Timing.PullPeriod
     if s.n == 0 and s.vis and math.floor(hitAt / period) <= math.floor(now / period) then
@@ -619,11 +608,10 @@ local function campDmgGate(bot, dmg)
     return bot:GetHealth() - dmg < bot:GetMaxHealth() * ____exports.SETTINGS.StartReserve and "camp-dmg" or nil
 end
 --- Where the puller steps back to while neutrals are about to kill it (SETTINGS BailReserve), else undefined.
-local function bailPoint(bot, p)
+local function bailPoint(bot)
     if not bot:IsAlive() then
         return nil
     end
-    local now = DotaTime()
     local at = bot:GetLocation()
     local dps = 0
     local cx = 0
@@ -631,10 +619,10 @@ local function bailPoint(bot, p)
     local k = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue47
+            local __continue44
             repeat
                 if not u:IsAlive() or u:GetAttackTarget() ~= bot or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.BailScan then
-                    __continue47 = true
+                    __continue44 = true
                     break
                 end
                 dps = dps + u:GetEstimatedDamageToTarget(true, bot, 1, DamageType.All)
@@ -642,9 +630,9 @@ local function bailPoint(bot, p)
                 cx = cx + l.x
                 cy = cy + l.y
                 k = k + 1
-                __continue47 = true
+                __continue44 = true
             until true
-            if not __continue47 then
+            if not __continue44 then
                 break
             end
         end
@@ -652,9 +640,7 @@ local function bailPoint(bot, p)
     if k == 0 then
         return nil
     end
-    local left = math.max(0, (p.plan.waveAt or now) - now) + ____exports.SETTINGS.BailGrace
-    local floor = bot:GetMaxHealth() * ____exports.SETTINGS.BailReserve
-    if bot:GetHealth() >= floor and bot:GetHealth() - dps * left >= floor then
+    if bot:GetHealth() - dps * ____exports.SETTINGS.BailGrace >= bot:GetMaxHealth() * ____exports.SETTINGS.BailReserve then
         return nil
     end
     local tower = ourTower(bot)
@@ -683,30 +669,30 @@ local function partnerThreat(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue60
+                local __continue57
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot or not m:IsAlive() or isSupport(m) or m:GetAssignedLane() ~= lane then
-                        __continue60 = true
+                        __continue57 = true
                         break
                     end
                     local pids = {}
                     local n = 0
                     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
                         do
-                            local __continue62
+                            local __continue59
                             repeat
                                 if not e:IsAlive() or e:IsIllusion() or GetUnitToUnitDistance(e, m) > ____exports.SETTINGS.PartnerRadius then
-                                    __continue62 = true
+                                    __continue59 = true
                                     break
                                 end
                                 if pids[e:GetPlayerID()] ~= true then
                                     n = n + 1
                                 end
                                 pids[e:GetPlayerID()] = true
-                                __continue62 = true
+                                __continue59 = true
                             until true
-                            if not __continue62 then
+                            if not __continue59 then
                                 break
                             end
                         end
@@ -717,9 +703,9 @@ local function partnerThreat(bot)
                     if n > 0 and m:GetHealth() < m:GetMaxHealth() * ____exports.SETTINGS.PartnerHp then
                         return "partner-low"
                     end
-                    __continue60 = true
+                    __continue57 = true
                 until true
-                if not __continue60 then
+                if not __continue57 then
                     break
                 end
             end
@@ -915,19 +901,19 @@ local function sample(bot, p)
     local radii = LaneConfig.Settings().Radii
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue90
+            local __continue87
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue90 = true
+                    __continue87 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, p.plan.meet)
                 if p.near == nil or d < p.near then
                     p.near = d
                 end
-                __continue90 = true
+                __continue87 = true
             until true
-            if not __continue90 then
+            if not __continue87 then
                 break
             end
         end
@@ -959,7 +945,7 @@ local function verbPlan(bot, pull, aggroAt)
     local p = pull.plan
     local s = LaneConfig.Settings()
     return {
-        bail = function() return bailPoint(bot, pull) end,
+        bail = function() return bailPoint(bot) end,
         bailFor = ____exports.SETTINGS.BailFor,
         camp = verbCamp(p),
         aggroAt = aggroAt,
