@@ -106,12 +106,23 @@ when the others kill it at their current DPS (`math.huge` with no one on it); ex
 moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
 Per-frame creep queries are cached per bot.
 
+**HP forecast (`Verbs.hpForecast(bot, creep, horizon)` and `Verbs.forecastHp(f, t)`, facts, not verbs).** A creep's HP
+over the next `horizon` seconds from the hits the attacker index sees: `{ hp, regen, horizon, hits, unphased, unphasedTower }`.
+`hits` (sorted by `t`, seconds from now; `damage` after armour; `by` tower | creep | hero | self) holds every attack projectile
+in flight (the bot's own included; arrival = distance / projectile speed), every wind-up seen (as `incomingDamage`), and for a
+tower or lane creep its latest known hit repeated every `GetSecondsPerAttack` while it stays on the creep (heroes are not
+repeated: their next attacks are choices). Repeats assume today's distance, so today's flight time. Attackers on the creep with
+no hit in flight or wind-up have an unknown phase: their DPS (`unphased`) is spread evenly from 0.45 s on, as `lastHit`'s
+belief does, and `unphasedTower` says a tower is among them (its hits are the largest, so the forecast's step times are not
+known). `forecastHp(f, t)` = hp + regen t - the hits landed by t - unphased max(0, t - 0.45), below 0 once the creep is dead.
+For a caller that plans beyond one swing (the bot's pre-hit under its tower; contract none yet, one consumer in game).
+
 **`laneFarm(bot, spot, opts)` / `ctx.laneFarm`** (posture verb, src/lane.ts): holds `spot()` (holdAt with
 `opts.hold`), and while `lastHits()` allows, breaks off for the creep `opts.pick(targets)` chooses from
 `laneTargets` (no `pick`: it only holds), swings through
 `lastHit`/`deny` (maxWait eta + 1.5 s, dropped beyond `leash` 900 from the spot), then walks back. Labels
-`walk`/`hold`/`lasthit`/`deny` (ctx binds the task label); `onAttempt(target, result, contested)` after every
-attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself. With `retarget` (default false) it keeps scanning while an attempt waits for its creep, before the swing: every scan `pick(offered, current)` is asked whether to stay on the creep (while it is still offered, `current` is its fresh facts) or go for another; when it returns another creep, or the creep is no longer offered and `pick(offered)` chooses another, the attempt ends `interrupted` (message ending `sw=1`) and the verb goes straight for the new creep. Whether a switch is worth the attack cooldown is the caller's rule (the bot's `lane_pick.Choose`: only for a creep killable now while the current one is at least an attack cycle away, or a last hit over a deny). With `dropLost` as well (default false), an attempt whose creep is no longer offered ends `interrupted` (message ending `sw=0`) even when `pick` chooses nothing, and so does one whose creep is still offered when `pick(offered, current)` answers undefined (the caller released it); the verb goes back to holding.
+`walk`/`hold`/`lasthit`/`deny`/`prehit` (ctx binds the task label); `onAttempt(target, result, contested)` after every
+attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself. `pick` is asked on every scan, also when laneTargets offers nothing, so it may answer a target of its own: one of kind `prehit` (laneTargets never offers it) is carried out as one `attackAndConfirm` on the creep (findFor 0, confirmFor walk + own hit time + 0.5 s, `aggroConfirms: false`), and a `prehit` on the creep an attempt waits for replaces that attempt. With `retarget` (default false) it keeps scanning while an attempt waits for its creep, before the swing: every scan `pick(offered, current)` is asked whether to stay on the creep (while it is still offered, `current` is its fresh facts) or go for another; when it returns another creep, or the creep is no longer offered and `pick(offered)` chooses another, the attempt ends `interrupted` (message ending `sw=1`) and the verb goes straight for the new creep. Whether a switch is worth the attack cooldown is the caller's rule (the bot's `lane_pick.Choose`: only for a creep killable now while the current one is at least an attack cycle away, or a last hit over a deny). With `dropLost` as well (default false), an attempt whose creep is no longer offered ends `interrupted` (message ending `sw=0`) even when `pick` chooses nothing, and so does one whose creep is still offered when `pick(offered, current)` answers undefined (the caller released it); the verb goes back to holding.
 
 **When to swing.** The verb walks into attack range, then each frame computes the own hit time
 `t = attackPoint / attackSpeed (+ cooldown left, with attackClock) (+ max(0, dist - 39) / projectileSpeed for
@@ -203,7 +214,8 @@ Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (
 | Export | What |
 |---|---|
 | `Tasks.task/Step/Tick/Cancel/Urgent/Label/Current/Last/Describe` | runner (unchanged signatures; bodies now receive `ctx`) |
-| `Verbs.walkTo/walkPath/wait/waitUntil/retreatTo/lastHit/deny/attackAndConfirm` | movement and combat verbs, all with `deadline` |
+| `Verbs.walkTo/walkPath/wait/waitUntil/retreatTo/lastHit/deny/attackAndConfirm` | movement and combat verbs, all with `deadline` (`attackAndConfirm` confirms on the bot's last attack time rising, the target attacking the bot unless `aggroConfirms: false`, or `confirmed()`) |
+| `Verbs.hpForecast/forecastHp` | a creep's HP over the next seconds from the hits the attacker index sees (facts) |
 | `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves. `incomingDps` returns `{ dps, between }` since slice lane-last-hits (03/11/2026; it returned the number now in `dps`): `between` is the rate of the attackers not winding up an attack, the part extrapolated past 0.45 s |
 | `Skill.of/profile/react/jitter/lastHitError/random` | skill and human-timing helpers read through the adapter |
 | `Verbs.cast/useItem/pickUpRune` | ability, item and rune verbs |

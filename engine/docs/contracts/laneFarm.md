@@ -1,8 +1,8 @@
 # Contract: `laneFarm` (posture verb)
 
 ```
-name / version / owner:  laneFarm / 4 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits) / engine (main loop)
-layer:          atomic action (a composite of holdAt, lastHit and deny)
+name / version / owner:  laneFarm / 5 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits. Slice pre-hit, 04/11/2026: `pick` asked on every scan, also with nothing offered; a `prehit` pick is one attackAndConfirm; a pick of the same creep with another kind replaces the wait) / engine (main loop)
+layer:          atomic action (a composite of holdAt, lastHit, deny and attackAndConfirm)
 intent:         A laner holds a spot and breaks off for the lane creeps its caller picks, swinging with lastHit/deny.
 applicability:  A bot handle; `spot()` read every frame (undefined: no spot to hold). Without `pick` it only holds (the
                 engine makes no choice of its own); with `lastHits()` false it only holds.
@@ -10,12 +10,18 @@ inputs:         spot (function); opts.hold (holdAt options); opts.lastHits (defa
                 default 1); opts.pick(targets, current?) (caller's choice from laneTargets' offers; with `retarget`, while
                 an attempt waits for its creep and the creep is still offered, `current` is that creep's fresh offer and
                 the answer decides the wait: `current`'s creep keeps it, another creep ends it for that one, undefined
-                keeps it, or with `dropLost` releases it); opts.leash (900), near (600), far (1200),
+                keeps it, or with `dropLost` releases it). `pick` is asked on every scan, also with `targets` empty, so it
+                may answer a target of its own: kind `prehit` (laneTargets never offers one) is carried out as one
+                attackAndConfirm on the creep (findFor 0, confirmFor walk + ownHitTime + 0.5 s, aggroConfirms false, the
+                same leash and interruptIf), then the verb scans again. A pick of the waited-on creep with another kind
+                (a `prehit` on it) ends the wait for that one, as another creep does; opts.leash (900), near (600), far (1200),
                 scanEvery (0.1 s), contestRadius (1000), retarget (default false), dropLost (default false; acts only with retarget): all taste. opts.label, onAttempt,
                 deadline, interruptIf.
-effect check:   per attempt, lastHit/deny's own (the bot's last-hit or deny counter rises).
+effect check:   per attempt, lastHit/deny's own (the bot's last-hit or deny counter rises); a `prehit`'s is the bot's last
+                attack time rising (the attack fired), not the creep attacking the bot.
 outcomes:       the verb: dead | interrupted (interruptIf) | timeout (deadline); never ok by itself. Per attempt, through
-                onAttempt(target, result, contested): lastHit/deny's outcomes, plus interrupted with message suffix `sw=1`
+                onAttempt(target, result, contested): lastHit/deny's outcomes (a `prehit`: attackAndConfirm's ok |
+                missed | no_target (the creep died first) | dead | interrupted | timeout), plus interrupted with message suffix `sw=1`
                 when `retarget` dropped the attempt for another creep, or `sw=0` when `dropLost` dropped it (pick chose
                 nothing for a creep no longer offered, or answered undefined for one still offered).
 timing:         one laneTargets scan per scanEvery while holding; with `retarget`, also while an attempt waits for its
