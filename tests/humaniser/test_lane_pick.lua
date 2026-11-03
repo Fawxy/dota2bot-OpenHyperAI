@@ -59,6 +59,23 @@ do
 	check("pick: a creep in range is kept however soon it dies", Pick.Choose({ here }) == here)
 end
 
+-- Slice lane-last-hits (llhchk2): a creep more than MAX_WALK of walking away is not chased even when it would outlive the
+-- walk; a nearer one is taken instead, and with nothing nearer nothing is picked (the body holds, near creeps stay covered).
+do
+    local far = target("lasthit", 1.4, true, 1.4, 4)
+    local near = target("lasthit", 0.8, false, 0.3, 3)
+    check("pick: a creep over MAX_WALK away is skipped for a nearer one", Pick.Choose({ far, near }) == near)
+    check("pick: a creep over MAX_WALK away alone is not picked", Pick.Choose({ far }) == nil)
+    local edge = target("lasthit", 1.0, false, 1.0, 4)
+    check("pick: a creep exactly MAX_WALK away is still taken", Pick.Choose({ edge }) == edge)
+    local fard = target("deny", 1.3, false, 1.3, 4)
+    local neard = target("deny", 0.9, false, 0.2, 3)
+    check("deny pick: a deny over MAX_WALK away is skipped for a nearer one", Pick.ChooseDeny({ fard, neard }) == neard)
+    check("deny pick: a deny over MAX_WALK away alone is not picked", Pick.ChooseDeny({ fard }) == nil)
+    Pick.NotePick(6, 1, { far, near }, Pick.Choose({ far, near }))
+    check("lf: the far creep counts as skipped", string.find(Pick.Describe(6, 1), "n=2 sk=1 ch=1", 1, true) ~= nil)
+end
+
 -- Missed-bar telemetry (s5b): the snapshot's lf field counts the offers the reach rule skipped, from the same rule Choose uses.
 do
 	local far = target("lasthit", 0, true, 1.2, 0.9)
