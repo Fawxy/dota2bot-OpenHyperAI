@@ -427,6 +427,45 @@ do
     local oc = tonumber(string.match(msg, "oc=([%d.]+)"))
     T.check("enemy wind-up: ec is their wind-up left (" .. tostring(ec) .. ")", ec ~= nil and math.abs(ec - 0.5) <= 0.05)
     T.check("enemy wind-up: oc is our attack point (" .. tostring(oc) .. ")", oc ~= nil and math.abs(oc - 0.6) <= 0.05)
+    local hf = tonumber(string.match(msg, "hf=(%d+)"))
+    local hwf = tonumber(string.match(msg, "hwf=(%d+)"))
+    T.check("hero watch: frames with the enemy hero on the creep (" .. msg .. ")", hf ~= nil and hf > 0)
+    T.check("hero watch: its wind-up frames read, no more than its frames", hwf ~= nil and hwf > 0 and hwf <= hf)
+    T.check("hero watch: raw activity is the attack's", string.find(msg, "ha=1503", 1, true) ~= nil)
+end
+
+-- An enemy hero aimed at the creep but not in an attack animation (the reading a broken wind-up reader gives in game):
+-- frames counted, no wind-up frames, so hf > 0 with hwf = 0 tells the reader apart from heroes that never attack.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 300, team = 3, passive = true }
+    local enemy = sim:addHero{ x = 250, y = 0, team = 3, damage = 40, attackPoint = 0.5, secondsPerAttack = 1 }
+    enemy.attackTarget = creep
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 0.5 }))
+    local msg = r.message or ""
+    T.eq("hero watch idle: timeout", r.reason, "timeout")
+    T.check("hero watch idle: frames counted (" .. msg .. ")", (tonumber(string.match(msg, "hf=(%d+)")) or 0) > 0)
+    T.check("hero watch idle: no wind-up frames", string.find(msg, "hwf=0", 1, true) ~= nil)
+end
+
+-- Two enemy heroes on the creep, the one winding up listed first and the idle one after it: the reading kept is the
+-- winding hero's even when the verb ends right after its first wind-up frame (sdk review
+-- 2026-11-04-sdk-slice-lasthit-windup-logs-e82ac39 F3: the idle hero's attack point 0.30 overwrote it).
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 300, team = 3, passive = true }
+    local swinger = sim:addHero{ x = 250, y = 0, team = 3, damage = 40, attackPoint = 0.5, secondsPerAttack = 1,
+        autoAttack = true, firstSwingAt = 0.1 }
+    swinger.attackTarget = creep
+    local idle = sim:addHero{ x = 250, y = 60, team = 3, damage = 40, attackPoint = 0.3, secondsPerAttack = 1 }
+    idle.attackTarget = creep
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 0.12 }))
+    local msg = r.message or ""
+    T.check("hero watch two heroes: a wind-up frame seen (" .. msg .. ")", (tonumber(string.match(msg, "hwf=(%d+)")) or 0) >= 1)
+    T.check("hero watch two heroes: the winding hero's reading kept", string.find(msg, "ha=1503", 1, true) ~= nil
+        and string.find(msg, "hpt=0.50", 1, true) ~= nil)
 end
 
 -- Due without the enemy hero's hit (44 HP, ours 45): ew names their wind-up, er=0. Under a lapse the belief's horizon
@@ -512,6 +551,7 @@ do
     T.check("observed rate: obs on the message (" .. tostring(obs) .. ")", obs ~= nil and obs >= 60 and obs <= 100)
     T.check("observed rate: the index saw nothing (idps=0)", string.find(r.message or "", "idps=0", 1, true) ~= nil)
     T.check("no enemy hero wind-up: no ew fields", string.find(r.message or "", "ew=", 1, true) == nil)
+    T.check("no enemy hero: hf=0 hwf=0", string.find(r.message or "", " hf=0 hwf=0", 1, true) ~= nil)
 end
 
 -- A creep killed during our wind-up cancels the attack. Seen on the next frame, at the predicted landing time, it is

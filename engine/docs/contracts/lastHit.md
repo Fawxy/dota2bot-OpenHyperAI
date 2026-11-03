@@ -1,8 +1,9 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 1 (slice lane-last-hits, 03/11/2026: first contract, written as the kill belief,
-                the outcome rule and the message fields changed) / engine (main loop)
+name / version / owner:  lastHit, deny / 2 (slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
+                hpt` on every message and an enemy-hero query each frame; v1 slice lane-last-hits, 03/11/2026: first
+                contract, written as the kill belief, the outcome rule and the message fields changed) / engine (main loop)
 layer:          atomic action (one swing on one lane creep, confirmed on the bot's last-hit or deny count)
 intent:         Swing once at a lane creep so the hit lands as the killing blow (lastHit: an enemy creep; deny: an allied
                 creep below half HP), waiting in attack range until the bot believes a swing ordered now does that.
@@ -36,8 +37,9 @@ outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | et
                 timeout: not due within maxWait or past the deadline (no swing). dead: the bot died. interrupted:
                 interruptIf fired. The per-frame `Skill` error rolls the belief early or late; there is no random
                 "don't try".
-timing:         one belief per frame while waiting (creep queries cached per bot per frame; heroes and towers queried
-                only once a swing decision is due); at most maxWait of waiting plus own hit time + 0.5 s to resolve.
+timing:         one belief per frame while waiting (creep queries cached per bot per frame; enemy heroes queried once
+                per frame, cached the same way, for the enemy-hero watch; allied heroes and towers only once a swing
+                decision is due); at most maxWait of waiting plus own hit time + 0.5 s to resolve.
 interruption:   interruptIf and deadline while waiting; once the swing is ordered the verb only watches (the attack
                 is not cancelled).
 skill:          Skill.lastHitError (width) and the per-creep roll: a negative shift shortens the relied horizon (swings
@@ -48,10 +50,15 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 frame margin, observed and indexed damage rate, HP at the end, order-to-end time, order-to-fire time or
                 -1, HP on the first frame at or past the landing or -1, mean frame gap), and before `end`, only when the swing
                 counted enemy hero wind-ups, `ew er ec oc` (how many, due only because of them, their latest commit
-                point and ours, seconds). Read by hlog `@lh_swings`.
+                point and ours, seconds). Every message, swung or not, ends with the enemy-hero watch over the frames the verb
+                watched the creep: `hf hwf` (frames an enemy hero's attack target was the creep, and of those the frames
+                the wind-up reader read it winding up) and, when hf > 0, `ha hc hpt` (that hero's GetAnimActivity,
+                GetAnimCycle, GetAttackPoint, from the last wind-up frame once one was seen): the in-game check of the
+                UNVERIFIED wind-up reading on heroes. Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
-                enemy hero wind-ups relied on, not relied on, and under a lapse,
+                enemy hero wind-ups relied on, not relied on, and under a lapse, hero watch (relied on, idle hero aimed at
+                the creep, two heroes with one wind-up frame),
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
                 wind-up double count); the 0.45 s look-ahead sits just under a lane creep's 0.467 s attack point (game
