@@ -30,8 +30,9 @@ effect check:   ok once the bot's GetLastHits (GetDenies) count rises, checked e
 outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | etiquette | dead | interrupted |
                 unsupported. missed: the creep was alive at the predicted landing, or our attack fired and the creep
                 was gone after the landing without the kill, or nothing resolved 0.5 s past the landing (early or wrong
-                belief). taken_by_other: the creep died before our hit, including during our wind-up with no attack
-                fired (a late belief). denied (lastHit only): taken_by_other with an enemy hero attacking it as it died.
+                belief). taken_by_other: the creep was gone at or before the predicted landing without our attack
+                having fired, including during our wind-up (a late belief); alive at the landing takes precedence
+                (missed). denied (lastHit only): taken_by_other with an enemy hero attacking it as it died.
                 timeout: not due within maxWait or past the deadline (no swing). dead: the bot died. interrupted:
                 interruptIf fired. The per-frame `Skill` error rolls the belief early or late; there is no random
                 "don't try".
@@ -50,8 +51,9 @@ fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
-                wind-up double count); the 0.45 s look-ahead is a lane creep's attack point (game file); the rest is
-                game-fact maths, no tuned numbers.
+                wind-up double count); the 0.45 s look-ahead sits just under a lane creep's 0.467 s attack point (game
+                file); the kill belief is otherwise game-fact maths with no tuned numbers. maxWait, searchRadius, the
+                0.5 s resolve slack, the 0.25 s cooldown queue and the frame margin bounds are taste.
 consumers:      engine laneFarm (every attempt); bot states/laning through it (cores: last hits and denies; deny-only
                 supports: denies).
 status:         offline-verified (in-game: the slice's check run, docs/team/slices/lane-last-hits.md)

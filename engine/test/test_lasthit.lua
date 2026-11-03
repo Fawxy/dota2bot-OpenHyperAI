@@ -490,6 +490,34 @@ do
     T.check("killed in our wind-up: attack never fired (" .. tostring(r.message) .. ")", string.find(r.message or "", "fa=-1", 1, true) ~= nil)
 end
 
+-- A creep still alive on the frame of our predicted landing and killed by someone else just after is a miss (our hit did
+-- not take it), whether or not the host has GetLastAttackTime to show the attack fired; killed before the landing it is
+-- taken_by_other. The whiffing ranged bot's hit never lands, so the creep's fate is the others' alone.
+for _, withMethod in ipairs({ true, false }) do
+    local function fate(killAfter)
+        local sim = world()
+        local bot = sim:addBot{ x = 0, y = 0, range = 600, damage = 50, attackPoint = 0.3, projectileSpeed = 900, fireTime = true, whiff = true }
+        if not withMethod then bot.GetLastAttackTime = nil end
+        local creep = sim:addCreep{ x = 550, y = 0, hp = 200, drain = 50, team = 3, passive = true }
+        local g = V.lastHit(bot, { target = creep, maxWait = 5 })
+        local swingT
+        for _ = 1, 3000 do
+            local s = g:next()
+            if s.done then return s.value end
+            if swingT == nil and firstSwing(bot) ~= nil then swingT = sim.t end
+            if swingT ~= nil and creep.alive and sim.t >= swingT + 0.87 + killAfter then creep.alive = false; creep.hp = 0 end
+            sim:step(DT)
+        end
+        error("generator did not finish", 0)
+    end
+    local tag = withMethod and "with GetLastAttackTime" or "without GetLastAttackTime"
+    local r = fate(0.1)
+    T.eq("alive at landing (" .. tag .. "): missed", r.reason, "missed")
+    local lhp = tonumber(string.match(r.message or "", "lhp=(%-?%d+)"))
+    T.check("alive at landing (" .. tag .. "): lhp > 0 (" .. tostring(lhp) .. ")", lhp ~= nil and lhp > 0)
+    T.eq("killed before landing (" .. tag .. "): taken_by_other", fate(-0.2).reason, "taken_by_other")
+end
+
 -- An attacker already winding up is credited with that hit once, not also as a rate over the long horizon. A ranged
 -- hero (0.3 s wind-up + 0.59 s flight, 55 damage) on a 120 HP creep; allied creep A (40 a second) lands at 0.6, B
 -- lands at 1.3. Counting A's hit and its rate too read 46 at the landing and swung at once, landing at 1.0 on 80 HP
