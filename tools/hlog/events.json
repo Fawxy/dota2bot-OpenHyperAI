@@ -926,7 +926,15 @@
    "chp": "num",
    "cv": "num",
    "cdmg": "num",
-   "php": "num"
+   "php": "num",
+   "sh": "num",
+   "ht": "num",
+   "g4": "num",
+   "gh": "num",
+   "na": "num",
+   "gu": "num",
+   "gd": "num",
+   "wa": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -945,7 +953,12 @@
    "nd": "num",
    "nh": "num",
    "nt": "str",
-   "pd": "num"
+   "pd": "num",
+   "tn": "num",
+   "tp": "num",
+   "tc": "num",
+   "td": "num",
+   "th": "num"
   },
   "choice": {
    "pid": "num",

@@ -21,7 +21,8 @@
 //   No worktree or --build. An arm may name its own `build` (the stamp lineup_check expects, default the spec's): the
 //   stamp file bots/FunLib/humaniser/build_info.lua is git-ignored, so build the arm's tree, `git add -f` that file, commit
 //   and push; the stamp is then `<parent sha>+dirty` (two arms built from different trees carry different stamps). A game's game.log is saved to ~/.dotactl/logs/<time>-<label>.log
-//   so hlog ingests it; a failed job is retried once like a local run. `ours` is checked by lineup_check (ev=bot ours).
+//   so hlog ingests it; a failed job is retried once like a local run. "record": true asks the host to keep the SourceTV
+//   replay and saves it beside the log as <time>-<label>.dem (also in the host's job directory, which keeps the newest jobs). `ours` is checked by lineup_check (ev=bot ours).
 //
 // Manifest: ~/.dotactl/batches/<name>.manifest, one `status=ok|fail label=... seed= arm= lineup= log=...` line per game.
 // Resumable: a label already `status=ok` is skipped. `--build` goes to the first game this run starts. A failed game is retried
@@ -82,7 +83,9 @@ function clock(until) {
 /** The remote job body for one game: the arm's pushed commit, the lineup seed and the spec's clock. */
 function remoteJob(spec, game) {
     const arm = spec.arms[game.arm];
-    return { branch: arm.branch, sha: arm.sha, until: clock(spec.until), seed: game.seed, timescale: spec.timescale || 8, label: game.label };
+    const job = { branch: arm.branch, sha: arm.sha, until: clock(spec.until), seed: game.seed, timescale: spec.timescale || 8, label: game.label };
+    if (spec.record === true) job.record = true;
+    return job;
 }
 
 /** A curfew on the host ends the job failed with dotactl's own wording (dotactl.js curfewError). */
@@ -122,7 +125,13 @@ async function runRemote(cfg, spec, game, { poll = 30000, maxBadPolls = 20, fetc
     fs.mkdirSync(logs, { recursive: true });
     const log = path.join(logs, `${stamp}-${game.label}.log`);
     fs.writeFileSync(log, Buffer.from(await g.arrayBuffer()));
-    return { ok: true, log, out };
+    if (spec.record !== true) return { ok: true, log, out };
+    // The host keeps its copy in the job's directory too; a missing demo does not fail the game.
+    const d = await fetchFn(`${cfg.host}/jobs/${job.id}/files/replay.dem`, { headers: H });
+    if (!d.ok) return { ok: true, log, out: `${out}; replay.dem ${d.status}` };
+    const replay = log.replace(/\.log$/, '.dem');
+    fs.writeFileSync(replay, Buffer.from(await d.arrayBuffer()));
+    return { ok: true, log, replay, out: `${out}; replay ${replay}` };
 }
 
 const erPath = spec => (path.isAbsolute(spec.er) ? spec.er : path.resolve(__dirname, '../..', spec.er));
