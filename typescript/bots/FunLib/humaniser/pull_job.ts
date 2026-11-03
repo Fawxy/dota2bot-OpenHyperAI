@@ -126,6 +126,7 @@ interface Pull {
     /** Lane creeps already within ArriveR of the meet point at the hit (they do not set `wa`). */
     early?: Unit[];
     g4?: number;
+    diagErr?: boolean;
     gh?: number;
     na?: number;
     gu?: number;
@@ -467,7 +468,7 @@ function sample(bot: Unit, p: Pull): void {
     for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
     p.neutrals = math.max(p.neutrals, nn);
     countDiverted(p);
-    pcall(trackTagged, bot, p);
+    diag(bot, p, trackTagged);
 }
 
 function sampleWave(bot: Unit, p: Pull): void {
@@ -475,7 +476,15 @@ function sampleWave(bot: Unit, p: Pull): void {
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
-    pcall(trackTagged, bot, p);
+    diag(bot, p, trackTagged);
+}
+
+/** A diagnostics error is printed once per pull, so a missing field is not read as "never happened" (review L5). */
+function diag(bot: Unit, p: Pull, fn: (this: void, bot: Unit, p: Pull) => void): void {
+    const [ok, err] = pcall(fn, bot, p);
+    if (ok || p.diagErr === true) return;
+    p.diagErr = true;
+    print(`[Humaniser] pull diag error slot=${p.plan.slot}: ${tostring(err)}`);
 }
 
 /** At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only. */
@@ -703,7 +712,7 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
             ctx.label(l);
             p.label = l;
             // Diagnostics only: an error here must not end the pull (review 2026-11-04-pull-diag L3).
-            if (l === "lead" && p.hat === undefined) pcall(tagCamp, bot, p);
+            if (l === "lead" && p.hat === undefined) diag(bot, p, tagCamp);
         },
         urgent: ctx.urgent,
     };

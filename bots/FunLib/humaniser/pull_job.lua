@@ -339,7 +339,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ourTower, share, laneCreepsNear, onNeutral, sampleWave, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running
+local ourTower, share, laneCreepsNear, onNeutral, sampleWave, diag, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
@@ -403,16 +403,24 @@ function sampleWave(bot, p)
     end
     p.sampledAt = now
     countDiverted(p)
-    pcall(trackTagged, bot, p)
+    diag(bot, p, trackTagged)
+end
+function diag(bot, p, fn)
+    local ok, err = pcall(fn, bot, p)
+    if ok or p.diagErr == true then
+        return
+    end
+    p.diagErr = true
+    print((("[Humaniser] pull diag error slot=" .. tostring(p.plan.slot)) .. ": ") .. tostring(err))
 end
 function taggedState(bot, p, ours)
     local s = {alive = 0, onPuller = 0, onCreep = 0}
     for ____, u in ipairs(p.tagged or ({})) do
         do
-            local __continue105
+            local __continue107
             repeat
                 if not u:IsAlive() then
-                    __continue105 = true
+                    __continue107 = true
                     break
                 end
                 s.alive = s.alive + 1
@@ -439,9 +447,9 @@ function taggedState(bot, p, ours)
                 if s.farthest == nil or h > s.farthest then
                     s.farthest = h
                 end
-                __continue105 = true
+                __continue107 = true
             until true
-            if not __continue105 then
+            if not __continue107 then
                 break
             end
         end
@@ -453,19 +461,19 @@ function trackTagged(bot, p)
     if p.wa == nil and p.early ~= nil then
         for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
             do
-                local __continue116
+                local __continue118
                 repeat
                     if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) or __TS__ArrayIndexOf(p.early, c) >= 0 then
-                        __continue116 = true
+                        __continue118 = true
                         break
                     end
                     if GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
                         p.wa = now
                         break
                     end
-                    __continue116 = true
+                    __continue118 = true
                 until true
-                if not __continue116 then
+                if not __continue118 then
                     break
                 end
             end
@@ -492,10 +500,10 @@ function trackTagged(bot, p)
     local home = 0
     for ____, u in ipairs(p.tagged) do
         do
-            local __continue123
+            local __continue125
             repeat
                 if not u:IsAlive() then
-                    __continue123 = true
+                    __continue125 = true
                     break
                 end
                 local h = GetUnitToLocationDistance(u, p.plan.spawner.location)
@@ -505,7 +513,7 @@ function trackTagged(bot, p)
                 )
                 p.peaks:set(u, peak)
                 if peak <= ____exports.SETTINGS.Left then
-                    __continue123 = true
+                    __continue125 = true
                     break
                 end
                 if p.g4 == nil then
@@ -516,9 +524,9 @@ function trackTagged(bot, p)
                 if h < peak - ____exports.SETTINGS.HomeMargin and (t == nil or t == nil) then
                     home = home + 1
                 end
-                __continue123 = true
+                __continue125 = true
             until true
-            if not __continue123 then
+            if not __continue125 then
                 break
             end
         end
@@ -581,19 +589,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue143
+            local __continue145
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue143 = true
+                    __continue145 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue143 = true
+                __continue145 = true
             until true
-            if not __continue143 then
+            if not __continue145 then
                 break
             end
         end
@@ -618,15 +626,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue153
+            local __continue155
             repeat
                 if not u:IsAlive() then
-                    __continue153 = true
+                    __continue155 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue153 = true
+                    __continue155 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -653,9 +661,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue153 = true
+                __continue155 = true
             until true
-            if not __continue153 then
+            if not __continue155 then
                 break
             end
         end
@@ -1322,7 +1330,7 @@ local function sample(bot, p)
     end
     p.neutrals = math.max(p.neutrals, nn)
     countDiverted(p)
-    pcall(trackTagged, bot, p)
+    diag(bot, p, trackTagged)
 end
 --- At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only.
 local function tagCamp(bot, p)
@@ -1330,18 +1338,18 @@ local function tagCamp(bot, p)
     local tagged = ____exports.CampStateOf(p.plan.spawner).units
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue97
+            local __continue99
             repeat
                 if not u:IsAlive() or __TS__ArrayIndexOf(tagged, u) >= 0 or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.TagRadius then
-                    __continue97 = true
+                    __continue99 = true
                     break
                 end
                 if u:GetAttackTarget() == bot then
                     tagged[#tagged + 1] = u
                 end
-                __continue97 = true
+                __continue99 = true
             until true
-            if not __continue97 then
+            if not __continue99 then
                 break
             end
         end
@@ -1395,7 +1403,7 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
             ctx.label(l)
             p.label = l
             if l == "lead" and p.hat == nil then
-                pcall(tagCamp, bot, p)
+                diag(bot, p, tagCamp)
             end
         end,
         urgent = ctx.urgent
