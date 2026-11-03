@@ -43,6 +43,7 @@ function Unit:GetAttackTarget() return self.target end
 function Unit:GetHealthRegen() return self.regen or 0 end
 function Unit:GetDenies() return self.denies or 0 end
 function Unit:GetCurrentMovementSpeed() return 300 end
+function Unit:GetBoundingRadius() return 24 end
 function Unit:WasRecentlyDamagedByAnyHero() return false end
 function Unit:WasRecentlyDamagedByCreep() return false end
 function Unit:WasRecentlyDamagedByTower() return false end
@@ -170,6 +171,22 @@ do
 	check("hp 30%: why=hp", Laning.SpotInfo(botl).why == "hp" and Laning.SpotInfo(botl).margin == 240, Laning.SpotInfo(botl).why)
 	local vlow = spotFor(SDK, { hp = 20 }, setup)
 	check("hp 20%: outside the ring + 300", vlow ~= nil and dist(vlow, c.loc) >= 820, vlow and dist(vlow, c.loc))
+end
+
+-- An enemy hero's reach (attack range + both bounding radii + 150): a ranged enemy (550) 400 from the preferred point moves the
+-- spot to 748 from it (why=hero), with no creep in the way; at 30% HP the HP margin adds 240.
+do
+	local e
+	local setup = function() e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 550 end
+	local s, bot = spotFor(SDK, nil, setup)
+	local Laning = require("bots/FunLib/humaniser/states/laning")
+	check("hero reach: outside 550 + 48 + 150", s ~= nil and dist(s, e.loc) >= 748 and dist(s, e.loc) < 748 + 51, s and dist(s, e.loc))
+	check("hero reach: why=hero", Laning.SpotInfo(bot).why == "hero", Laning.SpotInfo(bot).why)
+	local low = spotFor(SDK, { hp = 30 }, setup)
+	check("hero reach at 30% HP: + 240", low ~= nil and dist(low, e.loc) >= 988, low and dist(low, e.loc))
+	local melee, botm = spotFor(SDK, nil, function() MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) end)
+	check("melee enemy (150): 348 is enough, the preferred point (side-shifted) holds", melee ~= nil and melee.x == -100
+		and require("bots/FunLib/humaniser/states/laning").SpotInfo(botm).why == "pref", melee and (melee.x .. "," .. melee.y))
 end
 
 -- A ring cleared sideways when that gives up less ground than going back: a creep just off the axis behind the preferred point.

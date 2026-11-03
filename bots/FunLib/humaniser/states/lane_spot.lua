@@ -27,6 +27,9 @@ local QUERY = 1400
 local HP_SAFE = 0.5
 local HP_LOW = 0.25
 local HP_MARGIN = 300
+--- Ground an enemy hero closes before its hit lands, added to its attack reach (judgement, step 0 as corrected by review
+-- 2026-11-03-lane-positioning-step0-9ca4381: idle cores lost 1.6-3 HP-% a second with an enemy hero within 800, 0.2 beyond 1,000).
+local REACT = 150
 local function sub(a, b)
     return {a.x - b.x, a.y - b.y}
 end
@@ -58,18 +61,59 @@ function ____exports.HpMargin(hpFrac)
     end
     return HP_MARGIN * (HP_SAFE - hpFrac) / (HP_SAFE - HP_LOW)
 end
---- The first hard limit `p` breaks, or undefined: an enemy creep's ring (`creep`, or `hp` when only the margin breaks it), a tower.
-function ____exports.Breaks(p, creeps, towers, margin)
+--- How close `self` may stand to an enemy hero: its attack reach to us plus REACT.
+function ____exports.HeroReach(____self, enemy)
+    return enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT
+end
+--- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
+-- `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order.
+function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
     if margin == nil then
         margin = 0
     end
+    if heroes == nil then
+        heroes = {}
+    end
+    if reach == nil then
+        reach = {}
+    end
     local hp = false
+    do
+        local i = 0
+        while i < #heroes do
+            do
+                local __continue12
+                repeat
+                    local h = heroes[i + 1]
+                    if not alive(h) then
+                        __continue12 = true
+                        break
+                    end
+                    local dist = d2(
+                        p,
+                        h:GetLocation()
+                    )
+                    if dist < reach[i + 1] then
+                        return "hero"
+                    end
+                    if dist < reach[i + 1] + margin then
+                        hp = true
+                    end
+                    __continue12 = true
+                until true
+                if not __continue12 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
     for ____, c in ipairs(creeps) do
         do
-            local __continue11
+            local __continue16
             repeat
                 if not alive(c) then
-                    __continue11 = true
+                    __continue16 = true
                     break
                 end
                 local ring = isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING
@@ -83,9 +127,9 @@ function ____exports.Breaks(p, creeps, towers, margin)
                 if dist < ring + margin then
                     hp = true
                 end
-                __continue11 = true
+                __continue16 = true
             until true
-            if not __continue11 then
+            if not __continue16 then
                 break
             end
         end
@@ -126,8 +170,12 @@ function ____exports.Compute(bot, role)
     local towers = bot:GetNearbyTowers(1600, true)
     local enemyHero
     local heroDist = math.huge
+    local heroes = {}
+    local reach = {}
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
         if alive(h) then
+            heroes[#heroes + 1] = h
+            reach[#reach + 1] = ____exports.HeroReach(bot, h)
             local dist = d2(
                 h:GetLocation(),
                 front
@@ -178,7 +226,14 @@ function ____exports.Compute(bot, role)
         bot:GetMaxHealth()
     ))
     local pref = Vector(px, py, front.z)
-    local first = ____exports.Breaks(pref, creeps, towers, margin)
+    local first = ____exports.Breaks(
+        pref,
+        creeps,
+        towers,
+        margin,
+        heroes,
+        reach
+    )
     if first == nil then
         return {
             spot = pref,
@@ -199,22 +254,29 @@ function ____exports.Compute(bot, role)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue37
+                    local __continue42
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue37 = true
+                            __continue42 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
-                        if ____exports.Breaks(p, creeps, towers, margin) == nil then
+                        if ____exports.Breaks(
+                            p,
+                            creeps,
+                            towers,
+                            margin,
+                            heroes,
+                            reach
+                        ) == nil then
                             best = p
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue37 = true
+                        __continue42 = true
                     until true
-                    if not __continue37 then
+                    if not __continue42 then
                         break
                     end
                 end

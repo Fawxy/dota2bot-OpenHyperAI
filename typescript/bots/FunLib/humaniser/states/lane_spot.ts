@@ -4,8 +4,9 @@
  *
  * A preferred point (a ranged core at attack range - 50 from the lowest-HP enemy creep, a melee core just behind our front,
  * both shifted away from the nearest enemy hero; a support towards its approach line), then the candidate nearest to it that
- * keeps the hard limits: outside the enemy creeps' acquisition rings (520 melee, 620 ranged) widened by the HP margin, outside
- * every enemy tower's range, and no further back than the XP limit. Without a visible enemy wave (between waves, walking out)
+ * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus REACT), outside
+ * the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the HP margin, outside every enemy tower's range,
+ * and no further back than the XP limit. Without a visible enemy wave (between waves, walking out)
  * the preferred point is our front and only the tower ring applies.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
@@ -33,10 +34,15 @@ const QUERY = 1400;
 const HP_SAFE = 0.5;
 const HP_LOW = 0.25;
 const HP_MARGIN = 300;
+/**
+ * Ground an enemy hero closes before its hit lands, added to its attack reach (judgement, step 0 as corrected by review
+ * 2026-11-03-lane-positioning-step0-9ca4381: idle cores lost 1.6-3 HP-% a second with an enemy hero within 800, 0.2 beyond 1,000).
+ */
+const REACT = 150;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
-export type Why = "pref" | "creep" | "hp" | "tower" | "xp";
+export type Why = "pref" | "hero" | "creep" | "hp" | "tower" | "xp";
 
 export interface SpotInfo {
     spot: Vector;
@@ -76,9 +82,24 @@ export function HpMargin(hpFrac: number): number {
     return (HP_MARGIN * (HP_SAFE - hpFrac)) / (HP_SAFE - HP_LOW);
 }
 
-/** The first hard limit `p` breaks, or undefined: an enemy creep's ring (`creep`, or `hp` when only the margin breaks it), a tower. */
-export function Breaks(p: Vector, creeps: Unit[], towers: Unit[], margin = 0): Why | undefined {
+/** How close `self` may stand to an enemy hero: its attack reach to us plus REACT. */
+export function HeroReach(self: Unit, enemy: Unit): number {
+    return enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT;
+}
+
+/**
+ * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
+ * `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order.
+ */
+export function Breaks(p: Vector, creeps: Unit[], towers: Unit[], margin = 0, heroes: Unit[] = [], reach: number[] = []): Why | undefined {
     let hp = false;
+    for (let i = 0; i < heroes.length; i++) {
+        const h = heroes[i];
+        if (!alive(h)) continue;
+        const dist = d2(p, h.GetLocation());
+        if (dist < reach[i]) return "hero";
+        if (dist < reach[i] + margin) hp = true;
+    }
     for (const c of creeps) {
         if (!alive(c)) continue;
         const ring = isRangedCreep(c) ? RANGED_RING : MELEE_RING;
@@ -113,8 +134,12 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
 
     let enemyHero: Unit | undefined;
     let heroDist = math.huge;
+    const heroes: Unit[] = [];
+    const reach: number[] = [];
     for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
         if (alive(h)) {
+            heroes.push(h);
+            reach.push(HeroReach(bot, h));
             const dist = d2(h.GetLocation(), front);
             if (dist < heroDist) {
                 heroDist = dist;
@@ -156,7 +181,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
 
     const margin = HpMargin(bot.GetHealth() / math.max(1, bot.GetMaxHealth()));
     const pref = Vector(px, py, front.z);
-    const first = Breaks(pref, creeps, towers, margin);
+    const first = Breaks(pref, creeps, towers, margin, heroes, reach);
     if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin };
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
@@ -171,7 +196,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
             const cost = len(PUSH_STEP * k, off);
             if (cost >= bestCost) continue;
             const p = Vector(bx + nx * off, by + ny * off, front.z);
-            if (Breaks(p, creeps, towers, margin) === undefined) {
+            if (Breaks(p, creeps, towers, margin, heroes, reach) === undefined) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;
