@@ -118,7 +118,7 @@ function ____exports.Step(bot, mode)
     local l = lib()
     return l ~= nil and l.States.Step(bot, mode)
 end
-local LANE_POS_EVERY = 2
+local LANE_POS_EVERY = 1
 local function shadowTeam(bot)
     return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
@@ -242,6 +242,14 @@ local function lanePos(bot, l)
         {
             "hm",
             info ~= nil and math.floor(info.margin) or nil
+        },
+        {
+            "sx",
+            spot ~= nil and math.floor(spot.x) or nil
+        },
+        {
+            "sy",
+            spot ~= nil and math.floor(spot.y) or nil
         },
         {
             "hph",

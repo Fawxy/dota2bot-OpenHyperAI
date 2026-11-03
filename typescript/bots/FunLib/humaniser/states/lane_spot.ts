@@ -4,10 +4,10 @@
  *
  * A preferred point (a ranged core at attack range - 50 from the lowest-HP enemy creep, a melee core just behind our front,
  * both shifted away from the nearest enemy hero; a support towards its approach line), then the candidate nearest to it that
- * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus a second of
- * its movement), outside
- * the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the HP margin, outside every enemy tower's range,
- * and no further back than the XP limit (1,000 from the preferred point). Without a visible enemy wave (between waves,
+ * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus 1.5 s of
+ * its movement, and never under 800), outside the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the
+ * HP margin, outside every enemy tower's range plus the hold's drift, and no further back than the XP limit (1,000 from the
+ * preferred point). With no candidate inside the XP limit that keeps them all, the furthest back that keeps the tower limit. Without a visible enemy wave (between waves,
  * walking out) the preferred point is 100 behind our front and the hero and tower limits apply.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
@@ -16,6 +16,8 @@ export const MELEE_RING = 520;
 export const RANGED_RING = 620;
 /** Enemy tower attack range (~700) plus a margin; at every level, since nothing in lane owns a dive. */
 export const TOWER_RING = 750;
+/** How far the hold may leave the spot (its tolerance 40 plus scatter 40), so a hold on a spot at the ring stays outside it. */
+const HOLD_DRIFT = 80;
 const RANGED_ABOVE = 320;
 /** Ranged cores stand this much inside their range from the creep they will hit next. */
 const RANGE_INSET = 50;
@@ -37,10 +39,16 @@ const HP_LOW = 0.25;
 const HP_MARGIN = 300;
 /**
  * Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
- * with a fixed 150: cores held where the hero limit placed them 400-800 from an enemy hero and lost 0.7-1.1 HP-% a second
- * there, against 0.3 at 800-1,200.
+ * with a fixed 150: cores held 400-800 from an enemy hero lost 0.7-1.1 HP-% a second there, against 0.3 at 800-1,200.
+ * lposchk2 with 1 s (reach about 920 against a 570-range hero): idle cores 800-1,000 from a ranged enemy still lost 0.39 a
+ * second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
  */
-const REACT_SECS = 1.0;
+const REACT_SECS = 1.5;
+/**
+ * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
+ * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
+ */
+const MIN_REACH = 800;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
@@ -84,9 +92,9 @@ export function HpMargin(hpFrac: number): number {
     return (HP_MARGIN * (HP_SAFE - hpFrac)) / (HP_SAFE - HP_LOW);
 }
 
-/** How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement. */
+/** How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement, at least MIN_REACH. */
 export function HeroReach(self: Unit, enemy: Unit): number {
-    return enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT_SECS * enemy.GetCurrentMovementSpeed();
+    return math.max(MIN_REACH, enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT_SECS * enemy.GetCurrentMovementSpeed());
 }
 
 /**
@@ -109,8 +117,13 @@ export function Breaks(p: Vector, creeps: Unit[], towers: Unit[], margin = 0, he
         if (dist < ring) return "creep";
         if (dist < ring + margin) hp = true;
     }
-    for (const t of towers) if (alive(t) && d2(p, t.GetLocation()) < TOWER_RING) return "tower";
+    if (breaksTower(p, towers)) return "tower";
     return hp ? "hp" : undefined;
+}
+
+function breaksTower(p: Vector, towers: Unit[]): boolean {
+    for (const t of towers) if (alive(t) && d2(p, t.GetLocation()) < TOWER_RING + HOLD_DRIFT) return true;
+    return false;
 }
 
 /**
@@ -190,6 +203,9 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     let best: Vector | undefined;
     let bestCost = math.huge;
     let bestPushed = 0;
+    // The fallback: the furthest-back candidate that still keeps the tower limit.
+    let keep: Vector | undefined;
+    let keepPushed = 0;
     const steps = math.floor(MAX_BACK / PUSH_STEP);
     for (let k = 0; k <= steps; k++) {
         const bx = px + dx * PUSH_STEP * k;
@@ -198,6 +214,10 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
             const cost = len(PUSH_STEP * k, off);
             if (cost >= bestCost) continue;
             const p = Vector(bx + nx * off, by + ny * off, front.z);
+            if (best === undefined && (keep === undefined || k > keepPushed) && !breaksTower(p, towers)) {
+                keep = p;
+                keepPushed = k;
+            }
             if (Breaks(p, creeps, towers, margin, heroes, reach) === undefined) {
                 best = p;
                 bestCost = cost;
@@ -207,6 +227,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
         if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
     if (best === undefined) {
+        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin };
         return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin };
     }
     return { spot: best, pushed: bestPushed, anchor, why: first, margin };

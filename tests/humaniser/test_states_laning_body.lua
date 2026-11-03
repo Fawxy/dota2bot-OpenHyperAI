@@ -118,7 +118,8 @@ do
 	check("ranged core: 550 from the lowest-HP creep", s ~= nil and math.abs(dist(s, low.loc) - 550) < 1, s and dist(s, low.loc))
 end
 
--- Enemy tower: outside its 750 range even where the creep rings allow closer, at every level (nothing in lane owns a dive).
+-- Enemy tower: outside its 750 range plus the hold's 80 drift even where the creep rings allow closer, at every level (nothing
+-- in lane owns a dive).
 do
 	local tower = { team = 3, loc = Vector(200, 0) }
 	tower.GetLocation = function() return tower.loc end
@@ -126,7 +127,7 @@ do
 	tower.IsAlive = function() return true end
 	tower.IsNull = function() return false end
 	local s3 = spotFor(SDK, { level = 3 }, setup)
-	check("tower ring at level 3", s3 ~= nil and dist(s3, tower.loc) >= 750, s3 and dist(s3, tower.loc))
+	check("tower ring + drift at level 3", s3 ~= nil and dist(s3, tower.loc) >= 830, s3 and dist(s3, tower.loc))
 	local s6 = spotFor(SDK, { level = 6 }, setup)
 	check("tower ring at level 6 too", s6 ~= nil and dist(s6, tower.loc) >= 750, s6 and dist(s6, tower.loc))
 end
@@ -173,24 +174,44 @@ do
 	check("hp 20%: outside the ring + 300", vlow ~= nil and dist(vlow, c.loc) >= 820, vlow and dist(vlow, c.loc))
 end
 
--- An enemy hero's reach (attack range + both bounding radii + a second of its 300 movement): a ranged enemy (550) 400 from the
--- preferred point moves the spot to 898 from it (why=hero), with no creep in the way; at 30% HP the HP margin adds 240.
+-- An enemy hero's reach (attack range + both bounding radii + 1.5 s of its 300 movement, at least 800): a ranged enemy (550)
+-- 400 from the preferred point moves the spot to 1,048 from it (why=hero), with no creep in the way; at 30% HP the HP margin
+-- adds 240; a melee enemy's reach is the 800 floor, not 150 + 48 + 450.
 do
 	local e
 	local setup = function() e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 550 end
 	local s, bot = spotFor(SDK, nil, setup)
 	local Laning = require("bots/FunLib/humaniser/states/laning")
-	check("hero reach: outside 550 + 48 + 300", s ~= nil and dist(s, e.loc) >= 898 and dist(s, e.loc) < 898 + 51, s and dist(s, e.loc))
+	check("hero reach: outside 550 + 48 + 450", s ~= nil and dist(s, e.loc) >= 1048 and dist(s, e.loc) < 1048 + 51, s and dist(s, e.loc))
 	check("hero reach: why=hero", Laning.SpotInfo(bot).why == "hero", Laning.SpotInfo(bot).why)
 	local low = spotFor(SDK, { hp = 30 }, setup)
-	check("hero reach at 30% HP: + 240", low ~= nil and dist(low, e.loc) >= 1138, low and dist(low, e.loc))
+	check("hero reach at 30% HP: + 240", low ~= nil and dist(low, e.loc) >= 1288, low and dist(low, e.loc))
 	local m
 	local melee, botm = spotFor(SDK, nil, function() m = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) end)
-	check("melee enemy 400 away: pushed to 150 + 48 + 300", melee ~= nil and dist(melee, m.loc) >= 498
+	check("melee enemy 400 away: pushed to the 800 floor", melee ~= nil and dist(melee, m.loc) >= 800 and dist(melee, m.loc) < 851
 		and require("bots/FunLib/humaniser/states/laning").SpotInfo(botm).why == "hero", melee and dist(melee, m.loc))
 	local far, botf = spotFor(SDK, nil, function() MakeUnit({ pid = 7, team = 3, loc = Vector(700, 0) }) end)
 	check("melee enemy 800 away: the preferred point (side-shifted) holds", far ~= nil and far.x == -100
 		and require("bots/FunLib/humaniser/states/laning").SpotInfo(botf).why == "pref", far and (far.x .. "," .. far.y))
+end
+
+-- No candidate within the XP limit clears the hero reach (an enemy ranged hero just behind the preferred point): the fallback is
+-- the furthest back that still keeps an enemy tower's ring, not the XP limit inside it (lposchk2: 13 idle seconds in tower range
+-- from the old fallback).
+do
+	local tower = { team = 3, loc = Vector(-1300, 0) }
+	tower.GetLocation = function() return tower.loc end
+	tower.IsAlive = function() return true end
+	tower.IsNull = function() return false end
+	local e
+	local s, bot = spotFor(SDK, nil, function()
+		e = MakeUnit({ pid = 7, team = 3, loc = Vector(-600, 0) }) e.range = 550
+		TOWERS = { tower }
+	end)
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("xp fallback: why=xp", info ~= nil and info.why == "xp", info and info.why)
+	check("xp fallback: outside the tower ring + drift", s ~= nil and dist(s, tower.loc) >= 830, s and dist(s, tower.loc))
+	check("xp fallback: as far back as the tower allows", s ~= nil and dist(s, tower.loc) < 830 + 60, s and dist(s, tower.loc))
 end
 
 -- A ring cleared sideways when that gives up less ground than going back: a creep just off the axis behind the preferred point.
