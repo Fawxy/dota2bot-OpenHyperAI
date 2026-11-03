@@ -9,14 +9,13 @@
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
 h AS (
     SELECT a.game_id, a.mode, a.activity,
-        CAST(substr(s.by, instr(s.by, ' ') + 1, instr(s.by, ' by ') - instr(s.by, ' ') - 1) AS REAL) AS desire,
-        substr(s.by, instr(s.by, ' by ') + 4) AS src
+        CAST(substr(a.by, instr(a.by, ' ') + 1, instr(a.by, ' by ') - instr(a.by, ' ') - 1) AS REAL) AS desire,
+        substr(a.by, instr(a.by, ' by ') + 4) AS src
     FROM lane_activity a JOIN gm ON gm.game_id = a.game_id
-    JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
     WHERE a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
       AND a.pos BETWEEN coalesce(:pos_lo, 1) AND coalesce(:pos_hi, 3)
       AND (:mode IS NULL OR a.mode = :mode)
-      AND s.by LIKE a.mode || ' % by %'
+      AND a.by LIKE a.mode || ' % by %'
 )
 SELECT mode, round(desire, 2) AS desire, src, count(*) AS secs, count(DISTINCT game_id) AS games,
     sum(activity = 'hero') AS hero, sum(activity = 'creep') AS creep, sum(activity = 'neutral') AS neutral,
