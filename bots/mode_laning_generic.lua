@@ -109,6 +109,10 @@ function GetDesire()
 	if GetGameMode() == 23 then currentTime = currentTime * 1.65 end
 	if currentTime < 0 then return BOT_ACTION_DESIRE_NONE end
 
+	-- Overrides.LaneOnly (slice lane-last-hits, scenario games): the bot stays in lane through the laning phase and does nothing
+	-- but hold, last-hit and deny (Think below). Above every other mode, as the Overrides.Solo bench in mode_farm_generic.
+	if bOwnsThink and J.Humaniser.Overrides.LaneOnly() and J.IsInLaningPhase() then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
+
 	-- if DotaTime() > 20 and DotaTime() - skipLaningState.lastCheckTime < skipLaningState.checkGap then
 	-- 	if skipLaningState.count > 6 then
 	-- 		print('[WARN] Bot ' ..botName.. ' switching modes too often, now stop it for laning to avoid conflicts.')
@@ -354,6 +358,15 @@ if bOwnsThink then
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
 		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, deny first) come before every step below.
 		if States.SupportStep(bot) then return end
+		-- Overrides.LaneOnly: only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
+		if J.Humaniser.Overrides.LaneOnly() then
+			if not States.BodyLastHits(bot) then
+				if LastHitThink() then return end
+				if not States.BodyDenies(bot) and DenyThink() then return end
+			end
+			if States.BodyDenies(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+			return
+		end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 		if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.

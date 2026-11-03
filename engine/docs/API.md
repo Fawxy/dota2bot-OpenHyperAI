@@ -146,8 +146,10 @@ hit (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero w
 `timeout`, `no_target`, `etiquette` (every candidate vetoed by `lastHitFilter`), `dead`, `interrupted`,
 `unsupported` (no `GetAttackDamage`/`GetAttackPoint`; `deny` also needs `GetDenies`).
 
-**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= end= dt=` (what the swing
-was based on and how it ended). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= end= dt= fa= lhp= fg=` (what the swing
+was based on and how it ended; since slice lane-last-hits the calibration fields: `fa` seconds from the order until
+`GetLastAttackTime` rose, -1 never seen; `lhp` the creep's HP on the first frame at or past the predicted landing `t`, 0 gone, -1 not
+reached; `fg` the mean gap in seconds between the frames the verb saw while it waited, which is how often the host steps the body). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
 (the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
 

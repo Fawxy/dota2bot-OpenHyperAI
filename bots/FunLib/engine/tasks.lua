@@ -2007,6 +2007,8 @@ local strike = __TS__Generator(function(bot, mode, opts)
     end
     local lastFrame
     local margin = MIN_MARGIN
+    local gapSum = 0
+    local gapN = 0
     while true do
         local t = now()
         if lastFrame ~= nil and t > lastFrame then
@@ -2014,6 +2016,8 @@ local strike = __TS__Generator(function(bot, mode, opts)
                 MAX_MARGIN,
                 math.max(MIN_MARGIN, 1.2 * (t - lastFrame))
             )
+            gapSum = gapSum + (t - lastFrame)
+            gapN = gapN + 1
         end
         lastFrame = t
         if not bot:IsAlive() then
@@ -2079,18 +2083,33 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
+    local ____this_91
+    ____this_91 = bot
+    local ____opt_90 = ____this_91.GetLastAttackTime
+    local atk0 = ____opt_90 and ____opt_90(____this_91)
+    local fireAt
+    local landHp
     local function out(r)
         local hp = gone(creep) and 0 or math.floor(creep:GetHealth())
         r.message = string.format(
-            "%s end=%d dt=%.2f",
+            "%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f",
             diag,
             hp,
-            now() - swingAt
+            now() - swingAt,
+            fireAt or -1,
+            landHp or -1,
+            gapN > 0 and gapSum / gapN or 0
         )
         return r
     end
     while true do
         coroutine.yield()
+        if fireAt == nil and atk0 ~= nil and bot:GetLastAttackTime() > atk0 then
+            fireAt = now() - swingAt
+        end
+        if landHp == nil and landBy() then
+            landHp = gone(creep) and 0 or math.floor(creep:GetHealth())
+        end
         if counter() > baseline then
             return out(ok())
         end

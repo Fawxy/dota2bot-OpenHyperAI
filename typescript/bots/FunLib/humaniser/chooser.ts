@@ -6,6 +6,7 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
@@ -228,10 +229,11 @@ export function HoldsRun(bot: Unit): boolean {
  * ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
  * branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
  * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
- * An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast.
+ * An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast, nor does
+ * anyone in a lane-only game (Overrides.LaneOnly: spells on creeps would change the last-hit contest under test).
  */
 export function HoldsCasts(bot: Unit): boolean {
-    if (StackJob.Benched(bot)) return true;
+    if (StackJob.Benched(bot) || Overrides.LaneOnly()) return true;
     if (!Running(bot)) return false;
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }

@@ -497,9 +497,16 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     };
     let lastFrame: number | undefined;
     let margin = MIN_MARGIN;
+    // In-game calibration: the mean gap between the frames this verb saw (how often the host steps the body).
+    let gapSum = 0;
+    let gapN = 0;
     while (true) {
         const t = now();
-        if (lastFrame !== undefined && t > lastFrame) margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
+        if (lastFrame !== undefined && t > lastFrame) {
+            margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
+            gapSum += t - lastFrame;
+            gapN++;
+        }
         lastFrame = t;
         if (!bot.IsAlive()) return early(fail("dead"));
         if (gone(creep)) return early(fail(lostReason(enemyOnIt)));
@@ -535,13 +542,21 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // outcome is judged against the predicted landing time instead: a creep lost before it was taken by someone
     // else; one alive (or killed by someone else) after it was missed.
     const landBy = (): boolean => now() - swingAt >= tHit;
+    // Calibration of the prediction against the game (docs/API.md "Message"): when the attack fired (`fa`, from
+    // GetLastAttackTime rising; -1 never seen) and the creep's HP on the first frame at or past the predicted
+    // landing (`lhp`; 0 gone, -1 never reached), beside the frame gap (`fg`).
+    const atk0 = bot.GetLastAttackTime?.();
+    let fireAt: number | undefined;
+    let landHp: number | undefined;
     const out = (r: Result): Result => {
         const hp = gone(creep) ? 0 : math.floor(creep.GetHealth());
-        r.message = string.format("%s end=%d dt=%.2f", diag, hp, now() - swingAt);
+        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0);
         return r;
     };
     while (true) {
         yield;
+        if (fireAt === undefined && atk0 !== undefined && bot.GetLastAttackTime!() > atk0) fireAt = now() - swingAt;
+        if (landHp === undefined && landBy()) landHp = gone(creep) ? 0 : math.floor(creep.GetHealth());
         if (counter() > baseline) return out(ok());
         if (gone(creep)) return out(fail(landBy() ? "missed" : lostReason(enemyOnIt)));
         if (!bot.IsAlive()) return fail("dead");

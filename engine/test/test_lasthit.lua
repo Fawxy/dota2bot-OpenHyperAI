@@ -422,5 +422,20 @@ do
     T.check("react varies", hi - lo > 0.1)
 end
 
+-- Calibration fields on a swing's message: `fa` when the attack fired (the sim lands a melee hit at the attack point),
+-- `lhp` the creep's HP on the first frame at or past the predicted landing (0: our hit took it), `fg` the frame gap seen.
+do
+    local sim = world()
+    local bot, creep = contested(sim)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 5 }))
+    T.eq("calibration: ok", r.reason, "ok")
+    local fa = tonumber(string.match(r.message or "", "fa=([%d%.%-]+)"))
+    local lhp = tonumber(string.match(r.message or "", "lhp=([%d%-]+)"))
+    local fg = tonumber(string.match(r.message or "", "fg=([%d%.]+)"))
+    T.check("calibration: fa is the attack point (" .. tostring(fa) .. ")", fa ~= nil and math.abs(fa - 0.5) <= 0.04)
+    T.eq("calibration: lhp 0, our hit took the creep", lhp, 0)
+    T.check("calibration: fg is the sim's frame (" .. tostring(fg) .. ")", fg ~= nil and math.abs(fg - DT) <= 0.005)
+end
+
 print("lasthit [" .. T.runtime() .. "]")
 T.finish()
