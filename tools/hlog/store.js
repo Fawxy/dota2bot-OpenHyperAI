@@ -296,7 +296,8 @@ class Store {
     }
 
     /**
-     * (Re-)creates each view in views/*.sql as a TEMP view on this connection, so opening the store takes no write lock
+     * (Re-)creates each view in views/*.sql as a TEMP view on this connection (`-- include:` fragments expanded, as in
+     * `query`), so opening the store takes no write lock
      * (except a `-- ensure:` header that finds its table or column missing, which writes once).
      * A view's `-- needs: ev_x(a, b)` lines add those columns (NULL) first, so it still opens on logs from builds that
      * never wrote a field; a view whose tables no log has is skipped.
@@ -304,7 +305,7 @@ class Store {
     refreshViews() {
         if (!this.viewsDir || !fs.existsSync(this.viewsDir)) return;
         for (const f of fs.readdirSync(this.viewsDir).filter(f => f.endsWith('.sql')).sort()) {
-            const sql = fs.readFileSync(path.join(this.viewsDir, f), 'utf8');
+            const sql = include(fs.readFileSync(path.join(this.viewsDir, f), 'utf8'));
             const name = path.basename(f, '.sql');
             this.db.exec(`DROP VIEW IF EXISTS temp.${q(name)}`);
             const needs = [...sql.matchAll(/^-- needs: (\w+)\(([^)]*)\)/gm)];
