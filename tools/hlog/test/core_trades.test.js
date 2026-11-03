@@ -60,7 +60,7 @@ test('core deaths: each death of a core before until gets the first matching cau
 });
 
 test('core deaths: the tower table equals dynamic.js TOWERS', () => {
-    const values = sql('core_deaths').match(/tw \(team, x, y\) AS \(VALUES([\s\S]*?\))\),/)[1];
+    const values = fs.readFileSync(path.join(__dirname, "..", "queries", "fragments", "core_death.sql"), "utf8").match(/tw \(team, x, y\) AS \(VALUES([\s\S]*?\))\),/)[1];
     const rows = [...values.matchAll(/\((\d), (-?\d+), (-?\d+)\)/g)].map(m => m.slice(1).map(Number));
     assert.deepStrictEqual(rows, TOWERS);
 });
