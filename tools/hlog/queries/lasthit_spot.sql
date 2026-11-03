@@ -3,14 +3,14 @@
 -- Creeps and the miss classes are @lasthit_cores': enemy lane creeps that died within 1000 of the core; got = its own last hit;
 -- swung = it began a swing (early or late); in_range = within attack range + 300 and not attacking; away = further.
 -- The spot is the core's nearest ev=lane_pos sample with `sx`/`sy` from 2 s before the death to 0.5 s after (our spot only:
--- deaths with no such sample, e.g. on OHA's spot, are dropped).
+-- samples on OHA's spot (`spot=oha`, which can carry `sx`/`sy` too) are skipped; deaths with no such sample are dropped).
 --   me          the core's kind: melee (attack range 200 or less) or ranged
 --   band        the creep's distance from the spot less the core's attack range: in range (0 or less), +300, +600, beyond
 --   ds, off     mean distance from the spot to the creep, and the core's own distance from its spot (`lane_pos` `d`)
 --   hero..xp    the sample's `why` (the first limit the preferred point broke) over every row of the band
 -- Params: like, from, until.
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
--- ensure: ev_lane_pos(pid, d, why, sx, sy)
+-- ensure: ev_lane_pos(pid, d, why, sx, sy, spot)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
 cores AS MATERIALIZED (SELECT l.game_id, l.team, l.pos, l.pid FROM lineup l JOIN gm ON gm.game_id = l.game_id WHERE l.pos BETWEEN 1 AND 3),
 d AS MATERIALIZED (
@@ -38,7 +38,7 @@ sp AS (
     SELECT k.*, p.sx, p.sy, p.why, p.d AS off,
         row_number() OVER (PARTITION BY k.game_id, k.seq, k.pid ORDER BY abs(p.t - k.t), p.seq) AS rk
     FROM k JOIN ev_lane_pos p ON p.game_id = k.game_id AND p.pid = k.pid
-        AND p.t BETWEEN k.t - 2 AND k.t + 0.5 AND p.sx IS NOT NULL
+        AND p.t BETWEEN k.t - 2 AND k.t + 0.5 AND p.sx IS NOT NULL AND p.spot IS NOT 'oha'
 ),
 x AS (SELECT sp.*, sqrt((x - sx) * (x - sx) + (y - sy) * (y - sy)) AS ds FROM sp WHERE rk = 1)
 SELECT CASE WHEN pr <= 200 THEN 'melee' ELSE 'ranged' END AS me,
