@@ -119,7 +119,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local share, laneCreepsNear, onNeutral, sampleWave, countDiverted, running
+local share, laneCreepsNear, onNeutral, sampleWave, countDiverted, targetKind, watchLine, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -191,6 +191,177 @@ function countDiverted(p)
         math.min(n, p.wave)
     )
 end
+function targetKind(bot, t)
+    if t == nil or t == nil then
+        return "x"
+    end
+    if t == bot then
+        return "p"
+    end
+    if t:IsHero() then
+        return "h"
+    end
+    if t:IsCreep() then
+        return "c"
+    end
+    return "o"
+end
+function watchLine(bot, p, ph)
+    local now = DotaTime()
+    if p.watchedAt ~= nil and now - p.watchedAt < ____exports.SETTINGS.WatchLogEvery then
+        return
+    end
+    p.watchedAt = now
+    local radii = LaneConfig.Settings().Radii
+    local meet = p.plan.meet
+    local ours = laneCreepsNear(meet, radii.MeetWatch)
+    local won = 0
+    local whe = 0
+    local wcr = 0
+    local wid = 0
+    local wd
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        do
+            local __continue81
+            repeat
+                if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue81 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(c, meet)
+                if wd == nil or d < wd then
+                    wd = d
+                end
+                __continue81 = true
+            until true
+            if not __continue81 then
+                break
+            end
+        end
+    end
+    for ____, c in ipairs(ours) do
+        local t = c:GetAttackTarget()
+        if t == nil or t == nil then
+            wid = wid + 1
+        elseif t:GetTeam() == Team.Neutral then
+            won = won + 1
+        elseif t:IsHero() then
+            whe = whe + 1
+        else
+            wcr = wcr + 1
+        end
+    end
+    local nn = 0
+    local ntp = 0
+    local ntc = 0
+    local ntx = 0
+    local best
+    local nd = math.huge
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        do
+            local __continue91
+            repeat
+                if not u:IsAlive() then
+                    __continue91 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(u, meet)
+                if d > ____exports.SETTINGS.WatchNeutralSearch then
+                    __continue91 = true
+                    break
+                end
+                if d <= radii.WaveSize then
+                    nn = nn + 1
+                    local k = targetKind(
+                        bot,
+                        u:GetAttackTarget()
+                    )
+                    if k == "p" then
+                        ntp = ntp + 1
+                    elseif k == "c" then
+                        ntc = ntc + 1
+                    elseif k == "x" then
+                        ntx = ntx + 1
+                    end
+                end
+                for ____, c in ipairs(ours) do
+                    d = math.min(
+                        d,
+                        GetUnitToUnitDistance(u, c)
+                    )
+                end
+                if d < nd then
+                    nd = d
+                    best = u
+                end
+                __continue91 = true
+            until true
+            if not __continue91 then
+                break
+            end
+        end
+    end
+    local function r0(x)
+        return x ~= nil and math.floor(x + 0.5) or nil
+    end
+    local ____Telemetry_Event_15 = Telemetry.Event
+    local ____array_14 = __TS__SparseArrayNew(
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"slot", p.plan.slot},
+        {"ph", ph},
+        {"wc", #ours},
+        {"won", won},
+        {"whe", whe},
+        {"wcr", wcr},
+        {"wid", wid},
+        {
+            "wd",
+            r0(wd)
+        },
+        {"nn", nn},
+        {"ntp", ntp},
+        {"ntc", ntc},
+        {"ntx", ntx}
+    )
+    local ____temp_11
+    if best ~= nil then
+        ____temp_11 = r0(nd)
+    else
+        ____temp_11 = nil
+    end
+    __TS__SparseArrayPush(____array_14, {"nd", ____temp_11})
+    local ____temp_12
+    if best ~= nil then
+        ____temp_12 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+    else
+        ____temp_12 = nil
+    end
+    __TS__SparseArrayPush(
+        ____array_14,
+        {"nh", ____temp_12},
+        {
+            "nt",
+            best ~= nil and targetKind(
+                bot,
+                best:GetAttackTarget()
+            ) or nil
+        }
+    )
+    local ____bot_IsAlive_result_13
+    if bot:IsAlive() then
+        ____bot_IsAlive_result_13 = r0(GetUnitToLocationDistance(bot, meet))
+    else
+        ____bot_IsAlive_result_13 = nil
+    end
+    __TS__SparseArrayPush(____array_14, {"pd", ____bot_IsAlive_result_13})
+    ____Telemetry_Event_15(
+        "pull_watch",
+        {__TS__SparseArraySpread(____array_14)}
+    )
+end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
@@ -203,7 +374,9 @@ ____exports.SETTINGS = {
     PartnerRadius = 900,
     PartnerGank = 3,
     WatchEvery = 0.25,
-    TrailSec = 10
+    TrailSec = 10,
+    WatchLogEvery = 1,
+    WatchNeutralSearch = 3000
 }
 running = {}
 local trailing = {}
@@ -516,13 +689,15 @@ local function finish(bot, p, r, label)
     }
 end
 --- Samples a finished pull's wave until its trail ends, then writes its line with `dt`. A new pull's start writes it first.
-local function trail(pid, flush)
+local function trail(bot, flush)
+    local pid = bot:GetPlayerID()
     local tr = trailing[pid]
     if tr == nil then
         return
     end
     if not flush and DotaTime() < tr["until"] then
         sampleWave(tr.pull)
+        watchLine(bot, tr.pull, "trail")
         return
     end
     trailing[pid] = nil
@@ -542,10 +717,11 @@ local function trail(pid, flush)
 end
 --- During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
 -- is seen on a neutral).
-local function sample(p)
+local function sample(bot, p)
     if p.label ~= "lead" and p.label ~= "watch" then
         return
     end
+    watchLine(bot, p, p.label)
     local now = DotaTime()
     if p.sampledAt ~= nil and now - p.sampledAt < ____exports.SETTINGS.WatchEvery then
         return
@@ -641,7 +817,7 @@ function ____exports.Wants(bot, blocked, host)
     if running[pid] ~= nil then
         return true
     end
-    trail(pid, false)
+    trail(bot, false)
     if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return false
     end
@@ -688,7 +864,7 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) or 0)
-    trail(pid, true)
+    trail(bot, true)
     local pull = {
         plan = p,
         left = now,
@@ -722,7 +898,7 @@ function ____exports.Step(bot, host)
     if p == nil then
         return false
     end
-    sample(p)
+    sample(bot, p)
     return Tasks.Step(bot, host)
 end
 function ____exports.End(bot, why)

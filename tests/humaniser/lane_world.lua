@@ -57,6 +57,7 @@ function CreepMeta:GetTeam() return self.team end
 function CreepMeta:GetAttackDamage() return self.dmg or 0 end
 function CreepMeta:GetAttackSpeed() return self.aspd or 1 end
 function CreepMeta:IsHero() return false end
+function CreepMeta:IsCreep() return true end
 function CreepMeta:IsNull() return self.removed == true end
 
 -- The engine deletes the creep: fresh queries no longer return it, handles already in a list stay behind.
@@ -103,6 +104,7 @@ function GetUnitList(t)
 		return r
 	end
 	if t == UnitType.AlliedHeroes then return UNITS[CURRENT_TEAM] end
+	if t == UnitType.NeutralCreeps then return NEUTRALS end
 	if t == UnitType.AlliedWards then return (WARDS or {})[CURRENT_TEAM] or {} end
 	return {}
 end

@@ -946,6 +946,30 @@ export const EVENTS = {
         nn: "num",
         dt: "num",
     },
+    // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
+    // trail). Ours near the meet point (within MeetWatch): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
+    // else, wid idle; wd the nearest of our lane creeps to the meet point. Neutrals within WaveSize of it: nn, of them ntp on the
+    // puller, ntc on a creep, ntx idle; the neutral within WatchNeutralSearch nearest our creeps there (the meet point when none): nd its distance, nh its
+    // distance from its camp origin, nt its target (p puller, h other hero, c creep, o other, x none). pd: the puller to the meet point.
+    pull_watch: {
+        pid: "num",
+        slot: "num",
+        ph: "str",
+        wc: "num",
+        won: "num",
+        whe: "num",
+        wcr: "num",
+        wid: "num",
+        wd: "num",
+        nn: "num",
+        ntp: "num",
+        ntc: "num",
+        ntx: "num",
+        nd: "num",
+        nh: "num",
+        nt: "str",
+        pd: "num",
+    },
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
     // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv

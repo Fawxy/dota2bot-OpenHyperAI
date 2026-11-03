@@ -99,8 +99,8 @@ do
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local out, wave, ended = {}, {}, nil
-	capture(function()
+	local wave, ended = {}, nil
+	local out = capture(function()
 		while T < 140 and ended == nil do
 			frame(w)
 			-- The wave walks with the hero, so it is at the meet point while the hero watches there.
@@ -112,11 +112,19 @@ do
 			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
 		end
 	end)
+	local watch
+	for _, l in ipairs(lines(out, "pull_watch")) do if field(l, "ph") == "watch" and field(l, "won") == "1" then watch = l end end
+	check("ok pull: a watch sample names one creep of four on the neutral, and the neutral left at its camp (out of nn) on the puller", watch ~= nil
+		and field(watch, "wc") == "4" and field(watch, "nn") == "0" and field(watch, "nt") == "p" and tonumber(field(watch, "nh")) == 0
+		and tonumber(field(watch, "nd")) > 0, watch)
 	local atEnd = ended ~= nil and #lines(out, "pull_job") or -1
 	check("ok pull: the job ended with the wave there", ended ~= nil and #wave == 4, ended)
 	for i = 2, 4 do wave[i].target = kobold end
 	out = run(w, (ended or 0) + 1)
 	check("ok pull: no line while the trail runs", atEnd == 0 and #lines(out, "pull_job") == 0, out[1])
+	local trailed = lines(out, "pull_watch")
+	check("ok pull: the trail goes on sampling, now with all four creeps on the neutral", #trailed >= 1
+		and field(trailed[#trailed], "ph") == "trail" and field(trailed[#trailed], "won") == "4", trailed[#trailed])
 	out = run(w, (ended or 0) + 30)
 	local pulls = lines(out, "pull_job")
 	check("ok pull: one line after the trail, div from the job, dt with the creeps that came later", #pulls == 1
