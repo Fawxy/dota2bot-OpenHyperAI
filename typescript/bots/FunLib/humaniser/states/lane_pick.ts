@@ -17,11 +17,28 @@ const DENY_OFFSET = 1000;
  * were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
  */
 export const ARRIVE_SLACK = 0.45;
+/** A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`. */
+export const DUE_NOW = 0.2;
+/**
+ * A waited-on creep due within this is kept: our swing at the other would not have landed before it is due, so the
+ * attempt in hand is as good (about a hero's wind-up plus a frame). Beyond it the sure creep is taken and the waited-on
+ * one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
+ * probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
+ */
+export const SWITCH_GAP = 0.5;
 
-export function Choose(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.LaneTarget | undefined {
+/**
+ * The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+ * taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
+ * never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
+ * with no attempt died while the body waited on another creep that was still on offer.
+ */
+export function Choose(this: void, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
     let best: Lib.Verbs.LaneTarget | undefined;
     let bestKey = Infinity;
+    let cur: Lib.Verbs.LaneTarget | undefined;
     for (const t of targets) {
+        if (current !== undefined && t.creep === current.creep) cur = t;
         if (t.walk > 0 && t.walk + ARRIVE_SLACK >= t.dies) continue;
         // A deny's key is pushed past any last hit's (eta is seconds, never near DENY_OFFSET), so denies win only alone.
         const key = t.eta - (t.ranged ? RANGED_BIAS : 0) + (t.kind === "lasthit" ? 0 : DENY_OFFSET);
@@ -30,7 +47,10 @@ export function Choose(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.L
             best = t;
         }
     }
-    return best;
+    if (cur === undefined || best === undefined || best.creep === cur.creep) return best;
+    if (cur.kind === "deny" && best.kind === "lasthit") return best;
+    if (best.kind === "deny") return cur;
+    return best.eta <= DUE_NOW && cur.eta >= SWITCH_GAP ? best : cur;
 }
 
 /** How many of `targets` are reachable last hits and reachable denies (the reach rule above), and how many last hits other than `except`. */

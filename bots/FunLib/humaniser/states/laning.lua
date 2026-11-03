@@ -213,12 +213,12 @@ end
 function ____exports.OwnsDenyOnly(bot)
     return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
 end
-local function choose(bot, targets)
+local function choose(bot, targets, current)
     local ____OwnsDenyOnly_result_11
     if ____exports.OwnsDenyOnly(bot) then
         ____OwnsDenyOnly_result_11 = LanePick.ChooseDeny(targets)
     else
-        ____OwnsDenyOnly_result_11 = LanePick.Choose(targets)
+        ____OwnsDenyOnly_result_11 = LanePick.Choose(targets, current)
     end
     return ____OwnsDenyOnly_result_11
 end
@@ -276,14 +276,16 @@ local body = __TS__Generator(function(bot, ctx)
                 return owns
             end,
             within = ____exports.Settings().LastHitWithin,
-            pick = function(targets)
-                local chosen = choose(bot, targets)
-                LanePick.NotePick(
-                    bot:GetPlayerID(),
-                    DotaTime(),
-                    targets,
-                    chosen
-                )
+            pick = function(targets, current)
+                local chosen = choose(bot, targets, current)
+                if current == nil or chosen == nil or chosen.creep ~= current.creep then
+                    LanePick.NotePick(
+                        bot:GetPlayerID(),
+                        DotaTime(),
+                        targets,
+                        chosen
+                    )
+                end
                 return chosen
             end,
             label = function(l)

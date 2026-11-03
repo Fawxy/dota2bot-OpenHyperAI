@@ -132,4 +132,23 @@ do
 	check("retarget: no new pick, offers unchanged", a == 1 and b == 0 and c == 0)
 end
 
+-- Leaving a waited-on creep (slice lane-last-hits): only for one killable now, unless the current is due within SWITCH_GAP.
+do
+	local cur = target("lasthit", 0.9)
+	local soon = target("lasthit", 0.5)
+	check("switch: another creep not yet killable does not move the wait", Pick.Choose({ cur, soon }, cur) == cur)
+	local now = target("lasthit", 0.1)
+	check("switch: a creep killable now is taken from a wait due later than the gap", Pick.Choose({ cur, now }, cur) == now)
+	local near = target("lasthit", 0.3)
+	check("switch: not when the current is due within the gap", Pick.Choose({ near, now }, near) == near)
+	local deny = target("deny", 0.1)
+	check("switch: a deny due now never replaces a last-hit wait", Pick.Choose({ cur, deny }, cur) == cur)
+	local denyCur = target("deny", 0.3)
+	local lh = target("lasthit", 1.2)
+	check("switch: a last hit on offer replaces a deny wait", Pick.Choose({ denyCur, lh }, denyCur) == lh)
+	local far = target("lasthit", 0.1, false, 2.0, 1.0)
+	check("switch: an unreachable creep due now does not move the wait", Pick.Choose({ cur, far }, cur) == cur)
+	check("switch: without a current the pick is the plain ranking", Pick.Choose({ cur, now }) == now)
+end
+
 finish()

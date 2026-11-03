@@ -8,13 +8,28 @@ local DENY_OFFSET = 1000
 -- A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
 -- were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
 ____exports.ARRIVE_SLACK = 0.45
-function ____exports.Choose(targets)
+--- A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`.
+____exports.DUE_NOW = 0.2
+--- A waited-on creep due within this is kept: our swing at the other would not have landed before it is due, so the
+-- attempt in hand is as good (about a hero's wind-up plus a frame). Beyond it the sure creep is taken and the waited-on
+-- one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
+-- probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
+____exports.SWITCH_GAP = 0.5
+--- The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+-- taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
+-- never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
+-- with no attempt died while the body waited on another creep that was still on offer.
+function ____exports.Choose(targets, current)
     local best
     local bestKey = math.huge
+    local cur
     for ____, t in ipairs(targets) do
         do
             local __continue3
             repeat
+                if current ~= nil and t.creep == current.creep then
+                    cur = t
+                end
                 if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
                     __continue3 = true
                     break
@@ -31,7 +46,16 @@ function ____exports.Choose(targets)
             end
         end
     end
-    return best
+    if cur == nil or best == nil or best.creep == cur.creep then
+        return best
+    end
+    if cur.kind == "deny" and best.kind == "lasthit" then
+        return best
+    end
+    if best.kind == "deny" then
+        return cur
+    end
+    return best.eta <= ____exports.DUE_NOW and cur.eta >= ____exports.SWITCH_GAP and best or cur
 end
 --- How many of `targets` are reachable last hits and reachable denies (the reach rule above), and how many last hits other than `except`.
 local function countOffers(targets, except)
@@ -40,10 +64,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue8
+            local __continue12
             repeat
                 if t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
-                    __continue8 = true
+                    __continue12 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -54,9 +78,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue8 = true
+                __continue12 = true
             until true
-            if not __continue8 then
+            if not __continue12 then
                 break
             end
         end
@@ -84,10 +108,10 @@ function ____exports.ChooseDeny(targets)
     local bestKey = math.huge
     for ____, t in ipairs(targets) do
         do
-            local __continue18
+            local __continue22
             repeat
                 if t.kind ~= "deny" or t.walk > 0 and t.walk + ____exports.ARRIVE_SLACK >= t.dies then
-                    __continue18 = true
+                    __continue22 = true
                     break
                 end
                 local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
@@ -95,9 +119,9 @@ function ____exports.ChooseDeny(targets)
                     bestKey = key
                     best = t
                 end
-                __continue18 = true
+                __continue22 = true
             until true
-            if not __continue18 then
+            if not __continue22 then
                 break
             end
         end

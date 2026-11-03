@@ -2384,10 +2384,19 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
             return false
         end
         local offered = laneTargets(bot, {within = opts.within})
+        local still
         for ____, o in ipairs(offered) do
             if o.creep == current.creep then
+                still = o
+            end
+        end
+        if still ~= nil then
+            local next = opts.pick(offered, still)
+            if next == nil or next.creep == current.creep then
                 return false
             end
+            target = next
+            return true
         end
         local ____temp_6
         if #offered > 0 then
@@ -2406,7 +2415,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local passAt
     while true do
         do
-            local __continue23
+            local __continue25
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2451,7 +2460,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     if target == nil then
                         local d = spot() ~= nil and away() or nil
                         atSpot = d ~= nil and d <= (atSpot and far or near)
-                        __continue23 = true
+                        __continue25 = true
                         break
                     end
                 end
@@ -2481,9 +2490,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue23 = true
+                __continue25 = true
             until true
-            if not __continue23 then
+            if not __continue25 then
                 break
             end
         end

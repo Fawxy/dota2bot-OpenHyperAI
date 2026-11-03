@@ -12,9 +12,12 @@ export interface LaneFarmOpts {
     within?: number;
     /**
      * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
-     * `pick` the verb only holds the spot.
+     * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
+     * the verb asks whether to stay on it (its fresh facts are among `targets`): returning another creep ends the
+     * attempt for it; returning `current`'s creep (or undefined) keeps waiting. Whether a switch is worth the
+     * attack cooldown is the caller's rule.
      */
-    pick?: (this: void, targets: LaneTarget[]) => LaneTarget | undefined;
+    pick?: (this: void, targets: LaneTarget[], current?: LaneTarget) => LaneTarget | undefined;
     /** An attempt is dropped once the bot is this far from the spot. Default 900. */
     leash?: number;
     /** Within this of the spot the label is `hold`, beyond `far` it is `walk` again. Defaults 600 / 1200. */
@@ -84,7 +87,10 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         return target !== undefined;
     };
     const stop = (): boolean => (opts.interruptIf !== undefined && opts.interruptIf()) || (opts.deadline !== undefined && get()!.now() >= opts.deadline);
-    // An attempt's creep is still worth waiting for while laneTargets offers it; otherwise `pick` may choose another.
+    // While an attempt waits, `pick` is asked every scan whether to stay on its creep (passed as `current` while
+    // laneTargets still offers it) or go for another; a creep no longer offered is left as before. In the lane-only
+    // calibration games (llhscn1, 03/11/2026) 71% of the creeps that died in a core's range with no attempt died
+    // while the body waited on another creep that was still offered.
     const retarget = (current: LaneTarget): boolean => {
         if (!opts.retarget) return false;
         const t = get()!.now();
@@ -93,7 +99,14 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
         const offered = laneTargets(bot, { within: opts.within });
         // Handle identity holds across scans in game (contract laneFarm, evidence: ER-008 re-run s5c).
-        for (const o of offered) if (o.creep === current.creep) return false;
+        let still: LaneTarget | undefined;
+        for (const o of offered) if (o.creep === current.creep) still = o;
+        if (still !== undefined) {
+            const next = opts.pick(offered, still);
+            if (next === undefined || next.creep === current.creep) return false;
+            target = next;
+            return true;
+        }
         target = offered.length > 0 ? opts.pick(offered) : undefined;
         if (target === undefined && opts.dropLost) dropped = true;
         return target !== undefined || dropped;

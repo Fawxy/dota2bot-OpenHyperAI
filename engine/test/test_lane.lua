@@ -162,6 +162,59 @@ do
     T.eq("no retarget: the stalled attempt waits out its maxWait", off[1] and off[1].reason, "timeout")
 end
 
+-- While an attempt waits on a creep that is still offered, `pick` is asked with it as `current` every scan and may leave
+-- it. Creep a (100 HP, three allies on it from the start, their first hits at 0.9, 1.6 and 1.7) is offered at 0.8 s from
+-- killable; creep b (70 HP) gets one fast ally at 0.5 whose 25-damage hits at 0.6, 1.2 and 1.8 make it killable now at 0.6
+-- and dead at 1.8. A pick that leaves a creep still 0.5 s from due for one due now takes b (landing at 1.0) and then a
+-- (due about 1.3, landing about 1.8). A pick that keeps `current` while it is offered (the old behaviour) takes a at
+-- about 1.7 and b dies at 1.8 untaken: it is reported by the body's idle-in-range count, not by any attempt.
+do
+    local function twoWaves(pick)
+        local sim = Sim.new()
+        sim:adapter(tasks, { random = Sim.lcg(5) })
+        local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+        local a = sim:addCreep{ x = 100, y = 0, hp = 100, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+        local b = sim:addCreep{ x = 100, y = 60, hp = 70, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+        for _, first in ipairs({ 0.433, 1.133, 1.233 }) do
+            sim:addCreep{ x = 0, y = 200, team = 2, damage = 21, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+                firstSwingAt = first, attackTarget = a, passive = true }
+        end
+        -- Its target is set at 0.5: an attacker already targeting b would count in b's DPS from the start.
+        local fast = sim:addCreep{ x = 0, y = 260, team = 2, damage = 25, attackPoint = 0.1, autoAttack = true, secondsPerAttack = 0.6,
+            firstSwingAt = 0.5, passive = true }
+        sim:at(0.5, function() fast.attackTarget = b end)
+        local attempts = {}
+        local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { pick = pick, retarget = true,
+            onAttempt = function(t, r) attempts[#attempts + 1] = { creep = t.creep, reason = r.reason, msg = r.message, at = sim.t } end })
+        for _ = 1, math.floor(3 / DT) do g:next() sim:step(DT) end
+        return attempts, a, b
+    end
+    local function switching(targets, current)
+        local best = soonest(targets)
+        if current == nil then return best end
+        local cur
+        for _, t in ipairs(targets) do if t.creep == current.creep then cur = t end end
+        if best.creep ~= cur.creep and best.eta <= 0.2 and cur.eta >= 0.5 then return best end
+        return cur
+    end
+    local function keeping(targets, current)
+        if current == nil then return soonest(targets) end
+        for _, t in ipairs(targets) do if t.creep == current.creep then return t end end
+        return soonest(targets)
+    end
+    local sw, a, b = twoWaves(switching)
+    T.eq("switch: first attempt on the creep offered first", sw[1] and sw[1].creep, a)
+    T.check("switch: left it for the creep due now (sw=1, " .. tostring(sw[1] and sw[1].msg) .. ")",
+        sw[1] ~= nil and sw[1].reason == "interrupted" and sw[1].msg:find("sw=1") ~= nil)
+    T.eq("switch: took the creep due now", sw[2] and sw[2].creep, b)
+    T.eq("switch: and it landed", sw[2] and sw[2].reason, "ok")
+    T.eq("switch: back on the first creep", sw[3] and sw[3].creep, a)
+    local kp, a2, b2 = twoWaves(keeping)
+    T.check("keep: a pick that stays on its creep is never moved off it (" .. tostring(kp[1] and kp[1].reason) .. ")",
+        kp[1] ~= nil and kp[1].creep == a2 and kp[1].reason == "ok")
+    T.check("keep: and the creep due meanwhile died untaken", not b2.alive and (kp[2] == nil or kp[2].reason ~= "ok"))
+end
+
 -- `dropLost`: an attempt waiting in range for a creep that the others will now kill before a swing ordered now lands (no
 -- longer offered) is dropped at once (`sw=0`) when `pick` has nothing else; without it the attempt waits until the creep is
 -- taken.
