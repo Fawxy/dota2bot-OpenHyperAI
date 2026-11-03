@@ -215,6 +215,42 @@ test('two processes on one store: tables and columns the other added are known b
     assert.deepStrictEqual(b.query('SELECT a, extra FROM ev_probe ORDER BY t').map(r => [r.a, r.extra]), [[1, null], [2, 3]]);
 });
 
+test('two processes open a new store at once: the second does not empty what the first built meanwhile', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const dir = tmp();
+    const db = storeFile(versionOf(DECLARED), dir);
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    const exec = DatabaseSync.prototype.exec;
+    let raced = false;
+    // b has read the new file's version as unset; a builds the store and ingests before b takes the lock.
+    DatabaseSync.prototype.exec = function (sql) {
+        if (sql === 'BEGIN IMMEDIATE' && !raced) {
+            raced = true;
+            const a = new Store(db, { views: null });
+            a.ingest(f);
+            a.close();
+        }
+        return exec.call(this, sql);
+    };
+    let b;
+    try { b = new Store(db, { views: null }); } finally { DatabaseSync.prototype.exec = exec; }
+    assert.strictEqual(b.query('SELECT count(*) AS n FROM ev_probe')[0].n, 1);
+});
+
+test('two processes on one store: views open on tables the other wrote while this one ingested nothing', () => {
+    const dir = tmp();
+    const views = path.join(dir, 'views');
+    fs.mkdirSync(views);
+    fs.writeFileSync(path.join(views, 'probe_x.sql'), '-- needs: ev_probe(x)\nSELECT game_id, a, x FROM ev_probe\n');
+    const db = storeFile(versionOf(DECLARED), dir);
+    const a = new Store(db, { views });
+    const b = new Store(db, { views });
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    a.ingestAll([f]);
+    assert.strictEqual(b.ingestAll([f]).wrote, 0);
+    assert.deepStrictEqual(b.query('SELECT a, x FROM probe_x').map(r => [r.a, r.x]), [[1, null]]);
+});
+
 test('opening a version store deletes other version stores unopened for a week, and nothing else', () => {
     const dir = tmp();
     const old = Date.now() / 1000 - STALE_MS / 1000 - 3600;

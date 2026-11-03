@@ -107,9 +107,12 @@ class Store {
         this.loadKinds();
         this.refreshViews();
         if (file !== ':memory:' && STORE_RE.test(path.basename(file))) {
-            const now = new Date();
-            fs.utimesSync(file, now, now);
-            sweep(file, now.getTime());
+            // Housekeeping only: a store that cannot be touched or swept (a race with another sweep, a locked file) still opens.
+            try {
+                const now = new Date();
+                fs.utimesSync(file, now, now);
+                sweep(file, now.getTime());
+            } catch (e) { /* best effort */ }
         }
     }
 
@@ -194,7 +197,13 @@ class Store {
 
     addColumn(tbl, col, kind = (this.declared[tbl] || {})[col] || 'num') {
         if (this.colsOf(tbl).has(col)) return;
-        this.db.exec(`ALTER TABLE ${q(tbl)} ADD COLUMN ${q(col)}`);
+        try {
+            this.db.exec(`ALTER TABLE ${q(tbl)} ADD COLUMN ${q(col)}`);
+        } catch (e) {
+            if (!/duplicate column name/.test(e.message)) throw e;
+            this.loadKinds(); // another process added it first
+            return;
+        }
         this.setKind(tbl, col, kind);
     }
 
@@ -321,6 +330,7 @@ class Store {
      */
     ingestAll(args, onLog = () => {}) {
         const pruned = this.prune();
+        const tablesBefore = this.kinds.size;
         let wrote = 0;
         const failed = [];
         for (const f of expand(args)) {
@@ -330,7 +340,9 @@ class Store {
                 failed.push({ file: f, error: e.message });
             }
         }
-        if (wrote || pruned.length) this.refreshViews();
+        // Another process may have written the tables a view needs while this one ingested nothing.
+        this.loadKinds();
+        if (wrote || pruned.length || this.kinds.size !== tablesBefore) this.refreshViews();
         return { wrote, pruned, failed };
     }
 
