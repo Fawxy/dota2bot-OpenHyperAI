@@ -151,6 +151,7 @@ ____exports.EVENTS = {
         y = "num",
         hp = "num",
         by = "mixed",
+        tw = "bool",
         bm = "str",
         bs = "num",
         p1d = "num",

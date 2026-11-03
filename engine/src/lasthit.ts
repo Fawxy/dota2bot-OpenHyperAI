@@ -208,6 +208,27 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
 }
 
 /**
+ * Enemy heroes winding up an attack on the creep whose hit lands within `horizon` (seconds; the hits `believe`
+ * credits as certain): their count, raw damage, and the latest of their commit points (seconds until their attack
+ * point, after which the attack can no longer be cancelled). Swing-message attribution only.
+ */
+function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n: number; raw: number; commit: number } {
+    let n = 0;
+    let raw = 0;
+    let commit = 0;
+    for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? []) {
+        const a = h as TaskHero as TaskAttacker;
+        if (gone(a) || a.GetAttackTarget?.() !== creep) continue;
+        const land = windupLanding(a, creep);
+        if (land === undefined || land > horizon) continue;
+        n++;
+        raw += a.GetAttackDamage?.() ?? 0;
+        commit = math.max(commit, (a.GetAttackPoint!() - a.GetAnimCycle!()) * (a.GetSecondsPerAttack?.() ?? 1));
+    }
+    return { n, raw, commit };
+}
+
+/**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
  * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
@@ -574,6 +595,14 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
                     diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
+                    // Enemy hero wind-ups this swing counted as certain (a feint would break them): `ew` how many, `er` 1
+                    // when the swing is due only because of them, `ec` the latest of their commit points and `oc` ours
+                    // (seconds from now; ours is the order-to-attack-point part of tHit).
+                    const ew = enemyHeroWindups(bot, creep, math.max(0, b.tHit - MIN_MARGIN));
+                    if (ew.n > 0) {
+                        const oc = bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
+                        diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, oc);
+                    }
                     bot.Action_AttackUnit(creep, true);
                     break;
                 }

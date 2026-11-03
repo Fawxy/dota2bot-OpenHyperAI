@@ -410,6 +410,25 @@ do
     T.eq("deny timeout: never swung", bot:actionsOf("attack"), 0)
 end
 
+-- A swing due only because of an enemy hero's wind-up names it: 80 HP, their 40 lands at 1.0 (wind-up from 0.5), ours
+-- (45, 0.6 s) is due at 0.5 with their hit counted and never without it. ec is their wind-up left at our order (0.5),
+-- oc our attack point (0.6): we commit after them.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 80, team = 3, passive = true }
+    local enemy = sim:addHero{ x = 250, y = 0, team = 3, damage = 40, attackPoint = 0.5, secondsPerAttack = 1,
+        autoAttack = true, firstSwingAt = 0.5 }
+    enemy.attackTarget = creep
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    local msg = r.message or ""
+    T.check("enemy wind-up relied on: ew=1 er=1 (" .. msg .. ")", string.find(msg, "ew=1 er=1", 1, true) ~= nil)
+    local ec = tonumber(string.match(msg, "ec=([%d.]+)"))
+    local oc = tonumber(string.match(msg, "oc=([%d.]+)"))
+    T.check("enemy wind-up: ec is their wind-up left (" .. tostring(ec) .. ")", ec ~= nil and math.abs(ec - 0.5) <= 0.05)
+    T.check("enemy wind-up: oc is our attack point (" .. tostring(oc) .. ")", oc ~= nil and math.abs(oc - 0.6) <= 0.05)
+end
+
 -- Skill: reaction samples stay within reactBase * (1 +- jitter / 2).
 do
     world({ profile = function() return { react = 0.4, jitter = 0.5 } end })
@@ -474,6 +493,7 @@ do
     local obs = tonumber(string.match(r.message or "", "obs=(%d+)"))
     T.check("observed rate: obs on the message (" .. tostring(obs) .. ")", obs ~= nil and obs >= 60 and obs <= 100)
     T.check("observed rate: the index saw nothing (idps=0)", string.find(r.message or "", "idps=0", 1, true) ~= nil)
+    T.check("no enemy hero wind-up: no ew fields", string.find(r.message or "", "ew=", 1, true) == nil)
 end
 
 -- A creep killed during our wind-up cancels the attack. Seen on the next frame, at the predicted landing time, it is
