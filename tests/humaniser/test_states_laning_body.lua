@@ -129,7 +129,7 @@ do
 	local s3 = spotFor(SDK, { level = 3 }, setup)
 	check("tower ring + drift at level 3", s3 ~= nil and dist(s3, tower.loc) >= 830, s3 and dist(s3, tower.loc))
 	local s6 = spotFor(SDK, { level = 6 }, setup)
-	check("tower ring at level 6 too", s6 ~= nil and dist(s6, tower.loc) >= 750, s6 and dist(s6, tower.loc))
+	check("tower ring at level 6 too", s6 ~= nil and dist(s6, tower.loc) >= 830, s6 and dist(s6, tower.loc))
 end
 
 -- Side shift: a core moves away from the enemy hero, a support (pos 5) towards its approach line.
@@ -155,7 +155,7 @@ do
 	tower.IsAlive = function() return true end
 	tower.IsNull = function() return false end
 	local st = spotFor(SDK, nil, function() TOWERS = { tower } end)
-	check("no wave: outside an enemy tower", st ~= nil and dist(st, tower.loc) >= 750, st and dist(st, tower.loc))
+	check("no wave: outside an enemy tower", st ~= nil and dist(st, tower.loc) >= 830, st and dist(st, tower.loc))
 end
 
 -- The HP margin (step 0: cores laning took back from retreat at 45-48% HP walked into the enemy wave). A melee creep 600 from

@@ -26,12 +26,12 @@ test('idle threat: idle HP by the nearest enemy hero (any state), its kind and d
     //   100-102 melee 500 away, ranged 1200: nearest melee, 0-600; hits flagged on the 101 and 102 snapshots
     //   103-104 melee 900, ranged 700: nearest ranged, 600-800
     //   105-106 a walk to a last hit (label at 105, carried into 106): not counted
-    //   107-108 melee 1100, ranged dead: nearest melee, 1000+
+    //   107-108 melee 1100, ranged dead at 300 (nearer, so the dead filter decides): nearest melee, 1000+
     // HP falls 5 a second to 103, then 2, then 3 in the walk, then 1.
     const hpAt = { 100: 100, 101: 95, 102: 90, 103: 85, 104: 83, 105: 81, 106: 78, 107: 75, 108: 74 };
     for (let t = 100; t <= 108; t++) {
         const mx = t <= 102 ? 500 : t <= 104 ? 900 : 1100;
-        const rx = t <= 102 ? 1200 : t <= 104 ? 700 : 1200;
+        const rx = t <= 102 ? 1200 : t <= 104 ? 700 : 300;
         const hit = t === 101 || t === 102 ? 1 : 0;
         lines.push(line(t, `snap pid=1 x=0 y=0 alive=1 hp=${hpAt[t]} mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=${hit}`));
         lines.push(line(t, `snap pid=6 x=${mx} y=0 alive=1 hp=100 mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=0`));
@@ -51,4 +51,17 @@ test('idle threat: idle HP by the nearest enemy hero (any state), its kind and d
         ['ranged', 'melee', '600-800', '?', 1, 2, 0],
         ['ranged', 'melee', '600-800', 'off', 1, 2, 0],
     ]);
+});
+
+test('idle threat: at the 1 s cadence a walk to a last hit covers only its own second', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1'), line(0, 'bot pid=6 hero=h6 team=3 pos=4')];
+    for (let t = 100; t <= 103; t++) {
+        lines.push(line(t, `snap pid=1 x=0 y=0 alive=1 hp=${100 - 2 * (t - 100)} mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=0`));
+        lines.push(line(t, `snap pid=6 x=900 y=0 alive=1 hp=100 mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=0`));
+        lines.push(line(t, `lane_pos pid=1 d=${t === 102 ? 400 : 50} owned=1 running=1 mode=2 spot=front hph=0 label=${t === 101 ? 'lasthit' : 'hold'}`));
+    }
+    const out = run(lines).map(r => [r.band, r.spot, r.secs, r.hpl]);
+    out.sort((a, b) => a.join().localeCompare(b.join()));
+    // 101 is the walk; 100 and 103 on the spot (103's HP has no next snapshot), 102 off.
+    assert.deepStrictEqual(out, [['800-1000', 'off', 1, 2], ['800-1000', 'on', 2, 2]]);
 });

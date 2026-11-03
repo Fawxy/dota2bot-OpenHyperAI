@@ -5,7 +5,9 @@
 -- not the snapshot's `ed` (visible heroes only).
 --   ek, me      melee (attack range 200 or less) or ranged: the nearest enemy (its `ar`) and the core itself
 --   band        distance to that enemy: 0-600, 600-800, 800-1000, 1000+
---   spot        on (ev=lane_pos `d` 300 or less, the latest sample this second or the one before), off, or `?` (no sample)
+--   spot        on (ev=lane_pos `d` 300 or less), off, or `?` (no sample); a sample covers its second and, when no sample lands
+--               there, the next (lane_pos every 2 s before step 1c, every 1 s since), as in @core_spot
+-- Core and enemy snapshots are matched by rounded second; seconds with no alive enemy lineup hero are dropped.
 --   secs, hpl   idle seconds and HP-% points lost from each to the next snapshot;  hpl_s  per second
 --   hit         seconds whose next snapshot flags a hero hit (`hit` covers the second before its snapshot)
 -- Params: like, from, until.
@@ -25,15 +27,18 @@ a AS MATERIALIZED (
     WINDOW w AS (PARTITION BY a.game_id, a.pid ORDER BY a.t)
 ),
 lp AS MATERIALIZED (
-    SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
-    FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3
+    SELECT game_id, pid, sec, lh, d, lead(sec) OVER (PARTITION BY game_id, pid ORDER BY sec) AS nsec
+    FROM (SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
+          FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3)
+),
+lc AS MATERIALIZED (
+    SELECT game_id, pid, sec, lh, d FROM lp
+    UNION ALL SELECT game_id, pid, sec + 1, lh, d FROM lp WHERE nsec IS NULL OR nsec > sec + 1
 ),
 i AS MATERIALIZED (
-    SELECT a.*, CASE WHEN a.nhp IS NULL THEN 0 ELSE max(0, a.hp - a.nhp) END AS lost,
-        (SELECT lp.d FROM lp WHERE lp.game_id = a.game_id AND lp.pid = a.pid AND lp.sec IN (a.sec, a.sec - 1) ORDER BY lp.sec DESC LIMIT 1) AS sd
-    FROM a
-    WHERE a.activity = 'lane'
-      AND NOT EXISTS (SELECT 1 FROM lp WHERE lp.game_id = a.game_id AND lp.pid = a.pid AND lp.sec IN (a.sec, a.sec - 1) AND lp.lh)
+    SELECT a.*, CASE WHEN a.nhp IS NULL THEN 0 ELSE max(0, a.hp - a.nhp) END AS lost, lc.d AS sd
+    FROM a LEFT JOIN lc ON lc.game_id = a.game_id AND lc.pid = a.pid AND lc.sec = a.sec
+    WHERE a.activity = 'lane' AND NOT coalesce(lc.lh, 0)
 ),
 e AS (
     SELECT i.*, e.ar AS ear, sqrt((e.x - i.x) * (e.x - i.x) + (e.y - i.y) * (e.y - i.y)) AS d,

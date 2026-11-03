@@ -38,7 +38,7 @@ test('core spot: idle seconds and HP lost inside the enemy wave ring and outside
         hp -= t < 105 ? 10 : t < 110 ? 2 : t < 112 ? 5 : 0;
     }
     lines.push(line(101, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=3 why=creep hm=0 hph=0'));
-    // The body walks to a last hit at 105 (lane_pos every 2 s): 105 and 106 are the picker's, 4 HP-% lost, not the spot's.
+    // The body walks to a last hit at 105; the next sample lands at 106, so only 105 is the picker's (2 HP-% lost).
     lines.push(line(105, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front hph=0 label=lasthit'));
     lines.push(line(106, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=0 why=pref hm=0 hph=0'));
     lines.push(line(107, 'lane_pos pid=1 d=10 owned=1 running=1 mode=2 spot=front pushed=5 why=hp hm=200 hph=0'));
@@ -46,5 +46,17 @@ test('core spot: idle seconds and HP lost inside the enemy wave ring and outside
     lines.push(line(108, 'lane_pos pid=1 d=400 owned=1 running=1 mode=2 spot=front pushed=4 why=hero hm=0 hph=0'));
     const out = run(lines);
     assert.deepStrictEqual(out.map(r => [r.pid, r.lh_walk, r.lh_walk_hpl, r.idle, r.ring, r.ring_hpl, r.out_hpl, r.tower, r.near, r.near_hpl, r.hpl, r.off, r.off_hpl, r.why_pref, r.why_hero, r.why_creep, r.why_hp]),
-        [[1, 2, 4, 10, 5, 50, 6, 2, 5, 50, 56, 2, 4, 1, 1, 1, 1]]);
+        [[1, 1, 2, 11, 5, 50, 8, 2, 5, 50, 58, 2, 4, 1, 1, 1, 1]]);
+});
+
+test('core spot: at the 1 s cadence a walk to a last hit or an off-spot sample covers only its own second', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1')];
+    for (let t = 100; t <= 104; t++) {
+        lines.push(line(t, `snap pid=1 x=0 y=-6000 alive=1 hp=${100 - 3 * (t - 100)} mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=0`));
+        lines.push(line(t, `front team=3 top=0 topx=0 topy=0 mid=0 midx=0 midy=0 bot=0.5 botx=3000 boty=-6000`));
+        lines.push(line(t, `lane_pos pid=1 d=${t === 102 ? 400 : 10} owned=1 running=1 mode=2 spot=front pushed=0 why=pref hm=0 hph=0${t === 100 ? ' label=lasthit' : ''}`));
+    }
+    const [r] = run(lines);
+    // 100 the walk (3 lost); 101-104 the spot's (9 lost, 104 has no next snapshot); only 102 off.
+    assert.deepStrictEqual([r.lh_walk, r.lh_walk_hpl, r.idle, r.hpl, r.off, r.off_hpl], [1, 3, 4, 9, 1, 3]);
 });
