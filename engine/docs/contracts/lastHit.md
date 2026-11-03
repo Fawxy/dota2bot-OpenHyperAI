@@ -46,9 +46,12 @@ skill:          Skill.lastHitError (width) and the per-creep roll: a negative sh
 telemetry:      none of its own; the Result message carries the calibration fields for the caller's ev=lh: `w hp pred
                 mine t m obs idps end dt fa lhp fg` (wait, HP and believed HP at the order, own damage, hit time,
                 frame margin, observed and indexed damage rate, HP at the end, order-to-end time, order-to-fire time or
-                -1, HP on the first frame at or past the landing or -1, mean frame gap). Read by hlog `@lh_swings`.
+                -1, HP on the first frame at or past the landing or -1, mean frame gap), and before `end`, only when the swing
+                counted enemy hero wind-ups, `ew er ec oc` (how many, due only because of them, their latest commit
+                point and ours, seconds). Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
+                enemy hero wind-ups relied on, not relied on, and under a lapse,
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
                 wind-up double count); the 0.45 s look-ahead sits just under a lane creep's 0.467 s attack point (game

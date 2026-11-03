@@ -176,6 +176,8 @@ export const EVENTS = {
         y: "num",
         hp: "num",
         by: "mixed",
+        /** 1 when one of the logging team's towers was attacking the creep on the frame before it died. */
+        tw: "bool",
         bm: "str",
         bs: "num",
         p1d: "num",

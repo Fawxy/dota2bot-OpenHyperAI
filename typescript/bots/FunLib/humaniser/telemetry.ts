@@ -899,6 +899,8 @@ interface CreepTrack {
     attackAt: Record<number, number>;
     attackOn: Record<number, Unit | undefined>;
     attackMode: Record<number, number | undefined>;
+    /** Enemy creeps one of our towers was attacking last frame (`tw` on ev=creep_death). */
+    towerOn: LuaTable<Unit, boolean>;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -949,7 +951,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {} };
+        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable() };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -1006,6 +1008,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["y", math.floor(d.seen.y)],
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
+            ["tw", c.towerOn.get(d.creep) === true],
         ];
         // The killer's mode when it started the swing that killed (slice 3: a mode switch between swing and death
         // otherwise leaves the snapshot mode wrong).
@@ -1028,6 +1031,13 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         c.dead.set(d.creep, d.seen);
     }
     // This frame's state, read for next frame's deaths.
+    c.towerOn = new LuaTable();
+    for (let id = 0; id <= 10; id++) {
+        const tower = GetTower(team, id);
+        if (tower === null || tower === undefined || !tower.IsAlive()) continue;
+        const target = tower.GetAttackTarget();
+        if (target !== null && target !== undefined) c.towerOn.set(target, true);
+    }
     for (const [core] of cores) c.target[core.GetPlayerID()] = core.GetAttackTarget() ?? undefined;
     for (const h of heroes) {
         const pid = h.GetPlayerID();

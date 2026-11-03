@@ -163,7 +163,13 @@ rate (HP/s) the verb read from its HP while waiting, `idps` the DPS of the attac
 well above `idps` means attackers the index misses; `obs` near `idps` with the creep still dying before our hit means their wind-up
 timing is misread); `fa` seconds from the order until `GetLastAttackTime` rose, -1 never seen; `lhp` the creep's HP on the first
 frame at or past the predicted landing `t`, 0 gone, -1 not reached; `fg` the mean gap in seconds between the frames the verb saw
-while it waited, which is how often the host steps the body). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+while it waited, which is how often the host steps the body). When enemy heroes are winding up attacks on the creep that land
+inside the relied horizon (hits the belief counts as certain, so a cancelled one would break it), the swing part also carries
+`ew=<how many> er=<1: due only because of them> ec=<s to the latest of their attack points> oc=<s from the order to our attack
+point>`, placed before `end=` (`oc > ec`: we commit after them and could still see a cancel). The set is the belief's own: enemy
+heroes in the attacker index, wind-ups inside the horizon the belief used (a negative skill shift shortens it). `ec` reads the
+wind-up left as `windupLanding` does (attack point as a fraction of the attack cycle, UNVERIFIED in-game), `oc` as `GetAttackPoint()
+/ GetAttackSpeed()` seconds, so `oc - ec` carries that reading's error until it is verified. Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
 (the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
 
