@@ -985,7 +985,7 @@ export const EVENTS = {
     // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv
     // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
-    // whole box visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
+    // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve).
     choice: {
         pid: "num",
