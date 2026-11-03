@@ -372,18 +372,18 @@ export function OnEnd(bot: Unit): void {
 }
 
 /**
- * Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
- * within 15 s of such a cut was 4 times as likely). A predicate on the laning GetDesire (OWNERSHIP H2).
- */
-/**
- * OHA's farm mode runs a laning core off for 2-3 s when it attacks a hero it cannot kill in about two hits, or takes creep
- * hits while targeting one (`X.ShouldRun`, level < 6 and < 5). In lane this context's trade rule makes that call (losing,
- * low_hp, creeps), so those two triggers stand down (cil3: farm mode ended 110 of 405 trades). A predicate on farm GetDesire.
+ * OHA's farm mode runs a laning core off for 1-4 s on its own triggers (`X.ShouldRun`: a trade it judges lost, creep hits,
+ * enemy tower proximity at low level, ...). In lane this context decides when its core backs off, so farm GetDesire skips
+ * ShouldRun for it (user 03/11/2026; cil4: with only the trade triggers skipped, the tower branches still held cores 330 s).
  */
 export function TradeOwnsLaneRun(bot: Unit): boolean {
     return Ours.On("CoreTrade") && CoreLastHit.Applies(bot) && inLane(bot);
 }
 
+/**
+ * Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
+ * within 15 s of such a cut was 4 times as likely). A predicate on the laning GetDesire (OWNERSHIP H2).
+ */
 export function LastHitYieldsToRetreat(bot: Unit): boolean {
     return CoreLastHit.Applies(bot) && bot.GetActiveMode() === BotMode.Retreat;
 }
