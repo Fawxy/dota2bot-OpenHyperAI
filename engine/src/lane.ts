@@ -14,7 +14,7 @@ export interface LaneFarmOpts {
      * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
      * the verb asks whether to stay on it (its fresh facts are among `targets`): returning another creep ends the
-     * attempt for it; returning `current`'s creep (or undefined) keeps waiting. Whether a switch is worth the
+     * attempt for it; returning `current`'s creep keeps waiting, and undefined keeps waiting or, with `dropLost`, releases it. Whether a switch is worth the
      * attack cooldown is the caller's rule.
      */
     pick?: (this: void, targets: LaneTarget[], current?: LaneTarget) => LaneTarget | undefined;
