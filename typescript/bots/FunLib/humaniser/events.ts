@@ -939,6 +939,12 @@ export const EVENTS = {
     // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
     // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
+    // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh), ht the game time the verb's hit
+    // was confirmed (label lead began; absent when it never got there). The camp's own neutrals are tagged at ht (in its
+    // box, or attacking the puller within PullJob TagRadius); on them, sampled every PullJob WatchEvery to the trail's end:
+    // gh the farthest any came from the camp origin, na the first time one came within PullJob Acquire of our lane creeps,
+    // gu the first time none attacked the puller or any creep while one was still alive (they gave up), gd the nearest of
+    // them to our lane creeps at gu, wa the first time our lane creeps came within PullJob ArriveR of the meet point.
     pull_job: {
         pid: "num",
         pos: "num",
@@ -964,12 +970,22 @@ export const EVENTS = {
         cv: "num",
         cdmg: "num",
         php: "num",
+        sh: "num",
+        ht: "num",
+        gh: "num",
+        na: "num",
+        gu: "num",
+        gd: "num",
+        wa: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
     // else, wid idle; wd the nearest of our lane creeps to the meet point. Neutrals within WaveSize of it: nn, of them ntp on the
     // puller, ntc on a creep, ntx idle; the neutral within WatchNeutralSearch nearest our creeps there (the meet point when none): nd its distance, nh its
     // distance from its camp origin, nt its target (p puller, h other hero, c creep, o other, x none). pd: the puller to the meet point.
+    // Slice pull-diag: the camp's own neutrals tagged at the hit (see pull_job): tn alive, tp of them on the puller, tc on a
+    // creep, td the nearest of them to our lane creeps near the watch (to the meet point when none), th the farthest of them
+    // from the camp origin. nd/nh/nt above may name another camp's neutral (nh over 3000 in banked logs).
     pull_watch: {
         pid: "num",
         slot: "num",
@@ -988,6 +1004,11 @@ export const EVENTS = {
         nh: "num",
         nt: "str",
         pd: "num",
+        tn: "num",
+        tp: "num",
+        tc: "num",
+        td: "num",
+        th: "num",
     },
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;

@@ -25,6 +25,31 @@ local function __TS__SparseArraySpread(sparseArray)
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
 
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -119,7 +144,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ourTower, share, laneCreepsNear, onNeutral, sampleWave, countDiverted, targetKind, watchLine, running
+local ourTower, share, laneCreepsNear, onNeutral, sampleWave, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
@@ -176,13 +201,89 @@ function onNeutral(c)
     local t = c:GetAttackTarget()
     return t ~= nil and t ~= nil and t:GetTeam() == Team.Neutral
 end
-function sampleWave(p)
+function sampleWave(bot, p)
     local now = DotaTime()
     if p.sampledAt ~= nil and now - p.sampledAt < ____exports.SETTINGS.WatchEvery then
         return
     end
     p.sampledAt = now
     countDiverted(p)
+    trackTagged(bot, p)
+end
+function taggedState(bot, p, ours)
+    local s = {alive = 0, onPuller = 0, onCreep = 0}
+    for ____, u in ipairs(p.tagged or ({})) do
+        do
+            local __continue102
+            repeat
+                if not u:IsAlive() then
+                    __continue102 = true
+                    break
+                end
+                s.alive = s.alive + 1
+                local k = targetKind(
+                    bot,
+                    u:GetAttackTarget()
+                )
+                if k == "p" then
+                    s.onPuller = s.onPuller + 1
+                elseif k == "c" then
+                    s.onCreep = s.onCreep + 1
+                end
+                local d = #ours > 0 and math.huge or GetUnitToLocationDistance(u, p.plan.meet)
+                for ____, c in ipairs(ours) do
+                    d = math.min(
+                        d,
+                        GetUnitToUnitDistance(u, c)
+                    )
+                end
+                if s.nearest == nil or d < s.nearest then
+                    s.nearest = d
+                end
+                local h = GetUnitToLocationDistance(u, p.plan.spawner.location)
+                if s.farthest == nil or h > s.farthest then
+                    s.farthest = h
+                end
+                __continue102 = true
+            until true
+            if not __continue102 then
+                break
+            end
+        end
+    end
+    return s
+end
+function trackTagged(bot, p)
+    local now = DotaTime()
+    if p.wa == nil then
+        for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+            if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
+                p.wa = now
+                break
+            end
+        end
+    end
+    if p.tagged == nil then
+        return
+    end
+    local s = taggedState(
+        bot,
+        p,
+        laneCreepsNear(
+            p.plan,
+            LaneConfig.Settings().Radii.MeetWatch
+        )
+    )
+    if s.farthest ~= nil and (p.gh == nil or s.farthest > p.gh) then
+        p.gh = s.farthest
+    end
+    if p.na == nil and s.nearest ~= nil and s.nearest <= ____exports.SETTINGS.Acquire and s.alive > 0 then
+        p.na = now
+    end
+    if p.gu == nil and s.alive > 0 and s.onPuller == 0 and s.onCreep == 0 then
+        p.gu = now
+        p.gd = s.nearest
+    end
 end
 function countDiverted(p)
     local radii = LaneConfig.Settings().Radii
@@ -237,19 +338,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue109
+            local __continue133
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue109 = true
+                    __continue133 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue109 = true
+                __continue133 = true
             until true
-            if not __continue109 then
+            if not __continue133 then
                 break
             end
         end
@@ -274,15 +375,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue119
+            local __continue143
             repeat
                 if not u:IsAlive() then
-                    __continue119 = true
+                    __continue143 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue119 = true
+                    __continue143 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -309,9 +410,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue119 = true
+                __continue143 = true
             until true
-            if not __continue119 then
+            if not __continue143 then
                 break
             end
         end
@@ -319,8 +420,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_16 = Telemetry.Event
-    local ____array_15 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_17 = Telemetry.Event
+    local ____array_16 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -341,22 +442,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_12
-    if best ~= nil then
-        ____temp_12 = r0(nd)
-    else
-        ____temp_12 = nil
-    end
-    __TS__SparseArrayPush(____array_15, {"nd", ____temp_12})
     local ____temp_13
     if best ~= nil then
-        ____temp_13 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_13 = r0(nd)
     else
         ____temp_13 = nil
     end
+    __TS__SparseArrayPush(____array_16, {"nd", ____temp_13})
+    local ____temp_14
+    if best ~= nil then
+        ____temp_14 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+    else
+        ____temp_14 = nil
+    end
     __TS__SparseArrayPush(
-        ____array_15,
-        {"nh", ____temp_13},
+        ____array_16,
+        {"nh", ____temp_14},
         {
             "nt",
             best ~= nil and targetKind(
@@ -365,17 +466,43 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_14
+    local ____bot_IsAlive_result_15
     if bot:IsAlive() then
-        ____bot_IsAlive_result_14 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_15 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_14 = nil
+        ____bot_IsAlive_result_15 = nil
     end
-    __TS__SparseArrayPush(____array_15, {"pd", ____bot_IsAlive_result_14})
-    ____Telemetry_Event_16(
-        "pull_watch",
-        {__TS__SparseArraySpread(____array_15)}
+    __TS__SparseArrayPush(
+        ____array_16,
+        {"pd", ____bot_IsAlive_result_15},
+        unpack(taggedFields(bot, p, ours))
     )
+    ____Telemetry_Event_17(
+        "pull_watch",
+        {__TS__SparseArraySpread(____array_16)}
+    )
+end
+function taggedFields(bot, p, ours)
+    if p.tagged == nil then
+        return {}
+    end
+    local s = taggedState(bot, p, ours)
+    local function r0(x)
+        return x ~= nil and math.floor(x + 0.5) or nil
+    end
+    return {
+        {"tn", s.alive},
+        {"tp", s.onPuller},
+        {"tc", s.onCreep},
+        {
+            "td",
+            r0(s.nearest)
+        },
+        {
+            "th",
+            r0(s.farthest)
+        }
+    }
 end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
@@ -397,6 +524,9 @@ ____exports.SETTINGS = {
     TrailSec = 10,
     WatchLogEvery = 1,
     WatchNeutralSearch = 3000,
+    TagRadius = 1200,
+    Acquire = 500,
+    ArriveR = 300,
     HitShare = 0.5,
     StartReserve = 0.3,
     DefaultDps = {small = 40, medium = 60, large = 80, ancient = 150},
@@ -804,7 +934,7 @@ local function finish(bot, p, r, label)
     local function r1(x)
         return math.floor(x * 10) / 10
     end
-    local fields = {
+    local ____array_10 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -847,7 +977,27 @@ local function finish(bot, p, r, label)
         },
         {"nn", p.neutrals},
         unpack(campFields(p.start))
-    }
+    )
+    __TS__SparseArrayPush(
+        ____array_10,
+        {
+            "sh",
+            math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
+        },
+        {"ht", p.hat},
+        {
+            "gh",
+            p.gh ~= nil and math.floor(p.gh + 0.5) or nil
+        },
+        {"na", p.na},
+        {"gu", p.gu},
+        {
+            "gd",
+            p.gd ~= nil and math.floor(p.gd + 0.5) or nil
+        },
+        {"wa", p.wa}
+    )
+    local fields = {__TS__SparseArraySpread(____array_10)}
     if not r.success then
         Telemetry.Event("pull_job", fields)
         return
@@ -867,23 +1017,23 @@ local function trail(bot, flush)
         return
     end
     if not flush and DotaTime() < tr["until"] then
-        sampleWave(tr.pull)
+        sampleWave(bot, tr.pull)
         watchLine(bot, tr.pull, "trail")
         return
     end
     trailing[pid] = nil
-    local ____Telemetry_Event_11 = Telemetry.Event
-    local ____array_10 = __TS__SparseArrayNew(unpack(tr.fields))
+    local ____Telemetry_Event_12 = Telemetry.Event
+    local ____array_11 = __TS__SparseArrayNew(unpack(tr.fields))
     __TS__SparseArrayPush(
-        ____array_10,
+        ____array_11,
         {
             "dt",
             share(tr.pull)
         }
     )
-    ____Telemetry_Event_11(
+    ____Telemetry_Event_12(
         "pull_job",
-        {__TS__SparseArraySpread(____array_10)}
+        {__TS__SparseArraySpread(____array_11)}
     )
 end
 --- During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
@@ -926,6 +1076,31 @@ local function sample(bot, p)
     end
     p.neutrals = math.max(p.neutrals, nn)
     countDiverted(p)
+    trackTagged(bot, p)
+end
+--- At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only.
+local function tagCamp(bot, p)
+    p.hat = DotaTime()
+    local tagged = ____exports.CampStateOf(p.plan.spawner).units
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        do
+            local __continue97
+            repeat
+                if not u:IsAlive() or __TS__ArrayIndexOf(tagged, u) >= 0 or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.TagRadius then
+                    __continue97 = true
+                    break
+                end
+                if u:GetAttackTarget() == bot then
+                    tagged[#tagged + 1] = u
+                end
+                __continue97 = true
+            until true
+            if not __continue97 then
+                break
+            end
+        end
+    end
+    p.tagged = tagged
 end
 local function verbCamp(p)
     local radii = LaneConfig.Settings().Radii
@@ -965,6 +1140,9 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
         label = function(l)
             ctx.label(l)
             p.label = l
+            if l == "lead" and p.hat == nil then
+                tagCamp(bot, p)
+            end
         end,
         urgent = ctx.urgent
     }

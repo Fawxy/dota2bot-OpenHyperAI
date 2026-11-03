@@ -43,6 +43,11 @@ export const SETTINGS = {
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
     WatchNeutralSearch: 3000,
+    /** Diagnosis (slice pull-diag): at the hit the camp's own neutrals are tagged, those in its box or attacking the puller
+     *  within TagRadius; Acquire is the creep acquisition range (EC-053) for `na`; ArriveR the wave's arrival for `wa`. */
+    TagRadius: 1200,
+    Acquire: 500,
+    ArriveR: 300,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -108,6 +113,14 @@ interface Pull {
     neutrals: number;
     hitAt: number;
     start: CampState;
+    /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
+    hat?: number;
+    tagged?: Unit[];
+    gh?: number;
+    na?: number;
+    gu?: number;
+    gd?: number;
+    wa?: number;
 }
 
 interface Decision {
@@ -374,6 +387,13 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["wd", p.near !== undefined ? math.floor(p.near + 0.5) : undefined],
         ["nn", p.neutrals],
         ...campFields(p.start),
+        ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
+        ["ht", p.hat],
+        ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
+        ["na", p.na],
+        ["gu", p.gu],
+        ["gd", p.gd !== undefined ? math.floor(p.gd + 0.5) : undefined],
+        ["wa", p.wa],
     ];
     if (!r.success) {
         Telemetry.Event("pull_job", fields);
@@ -393,7 +413,7 @@ function trail(bot: Unit, flush: boolean): void {
     const tr = trailing[pid];
     if (tr === undefined) return;
     if (!flush && DotaTime() < tr.until) {
-        sampleWave(tr.pull);
+        sampleWave(bot, tr.pull);
         watchLine(bot, tr.pull, "trail");
         return;
     }
@@ -436,13 +456,71 @@ function sample(bot: Unit, p: Pull): void {
     for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
     p.neutrals = math.max(p.neutrals, nn);
     countDiverted(p);
+    trackTagged(bot, p);
 }
 
-function sampleWave(p: Pull): void {
+function sampleWave(bot: Unit, p: Pull): void {
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
+    trackTagged(bot, p);
+}
+
+/** At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only. */
+function tagCamp(bot: Unit, p: Pull): void {
+    p.hat = DotaTime();
+    const tagged = CampStateOf(p.plan.spawner).units;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive() || tagged.indexOf(u) >= 0 || GetUnitToUnitDistance(u, bot) > SETTINGS.TagRadius) continue;
+        if (u.GetAttackTarget() === bot) tagged.push(u);
+    }
+    p.tagged = tagged;
+}
+
+interface TaggedState {
+    alive: number;
+    onPuller: number;
+    onCreep: number;
+    nearest?: number;
+    farthest?: number;
+}
+
+function taggedState(bot: Unit, p: Pull, ours: Unit[]): TaggedState {
+    const s: TaggedState = { alive: 0, onPuller: 0, onCreep: 0 };
+    for (const u of p.tagged ?? []) {
+        if (!u.IsAlive()) continue;
+        s.alive++;
+        const k = targetKind(bot, u.GetAttackTarget());
+        if (k === "p") s.onPuller++;
+        else if (k === "c") s.onCreep++;
+        let d = ours.length > 0 ? math.huge : GetUnitToLocationDistance(u, p.plan.meet);
+        for (const c of ours) d = math.min(d, GetUnitToUnitDistance(u, c));
+        if (s.nearest === undefined || d < s.nearest) s.nearest = d;
+        const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
+        if (s.farthest === undefined || h > s.farthest) s.farthest = h;
+    }
+    return s;
+}
+
+function trackTagged(bot: Unit, p: Pull): void {
+    const now = DotaTime();
+    if (p.wa === undefined) {
+        for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+            if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) {
+                p.wa = now;
+                break;
+            }
+        }
+    }
+    if (p.tagged === undefined) return;
+    const s = taggedState(bot, p, laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch));
+    if (s.farthest !== undefined && (p.gh === undefined || s.farthest > p.gh)) p.gh = s.farthest;
+    if (p.na === undefined && s.nearest !== undefined && s.nearest <= SETTINGS.Acquire && s.alive > 0) p.na = now;
+    if (p.gu === undefined && s.alive > 0 && s.onPuller === 0 && s.onCreep === 0) {
+        p.gu = now;
+        p.gd = s.nearest;
+    }
 }
 
 function countDiverted(p: Pull): void {
@@ -533,7 +611,21 @@ function watchLine(bot: Unit, p: Pull, ph: string): void {
         ["nh", best !== undefined ? r0(GetUnitToLocationDistance(best, p.plan.spawner.location)) : undefined],
         ["nt", best !== undefined ? targetKind(bot, best.GetAttackTarget()) : undefined],
         ["pd", bot.IsAlive() ? r0(GetUnitToLocationDistance(bot, meet)) : undefined],
+        ...taggedFields(bot, p, ours),
     ]);
+}
+
+function taggedFields(bot: Unit, p: Pull, ours: Unit[]): Telemetry.Fields<"pull_watch"> {
+    if (p.tagged === undefined) return [];
+    const s = taggedState(bot, p, ours);
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    return [
+        ["tn", s.alive],
+        ["tp", s.onPuller],
+        ["tc", s.onCreep],
+        ["td", r0(s.nearest)],
+        ["th", r0(s.farthest)],
+    ];
 }
 
 function verbCamp(p: Plan): JobVerbs.Camp {
@@ -578,6 +670,7 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
         label: (l) => {
             ctx.label(l);
             p.label = l;
+            if (l === "lead" && p.hat === undefined) tagCamp(bot, p);
         },
         urgent: ctx.urgent,
     };

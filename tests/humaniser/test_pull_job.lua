@@ -162,6 +162,40 @@ do
 		and tonumber(field(pulls[1], "div")) == 1 and tonumber(field(pulls[1], "n")) == 4, pulls[1])
 end
 
+-- Slice pull-diag: the camp's neutral follows the puller, then gives up 2 s after the hit while another camp's neutral stands
+-- by the meet point (lhrchk1 pid 3 slot 80.353: the watch named a neutral 3350 from the camp once the camp's own had gone
+-- home). The line says when the hit landed, when the camp gave up and how far it came; the watch counts the camp's own only.
+do
+	local w = world({ reading = OUT })
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local other = MakeNeutral({ x = meet.x + 200, y = meet.y + 200 })
+	local hitAt, ended = nil, nil
+	local out = capture(function()
+		while T < 140 and ended == nil do
+			frame(w)
+			local p = w.H.PullJob.Running(w.sup)
+			if p and hitAt == nil and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
+			if hitAt ~= nil and kobold.target ~= nil then
+				kobold.loc = Vector(w.sup.loc.x, w.sup.loc.y - 150)
+				if T >= hitAt + 2 then kobold.target = nil end
+			end
+			if hitAt ~= nil and not p then ended = T end
+		end
+	end)
+	local tagged
+	for _, l in ipairs(lines(out, "pull_watch")) do if field(l, "tn") ~= nil then tagged = l end end
+	check("diag: watch samples count the camp's neutral only (tn=1), not the other camp's by the meet point", tagged ~= nil
+		and field(tagged, "tn") == "1", tagged)
+	out = run(w, (ended or 0) + 30)
+	local pull = lines(out, "pull_job")[1]
+	local ht, gu, gh = tonumber(field(pull, "ht")), tonumber(field(pull, "gu")), tonumber(field(pull, "gh"))
+	check("diag: ht is the hit, gu about 2 s later when the camp stopped attacking, gh how far it followed", ht ~= nil and gu ~= nil
+		and gu - ht >= 1 and gu - ht <= 3.5 and gh ~= nil and gh > 300 and field(pull, "sh") == "0", pull)
+end
+
 -- An early wave moves the hit earlier (LiveShift): the support leaves that much earlier, so a pull it starts can still be
 -- made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
 -- ~/.dotactl/logs/2026-11-03T00-51-30-pw2_A_on_1.log t=108.8).
