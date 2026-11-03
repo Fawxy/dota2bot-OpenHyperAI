@@ -13,7 +13,7 @@ export interface LaneFarmOpts {
      * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
      * the verb asks whether to stay on it (its fresh facts are among `targets`): returning another creep ends the
-     * attempt for it; returning `current`'s creep (or undefined) keeps waiting. Whether a switch is worth the
+     * attempt for it; returning `current`'s creep keeps waiting, and undefined keeps waiting or, with `dropLost`, releases it. Whether a switch is worth the
      * attack cooldown is the caller's rule.
      */
     pick?: (this: void, targets: LaneTarget[], current?: LaneTarget) => LaneTarget | undefined;
@@ -32,8 +32,9 @@ export interface LaneFarmOpts {
     retarget?: boolean;
     /**
      * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
-     * has nothing else, instead of waiting out its eta + 1.5 s. A creep drops out of the offers when the others' damage
-     * will kill it before a swing ordered now lands. Default false.
+     * has nothing else, instead of waiting out its eta + 1.5 s, and when its creep is still offered but `pick(offers,
+     * current)` answers undefined (the caller releases it). A creep drops out of the offers when the others' damage will kill
+     * it before a swing ordered now lands. Default false.
      */
     dropLost?: boolean;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */

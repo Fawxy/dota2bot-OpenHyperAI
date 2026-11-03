@@ -2399,6 +2399,10 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         end
         if still ~= nil then
             local next = opts.pick(offered, still)
+            if next == nil and opts.dropLost then
+                dropped = true
+                return true
+            end
             if next == nil or next.creep == current.creep then
                 return false
             end
@@ -2422,7 +2426,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local passAt
     while true do
         do
-            local __continue25
+            local __continue26
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2467,7 +2471,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     if target == nil then
                         local d = spot() ~= nil and away() or nil
                         atSpot = d ~= nil and d <= (atSpot and far or near)
-                        __continue25 = true
+                        __continue26 = true
                         break
                     end
                 end
@@ -2497,9 +2501,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue25 = true
+                __continue26 = true
             until true
-            if not __continue25 then
+            if not __continue26 then
                 break
             end
         end

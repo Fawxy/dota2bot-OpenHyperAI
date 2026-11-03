@@ -14,4 +14,8 @@ function ____exports.Applies(bot)
     local pos = LaneConfig.PositionOf(bot)
     return pos == 4 or pos == 5
 end
+--- With Applies: the body also takes the support's claimed last hits (Ours.SupportLastHit); false leaves them to OHA.
+function ____exports.LastHits(_bot)
+    return Ours.On("SupportLastHit")
+end
 return ____exports

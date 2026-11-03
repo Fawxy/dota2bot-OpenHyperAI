@@ -356,19 +356,19 @@ if bOwnsThink then
 	function Think()
 		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
-		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, deny first) come before every step below.
+		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, its lane hits first) come before every step below.
 		if States.SupportStep(bot) then return end
 		-- Overrides.LaneOnly: only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
 		if J.Humaniser.Overrides.LaneOnly() then
 			if not States.BodyLastHits(bot) then
-				if LastHitThink() then return end
-				if not States.BodyDenies(bot) and DenyThink() then return end
+				if not States.BodySupportLastHits(bot) and LastHitThink() then return end
+				if not States.BodySupportHits(bot) and DenyThink() then return end
 			end
-			if States.BodyDenies(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+			if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 			return
 		end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
-		if bEtiquette and Etiquette.LeavesTarget(bot) then PositionThink() return end
+		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
 		if bLaneLaning and not bTrainerSelfTest then
@@ -380,8 +380,9 @@ if bOwnsThink then
 		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
 		-- slice 4), it takes them and the denies itself in its Step below.
 		if not States.BodyLastHits(bot) then
-			if LastHitThink() then return end
-			if not States.BodyDenies(bot) and DenyThink() then return end
+			-- Ours.SupportLastHit: the support's body takes the last hits its claims give it (states/lane_claims), so OHA's do not run.
+			if not States.BodySupportLastHits(bot) and LastHitThink() then return end
+			if not States.BodySupportHits(bot) and DenyThink() then return end
 			if bHoldingForLastHit then
 				bot:Action_MoveToLocation(bot:GetLocation())
 				return
@@ -397,9 +398,9 @@ if bOwnsThink then
 			local_mode_laning_generic.Think()
 		end
 
-		-- A support whose body owns only its denies keeps OHA's positioning: the body's hold would cancel its attacks on heroes
-		-- (docs/team/research/core-time-diagnosis.md), so the body is stepped only by its deny step above.
-		if States.BodyDenies(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+		-- A support whose body owns its lane hits keeps OHA's positioning: the body's hold would cancel its attacks on heroes
+		-- (docs/team/research/core-time-diagnosis.md), so the body is stepped only by its lane-hit step above.
+		if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 	end
 end
 

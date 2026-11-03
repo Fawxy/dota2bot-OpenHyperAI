@@ -23,16 +23,20 @@ interface LaneStep {
 }
 
 /**
- * User rule 02/11/2026: deny before anything else while denies are tuned. Wants the frame while the body is in a deny
- * attempt or would start one now; its scan picks the creep when stepped.
+ * User rule 02/11/2026: the support's lane hits before anything else (denies, and since slice support-lane-hits the last hits
+ * its claims give it). Wants the frame while the body is in an attempt or would start one now; its scan picks the creep.
  */
-const deny: LaneStep = {
-    name: "deny",
-    wants: (bot, ctx) => Laning.OwnsDenyOnly(bot) && ctx.bodyRunning() && (ctx.bodyLabel() === "deny" || Laning.DenyOffered(bot)),
+const hit: LaneStep = {
+    name: "hit",
+    wants: (bot, ctx) => {
+        if (!Laning.OwnsSupportHits(bot) || !ctx.bodyRunning()) return false;
+        const label = ctx.bodyLabel();
+        return label === "deny" || label === "lasthit" || Laning.HitOffered(bot);
+    },
     run: (_bot, ctx) => ctx.stepBody(),
 };
 
-export const STEPS: LaneStep[] = [deny];
+export const STEPS: LaneStep[] = [hit];
 
 /** The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing). */
 export function Step(bot: Unit, ctx: StepCtx): string | undefined {
@@ -44,5 +48,5 @@ export function Step(bot: Unit, ctx: StepCtx): string | undefined {
 
 /** Whether any step may act for this bot: decided per frame by mode_laning_generic before its own steps. */
 export function Applies(bot: Unit): boolean {
-    return Laning.OwnsDenyOnly(bot);
+    return Laning.OwnsSupportHits(bot);
 }
