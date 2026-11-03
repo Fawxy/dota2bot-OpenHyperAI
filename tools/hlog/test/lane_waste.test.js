@@ -18,7 +18,7 @@ function store(lines) {
     return s;
 }
 
-// (0, 0) is on the mid lane; (-1454, -3357) is camp 3's spawn, off every lane.
+// (0, 0) is on the mid lane; (-2415, -8402) is camp 13's spawn.
 const lines = [
     line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
     line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
@@ -45,7 +45,11 @@ const lines = [
     line(160, 'creep_death team=2 kind=ranged x=-2415 y=-7801 hp=0.05 by=none'),
     // pulled: the other team's ok pull of camp 13 (slot 170), death 30 s on and 799 from the spawn; it beats a core in reach.
     line(165, 'pull_job pid=9 pos=5 lane=3 camp=13 slot=170 res=ok why=ok'),
+    line(169, 'creep_death team=2 kind=melee x=-2415 y=-7603 hp=0.05 by=none tw=0 p1d=400 p1r=150 p1t=0'),
     line(200, 'creep_death team=2 kind=melee x=-2415 y=-7603 hp=0.05 by=none tw=0 p1d=400 p1r=150 p1t=0'),
+    // a core's swing beats their pull (core_on); 801 from the spawn is not pulled (core_reach); before the slot neither.
+    line(201, 'creep_death team=2 kind=melee x=-2415 y=-7603 hp=0.05 by=none tw=0 p1d=400 p1r=150 p1t=1'),
+    line(202, 'creep_death team=2 kind=melee x=-2415 y=-7601 hp=0.05 by=none tw=0 p1d=400 p1r=150 p1t=0'),
     // our own team's pull, and a failed pull of theirs, are not the other team's pull: core_reach.
     line(205, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=210 res=ok why=ok'),
     line(206, 'pull_job pid=9 pos=5 lane=3 camp=13 slot=211 res=fail why=cancelled:empty'),
@@ -60,14 +64,14 @@ test('each no-one death gets the first cause that holds: tower, core_on, pulled 
     const v = s.query('SELECT t, cause, core FROM lane_waste ORDER BY t');
     assert.deepStrictEqual(v.map(r => [r.t, r.cause]), [
         [100, 'tower'], [110, 'core_on'], [121, 'core_reach'], [131, 'sup_reach'], [141, 'no_reach'],
-        [150, 'camp'], [160, 'no_reach'], [200, 'pulled'], [212, 'core_reach'], [700, 'tower'],
+        [150, 'camp'], [160, 'no_reach'], [169, 'core_reach'], [200, 'pulled'], [201, 'core_on'], [202, 'core_reach'], [212, 'core_reach'], [700, 'tower'],
     ]);
     assert.strictEqual(v.find(r => r.t === 141).core, 'near');
     assert.strictEqual(v.find(r => r.t === 160).core, 'none');
     const [r] = s.query(sql, {});
     s.db.close();
     assert.deepStrictEqual([r.deaths, r.waste, r.tower, r.core_on, r.pulled, r.core_reach, r.sup_reach, r.camp, r.no_reach, r.nr_core_near, r.untagged],
-        [10, 9, 1, 1, 1, 2, 1, 1, 2, 1, 1], 'until 600 drops t=700; the t=160 death has no tw');
+        [13, 12, 1, 2, 1, 4, 1, 1, 2, 1, 1], 'until 600 drops t=700; the t=160 death has no tw');
 });
 
 test('the camp table equals camp_boxes.json spawn points', () => {

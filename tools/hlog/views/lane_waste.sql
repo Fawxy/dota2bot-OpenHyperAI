@@ -15,8 +15,9 @@
 --   its claims), camp (within 600 of a camp's spawn with no pull logged: neutrals, or a pull from an older build; Camps in the
 --   laning stage), no_reach (no hero of ours in reach: Lane positioning). tw is absent on builds before the
 --   lasthit-refine-logs slice, so there `tower` reads 0 and those deaths fall to the later causes.
--- Reach is range + 300, as @lasthit_cores' idle_in_range. Camp radii are `judgement`: pull camps 2, 3, 4, 15 and 18 have their
---   spawn inside the lane rule's 1,100, so `camp` takes no lane condition and stays at 600 (box half-sides are 300-600).
+-- Reach is range + 300, as @lasthit_cores' idle_in_range. Camp radii are `judgement`: pull camps 2, 4, 15 and 18 have their
+--   spawn inside the lane rule's 1,100, so `camp` takes no lane condition and stays at 600 (box half-sides are 300-600); most
+--   `camp` rows are lane deaths beside those camps (scdchk1: 17 of 20), not neutrals.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_snap(pid, x, y, alive, ar)
 -- ensure: ev_bot(pid, team, pos)
