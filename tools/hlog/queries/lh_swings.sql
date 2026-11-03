@@ -11,7 +11,7 @@
 -- was about): positive means the belief expected more incoming damage than landed. A gone creep (lhp = 0) says nothing about the
 -- prediction when ours took it, so err is NULL there. Enemy hero wind-ups the swing counted as certain (slice lasthit-refine-logs;
 -- NULL when none, or before it): `ew` how many, `er` 1 when the swing was due only because of them, `ec` the latest of their
--- commit points (s to their attack point) and `oc` ours (s from the order to our attack point); oc > ec means we commit after them. `swung` 1 when a swing fired. Read with GROUP BY kind, ranged, reason; or err by thit.
+-- commit points (s to their attack point) and `oc` ours (s from the order to our attack point); oc > ec means we commit after them. Enemy-hero watch over every frame the verb watched the creep, swung or not (slice lasthit-windup-logs; NULL before): `hf` frames with an enemy hero attacking it, `hwf` those the wind-up reader read as winding up (hf > 0 with hwf = 0 across many attempts: the reader fails on heroes), `ha` `hc` `hpt` that hero's raw GetAnimActivity, GetAnimCycle and GetAttackPoint (of the last wind-up frame once one was seen). `swung` 1 when a swing fired. Read with GROUP BY kind, ranged, reason; or err by thit.
 -- ensure: ev_lh(pid, kind, result, reason, ranged, eta, contested, ol, od, ow, walk, dies, msg)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 raw AS (
@@ -42,11 +42,16 @@ f AS (
         CASE WHEN instr(msg, 'ew=') > 0 THEN cast(substr(msg || ' ', instr(msg, 'ew=') + 3, instr(substr(msg || ' ', instr(msg, 'ew=') + 3), ' ') - 1) AS integer) END AS ew,
         CASE WHEN instr(msg, 'er=') > 0 THEN cast(substr(msg || ' ', instr(msg, 'er=') + 3, instr(substr(msg || ' ', instr(msg, 'er=') + 3), ' ') - 1) AS integer) END AS er,
         CASE WHEN instr(msg, 'ec=') > 0 THEN cast(substr(msg || ' ', instr(msg, 'ec=') + 3, instr(substr(msg || ' ', instr(msg, 'ec=') + 3), ' ') - 1) AS real) END AS ec,
-        CASE WHEN instr(msg, 'oc=') > 0 THEN cast(substr(msg || ' ', instr(msg, 'oc=') + 3, instr(substr(msg || ' ', instr(msg, 'oc=') + 3), ' ') - 1) AS real) END AS oc
+        CASE WHEN instr(msg, 'oc=') > 0 THEN cast(substr(msg || ' ', instr(msg, 'oc=') + 3, instr(substr(msg || ' ', instr(msg, 'oc=') + 3), ' ') - 1) AS real) END AS oc,
+        CASE WHEN instr(msg, ' hf=') > 0 THEN cast(substr(msg || ' ', instr(msg, ' hf=') + 4, instr(substr(msg || ' ', instr(msg, ' hf=') + 4), ' ') - 1) AS integer) END AS hf,
+        CASE WHEN instr(msg, ' hwf=') > 0 THEN cast(substr(msg || ' ', instr(msg, ' hwf=') + 5, instr(substr(msg || ' ', instr(msg, ' hwf=') + 5), ' ') - 1) AS integer) END AS hwf,
+        CASE WHEN instr(msg, ' ha=') > 0 THEN cast(substr(msg || ' ', instr(msg, ' ha=') + 4, instr(substr(msg || ' ', instr(msg, ' ha=') + 4), ' ') - 1) AS integer) END AS ha,
+        CASE WHEN instr(msg, ' hc=') > 0 THEN cast(substr(msg || ' ', instr(msg, ' hc=') + 4, instr(substr(msg || ' ', instr(msg, ' hc=') + 4), ' ') - 1) AS real) END AS hc,
+        CASE WHEN instr(msg, ' hpt=') > 0 THEN cast(substr(msg || ' ', instr(msg, ' hpt=') + 5, instr(substr(msg || ' ', instr(msg, ' hpt=') + 5), ' ') - 1) AS real) END AS hpt
     FROM raw r
 )
 SELECT game_id, t, pid, kind, result, reason, ranged, eta, contested, ol, od, ow, walk, dies,
-    NOT held AND hp IS NOT NULL AS swung, w, why, sw, hp, pred, mine, thit, m, endhp, dt, fa, lhp, fg, obs, idps, ew, er, ec, oc,
+    NOT held AND hp IS NOT NULL AS swung, w, why, sw, hp, pred, mine, thit, m, endhp, dt, fa, lhp, fg, obs, idps, ew, er, ec, oc, hf, hwf, ha, hc, hpt,
     CASE WHEN NOT held AND pred IS NOT NULL AND lhp IS NOT NULL AND lhp > 0 THEN pred - lhp END AS err
 FROM f
 ORDER BY game_id, t;
