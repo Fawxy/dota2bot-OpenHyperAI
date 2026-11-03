@@ -471,7 +471,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    if (now < p.slot - walk - SETTINGS.Early) return false;
+    // Once our wave is out its lead says how early or late it really is (pull_timing's LiveShift); the leave time, the late
+    // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
+    // the hit having moved up to LiveMaxShift earlier).
+    const hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
@@ -489,7 +493,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         return false;
     }
     const why = blocked(bot) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
-    if (now + walk > p.slot + LaneConfig.Settings().Timing.JobStartLate) {
+    if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
     }
@@ -497,8 +501,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         gateWhy[pid] = why;
         return false;
     }
-    // The wave left its barracks by now: its lead says how early or late it really is (pull_timing's LiveShift).
-    const aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    const aggroAt = hitAt;
     trail(bot, true);
     const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0 };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>

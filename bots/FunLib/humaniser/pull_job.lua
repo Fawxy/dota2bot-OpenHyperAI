@@ -827,7 +827,8 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local walk = travel(bot, p)
-    if now < p.slot - walk - ____exports.SETTINGS.Early then
+    local hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) or 0)
+    if now < hitAt - walk - ____exports.SETTINGS.Early then
         return false
     end
     local d = decided[pid]
@@ -855,7 +856,7 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local why = blocked(bot) or partnerThreat(bot) or (acting(bot) and "acting" or nil)
-    if now + walk > p.slot + LaneConfig.Settings().Timing.JobStartLate then
+    if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
         done(false, gateWhy[pid] or why or "late")
         return false
     end
@@ -863,7 +864,7 @@ function ____exports.Wants(bot, blocked, host)
         gateWhy[pid] = why
         return false
     end
-    local aggroAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) or 0)
+    local aggroAt = hitAt
     trail(bot, true)
     local pull = {
         plan = p,

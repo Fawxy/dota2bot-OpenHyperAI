@@ -132,7 +132,8 @@ do
 end
 
 -- The neutrals walk back and the wave follows them into the camp, out of the meet point's watch radius: it still counts
--- (pw1: Radiant safe small, camp about 1100 from its meet point, logged undiverted while the camp's neutrals hit our wave).
+-- (pw1: Radiant safe small, camp about 1100 from its meet point, logged undiverted while the camp's neutrals hit our wave;
+-- ~/.dotactl/logs/2026-11-03T00-27-18-pw1_B_on_2.log t=549.2, slot 530.4).
 do
 	local w = world({ reading = OUT })
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -154,6 +155,24 @@ do
 	local pulls = lines(out, "pull_job")
 	check("camp fight: the camp lies outside the meet point's watch, and the wave fighting there is diverted", far and #pulls == 1
 		and tonumber(field(pulls[1], "div")) == 1 and tonumber(field(pulls[1], "n")) == 4, pulls[1])
+end
+
+-- An early wave moves the hit earlier (LiveShift): the support leaves that much earlier, so a pull it starts can still be
+-- made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
+-- ~/.dotactl/logs/2026-11-03T00-51-30-pw2_A_on_1.log t=108.8).
+do
+	local function startAt(shift)
+		local w = world({ reading = OUT })
+		local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+		local live = PT.LiveShift
+		PT.LiveShift = function() return shift end
+		local at
+		capture(function() while T < 90 and at == nil do frame(w) if w.H.PullJob.Running(w.sup) then at = T end end end)
+		PT.LiveShift = live
+		return at
+	end
+	local on, early = startAt(0), startAt(-4)
+	check("early wave: the pull starts 4 s earlier than on time", on ~= nil and early ~= nil and math.abs((on - early) - 4) < 0.15, tostring(on) .. " " .. tostring(early))
 end
 
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
