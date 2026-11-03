@@ -1397,7 +1397,8 @@ local function trackCreepDeaths(bot, now)
             target = {},
             attackAt = {},
             attackOn = {},
-            attackMode = {}
+            attackMode = {},
+            towerOn = {}
         }
         creepTracks[team] = c
     end
@@ -1514,7 +1515,8 @@ local function trackCreepDeaths(bot, now)
                 math.floor(d.seen.y)
             },
             {"hp", d.seen.hp},
-            {"by", d.by or "none"}
+            {"by", d.by or "none"},
+            {"tw", c.towerOn[d.creep] == true}
         }
         local ____temp_16
         if d.by ~= nil then
@@ -1573,6 +1575,31 @@ local function trackCreepDeaths(bot, now)
         ____exports.Event("creep_death", fields)
         c.dead[d.creep] = d.seen
     end
+    c.towerOn = {}
+    do
+        local id = 0
+        while id <= 10 do
+            do
+                local __continue207
+                repeat
+                    local tower = GetTower(team, id)
+                    if tower == nil or tower == nil or not tower:IsAlive() then
+                        __continue207 = true
+                        break
+                    end
+                    local target = tower:GetAttackTarget()
+                    if target ~= nil and target ~= nil then
+                        c.towerOn[target] = true
+                    end
+                    __continue207 = true
+                until true
+                if not __continue207 then
+                    break
+                end
+            end
+            id = id + 1
+        end
+    end
     for ____, ____value in ipairs(cores) do
         local core = ____value[1]
         c.target[core:GetPlayerID()] = core:GetAttackTarget() or nil
@@ -1588,11 +1615,11 @@ local function trackCreepDeaths(bot, now)
     end
     for ____, u in ipairs(alive) do
         do
-            local __continue212
+            local __continue215
             repeat
                 local kind = creepKind(u:GetUnitName())
                 if kind == nil then
-                    __continue212 = true
+                    __continue215 = true
                     break
                 end
                 local loc = u:GetLocation()
@@ -1605,9 +1632,9 @@ local function trackCreepDeaths(bot, now)
                         u:GetMaxHealth()
                     )
                 }
-                __continue212 = true
+                __continue215 = true
             until true
-            if not __continue212 then
+            if not __continue215 then
                 break
             end
         end
@@ -1616,17 +1643,17 @@ local function trackCreepDeaths(bot, now)
     local ownList = {}
     for ____, u in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue215
+            local __continue218
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue215 = true
+                    __continue218 = true
                     break
                 end
                 ownList[#ownList + 1] = u
                 ownAlive[u] = true
-                __continue215 = true
+                __continue218 = true
             until true
-            if not __continue215 then
+            if not __continue218 then
                 break
             end
         end
@@ -1634,15 +1661,15 @@ local function trackCreepDeaths(bot, now)
     local ownDeaths = {}
     for creep, seen in pairs(c.own) do
         do
-            local __continue218
+            local __continue221
             repeat
                 if ownAlive[creep] == true then
-                    __continue218 = true
+                    __continue221 = true
                     break
                 end
                 c.own[creep] = nil
                 if seen.hp > DEATH_MAX_HP then
-                    __continue218 = true
+                    __continue221 = true
                     break
                 end
                 local d = {creep = creep, seen = seen}
@@ -1652,9 +1679,9 @@ local function trackCreepDeaths(bot, now)
                         break
                     end
                 end
-                __continue218 = true
+                __continue221 = true
             until true
-            if not __continue218 then
+            if not __continue221 then
                 break
             end
         end
@@ -1696,11 +1723,11 @@ local function trackCreepDeaths(bot, now)
     end
     for ____, u in ipairs(ownList) do
         do
-            local __continue230
+            local __continue233
             repeat
                 local kind = creepKind(u:GetUnitName())
                 if kind == nil then
-                    __continue230 = true
+                    __continue233 = true
                     break
                 end
                 local loc = u:GetLocation()
@@ -1713,9 +1740,9 @@ local function trackCreepDeaths(bot, now)
                         u:GetMaxHealth()
                     )
                 }
-                __continue230 = true
+                __continue233 = true
             until true
-            if not __continue230 then
+            if not __continue233 then
                 break
             end
         end
@@ -1734,15 +1761,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue235
+                local __continue238
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue235 = true
+                        __continue238 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue235 = true
+                        __continue238 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -1781,9 +1808,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue235 = true
+                    __continue238 = true
                 until true
-                if not __continue235 then
+                if not __continue238 then
                     break
                 end
             end
