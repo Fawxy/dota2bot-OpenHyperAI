@@ -119,10 +119,12 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local share, laneCreepsNear, onNeutral, sampleWave, countDiverted, targetKind, watchLine, running
+local ourTower, share, laneCreepsNear, onNeutral, sampleWave, countDiverted, targetKind, watchLine, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
 local Team = ____dota.Team
+local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -132,6 +134,19 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function ourTower(bot)
+    local ids = bot:GetAssignedLane() == Lane.Top and ({Tower.Top1, Tower.Top2, Tower.Top3}) or ({Tower.Bot1, Tower.Bot2, Tower.Bot3})
+    for ____, id in ipairs(ids) do
+        local t = GetTower(
+            bot:GetTeam(),
+            id
+        )
+        if t ~= nil and t ~= nil and t:IsAlive() then
+            return t:GetLocation()
+        end
+    end
+    return nil
+end
 function share(p)
     return p.wave > 0 and math.floor(p.peak / p.wave * 100 + 0.5) / 100 or 0
 end
@@ -139,18 +154,18 @@ function laneCreepsNear(p, radius)
     local out = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue51
+            local __continue82
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue51 = true
+                    __continue82 = true
                     break
                 end
                 if GetUnitToLocationDistance(c, p.meet) <= radius or GetUnitToLocationDistance(c, p.spawner.location) <= radius then
                     out[#out + 1] = c
                 end
-                __continue51 = true
+                __continue82 = true
             until true
-            if not __continue51 then
+            if not __continue82 then
                 break
             end
         end
@@ -222,19 +237,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue81
+            local __continue112
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue81 = true
+                    __continue112 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue81 = true
+                __continue112 = true
             until true
-            if not __continue81 then
+            if not __continue112 then
                 break
             end
         end
@@ -259,15 +274,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue91
+            local __continue122
             repeat
                 if not u:IsAlive() then
-                    __continue91 = true
+                    __continue122 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue91 = true
+                    __continue122 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -294,9 +309,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue91 = true
+                __continue122 = true
             until true
-            if not __continue91 then
+            if not __continue122 then
                 break
             end
         end
@@ -304,8 +319,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_15 = Telemetry.Event
-    local ____array_14 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_16 = Telemetry.Event
+    local ____array_15 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -326,22 +341,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_11
-    if best ~= nil then
-        ____temp_11 = r0(nd)
-    else
-        ____temp_11 = nil
-    end
-    __TS__SparseArrayPush(____array_14, {"nd", ____temp_11})
     local ____temp_12
     if best ~= nil then
-        ____temp_12 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_12 = r0(nd)
     else
         ____temp_12 = nil
     end
+    __TS__SparseArrayPush(____array_15, {"nd", ____temp_12})
+    local ____temp_13
+    if best ~= nil then
+        ____temp_13 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+    else
+        ____temp_13 = nil
+    end
     __TS__SparseArrayPush(
-        ____array_14,
-        {"nh", ____temp_12},
+        ____array_15,
+        {"nh", ____temp_13},
         {
             "nt",
             best ~= nil and targetKind(
@@ -350,20 +365,25 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_13
+    local ____bot_IsAlive_result_14
     if bot:IsAlive() then
-        ____bot_IsAlive_result_13 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_14 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_13 = nil
+        ____bot_IsAlive_result_14 = nil
     end
-    __TS__SparseArrayPush(____array_14, {"pd", ____bot_IsAlive_result_13})
-    ____Telemetry_Event_15(
+    __TS__SparseArrayPush(____array_15, {"pd", ____bot_IsAlive_result_14})
+    ____Telemetry_Event_16(
         "pull_watch",
-        {__TS__SparseArraySpread(____array_14)}
+        {__TS__SparseArraySpread(____array_15)}
     )
 end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
+end
+function ____exports.End(bot, why)
+    if running[bot:GetPlayerID()] ~= nil then
+        Tasks.Cancel(bot, "cancelled", why)
+    end
 end
 ____exports.SETTINGS = {
     Priority = 0.9,
@@ -376,7 +396,16 @@ ____exports.SETTINGS = {
     WatchEvery = 0.25,
     TrailSec = 10,
     WatchLogEvery = 1,
-    WatchNeutralSearch = 3000
+    WatchNeutralSearch = 3000,
+    HitShare = 0.5,
+    StartReserve = 0.3,
+    DefaultDps = {small = 40, medium = 60, large = 80, ancient = 150},
+    DefaultExposure = 8,
+    BailReserve = 0.25,
+    BailGrace = 2,
+    BailFor = 6,
+    BailScan = 1200,
+    BailStep = 700
 }
 running = {}
 local trailing = {}
@@ -508,6 +537,138 @@ local function travel(bot, p)
         bot:GetCurrentMovementSpeed()
     )
 end
+function ____exports.CampStateOf(spawner)
+    local m = LaneConfig.Settings().Radii.BoxMargin
+    local lo = spawner.min
+    local hi = spawner.max
+    local s = {
+        n = 0,
+        seen = 0,
+        hp = 0,
+        vis = true,
+        units = {}
+    }
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        do
+            local __continue29
+            repeat
+                if not u:IsAlive() then
+                    __continue29 = true
+                    break
+                end
+                local p = u:GetLocation()
+                if p == nil or p == nil then
+                    __continue29 = true
+                    break
+                end
+                if p.x < lo.x - m or p.x > hi.x + m or p.y < lo.y - m or p.y > hi.y + m then
+                    __continue29 = true
+                    break
+                end
+                s.n = s.n + 1
+                if u:CanBeSeen() then
+                    s.seen = s.seen + 1
+                end
+                s.hp = s.hp + u:GetHealth()
+                local ____s_units_1 = s.units
+                ____s_units_1[#____s_units_1 + 1] = u
+                __continue29 = true
+            until true
+            if not __continue29 then
+                break
+            end
+        end
+    end
+    for ____, v in ipairs({
+        spawner.location,
+        lo,
+        hi,
+        Vector(lo.x, hi.y, 0),
+        Vector(hi.x, lo.y, 0)
+    }) do
+        if not IsLocationVisible(v) then
+            s.vis = false
+        end
+    end
+    return s
+end
+--- `empty` when the camp holds nothing to pull at `hitAt`: nothing returned in a box the team sees whole, and no spawn minute
+-- before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says nothing unless the
+-- API returns fogged neutrals (the start probe `cn`/`cs`/`cv` tells).
+function ____exports.CampGate(s, now, hitAt)
+    local period = LaneConfig.Settings().Timing.PullPeriod
+    if s.n == 0 and s.vis and math.floor(hitAt / period) <= math.floor(now / period) then
+        return "empty"
+    end
+    return nil
+end
+--- The camp's expected damage on `bot` over the pull (SETTINGS HitShare, DefaultDps).
+function ____exports.CampDamage(bot, s, ____type, waveAfter)
+    local exposure = (waveAfter or ____exports.SETTINGS.DefaultExposure) * ____exports.SETTINGS.HitShare
+    if #s.units == 0 then
+        return ____exports.SETTINGS.DefaultDps[____type] * exposure
+    end
+    local dmg = 0
+    for ____, u in ipairs(s.units) do
+        dmg = dmg + u:GetEstimatedDamageToTarget(true, bot, exposure, DamageType.All)
+    end
+    return dmg
+end
+--- The puller cannot take the camp: its expected damage would leave less than StartReserve of max HP.
+local function campDmgGate(bot, dmg)
+    return bot:GetHealth() - dmg < bot:GetMaxHealth() * ____exports.SETTINGS.StartReserve and "camp-dmg" or nil
+end
+--- Where the puller steps back to while neutrals are about to kill it (SETTINGS BailReserve), else undefined.
+local function bailPoint(bot, p)
+    if not bot:IsAlive() then
+        return nil
+    end
+    local now = DotaTime()
+    local at = bot:GetLocation()
+    local dps = 0
+    local cx = 0
+    local cy = 0
+    local k = 0
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        do
+            local __continue47
+            repeat
+                if not u:IsAlive() or u:GetAttackTarget() ~= bot or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.BailScan then
+                    __continue47 = true
+                    break
+                end
+                dps = dps + u:GetEstimatedDamageToTarget(true, bot, 1, DamageType.All)
+                local l = u:GetLocation()
+                cx = cx + l.x
+                cy = cy + l.y
+                k = k + 1
+                __continue47 = true
+            until true
+            if not __continue47 then
+                break
+            end
+        end
+    end
+    if k == 0 then
+        return nil
+    end
+    local left = math.max(0, (p.plan.waveAt or now) - now) + ____exports.SETTINGS.BailGrace
+    local floor = bot:GetMaxHealth() * ____exports.SETTINGS.BailReserve
+    if bot:GetHealth() >= floor and bot:GetHealth() - dps * left >= floor then
+        return nil
+    end
+    local tower = ourTower(bot)
+    if tower ~= nil then
+        return tower
+    end
+    local dx = at.x - cx / k
+    local dy = at.y - cy / k
+    local d = math.max(
+        1,
+        math.sqrt(dx * dx + dy * dy)
+    )
+    return Vector(at.x + dx * ____exports.SETTINGS.BailStep / d, at.y + dy * ____exports.SETTINGS.BailStep / d, at.z)
+end
 --- The reading wants a pull: our clash point moves out (towards their tower), or holds past the middle on their side.
 function ____exports.Wanted(r)
     if r == nil then
@@ -522,30 +683,30 @@ local function partnerThreat(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue31
+                local __continue60
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot or not m:IsAlive() or isSupport(m) or m:GetAssignedLane() ~= lane then
-                        __continue31 = true
+                        __continue60 = true
                         break
                     end
                     local pids = {}
                     local n = 0
                     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
                         do
-                            local __continue33
+                            local __continue62
                             repeat
                                 if not e:IsAlive() or e:IsIllusion() or GetUnitToUnitDistance(e, m) > ____exports.SETTINGS.PartnerRadius then
-                                    __continue33 = true
+                                    __continue62 = true
                                     break
                                 end
                                 if pids[e:GetPlayerID()] ~= true then
                                     n = n + 1
                                 end
                                 pids[e:GetPlayerID()] = true
-                                __continue33 = true
+                                __continue62 = true
                             until true
-                            if not __continue33 then
+                            if not __continue62 then
                                 break
                             end
                         end
@@ -556,9 +717,9 @@ local function partnerThreat(bot)
                     if n > 0 and m:GetHealth() < m:GetMaxHealth() * ____exports.SETTINGS.PartnerHp then
                         return "partner-low"
                     end
-                    __continue31 = true
+                    __continue60 = true
                 until true
-                if not __continue31 then
+                if not __continue60 then
                     break
                 end
             end
@@ -571,7 +732,29 @@ end
 local function acting(bot)
     return bot:NumQueuedActions() > 0 or bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility()
 end
-local function choiceLine(bot, d, go, why)
+local function campFields(s)
+    local function r0(x)
+        return x ~= nil and math.floor(x + 0.5) or nil
+    end
+    return {
+        {"cn", s.n},
+        {"cs", s.seen},
+        {
+            "chp",
+            r0(s.hp)
+        },
+        {"cv", s.vis and 1 or 0},
+        {
+            "cdmg",
+            r0(s.dmg)
+        },
+        {
+            "php",
+            r0(s.php)
+        }
+    }
+end
+local function choiceLine(bot, d, go, why, camp)
     local r = d.reading
     local function r1(x)
         return x ~= nil and math.floor(x + 0.5) or nil
@@ -607,7 +790,8 @@ local function choiceLine(bot, d, go, why)
                 r1(r and r.cf)
             },
             {"tw", r ~= nil and (r.tower and 1 or 0) or nil},
-            {"ms", r and r.ms}
+            {"ms", r and r.ms},
+            unpack(campFields(camp))
         }
     )
 end
@@ -675,7 +859,8 @@ local function finish(bot, p, r, label)
             "wd",
             p.near ~= nil and math.floor(p.near + 0.5) or nil
         },
-        {"nn", p.neutrals}
+        {"nn", p.neutrals},
+        unpack(campFields(p.start))
     }
     if not r.success then
         Telemetry.Event("pull_job", fields)
@@ -701,18 +886,18 @@ local function trail(bot, flush)
         return
     end
     trailing[pid] = nil
-    local ____Telemetry_Event_10 = Telemetry.Event
-    local ____array_9 = __TS__SparseArrayNew(unpack(tr.fields))
+    local ____Telemetry_Event_11 = Telemetry.Event
+    local ____array_10 = __TS__SparseArrayNew(unpack(tr.fields))
     __TS__SparseArrayPush(
-        ____array_9,
+        ____array_10,
         {
             "dt",
             share(tr.pull)
         }
     )
-    ____Telemetry_Event_10(
+    ____Telemetry_Event_11(
         "pull_job",
-        {__TS__SparseArraySpread(____array_9)}
+        {__TS__SparseArraySpread(____array_10)}
     )
 end
 --- During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
@@ -730,19 +915,19 @@ local function sample(bot, p)
     local radii = LaneConfig.Settings().Radii
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue59
+            local __continue90
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue59 = true
+                    __continue90 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, p.plan.meet)
                 if p.near == nil or d < p.near then
                     p.near = d
                 end
-                __continue59 = true
+                __continue90 = true
             until true
-            if not __continue59 then
+            if not __continue90 then
                 break
             end
         end
@@ -770,9 +955,12 @@ local function verbCamp(p)
         search = radii.NeutralSearch
     }
 end
-local function verbPlan(p, aggroAt)
+local function verbPlan(bot, pull, aggroAt)
+    local p = pull.plan
     local s = LaneConfig.Settings()
     return {
+        bail = function() return bailPoint(bot, pull) end,
+        bailFor = ____exports.SETTINGS.BailFor,
         camp = verbCamp(p),
         aggroAt = aggroAt,
         lead = p.lead,
@@ -796,7 +984,7 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
     }
     return __TS__DelegatedYield(Tasks.Jobs().pull(
         bot,
-        verbPlan(p.plan, aggroAt),
+        verbPlan(bot, p, aggroAt),
         hooks
     ))
 end)
@@ -846,16 +1034,25 @@ function ____exports.Wants(bot, blocked, host)
         decided[pid] = d
         gateWhy[pid] = nil
     end
+    local camp = ____exports.CampStateOf(p.spawner)
     local function done(go, why)
         handled[pid] = p.slot
         gateWhy[pid] = nil
-        choiceLine(bot, d, go, why)
+        choiceLine(
+            bot,
+            d,
+            go,
+            why,
+            camp
+        )
     end
     if not d.want then
         done(false, d.reading == nil and "no-read" or "lane")
         return false
     end
-    local why = blocked(bot) or partnerThreat(bot) or (acting(bot) and "acting" or nil)
+    camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter)
+    camp.php = bot:GetHealth()
+    local why = ____exports.CampGate(camp, now, hitAt) or blocked(bot) or campDmgGate(bot, camp.dmg) or partnerThreat(bot) or (acting(bot) and "acting" or nil)
     if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
         done(false, gateWhy[pid] or why or "late")
         return false
@@ -872,7 +1069,9 @@ function ____exports.Wants(bot, blocked, host)
         host = host,
         wave = 0,
         peak = 0,
-        neutrals = 0
+        neutrals = 0,
+        hitAt = hitAt,
+        start = camp
     }
     local ok = Tasks.Start(
         bot,
@@ -899,13 +1098,23 @@ function ____exports.Step(bot, host)
     if p == nil then
         return false
     end
+    if p.label == nil or p.label == "travel" or p.label == "wait" then
+        local s = ____exports.CampStateOf(p.plan.spawner)
+        local why = ____exports.CampGate(
+            s,
+            DotaTime(),
+            p.hitAt
+        ) or campDmgGate(
+            bot,
+            ____exports.CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter)
+        )
+        if why ~= nil then
+            ____exports.End(bot, why)
+            return false
+        end
+    end
     sample(bot, p)
     return Tasks.Step(bot, host)
-end
-function ____exports.End(bot, why)
-    if running[bot:GetPlayerID()] ~= nil then
-        Tasks.Cancel(bot, "cancelled", why)
-    end
 end
 function ____exports.NoteHit(bot)
     local p = running[bot:GetPlayerID()]
