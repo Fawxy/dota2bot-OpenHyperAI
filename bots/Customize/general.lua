@@ -136,8 +136,9 @@ Customize.Humaniser = {
     -- Bot skill in [0, 1] combines Valve lobby difficulty and FretBots difficulty with these weights.
     ValveWeight = 0.5,
     FretWeight = 0.5,
-    -- A number in [0, 1] forces every bot's skill (for testing). nil = use difficulty.
-    SkillOverride = nil,
+    -- A number in [0, 1] forces every bot's skill. nil = use difficulty. Held at 1 for all work until the Difficulty
+    -- roadmap section tunes skill (user 04/11/2026); lobby difficulty and FretBots are ignored while it is set.
+    SkillOverride = 1,
     FretBridge = {
         -- Force the FretBots level (0-10) bots assume, if the chat-vote mirror gets it wrong. nil = detect.
         FretBotsLevelOverride = nil,
