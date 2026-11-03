@@ -1,4 +1,4 @@
--- Lane-wide waste by cause (slice support-lane, coverage "lane-wide waste"): one row per enemy lane creep death no hero got
+-- Lane-wide waste by place and cause (slice support-lane, coverage "lane-wide waste"): one row per enemy lane creep death no hero got
 -- (`creep_fate` side enemy, fate `other`), from either team's log, with who of the logging team was near it and why no one took it.
 -- core_*: from ev=creep_death's p<N> fields (own cores pos 1-3 within 1,500): `core_d` the nearest one's distance; `core` = on
 --   (a core was attacking this creep: p<N>t = 1 or p<N>a set), reach (a core within its attack range + 300, not on it), near
@@ -9,13 +9,14 @@
 --   the death, the death 0-30 s after the planned hit second (`slot`; 30 s, one wave, is `judgement`).
 -- camp_d: distance to the nearest neutral camp's spawn point (camp_boxes.json `x`, `y`; pinned by test/lane_waste.test.js), and
 --   `lane` the death's lane (fragment lane_label).
--- cause, first match: tower (tw = 1: one of our towers hit it the frame before; Last-hit refinement's pre-hit), core_on (a
---   core swung and lost the race), pulled (the other team's pull: their pull's purpose, not our miss, unless a core swung),
---   core_reach (a core in reach and not on it: Core in lane), sup_reach (a support in reach and no one on it: Support in lane,
---   its claims), camp (within 600 of a camp's spawn with no pull logged: neutrals, or a pull from an older build; Camps in the
---   laning stage), no_reach (no hero of ours in reach: Lane positioning). tw is absent on builds before the
---   lasthit-refine-logs slice, so there `tower` reads 0 and those deaths fall to the later causes.
--- Reach is range + 300, as @lasthit_cores' idle_in_range. Camp radii are `judgement`: pull camps 2, 4, 15 and 18 have their
+-- place: tower (tw = 1: one of our towers hit it the frame before; a creep our creeps finish under the tower reads the same, so
+--   this is "under our tower", not "killed by it"), open (tw = 0), untagged (no tw: a build before the lasthit-refine-logs slice).
+-- cause, first match, within every place: core_on (a core swung and lost the race), pulled (the other team's pull: their pull's
+--   purpose, not our miss, unless a core swung), core_reach (a core in reach and not on it: Core in lane), sup_reach (a support
+--   in reach and no one on it: Support in lane, its claims), camp (within 600 of a camp's spawn with no pull logged: neutrals,
+--   or a pull from an older build; Camps in the laning stage), no_reach (no hero of ours in reach: Lane positioning).
+-- Reach is range + 300, as @lasthit_cores' idle_in_range. @creep_tower's reach (range + 100) is the pre-hit's own window and
+--   stays in that query: a tower death `core_reach` here is not its `tower_reach`. Camp radii are `judgement`: pull camps 2, 4, 15 and 18 have their
 --   spawn inside the lane rule's 1,100, so `camp` takes no lane condition and stays at 600 (box half-sides are 300-600); most
 --   `camp` rows are lane deaths beside those camps (scdchk1: 17 of 20), not neutrals.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
@@ -68,8 +69,8 @@ SELECT d.game_id, d.seq, d.t, d.team, d.kind, d.x, d.y, d.tw, lab.lane,
     CASE WHEN d.core_d < 1e9 THEN round(d.core_d) END AS core_d,
     CASE WHEN d.on_it THEN 'on' WHEN d.in_reach THEN 'reach' WHEN d.core_d < 1e9 THEN 'near' ELSE 'none' END AS core,
     round(sd.sup_d) AS sup_d, coalesce(sd.sup_reach, 0) AS sup_reach, round(cd.camp_d) AS camp_d, cd.pulled,
-    CASE WHEN d.tw = 1 THEN 'tower'
-         WHEN d.on_it THEN 'core_on'
+    CASE WHEN d.tw = 1 THEN 'tower' WHEN d.tw = 0 THEN 'open' ELSE 'untagged' END AS place,
+    CASE WHEN d.on_it THEN 'core_on'
          WHEN cd.pulled THEN 'pulled'
          WHEN d.in_reach THEN 'core_reach'
          WHEN sd.sup_reach THEN 'sup_reach'
