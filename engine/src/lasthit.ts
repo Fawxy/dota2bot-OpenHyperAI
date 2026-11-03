@@ -76,6 +76,8 @@ interface Nearby {
     enemyCreeps: TaskCreep[];
     allyCreeps: TaskCreep[];
     others?: TaskAttacker[];
+    /** Enemy heroes within QUERY_RADIUS, queried once per frame on first use. */
+    enemyHeroes?: TaskHero[];
     /** Attackers by their current target, built once per frame (one GetAttackTarget per unit). */
     byTarget?: LuaTable<TaskAttacker, TaskAttacker[]>;
 }
@@ -95,12 +97,17 @@ function nearby(bot: TaskUnit): Nearby {
     return n;
 }
 
+function enemyHeroes(bot: TaskUnit, n: Nearby): TaskHero[] {
+    if (n.enemyHeroes === undefined) n.enemyHeroes = bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? [];
+    return n.enemyHeroes;
+}
+
 /** Heroes and towers of both teams; only queried once a swing decision is due. */
 function others(bot: TaskUnit, n: Nearby): TaskAttacker[] {
     if (n.others !== undefined) return n.others;
     const out: TaskAttacker[] = [];
     for (const enemies of [true, false]) {
-        for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, enemies, 0) ?? []) {
+        for (const h of enemies ? enemyHeroes(bot, n) : bot.GetNearbyHeroes?.(QUERY_RADIUS, false, 0) ?? []) {
             if (h.GetLocation !== undefined && h.IsAlive !== undefined) out.push(h as TaskHero as TaskAttacker);
         }
         for (const t of bot.GetNearbyTowers?.(QUERY_RADIUS, enemies) ?? []) out.push(t);
@@ -220,7 +227,7 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
  */
 function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n: number; raw: number; commit: number } {
     const heroes = new LuaTable<TaskAttacker, boolean>();
-    for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? []) heroes.set(h as TaskHero as TaskAttacker, true);
+    for (const h of enemyHeroes(bot, nearby(bot))) heroes.set(h as TaskHero as TaskAttacker, true);
     let n = 0;
     let raw = 0;
     let commit = 0;
@@ -251,14 +258,14 @@ interface HeroWatch {
 function watchHeroes(bot: TaskUnit, creep: TaskCreep, w: HeroWatch): void {
     let seen = false;
     let winding = false;
-    for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? []) {
+    for (const h of enemyHeroes(bot, nearby(bot))) {
         const a = h as TaskHero as TaskAttacker;
         if (a.GetAttackTarget?.() !== creep) continue;
         seen = true;
         const up = windupLeft(a) !== undefined;
         if (up) winding = true;
         // After a wind-up frame, keep its reading: the animation that follows the hit says nothing about the reader.
-        if (!up && w.windup > 0) continue;
+        if (!up && (winding || w.windup > 0)) continue;
         w.act = a.GetAnimActivity?.() ?? -1;
         w.cycle = a.GetAnimCycle?.() ?? -1;
         w.point = a.GetAttackPoint?.() ?? -1;

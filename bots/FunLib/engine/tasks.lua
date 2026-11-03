@@ -1342,7 +1342,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local now, dist, gone, nearby, others, isRanged, windupLeft, windupLanding, attackersByTarget, scanAttackers, ACTIVITY_ATTACK, ACTIVITY_ATTACK2, RANGED_ABOVE, CREEP_LAUNCH_OFFSET, QUERY_RADIUS, nearbyCache
+local now, dist, gone, nearby, enemyHeroes, others, isRanged, windupLeft, windupLanding, attackersByTarget, scanAttackers, ACTIVITY_ATTACK, ACTIVITY_ATTACK2, RANGED_ABOVE, CREEP_LAUNCH_OFFSET, QUERY_RADIUS, nearbyCache
 local ____adapter = require("adapter")
 local get = ____adapter.get
 local Skill = require("skill")
@@ -1387,24 +1387,40 @@ function nearby(bot)
     nearbyCache[id] = n
     return n
 end
+function enemyHeroes(bot, n)
+    if n.enemyHeroes == nil then
+        local ____n_11 = n
+        local ____this_10
+        ____this_10 = bot
+        local ____opt_9 = ____this_10.GetNearbyHeroes
+        ____n_11.enemyHeroes = ____opt_9 and ____opt_9(____this_10, QUERY_RADIUS, true, 0) or ({})
+    end
+    return n.enemyHeroes
+end
 function others(bot, n)
     if n.others ~= nil then
         return n.others
     end
     local out = {}
     for ____, enemies in ipairs({true, false}) do
-        local ____this_10
-        ____this_10 = bot
-        local ____opt_9 = ____this_10.GetNearbyHeroes
-        for ____, h in ipairs(____opt_9 and ____opt_9(____this_10, QUERY_RADIUS, enemies, 0) or ({})) do
+        local ____enemies_14
+        if enemies then
+            ____enemies_14 = enemyHeroes(bot, n)
+        else
+            local ____this_13
+            ____this_13 = bot
+            local ____opt_12 = ____this_13.GetNearbyHeroes
+            ____enemies_14 = ____opt_12 and ____opt_12(____this_13, QUERY_RADIUS, false, 0) or ({})
+        end
+        for ____, h in ipairs(____enemies_14) do
             if h.GetLocation ~= nil and h.IsAlive ~= nil then
                 out[#out + 1] = h
             end
         end
-        local ____this_12
-        ____this_12 = bot
-        local ____opt_11 = ____this_12.GetNearbyTowers
-        for ____, t in ipairs(____opt_11 and ____opt_11(____this_12, QUERY_RADIUS, enemies) or ({})) do
+        local ____this_16
+        ____this_16 = bot
+        local ____opt_15 = ____this_16.GetNearbyTowers
+        for ____, t in ipairs(____opt_15 and ____opt_15(____this_16, QUERY_RADIUS, enemies) or ({})) do
             out[#out + 1] = t
         end
     end
@@ -1412,17 +1428,17 @@ function others(bot, n)
     return out
 end
 function isRanged(u)
-    local ____this_14
-    ____this_14 = u
-    local ____opt_13 = ____this_14.GetAttackRange
-    local ____temp_17 = (____opt_13 and ____opt_13(____this_14) or 0) > RANGED_ABOVE
-    if ____temp_17 then
-        local ____this_16
-        ____this_16 = u
-        local ____opt_15 = ____this_16.GetAttackProjectileSpeed
-        ____temp_17 = (____opt_15 and ____opt_15(____this_16) or 0) > 0
+    local ____this_18
+    ____this_18 = u
+    local ____opt_17 = ____this_18.GetAttackRange
+    local ____temp_21 = (____opt_17 and ____opt_17(____this_18) or 0) > RANGED_ABOVE
+    if ____temp_21 then
+        local ____this_20
+        ____this_20 = u
+        local ____opt_19 = ____this_20.GetAttackProjectileSpeed
+        ____temp_21 = (____opt_19 and ____opt_19(____this_20) or 0) > 0
     end
-    return ____temp_17
+    return ____temp_21
 end
 function windupLeft(a)
     if a.GetAnimActivity == nil then
@@ -1440,11 +1456,11 @@ function windupLeft(a)
     if cycle >= point then
         return nil
     end
-    local ____temp_20 = point - cycle
-    local ____this_19
-    ____this_19 = a
-    local ____opt_18 = ____this_19.GetSecondsPerAttack
-    return ____temp_20 * (____opt_18 and ____opt_18(____this_19) or 1)
+    local ____temp_24 = point - cycle
+    local ____this_23
+    ____this_23 = a
+    local ____opt_22 = ____this_23.GetSecondsPerAttack
+    return ____temp_24 * (____opt_22 and ____opt_22(____this_23) or 1)
 end
 function windupLanding(a, creep)
     local t = windupLeft(a)
@@ -1467,37 +1483,23 @@ function attackersByTarget(bot, n)
         return n.byTarget
     end
     local by = {}
-    local ____this_22
-    ____this_22 = bot
-    local ____opt_21 = ____this_22.GetTeam
-    local myTeam = ____opt_21 and ____opt_21(____this_22)
+    local ____this_26
+    ____this_26 = bot
+    local ____opt_25 = ____this_26.GetTeam
+    local myTeam = ____opt_25 and ____opt_25(____this_26)
     local function add(a)
         if a == bot or gone(a) then
             return
         end
-        local ____temp_25 = myTeam ~= nil
-        if ____temp_25 then
-            local ____this_24
-            ____this_24 = a
-            local ____opt_23 = ____this_24.GetTeam
-            ____temp_25 = (____opt_23 and ____opt_23(____this_24)) ~= myTeam
+        local ____temp_29 = myTeam ~= nil
+        if ____temp_29 then
+            local ____this_28
+            ____this_28 = a
+            local ____opt_27 = ____this_28.GetTeam
+            ____temp_29 = (____opt_27 and ____opt_27(____this_28)) ~= myTeam
         end
-        local ____temp_25_29 = ____temp_25
-        if ____temp_25_29 then
-            local ____this_27
-            ____this_27 = a
-            local ____opt_26 = ____this_27.CanBeSeen
-            local ____temp_28 = ____opt_26 and ____opt_26(____this_27)
-            if ____temp_28 == nil then
-                ____temp_28 = true
-            end
-            ____temp_25_29 = not ____temp_28
-        end
-        if ____temp_25_29 then
-            return
-        end
-        local ____temp_33 = myTeam == nil
-        if ____temp_33 then
+        local ____temp_29_33 = ____temp_29
+        if ____temp_29_33 then
             local ____this_31
             ____this_31 = a
             local ____opt_30 = ____this_31.CanBeSeen
@@ -1505,15 +1507,29 @@ function attackersByTarget(bot, n)
             if ____temp_32 == nil then
                 ____temp_32 = true
             end
-            ____temp_33 = not ____temp_32
+            ____temp_29_33 = not ____temp_32
         end
-        if ____temp_33 then
+        if ____temp_29_33 then
             return
         end
-        local ____this_35
-        ____this_35 = a
-        local ____opt_34 = ____this_35.GetAttackTarget
-        local target = ____opt_34 and ____opt_34(____this_35)
+        local ____temp_37 = myTeam == nil
+        if ____temp_37 then
+            local ____this_35
+            ____this_35 = a
+            local ____opt_34 = ____this_35.CanBeSeen
+            local ____temp_36 = ____opt_34 and ____opt_34(____this_35)
+            if ____temp_36 == nil then
+                ____temp_36 = true
+            end
+            ____temp_37 = not ____temp_36
+        end
+        if ____temp_37 then
+            return
+        end
+        local ____this_39
+        ____this_39 = a
+        local ____opt_38 = ____this_39.GetAttackTarget
+        local target = ____opt_38 and ____opt_38(____this_39)
         if target == nil or target == nil then
             return
         end
@@ -1540,29 +1556,29 @@ function scanAttackers(bot, creep, horizon)
     local raw = 0
     local dps = 0
     local between = 0
-    local ____this_45
-    ____this_45 = creep
-    local ____opt_44 = ____this_45.GetIncomingTrackingProjectiles
-    for ____, p in ipairs(____opt_44 and ____opt_44(____this_45) or ({})) do
+    local ____this_49
+    ____this_49 = creep
+    local ____opt_48 = ____this_49.GetIncomingTrackingProjectiles
+    for ____, p in ipairs(____opt_48 and ____opt_48(____this_49) or ({})) do
         local c = p.caster
-        local ____temp_39 = p.is_attack == true and c ~= nil and c ~= nil and c ~= bot
-        if ____temp_39 then
-            local ____opt_36 = c.IsNull
-            local ____temp_38 = ____opt_36 and ____opt_36(c)
-            if ____temp_38 == nil then
-                ____temp_38 = false
+        local ____temp_43 = p.is_attack == true and c ~= nil and c ~= nil and c ~= bot
+        if ____temp_43 then
+            local ____opt_40 = c.IsNull
+            local ____temp_42 = ____opt_40 and ____opt_40(c)
+            if ____temp_42 == nil then
+                ____temp_42 = false
             end
-            ____temp_39 = not ____temp_38
+            ____temp_43 = not ____temp_42
         end
-        if ____temp_39 then
-            local ____opt_40 = c.GetAttackProjectileSpeed
-            local speed = ____opt_40 and ____opt_40(c) or 0
+        if ____temp_43 then
+            local ____opt_44 = c.GetAttackProjectileSpeed
+            local speed = ____opt_44 and ____opt_44(c) or 0
             if speed > 0 and dist(
                 p.location,
                 creep:GetLocation()
             ) / speed <= horizon then
-                local ____opt_42 = c.GetAttackDamage
-                raw = raw + (____opt_42 and ____opt_42(c) or 0)
+                local ____opt_46 = c.GetAttackDamage
+                raw = raw + (____opt_46 and ____opt_46(c) or 0)
             end
         end
     end
@@ -1571,27 +1587,27 @@ function scanAttackers(bot, creep, horizon)
         nearby(bot)
     )[creep] or ({})) do
         do
-            local __continue51
+            local __continue53
             repeat
                 if a == creep then
-                    __continue51 = true
+                    __continue53 = true
                     break
                 end
                 local land = windupLanding(a, creep)
-                local ____opt_46 = a.GetAttackDamage
-                local damage = ____opt_46 and ____opt_46(a) or 0
+                local ____opt_50 = a.GetAttackDamage
+                local damage = ____opt_50 and ____opt_50(a) or 0
                 if land ~= nil and land <= horizon then
                     raw = raw + damage
                 end
-                local ____opt_48 = a.GetSecondsPerAttack
-                local rate = damage / (____opt_48 and ____opt_48(a) or 1)
+                local ____opt_52 = a.GetSecondsPerAttack
+                local rate = damage / (____opt_52 and ____opt_52(a) or 1)
                 dps = dps + rate
                 if land == nil then
                     between = between + rate
                 end
-                __continue51 = true
+                __continue53 = true
             until true
-            if not __continue51 then
+            if not __continue53 then
                 break
             end
         end
@@ -1667,10 +1683,10 @@ end
 -- Swing-message attribution only.
 local function enemyHeroWindups(bot, creep, horizon)
     local heroes = {}
-    local ____this_51
-    ____this_51 = bot
-    local ____opt_50 = ____this_51.GetNearbyHeroes
-    for ____, h in ipairs(____opt_50 and ____opt_50(____this_51, QUERY_RADIUS, true, 0) or ({})) do
+    for ____, h in ipairs(enemyHeroes(
+        bot,
+        nearby(bot)
+    )) do
         heroes[h] = true
     end
     local n = 0
@@ -1681,27 +1697,27 @@ local function enemyHeroWindups(bot, creep, horizon)
         nearby(bot)
     )[creep] or ({})) do
         do
-            local __continue59
+            local __continue61
             repeat
                 if heroes[a] ~= true then
-                    __continue59 = true
+                    __continue61 = true
                     break
                 end
                 local land = windupLanding(a, creep)
                 if land == nil or land > horizon then
-                    __continue59 = true
+                    __continue61 = true
                     break
                 end
                 n = n + 1
-                local ____opt_52 = a.GetAttackDamage
-                raw = raw + (____opt_52 and ____opt_52(a) or 0)
+                local ____opt_54 = a.GetAttackDamage
+                raw = raw + (____opt_54 and ____opt_54(a) or 0)
                 commit = math.max(
                     commit,
                     windupLeft(a) or 0
                 )
-                __continue59 = true
+                __continue61 = true
             until true
-            if not __continue59 then
+            if not __continue61 then
                 break
             end
         end
@@ -1711,17 +1727,17 @@ end
 local function watchHeroes(bot, creep, w)
     local seen = false
     local winding = false
-    local ____this_66
-    ____this_66 = bot
-    local ____opt_65 = ____this_66.GetNearbyHeroes
-    for ____, h in ipairs(____opt_65 and ____opt_65(____this_66, QUERY_RADIUS, true, 0) or ({})) do
+    for ____, h in ipairs(enemyHeroes(
+        bot,
+        nearby(bot)
+    )) do
         do
-            local __continue64
+            local __continue66
             repeat
                 local a = h
-                local ____opt_54 = a.GetAttackTarget
-                if (____opt_54 and ____opt_54(a)) ~= creep then
-                    __continue64 = true
+                local ____opt_56 = a.GetAttackTarget
+                if (____opt_56 and ____opt_56(a)) ~= creep then
+                    __continue66 = true
                     break
                 end
                 seen = true
@@ -1729,22 +1745,22 @@ local function watchHeroes(bot, creep, w)
                 if up then
                     winding = true
                 end
-                if not up and w.windup > 0 then
-                    __continue64 = true
+                if not up and (winding or w.windup > 0) then
+                    __continue66 = true
                     break
                 end
-                local ____w_58 = w
-                local ____opt_56 = a.GetAnimActivity
-                ____w_58.act = ____opt_56 and ____opt_56(a) or -1
-                local ____w_61 = w
-                local ____opt_59 = a.GetAnimCycle
-                ____w_61.cycle = ____opt_59 and ____opt_59(a) or -1
-                local ____w_64 = w
-                local ____opt_62 = a.GetAttackPoint
-                ____w_64.point = ____opt_62 and ____opt_62(a) or -1
-                __continue64 = true
+                local ____w_60 = w
+                local ____opt_58 = a.GetAnimActivity
+                ____w_60.act = ____opt_58 and ____opt_58(a) or -1
+                local ____w_63 = w
+                local ____opt_61 = a.GetAnimCycle
+                ____w_63.cycle = ____opt_61 and ____opt_61(a) or -1
+                local ____w_66 = w
+                local ____opt_64 = a.GetAttackPoint
+                ____w_66.point = ____opt_64 and ____opt_64(a) or -1
+                __continue66 = true
             until true
-            if not __continue64 then
+            if not __continue66 then
                 break
             end
         end

@@ -449,6 +449,25 @@ do
     T.check("hero watch idle: no wind-up frames", string.find(msg, "hwf=0", 1, true) ~= nil)
 end
 
+-- Two enemy heroes on the creep, the one winding up listed first and the idle one after it: the reading kept is the
+-- winding hero's even when the verb ends right after its first wind-up frame (sdk review
+-- 2026-11-04-sdk-slice-lasthit-windup-logs-e82ac39 F3: the idle hero's attack point 0.30 overwrote it).
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 300, team = 3, passive = true }
+    local swinger = sim:addHero{ x = 250, y = 0, team = 3, damage = 40, attackPoint = 0.5, secondsPerAttack = 1,
+        autoAttack = true, firstSwingAt = 0.1 }
+    swinger.attackTarget = creep
+    local idle = sim:addHero{ x = 250, y = 60, team = 3, damage = 40, attackPoint = 0.3, secondsPerAttack = 1 }
+    idle.attackTarget = creep
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 0.12 }))
+    local msg = r.message or ""
+    T.check("hero watch two heroes: a wind-up frame seen (" .. msg .. ")", (tonumber(string.match(msg, "hwf=(%d+)")) or 0) >= 1)
+    T.check("hero watch two heroes: the winding hero's reading kept", string.find(msg, "ha=1503", 1, true) ~= nil
+        and string.find(msg, "hpt=0.50", 1, true) ~= nil)
+end
+
 -- Due without the enemy hero's hit (44 HP, ours 45): ew names their wind-up, er=0. Under a lapse the belief's horizon
 -- shrinks below their landing: ew/er read the hits the belief counted, so a wind-up it skipped is not named relied on
 -- (sdk review 2026-11-04-sdk-slice-lasthit-refine-logs-5f24047 F2).
