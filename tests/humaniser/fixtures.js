@@ -25,6 +25,7 @@ const VERBS = {
     kill_check: ['kill', 'noKill'],
     lane_fight: ['commitEnd', 'committing'],
     core_trip: ['noTrip', 'trip'],
+    support_claim: ['claim', 'noClaim'],
 };
 
 function listFixtures(dir) {
