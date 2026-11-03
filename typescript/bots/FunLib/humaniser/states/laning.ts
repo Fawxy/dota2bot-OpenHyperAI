@@ -1,6 +1,6 @@
 /**
  * `laning` state: go to the lane and hold a lane position (slice 1), stand like a high-MMR laner (slice 3,
- * `States.Laning.Spot = 'sdk'`), and last-hit and deny through the SDK verbs (slice 4, positions in
+ * `States.Laning.Spot = 'sdk'`, and for cores `Ours.LaneSpot`), and last-hit and deny through the SDK verbs (slice 4, positions in
  * `States.Laning.LastHit`). OHA's spot (its PositionThink target) is handed over by mode_laning_generic.lua
  * through SetSpot. Where the body owns last hits, the Lua Think skips LastHitThink/DenyThink for the bot; its
  * techniques and harass still run first, so the body is resumed only on frames where none of those acted.
@@ -15,6 +15,7 @@ import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 export const NAME = "laning";
@@ -74,33 +75,29 @@ interface SpotCache {
     info?: LaneSpot.SpotInfo;
 }
 const spotCache: Record<number, SpotCache | undefined> = {};
-/** The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
- * not shuttle to OHA's spot and back between waves. */
-const lastSdk: Record<number, { t: number; info: LaneSpot.SpotInfo } | undefined> = {};
-const HOLD_OVER = 4;
 
-/** The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). */
+/** Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says (cores under Ours.CoreLastHit). */
+export function OwnsSpot(bot: Unit): boolean {
+    return Ours.On("LaneSpot") && CoreLastHit.Applies(bot);
+}
+
+/** The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). OHA's spot only when
+ * ours is not on for the bot or cannot be computed (no lane direction, an error). */
 export function Spot(bot: Unit): Vector | undefined {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const c = spotCache[pid];
     if (c !== undefined && c.t === now) return c.v;
-    let v = ohaSpot(bot);
+    let v: Vector | undefined;
     let info: LaneSpot.SpotInfo | undefined;
-    if (Settings().Spot === "sdk") {
+    if (Settings().Spot === "sdk" || OwnsSpot(bot)) {
         const [ok, res] = pcall(LaneSpot.Compute, bot, RoleOf(bot));
         if (ok && res !== undefined) {
             info = res;
             v = res.spot;
-            lastSdk[pid] = { t: now, info: res };
-        } else {
-            const held = lastSdk[pid];
-            if (held !== undefined && now - held.t <= HOLD_OVER) {
-                info = held.info;
-                v = held.info.spot;
-            }
         }
     }
+    if (v === undefined) v = ohaSpot(bot);
     spotCache[pid] = { t: now, v, info };
     return v;
 }
@@ -142,7 +139,7 @@ export function DenyOffered(bot: Unit): boolean {
 }
 
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
-    const sdk = Settings().Spot === "sdk";
+    const sdk = Settings().Spot === "sdk" || OwnsSpot(bot);
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in
     // 50-150 steps every 0.6-1.5 s (knowledge.md 1.1 idle motion) and follows the wave in 150-unit jumps.
     const hold: Lib.Verbs.HoldOpts = sdk

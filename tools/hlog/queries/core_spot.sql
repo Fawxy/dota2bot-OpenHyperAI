@@ -1,0 +1,58 @@
+-- Where lineup cores (pos 1-3) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
+-- lane-positioning, step 1 targets). Idle = laning mode with no attack target (lane_activity activity 'lane'), one snapshot a second.
+--   idle        idle snapshots
+--   ring        idle within 520 of the enemy team's lane front on the hero's lane (EC-053 creep acquisition around the enemy wave's lead)
+--   ring_hpl    HP-% points lost from those snapshots to the next one (creeps, heroes and towers alike)
+--   out_hpl     the same for idle snapshots outside that ring
+--   tower       idle within 750 of an enemy tower (lane_spot TOWER_RING)
+--   per_min     ring seconds per idle minute
+--   why_*       ev=lane_pos samples by the limit that decided our spot (absent on OHA's spot)
+-- Params: like, from, until.
+-- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
+-- ensure: ev_lane_pos(pid, spot, why)
+WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+fr AS MATERIALIZED (
+    SELECT f.game_id, f.team, CAST(round(f.t) AS INTEGER) AS sec, max(f.topx) AS topx, max(f.topy) AS topy, max(f.midx) AS midx,
+        max(f.midy) AS midy, max(f.botx) AS botx, max(f.boty) AS boty
+    FROM ev_front f JOIN gm ON gm.game_id = f.game_id WHERE f.t <= coalesce(:until, 600) + 1
+    GROUP BY f.game_id, f.team, CAST(round(f.t) AS INTEGER)
+),
+a AS MATERIALIZED (
+    SELECT a.game_id, a.pid, a.team, a.t, a.x, a.y, a.hp, a.activity, s.ln,
+        lead(a.hp) OVER (PARTITION BY a.game_id, a.pid ORDER BY a.t) AS nhp
+    FROM lane_activity a JOIN gm ON gm.game_id = a.game_id JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
+    WHERE a.pos <= 3 AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
+),
+-- Enemy tower positions: the table @core_deaths keeps equal to dynamic.js TOWERS.
+tw (team, x, y) AS (VALUES
+    (2, -3952, -6112), (2, -4640, -4144), (2, -6592, -3408), (2, -360, -6256), (2, 4860, -6379), (2, -3190, -2926),
+    (2, -6501, -872), (2, -6336, 1856), (2, -5712, -4864), (2, -5392, -5192), (2, -1544, -1408),
+    (3, 4944, 4776), (3, -128, 6016), (3, -5275, 6036), (3, 2496, 2112), (3, 524, 652), (3, 6400, 384), (3, 6336, 3032),
+    (3, 3552, 5776), (3, 4272, 3759), (3, 5280, 4432), (3, 6269, -2240)),
+i AS (
+    SELECT a.*,
+        (SELECT CASE a.ln WHEN 'top' THEN (fr.topx - a.x) * (fr.topx - a.x) + (fr.topy - a.y) * (fr.topy - a.y)
+                          WHEN 'mid' THEN (fr.midx - a.x) * (fr.midx - a.x) + (fr.midy - a.y) * (fr.midy - a.y)
+                          WHEN 'bot' THEN (fr.botx - a.x) * (fr.botx - a.x) + (fr.boty - a.y) * (fr.boty - a.y) END
+            FROM fr WHERE fr.game_id = a.game_id AND fr.sec = CAST(round(a.t) AS INTEGER) AND fr.team <> a.team) <= 520 * 520 AS ring,
+        EXISTS (SELECT 1 FROM tw WHERE tw.team <> a.team AND (tw.x - a.x) * (tw.x - a.x) + (tw.y - a.y) * (tw.y - a.y) <= 750 * 750) AS twr,
+        CASE WHEN a.nhp IS NULL THEN 0 ELSE max(0, a.hp - a.nhp) END AS lost
+    FROM a WHERE a.activity = 'lane'
+),
+p AS (
+    SELECT lp.game_id, lp.pid, sum(lp.why = 'pref') AS why_pref, sum(lp.why = 'creep') AS why_creep, sum(lp.why = 'hp') AS why_hp,
+        sum(lp.why = 'tower') AS why_tower, sum(lp.why = 'xp') AS why_xp
+    FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id
+    WHERE lp.t >= coalesce(:from, 90) AND lp.t <= coalesce(:until, 600) AND lp.why IS NOT NULL
+    GROUP BY lp.game_id, lp.pid
+),
+r AS (
+    SELECT gm.file, i.team, l.pos, i.pid, count(*) AS idle, sum(coalesce(i.ring, 0)) AS ring,
+        sum(CASE WHEN i.ring THEN i.lost ELSE 0 END) AS ring_hpl, sum(CASE WHEN i.ring THEN 0 ELSE i.lost END) AS out_hpl,
+        sum(i.twr) AS tower, round(60.0 * sum(coalesce(i.ring, 0)) / count(*), 1) AS per_min,
+        p.why_pref, p.why_creep, p.why_hp, p.why_tower, p.why_xp
+    FROM i JOIN gm ON gm.game_id = i.game_id JOIN lineup l ON l.game_id = i.game_id AND l.pid = i.pid
+    LEFT JOIN p ON p.game_id = i.game_id AND p.pid = i.pid
+    GROUP BY i.game_id, i.pid
+)
+SELECT * FROM r ORDER BY file, team, pos

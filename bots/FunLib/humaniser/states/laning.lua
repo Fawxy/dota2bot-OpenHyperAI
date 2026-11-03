@@ -108,6 +108,7 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
@@ -153,11 +154,12 @@ function ____exports.RoleOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
 local spotCache = {}
---- The last SDK spot, kept for HOLD_OVER s when the enemy wave drops out of view (it dies, fog), so the bot does
--- not shuttle to OHA's spot and back between waves.
-local lastSdk = {}
-local HOLD_OVER = 4
---- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times).
+--- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says (cores under Ours.CoreLastHit).
+function ____exports.OwnsSpot(bot)
+    return Ours.On("LaneSpot") and CoreLastHit.Applies(bot)
+end
+--- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). OHA's spot only when
+-- ours is not on for the bot or cannot be computed (no lane direction, an error).
 function ____exports.Spot(bot)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
@@ -165,9 +167,9 @@ function ____exports.Spot(bot)
     if c ~= nil and c.t == now then
         return c.v
     end
-    local v = ohaSpot(bot)
+    local v
     local info
-    if ____exports.Settings().Spot == "sdk" then
+    if ____exports.Settings().Spot == "sdk" or ____exports.OwnsSpot(bot) then
         local ok, res = pcall(
             LaneSpot.Compute,
             bot,
@@ -176,14 +178,10 @@ function ____exports.Spot(bot)
         if ok and res ~= nil then
             info = res
             v = res.spot
-            lastSdk[pid] = {t = now, info = res}
-        else
-            local held = lastSdk[pid]
-            if held ~= nil and now - held.t <= HOLD_OVER then
-                info = held.info
-                v = held.info.spot
-            end
         end
+    end
+    if v == nil then
+        v = ohaSpot(bot)
     end
     spotCache[pid] = {t = now, v = v, info = info}
     return v
@@ -242,7 +240,7 @@ function ____exports.DenyOffered(bot)
     )) ~= nil
 end
 local body = __TS__Generator(function(bot, ctx)
-    local sdk = ____exports.Settings().Spot == "sdk"
+    local sdk = ____exports.Settings().Spot == "sdk" or ____exports.OwnsSpot(bot)
     local hold = sdk and ({
         tolerance = 40,
         repath = 1.05,

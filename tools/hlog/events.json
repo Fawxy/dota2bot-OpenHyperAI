@@ -986,6 +986,8 @@
    "mode": "num",
    "spot": "str",
    "pushed": "num",
+   "why": "str",
+   "hm": "num",
    "hph": "num"
   }
  },
@@ -1346,7 +1348,8 @@
   },
   "ev_lane_pos": {
    "label": "text",
-   "spot": "text"
+   "spot": "text",
+   "why": "text"
   }
  }
 }

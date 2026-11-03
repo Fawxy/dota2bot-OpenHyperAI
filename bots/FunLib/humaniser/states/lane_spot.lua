@@ -2,20 +2,31 @@
 local ____exports = {}
 ____exports.MELEE_RING = 520
 ____exports.RANGED_RING = 620
---- Enemy T1 attack range (~700) plus a margin.
+--- Enemy tower attack range (~700) plus a margin; at every level, since nothing in lane owns a dive.
 ____exports.TOWER_RING = 750
---- Below this level the tower ring applies (no tower dives before 6).
-local TOWER_RING_LEVEL = 6
 local RANGED_ABOVE = 320
 --- Ranged cores stand this much inside their range from the creep they will hit next.
 local RANGE_INSET = 50
---- Melee cores stand this far behind our front, before the rings push them back.
+--- Melee cores stand this far behind our front, before the limits push them back.
 local MELEE_BEHIND = 100
 local SIDE_SHIFT = 120
 local PUSH_STEP = 50
 --- No push further back than this from the front: XP is shared within 1500 of a dying creep.
 local MAX_BACK = 1000
+--- Sideways candidates either side of the lane axis, so a ring can be cleared without giving ground.
+local LATERAL = {
+    0,
+    -100,
+    100,
+    -200,
+    200
+}
 local QUERY = 1400
+--- HP margin added to the creep rings (judgement, step 0: cores laning took back from retreat at 45-48% HP walked into the
+-- enemy wave): none at HP_SAFE or more, rising linearly to HP_MARGIN at HP_LOW and below.
+local HP_SAFE = 0.5
+local HP_LOW = 0.25
+local HP_MARGIN = 300
 local function sub(a, b)
     return {a.x - b.x, a.y - b.y}
 end
@@ -38,30 +49,59 @@ end
 local function alive(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
---- Rings the spot must stay outside of: enemy creeps by type, the enemy tower before level 6.
-function ____exports.Violates(bot, p, creeps, towers)
-    for ____, c in ipairs(creeps) do
-        if alive(c) and d2(
-            p,
-            c:GetLocation()
-        ) < (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING) then
-            return true
-        end
+function ____exports.HpMargin(hpFrac)
+    if hpFrac >= HP_SAFE then
+        return 0
     end
-    if bot:GetLevel() < TOWER_RING_LEVEL then
-        for ____, t in ipairs(towers) do
-            if alive(t) and d2(
-                p,
-                t:GetLocation()
-            ) < ____exports.TOWER_RING then
-                return true
+    if hpFrac <= HP_LOW then
+        return HP_MARGIN
+    end
+    return HP_MARGIN * (HP_SAFE - hpFrac) / (HP_SAFE - HP_LOW)
+end
+--- The first hard limit `p` breaks, or undefined: an enemy creep's ring (`creep`, or `hp` when only the margin breaks it), a tower.
+function ____exports.Breaks(p, creeps, towers, margin)
+    if margin == nil then
+        margin = 0
+    end
+    local hp = false
+    for ____, c in ipairs(creeps) do
+        do
+            local __continue11
+            repeat
+                if not alive(c) then
+                    __continue11 = true
+                    break
+                end
+                local ring = isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING
+                local dist = d2(
+                    p,
+                    c:GetLocation()
+                )
+                if dist < ring then
+                    return "creep"
+                end
+                if dist < ring + margin then
+                    hp = true
+                end
+                __continue11 = true
+            until true
+            if not __continue11 then
+                break
             end
         end
     end
-    return false
+    for ____, t in ipairs(towers) do
+        if alive(t) and d2(
+            p,
+            t:GetLocation()
+        ) < ____exports.TOWER_RING then
+            return "tower"
+        end
+    end
+    return hp and "hp" or nil
 end
---- The spot, or undefined when no enemy lane creep is visible near the lane front (then OHA's spot is used).
--- `role` decides the anchor: a support stands between the nearest enemy hero and our wave, at the same rings.
+--- The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. Undefined only
+-- when the lane has no direction (front and its back point coincide).
 function ____exports.Compute(bot, role)
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
@@ -83,9 +123,6 @@ function ____exports.Compute(bot, role)
             creeps[#creeps + 1] = c
         end
     end
-    if #creeps == 0 then
-        return nil
-    end
     local towers = bot:GetNearbyTowers(1600, true)
     local enemyHero
     local heroDist = math.huge
@@ -105,7 +142,11 @@ function ____exports.Compute(bot, role)
     local py
     local anchor = "front"
     local range = bot:GetAttackRange()
-    if role == "core" and range > RANGED_ABOVE then
+    if #creeps == 0 then
+        anchor = "wave"
+        px = front.x + dx * MELEE_BEHIND
+        py = front.y + dy * MELEE_BEHIND
+    elseif role == "core" and range > RANGED_ABOVE then
         local low
         for ____, c in ipairs(creeps) do
             if low == nil or c:GetHealth() < low:GetHealth() then
@@ -132,12 +173,73 @@ function ____exports.Compute(bot, role)
         px = px + nx * side * shift
         py = py + ny * side * shift
     end
-    local pushed = 0
-    local p = Vector(px, py, front.z)
-    while ____exports.Violates(bot, p, creeps, towers) and pushed * PUSH_STEP < MAX_BACK do
-        pushed = pushed + 1
-        p = Vector(px + dx * PUSH_STEP * pushed, py + dy * PUSH_STEP * pushed, front.z)
+    local margin = ____exports.HpMargin(bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ))
+    local pref = Vector(px, py, front.z)
+    local first = ____exports.Breaks(pref, creeps, towers, margin)
+    if first == nil then
+        return {
+            spot = pref,
+            pushed = 0,
+            anchor = anchor,
+            why = "pref",
+            margin = margin
+        }
     end
-    return {spot = p, pushed = pushed, anchor = anchor}
+    local best
+    local bestCost = math.huge
+    local bestPushed = 0
+    local steps = math.floor(MAX_BACK / PUSH_STEP)
+    do
+        local k = 0
+        while k <= steps do
+            local bx = px + dx * PUSH_STEP * k
+            local by = py + dy * PUSH_STEP * k
+            for ____, off in ipairs(LATERAL) do
+                do
+                    local __continue37
+                    repeat
+                        local cost = len(PUSH_STEP * k, off)
+                        if cost >= bestCost then
+                            __continue37 = true
+                            break
+                        end
+                        local p = Vector(bx + nx * off, by + ny * off, front.z)
+                        if ____exports.Breaks(p, creeps, towers, margin) == nil then
+                            best = p
+                            bestCost = cost
+                            bestPushed = k
+                        end
+                        __continue37 = true
+                    until true
+                    if not __continue37 then
+                        break
+                    end
+                end
+            end
+            if best ~= nil and PUSH_STEP * (k + 1) >= bestCost then
+                break
+            end
+            k = k + 1
+        end
+    end
+    if best == nil then
+        return {
+            spot = Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
+            pushed = steps,
+            anchor = anchor,
+            why = "xp",
+            margin = margin
+        }
+    end
+    return {
+        spot = best,
+        pushed = bestPushed,
+        anchor = anchor,
+        why = first,
+        margin = margin
+    }
 end
 return ____exports

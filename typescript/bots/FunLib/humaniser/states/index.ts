@@ -163,6 +163,8 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["mode", bot.GetActiveMode()],
         ["spot", info !== undefined ? info.anchor : "oha"],
         ["pushed", info?.pushed],
+        ["why", info?.why],
+        ["hm", info !== undefined ? math.floor(info.margin) : undefined],
         ["hph", LaneMetrics.HeroLost(bot)],
     ]);
 }

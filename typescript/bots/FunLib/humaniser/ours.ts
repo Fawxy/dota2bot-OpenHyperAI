@@ -35,6 +35,11 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,
+    /**
+     * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
+     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget.
+     */
+    LaneSpot: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

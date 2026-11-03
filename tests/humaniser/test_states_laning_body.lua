@@ -65,14 +65,14 @@ local function Fresh(states, o)
 	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
-		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true }
+		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, LaneSpot = o.laneSpot }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
 	local positions = {}
 	LaneConfig.SetHelpers({ GetPosition = function(u) return positions[u.pid] end })
 	MakeUnit({ pid = 0, bot = false, loc = Vector(-4000, -4000) })
-	local bot = MakeUnit({ pid = 1, team = o.team, mode = LANING, loc = o.loc or Vector(-300, 0), level = o.level or 3 })
+	local bot = MakeUnit({ pid = 1, team = o.team, mode = LANING, loc = o.loc or Vector(-300, 0), level = o.level or 3, hp = o.hp })
 	bot.range = o.range
 	positions[1] = o.pos or 2
 	return H, bot, positions
@@ -117,7 +117,7 @@ do
 	check("ranged core: 550 from the lowest-HP creep", s ~= nil and math.abs(dist(s, low.loc) - 550) < 1, s and dist(s, low.loc))
 end
 
--- Enemy T1 before level 6: outside its 750 range even where the creep rings allow closer; not at level 6.
+-- Enemy tower: outside its 750 range even where the creep rings allow closer, at every level (nothing in lane owns a dive).
 do
 	local tower = { team = 3, loc = Vector(200, 0) }
 	tower.GetLocation = function() return tower.loc end
@@ -127,7 +127,7 @@ do
 	local s3 = spotFor(SDK, { level = 3 }, setup)
 	check("tower ring at level 3", s3 ~= nil and dist(s3, tower.loc) >= 750, s3 and dist(s3, tower.loc))
 	local s6 = spotFor(SDK, { level = 6 }, setup)
-	check("no tower ring at level 6", s6 ~= nil and dist(s6, tower.loc) < 750, s6 and dist(s6, tower.loc))
+	check("tower ring at level 6 too", s6 ~= nil and dist(s6, tower.loc) >= 750, s6 and dist(s6, tower.loc))
 end
 
 -- Side shift: a core moves away from the enemy hero, a support (pos 5) towards its approach line.
@@ -139,30 +139,67 @@ do
 	check("support shifts towards the enemy hero", sup ~= nil and sup.y > 0, sup and sup.y)
 end
 
--- No enemy wave in sight: OHA's own spot.
+-- No enemy wave in sight (between waves, walking out): our own front, 100 behind it, not OHA's spot; the tower ring still holds.
 do
 	local s, bot, H = spotFor(SDK)
 	H.States.SetLaneSpot(bot, function() return Vector(-777, 5) end)
 	local Laning = require("bots/FunLib/humaniser/states/laning")
 	T = T + 1 -- the spot is cached per frame
 	s = Laning.Spot(bot)
-	check("no wave: OHA's spot", s ~= nil and s.x == -777, s and s.x)
+	check("no wave: 100 behind our front", s ~= nil and s.x == -100 and s.y == 0, s and s.x)
+	check("no wave: anchor reads wave", Laning.SpotInfo(bot) ~= nil and Laning.SpotInfo(bot).anchor == "wave")
+	local tower = { team = 3, loc = Vector(300, 0) }
+	tower.GetLocation = function() return tower.loc end
+	tower.IsAlive = function() return true end
+	tower.IsNull = function() return false end
+	local st = spotFor(SDK, nil, function() TOWERS = { tower } end)
+	check("no wave: outside an enemy tower", st ~= nil and dist(st, tower.loc) >= 750, st and dist(st, tower.loc))
 end
 
-
--- The wave dies: the last SDK spot is kept for a few seconds rather than jumping to OHA's spot and back.
+-- The HP margin (step 0: cores laning took back from retreat at 45-48% HP walked into the enemy wave). A melee creep 600 from
+-- the preferred point: at full HP the core stands on it; at 30% HP the ring grows by 240 and moves it back (why=hp); at 20% by 300.
 do
 	local c
-	local s1, bot, H = spotFor(SDK, nil, function() c = creep({ loc = Vector(60, 0) }) end)
-	H.States.SetLaneSpot(bot, function() return Vector(-1500, 0) end)
+	local setup = function() c = creep({ loc = Vector(500, 0) }) end
+	local full, botf = spotFor(SDK, { hp = 100 }, setup)
 	local Laning = require("bots/FunLib/humaniser/states/laning")
-	c.alive = false
-	T = T + 2
-	local s2 = Laning.Spot(bot)
-	check("wave gone 2 s: SDK spot kept", s2 ~= nil and s1 ~= nil and s2.x == s1.x, s2 and s2.x)
-	T = T + 3
-	local s3 = Laning.Spot(bot)
-	check("wave gone 5 s: OHA's spot", s3 ~= nil and s3.x == -1500, s3 and s3.x)
+	check("hp 100%: the preferred point", full ~= nil and full.x == -100 and Laning.SpotInfo(botf).why == "pref", full and full.x)
+	local low, botl = spotFor(SDK, { hp = 30 }, setup)
+	Laning = require("bots/FunLib/humaniser/states/laning")
+	check("hp 30%: outside the ring + 240", low ~= nil and dist(low, c.loc) >= 520 + 240 and dist(low, c.loc) < 520 + 240 + 51, low and dist(low, c.loc))
+	check("hp 30%: why=hp", Laning.SpotInfo(botl).why == "hp" and Laning.SpotInfo(botl).margin == 240, Laning.SpotInfo(botl).why)
+	local vlow = spotFor(SDK, { hp = 20 }, setup)
+	check("hp 20%: outside the ring + 300", vlow ~= nil and dist(vlow, c.loc) >= 820, vlow and dist(vlow, c.loc))
+end
+
+-- A ring cleared sideways when that gives up less ground than going back: a creep just off the axis behind the preferred point.
+do
+	local c
+	local s = spotFor(SDK, nil, function() creep({ loc = Vector(60, 0) }) c = creep({ loc = Vector(-700, -300) }) end)
+	check("both rings kept", s ~= nil and dist(s, Vector(60, 0)) >= 520 and dist(s, c.loc) >= 520, s and (s.x .. "," .. s.y))
+end
+
+-- Ours.LaneSpot: a core under CoreLastHit stands on our spot although States.Laning.Spot is 'oha'; off, OHA's spot.
+do
+	local c
+	local setup = function() c = creep({ loc = Vector(60, 0) }) end
+	local OHA = { Enable = true, Own = { laning = { 2 } } }
+	-- OHA's spot here is 310 from the creep, inside its ring.
+	local _, bon, Hon = spotFor(OHA, { coreLastHit = true }, setup)
+	Hon.States.SetLaneSpot(bon, function() return Vector(-250, 0) end)
+	T = T + 1
+	local on = require("bots/FunLib/humaniser/states/laning").Spot(bon)
+	check("LaneSpot on: our spot for a core, not OHA's", on ~= nil and dist(on, c.loc) >= 520, on and on.x)
+	local _, boff, Hoff = spotFor(OHA, { coreLastHit = true, laneSpot = false }, setup)
+	Hoff.States.SetLaneSpot(boff, function() return Vector(-250, 0) end)
+	T = T + 1
+	local off = require("bots/FunLib/humaniser/states/laning").Spot(boff)
+	check("LaneSpot off: OHA's spot", off ~= nil and off.x == -250, off and off.x)
+	local _, bsup, Hsup = spotFor(OHA, { coreLastHit = true, pos = 5 }, setup)
+	Hsup.States.SetLaneSpot(bsup, function() return Vector(-250, 0) end)
+	T = T + 1
+	local sup = require("bots/FunLib/humaniser/states/laning").Spot(bsup)
+	check("LaneSpot: a support keeps OHA's spot (step 2)", sup ~= nil and sup.x == -250, sup and sup.x)
 end
 
 -- Spot = 'oha' (the default) ignores the wave: slice 1's behaviour.
