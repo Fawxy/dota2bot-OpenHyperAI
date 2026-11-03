@@ -72,7 +72,7 @@ do
 end
 
 -- An attacker with no hit in flight or wind-up (unknown phase): the sim's HP stays between the `late` and `early` schedules
--- (its next hit lands no sooner than one wind-up and no later than a cycle plus a wind-up from now).
+-- (its next hit lands no sooner than one wind-up and no later than one cycle, plus flight, from now).
 do
     local sim = Sim.new()
     sim:adapter(tasks, { random = Sim.lcg(9) })
