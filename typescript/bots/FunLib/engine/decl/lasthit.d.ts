@@ -16,6 +16,41 @@ export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): {
     dps: number;
     between: number;
 };
+/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+export interface ForecastHit {
+    t: number;
+    damage: number;
+    by: "tower" | "creep" | "hero" | "self";
+}
+export interface HpForecast {
+    /** HP and regen now. */
+    hp: number;
+    regen: number;
+    horizon: number;
+    /**
+     * Hits at known times, sorted by `t`: attack projectiles in flight (the bot's own included), wind-ups seen, and for towers
+     * and lane creeps the repeats of their latest known hit every attack cycle while they keep attacking it.
+     */
+    hits: ForecastHit[];
+    /**
+     * DPS after armour of the attackers on the creep with no hit in flight or wind-up (their next hit time is unknown),
+     * spread evenly from SEEN_AHEAD on, as `believe` extrapolates them.
+     */
+    unphased: number;
+    /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
+    unphasedTower: boolean;
+}
+/**
+ * The creep's HP over the next `horizon` seconds from the hits the attacker index already sees: projectiles in flight
+ * (arrival = distance / projectile speed), wind-ups (`windupLanding`), and for a tower or lane creep, its latest known hit
+ * repeated every `GetSecondsPerAttack` as long as it stays on the creep (a tower keeps its target until it dies; a lane creep
+ * mostly does). Heroes are not repeated: their next attacks are choices, not a cycle. Repeats assume the distance, and so the
+ * flight time, stays as now. A fact for a caller that plans more than the one swing `lastHit` makes (the pre-hit under a
+ * tower); `forecastHp` reads it.
+ */
+export declare function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast;
+/** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then). */
+export declare function forecastHp(f: HpForecast, t: number): number;
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
@@ -28,7 +63,8 @@ export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 export interface LaneTarget {
     creep: TaskCreep;
-    kind: "lasthit" | "deny";
+    /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */
+    kind: "lasthit" | "deny" | "prehit";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
     /** Seconds until a swing ordered then would be due (0: due now). */

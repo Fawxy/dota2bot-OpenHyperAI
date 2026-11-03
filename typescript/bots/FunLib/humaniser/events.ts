@@ -842,7 +842,26 @@ export const EVENTS = {
         cx: "num",
         cy: "num",
         ca: "num",
+        /** 1 when this bot pre-hit the creep earlier (states/pre_hit): last hits per pre-hit. */
+        ph: "bool",
         msg: "str",
+    },
+    /** A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one per attempt. */
+    prehit: {
+        pid: "num",
+        /** ok once our attack fired (attackAndConfirm), fail missed / no_target (the creep died first) / interrupted / dead. */
+        result: "str",
+        reason: "str",
+        ranged: "bool",
+        /** At the decision: walk into range (s), when the forecast has the creep dead (s), its HP, our earliest landing t0 (s), our low-roll damage. */
+        walk: "num",
+        dies: "num",
+        hp: "num",
+        t0: "num",
+        lo: "num",
+        /** Reachable last hits offered at the pick. */
+        ol: "num",
+        contested: "bool",
     },
     /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {

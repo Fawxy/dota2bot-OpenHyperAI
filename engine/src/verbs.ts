@@ -111,6 +111,12 @@ export interface AttackConfirmOpts extends StopOpts {
     hold?: string;
     /** Extra host-specific confirmation, checked alongside the bot's own signals. */
     confirmed?: (this: void) => boolean;
+    /**
+     * Whether the target attacking the bot confirms the attack (default true: an aggro pull). False where the target may
+     * already be on the bot before the attack fires (a lane creep under fire next to the bot), so only the bot's own
+     * last attack time (or `confirmed`) confirms it.
+     */
+    aggroConfirms?: boolean;
 }
 
 /**
@@ -146,7 +152,7 @@ export function* attackAndConfirm(
             }
         } else if (
             bot.GetLastAttackTime() > baseline ||
-            target.GetAttackTarget?.() === bot ||
+            (opts.aggroConfirms !== false && target.GetAttackTarget?.() === bot) ||
             (opts.confirmed?.() ?? false)
         ) {
             return ok();

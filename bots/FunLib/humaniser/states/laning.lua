@@ -1,5 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -59,10 +84,6 @@ local function __TS__DelegatedYield(iterable)
     end
 end
 
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
 local __TS__Unpack = table.unpack or unpack
 
 local __TS__Generator
@@ -110,6 +131,7 @@ local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LaneClaims = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_claims")
+local PreHit = require(GetScriptDirectory().."/FunLib/humaniser/states/pre_hit")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
@@ -293,12 +315,36 @@ local function placeOf(pid, creep)
         math.floor((DotaTime() - s.t) * 100) / 100
     }
 end
-local function choose(bot, targets, current)
+local function choose(bot, targets, current, pre)
     return LanePick.Choose(
         targets,
         current,
-        claimsFor(bot)
+        claimsFor(bot),
+        pre
     )
+end
+--- The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
+-- pre-hit). A creep handle stays the same unit until it dies.
+local preHits = {}
+local PRE_HITS_KEPT = 4
+local function notePreHit(pid, creep)
+    local list = preHits[pid]
+    if list == nil then
+        list = {}
+        preHits[pid] = list
+    end
+    list[#list + 1] = creep
+    if #list > PRE_HITS_KEPT then
+        table.remove(list, 1)
+    end
+end
+local function wasPreHit(pid, creep)
+    for ____, c in ipairs(preHits[pid] or ({})) do
+        if c == creep then
+            return true
+        end
+    end
+    return false
 end
 --- A lane hit the support's body would go for now: what its own scan would pick (same laneTargets query and claims), within
 -- the leash of the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
@@ -359,14 +405,25 @@ local body = __TS__Generator(function(bot, ctx)
             end,
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets, current)
-                local chosen = choose(bot, targets, current)
+                local verbs = Tasks.Verbs()
+                local ____temp_12
+                if verbs ~= nil then
+                    ____temp_12 = PreHit.Find(bot, verbs)
+                else
+                    ____temp_12 = nil
+                end
+                local pre = ____temp_12
+                local chosen = choose(bot, targets, current, pre)
                 if chosen ~= nil then
                     noteSeen(
                         bot:GetPlayerID(),
                         chosen.creep
                     )
                 end
-                if current == nil or chosen == nil or chosen.creep ~= current.creep then
+                if chosen == nil and #targets == 0 then
+                    return nil
+                end
+                if current == nil or chosen == nil or chosen.creep ~= current.creep or chosen.kind ~= current.kind then
                     LanePick.NotePick(
                         bot:GetPlayerID(),
                         DotaTime(),
@@ -401,53 +458,111 @@ local body = __TS__Generator(function(bot, ctx)
             dropLost = ____exports.OwnsSupportHits(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
-                local ____OwnsSupportHits_result_12
+                if t.kind == "prehit" then
+                    local n = PreHit.NoteOf(
+                        bot:GetPlayerID(),
+                        t.creep
+                    )
+                    if res.success then
+                        notePreHit(
+                            bot:GetPlayerID(),
+                            t.creep
+                        )
+                    end
+                    Telemetry.Event(
+                        "prehit",
+                        {
+                            {
+                                "pid",
+                                bot:GetPlayerID()
+                            },
+                            {"result", res.success and "ok" or "fail"},
+                            {"reason", res.reason},
+                            {"ranged", t.ranged},
+                            {
+                                "walk",
+                                math.floor(t.walk * 100) / 100
+                            },
+                            {
+                                "dies",
+                                t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+                            },
+                            {
+                                "hp",
+                                (n and n.hp) ~= nil and math.floor(n.hp) or nil
+                            },
+                            {
+                                "t0",
+                                (n and n.t0) ~= nil and math.floor(n.t0 * 100) / 100 or nil
+                            },
+                            {
+                                "lo",
+                                (n and n.lo) ~= nil and math.floor(n.lo) or nil
+                            },
+                            {"ol", ol},
+                            {"contested", contested}
+                        }
+                    )
+                    return
+                end
+                local ____OwnsSupportHits_result_19
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_12 = claimOf(
+                    ____OwnsSupportHits_result_19 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_12 = nil
+                    ____OwnsSupportHits_result_19 = nil
                 end
-                local claim = ____OwnsSupportHits_result_12
+                local claim = ____OwnsSupportHits_result_19
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
                 ))
-                Telemetry.Event(
-                    "lh",
+                local ____Telemetry_Event_22 = Telemetry.Event
+                local ____array_21 = __TS__SparseArrayNew(
                     {
-                        {
-                            "pid",
-                            bot:GetPlayerID()
-                        },
-                        {"kind", t.kind},
-                        {"result", res.success and "ok" or "fail"},
-                        {"reason", res.reason},
-                        {"ranged", t.ranged},
-                        {
-                            "eta",
-                            math.floor(t.eta * 100) / 100
-                        },
-                        {"contested", contested},
-                        {"ol", ol},
-                        {"od", od},
-                        {"ow", ow},
-                        {
-                            "walk",
-                            math.floor(t.walk * 100) / 100
-                        },
-                        {
-                            "dies",
-                            t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
-                        },
-                        {"claim", claim},
-                        {"cx", cx},
-                        {"cy", cy},
-                        {"ca", ca},
-                        {"msg", res.message}
-                    }
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {"kind", t.kind},
+                    {"result", res.success and "ok" or "fail"},
+                    {"reason", res.reason},
+                    {"ranged", t.ranged},
+                    {
+                        "eta",
+                        math.floor(t.eta * 100) / 100
+                    },
+                    {"contested", contested},
+                    {"ol", ol},
+                    {"od", od},
+                    {"ow", ow},
+                    {
+                        "walk",
+                        math.floor(t.walk * 100) / 100
+                    },
+                    {
+                        "dies",
+                        t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+                    },
+                    {"claim", claim},
+                    {"cx", cx},
+                    {"cy", cy},
+                    {"ca", ca}
+                )
+                local ____temp_20
+                if t.kind == "lasthit" and wasPreHit(
+                    bot:GetPlayerID(),
+                    t.creep
+                ) then
+                    ____temp_20 = true
+                else
+                    ____temp_20 = nil
+                end
+                __TS__SparseArrayPush(____array_21, {"ph", ____temp_20}, {"msg", res.message})
+                ____Telemetry_Event_22(
+                    "lh",
+                    {__TS__SparseArraySpread(____array_21)}
                 )
             end
         }

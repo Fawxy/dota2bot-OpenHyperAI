@@ -80,6 +80,9 @@ interface Nearby {
     enemyHeroes?: TaskHero[];
     /** Attackers by their current target, built once per frame (one GetAttackTarget per unit). */
     byTarget?: LuaTable<TaskAttacker, TaskAttacker[]>;
+    /** The towers and heroes among `others`, for the forecast's attacker kinds. */
+    towers?: LuaTable<TaskAttacker, boolean>;
+    heroes?: LuaTable<TaskAttacker, boolean>;
 }
 const nearbyCache: { [playerID: number]: Nearby } = {};
 
@@ -106,13 +109,23 @@ function enemyHeroes(bot: TaskUnit, n: Nearby): TaskHero[] {
 function others(bot: TaskUnit, n: Nearby): TaskAttacker[] {
     if (n.others !== undefined) return n.others;
     const out: TaskAttacker[] = [];
+    const towers = new LuaTable<TaskAttacker, boolean>();
+    const heroes = new LuaTable<TaskAttacker, boolean>();
     for (const enemies of [true, false]) {
         for (const h of enemies ? enemyHeroes(bot, n) : bot.GetNearbyHeroes?.(QUERY_RADIUS, false, 0) ?? []) {
-            if (h.GetLocation !== undefined && h.IsAlive !== undefined) out.push(h as TaskHero as TaskAttacker);
+            if (h.GetLocation !== undefined && h.IsAlive !== undefined) {
+                out.push(h as TaskHero as TaskAttacker);
+                heroes.set(h as TaskHero as TaskAttacker, true);
+            }
         }
-        for (const t of bot.GetNearbyTowers?.(QUERY_RADIUS, enemies) ?? []) out.push(t);
+        for (const t of bot.GetNearbyTowers?.(QUERY_RADIUS, enemies) ?? []) {
+            out.push(t);
+            towers.set(t, true);
+        }
     }
     n.others = out;
+    n.towers = towers;
+    n.heroes = heroes;
     return out;
 }
 
@@ -218,6 +231,95 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
         if (land === undefined) between += rate;
     }
     return { raw, dps, between };
+}
+
+/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+export interface ForecastHit {
+    t: number;
+    damage: number;
+    by: "tower" | "creep" | "hero" | "self";
+}
+
+export interface HpForecast {
+    /** HP and regen now. */
+    hp: number;
+    regen: number;
+    horizon: number;
+    /**
+     * Hits at known times, sorted by `t`: attack projectiles in flight (the bot's own included), wind-ups seen, and for towers
+     * and lane creeps the repeats of their latest known hit every attack cycle while they keep attacking it.
+     */
+    hits: ForecastHit[];
+    /**
+     * DPS after armour of the attackers on the creep with no hit in flight or wind-up (their next hit time is unknown),
+     * spread evenly from SEEN_AHEAD on, as `believe` extrapolates them.
+     */
+    unphased: number;
+    /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
+    unphasedTower: boolean;
+}
+
+/**
+ * The creep's HP over the next `horizon` seconds from the hits the attacker index already sees: projectiles in flight
+ * (arrival = distance / projectile speed), wind-ups (`windupLanding`), and for a tower or lane creep, its latest known hit
+ * repeated every `GetSecondsPerAttack` as long as it stays on the creep (a tower keeps its target until it dies; a lane creep
+ * mostly does). Heroes are not repeated: their next attacks are choices, not a cycle. Repeats assume the distance, and so the
+ * flight time, stays as now. A fact for a caller that plans more than the one swing `lastHit` makes (the pre-hit under a
+ * tower); `forecastHp` reads it.
+ */
+export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast {
+    const n = nearby(bot);
+    others(bot, n);
+    const towers = n.towers!;
+    const heroes = n.heroes!;
+    const kindOf = (a: TaskAttacker): ForecastHit["by"] =>
+        a === (bot as unknown) ? "self" : towers.get(a) === true ? "tower" : heroes.get(a) === true ? "hero" : "creep";
+    const hits: ForecastHit[] = [];
+    const latest = new LuaTable<TaskAttacker, number>();
+    const here = creep.GetLocation();
+    for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
+        const c = p.caster;
+        if (p.is_attack !== true || c === undefined || c === null || (c.IsNull?.() ?? false)) continue;
+        const speed = c.GetAttackProjectileSpeed?.() ?? 0;
+        if (speed <= 0) continue;
+        const t = dist(p.location, here) / speed;
+        if (t > horizon) continue;
+        hits.push({ t, damage: physical(creep, c.GetAttackDamage?.() ?? 0), by: kindOf(c) });
+        latest.set(c, math.max(latest.get(c) ?? -math.huge, t));
+    }
+    let unphased = 0;
+    let unphasedTower = false;
+    for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
+        if (a === (creep as TaskAttacker)) continue;
+        const kind = kindOf(a);
+        const damage = physical(creep, a.GetAttackDamage?.() ?? 0);
+        const period = a.GetSecondsPerAttack?.() ?? 1;
+        const land = windupLanding(a, creep);
+        if (land !== undefined && land <= horizon) {
+            hits.push({ t: land, damage, by: kind });
+            latest.set(a, math.max(latest.get(a) ?? -math.huge, land));
+        }
+        const last = land ?? latest.get(a);
+        if (last === undefined) {
+            unphased += damage / period;
+            if (kind === "tower") unphasedTower = true;
+            continue;
+        }
+        if (kind === "hero" || period <= 0) continue;
+        for (let t = last + period; t <= horizon; t += period) hits.push({ t, damage, by: kind });
+    }
+    table.sort(hits, (x, y) => x.t < y.t);
+    return { hp: creep.GetHealth(), regen: creep.GetHealthRegen?.() ?? 0, horizon, hits, unphased, unphasedTower };
+}
+
+/** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then). */
+export function forecastHp(f: HpForecast, t: number): number {
+    let hp = f.hp + f.regen * t - f.unphased * math.max(0, t - SEEN_AHEAD);
+    for (const h of f.hits) {
+        if (h.t > t) break;
+        hp -= h.damage;
+    }
+    return hp;
 }
 
 /**
@@ -478,7 +580,8 @@ function enemyTargeting(bot: TaskUnit, creep: TaskCreep): boolean {
 
 export interface LaneTarget {
     creep: TaskCreep;
-    kind: "lasthit" | "deny";
+    /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */
+    kind: "lasthit" | "deny" | "prehit";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
     /** Seconds until a swing ordered then would be due (0: due now). */

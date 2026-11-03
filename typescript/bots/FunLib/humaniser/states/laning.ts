@@ -17,6 +17,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LaneClaims from "bots/FunLib/humaniser/states/lane_claims";
+import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 export const NAME = "laning";
@@ -179,8 +180,30 @@ function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number
     return [math.floor(s.x), math.floor(s.y), math.floor((DotaTime() - s.t) * 100) / 100];
 }
 
-function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
-    return LanePick.Choose(targets, current, claimsFor(bot));
+function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
+    return LanePick.Choose(targets, current, claimsFor(bot), pre);
+}
+
+/**
+ * The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
+ * pre-hit). A creep handle stays the same unit until it dies.
+ */
+const preHits: Record<number, Lib.TaskCreep[] | undefined> = {};
+const PRE_HITS_KEPT = 4;
+
+function notePreHit(pid: number, creep: Lib.TaskCreep): void {
+    let list = preHits[pid];
+    if (list === undefined) {
+        list = [];
+        preHits[pid] = list;
+    }
+    list.push(creep);
+    if (list.length > PRE_HITS_KEPT) list.shift();
+}
+
+function wasPreHit(pid: number, creep: Lib.TaskCreep): boolean {
+    for (const c of preHits[pid] ?? []) if (c === creep) return true;
+    return false;
 }
 
 /**
@@ -217,10 +240,14 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         },
         within: Settings().LastHitWithin,
         pick: (targets, current) => {
-            const chosen = choose(bot, targets, current);
+            const verbs = Tasks.Verbs();
+            const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;
+            const chosen = choose(bot, targets, current, pre);
             if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
+            // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
+            if (chosen === undefined && targets.length === 0) return undefined;
             // A scan that stays on the attempt's creep is not a pick (the offers at the pick stay the attempt's).
-            if (current === undefined || chosen === undefined || chosen.creep !== current.creep) {
+            if (current === undefined || chosen === undefined || chosen.creep !== current.creep || chosen.kind !== current.kind) {
                 LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
                 if (chosen !== undefined && OwnsSupportHits(bot)) {
                     noteClaim(bot.GetPlayerID(), chosen.creep, LaneClaims.SupportClaim(bot, chosen, Settings().LastHitWithin));
@@ -241,6 +268,24 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         dropLost: OwnsSupportHits(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
+            if (t.kind === "prehit") {
+                const n = PreHit.NoteOf(bot.GetPlayerID(), t.creep);
+                if (res.success) notePreHit(bot.GetPlayerID(), t.creep);
+                Telemetry.Event("prehit", [
+                    ["pid", bot.GetPlayerID()],
+                    ["result", res.success ? "ok" : "fail"],
+                    ["reason", res.reason],
+                    ["ranged", t.ranged],
+                    ["walk", math.floor(t.walk * 100) / 100],
+                    ["dies", t.dies === math.huge ? -1 : math.floor(t.dies * 100) / 100],
+                    ["hp", n?.hp !== undefined ? math.floor(n.hp) : undefined],
+                    ["t0", n?.t0 !== undefined ? math.floor(n.t0 * 100) / 100 : undefined],
+                    ["lo", n?.lo !== undefined ? math.floor(n.lo) : undefined],
+                    ["ol", ol],
+                    ["contested", contested],
+                ]);
+                return;
+            }
             const claim = OwnsSupportHits(bot) ? claimOf(bot.GetPlayerID(), t.creep) : undefined;
             const [cx, cy, ca] = placeOf(bot.GetPlayerID(), t.creep);
             Telemetry.Event("lh", [
@@ -260,6 +305,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["cx", cx],
                 ["cy", cy],
                 ["ca", ca],
+                ["ph", t.kind === "lasthit" && wasPreHit(bot.GetPlayerID(), t.creep) ? true : undefined],
                 ["msg", res.message],
             ]);
         },

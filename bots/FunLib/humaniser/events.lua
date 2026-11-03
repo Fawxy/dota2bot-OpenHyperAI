@@ -712,7 +712,21 @@ ____exports.EVENTS = {
         cx = "num",
         cy = "num",
         ca = "num",
+        ph = "bool",
         msg = "str"
+    },
+    prehit = {
+        pid = "num",
+        result = "str",
+        reason = "str",
+        ranged = "bool",
+        walk = "num",
+        dies = "num",
+        hp = "num",
+        t0 = "num",
+        lo = "num",
+        ol = "num",
+        contested = "bool"
     },
     trade = {
         pid = "num",
