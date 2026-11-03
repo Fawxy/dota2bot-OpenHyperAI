@@ -14,7 +14,7 @@ end
 
 -- Our core: 50 at the low roll, 56 at the high, first landing at 0.4 s, 1.4 s between attacks.
 local LO, HI, T0, PERIOD = 50, 56, 0.4, 1.4
-local function decide(hp, drain) return PreHit.Decide(towerHp(hp, drain), PreHit.HORIZON, T0, PERIOD, LO, HI) end
+local function decide(hp, drain) return PreHit.Decide({ towerHp(hp, drain) }, PreHit.HORIZON, T0, PERIOD, LO, HI) end
 
 -- 290 HP: the tower steps it 190, 90, then dead; never in (0, 50]. One hit of ours at 0.4 s makes it 140, 40 from 1.3 s
 -- until the tower's 2.3 s hit, and our next swing can land from 1.8 s: a 0.5 s window. Pre-hit.
@@ -36,7 +36,7 @@ check("decide: a hit at t0 that may kill is not a pre-hit", decide(153) == "kill
 
 -- A weak hero (25 / 28): 290 HP steps 190, 90, dead; after our hit 165, 65, dead: still never in (0, 25]. No.
 check("decide: one hit is not enough to make a window: no",
-	PreHit.Decide(towerHp(290), PreHit.HORIZON, T0, PERIOD, 25, 28) == "no-after")
+	PreHit.Decide({ towerHp(290) }, PreHit.HORIZON, T0, PERIOD, 25, 28) == "no-after")
 
 -- Both rolls must make a window.
 do
@@ -45,12 +45,22 @@ do
 	-- A wide spread (40 / 56): 295 HP steps 195, 95, dead. The high roll leaves 39 at 1.3 s, inside the low roll's range, but
 	-- the low roll leaves 55: above it. No.
 	check("decide: the low roll leaves it above our range: no",
-		PreHit.Decide(towerHp(295), PreHit.HORIZON, T0, PERIOD, 40, 56) == "no-after")
+		PreHit.Decide({ towerHp(295) }, PreHit.HORIZON, T0, PERIOD, 40, 56) == "no-after")
 end
 
 -- Even creep damage between the tower's hits makes windows of its own: 290 HP with 40 HP/s from creeps is 38 at 1.3 s and
 -- lasts about 0.9 s more, so the last-hit verb has it and there is no pre-hit.
 check("decide: creep damage spreads the steps into a window: no pre-hit", decide(290, 40) == "window")
+
+-- Every schedule must agree (Decide gets one HP function per placement of the hits whose time is unknown). A schedule that
+-- alone says go (296 HP) and one that alone says the pre-hit's window closes before our next swing (180 HP) give no-after; one
+-- that shows a window already (230 HP) rules the pre-hit out whatever the others say.
+do
+	local function decideAll(...) return PreHit.Decide({ ... }, PreHit.HORIZON, T0, PERIOD, LO, HI) end
+	check("schedules: each alone as expected", decideAll(towerHp(296)) == "go" and decideAll(towerHp(180)) == "no-after")
+	check("schedules: one says no-after, so no", decideAll(towerHp(296), towerHp(180)) == "no-after")
+	check("schedules: one shows a window already, so no", decideAll(towerHp(296), towerHp(230)) == "window")
+end
 
 -- WindowFrom: a window counts only from `from` on, and only when it lasts WINDOW_MIN.
 do

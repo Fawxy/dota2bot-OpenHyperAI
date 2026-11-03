@@ -61,25 +61,36 @@ export function WindowFrom(
 export type Verdict = "go" | "window" | "open" | "kills" | "no-after" | "lh" | "phase" | "far";
 
 /**
- * The two questions, on a forecast: `t0` our earliest landing (walk plus own hit time), `period` our attack cycle, `lo`/`hi`
- * our damage after armour at the low and high roll. The kill range is the low roll's (as the last-hit verb's `mine`).
+ * The two questions, on the forecast under each schedule in `hpAts` (the engine's `spread`, `early`, `late` placements of the
+ * hits whose time is unknown; prhchk2: with `spread` alone, 10 of 32 pre-hit creeps died before our next swing, 5 of them while
+ * we were still on cooldown): no schedule may show a window already, and every schedule, at both rolls, must show one after our
+ * hit. `t0` our earliest landing (walk plus own hit time), `period` our attack cycle, `lo`/`hi` our damage after armour at the
+ * low and high roll. The kill range is the low roll's (as the last-hit verb's `mine`).
  */
 export function Decide(
     this: void,
-    hpAt: (this: void, t: number) => number,
+    hpAts: ((this: void, t: number) => number)[],
     horizon: number,
     t0: number,
     period: number,
     lo: number,
     hi: number,
 ): Verdict {
-    const now = WindowFrom(hpAt, horizon, lo, t0);
-    if (now === "window") return "window";
-    if (now === "open") return "open";
-    // A hit that would kill at t0 is a last hit, the last-hit verb's to take (it is also inside the window above at the low roll).
-    if (hpAt(t0) <= hi) return "kills";
-    for (const d of [lo, hi]) {
-        if (WindowFrom(hpAt, horizon, lo, t0 + period, { t: t0, d }) !== "window") return "no-after";
+    let open = false;
+    for (const hpAt of hpAts) {
+        const now = WindowFrom(hpAt, horizon, lo, t0);
+        if (now === "window") return "window";
+        if (now === "open") open = true;
+    }
+    if (open) return "open";
+    for (const hpAt of hpAts) {
+        // A hit that may kill at t0 is a last hit, the last-hit verb's to take (it is also inside the window above at the low roll).
+        if (hpAt(t0) <= hi) return "kills";
+    }
+    for (const hpAt of hpAts) {
+        for (const d of [lo, hi]) {
+            if (WindowFrom(hpAt, horizon, lo, t0 + period, { t: t0, d }) !== "window") return "no-after";
+        }
     }
     return "go";
 }
@@ -126,7 +137,8 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, target: 
     const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
     const hi = target.GetActualIncomingDamage(bot.GetAttackDamage() + variance, DamageType.Physical);
     const hpAt = (t: number): number => verbs.forecastHp(f, t);
-    let verdict = Decide(hpAt, HORIZON, t0, period, lo, hi);
+    const hpAts = [hpAt, (t: number): number => verbs.forecastHp(f, t, "early"), (t: number): number => verbs.forecastHp(f, t, "late")];
+    let verdict = Decide(hpAts, HORIZON, t0, period, lo, hi);
     if (verdict === "go") {
         // Our attack is busy until t0 + period: a last hit on another creep due before then would be lost to it.
         for (const o of verbs.laneTargets(me, { within: t0 + period, deny: false })) {

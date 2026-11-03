@@ -38,28 +38,41 @@ function ____exports.WindowFrom(hpAt, horizon, mine, from, extra)
     end
     return "open"
 end
---- The two questions, on a forecast: `t0` our earliest landing (walk plus own hit time), `period` our attack cycle, `lo`/`hi`
--- our damage after armour at the low and high roll. The kill range is the low roll's (as the last-hit verb's `mine`).
-function ____exports.Decide(hpAt, horizon, t0, period, lo, hi)
-    local now = ____exports.WindowFrom(hpAt, horizon, lo, t0)
-    if now == "window" then
-        return "window"
+--- The two questions, on the forecast under each schedule in `hpAts` (the engine's `spread`, `early`, `late` placements of the
+-- hits whose time is unknown; prhchk2: with `spread` alone, 10 of 32 pre-hit creeps died before our next swing, 5 of them while
+-- we were still on cooldown): no schedule may show a window already, and every schedule, at both rolls, must show one after our
+-- hit. `t0` our earliest landing (walk plus own hit time), `period` our attack cycle, `lo`/`hi` our damage after armour at the
+-- low and high roll. The kill range is the low roll's (as the last-hit verb's `mine`).
+function ____exports.Decide(hpAts, horizon, t0, period, lo, hi)
+    local open = false
+    for ____, hpAt in ipairs(hpAts) do
+        local now = ____exports.WindowFrom(hpAt, horizon, lo, t0)
+        if now == "window" then
+            return "window"
+        end
+        if now == "open" then
+            open = true
+        end
     end
-    if now == "open" then
+    if open then
         return "open"
     end
-    if hpAt(t0) <= hi then
-        return "kills"
+    for ____, hpAt in ipairs(hpAts) do
+        if hpAt(t0) <= hi then
+            return "kills"
+        end
     end
-    for ____, d in ipairs({lo, hi}) do
-        if ____exports.WindowFrom(
-            hpAt,
-            horizon,
-            lo,
-            t0 + period,
-            {t = t0, d = d}
-        ) ~= "window" then
-            return "no-after"
+    for ____, hpAt in ipairs(hpAts) do
+        for ____, d in ipairs({lo, hi}) do
+            if ____exports.WindowFrom(
+                hpAt,
+                horizon,
+                lo,
+                t0 + period,
+                {t = t0, d = d}
+            ) ~= "window" then
+                return "no-after"
+            end
         end
     end
     return "go"
@@ -116,8 +129,13 @@ local function consider(bot, me, verbs, target)
     local function hpAt(t)
         return verbs.forecastHp(f, t)
     end
-    local verdict = ____exports.Decide(
+    local hpAts = {
         hpAt,
+        function(t) return verbs.forecastHp(f, t, "early") end,
+        function(t) return verbs.forecastHp(f, t, "late") end
+    }
+    local verdict = ____exports.Decide(
+        hpAts,
         ____exports.HORIZON,
         t0,
         period,

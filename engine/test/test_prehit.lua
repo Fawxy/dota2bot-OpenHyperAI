@@ -71,6 +71,30 @@ do
     T.near("forecast: its DPS spread past 0.45 s", V.forecastHp(f, 1.45), f.hp - 100, 1e-6)
 end
 
+-- An attacker with no hit in flight or wind-up (unknown phase): the sim's HP stays between the `late` and `early` schedules
+-- (its next hit lands no sooner than one wind-up and no later than a cycle plus a wind-up from now).
+do
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(9) })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 300, team = 3, passive = true }
+    sim:addCreep{ x = 60, y = 0, team = 2, damage = 20, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+        firstSwingAt = 0.5, attackTarget = creep, passive = true }
+    sim:step(DT)
+    local f = V.hpForecast(bot, creep, 3)
+    T.eq("schedules: one unphased attacker listed", #f.unphasedHits, 1)
+    local t0, inside, n = sim.t, true, 0
+    while sim.t < t0 + 2.9 do
+        sim:step(DT)
+        local tf = sim.t - t0
+        local lo, hi = V.forecastHp(f, tf, "early"), V.forecastHp(f, tf, "late")
+        if not (creep.hp >= lo - 1e-6 and creep.hp <= hi + 1e-6) then inside = false end
+        n = n + 1
+    end
+    T.check("schedules: the sim's HP within [early, late] at every step (" .. n .. " steps)", inside)
+    T.check("schedules: early is below late once the first hit could land", V.forecastHp(f, 1.0, "early") < V.forecastHp(f, 1.0, "late"))
+end
+
 -- The bot's own projectile in flight counts (a pre-hit it already fired).
 do
     local sim = Sim.new()

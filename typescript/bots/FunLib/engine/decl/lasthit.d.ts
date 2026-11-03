@@ -39,7 +39,21 @@ export interface HpForecast {
     unphased: number;
     /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
     unphasedTower: boolean;
+    /**
+     * The same attackers one by one: damage after armour, attack cycle, and `first`, the earliest their next hit can land (a
+     * wind-up from now, plus flight for a ranged one); the latest is `first` + `period` (a wind-up that starts one cycle from now).
+     */
+    unphasedHits: {
+        damage: number;
+        period: number;
+        first: number;
+    }[];
 }
+/**
+ * How `forecastHp` places the hits of the attackers whose phase is unknown: `spread` evenly from SEEN_AHEAD on (as the last-hit
+ * belief), `early` each one's next hit at its `first` and every cycle after, `late` one cycle later than `early`.
+ */
+export type ForecastSchedule = "spread" | "early" | "late";
 /**
  * The creep's HP over the next `horizon` seconds from the hits the attacker index already sees: projectiles in flight
  * (arrival = distance / projectile speed), wind-ups (`windupLanding`), and for a tower or lane creep, its latest known hit
@@ -49,8 +63,8 @@ export interface HpForecast {
  * tower); `forecastHp` reads it.
  */
 export declare function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast;
-/** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then). */
-export declare function forecastHp(f: HpForecast, t: number): number;
+/** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then), the unknown-phase hits placed by `schedule`. */
+export declare function forecastHp(f: HpForecast, t: number, schedule?: ForecastSchedule): number;
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
