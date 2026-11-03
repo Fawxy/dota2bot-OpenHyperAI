@@ -26,7 +26,11 @@ const MIN_MARGIN = 0.034;
  * It only bounds how early in the attack cooldown an order may be given; the prediction horizon uses MIN_MARGIN.
  */
 const MAX_MARGIN = 0.3;
-/** Seconds of the creep's HP history the observed damage rate is read over, and the least history it needs. */
+/**
+ * Seconds of the creep's HP history the observed damage rate is read over (at least one lane creep attack cycle, 1 s,
+ * with room for the hits to be unevenly spaced), and the least history it needs (under one creep hit apart: shorter
+ * and a single hit reads as a huge rate).
+ */
 const OBSERVE_WINDOW = 1.5;
 const OBSERVE_MIN = 0.3;
 /** Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s). */
@@ -603,7 +607,9 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         // Gone with no credit: a late swing (someone else's hit took it) unless ours had fired by the predicted
         // landing. A creep that dies during our wind-up cancels the attack, so "gone past the landing time" alone
         // said `missed` for swings that were late by a fraction of a frame (half of llhscn1's `missed`).
-        if (gone(creep)) return out(fail(landBy() && fireAt !== undefined ? "missed" : lostReason(enemyOnIt)));
+        // Gone after our landing with the attack fired, or still alive at the landing: our hit did not kill it (missed).
+        // Gone before, or at the landing with no attack fired (killed in our wind-up): someone else took it.
+        if (gone(creep)) return out(fail(landBy() && (fireAt !== undefined || (landHp ?? 0) > 0) ? "missed" : lostReason(enemyOnIt)));
         if (!bot.IsAlive()) return fail("dead");
         if (now() - swingAt > tHit + CONFIRM_SLACK) return out(fail("missed"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);

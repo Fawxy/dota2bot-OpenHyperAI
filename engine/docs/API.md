@@ -150,8 +150,9 @@ A negative shift shortens the prediction horizon: a late swing, lost to others (
 positive shift extends it with the attackers' DPS (hits not yet started): an early swing that lands while the
 creep is still too healthy (`missed`). There is no random "don't try": a low-skill bot always swings, badly.
 
-**Results.** `ok` once the bot's last-hit (deny) count rises. `missed`: its attack fired (`GetLastAttackTime`
-rose) and the creep was gone at the predicted landing without the kill, or nothing resolved within `t + 0.5` s.
+**Results.** `ok` once the bot's last-hit (deny) count rises. `missed`: the creep was still alive at the predicted
+landing, or its attack fired (`GetLastAttackTime` rose) and the creep was gone after the landing without the kill, or
+nothing resolved within `t + 0.5` s.
 `taken_by_other`: the creep died before our hit, including during our wind-up (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero was attacking it as it died.
 `timeout`, `no_target`, `etiquette` (every candidate vetoed by `lastHitFilter`), `dead`, `interrupted`,
 `unsupported` (no `GetAttackDamage`/`GetAttackPoint`; `deny` also needs `GetDenies`).
@@ -175,7 +176,8 @@ fields, and `GetNearbyTowers` returning towers whose `GetAttackTarget` is the cr
 03/11/2026, 8x): the body is stepped every 0.167 s (`fg`); for melee heroes `GetLastAttackTime` rises at the
 predicted landing (`fa - t` median 0.07 s, the frame quantum); for ranged heroes it also sits at the predicted
 landing rather than a projectile flight earlier, so it may rise at landing, not at fire (UNVERIFIED at finer
-resolution; the outcome rule does not depend on it).
+resolution; without the method a creep alive at the predicted landing and gone later is still `missed`, only a
+creep gone at the landing with no attack seen to fire needs it to tell a miss from a kill during our wind-up).
 
 ## Job verbs
 Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (reference in the bot's
@@ -196,7 +198,7 @@ Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (
 |---|---|
 | `Tasks.task/Step/Tick/Cancel/Urgent/Label/Current/Last/Describe` | runner (unchanged signatures; bodies now receive `ctx`) |
 | `Verbs.walkTo/walkPath/wait/waitUntil/retreatTo/lastHit/deny/attackAndConfirm` | movement and combat verbs, all with `deadline` |
-| `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves |
+| `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves. `incomingDps` returns `{ dps, between }` since slice lane-last-hits (03/11/2026; it returned the number now in `dps`): `between` is the rate of the attackers not winding up an attack, the part extrapolated past 0.45 s |
 | `Skill.of/profile/react/jitter/lastHitError/random` | skill and human-timing helpers read through the adapter |
 | `Verbs.cast/useItem/pickUpRune` | ability, item and rune verbs |
 | `Skill.timingError/timingSigma/gauss` | skill-scaled timing error for timed actions |

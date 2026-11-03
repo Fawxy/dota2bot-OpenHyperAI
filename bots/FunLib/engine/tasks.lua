@@ -1609,7 +1609,9 @@ local MIN_MARGIN = 0.034
 --- The frame margin: 1.2x the observed gap between the frames the verb is stepped at (MIN_MARGIN to MAX_MARGIN).
 -- It only bounds how early in the attack cooldown an order may be given; the prediction horizon uses MIN_MARGIN.
 local MAX_MARGIN = 0.3
---- Seconds of the creep's HP history the observed damage rate is read over, and the least history it needs.
+--- Seconds of the creep's HP history the observed damage rate is read over (at least one lane creep attack cycle, 1 s,
+-- with room for the hits to be unevenly spaced), and the least history it needs (under one creep hit apart: shorter
+-- and a single hit reads as a huge rate).
 local OBSERVE_WINDOW = 1.5
 local OBSERVE_MIN = 0.3
 --- Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s).
@@ -2150,7 +2152,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             return out(ok())
         end
         if gone(creep) then
-            return out(fail(landBy() and fireAt ~= nil and "missed" or lostReason(enemyOnIt)))
+            return out(fail(landBy() and (fireAt ~= nil or (landHp or 0) > 0) and "missed" or lostReason(enemyOnIt)))
         end
         if not bot:IsAlive() then
             return fail("dead")
