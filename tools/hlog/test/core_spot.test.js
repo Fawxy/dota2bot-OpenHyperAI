@@ -61,7 +61,7 @@ test('core spot: at the 1 s cadence a walk to a last hit or an off-spot sample c
     assert.deepStrictEqual([r.lh_walk, r.lh_walk_hpl, r.idle, r.hpl, r.off, r.off_hpl], [1, 3, 4, 9, 1, 3]);
 });
 
-test('core spot: pmin and pmax read the supports the same way, and the default leaves them out', () => {
+test('core spot: pos_lo and pos_hi read the supports the same way, and the default leaves them out', () => {
     const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1'), line(0, 'bot pid=4 hero=h4 team=2 pos=4')];
     for (let t = 100; t <= 103; t++) {
         lines.push(line(t, `snap pid=1 x=0 y=-6000 alive=1 hp=100 mode=laning d=0.3 deaths=0 ln=bot ol=0 ar=150 hit=0`));
@@ -70,6 +70,6 @@ test('core spot: pmin and pmax read the supports the same way, and the default l
     }
     lines.push(line(100, 'lane_pos pid=4 d=10 owned=1 running=1 mode=2 spot=oha hph=0'));
     assert.deepStrictEqual(run(lines).map(r => r.pid), [1]);
-    const sup = run(lines, { pmin: 4, pmax: 5 });
+    const sup = run(lines, { pos_lo: 4, pos_hi: 5 });
     assert.deepStrictEqual(sup.map(r => [r.pid, r.idle, r.hpl, r.near]), [[4, 4, 12, 4]]);
 });

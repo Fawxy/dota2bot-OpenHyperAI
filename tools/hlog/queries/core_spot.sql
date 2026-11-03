@@ -1,4 +1,4 @@
--- Where lineup cores (pos 1-3, or the positions :pmin-:pmax) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
+-- Where lineup cores (pos 1-3, or the positions :pos_lo to :pos_hi) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
 -- lane-positioning, step 1 targets). Idle = laning mode with no attack target (lane_activity activity 'lane'), one snapshot a
 -- second, less the seconds the laning body was walking to a last hit or deny (ev=lane_pos label lasthit/deny in that second or
 -- up to the next sample, at most 2 s: lane_pos came every 2 s before step 1c and every 1 s since): those belong to the last-hit picker, not the spot, and are counted apart.
@@ -14,7 +14,7 @@
 --   near_hpl    HP-% points lost from those snapshots to the next;  hpl  all idle HP lost (ring_hpl + out_hpl)
 --   per_min     ring seconds per idle minute
 --   why_*       ev=lane_pos samples by the limit that decided our spot (absent on OHA's spot)
--- Params: like, from, until; pmin, pmax the lineup positions (default 1-3, the cores; 4-5 reads the supports the same way).
+-- Params: like, from, until; pos_lo, pos_hi the lineup positions (default 1-3, the cores; 4-5 reads the supports the same way).
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 -- ensure: ev_lane_pos(pid, spot, why, label)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -28,7 +28,7 @@ a AS MATERIALIZED (
     SELECT a.game_id, a.pid, a.team, a.t, a.x, a.y, a.hp, a.activity, a.ed, s.ln,
         lead(a.hp) OVER (PARTITION BY a.game_id, a.pid ORDER BY a.t) AS nhp
     FROM lane_activity a JOIN gm ON gm.game_id = a.game_id JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
-    WHERE a.pos >= coalesce(:pmin, 1) AND a.pos <= coalesce(:pmax, 3) AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
+    WHERE a.pos >= coalesce(:pos_lo, 1) AND a.pos <= coalesce(:pos_hi, 3) AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
 ),
 -- Enemy tower positions: the table @core_deaths keeps equal to dynamic.js TOWERS.
 tw (team, x, y) AS (VALUES

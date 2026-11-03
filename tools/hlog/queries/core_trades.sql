@@ -4,7 +4,7 @@
 -- (windows a due last hit, laning at desire 0.85 or more, or retreat held: intended priority), hpd and thpd summed over taken trades, aggroed (taken trades
 -- with an enemy lane creep on the core at any point, `ag` > 0; NULL-safe on builds before the field). From lane_activity
 -- (90 s to :until, as @lane_time): hero, seconds attacking a hero; trade_open and trade_open_hero as @lane_time; deaths at :until.
--- Params: like (LIKE pattern on games.file, default every game), until (seconds, default 600), pmin and pmax the lineup
+-- Params: like (LIKE pattern on games.file, default every game), until (seconds, default 600), pos_lo and pos_hi the lineup
 -- positions (default 1-3; 4-5 reads Support in lane's harass, ev=trade role=support, slice support-spot).
 -- ensure: ev_trade(pid, kind, result, why, dur, hpd, thpd, ag, mode, md)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -26,7 +26,7 @@ la AS (
         sum(a.in_range AND a.ol = 0) AS trade_open, sum(a.in_range AND a.ol = 0 AND a.activity = 'hero') AS trade_open_hero,
         max(a.deaths) AS deaths
     FROM lane_activity a JOIN gm ON gm.game_id = a.game_id
-    WHERE a.pos >= coalesce(:pmin, 1) AND a.pos <= coalesce(:pmax, 3) AND a.t >= 90 AND a.t < coalesce(:until, 600)
+    WHERE a.pos >= coalesce(:pos_lo, 1) AND a.pos <= coalesce(:pos_hi, 3) AND a.t >= 90 AND a.t < coalesce(:until, 600)
     GROUP BY a.game_id, a.pid, a.team, a.pos
 )
 SELECT gm.file, la.team, la.pos, la.pid, coalesce(tr.taken, 0) AS taken, coalesce(tr.kills, 0) AS kills, coalesce(tr.won, 0) AS won,

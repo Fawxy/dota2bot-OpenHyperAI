@@ -65,7 +65,7 @@ test('core deaths: the tower table equals dynamic.js TOWERS', () => {
     assert.deepStrictEqual(rows, TOWERS);
 });
 
-test('core trades: pmin and pmax read a support harass the same way', () => {
+test('core trades: pos_lo and pos_hi read a support harass the same way', () => {
     const lines = [
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         line(0, 'bot pid=4 hero=h4 team=2 pos=4'),
@@ -74,7 +74,7 @@ test('core trades: pmin and pmax read a support harass the same way', () => {
         line(110, 'trade pid=4 role=support kind=trade tgt=6 result=done why=losing dur=2 hpd=20 thpd=60 hp=0.8 thp=0.7 en=1 al=1 cr=0 ag=0 mode=2 md=0.6'),
         trade(120, 'done', 90, 40),
     ];
-    const sup = run('core_trades', lines, { pmin: 4, pmax: 5 });
+    const sup = run('core_trades', lines, { pos_lo: 4, pos_hi: 5 });
     assert.deepStrictEqual(sup.map(r => [r.pid, r.taken, r.won, r.hpd, r.thpd, r.hero]), [[4, 1, 1, 20, 60, 1]]);
     assert.deepStrictEqual(run('core_trades', lines).map(r => [r.pid, r.taken]), [[1, 1]]);
 });
