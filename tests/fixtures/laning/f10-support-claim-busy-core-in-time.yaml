@@ -1,0 +1,28 @@
+id: lane.lasthit.support-claim-busy-core-in-time.001
+source: log
+ref: {log: 2026-11-03T18-04-37-slhchk2_A_on_1.log, finding: F5}
+status: active
+decision: support_claim
+control: {commit: bacf6ca, outcome: pass}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 200
+  subject: 7
+  heroes:
+    - {pid: 7, pos: 5, at: [-100, -5050]}
+    - {pid: 9, pos: 1, at: [-50, -5000], spa: 1.0}
+  creeps:
+    - {id: 1, side: enemy, x: 0, hp: 50}
+    - {id: 2, side: enemy, x: 50, hp: 200}
+  # The core waits on a last hit due in 0.2 s; the next one dies in 2.5 s, after its next swing (0.2 + 1.0).
+  attempts: {9: {creep: 1, ph: lasthit}}
+  offers:
+    9:
+      - {creep: 1, kind: lasthit, eta: 0.2, walk: 0, dies: 1.5}
+      - {creep: 2, kind: lasthit, eta: 1.0, walk: 0, dies: 2.5}
+  target: {creep: 2, kind: lasthit, eta: 1.0, walk: 0.3, dies: 2.5}
+expect:
+  must: ["noClaim"]
+notes: >
+  Guard (review 2026-11-04-support-lane-hits-e93e444 F5): a core busy on one creep that can still swing at the next
+  before the others kill it keeps that creep; the support does not claim it.

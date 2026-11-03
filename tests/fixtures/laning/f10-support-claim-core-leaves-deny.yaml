@@ -1,0 +1,32 @@
+id: lane.lasthit.support-claim-core-leaves-deny.001
+source: log
+ref: {log: 2026-11-03T18-04-37-slhchk2_A_on_1.log, t: 210.867}
+status: active
+decision: support_claim
+control: {commit: bacf6ca, outcome: fail}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 210.867
+  subject: 7
+  heroes:
+    - {pid: 7, pos: 5, at: [-100, -5050]}
+    - {pid: 9, pos: 1, at: [-50, -5000], spa: 1.4}
+  creeps:
+    - {id: 1, side: ally, x: 150, hp: 60}
+    - {id: 2, side: enemy, x: 50, hp: 110}
+  # The core's body waits on a deny (creep 1) with a last hit (creep 2) in reach.
+  attempts: {9: {creep: 1, ph: deny}}
+  offers:
+    9:
+      - {creep: 1, kind: deny, eta: 0.95, walk: 0.95, dies: 1.75}
+      - {creep: 2, kind: lasthit, eta: 0.7, walk: 0.3, dies: 1.8}
+  target: {creep: 2, kind: lasthit, eta: 0.99, walk: 0.99, dies: 1.8}
+expect:
+  must: ["noClaim"]
+  mustNot: ["claim(busy)"]
+notes: >
+  Review 2026-11-04-support-lane-hits-e93e444 F1, the one body steal in slhchk2: core pid 9 waited on a deny from 210.7,
+  support pid 7 claimed the last hit `busy` at about 210.87, and the core's retarget moved onto the same creep at 210.9
+  (Choose drops a deny wait for any reachable last hit); the support's swing took it at 211.43. The claim timed the core's
+  next swing from the deny it waited on. The eta/walk/dies values are built to the case's shape (deny wait, a reachable last hit, the core's swing too late by the old timing), not copied from its ev=lh lines; spa is
+  `judgement` (any above 0.55 gives the old busy claim).

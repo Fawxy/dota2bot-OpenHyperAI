@@ -2,9 +2,10 @@
  * Which lane creeps are a laner's to take: the role input to the shared picker (states/lane_pick Choose; user 03/11/2026,
  * laning is one shared body with role as an input). A core's are all of them. A support's (slice support-lane-hits) are every
  * deny, and a last hit only when no allied core will take it:
- * - a core whose laning body is in an attempt on another creep takes this one only if its next swing, one attack interval
- *   after the creep it waits on is due, can land before the others kill this one (`busy` otherwise: the second creep due at
- *   once, llhchk3: 55% of the creeps that died in a core's reach unattempted died during an attempt on another creep);
+ * - a core whose laning body is in an attempt takes this creep when the picker would move it onto this one, and otherwise
+ *   only if its next swing, one attack interval after the creep it goes for next is due, can land before the others kill
+ *   this one (`busy` otherwise: the second creep due at once, llhchk3: 55% of the creeps that died in a core's reach
+ *   unattempted died during an attempt on another creep);
  * - any other core (a human, a bot core between attempts, OHA's) takes what Etiquette.CanTake says it can (slice 3).
  * The facts are the engine's laneTargets seen from the core; the rule is ours (rule 3).
  */
@@ -35,23 +36,28 @@ function offersOf(core: Unit, within: number): Lib.Verbs.LaneTarget[] {
 
 /**
  * Whether `core` will take `t` itself, from the core's facts. `judgement`: the core's next swing is taken as landable one
- * attack interval after the creep it waits on is due, at the earliest.
+ * attack interval after the creep it goes for next is due, at the earliest.
  */
 function coreTakes(core: Attacker, t: Lib.Verbs.LaneTarget, within: number): boolean {
     const creep = t.creep as unknown as Unit;
     const busyOn = LanePick.Attempting(core.GetPlayerID());
     if (busyOn === undefined) return Etiquette.CanTake(core, creep);
-    if (busyOn === t.creep) return true;
+    const offers = offersOf(core, within);
     let other: Lib.Verbs.LaneTarget | undefined;
     let mine: Lib.Verbs.LaneTarget | undefined;
-    for (const o of offersOf(core, within)) {
+    for (const o of offers) {
         if (o.creep === busyOn) other = o;
         if (o.creep === t.creep) mine = o;
     }
     // The creep it waited on is no longer on offer to it: the core is free again.
     if (other === undefined) return Etiquette.CanTake(core, creep);
+    // The core's body retargets through the same picker, so the creep it is on next is Choose's answer, not the one it
+    // waits on now: a deny wait is dropped for any reachable last hit (slhchk2 A game 1 t=210.87, review
+    // 2026-11-04-support-lane-hits-e93e444 F1).
+    const next = LanePick.Choose(offers, other) ?? other;
+    if (next.creep === t.creep) return true;
     if (mine === undefined) return false;
-    const free = other.due + (core.GetSecondsPerAttack?.() ?? 1);
+    const free = next.due + (core.GetSecondsPerAttack?.() ?? 1);
     return math.max(free + mine.walk, mine.eta) < t.dies;
 }
 

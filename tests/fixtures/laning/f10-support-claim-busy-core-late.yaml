@@ -1,0 +1,29 @@
+id: lane.lasthit.support-claim-busy-core-late.001
+source: log
+ref: {log: 2026-11-03T18-04-37-slhchk2_A_on_1.log, finding: F5}
+status: active
+decision: support_claim
+control: {commit: bacf6ca, outcome: pass}
+conditions: {phase: laning, role: pos5}
+world:
+  t: 200
+  subject: 7
+  heroes:
+    - {pid: 7, pos: 5, at: [-100, -5050]}
+    - {pid: 9, pos: 1, at: [-50, -5000], spa: 1.4}
+  creeps:
+    - {id: 1, side: enemy, x: 0, hp: 50}
+    - {id: 2, side: enemy, x: 50, hp: 80}
+  # The core waits on a last hit due in 0.3 s; the second dies in 1.2 s, before its next swing (0.3 + 1.4).
+  attempts: {9: {creep: 1, ph: lasthit}}
+  offers:
+    9:
+      - {creep: 1, kind: lasthit, eta: 0.3, walk: 0, dies: 1.5}
+      - {creep: 2, kind: lasthit, eta: 0.6, walk: 0, dies: 1.2}
+  target: {creep: 2, kind: lasthit, eta: 0.6, walk: 0.2, dies: 1.2}
+expect:
+  must: ["claim(busy)"]
+notes: >
+  Positive control (review 2026-11-04-support-lane-hits-e93e444 F5): the second creep due at once while the core's body is on
+  another is the support's (`busy`), and stays so with the picker asked: Choose keeps the core on creep 1 (due within
+  SWITCH_GAP, creep 2 not due now).

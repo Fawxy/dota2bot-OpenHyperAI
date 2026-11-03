@@ -47,6 +47,7 @@ does produce the action when the condition is absent; otherwise it passes when t
 | `kill_check` | `LaneFight.KillCheck.Check` | `kill`, `noKill(<reason>)`; `fact.margin` |
 | `lane_fight` | a lane fight played at 30 fps with mode scoring (`lane_fight_world.lua`) | `commitEnd(<reason>)`, `committing`; `desire.retreat`, `desire.roam` |
 | `core_trip` | `FarmPattern.StartGate` then `Desire` (`farm_world.lua`) | `noTrip(<reason>)`, `trip(camp#)` |
+| `support_claim` | `states/lane_claims` `SupportClaim` for one creep, the cores' `laneTargets` and laning attempts given (`lane_world_fixture.lua`) | `claim(<deny\|free\|busy>)`, `noClaim` |
 
 The verbs are this runner's vocabulary until behaviour contracts exist (`docs/contracts/`); they move there then. The
 worlds are the hand-built test worlds the unit tests already use, so a driver adds no new simulation.

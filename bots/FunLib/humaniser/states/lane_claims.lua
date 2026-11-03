@@ -19,19 +19,17 @@ local function offersOf(core, within)
     return offers
 end
 --- Whether `core` will take `t` itself, from the core's facts. `judgement`: the core's next swing is taken as landable one
--- attack interval after the creep it waits on is due, at the earliest.
+-- attack interval after the creep it goes for next is due, at the earliest.
 local function coreTakes(core, t, within)
     local creep = t.creep
     local busyOn = LanePick.Attempting(core:GetPlayerID())
     if busyOn == nil then
         return Etiquette.CanTake(core, creep)
     end
-    if busyOn == t.creep then
-        return true
-    end
+    local offers = offersOf(core, within)
     local other
     local mine
-    for ____, o in ipairs(offersOf(core, within)) do
+    for ____, o in ipairs(offers) do
         if o.creep == busyOn then
             other = o
         end
@@ -42,14 +40,18 @@ local function coreTakes(core, t, within)
     if other == nil then
         return Etiquette.CanTake(core, creep)
     end
+    local next = LanePick.Choose(offers, other) or other
+    if next.creep == t.creep then
+        return true
+    end
     if mine == nil then
         return false
     end
-    local ____other_due_4 = other.due
+    local ____next_due_4 = next.due
     local ____this_3
     ____this_3 = core
     local ____opt_2 = ____this_3.GetSecondsPerAttack
-    local free = ____other_due_4 + (____opt_2 and ____opt_2(____this_3) or 1)
+    local free = ____next_due_4 + (____opt_2 and ____opt_2(____this_3) or 1)
     return math.max(free + mine.walk, mine.eta) < t.dies
 end
 --- The claim `bot` (a support) has on `t`, or undefined when an allied core will take it.
