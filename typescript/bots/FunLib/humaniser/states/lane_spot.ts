@@ -3,7 +3,8 @@
  * the spot's contract is that proposal's s2 "Bounds": one point out, no orders, no decisions).
  *
  * A preferred point (a ranged core at attack range - 50 from the lowest-HP enemy creep, a melee core just behind our front,
- * both shifted away from the nearest enemy hero; a support towards its approach line), then the candidate nearest to it that
+ * both shifted away from the nearest enemy hero; a support attack range - 50 behind our front, in deny reach of it, shifted
+ * to the enemy hero's side of the lane, off the core's approach), then the candidate nearest to it that
  * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus 1.5 s of
  * its movement, and never under 800), outside the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the
  * HP margin, outside every enemy tower's range plus the hold's drift, and no further back than the XP limit (1,000 from the
@@ -84,6 +85,41 @@ function isRangedCreep(c: Unit): boolean {
 /** Alive and in sight: a unit in the fog keeps a valid handle but reads no location. */
 function alive(u: Unit | undefined): u is Unit {
     return u !== undefined && u !== null && !u.IsNull() && u.IsAlive() && u.GetLocation() !== undefined;
+}
+
+/**
+ * An enemy hero's damaging abilities it could cast now (trained, not passive or hidden, off cooldown, its mana covers them) and
+ * the longest cast range among them: read for telemetry (ev=lane_pos `nk`, `nr`), not a limit yet (lane-positioning Open items).
+ */
+export function ReadyNukes(enemy: Unit): [number, number] {
+    let n = 0;
+    let range = 0;
+    const mana = enemy.GetMana();
+    for (let i = 0; i < 6; i++) {
+        const a = enemy.GetAbilityInSlot(i);
+        if (a === undefined || a === null || a.IsNull() || a.IsHidden() || a.IsPassive() || a.GetLevel() < 1) continue;
+        if (a.GetAbilityDamage() <= 0 || a.GetCooldownTimeRemaining() > 0 || a.GetManaCost() > mana) continue;
+        n++;
+        range = math.max(range, a.GetCastRange());
+    }
+    return [n, range];
+}
+
+/** The nearest visible enemy hero within 1,600 of `bot`: its distance and ReadyNukes, or undefined with none. */
+export function NearestNuke(bot: Unit): [number, number, number] | undefined {
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
+        if (!alive(h)) continue;
+        const dist = GetUnitToUnitDistance(bot, h);
+        if (dist < bestD) {
+            bestD = dist;
+            best = h;
+        }
+    }
+    if (best === undefined) return undefined;
+    const [n, range] = ReadyNukes(best);
+    return [bestD, n, range];
 }
 
 export function HpMargin(hpFrac: number): number {
@@ -179,8 +215,11 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
         py = at.y + dy * (range - RANGE_INSET);
         anchor = "creep";
     } else {
-        px = front.x + dx * MELEE_BEHIND;
-        py = front.y + dy * MELEE_BEHIND;
+        // A support stands its attack range (less the inset) behind our front, so our front creeps stay in deny reach; a
+        // melee core just behind it.
+        const behind = role === "support" ? math.max(MELEE_BEHIND, range - RANGE_INSET) : MELEE_BEHIND;
+        px = front.x + dx * behind;
+        py = front.y + dy * behind;
     }
 
     // Perpendicular to the lane; shift away from the enemy hero (core) or towards its approach (support).

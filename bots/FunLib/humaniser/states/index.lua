@@ -43,6 +43,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
@@ -213,6 +214,8 @@ local function lanePos(bot, l)
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
     local info = Laning.SpotInfo(bot)
+    local nok, nuke = pcall(LaneSpot.NearestNuke, bot)
+    local ne, nk, nr = unpack(nok and nuke ~= nil and nuke or ({nil, nil, nil}))
     local ____Telemetry_Event_11 = Telemetry.Event
     local ____array_10 = __TS__SparseArrayNew(
         {"pid", pid},
@@ -254,6 +257,15 @@ local function lanePos(bot, l)
         {
             "hph",
             LaneMetrics.HeroLost(bot)
+        },
+        {
+            "ne",
+            ne ~= nil and math.floor(ne) or nil
+        },
+        {"nk", nk},
+        {
+            "nr",
+            nr ~= nil and math.floor(nr) or nil
         }
     )
     ____Telemetry_Event_11(

@@ -50,7 +50,8 @@ ____exports.DEFAULTS = {
     SupportLastHit = true,
     RuneRotation = true,
     SupportPull = true,
-    LaneSpot = true
+    LaneSpot = true,
+    SupportHarass = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

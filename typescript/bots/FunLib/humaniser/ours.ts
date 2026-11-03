@@ -43,6 +43,12 @@ export const DEFAULTS = {
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget.
      */
     LaneSpot: true,
+    /**
+     * Slice support-spot: with SupportDeny on, a pos4-5's attack mode is ours in lane (harass through states/core_trade, the
+     * aggro-free plan) and OHA's Lua port outside it, and with LaneSpot on the support stands on our lane spot (a support_lane
+     * step) instead of OHA's PositionThink; false leaves both OHA's and Valve's.
+     */
+    SupportHarass: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

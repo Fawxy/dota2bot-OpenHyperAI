@@ -77,9 +77,14 @@ interface SpotCache {
 }
 const spotCache: Record<number, SpotCache | undefined> = {};
 
-/** Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says (cores under Ours.CoreLastHit). */
+/**
+ * Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
+ * support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
+ * mode, so the body's hold no longer cancels them).
+ */
 export function OwnsSpot(bot: Unit): boolean {
-    return Ours.On("LaneSpot") && CoreLastHit.Applies(bot);
+    if (!Ours.On("LaneSpot")) return false;
+    return CoreLastHit.Applies(bot) || (OwnsSupportHits(bot) && SupportDeny.Harass(bot));
 }
 
 /** The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). OHA's spot only when
@@ -237,7 +242,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         leash: LEASH,
         retarget: true,
         // A support stops waiting on a creep the others will kill before its swing lands (sdp1: 15 of 90 lost denies), so
-        // the body hands the frame back to OHA's positioning and harass instead of holding (D5).
+        // the body hands the frame back instead of holding on (D5): to its hold step on our spot, or to OHA's positioning and harass.
         dropLost: OwnsSupportHits(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());

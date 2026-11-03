@@ -1,6 +1,6 @@
 /**
  * A support's lane steps under our switches (slice l1-support-deny), as one ordered list: the first step that wants the frame
- * acts, and mode_laning_generic's own steps (OHA's last hit, the techniques, harass) run only when none does. The combiner for
+ * acts, and mode_laning_generic's own steps (OHA's last hit, the techniques, harass, positioning) run only when none does. The combiner for
  * the support's lane steps (OWNERSHIP.md): a later behaviour (harass, zoning, pulls on wave state) adds its own step here, or
  * moves one, with a fixture for the new order, instead of a special case in the Lua Think.
  */
@@ -36,7 +36,18 @@ const hit: LaneStep = {
     run: (_bot, ctx) => ctx.stepBody(),
 };
 
-export const STEPS: LaneStep[] = [hit];
+/**
+ * Slice support-spot: with no lane hit to take, the body holds the support on our lane spot (states/lane_spot, role support)
+ * instead of OHA's harass and PositionThink. Harass is not a lane step: it runs in our attack mode (states/core_trade), which
+ * outbids laning while a harass is on.
+ */
+const hold: LaneStep = {
+    name: "hold",
+    wants: (bot, ctx) => Laning.OwnsSupportHits(bot) && Laning.OwnsSpot(bot) && ctx.bodyRunning(),
+    run: (_bot, ctx) => ctx.stepBody(),
+};
+
+export const STEPS: LaneStep[] = [hit, hold];
 
 /** The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing). */
 export function Step(bot: Unit, ctx: StepCtx): string | undefined {

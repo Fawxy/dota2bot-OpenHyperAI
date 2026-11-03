@@ -14,7 +14,15 @@ local hit = {
     end,
     run = function(_bot, ctx) return ctx.stepBody() end
 }
-____exports.STEPS = {hit}
+--- Slice support-spot: with no lane hit to take, the body holds the support on our lane spot (states/lane_spot, role support)
+-- instead of OHA's harass and PositionThink. Harass is not a lane step: it runs in our attack mode (states/core_trade), which
+-- outbids laning while a harass is on.
+local hold = {
+    name = "hold",
+    wants = function(bot, ctx) return Laning.OwnsSupportHits(bot) and Laning.OwnsSpot(bot) and ctx.bodyRunning() end,
+    run = function(_bot, ctx) return ctx.stepBody() end
+}
+____exports.STEPS = {hit, hold}
 --- The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing).
 function ____exports.Step(bot, ctx)
     for ____, s in ipairs(____exports.STEPS) do
