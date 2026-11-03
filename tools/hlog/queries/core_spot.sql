@@ -5,6 +5,8 @@
 --   ring_hpl    HP-% points lost from those snapshots to the next one (creeps, heroes and towers alike)
 --   out_hpl     the same for idle snapshots outside that ring
 --   tower       idle within 750 of an enemy tower (lane_spot TOWER_RING)
+--   near        idle with a visible enemy hero within 800 (snapshot `ed`; step 0: idle HP loss was 1.6-3 a second there, 0.2 beyond 1,000)
+--   near_hpl    HP-% points lost from those snapshots to the next;  hpl  all idle HP lost (ring_hpl + out_hpl)
 --   per_min     ring seconds per idle minute
 --   why_*       ev=lane_pos samples by the limit that decided our spot (absent on OHA's spot)
 -- Params: like, from, until.
@@ -18,7 +20,7 @@ fr AS MATERIALIZED (
     GROUP BY f.game_id, f.team, CAST(round(f.t) AS INTEGER)
 ),
 a AS MATERIALIZED (
-    SELECT a.game_id, a.pid, a.team, a.t, a.x, a.y, a.hp, a.activity, s.ln,
+    SELECT a.game_id, a.pid, a.team, a.t, a.x, a.y, a.hp, a.activity, a.ed, s.ln,
         lead(a.hp) OVER (PARTITION BY a.game_id, a.pid ORDER BY a.t) AS nhp
     FROM lane_activity a JOIN gm ON gm.game_id = a.game_id JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
     WHERE a.pos <= 3 AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
@@ -40,7 +42,7 @@ i AS (
     FROM a WHERE a.activity = 'lane'
 ),
 p AS (
-    SELECT lp.game_id, lp.pid, sum(lp.why = 'pref') AS why_pref, sum(lp.why = 'creep') AS why_creep, sum(lp.why = 'hp') AS why_hp,
+    SELECT lp.game_id, lp.pid, sum(lp.why = 'pref') AS why_pref, sum(lp.why = 'hero') AS why_hero, sum(lp.why = 'creep') AS why_creep, sum(lp.why = 'hp') AS why_hp,
         sum(lp.why = 'tower') AS why_tower, sum(lp.why = 'xp') AS why_xp
     FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id
     WHERE lp.t >= coalesce(:from, 90) AND lp.t <= coalesce(:until, 600) AND lp.why IS NOT NULL
@@ -49,8 +51,9 @@ p AS (
 r AS (
     SELECT gm.file, i.team, l.pos, i.pid, count(*) AS idle, sum(coalesce(i.ring, 0)) AS ring,
         sum(CASE WHEN i.ring THEN i.lost ELSE 0 END) AS ring_hpl, sum(CASE WHEN i.ring THEN 0 ELSE i.lost END) AS out_hpl,
-        sum(i.twr) AS tower, round(60.0 * sum(coalesce(i.ring, 0)) / count(*), 1) AS per_min,
-        p.why_pref, p.why_creep, p.why_hp, p.why_tower, p.why_xp
+        sum(i.twr) AS tower, sum(coalesce(i.ed < 800, 0)) AS near, sum(CASE WHEN i.ed < 800 THEN i.lost ELSE 0 END) AS near_hpl,
+        sum(i.lost) AS hpl, round(60.0 * sum(coalesce(i.ring, 0)) / count(*), 1) AS per_min,
+        p.why_pref, p.why_hero, p.why_creep, p.why_hp, p.why_tower, p.why_xp
     FROM i JOIN gm ON gm.game_id = i.game_id JOIN lineup l ON l.game_id = i.game_id AND l.pid = i.pid
     LEFT JOIN p ON p.game_id = i.game_id AND p.pid = i.pid
     GROUP BY i.game_id, i.pid
