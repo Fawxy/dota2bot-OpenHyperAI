@@ -7,8 +7,8 @@
  * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus a second of
  * its movement), outside
  * the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the HP margin, outside every enemy tower's range,
- * and no further back than the XP limit. Without a visible enemy wave (between waves, walking out)
- * the preferred point is our front and only the tower ring applies.
+ * and no further back than the XP limit (1,000 from the preferred point). Without a visible enemy wave (between waves,
+ * walking out) the preferred point is 100 behind our front and the hero and tower limits apply.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
 
