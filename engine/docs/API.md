@@ -127,7 +127,10 @@ its own and swing late (lane-only calibration llhscn1, 03/11/2026, 35% of swings
 attacker index misses still count through the creep's own HP: while it waits the verb reads the creep's HP over the
 last 1.5 s as a lower bound on the damage rate (the loss less one hit, the largest single-frame drop), and the part
 of that rate the indexed attackers' DPS and the creep's regen do not explain is extrapolated over the horizon. Where
-the index sees every attacker the belief is unchanged. With the adapter's `attackClock` the verb does not order a
+the index sees every attacker the belief is unchanged. Beyond 0.45 s (a creep's attack point) hits that land before
+ours have not begun their wind-up, so the DPS of the indexed attackers that are between swings is extrapolated over
+the part of the horizon past 0.45 s; an attacker already winding up is credited with that hit alone (counting its
+rate as well read 0.6-1 s horizons 12-30 HP too heavy and half of those swings missed early, llhscn2 03/11/2026). With the adapter's `attackClock` the verb does not order a
 swing while the attack cooldown has more than the frame margin left (0.034 s, or 1.2x the observed frame time up to
 0.3 s: unseen future hits would land inside the longer horizon). `deny` also requires the creep below 50% max HP.
 Turn time is not modelled; tower "tap first" tricks are the body's.

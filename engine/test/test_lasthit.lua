@@ -490,5 +490,24 @@ do
     T.check("killed in our wind-up: attack never fired (" .. tostring(r.message) .. ")", string.find(r.message or "", "fa=-1", 1, true) ~= nil)
 end
 
+-- An attacker already winding up is credited with that hit once, not also as a rate over the long horizon. A ranged
+-- hero (0.3 s wind-up + 0.59 s flight, 55 damage) on a 120 HP creep; allied creep A (40 a second) lands at 0.6, B
+-- lands at 1.3. Counting A's hit and its rate too read 46 at the landing and swung at once, landing at 1.0 on 80 HP
+-- (missed, llhscn2); crediting the hit alone reads 63 and waits for it, then the two rates read 46 and the swing
+-- lands at about 1.5, after B's hit.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 600, damage = 55, attackPoint = 0.3, projectileSpeed = 900, fireTime = true }
+    local creep = sim:addCreep{ x = 550, y = 0, hp = 120, team = 3, passive = true }
+    for i, first in ipairs({ 0.133, 0.833 }) do
+        sim:addCreep{ x = 600, y = 40 * i, team = 2, damage = 40, attackPoint = 0.467, autoAttack = true,
+            attackTarget = creep, firstSwingAt = first, passive = true }
+    end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("wind-up once: ok", r.reason, "ok")
+    local swing = firstSwing(bot)
+    T.check("wind-up once: waited for the seen hit (t=" .. tostring(swing and swing.t) .. ")", swing ~= nil and swing.t >= 0.55)
+end
+
 print("lasthit [" .. T.runtime() .. "]")
 T.finish()

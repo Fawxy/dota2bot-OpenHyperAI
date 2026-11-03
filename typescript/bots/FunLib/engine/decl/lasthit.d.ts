@@ -6,8 +6,16 @@ import { TaskBody, TaskCreep, TaskUnit } from "./types";
  * the prediction runs every frame, so they enter it once their wind-up begins.
  */
 export declare function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number): number;
-/** Damage per second (after armour) of every visible attacker of either team currently targeting the creep. */
-export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): number;
+/**
+ * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those
+ * not winding up an attack now (their next hit lands at an unknown time within one attack cycle, so it is
+ * extrapolated; an attacker in its wind-up is credited with that hit by `incomingDamage` and its next one comes a
+ * cycle later, beyond any horizon the verbs use).
+ */
+export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): {
+    dps: number;
+    between: number;
+};
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
