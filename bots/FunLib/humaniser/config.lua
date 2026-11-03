@@ -61,7 +61,7 @@ ____exports.DEFAULTS = {
         Own = {laning = {2}},
         Teams = "allies",
         ShadowTeams = "allies",
-        LanePosEvery = 2
+        LanePosEvery = 1
     }
 }
 local function merge(defaults, overrides)

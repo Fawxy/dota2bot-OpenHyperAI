@@ -39,7 +39,7 @@ export interface StatesSettings {
     LanePosEvery: number;
 }
 
-const LANE_POS_EVERY = 2;
+const LANE_POS_EVERY = 1;
 
 export function Settings(): StatesSettings {
     return Config.Get().States as StatesSettings;
@@ -166,6 +166,8 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["pushed", info?.pushed],
         ["why", info?.why],
         ["hm", info !== undefined ? math.floor(info.margin) : undefined],
+        ["sx", spot !== undefined ? math.floor(spot.x) : undefined],
+        ["sy", spot !== undefined ? math.floor(spot.y) : undefined],
         ["hph", LaneMetrics.HeroLost(bot)],
     ]);
 }

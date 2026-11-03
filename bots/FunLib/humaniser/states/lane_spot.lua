@@ -1,9 +1,35 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local sub, len, d2, alive, breaksTower, HOLD_DRIFT
+function sub(a, b)
+    return {a.x - b.x, a.y - b.y}
+end
+function len(x, y)
+    return math.sqrt(x * x + y * y)
+end
+function d2(a, b)
+    local x, y = unpack(sub(a, b))
+    return len(x, y)
+end
+function alive(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
+end
+function breaksTower(p, towers)
+    for ____, t in ipairs(towers) do
+        if alive(t) and d2(
+            p,
+            t:GetLocation()
+        ) < ____exports.TOWER_RING + HOLD_DRIFT then
+            return true
+        end
+    end
+    return false
+end
 ____exports.MELEE_RING = 520
 ____exports.RANGED_RING = 620
 --- Enemy tower attack range (~700) plus a margin; at every level, since nothing in lane owns a dive.
 ____exports.TOWER_RING = 750
+HOLD_DRIFT = 80
 local RANGED_ABOVE = 320
 --- Ranged cores stand this much inside their range from the creep they will hit next.
 local RANGE_INSET = 50
@@ -28,19 +54,13 @@ local HP_SAFE = 0.5
 local HP_LOW = 0.25
 local HP_MARGIN = 300
 --- Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
--- with a fixed 150: cores held where the hero limit placed them 400-800 from an enemy hero and lost 0.7-1.1 HP-% a second
--- there, against 0.3 at 800-1,200.
-local REACT_SECS = 1
-local function sub(a, b)
-    return {a.x - b.x, a.y - b.y}
-end
-local function len(x, y)
-    return math.sqrt(x * x + y * y)
-end
-local function d2(a, b)
-    local x, y = unpack(sub(a, b))
-    return len(x, y)
-end
+-- with a fixed 150: cores held 400-800 from an enemy hero lost 0.7-1.1 HP-% a second there, against 0.3 at 800-1,200.
+-- lposchk2 with 1 s (reach about 920 against a 570-range hero): idle cores 800-1,000 from a ranged enemy still lost 0.39 a
+-- second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
+local REACT_SECS = 1.5
+--- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
+-- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
+local MIN_REACH = 800
 local function isRangedCreep(c)
     return (string.find(
         c:GetUnitName(),
@@ -48,10 +68,6 @@ local function isRangedCreep(c)
         1,
         true
     )) ~= nil
-end
---- Alive and in sight: a unit in the fog keeps a valid handle but reads no location.
-local function alive(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 function ____exports.HpMargin(hpFrac)
     if hpFrac >= HP_SAFE then
@@ -62,9 +78,12 @@ function ____exports.HpMargin(hpFrac)
     end
     return HP_MARGIN * (HP_SAFE - hpFrac) / (HP_SAFE - HP_LOW)
 end
---- How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement.
+--- How close `self` may stand to an enemy hero: its attack reach to us plus REACT_SECS of its movement, at least MIN_REACH.
 function ____exports.HeroReach(____self, enemy)
-    return enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT_SECS * enemy:GetCurrentMovementSpeed()
+    return math.max(
+        MIN_REACH,
+        enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT_SECS * enemy:GetCurrentMovementSpeed()
+    )
 end
 --- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
 -- `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order.
@@ -135,13 +154,8 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
             end
         end
     end
-    for ____, t in ipairs(towers) do
-        if alive(t) and d2(
-            p,
-            t:GetLocation()
-        ) < ____exports.TOWER_RING then
-            return "tower"
-        end
+    if breaksTower(p, towers) then
+        return "tower"
     end
     return hp and "hp" or nil
 end
@@ -247,6 +261,8 @@ function ____exports.Compute(bot, role)
     local best
     local bestCost = math.huge
     local bestPushed = 0
+    local keep
+    local keepPushed = 0
     local steps = math.floor(MAX_BACK / PUSH_STEP)
     do
         local k = 0
@@ -255,14 +271,18 @@ function ____exports.Compute(bot, role)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue42
+                    local __continue44
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue42 = true
+                            __continue44 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
+                        if best == nil and (keep == nil or k > keepPushed) and not breaksTower(p, towers) then
+                            keep = p
+                            keepPushed = k
+                        end
                         if ____exports.Breaks(
                             p,
                             creeps,
@@ -275,9 +295,9 @@ function ____exports.Compute(bot, role)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue42 = true
+                        __continue44 = true
                     until true
-                    if not __continue42 then
+                    if not __continue44 then
                         break
                     end
                 end
@@ -289,6 +309,15 @@ function ____exports.Compute(bot, role)
         end
     end
     if best == nil then
+        if keep ~= nil then
+            return {
+                spot = keep,
+                pushed = keepPushed,
+                anchor = anchor,
+                why = "xp",
+                margin = margin
+            }
+        end
         return {
             spot = Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
             pushed = steps,

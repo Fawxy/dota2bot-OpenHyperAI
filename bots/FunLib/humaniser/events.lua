@@ -877,6 +877,8 @@ ____exports.EVENTS = {
         pushed = "num",
         why = "str",
         hm = "num",
+        sx = "num",
+        sy = "num",
         hph = "num"
     }
 }

@@ -1,7 +1,7 @@
 -- Where lineup cores (pos 1-3) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
 -- lane-positioning, step 1 targets). Idle = laning mode with no attack target (lane_activity activity 'lane'), one snapshot a
 -- second, less the seconds the laning body was walking to a last hit or deny (ev=lane_pos label lasthit/deny in that second or
--- the one before; lane_pos comes every 2 s): those belong to the last-hit picker, not the spot, and are counted apart.
+-- up to the next sample, at most 2 s: lane_pos came every 2 s before step 1c and every 1 s since): those belong to the last-hit picker, not the spot, and are counted apart.
 --   lh_walk     idle snapshots spent walking to a last hit or deny;  lh_walk_hpl  HP-% points lost from them
 --   idle        the other idle snapshots (the spot's)
 --   off         idle snapshots more than 300 from the spot (lane_pos `d`): chased off it, or walking to a spot that moved;
@@ -37,14 +37,14 @@ tw (team, x, y) AS (VALUES
     (3, 4944, 4776), (3, -128, 6016), (3, -5275, 6036), (3, 2496, 2112), (3, 524, 652), (3, 6400, 384), (3, 6336, 3032),
     (3, 3552, 5776), (3, 4272, 3759), (3, 5280, 4432), (3, 6269, -2240)),
 lb0 AS MATERIALIZED (
-    SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
-    FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3
+    SELECT game_id, pid, sec, lh, d, lead(sec) OVER (PARTITION BY game_id, pid ORDER BY sec) AS nsec
+    FROM (SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
+          FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3)
 ),
--- Each sample covers its own second and the next (its own second's distance first).
+-- Each sample covers its own second, and the next one too when no sample lands in it (the 2 s cadence before step 1c).
 lb AS MATERIALIZED (
-    SELECT game_id, pid, sec, max(lh) AS lh, coalesce(max(CASE WHEN nxt = 0 THEN d END), max(d)) AS d
-    FROM (SELECT game_id, pid, sec, lh, d, 0 AS nxt FROM lb0 UNION ALL SELECT game_id, pid, sec + 1, lh, d, 1 FROM lb0)
-    GROUP BY 1, 2, 3
+    SELECT game_id, pid, sec, lh, d FROM lb0
+    UNION ALL SELECT game_id, pid, sec + 1, lh, d FROM lb0 WHERE nsec IS NULL OR nsec > sec + 1
 ),
 i AS (
     SELECT a.*,
