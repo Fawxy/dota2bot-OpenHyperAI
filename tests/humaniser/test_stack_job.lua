@@ -540,7 +540,9 @@ do
 	local _, holds = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot%) then return end', '')
 	check('usage: spells and items held for the stack job and the bench', holds == 2, holds)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
-	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then"))
+	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then\n"))
+	-- cil4: with only the two trade triggers skipped, the tower branches still ran our cores out of their lane.
+	check('farm: our core in lane skips every ShouldRun branch (Ours.CoreTrade)', has(farm, 'shouldRunTime = J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) and 0 or X.ShouldRun(bot);'))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.Chooser.Abort(bot, "defend-ping")', 1, true)

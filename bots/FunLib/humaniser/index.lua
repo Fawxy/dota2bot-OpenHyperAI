@@ -338,7 +338,8 @@ if Telemetry.GuardsEnabled() then
         OwnsFrame = no,
         Think = none,
         OnEnd = none,
-        LastHitYieldsToRetreat = no
+        LastHitYieldsToRetreat = no,
+        TradeOwnsLaneRun = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule(

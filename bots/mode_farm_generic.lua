@@ -103,7 +103,8 @@ function GetDesireHelper()
 			runMode = false;
 		end
 		
-		shouldRunTime = X.ShouldRun(bot);
+		-- Our core's lane context decides when to back off in its lane (Ours.CoreTrade); none of ShouldRun's runs apply there.
+		shouldRunTime = J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) and 0 or X.ShouldRun(bot);
 		if shouldRunTime ~= 0
 		then
 			if runTime == 0 then 

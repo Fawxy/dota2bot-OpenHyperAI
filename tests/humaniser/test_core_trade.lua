@@ -265,6 +265,14 @@ do
 	bot.mode = BOT_MODE_RETREAT
 	world.applies = false
 	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYieldsToRetreat(bot))
+	bot.mode = LANING
+	check("not our core: OHA's run-from-a-trade triggers stay", not CoreTrade.TradeOwnsLaneRun(bot))
+	world.applies = true
+	check("our core in lane: the trade rule, not OHA's run, ends a trade", CoreTrade.TradeOwnsLaneRun(bot))
+	local along = GetAmountAlongLane
+	GetAmountAlongLane = function() return { amount = 0.5, distance = 2000 } end
+	check("our core away from its lane: OHA's run triggers stay", not CoreTrade.TradeOwnsLaneRun(bot))
+	GetAmountAlongLane = along
 end
 
 finish()

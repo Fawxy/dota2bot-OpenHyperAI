@@ -196,7 +196,7 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none, FarmAllowedInLaning: no });
     Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no, BodyDenies: no, SupportStep: no });
     // An error hands the attack mode to OHA's port (undefined desire, port Think) and leaves laning's 0.9 as it was.
-    Telemetry.GuardModule("CoreTrade", CoreTrade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYieldsToRetreat: no });
+    Telemetry.GuardModule("CoreTrade", CoreTrade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYieldsToRetreat: no, TradeOwnsLaneRun: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
     Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
