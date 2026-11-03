@@ -1,4 +1,4 @@
--- Lane-wide waste by cause (slice support-lane, coverage "lane-wide waste"): one row per enemy lane creep death no hero got
+-- Lane-wide waste by place and cause (slice support-lane, coverage "lane-wide waste"): one row per enemy lane creep death no hero got
 -- (`creep_fate` side enemy, fate `other`), from either team's log, with who of the logging team was near it and why no one took it.
 -- core_*: from ev=creep_death's p<N> fields (own cores pos 1-3 within 1,500): `core_d` the nearest one's distance; `core` = on
 --   (a core was attacking this creep: p<N>t = 1 or p<N>a set), reach (a core within its attack range + 300, not on it), near

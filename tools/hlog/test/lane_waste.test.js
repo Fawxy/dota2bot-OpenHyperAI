@@ -56,6 +56,8 @@ const lines = [
     line(212, 'creep_death team=2 kind=melee x=-2415 y=-7603 hp=0.05 by=none tw=0 p1d=400 p1r=150 p1t=0'),
     // our last hit is not waste, but is a death.
     line(220, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=1 tw=0 p1d=100 p1r=150 p1t=1'),
+    // our last hit under the tower: a tower-place death, not waste.
+    line(225, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=1 tw=1 p1d=100 p1r=150 p1t=1'),
     line(700, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none tw=1'),
 ];
 
@@ -73,8 +75,9 @@ test('each no-one death gets a place from tw and the first cause that holds: cor
     const out = s.query(sql, {});
     s.db.close();
     const cols = r => [r.deaths, r.waste, r.core_on, r.pulled, r.core_reach, r.sup_reach, r.camp, r.no_reach, r.nr_core_near];
+    assert.deepStrictEqual(out.map(r => r.share), [0.5, 0.909, 1]);
     assert.deepStrictEqual(out.map(r => [r.place, ...cols(r)]), [
-        ['tower', 1, 1, 1, 0, 0, 0, 0, 0, 0],
+        ['tower', 2, 1, 1, 0, 0, 0, 0, 0, 0],
         ['open', 11, 10, 2, 1, 4, 1, 1, 1, 1],
         ['untagged', 1, 1, 0, 0, 0, 0, 0, 1, 0],
     ], 'until 600 drops t=700; our last hit at t=220 is an open death, not waste');
