@@ -13,6 +13,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as SupportLane from "bots/FunLib/humaniser/states/support_lane";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
@@ -253,9 +254,24 @@ function laningRunning(bot: Unit): boolean {
     return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
 }
 
-/** True while the laning body runs for this bot and owns its denies only (Ours.SupportDeny): the Lua Think skips DenyThink. */
-export function BodyDenies(bot: Unit): boolean {
-    return IsEnabled() && Laning.OwnsDenyOnly(bot) && laningRunning(bot);
+/** True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink. */
+export function BodySupportHits(bot: Unit): boolean {
+    return IsEnabled() && Laning.OwnsSupportHits(bot) && laningRunning(bot);
+}
+
+/** BodySupportHits with Ours.SupportLastHit: the body takes the support's claimed last hits too, so the Lua Think skips LastHitThink. */
+export function BodySupportLastHits(bot: Unit): boolean {
+    return BodySupportHits(bot) && SupportDeny.LastHits(bot);
+}
+
+/**
+ * The support's attack is the body's own last hit (its attempt's creep): Ours.LeaveCoreCreep's cancel of a swing on a creep a
+ * core could reach must not cancel a creep the claims gave the support (its core busy on another).
+ */
+export function SupportOwnsAttack(bot: Unit): boolean {
+    if (!BodySupportLastHits(bot)) return false;
+    const target = bot.GetAttackTarget();
+    return target !== undefined && target !== null && (LanePick.Attempting(bot.GetPlayerID()) as unknown) === target;
 }
 
 /**

@@ -15,6 +15,7 @@ import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as LaneClaims from "bots/FunLib/humaniser/states/lane_claims";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 export const NAME = "laning";
@@ -119,26 +120,41 @@ export function OwnsLastHit(bot: Unit): boolean {
     return false;
 }
 
-/** Whether the body takes this bot's denies only, its last hits staying OHA's (Ours.SupportDeny). */
-export function OwnsDenyOnly(bot: Unit): boolean {
+/**
+ * Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
+ * no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
+ * other frames.
+ */
+export function OwnsSupportHits(bot: Unit): boolean {
     return !OwnsLastHit(bot) && SupportDeny.Applies(bot);
 }
 
+/** The creeps this laner may take: undefined for a core (all), the support's claims otherwise. */
+function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
+    if (!OwnsSupportHits(bot)) return undefined;
+    const lastHits = SupportDeny.LastHits(bot);
+    const within = Settings().LastHitWithin;
+    return (t) => (t.kind === "deny" ? true : lastHits && LaneClaims.SupportClaim(bot, t, within) !== undefined);
+}
+
+/** The claim on the creep of each support's last pick, for its ev=lh (`claim`): held until that creep's attempt reports. */
+const claims: Record<number, { creep: Lib.TaskCreep; claim: LaneClaims.Claim | undefined } | undefined> = {};
+
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
-    return OwnsDenyOnly(bot) ? LanePick.ChooseDeny(targets) : LanePick.Choose(targets, current);
+    return LanePick.Choose(targets, current, claimsFor(bot));
 }
 
 /**
- * A deny the body would go for now: what its own scan would pick (same laneTargets query and pick), within the leash of
- * the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
+ * A lane hit the support's body would go for now: what its own scan would pick (same laneTargets query and claims), within
+ * the leash of the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
  */
-export function DenyOffered(bot: Unit): boolean {
-    if (!OwnsDenyOnly(bot)) return false;
+export function HitOffered(bot: Unit): boolean {
+    if (!OwnsSupportHits(bot)) return false;
     const spot = Spot(bot);
     if (spot !== undefined && GetUnitToLocationDistance(bot, spot) > LEASH) return false;
     const verbs = Tasks.Verbs();
     if (verbs === undefined) return false;
-    return LanePick.ChooseDeny(verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin })) !== undefined;
+    return choose(bot, verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin })) !== undefined;
 }
 
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
@@ -153,7 +169,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         lastHits: () => {
             const spot = Spot(bot);
             LanePick.NoteScan(bot.GetPlayerID(), DotaTime(), spot !== undefined ? GetUnitToLocationDistance(bot, spot) : undefined);
-            const owns = OwnsLastHit(bot) || OwnsDenyOnly(bot);
+            const owns = OwnsLastHit(bot) || OwnsSupportHits(bot);
             if (owns) LanePick.NoteWait(bot as unknown as Lib.TaskUnit);
             return owns;
         },
@@ -161,7 +177,12 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         pick: (targets, current) => {
             const chosen = choose(bot, targets, current);
             // A scan that stays on the attempt's creep is not a pick (the offers at the pick stay the attempt's).
-            if (current === undefined || chosen === undefined || chosen.creep !== current.creep) LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
+            if (current === undefined || chosen === undefined || chosen.creep !== current.creep) {
+                LanePick.NotePick(bot.GetPlayerID(), DotaTime(), targets, chosen);
+                if (chosen !== undefined && OwnsSupportHits(bot)) {
+                    claims[bot.GetPlayerID()] = { creep: chosen.creep, claim: LaneClaims.SupportClaim(bot, chosen, Settings().LastHitWithin) };
+                }
+            }
             return chosen;
         },
         label: (l) => {
@@ -174,9 +195,11 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         retarget: true,
         // A support stops waiting on a creep the others will kill before its swing lands (sdp1: 15 of 90 lost denies), so
         // the body hands the frame back to OHA's positioning and harass instead of holding (D5).
-        dropLost: OwnsDenyOnly(bot),
+        dropLost: OwnsSupportHits(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
+            const held = claims[bot.GetPlayerID()];
+            const claim = held !== undefined && held.creep === t.creep ? held.claim : undefined;
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
                 ["kind", t.kind],
@@ -190,6 +213,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["ow", ow],
                 ["walk", math.floor(t.walk * 100) / 100],
                 ["dies", t.dies === math.huge ? -1 : math.floor(t.dies * 100) / 100],
+                ["claim", claim],
                 ["msg", res.message],
             ]);
         },

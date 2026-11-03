@@ -125,9 +125,12 @@ function LaningLoad(opts)
 			MayOwn = function() return false end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
 			BodyBusy = function() return false end,
-			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the denies.
+			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the support's
+			-- lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
 			SupportStep = function() if opts.supportStep then bot.supportStepped = true return true end return false end,
-			BodyDenies = function() return opts.bodyDenies == true end,
+			BodySupportHits = function() return opts.bodyDenies == true end,
+			BodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,
+			SupportOwnsAttack = function() return opts.ownsAttack == true end,
 		},
 	}
 	local J = setmetatable({

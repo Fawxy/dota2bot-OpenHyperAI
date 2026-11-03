@@ -3,7 +3,8 @@
  * rule 01/11/2026): any reachable last hit beats every deny; denies are taken only when no last hit is offered. Within a kind
  * the earliest eta wins, a ranged or siege creep counting as RANGED_BIAS sooner, so a melee creep due now still beats a ranged
  * one due much later. Bias is `judgement`. A creep that will be dead before the bot can walk into range and swing is skipped
- * (slice 5), as is one more than MAX_WALK away (slice lane-last-hits).
+ * (slice 5), as is one more than MAX_WALK away (slice lane-last-hits). One picker for every laner (user 03/11/2026: laning is one
+ * shared body with role as an input): the role enters as `mine`, the creeps that are the bot's to take (states/lane_claims).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 
@@ -44,13 +45,21 @@ export const SWITCH_GAP = 0.5;
  * The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
  * taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
  * never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
- * with no attempt died while the body waited on another creep that was still on offer.
+ * with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
+ * considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
+ * for it too.
  */
-export function Choose(this: void, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
+export function Choose(
+    this: void,
+    targets: Lib.Verbs.LaneTarget[],
+    current?: Lib.Verbs.LaneTarget,
+    mine?: (this: void, t: Lib.Verbs.LaneTarget) => boolean,
+): Lib.Verbs.LaneTarget | undefined {
     let best: Lib.Verbs.LaneTarget | undefined;
     let bestKey = Infinity;
     let cur: Lib.Verbs.LaneTarget | undefined;
     for (const t of targets) {
+        if (mine !== undefined && !mine(t)) continue;
         if (current !== undefined && t.creep === current.creep) cur = t;
         if (!reachable(t)) continue;
         // A deny's key is pushed past any last hit's (eta is seconds, never near DENY_OFFSET), so denies win only alone.
@@ -99,24 +108,6 @@ export function Options(bot: Lib.TaskUnit): LuaMultiReturn<[number | undefined, 
 }
 
 /**
- * A support's pick (slice l1-support-deny, user rule 02/11/2026): denies only, the reachable one with the earliest eta (ranged
- * bias as Choose); the last hits laneTargets offers are left to OHA's own last-hit step.
- */
-export function ChooseDeny(this: void, targets: Lib.Verbs.LaneTarget[]): Lib.Verbs.LaneTarget | undefined {
-    let best: Lib.Verbs.LaneTarget | undefined;
-    let bestKey = Infinity;
-    for (const t of targets) {
-        if (t.kind !== "deny" || !reachable(t)) continue;
-        const key = t.eta - (t.ranged ? RANGED_BIAS : 0);
-        if (key < bestKey) {
-            bestKey = key;
-            best = t;
-        }
-    }
-    return best;
-}
-
-/**
  * What the laning body last did about last hits, per player, for the snapshot's `lf` field (slice 5, missed-bar step 1:
  * creeps dying in the core's range with no attempt near them had no cause in the log). Telemetry only.
  */
@@ -148,6 +139,13 @@ function scanOf(pid: number): Scan {
         scans[pid] = s;
     }
     return s;
+}
+
+/** The creep this laner's body is in an attempt on (walking to it, waiting, or swinging), if any: a support's claims read its core's. */
+export function Attempting(pid: number): Lib.TaskCreep | undefined {
+    const s = scans[pid];
+    if (s === undefined || (s.ph !== "lasthit" && s.ph !== "deny")) return undefined;
+    return s.chosen?.creep;
 }
 
 export function NotePhase(pid: number, ph: string): void {

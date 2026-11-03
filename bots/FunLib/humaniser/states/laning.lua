@@ -108,6 +108,7 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local LaneClaims = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_claims")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 ____exports.NAME = "laning"
 --- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
@@ -209,23 +210,42 @@ function ____exports.OwnsLastHit(bot)
     end
     return false
 end
---- Whether the body takes this bot's denies only, its last hits staying OHA's (Ours.SupportDeny).
-function ____exports.OwnsDenyOnly(bot)
+--- Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
+-- no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
+-- other frames.
+function ____exports.OwnsSupportHits(bot)
     return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
 end
-local function choose(bot, targets, current)
-    local ____OwnsDenyOnly_result_11
-    if ____exports.OwnsDenyOnly(bot) then
-        ____OwnsDenyOnly_result_11 = LanePick.ChooseDeny(targets)
-    else
-        ____OwnsDenyOnly_result_11 = LanePick.Choose(targets, current)
+--- The creeps this laner may take: undefined for a core (all), the support's claims otherwise.
+local function claimsFor(bot)
+    if not ____exports.OwnsSupportHits(bot) then
+        return nil
     end
-    return ____OwnsDenyOnly_result_11
+    local lastHits = SupportDeny.LastHits(bot)
+    local within = ____exports.Settings().LastHitWithin
+    return function(t)
+        local ____temp_11
+        if t.kind == "deny" then
+            ____temp_11 = true
+        else
+            ____temp_11 = lastHits and LaneClaims.SupportClaim(bot, t, within) ~= nil
+        end
+        return ____temp_11
+    end
 end
---- A deny the body would go for now: what its own scan would pick (same laneTargets query and pick), within the leash of
--- the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
-function ____exports.DenyOffered(bot)
-    if not ____exports.OwnsDenyOnly(bot) then
+--- The claim on the creep of each support's last pick, for its ev=lh (`claim`): held until that creep's attempt reports.
+local claims = {}
+local function choose(bot, targets, current)
+    return LanePick.Choose(
+        targets,
+        current,
+        claimsFor(bot)
+    )
+end
+--- A lane hit the support's body would go for now: what its own scan would pick (same laneTargets query and claims), within
+-- the leash of the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
+function ____exports.HitOffered(bot)
+    if not ____exports.OwnsSupportHits(bot) then
         return false
     end
     local spot = ____exports.Spot(bot)
@@ -236,10 +256,13 @@ function ____exports.DenyOffered(bot)
     if verbs == nil then
         return false
     end
-    return LanePick.ChooseDeny(verbs.laneTargets(
+    return choose(
         bot,
-        {within = ____exports.Settings().LastHitWithin}
-    )) ~= nil
+        verbs.laneTargets(
+            bot,
+            {within = ____exports.Settings().LastHitWithin}
+        )
+    ) ~= nil
 end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk"
@@ -269,7 +292,7 @@ local body = __TS__Generator(function(bot, ctx)
                     DotaTime(),
                     spot ~= nil and GetUnitToLocationDistance(bot, spot) or nil
                 )
-                local owns = ____exports.OwnsLastHit(bot) or ____exports.OwnsDenyOnly(bot)
+                local owns = ____exports.OwnsLastHit(bot) or ____exports.OwnsSupportHits(bot)
                 if owns then
                     LanePick.NoteWait(bot)
                 end
@@ -285,6 +308,16 @@ local body = __TS__Generator(function(bot, ctx)
                         targets,
                         chosen
                     )
+                    if chosen ~= nil and ____exports.OwnsSupportHits(bot) then
+                        claims[bot:GetPlayerID()] = {
+                            creep = chosen.creep,
+                            claim = LaneClaims.SupportClaim(
+                                bot,
+                                chosen,
+                                ____exports.Settings().LastHitWithin
+                            )
+                        }
+                    end
                 end
                 return chosen
             end,
@@ -299,9 +332,17 @@ local body = __TS__Generator(function(bot, ctx)
             far = FAR,
             leash = LEASH,
             retarget = true,
-            dropLost = ____exports.OwnsDenyOnly(bot),
+            dropLost = ____exports.OwnsSupportHits(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
+                local held = claims[bot:GetPlayerID()]
+                local ____temp_12
+                if held ~= nil and held.creep == t.creep then
+                    ____temp_12 = held.claim
+                else
+                    ____temp_12 = nil
+                end
+                local claim = ____temp_12
                 Telemetry.Event(
                     "lh",
                     {
@@ -329,6 +370,7 @@ local body = __TS__Generator(function(bot, ctx)
                             "dies",
                             t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
                         },
+                        {"claim", claim},
                         {"msg", res.message}
                     }
                 )

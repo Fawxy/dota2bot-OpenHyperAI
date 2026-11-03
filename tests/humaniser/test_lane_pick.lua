@@ -33,16 +33,23 @@ do
 	check("pick: an unreachable last hit does not block a deny", Pick.Choose({ far, d }) == d)
 end
 
--- Slice l1-support-deny (user rule 02/11/2026): a support's pick is denies only, earliest eta with the ranged bias; last hits
--- are left to OHA's own step, and the reach rule still applies.
+-- One picker for every laner (slice support-lane-hits): `mine` is the role input. A support whose claims give it no last hit
+-- (denies only, as slice l1-support-deny) takes the deny with the earliest eta and ranged bias; the reach rule still applies.
+local function denies(t) return t.kind == "deny" end
 do
 	local e, d = target("lasthit", 0), target("deny", 0.5)
-	check("deny pick: a deny is chosen over a last hit due sooner", Pick.ChooseDeny({ e, d }) == d)
-	check("deny pick: last hits only, nothing chosen", Pick.ChooseDeny({ e }) == nil)
+	check("claims: a deny is chosen over a last hit that is not mine", Pick.Choose({ e, d }, nil, denies) == d)
+	check("claims: only last hits that are not mine, nothing chosen", Pick.Choose({ e }, nil, denies) == nil)
 	local d2, rd = target("deny", 0.2), target("deny", 0.5, true)
-	check("deny pick: the ranged deny beats a melee one due 0.3 s sooner", Pick.ChooseDeny({ d2, rd }) == rd)
+	check("claims: the ranged deny beats a melee one due 0.3 s sooner", Pick.Choose({ d2, rd }, nil, denies) == rd)
 	local far = target("deny", 0, false, 1.2, 0.9)
-	check("deny pick: a deny dead before the support arrives is skipped", Pick.ChooseDeny({ far, d }) == d)
+	check("claims: a deny dead before the support arrives is skipped", Pick.Choose({ far, d }, nil, denies) == d)
+	-- A claimed last hit is one no core will take: it beats a deny as for a core (the strict priority).
+	local claimed = target("lasthit", 0.6)
+	local mine = function(t) return t.kind == "deny" or t == claimed end
+	check("claims: a claimed last hit beats a deny due sooner", Pick.Choose({ d2, e, claimed }, nil, mine) == claimed)
+	-- A waited-on creep the claims no longer give the bot (its core became free for it) is left for the best that is mine.
+	check("claims: a waited-on creep no longer mine is left for a deny", Pick.Choose({ e, d }, e, denies) == d)
 end
 
 -- Slice 5 (probe s5p3): a creep due now but 1.2 s of walking away, which the others kill in 0.9 s, is skipped even
@@ -70,8 +77,8 @@ do
     check("pick: a creep exactly MAX_WALK away is still taken", Pick.Choose({ edge }) == edge)
     local fard = target("deny", 1.3, false, 1.3, 4)
     local neard = target("deny", 0.9, false, 0.2, 3)
-    check("deny pick: a deny over MAX_WALK away is skipped for a nearer one", Pick.ChooseDeny({ fard, neard }) == neard)
-    check("deny pick: a deny over MAX_WALK away alone is not picked", Pick.ChooseDeny({ fard }) == nil)
+    check("claims: a deny over MAX_WALK away is skipped for a nearer one", Pick.Choose({ fard, neard }, nil, denies) == neard)
+    check("claims: a deny over MAX_WALK away alone is not picked", Pick.Choose({ fard }, nil, denies) == nil)
     Pick.NotePick(6, 1, { far, near }, Pick.Choose({ far, near }))
     check("lf: the far creep counts as skipped", string.find(Pick.Describe(6, 1), "n=2 sk=1 ch=1", 1, true) ~= nil)
 end

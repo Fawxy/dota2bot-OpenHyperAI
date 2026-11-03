@@ -30,8 +30,10 @@ ____exports.SWITCH_GAP = 0.5
 --- The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
 -- taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
 -- never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
--- with no attempt died while the body waited on another creep that was still on offer.
-function ____exports.Choose(targets, current)
+-- with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
+-- considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
+-- for it too.
+function ____exports.Choose(targets, current, mine)
     local best
     local bestKey = math.huge
     local cur
@@ -39,6 +41,10 @@ function ____exports.Choose(targets, current)
         do
             local __continue5
             repeat
+                if mine ~= nil and not mine(t) then
+                    __continue5 = true
+                    break
+                end
                 if current ~= nil and t.creep == current.creep then
                     cur = t
                 end
@@ -76,10 +82,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue14
+            local __continue15
             repeat
                 if not reachable(t) then
-                    __continue14 = true
+                    __continue15 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -90,9 +96,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue14 = true
+                __continue15 = true
             until true
-            if not __continue14 then
+            if not __continue15 then
                 break
             end
         end
@@ -113,33 +119,6 @@ function ____exports.Options(bot)
     local lastHits, denies = countOffers(offers(bot))
     return lastHits, denies
 end
---- A support's pick (slice l1-support-deny, user rule 02/11/2026): denies only, the reachable one with the earliest eta (ranged
--- bias as Choose); the last hits laneTargets offers are left to OHA's own last-hit step.
-function ____exports.ChooseDeny(targets)
-    local best
-    local bestKey = math.huge
-    for ____, t in ipairs(targets) do
-        do
-            local __continue24
-            repeat
-                if t.kind ~= "deny" or not reachable(t) then
-                    __continue24 = true
-                    break
-                end
-                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
-                if key < bestKey then
-                    bestKey = key
-                    best = t
-                end
-                __continue24 = true
-            until true
-            if not __continue24 then
-                break
-            end
-        end
-    end
-    return best
-end
 local scans = {}
 local function scanOf(pid)
     local s = scans[pid]
@@ -148,6 +127,15 @@ local function scanOf(pid)
         scans[pid] = s
     end
     return s
+end
+--- The creep this laner's body is in an attempt on (walking to it, waiting, or swinging), if any: a support's claims read its core's.
+function ____exports.Attempting(pid)
+    local s = scans[pid]
+    if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" then
+        return nil
+    end
+    local ____opt_0 = s.chosen
+    return ____opt_0 and ____opt_0.creep
 end
 function ____exports.NotePhase(pid, ph)
     scanOf(pid).ph = ph

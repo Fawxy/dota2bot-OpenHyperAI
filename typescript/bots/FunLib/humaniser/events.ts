@@ -834,6 +834,8 @@ export const EVENTS = {
         /** At the pick: seconds to walk into attack range, and until the others kill the creep (laneTargets facts). */
         walk: "num",
         dies: "num",
+        /** A support's claim on the creep (states/lane_claims): `deny`, `free` (no core near enough), `busy` (its core in an attempt on another creep). */
+        claim: "str",
         msg: "str",
     },
     /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */

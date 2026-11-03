@@ -15,6 +15,7 @@ import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -59,6 +60,9 @@ function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
     if (!allowed) return false;
     // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
     if (string.sub(reason, 1, 5) === "take:") return true;
+    // Ours.SupportLastHit: whether a core takes the creep is the support's claims' call (states/lane_claims, the shared
+    // picker's role input); filtering it here as well would hide the creep a busy core cannot take.
+    if (SupportDeny.Applies(bot) && SupportDeny.LastHits(bot)) return true;
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos <= 2) return true;
     if (f.allies === undefined) f.allies = bot.GetNearbyHeroes(1600, false, BotMode.None);

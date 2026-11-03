@@ -65,7 +65,7 @@ local function Fresh(states, o)
 	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
-		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true }
+		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -312,14 +312,14 @@ do -- CoreLastHitDire = false: Radiant keeps the body, Dire stays on Valve's lan
 	check("dire off: a Dire pos 4 stays untouched", side(3, 4) == false)
 end
 
--- Slice l1-support-deny, Ours.SupportDeny: a support's body takes a dying own creep (the deny) and nothing else; its last hits
--- stay OHA's, and the support's lane step steps the body ahead of OHA's own laning steps while a deny is offered.
+-- Slice l1-support-deny, Ours.SupportDeny: a support's body takes a dying own creep (the deny), and the support's lane step
+-- steps the body ahead of OHA's own laning steps while a lane hit is offered. Its last hits: see the support-lane-hits block.
 do
 	local DEFAULTS = { Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }
 	local function support(o)
 		local H, bot, c
 		silenced(function()
-			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff })
+			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff, supportLastHit = o.lastHits })
 			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
 			for _ = 1, 4 do frame(H, bot) end
 			local team = o.enemy and 3 or (o.team or 2)
@@ -330,9 +330,9 @@ do
 	local H, bot, own = support({})
 	local Laning = require("bots/FunLib/humaniser/states/laning")
 	check("support deny: may own (Lua Think)", H.States.MayOwn(bot) == true)
-	check("support deny: the body owns its denies, not its last hits", H.States.BodyDenies(bot) == true and H.States.BodyLastHits(bot) == false)
+	check("support deny: the body owns the support's lane hits, not a core's last hits", H.States.BodySupportHits(bot) == true and H.States.BodyLastHits(bot) == false)
 	local offered
-	silenced(function() offered = Laning.DenyOffered(bot) end)
+	silenced(function() offered = Laning.HitOffered(bot) end)
 	check("support deny: the dying own creep is offered", offered == true)
 	local stepped
 	silenced(function()
@@ -350,26 +350,71 @@ do
 	check("support deny: the support step acts first", stepped == true)
 	check("support deny: the body swung at the own creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == own)
 
-	local He, bote, enemy = support({ enemy = true })
+	local He, bote = support({ enemy = true, lastHits = false })
 	local offeredEnemy
 	silenced(function()
-		offeredEnemy = require("bots/FunLib/humaniser/states/laning").DenyOffered(bote)
+		offeredEnemy = require("bots/FunLib/humaniser/states/laning").HitOffered(bote)
 		for _ = 1, 3 do frame(He, bote) end
 	end)
-	check("support deny: a dying enemy creep is not the body's (OHA's last hit)", offeredEnemy == false and bote.attacks == nil)
+	check("support last hits off: a dying enemy creep is not the body's (OHA's last hit)", offeredEnemy == false and bote.attacks == nil and He.States.BodySupportLastHits(bote) == false)
 
 	local Hl, botl = support({ at = Vector(-200, 0) })
 	silenced(function() Hl.States.SetLaneSpot(botl, function() return Vector(-1500, 0) end) end)
 	local past
-	silenced(function() past = require("bots/FunLib/humaniser/states/laning").DenyOffered(botl) end)
+	silenced(function() past = require("bots/FunLib/humaniser/states/laning").HitOffered(botl) end)
 	check("support deny: nothing offered beyond the leash from the spot", past == false)
 
 	local Hc, botc = support({ pos = 1 })
-	check("support deny: a core is not deny-only", require("bots/FunLib/humaniser/states/laning").OwnsDenyOnly(botc) == false)
+	check("support deny: a core's lane hits are not the support body's", require("bots/FunLib/humaniser/states/laning").OwnsSupportHits(botc) == false)
 	local Hoff, botoff = support({ on = false })
-	check("support deny off: OHA's path (no body denies)", Hoff.States.BodyDenies(botoff) == false and botoff.attacks == nil)
+	check("support deny off: OHA's path (no body denies)", Hoff.States.BodySupportHits(botoff) == false and botoff.attacks == nil)
 	local Hd, botd = support({ team = 3, direOff = true })
 	check("support deny, Dire off: a Dire support stays OHA's", Hd.States.MayOwn(botd) == false)
+end
+
+
+-- Slice support-lane-hits, Ours.SupportLastHit: the support's body takes the last hits no allied core will take (states/lane_claims):
+-- a creep with no core near (free), not one its idle core is beside, and the second creep due while its core's body is in an
+-- attempt on another (busy) when the core cannot swing again before the others kill it.
+do
+	local DEFAULTS = { Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }
+	local Pick = require("bots/FunLib/humaniser/states/lane_pick")
+	local function world(o)
+		local H, bot, positions, x, y, core
+		silenced(function()
+			H, bot, positions = Fresh(DEFAULTS, { pos = 5, supportDeny = true })
+			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+			for _ = 1, 4 do frame(H, bot) end
+			x = creep({ loc = Vector(-200, 0), hp = 45, regen = -40 })
+			if o.core then
+				core = MakeUnit({ pid = 2, mode = LANING, loc = o.coreAt or Vector(-150, 50), level = 3 })
+				positions[2] = 1
+			end
+			if o.busy then
+				y = creep({ loc = Vector(-100, 80), hp = 70, regen = -40 })
+				Pick = require("bots/FunLib/humaniser/states/lane_pick")
+				Pick.NotePick(2, T, { { creep = y, kind = "lasthit", eta = 0.3, due = 0.3, walk = 0, dies = 5, ranged = false } },
+					{ creep = y, kind = "lasthit", eta = 0.3, due = 0.3, walk = 0, dies = 5, ranged = false })
+				Pick.NotePhase(2, "lasthit")
+			end
+		end)
+		local Laning = require("bots/FunLib/humaniser/states/laning")
+		local offered
+		silenced(function()
+			offered = Laning.HitOffered(bot)
+			for _ = 1, 3 do frame(H, bot) end
+		end)
+		local Claims = require("bots/FunLib/humaniser/states/lane_claims")
+		return offered, bot, x, Claims
+	end
+	local offered, bot, x = world({})
+	check("support last hit: a dying enemy creep with no core near is the body's", offered == true and bot.attacks ~= nil and bot.attacks[#bot.attacks] == x)
+	offered, bot = world({ core = true })
+	check("support last hit: not a creep its idle core is beside (Etiquette.CanTake)", offered == false and bot.attacks == nil)
+	offered, bot, x = world({ core = true, busy = true })
+	check("support last hit: the second creep, its core's body in an attempt on another, is the body's", offered == true and bot.attacks ~= nil and bot.attacks[#bot.attacks] == x)
+	offered, bot = world({ core = true, coreAt = Vector(-4000, 3000) })
+	check("support last hit: a core out of reach leaves the creep to the support", offered == true)
 end
 
 finish()
