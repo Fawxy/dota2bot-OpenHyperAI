@@ -7,11 +7,11 @@ local V = tasks.Verbs
 -- About 30 frames per second, as in game: the swing decision is only as fine as the frame.
 local DT = 1 / 30
 
-local function run(sim, g, maxFrames)
+local function run(sim, g, maxFrames, dt)
     for _ = 1, maxFrames or 3000 do
         local r = g:next()
         if r.done then return r.value, sim.t end
-        sim:step(DT)
+        sim:step(dt or DT)
     end
     error("generator did not finish", 0)
 end
@@ -435,6 +435,59 @@ do
     T.check("calibration: fa is the attack point (" .. tostring(fa) .. ")", fa ~= nil and math.abs(fa - 0.5) <= 0.04)
     T.eq("calibration: lhp 0, our hit took the creep", lhp, 0)
     T.check("calibration: fg is the sim's frame (" .. tostring(fg) .. ")", fg ~= nil and math.abs(fg - DT) <= 0.005)
+end
+
+-- The relied horizon ends one server tick before our hit, not one think gap. Stepped every 1/6 s (the body's in-game
+-- rate, llhscn1), a verb that dropped every allied hit landing in the last 0.2 s before its own waited one frame too
+-- long and lost the creep to the next hit. Allied hits of 40 land at 0.467, 0.747 and 1.05 on a 120 HP creep; ours
+-- takes 0.6 s, so the swing is due at 0.333 (two hits inside its horizon) and lands at 0.933, before the third.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 120, team = 3, passive = true }
+    for i, first in ipairs({ 0, 0.28, 0.583 }) do
+        sim:addCreep{ x = 120, y = 40 * i, team = 2, damage = 40, attackPoint = 0.467, autoAttack = true,
+            attackTarget = creep, firstSwingAt = first, passive = true }
+    end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }), nil, 1 / 6)
+    T.eq("think gap: ok at six frames a second", r.reason, "ok")
+    local swing = firstSwing(bot)
+    T.check("think gap: swung at the frame two hits were inside the horizon (t=" .. tostring(swing and swing.t) .. ")",
+        swing ~= nil and swing.t < 0.4)
+end
+
+-- Damage the attacker index cannot see (a unit whose attack target reads nil, as a fogged enemy's does) still lands.
+-- The creep's own HP history is the floor: hits of 30 every 0.3 s on a 200 HP creep read as at least 80 a second
+-- (100 less one hit over the window), so the swing (0.5 s to land) goes at 50 HP and lands after the hit that
+-- leaves 20; waiting for hp <= 44 would swing at 20 and land after the hit that kills it.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 44, attackPoint = 0.5 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 200, team = 3, passive = true }
+    local unseen = sim:addCreep{ x = 120, y = 40, team = 2, damage = 30, attackPoint = 0.3, secondsPerAttack = 0.3,
+        autoAttack = true, attackTarget = creep, passive = true }
+    unseen.GetAttackTarget = function() return nil end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 5 }))
+    T.eq("observed rate: ok", r.reason, "ok")
+    local swing = firstSwing(bot)
+    T.check("observed rate: swung above our damage (hp=" .. tostring(swing and swing.targetHp) .. ")", swing ~= nil and swing.targetHp > 44)
+    local obs = tonumber(string.match(r.message or "", "obs=(%d+)"))
+    T.check("observed rate: obs on the message (" .. tostring(obs) .. ")", obs ~= nil and obs >= 60 and obs <= 100)
+    T.check("observed rate: the index saw nothing (idps=0)", string.find(r.message or "", "idps=0", 1, true) ~= nil)
+end
+
+-- A creep killed during our wind-up cancels the attack. Seen on the next frame, at the predicted landing time, it is
+-- a late swing (`taken_by_other`, the attack never fired), not `missed`.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, whiff = true }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 40, team = 3, passive = true }
+    local unseen = sim:addCreep{ x = 120, y = 40, team = 2, damage = 50, attackPoint = 0.45, autoAttack = true,
+        attackTarget = creep, passive = true }
+    unseen.GetAttackTarget = function() return nil end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 2 }), nil, 0.25)
+    T.eq("killed in our wind-up: taken_by_other", r.reason, "taken_by_other")
+    T.check("killed in our wind-up: attack never fired (" .. tostring(r.message) .. ")", string.find(r.message or "", "fa=-1", 1, true) ~= nil)
 end
 
 print("lasthit [" .. T.runtime() .. "]")

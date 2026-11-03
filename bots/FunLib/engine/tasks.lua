@@ -1605,10 +1605,14 @@ local RANGED_PRIORITY_SKILL = 0.6
 --- Extra seconds a lapse delays the swing, on top of the normal timing error.
 local LAPSE_MIN = 0.15
 local LAPSE_MAX = 0.4
---- Seconds a hit must land before ours to be relied on (one frame at 30 fps); grows with the observed frame
--- time, since bots think less often per game second at high timescales.
+--- Seconds a hit must land before ours to be relied on: one server tick at 30 fps.
 local MIN_MARGIN = 0.034
+--- The frame margin: 1.2x the observed gap between the frames the verb is stepped at (MIN_MARGIN to MAX_MARGIN).
+-- It only bounds how early in the attack cooldown an order may be given; the prediction horizon uses MIN_MARGIN.
 local MAX_MARGIN = 0.3
+--- Seconds of the creep's HP history the observed damage rate is read over, and the least history it needs.
+local OBSERVE_WINDOW = 1.5
+local OBSERVE_MIN = 0.3
 --- Seconds ahead over which attacks are visible as wind-ups (a creep's attack point is 0.467 s).
 local SEEN_AHEAD = 0.45
 --- An attack order may be given this long before the cooldown ends: Dota queues it and the swing starts on time.
@@ -1744,9 +1748,14 @@ end
 --- What the bot believes about a swing ordered now. A negative timing shift shortens the horizon (late swing);
 -- a positive one extends it with the attackers' DPS, i.e. counts hits that have not started yet (early swing):
 -- the visible prediction alone cannot over-anticipate, so without that extrapolation early errors vanish.
-local function believe(bot, creep, withError, margin)
-    if margin == nil then
-        margin = MIN_MARGIN
+-- `observedDps` is the creep's measured HP loss per second while the caller watched it (0 when unknown). The part
+-- of it the attacker index does not account for (observed minus the indexed attackers' DPS) is damage from
+-- attackers the index misses (fogged, untracked), extrapolated over the horizon; where the index sees every
+-- attacker the belief is unchanged, so the seen wind-ups keep their phase information. In the lane-only
+-- calibration games (llhscn1, 03/11/2026) the seen hits came to about half the damage that landed before our hit.
+local function believe(bot, creep, withError, observedDps)
+    if observedDps == nil then
+        observedDps = 0
     end
     local tHit = ____exports.ownHitTime(bot, creep)
     local ____this_66
@@ -1754,10 +1763,11 @@ local function believe(bot, creep, withError, margin)
     local ____opt_65 = ____this_66.GetHealthRegen
     local regen = ____opt_65 and ____opt_65(____this_66) or 0
     local hp = creep:GetHealth()
-    local relied = math.max(0, tHit - margin)
+    local relied = math.max(0, tHit - MIN_MARGIN)
     local dps = ____exports.incomingDps(bot, creep)
+    local unseen = math.max(0, observedDps + regen - dps)
     local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
-    local visible = certain - math.max(0, relied - SEEN_AHEAD) * dps
+    local visible = certain - math.max(0, relied - SEEN_AHEAD) * dps - unseen * relied
     local believed = visible
     local width = 0
     local eps = 0
@@ -1766,8 +1776,8 @@ local function believe(bot, creep, withError, margin)
         width = Skill.lastHitError(bot)
         eps = r.eps
         if r.shift < 0 then
-            local h = math.max(0, tHit - margin + r.shift)
-            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * dps
+            local h = math.max(0, relied + r.shift)
+            believed = hp + regen * h - ____exports.incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * dps - unseen * h
         elseif r.shift > 0 then
             believed = visible + regen * r.shift - dps * r.shift
         end
@@ -2009,6 +2019,8 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local margin = MIN_MARGIN
     local gapSum = 0
     local gapN = 0
+    local seen = {}
+    local observedDps = 0
     while true do
         local t = now()
         if lastFrame ~= nil and t > lastFrame then
@@ -2020,6 +2032,23 @@ local strike = __TS__Generator(function(bot, mode, opts)
             gapN = gapN + 1
         end
         lastFrame = t
+        if not gone(creep) then
+            local hp = creep:GetHealth()
+            seen[#seen + 1] = {t = t, hp = hp}
+            while #seen > 1 and t - seen[2].t >= OBSERVE_WINDOW do
+                table.remove(seen, 1)
+            end
+            local span = t - seen[1].t
+            local biggest = 0
+            do
+                local i = 1
+                while i < #seen do
+                    biggest = math.max(biggest, seen[i].hp - seen[i + 1].hp)
+                    i = i + 1
+                end
+            end
+            observedDps = span >= OBSERVE_MIN and math.max(0, (seen[1].hp - hp - biggest) / span) or 0
+        end
         if not bot:IsAlive() then
             return early(fail("dead"))
         end
@@ -2051,7 +2080,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             local cd = ____exports.cooldownLeft(bot)
             held = mode == "deny" and not deniable(creep) and "hp50" or string.format("cd c=%.2f", cd)
             if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
-                local b = believe(bot, creep, true, margin)
+                local b = believe(bot, creep, true, observedDps)
                 held = string.format(
                     "wait hp=%d pred=%d mine=%d",
                     math.floor(creep:GetHealth()),
@@ -2061,13 +2090,15 @@ local strike = __TS__Generator(function(bot, mode, opts)
                 if due(b) then
                     tHit = b.tHit
                     diag = string.format(
-                        "w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f",
+                        "w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d",
                         now() - start,
                         math.floor(creep:GetHealth()),
                         math.floor(b.hpAtHit),
                         math.floor(b.mine),
                         b.tHit,
-                        margin
+                        margin,
+                        math.floor(observedDps),
+                        math.floor(____exports.incomingDps(bot, creep))
                     )
                     bot:Action_AttackUnit(creep, true)
                     break
@@ -2114,7 +2145,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             return out(ok())
         end
         if gone(creep) then
-            return out(fail(landBy() and "missed" or lostReason(enemyOnIt)))
+            return out(fail(landBy() and fireAt ~= nil and "missed" or lostReason(enemyOnIt)))
         end
         if not bot:IsAlive() then
             return fail("dead")

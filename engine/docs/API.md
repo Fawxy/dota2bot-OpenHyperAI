@@ -120,16 +120,23 @@ ranged bots)` and fires once `HP + regen * t - incoming(t) <= ownDamage` while `
 (`GetActualIncomingDamage`): attack projectiles in flight (`GetIncomingTrackingProjectiles`) that arrive within
 t, and every visible creep, hero or tower of either team whose attack on the creep is in its wind-up and lands
 within t (`(attackPoint - animCycle) * secondsPerAttack`, plus projectile travel for ranged attackers; OHA's
-`GetCreepAttackActivityWillRealDamage`). Only hits landing at least a frame margin before ours count (0.034 s,
-or 1.2x the observed frame time up to 0.3 s: a hit in the same frame may be applied after ours). With the
-adapter's `attackClock` the verb does not order a swing while the attack cooldown has more than that margin
-left (unseen future hits would land inside the longer horizon). `deny` also requires the creep below 50% max HP. Turn time is not
-modelled; tower "tap first" tricks are the body's.
+`GetCreepAttackActivityWillRealDamage`). Only hits landing at least one server tick (0.034 s) before ours count: a
+hit in the same tick may be applied after ours. The tick is not the host's think gap (in game the body is stepped
+about every 0.167 s): tying the margin to the think gap made the verb ignore every hit in the last 0.2 s before
+its own and swing late (lane-only calibration llhscn1, 03/11/2026, 35% of swings late against 8% early). Hits the
+attacker index misses still count through the creep's own HP: while it waits the verb reads the creep's HP over the
+last 1.5 s as a lower bound on the damage rate (the loss less one hit, the largest single-frame drop), and the part
+of that rate the indexed attackers' DPS and the creep's regen do not explain is extrapolated over the horizon. Where
+the index sees every attacker the belief is unchanged. With the adapter's `attackClock` the verb does not order a
+swing while the attack cooldown has more than the frame margin left (0.034 s, or 1.2x the observed frame time up to
+0.3 s: unseen future hits would land inside the longer horizon). `deny` also requires the creep below 50% max HP.
+Turn time is not modelled; tower "tap first" tricks are the body's.
 
 **Outcome after the swing.** `GetLastAttackTime` rises when the attack fires (a ranged hero's projectile
 leaving), so the verb judges by the predicted landing time `swingAt + tHit`: last-hit/deny count up -> ok; creep
-gone before landing -> `taken_by_other` (`denied` when an enemy hero was on it); gone after landing or alive
-`CONFIRM_SLACK` (0.5 s) past it -> `missed`. Incoming damage reads attackers through one per-frame index by attack
+gone before landing, or gone after it without our attack having fired (a creep killed during our wind-up cancels
+the attack) -> `taken_by_other` (`denied` when an enemy hero was on it); gone after landing with our attack fired,
+or alive `CONFIRM_SLACK` (0.5 s) past it -> `missed`. Incoming damage reads attackers through one per-frame index by attack
 target (attack activities 1503 and 1504); `CanBeSeen` filters enemies only.
 
 **Skill error.** Per bot and creep the verb rolls, once (kept in a weak table until the creep is gone, so
@@ -140,16 +147,19 @@ A negative shift shortens the prediction horizon: a late swing, lost to others (
 positive shift extends it with the attackers' DPS (hits not yet started): an early swing that lands while the
 creep is still too healthy (`missed`). There is no random "don't try": a low-skill bot always swings, badly.
 
-**Results.** `ok` once the bot's last-hit (deny) count rises. `missed`: its attack landed (`GetLastAttackTime`
-rose) without the kill, or nothing resolved within `t + 0.5` s. `taken_by_other`: the creep died before our
-hit (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero was attacking it as it died.
+**Results.** `ok` once the bot's last-hit (deny) count rises. `missed`: its attack fired (`GetLastAttackTime`
+rose) and the creep was gone at the predicted landing without the kill, or nothing resolved within `t + 0.5` s.
+`taken_by_other`: the creep died before our hit, including during our wind-up (for `deny`: to an enemy last hit). `denied` (lastHit only): an enemy hero was attacking it as it died.
 `timeout`, `no_target`, `etiquette` (every candidate vetoed by `lastHitFilter`), `dead`, `interrupted`,
 `unsupported` (no `GetAttackDamage`/`GetAttackPoint`; `deny` also needs `GetDenies`).
 
-**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= end= dt= fa= lhp= fg=` (what the swing
-was based on and how it ended; since slice lane-last-hits the calibration fields: `fa` seconds from the order until
-`GetLastAttackTime` rose, -1 never seen; `lhp` the creep's HP on the first frame at or past the predicted landing `t`, 0 gone, -1 not
-reached; `fg` the mean gap in seconds between the frames the verb saw while it waited, which is how often the host steps the body). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+**Message** (in-game attribution; slice 5). After a swing: `w=<s waited> hp= pred= mine= t= m= obs= idps= end= dt= fa= lhp= fg=` (what the swing
+was based on and how it ended; since slice lane-last-hits the calibration fields: `obs` the lower bound on the creep's observed damage
+rate (HP/s) the verb read from its HP while waiting, `idps` the DPS of the attackers the index saw on the creep at the swing (`obs`
+well above `idps` means attackers the index misses; `obs` near `idps` with the creep still dying before our hit means their wind-up
+timing is misread); `fa` seconds from the order until `GetLastAttackTime` rose, -1 never seen; `lhp` the creep's HP on the first
+frame at or past the predicted landing `t`, 0 gone, -1 not reached; `fg` the mean gap in seconds between the frames the verb saw
+while it waited, which is how often the host steps the body). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
 (the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
 
@@ -157,9 +167,12 @@ Offline (sim, 30 fps, a creep contested by three allied melee creeps, 120 trials
 0.2 50% with both early and late misses. In game the prediction sees less than the sim, so skill 1 should land
 below 100% of contested creeps (the 75-85% target of knowledge.md §1.2).
 
-UNVERIFIED in-game: the wind-up formula's units (attack point as a cycle fraction), `GetLastAttackTime` rising
-at landing for ranged heroes, projectile `location`/`caster` fields, and `GetNearbyTowers` returning towers
-whose `GetAttackTarget` is the creep.
+UNVERIFIED in-game: the wind-up formula's units (attack point as a cycle fraction), projectile `location`/`caster`
+fields, and `GetNearbyTowers` returning towers whose `GetAttackTarget` is the creep. Read in game (llhscn1,
+03/11/2026, 8x): the body is stepped every 0.167 s (`fg`); for melee heroes `GetLastAttackTime` rises at the
+predicted landing (`fa - t` median 0.07 s, the frame quantum); for ranged heroes it also sits at the predicted
+landing rather than a projectile flight earlier, so it may rise at landing, not at fire (UNVERIFIED at finer
+resolution; the outcome rule does not depend on it).
 
 ## Job verbs
 Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (reference in the bot's
