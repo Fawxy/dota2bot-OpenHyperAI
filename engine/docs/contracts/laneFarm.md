@@ -21,7 +21,7 @@ effect check:   per attempt, lastHit/deny's own (the bot's last-hit or deny coun
                 attack time rising (the attack fired), not the creep attacking the bot.
 outcomes:       the verb: dead | interrupted (interruptIf) | timeout (deadline); never ok by itself. Per attempt, through
                 onAttempt(target, result, contested): lastHit/deny's outcomes (a `prehit`: attackAndConfirm's ok |
-                missed | no_target (the creep died first) | dead | interrupted | timeout), plus interrupted with message suffix `sw=1`
+                missed | no_target (the creep died first) | dead | interrupted | timeout | unsupported), plus interrupted with message suffix `sw=1`
                 when `retarget` dropped the attempt for another creep, or `sw=0` when `dropLost` dropped it (pick chose
                 nothing for a creep no longer offered, or answered undefined for one still offered).
 timing:         one laneTargets scan per scanEvery while holding; with `retarget`, also while an attempt waits for its

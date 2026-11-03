@@ -115,7 +115,7 @@ repeated: their next attacks are choices). Repeats assume today's distance, so t
 no hit in flight or wind-up have an unknown phase: their DPS (`unphased`) is spread evenly from 0.45 s on, as `lastHit`'s
 belief does, and `unphasedTower` says a tower is among them (its hits are the largest, so the forecast's step times are not
 known). `forecastHp(f, t)` = hp + regen t - the hits landed by t - unphased max(0, t - 0.45), below 0 once the creep is dead.
-For a caller that plans beyond one swing (the bot's pre-hit under its tower; contract none yet, one consumer in game).
+For a caller that plans beyond one swing (the bot's pre-hit under its tower). The horizon is cut to 10 s. Contract: `docs/contracts/hpForecast.md`.
 
 **`laneFarm(bot, spot, opts)` / `ctx.laneFarm`** (posture verb, src/lane.ts): holds `spot()` (holdAt with
 `opts.hold`), and while `lastHits()` allows, breaks off for the creep `opts.pick(targets)` chooses from

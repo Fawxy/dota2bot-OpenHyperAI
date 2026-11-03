@@ -1688,13 +1688,16 @@ function ____exports.incomingDps(bot, creep)
         between = physical(creep, s.between)
     }
 end
+--- The longest forecast `hpForecast` makes, in seconds (a larger horizon is cut to it).
+local FORECAST_MAX = 10
 --- The creep's HP over the next `horizon` seconds from the hits the attacker index already sees: projectiles in flight
 -- (arrival = distance / projectile speed), wind-ups (`windupLanding`), and for a tower or lane creep, its latest known hit
--- repeated every `GetSecondsPerAttack` as long as it stays on the creep (a tower keeps its target until it dies; a lane creep
--- mostly does). Heroes are not repeated: their next attacks are choices, not a cycle. Repeats assume the distance, and so the
+-- repeated every `GetSecondsPerAttack` while it attacks the creep now (UNVERIFIED in-game that it stays on it: a tower re-targets
+-- on hero aggro or when the creep leaves its range, and a lane creep on aggro, which the repeats do not foresee). Heroes are not repeated: their next attacks are choices, not a cycle. Repeats assume the distance, and so the
 -- flight time, stays as now. A fact for a caller that plans more than the one swing `lastHit` makes (the pre-hit under a
 -- tower); `forecastHp` reads it.
 function ____exports.hpForecast(bot, creep, horizon)
+    horizon = math.min(horizon, FORECAST_MAX)
     local n = nearby(bot)
     others(bot, n)
     local towers = n.towers
