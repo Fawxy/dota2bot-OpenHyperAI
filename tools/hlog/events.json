@@ -819,6 +819,7 @@
    "ow": "num",
    "walk": "num",
    "dies": "num",
+   "claim": "str",
    "msg": "str"
   },
   "trade": {
@@ -1288,6 +1289,7 @@
    "kind": "text",
    "result": "text",
    "reason": "text",
+   "claim": "text",
    "msg": "text"
   },
   "ev_trade": {
