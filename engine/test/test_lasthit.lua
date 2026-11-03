@@ -429,6 +429,24 @@ do
     T.check("enemy wind-up: oc is our attack point (" .. tostring(oc) .. ")", oc ~= nil and math.abs(oc - 0.6) <= 0.05)
 end
 
+-- Due without the enemy hero's hit (44 HP, ours 45): ew names their wind-up, er=0. Under a lapse the belief's horizon
+-- shrinks below their landing: ew/er read the hits the belief counted, so a wind-up it skipped is not named relied on
+-- (sdk review 2026-11-04-sdk-slice-lasthit-refine-logs-5f24047 F2).
+for _, lapse in ipairs({ 0, 1 }) do
+    local sim = world({ profile = function() return { lapse = lapse } end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.6 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 44, team = 3, passive = true }
+    local enemy = sim:addHero{ x = 250, y = 0, team = 3, damage = 40, attackPoint = 0.5, secondsPerAttack = 1,
+        autoAttack = true, firstSwingAt = 0 }
+    enemy.attackTarget = creep
+    for _ = 1, 3 do sim:step(DT) end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    local msg = r.message or ""
+    T.check("enemy wind-up not needed (lapse " .. lapse .. "): er=0 or not counted (" .. msg .. ")",
+        string.find(msg, "er=1", 1, true) == nil)
+    if lapse == 0 then T.check("enemy wind-up not needed: ew=1 er=0 (" .. msg .. ")", string.find(msg, "ew=1 er=0", 1, true) ~= nil) end
+end
+
 -- Skill: reaction samples stay within reactBase * (1 +- jitter / 2).
 do
     world({ profile = function() return { react = 0.4, jitter = 0.5 } end })

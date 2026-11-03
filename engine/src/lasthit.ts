@@ -118,12 +118,8 @@ function isRanged(u: TaskAttacker): boolean {
     return (u.GetAttackRange?.() ?? 0) > RANGED_ABOVE && (u.GetAttackProjectileSpeed?.() ?? 0) > 0;
 }
 
-/**
- * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up. UNVERIFIED
- * in-game: reads the wind-up left as (attackPoint - animCycle) * secondsPerAttack, which treats
- * the attack point as a fraction of the attack cycle.
- */
-function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
+/** Seconds until `a`'s attack point (after it, the attack can no longer be cancelled), or undefined when not winding up. */
+function windupLeft(a: TaskAttacker): number | undefined {
     if (a.GetAnimActivity === undefined) return undefined;
     const act = a.GetAnimActivity();
     if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) return undefined;
@@ -131,7 +127,17 @@ function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
     const cycle = a.GetAnimCycle();
     const point = a.GetAttackPoint();
     if (cycle >= point) return undefined;
-    let t = (point - cycle) * (a.GetSecondsPerAttack?.() ?? 1);
+    return (point - cycle) * (a.GetSecondsPerAttack?.() ?? 1);
+}
+
+/**
+ * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up. UNVERIFIED
+ * in-game: reads the wind-up left as (attackPoint - animCycle) * secondsPerAttack, which treats
+ * the attack point as a fraction of the attack cycle.
+ */
+function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
+    let t = windupLeft(a);
+    if (t === undefined) return undefined;
     if (isRanged(a)) {
         t += math.max(0, dist(a.GetLocation(), creep.GetLocation()) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!();
     }
@@ -208,22 +214,23 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
 }
 
 /**
- * Enemy heroes winding up an attack on the creep whose hit lands within `horizon` (seconds; the hits `believe`
- * credits as certain): their count, raw damage, and the latest of their commit points (seconds until their attack
- * point, after which the attack can no longer be cancelled). Swing-message attribution only.
+ * Enemy heroes in the attacker index on the creep whose wind-up lands within `horizon` (the hits `believe` credited
+ * as certain): their count, raw damage, and the latest of their commit points (seconds until their attack point).
+ * Swing-message attribution only.
  */
 function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n: number; raw: number; commit: number } {
+    const heroes = new LuaTable<TaskAttacker, boolean>();
+    for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? []) heroes.set(h as TaskHero as TaskAttacker, true);
     let n = 0;
     let raw = 0;
     let commit = 0;
-    for (const h of bot.GetNearbyHeroes?.(QUERY_RADIUS, true, 0) ?? []) {
-        const a = h as TaskHero as TaskAttacker;
-        if (gone(a) || a.GetAttackTarget?.() !== creep) continue;
+    for (const a of attackersByTarget(bot, nearby(bot)).get(creep as TaskAttacker) ?? []) {
+        if (heroes.get(a) !== true) continue;
         const land = windupLanding(a, creep);
         if (land === undefined || land > horizon) continue;
         n++;
         raw += a.GetAttackDamage?.() ?? 0;
-        commit = math.max(commit, (a.GetAttackPoint!() - a.GetAnimCycle!()) * (a.GetSecondsPerAttack?.() ?? 1));
+        commit = math.max(commit, windupLeft(a) ?? 0);
     }
     return { n, raw, commit };
 }
@@ -264,8 +271,13 @@ export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
     return (0.03 * math.max(0, d - TURN_SLACK)) / TURN_RATE;
 }
 
+/** Seconds from an attack order now until the bot's attack point: wind-up, cooldown left and turn. */
+function ownCommitTime(bot: TaskUnit, creep: TaskCreep): number {
+    return bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
+}
+
 export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
-    let t = bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
+    let t = ownCommitTime(bot, creep);
     const speed = bot.GetAttackProjectileSpeed?.() ?? 0;
     const range = bot.GetAttackRange();
     if (range > RANGED_ABOVE && speed > 0) {
@@ -309,6 +321,8 @@ interface Belief {
     survives: boolean;
     /** HP the bot believes the creep will have when its hit lands, before its own damage. */
     hpAtHit: number;
+    /** Seconds of seen hits (wind-ups, projectiles) `hpAtHit` subtracted: shortened by a negative roll shift. */
+    relied: number;
     /** Own damage as the bot believes it (error applied, after armour). */
     mine: number;
 }
@@ -342,6 +356,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
     const certain = hp + regen * tHit - incomingDamage(bot, creep, relied);
     const visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied;
     let believed = visible;
+    let reliedUsed = relied;
     let width = 0;
     let eps = 0;
     if (withError) {
@@ -350,6 +365,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         eps = r.eps;
         if (r.shift < 0) {
             const h = math.max(0, relied + r.shift);
+            reliedUsed = h;
             believed = hp + regen * h - incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * between - unseen * h;
         } else if (r.shift > 0) {
             believed = visible + regen * r.shift - dps * r.shift;
@@ -360,6 +376,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         // Survival is judged on seen hits only; the extrapolated ones may never come.
         survives: certain > 0,
         hpAtHit: believed,
+        relied: reliedUsed,
         // The lowest roll of the damage spread: a swing on the average roll fails about half the borderline creeps.
         mine: physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * (1 + eps * width)),
     };
@@ -597,11 +614,10 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                     diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
                     // Enemy hero wind-ups this swing counted as certain (a feint would break them): `ew` how many, `er` 1
                     // when the swing is due only because of them, `ec` the latest of their commit points and `oc` ours
-                    // (seconds from now; ours is the order-to-attack-point part of tHit).
-                    const ew = enemyHeroWindups(bot, creep, math.max(0, b.tHit - MIN_MARGIN));
+                    // (seconds from now).
+                    const ew = enemyHeroWindups(bot, creep, b.relied);
                     if (ew.n > 0) {
-                        const oc = bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
-                        diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, oc);
+                        diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, ownCommitTime(bot, creep));
                     }
                     bot.Action_AttackUnit(creep, true);
                     break;

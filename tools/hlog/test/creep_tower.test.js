@@ -40,4 +40,12 @@ test('a tower creep counts as the tower\'s only when no one got it, in reach onl
     assert.strictEqual(out.length, 1);
     const r = out[0];
     assert.deepStrictEqual([r.deaths, r.tw_deaths, r.tower, r.tower_reach, r.tw_lh, r.tw_denied, r.untagged], [6, 4, 2, 1, 1, 1, 1]);
+    // In reach: tw=1 the tower kill at 630, our last hit, the enemy deny (3); tw=0 the open-lane death, no one's (share 1):
+    // 1 tower creep in reach against 3 * 1 expected at the open rate.
+    assert.deepStrictEqual([r.tw_reach, r.open_share, r.tower_excess], [3, 1, -2]);
+});
+
+test('a game from a build without tw counts 0, not NULL', () => {
+    const out = rows([line(100, 'creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none p1d=400 p1r=550')]);
+    assert.deepStrictEqual([out[0].tw_deaths, out[0].tower_reach, out[0].tower_excess, out[0].untagged], [0, 0, 0, 1]);
 });

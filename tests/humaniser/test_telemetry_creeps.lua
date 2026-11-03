@@ -100,6 +100,43 @@ do
 	check("core's attack on b started 0.3 s before the frame that saw the death", e[2] and math.abs(tonumber(field(e[2], "p1a")) - 0.3) < 1e-6, e[2])
 end
 
+-- tw: one of our towers was attacking the creep on the frame before it died (row "Last-hit refinement"). The tower's target
+-- is read for the next frame's deaths, so a creep it takes only on the death frame is tw=0; an enemy team's tower is not ours.
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	core.pos = 1
+	local tower = { target = nil, IsAlive = function() return true end }
+	function tower:GetAttackTarget() return self.target end
+	local theirs = { IsAlive = function() return true end }
+	local a = creep("npc_dota_creep_badguys_melee", Vector(120, 0), 20)
+	local b = creep("npc_dota_creep_badguys_melee", Vector(150, 0), 20)
+	theirs.GetAttackTarget = function() return b end
+	local real = GetTower
+	GetTower = function(team, id) if id == 0 then return team == 2 and tower or theirs end end
+	tower.target = a
+	tick(H, { core }, 60)
+	kill(a)
+	tower.target = b
+	tick(H, { core }, 60.1)
+	local e = events("creep_death")
+	check("tw: the tower's creep is tw=1, no one's", #e == 1 and field(e[1], "tw") == "1" and field(e[1], "by") == "none", e[1])
+	tick(H, { core }, 60.2)
+	kill(b)
+	core.lh = 1
+	tick(H, { core }, 60.3)
+	e = events("creep_death")
+	check("tw: our last hit under the tower keeps tw=1", #e == 2 and field(e[2], "tw") == "1" and field(e[2], "by") == "1", e[2])
+	local c = creep("npc_dota_creep_badguys_melee", Vector(130, 0), 20)
+	tick(H, { core }, 60.4)
+	tower.target = c
+	kill(c)
+	tick(H, { core }, 60.5)
+	e = events("creep_death")
+	check("tw: targeted only on the death frame is tw=0", #e == 3 and field(e[3], "tw") == "0", e[3])
+	GetTower = real
+end
+
 -- Practice mode: GetTeamPlayers is empty for the bot-only team; its heroes are still found (GetTeamMember 1..5) and its
 -- creep deaths logged (debt getteamplayers-bound: the old loop logged none).
 do
