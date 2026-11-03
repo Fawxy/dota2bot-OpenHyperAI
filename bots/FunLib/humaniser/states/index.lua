@@ -45,6 +45,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local SupportLane = require(GetScriptDirectory().."/FunLib/humaniser/states/support_lane")
 local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
@@ -338,9 +339,22 @@ local function laningRunning(bot)
     local cur = ____opt_18 and ____opt_18.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
---- True while the laning body runs for this bot and owns its denies only (Ours.SupportDeny): the Lua Think skips DenyThink.
-function ____exports.BodyDenies(bot)
-    return ____exports.IsEnabled() and Laning.OwnsDenyOnly(bot) and laningRunning(bot)
+--- True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink.
+function ____exports.BodySupportHits(bot)
+    return ____exports.IsEnabled() and Laning.OwnsSupportHits(bot) and laningRunning(bot)
+end
+--- BodySupportHits with Ours.SupportLastHit: the body takes the support's claimed last hits too, so the Lua Think skips LastHitThink.
+function ____exports.BodySupportLastHits(bot)
+    return ____exports.BodySupportHits(bot) and SupportDeny.LastHits(bot)
+end
+--- The support's attack is the body's own last hit (its attempt's creep): Ours.LeaveCoreCreep's cancel of a swing on a creep a
+-- core could reach must not cancel a creep the claims gave the support (its core busy on another).
+function ____exports.SupportOwnsAttack(bot)
+    if not ____exports.BodySupportLastHits(bot) then
+        return false
+    end
+    local target = bot:GetAttackTarget()
+    return target ~= nil and target ~= nil and LanePick.Attempting(bot:GetPlayerID()) == target
 end
 --- First thing in mode_laning_generic's Think for a support under our switches: the support's ordered lane steps
 -- (states/support_lane). True when one acted this frame.

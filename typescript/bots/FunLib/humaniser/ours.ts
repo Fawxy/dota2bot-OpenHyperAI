@@ -30,6 +30,9 @@ export const DEFAULTS = {
     SupportDeny: true,
     /** With SupportDeny on, false keeps the Dire supports on OHA's deny (Radiant only), as CoreLastHitDire. */
     SupportDenyDire: true,
+    /** Slice support-lane-hits: with SupportDeny on, the support's body also takes the last hits no allied core will take
+     *  (states/lane_claims), in place of OHA's last hits; false keeps those OHA's (denies only, sub-switch for debugging). */
+    SupportLastHit: true,
     /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
     RuneRotation: true,
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);

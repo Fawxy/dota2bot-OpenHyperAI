@@ -707,6 +707,10 @@ ____exports.EVENTS = {
         ow = "num",
         walk = "num",
         dies = "num",
+        claim = "str",
+        cx = "num",
+        cy = "num",
+        ca = "num",
         msg = "str"
     },
     trade = {

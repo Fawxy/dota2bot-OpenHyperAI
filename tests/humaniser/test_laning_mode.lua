@@ -159,7 +159,13 @@ do
 	Think()
 	hit = false
 	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == free then hit = true end end
-	check("body owns denies: the support's last hit with no core near stays OHA's", hit)
+	check("body owns denies only (SupportLastHit off): the support's last hit with no core near stays OHA's", hit)
+	bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { free }, bodyDenies = true, bodyLastHits = true })
+	GetDesire()
+	Think()
+	hit = false
+	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == free then hit = true end end
+	check("body owns the support's last hits (SupportLastHit): OHA's LastHitThink does not swing at the free creep", not hit)
 	-- Core-time diagnosis (02/11/2026): the body's hold cancels a hero's own attacks, so a deny-only support keeps OHA's
 	-- positioning: the frame ends in PositionThink and the body is not stepped, even where it would act.
 	bot = load({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })

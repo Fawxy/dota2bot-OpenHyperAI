@@ -331,7 +331,9 @@ if Telemetry.GuardsEnabled() then
         Owns = no,
         BodyLastHits = no,
         BodyBusy = no,
-        BodyDenies = no,
+        BodySupportHits = no,
+        BodySupportLastHits = no,
+        SupportOwnsAttack = no,
         SupportStep = no
     })
     Telemetry.GuardModule("CoreTrade", CoreTrade, {
