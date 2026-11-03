@@ -269,11 +269,14 @@ function trail(bot: Unit, flush: boolean): void {
     Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
 }
 
-function laneCreepsNear(center: Vector, radius: number): Unit[] {
+/** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
+ *  into the camp and fights there (pw1: the Radiant safe small camp sits about 1100 from its meet point, so a watch of the
+ *  meet point alone logged those waves as never diverted). */
+function laneCreepsNear(p: Plan, radius: number): Unit[] {
     const out: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
-        if (GetUnitToLocationDistance(c, center) <= radius) out.push(c);
+        if (GetUnitToLocationDistance(c, p.meet) <= radius || GetUnitToLocationDistance(c, p.spawner.location) <= radius) out.push(c);
     }
     return out;
 }
@@ -313,9 +316,9 @@ function sampleWave(p: Pull): void {
 function countDiverted(p: Pull): void {
     const radii = LaneConfig.Settings().Radii;
     let n = 0;
-    for (const c of laneCreepsNear(p.plan.meet, radii.MeetWatch)) if (onNeutral(c)) n++;
+    for (const c of laneCreepsNear(p.plan, radii.MeetWatch)) if (onNeutral(c)) n++;
     if (n === 0) return;
-    if (p.wave === 0) p.wave = math.max(1, laneCreepsNear(p.plan.meet, radii.WaveSize).length);
+    if (p.wave === 0) p.wave = math.max(1, laneCreepsNear(p.plan, radii.WaveSize).length);
     p.peak = math.max(p.peak, math.min(n, p.wave));
 }
 
@@ -338,7 +341,7 @@ function watchLine(bot: Unit, p: Pull, ph: string): void {
     p.watchedAt = now;
     const radii = LaneConfig.Settings().Radii;
     const meet = p.plan.meet;
-    const ours = laneCreepsNear(meet, radii.MeetWatch);
+    const ours = laneCreepsNear(p.plan, radii.MeetWatch);
     let won = 0;
     let whe = 0;
     let wcr = 0;

@@ -131,6 +131,31 @@ do
 		and field(pulls[1], "res") == "ok" and tonumber(field(pulls[1], "div")) == 0.25 and tonumber(field(pulls[1], "dt")) == 1, pulls[1])
 end
 
+-- The neutrals walk back and the wave follows them into the camp, out of the meet point's watch radius: it still counts
+-- (pw1: Radiant safe small, camp about 1100 from its meet point, logged undiverted while the camp's neutrals hit our wave).
+do
+	local w = world({ reading = OUT })
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local far = math.sqrt((meet.x - SMALL.x) ^ 2 + (meet.y - SMALL.y) ^ 2) > w.H.Lane.Config.Settings().Radii.MeetWatch
+	local wave, ended = {}, nil
+	capture(function()
+		while T < 140 and ended == nil do
+			frame(w)
+			if #wave == 0 and w.H.PullJob.Running(w.sup) then
+				for i = 1, 4 do wave[i] = MakeCreep({ team = 2, x = SMALL.x + 50 * i, y = SMALL.y, target = kobold }) end
+			end
+			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
+		end
+	end)
+	local out = run(w, (ended or 0) + 30)
+	local pulls = lines(out, "pull_job")
+	check("camp fight: the camp lies outside the meet point's watch, and the wave fighting there is diverted", far and #pulls == 1
+		and tonumber(field(pulls[1], "div")) == 1 and tonumber(field(pulls[1], "n")) == 4, pulls[1])
+end
+
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
 for _, case in ipairs({
 	{ "IN", { state = "IN", clash = 7000, move = -500, q = 0.3, tower = false } },

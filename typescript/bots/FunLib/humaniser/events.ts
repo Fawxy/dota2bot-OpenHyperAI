@@ -921,7 +921,8 @@ export const EVENTS = {
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;
-    // div: the largest share of our wave seen attacking a neutral during the watch, n: that wave's size (0: never seen);
+    // div: the largest share of our wave seen attacking a neutral during the watch (creeps within the watch radius of the meet
+    // point or of the camp origin), n: that wave's size (0: never seen);
     // wd: the nearest any of our lane creeps came to the meet point during lead and watch, nn: the most neutrals seen within
     // the watch radius of it (n=0 with a large wd: the wave was not there in time; with nn=0: the neutrals were not).
     // dt: div's share kept sampling for PullJob TrailSec after the job (the wave goes on fighting once the puller has left;
@@ -947,7 +948,7 @@ export const EVENTS = {
         dt: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
-    // trail). Ours near the meet point (within MeetWatch): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
+    // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
     // else, wid idle; wd the nearest of our lane creeps to the meet point. Neutrals within WaveSize of it: nn, of them ntp on the
     // puller, ntc on a creep, ntx idle; the neutral within WatchNeutralSearch nearest our creeps there (the meet point when none): nd its distance, nh its
     // distance from its camp origin, nt its target (p puller, h other hero, c creep, o other, x none). pd: the puller to the meet point.

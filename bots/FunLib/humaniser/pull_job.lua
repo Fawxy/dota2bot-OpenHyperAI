@@ -135,7 +135,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function share(p)
     return p.wave > 0 and math.floor(p.peak / p.wave * 100 + 0.5) / 100 or 0
 end
-function laneCreepsNear(center, radius)
+function laneCreepsNear(p, radius)
     local out = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
@@ -145,7 +145,7 @@ function laneCreepsNear(center, radius)
                     __continue51 = true
                     break
                 end
-                if GetUnitToLocationDistance(c, center) <= radius then
+                if GetUnitToLocationDistance(c, p.meet) <= radius or GetUnitToLocationDistance(c, p.spawner.location) <= radius then
                     out[#out + 1] = c
                 end
                 __continue51 = true
@@ -172,7 +172,7 @@ end
 function countDiverted(p)
     local radii = LaneConfig.Settings().Radii
     local n = 0
-    for ____, c in ipairs(laneCreepsNear(p.plan.meet, radii.MeetWatch)) do
+    for ____, c in ipairs(laneCreepsNear(p.plan, radii.MeetWatch)) do
         if onNeutral(c) then
             n = n + 1
         end
@@ -183,7 +183,7 @@ function countDiverted(p)
     if p.wave == 0 then
         p.wave = math.max(
             1,
-            #laneCreepsNear(p.plan.meet, radii.WaveSize)
+            #laneCreepsNear(p.plan, radii.WaveSize)
         )
     end
     p.peak = math.max(
@@ -214,7 +214,7 @@ function watchLine(bot, p, ph)
     p.watchedAt = now
     local radii = LaneConfig.Settings().Radii
     local meet = p.plan.meet
-    local ours = laneCreepsNear(meet, radii.MeetWatch)
+    local ours = laneCreepsNear(p.plan, radii.MeetWatch)
     local won = 0
     local whe = 0
     local wcr = 0
