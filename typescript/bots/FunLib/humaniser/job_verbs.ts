@@ -423,6 +423,8 @@ export interface RunePlan {
     rune?: number;
     /** Rune position override for `pickUpRune`. */
     runeAt?: Vec;
+    /** Waypoints walked in order before `at` (a route around enemy towers). */
+    via?: Vec[];
     /** Seconds early to arrive at skill 1. Default 4. */
     early?: number;
     /** Arrival tolerance at `at`. Default 150. */
@@ -469,13 +471,16 @@ export function runeLeaveAt(bot: TaskUnit, p: RunePlan): number {
 export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody {
     const tolerance = p.tolerance ?? 150;
     h.label?.("travel");
-    const walked = yield* E().Verbs.walkTo(bot, p.at, {
-        tolerance,
-        timeout: math.huge,
-        stuckSecs: math.huge,
-        deadline: p.spawnAt + (p.lateBy ?? RUNE_LATE_BY),
-    });
-    if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
+    const legs = [...(p.via ?? []), p.at];
+    for (let i = 0; i < legs.length; i++) {
+        const walked = yield* E().Verbs.walkTo(bot, legs[i], {
+            tolerance: i < legs.length - 1 ? ARRIVE : tolerance,
+            timeout: math.huge,
+            stuckSecs: math.huge,
+            deadline: p.spawnAt + (p.lateBy ?? RUNE_LATE_BY),
+        });
+        if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
+    }
 
     h.label?.("wait");
     const go = math.max(p.spawnAt, now()) + E().Skill.react(bot);

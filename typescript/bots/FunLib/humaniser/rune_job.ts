@@ -18,6 +18,7 @@ import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
+declare function IsLocationPassable(this: void, loc: Vector): boolean;
 
 type Kind = "power" | "wisdom" | "contest";
 
@@ -46,6 +47,11 @@ export const SETTINGS = {
     GankReach: 4000,
     GankEngageBy: 20,
     GankFightFor: 8,
+    /** The shrine contest's route keeps this far from enemy towers (attack range 700 plus OHA's retreat margin; judgement),
+     *  with waypoints this much farther out, at most DetourMax of them. */
+    TowerAvoid: 1000,
+    DetourMargin: 200,
+    DetourMax: 3,
     /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
     FightNear: 700,
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
@@ -76,6 +82,8 @@ interface Trip {
     act?: string;
     race?: RunePlan.RaceInputs;
     hidden?: number;
+    /** Waypoints before `at`: the contest's route around enemy towers. */
+    via?: Vector[];
     /** Plays this trip started: the shrine contest's roll, the rune fight, the gank after the trip. */
     play?: Plays.Play;
     fight?: Plays.Play;
@@ -164,6 +172,7 @@ function planFor(t: Trip): JobVerbs.RunePlan {
     if (t.kind === "wisdom" || t.kind === "contest") {
         return {
             at: t.at as unknown as Lib.Vec,
+            via: t.via as unknown as Lib.Vec[] | undefined,
             spawnAt: t.spawn,
             channel: SETTINGS.ShrineChannel,
             radius: SETTINGS.ShrineRadius,
@@ -180,12 +189,60 @@ function leaveAt(bot: Unit, t: Trip): number {
     if (t.stand !== undefined) return RunePlan.LeaveAt(bot, t.stand.at, t.at);
     const u = bot as unknown as Lib.TaskUnit;
     const arrive = Tasks.Jobs()!.runeArriveBy(u, planFor(t));
-    return arrive - (GetUnitToLocationDistance(bot, t.at) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
+    let walk = 0;
+    let from = bot.GetLocation();
+    for (const to of [...(t.via ?? []), t.at]) [walk, from] = [walk + FR.Dist(from, to), to];
+    return arrive - (walk * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
+}
+
+/**
+ * CANDIDATE(route): waypoints from `from` to `to` that keep each leg TowerAvoid from every tower in `towers`: a leg passing
+ * closer gets a point beside the nearest such tower, on the side the leg passes (the other side when that is not
+ * passable), at most DetourMax points. rspchk1: both fired shrine contests walked past the enemy's tower and OHA's retreat
+ * took the hero (405 s, retreat 1.10 and 1.26). Exported for tests.
+ */
+export function Detour(from: Vector, to: Vector, towers: Vector[]): Vector[] {
+    const s = SETTINGS;
+    const via: Vector[] = [];
+    let a = from;
+    for (let n = 0; n < s.DetourMax; n++) {
+        let worst: Vector | undefined;
+        let worstD = s.TowerAvoid;
+        let near = a;
+        for (const tw of towers) {
+            const c = closestOn(a, to, tw);
+            const d = FR.Dist(c, tw);
+            if (d < worstD) [worst, worstD, near] = [tw, d, c];
+        }
+        if (worst === undefined) break;
+        let dx = near.x - worst.x;
+        let dy = near.y - worst.y;
+        let len = math.sqrt(dx * dx + dy * dy);
+        if (len < 1) [dx, dy, len] = [-(to.y - a.y), to.x - a.x, math.max(1, FR.Dist(a, to))];
+        const r = s.TowerAvoid + s.DetourMargin;
+        let p = Vector(worst.x + (dx / len) * r, worst.y + (dy / len) * r, worst.z);
+        if (!IsLocationPassable(p)) p = Vector(worst.x - (dx / len) * r, worst.y - (dy / len) * r, worst.z);
+        via.push(p);
+        a = p;
+    }
+    return via;
+}
+
+function closestOn(a: Vector, b: Vector, p: Vector): Vector {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    const k = l2 > 0 ? math.max(0, math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+    return Vector(a.x + k * dx, a.y + k * dy, a.z);
 }
 
 function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: number): Trip {
     if (kind === "wisdom") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam()), left: DotaTime(), host };
-    if (kind === "contest") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant), left: DotaTime(), host };
+    if (kind === "contest") {
+        const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+        const at = Rotate.ShrineFor(enemy);
+        return { kind, spawn, at, via: Detour(bot.GetLocation(), at, FR.TowerSpots(enemy)), left: DotaTime(), host };
+    }
     if (mine !== undefined) {
         const at = RunePlan.SpotAt(mine);
         return { kind, spawn, at, rune: mine, side: at.y > 0 ? "top" : "bot", left: DotaTime(), host, stand: RunePlan.StandFor(bot, at) };
@@ -350,14 +407,14 @@ function* playFight(bot: Unit, play: Plays.Play, hooks: JobVerbs.JobHooks): Lib.
     const r = yield* Tasks.Jobs()!.gank(
         bot as unknown as Lib.TaskUnit,
         {
-            target: () => (target.IsAlive() ? (target as unknown as Lib.TaskAttacker) : undefined),
+            target: () => (FR.Alive(target) ? (target as unknown as Lib.TaskAttacker) : undefined),
             path: [],
             deadline: DotaTime() + SETTINGS.GankEngageBy,
             engageFor: SETTINGS.GankFightFor,
             commit: () =>
                 FR.HpFraction(bot) < SETTINGS.StopHp
                     ? "hp"
-                    : target.IsAlive() && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < SETTINGS.StopTower
+                    : FR.Alive(target) && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < SETTINGS.StopTower
                       ? "tower"
                       : undefined,
         },
@@ -455,6 +512,11 @@ export function Step(bot: Unit, host: number): boolean {
 
 export function Running(bot: Unit): boolean {
     return running[bot.GetPlayerID()] !== undefined;
+}
+
+/** The mode that steps this hero's running trip (the chooser's host, or the rune mode for the mid's 6:00 trip), if any. */
+export function HostOf(bot: Unit): number | undefined {
+    return running[bot.GetPlayerID()]?.host;
 }
 
 export function End(bot: Unit, why: string): void {

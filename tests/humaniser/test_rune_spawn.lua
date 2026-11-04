@@ -62,13 +62,16 @@ local function lines(all, ev)
 end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
--- One frame: supports through the job chooser's farm host, the mid through the rune mode's branch. Moves land at once,
--- capped at the hero's speed per frame so walks take their time.
+-- One frame: supports through the job chooser's farm host, the mid through the rune mode's branch against laning, both
+-- through the chooser's mode gates as the mode files wrap them. Moves land at once, capped at the hero's speed per frame
+-- so walks take their time.
 local function frame(H, bots, spawnAt)
 	for _, bot in ipairs(bots) do
 		local n0 = #ACTIONS
 		if bot.pos == 2 then
-			if H.RuneJob.MidWants(bot) then bot.mode = dota.BotMode.Rune H.RuneJob.MidStep(bot) else bot.mode = LANING end
+			local rune = H.Chooser.Gate(bot, "rune", function() return H.RuneJob.MidWants(bot) and H.RuneJob.MID_DESIRE or 0 end)()
+			local lane = H.Chooser.Gate(bot, "laning", function() return 0.5 end)()
+			if rune > lane then bot.mode = dota.BotMode.Rune H.RuneJob.MidStep(bot) else bot.mode = LANING end
 		elseif H.Chooser.Gate(bot, "farm", function() return H.Chooser.FarmDesire(bot) end)() > 0 then
 			bot.mode = FARM
 			H.Chooser.HostThink(bot, "farm", function() return H.Chooser.FarmThink(bot) end, function() return false end)()
@@ -105,6 +108,19 @@ do
 	check("plan: the free support nearer the other spot takes it", plan.sup == p5 and plan.supSpot == P2)
 	plan = H.RunePlan.Make(320, function(u) return u == p5 end)
 	check("plan: a support on a stack is not free", plan.sup == p4)
+end
+
+-- The mid's trip runs in the rune mode: the chooser's gates leave that mode and its exceptions to the mode file and hold
+-- the others, the farm host included, at 0 (rspchk1: the rune mode gated to 0 lost the mid to the attack mode, 9 of 10).
+do
+	local H = world({ t = 341 })
+	SPAWN_AT = P1
+	local mid = hero(2, 2, Vector(-600, 300))
+	capture(function() while H.RuneJob.HostOf(mid) == nil and T < 350 do frame(H, { mid }, 360) end end)
+	check("mid gate: its trip runs in the rune mode", H.RuneJob.HostOf(mid) == dota.BotMode.Rune, T)
+	check("mid gate: the rune mode keeps the trip's desire", H.Chooser.Gate(mid, "rune", function() return 0.97 end)() == 0.97)
+	check("mid gate: the farm host is held at 0", H.Chooser.Gate(mid, "farm", function() return 0.6 end)() == 0)
+	check("mid gate: retreat stays OHA's", H.Chooser.Gate(mid, "retreat", function() return 0.8 end)() == 0.8)
 end
 
 -- Stand points: on the high ground and on our side when the map has it.

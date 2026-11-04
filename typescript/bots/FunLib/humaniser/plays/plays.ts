@@ -183,6 +183,8 @@ export interface Play {
     kind: Kind;
     by: Unit;
     target?: Unit;
+    /** The target's player id, kept because its handle can go null in fog (-1 with no target). */
+    tgt: number;
     at: Vector;
     started: number;
     joiners: Unit[];
@@ -257,6 +259,7 @@ export function Roll(c: Chance, now: number = DotaTime()): Play | undefined {
             kind: c.kind,
             by: c.by,
             target: c.target,
+            tgt: c.target !== undefined ? c.target.GetPlayerID() : -1,
             at: c.at,
             started: now,
             joiners: [],
@@ -295,16 +298,16 @@ function heroesOf(p: Play): Unit[] {
 
 function killedNear(p: Play): boolean {
     const t = p.target;
-    if (t === undefined || t.IsAlive()) return false;
+    if (!FR.Backed(t) || t.IsAlive()) return false;
     const at = t.GetLocation();
     return heroesOf(p).some((u) => FR.Alive(u) && FR.Dist(u.GetLocation(), at) <= SETTINGS.KillNear);
 }
 
 /** The play's result so far from the units: kill (target dead with a play hero near), trade (that and the initiator dead),
- *  died, forced (target low or moved far), else none. */
+ *  died, forced (target low or moved far), else none. A target out of our vision reads as alive where it was. */
 export function Classify(p: Play): string {
     const t = p.target;
-    const dead = t !== undefined && !t.IsAlive();
+    const dead = FR.Backed(t) && !t.IsAlive();
     const died = !p.by.IsAlive();
     // A dead initiator is not near its target: a dead target with the initiator dead is a trade.
     if (dead && died) return "trade";
@@ -322,7 +325,7 @@ function line(p: Play, res: string, why: string, ended: number): void {
         ["id", p.id],
         ["pid", p.by.GetPlayerID()],
         ["kind", p.kind],
-        ["tgt", p.target !== undefined ? p.target.GetPlayerID() : -1],
+        ["tgt", p.tgt],
         ["res", res],
         ["why", why],
         ["join", p.joiners.length],

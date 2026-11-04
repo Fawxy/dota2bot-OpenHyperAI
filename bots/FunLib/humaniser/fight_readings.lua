@@ -83,8 +83,13 @@ local POWER_RUNE_MODIFIERS = {
     "modifier_rune_arcane",
     "modifier_rune_shield"
 }
+--- A handle Dota still backs: an enemy hero's goes null once it leaves our vision (rspchk1 t=375: IsAlive on it raised).
+-- Test fakes without IsNull count as backed.
+function ____exports.Backed(u)
+    return u ~= nil and u ~= nil and not (u.IsNull ~= nil and u:IsNull())
+end
 function ____exports.Alive(u)
-    return u ~= nil and u ~= nil and u:IsAlive()
+    return ____exports.Backed(u) and u:IsAlive()
 end
 function ____exports.Dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
@@ -105,16 +110,27 @@ function ____exports.HoldsPowerRune(u)
     end
     return false
 end
+--- `team`'s standing towers' locations.
+function ____exports.TowerSpots(team)
+    local out = {}
+    for ____, id in ipairs(TOWER_IDS) do
+        local tower = GetTower(team, id)
+        if tower ~= nil and tower ~= nil and tower:IsAlive() then
+            out[#out + 1] = tower:GetLocation()
+        end
+    end
+    return out
+end
 --- Distance from `loc` to `team`'s nearest standing tower (math.huge with none).
 function ____exports.TowerDistance(team, loc)
     local best = math.huge
     for ____, id in ipairs(TOWER_IDS) do
         do
-            local __continue11
+            local __continue16
             repeat
                 local tower = GetTower(team, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue11 = true
+                    __continue16 = true
                     break
                 end
                 best = math.min(
@@ -124,9 +140,9 @@ function ____exports.TowerDistance(team, loc)
                         tower:GetLocation()
                     )
                 )
-                __continue11 = true
+                __continue16 = true
             until true
-            if not __continue11 then
+            if not __continue16 then
                 break
             end
         end

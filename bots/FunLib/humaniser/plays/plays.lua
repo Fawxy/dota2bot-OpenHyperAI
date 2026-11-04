@@ -180,7 +180,7 @@ function heroesOf(p)
 end
 function killedNear(p)
     local t = p.target
-    if t == nil or t:IsAlive() then
+    if not FR.Backed(t) or t:IsAlive() then
         return false
     end
     local at = t:GetLocation()
@@ -193,10 +193,10 @@ function killedNear(p)
     )
 end
 --- The play's result so far from the units: kill (target dead with a play hero near), trade (that and the initiator dead),
--- died, forced (target low or moved far), else none.
+-- died, forced (target low or moved far), else none. A target out of our vision reads as alive where it was.
 function ____exports.Classify(p)
     local t = p.target
-    local dead = t ~= nil and not t:IsAlive()
+    local dead = FR.Backed(t) and not t:IsAlive()
     local died = not p.by:IsAlive()
     if dead and died then
         return "trade"
@@ -230,10 +230,7 @@ function line(p, res, why, ended)
                 p.by:GetPlayerID()
             },
             {"kind", p.kind},
-            {
-                "tgt",
-                p.target ~= nil and p.target:GetPlayerID() or -1
-            },
+            {"tgt", p.tgt},
             {"res", res},
             {"why", why},
             {"join", #p.joiners},
@@ -493,6 +490,7 @@ function ____exports.Roll(c, now)
             kind = c.kind,
             by = c.by,
             target = c.target,
+            tgt = c.target ~= nil and c.target:GetPlayerID() or -1,
             at = c.at,
             started = now,
             joiners = {},

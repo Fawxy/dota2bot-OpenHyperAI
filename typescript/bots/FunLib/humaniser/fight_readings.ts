@@ -16,8 +16,14 @@ const POWER_RUNE_MODIFIERS = [
     "modifier_rune_shield",
 ];
 
+/** A handle Dota still backs: an enemy hero's goes null once it leaves our vision (rspchk1 t=375: IsAlive on it raised).
+ *  Test fakes without IsNull count as backed. */
+export function Backed(u: Unit | undefined | null): u is Unit {
+    return u !== undefined && u !== null && !((u as any).IsNull !== undefined && u.IsNull());
+}
+
 export function Alive(u: Unit | undefined | null): u is Unit {
-    return u !== undefined && u !== null && u.IsAlive();
+    return Backed(u) && u.IsAlive();
 }
 
 export function Dist(a: Vector, b: Vector): number {
@@ -37,6 +43,16 @@ export function ManaFraction(u: Unit): number {
 export function HoldsPowerRune(u: Unit): boolean {
     for (const m of POWER_RUNE_MODIFIERS) if (u.HasModifier(m)) return true;
     return false;
+}
+
+/** `team`'s standing towers' locations. */
+export function TowerSpots(team: number): Vector[] {
+    const out: Vector[] = [];
+    for (const id of TOWER_IDS) {
+        const tower = GetTower(team, id);
+        if (tower !== null && tower !== undefined && tower.IsAlive()) out.push(tower.GetLocation());
+    }
+    return out;
 }
 
 /** Distance from `loc` to `team`'s nearest standing tower (math.huge with none). */

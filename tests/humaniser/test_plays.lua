@@ -111,6 +111,21 @@ do
 	check("a kill within KillAfter of the end counts, with the joiner", field(l, "res") == "kill" and field(l, "join") == "1", l)
 end
 
+do
+	-- An enemy target out of our vision: its handle goes null and every call on it raises (rspchk1 t=375.3, plays.lua
+	-- Classify: "Invalid object passed to IsAlive"), which stopped Plays.Tick so the play never got its end line.
+	local by, mid = units()
+	local P = world(0.1)
+	local play
+	capture(function() play = P.Roll({ kind = "rune_fight", by = by, target = mid, at = mid:GetLocation() }, 360) end)
+	mid.IsNull = function() return true end
+	mid.IsAlive = function() error("Invalid object passed to IsAlive.") end
+	mid.GetPlayerID = function() error("Invalid object passed to GetPlayerID.") end
+	local ok, out = pcall(capture, function() P.Tick(375) P.Tick(380) end)
+	local l = ok and line(out, "play_end")
+	check("a target gone into fog: the play still ends with its target's id", l and field(l, "why") == "timeout" and field(l, "tgt") == "7" and field(l, "res") == "none", ok and l or out)
+end
+
 -- The sure tier: their mid at 30% HP 800 from our pos4, one each side.
 local function sureRoll(draw, skill)
 	local by, mid = units()

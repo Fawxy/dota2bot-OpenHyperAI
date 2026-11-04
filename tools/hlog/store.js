@@ -40,7 +40,7 @@ function include(sql, seen = []) {
     });
 }
 // Bump when ingest changes what it writes or the tables' shape: the store is emptied and rebuilt on its next open.
-const INGEST_VERSION = 4;
+const INGEST_VERSION = 5;
 
 // Declared column kinds from the typed event declaration (gen_events.js writes events.json); absent file means inference only.
 const DECLARED = (() => {
@@ -166,6 +166,8 @@ class Store {
     write(tbl, keys, rows) {
         if (!rows.length) return;
         if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (${keys.map(q).join(', ')})`);
+        // Declared columns exist from the first write, so a view over a field no line has carried yet reads NULL, not an error.
+        for (const [c, kind] of Object.entries(this.declared[tbl] || {})) if (!keys.includes(c)) this.addColumn(tbl, c, kind);
         const cols = this.colsOf(tbl);
         const names = new Map(); // field -> column
         const seen = new Map(); // column -> kind of this log's values
