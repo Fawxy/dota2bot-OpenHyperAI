@@ -4,7 +4,7 @@
  * judged. A consumer defines its kinds (base weight, timeout, own hard zeros), offers chances (kind, initiator, target,
  * place); this module weighs each from the shared fight readings, draws once from the engine's Skill rng and keeps the
  * fired play visible to the team until it ends. What a play does is the consumer's; a hero in a fired play is driven by
- * it (other deciders defer, OWNERSHIP H14); joining is each other hero's own decision. One `ev=play` line per chance, one
+ * it (other deciders defer, OWNERSHIP H24); joining is each other hero's own decision. One `ev=play` line per chance, one
  * `ev=play_end` line per fired play (the library ends any play past its timeout itself).
  */
 import { Unit, Vector } from "bots/ts_libs/dota";

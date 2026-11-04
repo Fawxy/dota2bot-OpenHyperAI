@@ -800,6 +800,14 @@ ____exports.EVENTS = {
         join = "num",
         dur = "num"
     },
+    rune_plan = {
+        team = "num",
+        mid = "num",
+        ms = "num",
+        sup = "num",
+        ss = "num",
+        why = "str"
+    },
     rune_try = {
         pid = "num",
         rune = "num",
@@ -824,7 +832,13 @@ ____exports.EVENTS = {
         away = "num",
         died = "num",
         hit = "num",
-        idle = "num"
+        idle = "num",
+        phase = "str",
+        ta = "num",
+        te = "num",
+        hid = "num",
+        sh = "num",
+        sph = "num"
     },
     pull_job = {
         pid = "num",

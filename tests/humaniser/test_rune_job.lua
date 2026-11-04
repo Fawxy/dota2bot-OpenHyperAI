@@ -17,7 +17,7 @@ local function world(o)
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
-	C.Ours = { StackExecute = o.stack == true, DoubleStack = o.stack == true, RuneRotation = o.rune ~= false }
+	C.Ours = { StackExecute = o.stack == true, DoubleStack = o.stack == true, RuneRotation = o.rune ~= false, RuneSpawn = o.spawn == true }
 	T = o.t or 290
 	CURRENT_TEAM = RAD
 	H.StackJob.ResetCache()

@@ -76,7 +76,8 @@ local function load(contest, opts)
 			HoldsRune = function() return false end,
 		},
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
-		RuneJob = { Owns = function() return opts.runeJobOwns == true end },
+		RuneJob = { Owns = function() return opts.runeJobOwns == true end, MidWants = function() return false end, MidStep = function() return false end },
+		RunePlan = { OwnsMid = function() return false end },
 		RunePickup = { On = function() return false end },
 	}
 	local J = setmetatable({

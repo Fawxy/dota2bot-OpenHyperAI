@@ -5,10 +5,12 @@
  * the trip (the job verb `runeRun`) and logs one `ev=rune_job` line per trip or skip.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Rune, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Rune, Unit, Vector } from "bots/ts_libs/dota";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
+import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -50,6 +52,21 @@ interface Trip {
     host: number;
     hit?: boolean;
     idle?: number;
+    /** Ours.RuneSpawn's 6:00 trip: the planned spot's stand, and what the hero did at the spawn. */
+    stand?: RunePlan.Stand;
+    act?: string;
+    race?: RunePlan.RaceInputs;
+    hidden?: number;
+}
+
+/** A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack). */
+export function Busy(this: void, u: Unit): boolean {
+    return LaneConfig.PositionOf(u) === 5 && StackJob.Pending(u);
+}
+
+/** The 6:00 power trip runs as rune_spawn's plan (spot plan, stand, timed walk) rather than the plain trip. */
+function planned(kind: Kind, spawn: number): boolean {
+    return kind === "power" && spawn === RunePlan.SETTINGS.Spawn && RunePlan.On();
 }
 
 const running: Record<number, Trip | undefined> = {};
@@ -136,13 +153,18 @@ function planFor(t: Trip): JobVerbs.RunePlan {
 
 /** When to leave for the trip: the verb's skill-scaled arrival less the walk (path factor on the straight line). */
 function leaveAt(bot: Unit, t: Trip): number {
+    if (t.stand !== undefined) return RunePlan.LeaveAt(bot, t.stand.at, t.at);
     const u = bot as unknown as Lib.TaskUnit;
     const arrive = Tasks.Jobs()!.runeArriveBy(u, planFor(t));
     return arrive - (GetUnitToLocationDistance(bot, t.at) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
 }
 
-function tripFor(bot: Unit, kind: Kind, spawn: number, host: number): Trip {
+function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: number): Trip {
     if (kind === "wisdom") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam()), left: DotaTime(), host };
+    if (mine !== undefined) {
+        const at = RunePlan.SpotAt(mine);
+        return { kind, spawn, at, rune: mine, side: at.y > 0 ? "top" : "bot", left: DotaTime(), host, stand: RunePlan.StandFor(bot, at) };
+    }
     const [rune, at] = powerSpot(bot);
     return { kind, spawn, at, rune, side: at.y > 0 ? "top" : "bot", left: DotaTime(), host };
 }
@@ -178,6 +200,12 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["died", bot.IsAlive() ? 0 : 1],
         ["hit", t.hit === true ? 1 : 0],
         ["idle", t.idle],
+        ["phase", t.act],
+        ["ta", t.race !== undefined ? r1(t.race.ours) : undefined],
+        ["te", t.race !== undefined && t.race.theirs < math.huge ? r1(t.race.theirs) : undefined],
+        ["hid", t.hidden],
+        ["sh", t.stand?.height],
+        ["sph", t.stand?.spotHeight],
     ]);
 }
 
@@ -211,7 +239,14 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             gateWhy[pid] = "dead";
             continue;
         }
-        const t = tripFor(bot, kind, spawn, host);
+        let mine: number | undefined;
+        if (planned(kind, spawn)) {
+            // Before the plan exists nobody starts; after it, only the planned support goes.
+            if (DotaTime() < RunePlan.SETTINGS.PlanAt) continue;
+            mine = RunePlan.SpotOf(bot, Busy);
+            if (mine === undefined) return skip("plan-other");
+        }
+        const t = tripFor(bot, kind, spawn, host, mine);
         const leave = leaveAt(bot, t);
         if (DotaTime() < leave) return false;
         const why = blocked(bot) ?? (acting(bot) ? "acting" : undefined);
@@ -238,11 +273,85 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
     const hooks: JobVerbs.JobHooks = {
         label: (l) => {
             ctx.label(l);
-            if ((l === "wait" || l === "channel") && t.arr === undefined) t.arr = DotaTime();
+            if ((l === "wait" || l === "channel" || l === "decide") && t.arr === undefined) t.arr = DotaTime();
         },
         urgent: ctx.urgent,
     };
+    if (t.stand !== undefined && t.rune !== undefined) return yield* Tasks.Jobs()!.runeSpawnRun(bot as unknown as Lib.TaskUnit, spawnPlanFor(bot, t), hooks);
     return yield* Tasks.Jobs()!.runeRun(bot as unknown as Lib.TaskUnit, planFor(t), hooks);
+}
+
+/** The 6:00 spawn run's plan: the spot and stand from rune_plan, its race as the decision. */
+export function spawnPlanFor(bot: Unit, t: Trip): JobVerbs.SpawnPlan {
+    const other = RunePlan.Other(t.rune!);
+    let hideFrom: number | undefined;
+    return {
+        rune: t.rune!,
+        at: t.at as unknown as Lib.Vec,
+        otherRune: other,
+        otherAt: RunePlan.SpotAt(other) as unknown as Lib.Vec,
+        stand: t.stand!.at as unknown as Lib.Vec,
+        spawnAt: t.spawn,
+        early: RunePlan.SETTINGS.Early,
+        decide: () => {
+            const [act, race] = RunePlan.Race(bot, t.rune!);
+            t.race = race;
+            return act;
+        },
+        denyResult: () => RunePlan.DenyResult(t.rune!),
+        phase: (name, act) => {
+            if (name === "hide") hideFrom = DotaTime();
+            if (name === "walk" && hideFrom !== undefined) t.hidden = math.floor((DotaTime() - hideFrom) * 10) / 10;
+            if (name === "decide") t.act = act;
+        },
+    };
+}
+
+/** The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95), below a retreat's. */
+export const MID_DESIRE = 0.97;
+const MID_HOST = BotMode.Rune;
+
+/**
+ * Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or
+ * as it starts (the mode then returns MidDesire and steps it in Think). Not a chooser job: the mid has no other jobs, and
+ * the rune mode is the mode Valve would give a rune walk.
+ */
+export function MidWants(bot: Unit): boolean {
+    if (!RunePlan.On() || !bot.IsBot() || LaneConfig.PositionOf(bot) !== 2) return false;
+    const pid = bot.GetPlayerID();
+    Tasks.Tick(bot);
+    if (running[pid] !== undefined) return true;
+    if (Tasks.Jobs() === undefined) return false;
+    const spawn = RunePlan.SETTINGS.Spawn;
+    const now = DotaTime();
+    handled[pid] = handled[pid] ?? {};
+    const k = key("power", spawn);
+    if (handled[pid][k] === true || now < RunePlan.SETTINGS.PlanAt || now >= spawn + SETTINGS.LateBy.power) return false;
+    const mine = RunePlan.SpotOf(bot, Busy);
+    if (mine === undefined) return false;
+    const skip = (why: string) => {
+        handled[pid][k] = true;
+        log(bot, "power", spawn, [["res", "skip"], ["why", why]]);
+        return false;
+    };
+    if (!bot.IsAlive()) return now >= spawn ? skip("dead") : false;
+    const t = tripFor(bot, "power", spawn, MID_HOST, mine);
+    const leave = leaveAt(bot, t);
+    if (now < leave) return false;
+    // A held start walks straight in when it goes (runeSpawnRun skips the stand once late); held past the slack it is skipped.
+    if (acting(bot)) return now > leave + SETTINGS.StartSlack ? skip("acting") : false;
+    const ok = Tasks.Start(bot, { name: "rune", host: MID_HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
+        body(bot, t, ctx)
+    );
+    if (!ok) return skip("refused");
+    handled[pid][k] = true;
+    running[pid] = t;
+    jobLine(bot, t, "start", "plan");
+    return true;
+}
+
+export function MidStep(bot: Unit): boolean {
+    return LaneConfig.PositionOf(bot) === 2 && Step(bot, MID_HOST);
 }
 
 export function Step(bot: Unit, host: number): boolean {

@@ -8,6 +8,31 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
     return result
 end
 
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -67,10 +92,6 @@ local function __TS__DelegatedYield(iterable)
     end
 end
 
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
 local __TS__Unpack = table.unpack or unpack
 
 local __TS__Generator
@@ -108,9 +129,12 @@ end
 local ____exports = {}
 local planFor, running, body
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
+local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
@@ -133,18 +157,59 @@ body = __TS__Generator(function(bot, t, ctx)
     local hooks = {
         label = function(l)
             ctx.label(l)
-            if (l == "wait" or l == "channel") and t.arr == nil then
+            if (l == "wait" or l == "channel" or l == "decide") and t.arr == nil then
                 t.arr = DotaTime()
             end
         end,
         urgent = ctx.urgent
     }
+    if t.stand ~= nil and t.rune ~= nil then
+        return __TS__DelegatedYield(Tasks.Jobs().runeSpawnRun(
+            bot,
+            ____exports.spawnPlanFor(bot, t),
+            hooks
+        ))
+    end
     return __TS__DelegatedYield(Tasks.Jobs().runeRun(
         bot,
         planFor(t),
         hooks
     ))
 end)
+--- The 6:00 spawn run's plan: the spot and stand from rune_plan, its race as the decision.
+function ____exports.spawnPlanFor(bot, t)
+    local other = RunePlan.Other(t.rune)
+    local hideFrom
+    return {
+        rune = t.rune,
+        at = t.at,
+        otherRune = other,
+        otherAt = RunePlan.SpotAt(other),
+        stand = t.stand.at,
+        spawnAt = t.spawn,
+        early = RunePlan.SETTINGS.Early,
+        decide = function()
+            local act, race = unpack(RunePlan.Race(bot, t.rune))
+            t.race = race
+            return act
+        end,
+        denyResult = function() return RunePlan.DenyResult(t.rune) end,
+        phase = function(name, act)
+            if name == "hide" then
+                hideFrom = DotaTime()
+            end
+            if name == "walk" and hideFrom ~= nil then
+                t.hidden = math.floor((DotaTime() - hideFrom) * 10) / 10
+            end
+            if name == "decide" then
+                t.act = act
+            end
+        end
+    }
+end
+function ____exports.Step(bot, host)
+    return running[bot:GetPlayerID()] ~= nil and Tasks.Step(bot, host)
+end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
@@ -159,6 +224,14 @@ ____exports.SETTINGS = {
     ShrineChannel = 3,
     ShrineRadius = 300
 }
+--- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
+function ____exports.Busy(u)
+    return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
+end
+--- The 6:00 power trip runs as rune_spawn's plan (spot plan, stand, timed walk) rather than the plain trip.
+local function planned(kind, spawn)
+    return kind == "power" and spawn == RunePlan.SETTINGS.Spawn and RunePlan.On()
+end
 running = {}
 local handled = {}
 local gateWhy = {}
@@ -218,20 +291,20 @@ local function takenSpots(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue17
+                local __continue19
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot then
-                        __continue17 = true
+                        __continue19 = true
                         break
                     end
                     local t = running[m:GetPlayerID()]
                     if t ~= nil and t.rune ~= nil then
                         out[t.rune] = true
                     end
-                    __continue17 = true
+                    __continue19 = true
                 until true
-                if not __continue17 then
+                if not __continue19 then
                     break
                 end
             end
@@ -255,6 +328,9 @@ local function powerSpot(bot)
 end
 --- When to leave for the trip: the verb's skill-scaled arrival less the walk (path factor on the straight line).
 local function leaveAt(bot, t)
+    if t.stand ~= nil then
+        return RunePlan.LeaveAt(bot, t.stand.at, t.at)
+    end
     local u = bot
     local arrive = Tasks.Jobs().runeArriveBy(
         u,
@@ -265,7 +341,7 @@ local function leaveAt(bot, t)
         bot:GetCurrentMovementSpeed()
     )
 end
-local function tripFor(bot, kind, spawn, host)
+local function tripFor(bot, kind, spawn, host, mine)
     if kind == "wisdom" then
         return {
             kind = kind,
@@ -273,6 +349,19 @@ local function tripFor(bot, kind, spawn, host)
             at = Rotate.ShrineFor(bot:GetTeam()),
             left = DotaTime(),
             host = host
+        }
+    end
+    if mine ~= nil then
+        local at = RunePlan.SpotAt(mine)
+        return {
+            kind = kind,
+            spawn = spawn,
+            at = at,
+            rune = mine,
+            side = at.y > 0 and "top" or "bot",
+            left = DotaTime(),
+            host = host,
+            stand = RunePlan.StandFor(bot, at)
         }
     end
     local rune, at = unpack(powerSpot(bot))
@@ -327,35 +416,56 @@ local function finish(bot, t, r, label)
     local function r1(x)
         return x ~= nil and math.floor(x * 10) / 10 or nil
     end
-    log(
-        bot,
-        t.kind,
-        t.spawn,
+    local ____log_10 = log
+    local ____array_9 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
+    local ____array_8 = __TS__SparseArrayNew(
+        {"res", r.success and "ok" or "fail"},
+        {"why", why},
+        {"label", label},
+        {"side", t.side},
         {
-            {"res", r.success and "ok" or "fail"},
-            {"why", why},
-            {"label", label},
-            {"side", t.side},
-            {
-                "left",
-                r1(t.left)
-            },
-            {
-                "arr",
-                r1(t.arr)
-            },
-            {
-                "away",
-                r1(DotaTime() - t.left)
-            },
-            {
-                "died",
-                bot:IsAlive() and 0 or 1
-            },
-            {"hit", t.hit == true and 1 or 0},
-            {"idle", t.idle}
-        }
+            "left",
+            r1(t.left)
+        },
+        {
+            "arr",
+            r1(t.arr)
+        },
+        {
+            "away",
+            r1(DotaTime() - t.left)
+        },
+        {
+            "died",
+            bot:IsAlive() and 0 or 1
+        },
+        {"hit", t.hit == true and 1 or 0},
+        {"idle", t.idle},
+        {"phase", t.act}
     )
+    local ____temp_2
+    if t.race ~= nil then
+        ____temp_2 = r1(t.race.ours)
+    else
+        ____temp_2 = nil
+    end
+    __TS__SparseArrayPush(____array_8, {"ta", ____temp_2})
+    local ____temp_3
+    if t.race ~= nil and t.race.theirs < math.huge then
+        ____temp_3 = r1(t.race.theirs)
+    else
+        ____temp_3 = nil
+    end
+    __TS__SparseArrayPush(____array_8, {"te", ____temp_3}, {"hid", t.hidden})
+    local ____opt_4 = t.stand
+    __TS__SparseArrayPush(____array_8, {"sh", ____opt_4 and ____opt_4.height})
+    local ____opt_6 = t.stand
+    __TS__SparseArrayPush(____array_8, {"sph", ____opt_6 and ____opt_6.spotHeight})
+    __TS__SparseArrayPush(
+        ____array_9,
+        {__TS__SparseArraySpread(____array_8)}
+    )
+    ____log_10(__TS__SparseArraySpread(____array_9))
 end
 --- OHA's own action holds the hero (a queued TP, a cast or channel): the host's Think does not step a job then
 -- (J.CanNotUseAction), so a trip started now ends `never_started` (probe rr2: a pos4 in its fountain with a queued TP).
@@ -381,7 +491,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue38
+            local __continue42
             repeat
                 local function skip(why)
                     handled[pid][key(kind, spawn)] = true
@@ -394,10 +504,27 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue38 = true
+                    __continue42 = true
                     break
                 end
-                local t = tripFor(bot, kind, spawn, host)
+                local mine
+                if planned(kind, spawn) then
+                    if DotaTime() < RunePlan.SETTINGS.PlanAt then
+                        __continue42 = true
+                        break
+                    end
+                    mine = RunePlan.SpotOf(bot, ____exports.Busy)
+                    if mine == nil then
+                        return skip("plan-other")
+                    end
+                end
+                local t = tripFor(
+                    bot,
+                    kind,
+                    spawn,
+                    host,
+                    mine
+                )
                 local leave = leaveAt(bot, t)
                 if DotaTime() < leave then
                     return false
@@ -430,15 +557,97 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue38 then
+            if not __continue42 then
                 break
             end
         end
     end
     return false
 end
-function ____exports.Step(bot, host)
-    return running[bot:GetPlayerID()] ~= nil and Tasks.Step(bot, host)
+--- The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95), below a retreat's.
+____exports.MID_DESIRE = 0.97
+local MID_HOST = BotMode.Rune
+--- Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or
+-- as it starts (the mode then returns MidDesire and steps it in Think). Not a chooser job: the mid has no other jobs, and
+-- the rune mode is the mode Valve would give a rune walk.
+function ____exports.MidWants(bot)
+    if not RunePlan.On() or not bot:IsBot() or LaneConfig.PositionOf(bot) ~= 2 then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    Tasks.Tick(bot)
+    if running[pid] ~= nil then
+        return true
+    end
+    if Tasks.Jobs() == nil then
+        return false
+    end
+    local spawn = RunePlan.SETTINGS.Spawn
+    local now = DotaTime()
+    handled[pid] = handled[pid] or ({})
+    local k = key("power", spawn)
+    if handled[pid][k] == true or now < RunePlan.SETTINGS.PlanAt or now >= spawn + ____exports.SETTINGS.LateBy.power then
+        return false
+    end
+    local mine = RunePlan.SpotOf(bot, ____exports.Busy)
+    if mine == nil then
+        return false
+    end
+    local function skip(why)
+        handled[pid][k] = true
+        log(bot, "power", spawn, {{"res", "skip"}, {"why", why}})
+        return false
+    end
+    if not bot:IsAlive() then
+        local ____temp_11
+        if now >= spawn then
+            ____temp_11 = skip("dead")
+        else
+            ____temp_11 = false
+        end
+        return ____temp_11
+    end
+    local t = tripFor(
+        bot,
+        "power",
+        spawn,
+        MID_HOST,
+        mine
+    )
+    local leave = leaveAt(bot, t)
+    if now < leave then
+        return false
+    end
+    if acting(bot) then
+        local ____temp_12
+        if now > leave + ____exports.SETTINGS.StartSlack then
+            ____temp_12 = skip("acting")
+        else
+            ____temp_12 = false
+        end
+        return ____temp_12
+    end
+    local ok = Tasks.Start(
+        bot,
+        {
+            name = "rune",
+            host = MID_HOST,
+            preemptAfter = 1,
+            stallAfter = 4,
+            onEnd = function(r, info) return finish(bot, t, r, info.label) end
+        },
+        function(ctx) return body(bot, t, ctx) end
+    )
+    if not ok then
+        return skip("refused")
+    end
+    handled[pid][k] = true
+    running[pid] = t
+    jobLine(bot, t, "start", "plan")
+    return true
+end
+function ____exports.MidStep(bot)
+    return LaneConfig.PositionOf(bot) == 2 and ____exports.Step(bot, MID_HOST)
 end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
@@ -484,20 +693,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue67
+                local __continue96
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue67 = true
+                        __continue96 = true
                         break
                     end
-                    local ____opt_2 = running[m:GetPlayerID()]
-                    if (____opt_2 and ____opt_2.kind) == "wisdom" then
+                    local ____opt_13 = running[m:GetPlayerID()]
+                    if (____opt_13 and ____opt_13.kind) == "wisdom" then
                         return true
                     end
-                    __continue67 = true
+                    __continue96 = true
                 until true
-                if not __continue67 then
+                if not __continue96 then
                     break
                 end
             end

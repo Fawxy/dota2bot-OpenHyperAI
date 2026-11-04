@@ -237,7 +237,7 @@ function GetDesire()
 			else
 				-- Power rune / water rune
 				-- Ours.RuneRotation: this hero's power spawn is the rune job's to decide, taken or skipped.
-				if J.Humaniser.RuneJob.Owns(bot, 'power') then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
+				if J.Humaniser.RuneJob.Owns(bot, 'power') or J.Humaniser.RunePlan.OwnsMid(bot) then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
 				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
 				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end
@@ -251,6 +251,8 @@ end
 local GetDesireRaw = GetDesire
 function GetDesire()
 	sGate = nil
+	-- Ours.RuneSpawn: the mid's side of the 6:00 plan (rune_job MidWants) runs in this mode, ahead of OHA's rune logic.
+	if J.Humaniser.RuneJob.MidWants(bot) then return J.Humaniser.RuneJob.MID_DESIRE end
 	CheckPendingPickup()
 	if J.Humaniser.RunePickup.On() then J.Humaniser.RunePickup.Tick(bot) end
 	local nRaw = GetDesireRaw()
@@ -321,6 +323,7 @@ end
 --------------------------------------------------------------------
 local fNextMovementTime = -math.huge
 function Think()
+	if J.Humaniser.RuneJob.MidStep(bot) then return end
 	if bot:IsInvulnerable() and bot:DistanceFromFountain() < 500 then
 		bot:Action_MoveToLocation(bot:GetLocation() + RandomVector(500))
 		return

@@ -913,6 +913,10 @@ export const EVENTS = {
     },
     // Slice rune-rotation: one line per rune trip or skip (RuneJob). res ok|fail|skip; why: the verb's end reason or the
     // skip's gate; arr: when the bot reached the spot (wait or channel label); died: dead at the trip's end.
+    // Slice rune-spawn (6:00 trip under the spot plan): why plan-other (a skip: the plan gave the other spot to the mid or the
+    // other support); phase the act at the spawn (take, deny, off, cross, none); ta / te our and the soonest enemy hero's
+    // seconds to the rune's spot at the decision; hid seconds hidden at the stand; sh / sph the stand's and the spot's
+    // GetHeightLevel.
     // Slice rune-spawn: one line when a hero starts ordering a rune pickup (res try) and one when that try ends: gone (the rune
     // left the spot), left (the hero walked off, or ordered another rune), gave_up (RunePickup GiveUpAfter s of orders within
     // Near with the rune still available: unpickable for the team until the next river spawn). d distance to the spot; act0 and
@@ -954,6 +958,16 @@ export const EVENTS = {
         join: "num",
         dur: "num",
     },
+    // Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt: mid / sup the planned heroes' pids, ms / ss
+    // their spots' rune ids; why no-free-support or no-mid when a side is empty.
+    rune_plan: {
+        team: "num",
+        mid: "num",
+        ms: "num",
+        sup: "num",
+        ss: "num",
+        why: "str",
+    },
     rune_try: {
         pid: "num",
         rune: "num",
@@ -979,6 +993,12 @@ export const EVENTS = {
         died: "num",
         hit: "num",
         idle: "num",
+        phase: "str",
+        ta: "num",
+        te: "num",
+        hid: "num",
+        sh: "num",
+        sph: "num",
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;
