@@ -168,10 +168,18 @@ export function DeriveMeetPoint(_team: number, lane: Lane, campLoc: Vector): Vec
 }
 
 export function DeriveHalfMeetPoint(team: number, lane: Lane, meet: Vector): Vector {
+    return ShiftAlongLane(team, lane, meet, camps().HalfMeetOffset);
+}
+
+/** The lane point `offset` along the lane from `meet` the way `team`'s wave walks (negative: back towards its base). */
+export function ShiftAlongLane(team: number, lane: Lane, meet: Vector, offset: number): Vector {
     const step = camps().LaneSampleStep;
-    const offset = camps().HalfMeetOffset;
     // Our wave walks toward the enemy base: up the engine amount in our own frame, down in the other team's.
-    const dir = ToAbsAmount(team, 1) > ToAbsAmount(team, 0) ? 1 : -1;
+    let dir = ToAbsAmount(team, 1) > ToAbsAmount(team, 0) ? 1 : -1;
+    if (offset < 0) {
+        dir = -dir;
+        offset = -offset;
+    }
     let a = NearestLaneAmount(lane, meet);
     let prev = GetLocationAlongLane(lane, a);
     let prevDist = dist2D(prev, meet);
@@ -369,7 +377,8 @@ export function Resolve(): CampJobData[] {
             best = s;
         }
         if (best === undefined) continue;
-        const meet = DeriveMeetPoint(entry.team, lane, best.location);
+        const nearest = DeriveMeetPoint(entry.team, lane, best.location);
+        const meet = entry.meetBack !== undefined ? ShiftAlongLane(entry.team, lane, nearest, -entry.meetBack) : nearest;
         own[best.idx] = {
             campIdx: best.idx,
             team: entry.team,
