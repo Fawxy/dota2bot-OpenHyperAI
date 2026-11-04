@@ -65,8 +65,10 @@ export const SETTINGS = {
     ReturnMax: 25,
     ReturnReorder: 0.5,
     /** FarmPattern's clear-time model: seconds at RefLevel, scaled by RefLevel / level within LevelScale, plus StackedClearMul
-     *  per stack, times the bot's learned pace (Learn towards measured / estimate, within LearnClamp; LateGrowth on a late leave). */
-    ClearSec: { small: 7, medium: 10, large: 13, ancient: 18 } as Record<string, number>,
+     *  per stack, times the bot's learned pace (Learn towards measured / estimate, within LearnClamp; LateGrowth on a late leave).
+     *  Medium and large are above FarmPattern's 10 and 13: over 164 trips (cnghar2, cngchk5, cngchk6) the third neutral
+     *  died about 1.4-1.5 times later than those allowed, and a large camp averaged 1.25 kills a trip; ancient scaled with them (not measured). */
+    ClearSec: { small: 7, medium: 14, large: 19, ancient: 26 } as Record<string, number>,
     RefLevel: 8,
     LevelScale: [0.6, 1.6],
     StackedClearMul: 0.8,
