@@ -163,6 +163,54 @@ do
 	check("the mid takes the rune at its spot through the rune mode", midLine ~= nil and field(midLine, "phase") == "take" and field(midLine, "res") == "ok", midLine)
 end
 
+-- The planned support's start gate drops it (low HP at its leave time): the spot goes to the other support, skipped as
+-- plan-other at the plan, which starts late, walks straight in and still takes the rune (rspchk2: 3 of 10 plans uncovered).
+do
+	local H = world()
+	SPAWN_AT = P2
+	local mid = hero(2, 2, Vector(-600, 300))
+	local p4 = hero(3, 4, Vector(1500, -3500))
+	local p5 = hero(4, 5, Vector(-1000, -2500))
+	p4.hp, p4.maxhp = 10, 100
+	local out = run(H, { mid, p4, p5 }, 368)
+	local plans = lines(out, "rune_plan")
+	local first, swap = plans[1], plans[#plans]
+	local p4Line, p5Lines = nil, {}
+	for _, l in ipairs(lines(out, "rune_job")) do
+		if field(l, "pid") == "3" and field(l, "kind") == "power" then p4Line = l end
+		if field(l, "pid") == "4" and field(l, "kind") == "power" then table.insert(p5Lines, l) end
+	end
+	check("drop: the plan names pos4 first", field(first, "sup") == "3", first)
+	check("drop: pos4's gate skips it with its reason", field(p4Line, "res") == "skip" and field(p4Line, "why") == "low-hp", p4Line)
+	check("drop: the plan hands the spot to pos5", #plans == 2 and field(swap, "sup") == "4" and field(swap, "ss") == tostring(P2) and field(swap, "why") == "swap:low-hp", swap)
+	local last = p5Lines[#p5Lines]
+	check("drop: pos5 skipped at the plan, then took the rune at the spot", #p5Lines == 2 and field(p5Lines[1], "why") == "plan-other"
+		and field(last, "phase") == "take" and field(last, "res") == "ok" and tonumber(field(last, "arr")) <= 360.5, last)
+end
+
+-- No support to hand the spot to: the plan logs the drop and nobody else is sent.
+do
+	local H = world()
+	SPAWN_AT = P2
+	local mid = hero(2, 2, Vector(-600, 300))
+	local p4 = hero(3, 4, Vector(1500, -3500))
+	p4.hp, p4.maxhp = 10, 100
+	local out = run(H, { mid, p4 }, 368)
+	local plans = lines(out, "rune_plan")
+	check("drop, no one free: the plan logs drop with no support", #plans == 2 and field(plans[2], "why") == "drop:low-hp" and field(plans[2], "sup") == nil, plans[2])
+end
+
+-- The mid's trip has an HP gate: under half HP at its leave time it is held, then skipped with low-hp, and no trip runs.
+do
+	local H = world()
+	SPAWN_AT = P1
+	local mid = hero(2, 2, Vector(-600, 300))
+	mid.hp, mid.maxhp = 30, 100
+	local out = run(H, { mid }, 368)
+	local l = lines(out, "rune_job")[1]
+	check("mid gate: low HP skips the trip", l ~= nil and field(l, "res") == "skip" and field(l, "why") == "low-hp" and #lines(out, "rune_job") == 1, l)
+end
+
 -- The race at the spawn: an enemy hero beside the spot. A ranged hero whose hit lands first denies, a melee one stays off.
 do
 	local H = world()

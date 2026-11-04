@@ -54,6 +54,8 @@ export interface Plan {
     supSpot?: number;
     sup?: Unit;
     why?: string;
+    /** Supports whose start gate dropped them from the plan; `sup` is a replacement when it is set after a drop. */
+    dropped?: Unit[];
 }
 
 const plans: Record<number, Plan | undefined> = {};
@@ -90,6 +92,20 @@ function nearer(u: Unit, a: number, b: number): number {
     return GetUnitToLocationDistance(u, SpotAt(a)) <= GetUnitToLocationDistance(u, SpotAt(b)) ? a : b;
 }
 
+/** The free support (alive, not `busy`, not in `skip`) with the shorter walk to `spot` (to its nearer spot with none). */
+function freeSupport(spot: number | undefined, busy: (this: void, u: Unit) => boolean, skip: Unit[]): Unit | undefined {
+    const [a, b] = Spots();
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const pos of [4, 5]) {
+        const s = teamHero(pos);
+        if (!FR.Alive(s) || busy(s) || skip.includes(s!)) continue;
+        const d = GetUnitToLocationDistance(s, SpotAt(spot ?? nearer(s, a, b)));
+        if (d < bestD) [best, bestD] = [s, d];
+    }
+    return best;
+}
+
 /**
  * The spot plan from plain choices: `mid` takes the spot nearer it; the other spot goes to the free support with the
  * shorter walk to it (pos4 on a tie). `busy(u)` says a support is not free (a stack that minute). Exported for tests.
@@ -103,14 +119,7 @@ export function Make(now: number, busy: (this: void, u: Unit) => boolean): Plan 
         plan.midSpot = nearer(mid, a, b);
     }
     const supSpot = plan.midSpot !== undefined ? Other(plan.midSpot) : undefined;
-    let best: Unit | undefined;
-    let bestD = math.huge;
-    for (const pos of [4, 5]) {
-        const s = teamHero(pos);
-        if (!FR.Alive(s) || busy(s)) continue;
-        const d = GetUnitToLocationDistance(s, SpotAt(supSpot ?? nearer(s, a, b)));
-        if (d < bestD) [best, bestD] = [s, d];
-    }
+    const best = freeSupport(supSpot, busy, []);
     if (best !== undefined) {
         plan.sup = best;
         plan.supSpot = supSpot ?? nearer(best, a, b);
@@ -126,16 +135,40 @@ export function For(team: number, busy: (this: void, u: Unit) => boolean, now: n
     if (p === undefined) {
         p = Make(now, busy);
         plans[team] = p;
-        Telemetry.Event("rune_plan", [
-            ["team", team],
-            ["mid", p.mid?.GetPlayerID()],
-            ["ms", p.midSpot],
-            ["sup", p.sup?.GetPlayerID()],
-            ["ss", p.supSpot],
-            ["why", p.why],
-        ]);
+        logPlan(team, p);
     }
     return p;
+}
+
+function logPlan(team: number, p: Plan): void {
+    Telemetry.Event("rune_plan", [
+        ["team", team],
+        ["mid", p.mid?.GetPlayerID()],
+        ["ms", p.midSpot],
+        ["sup", p.sup?.GetPlayerID()],
+        ["ss", p.supSpot],
+        ["why", p.why],
+    ]);
+}
+
+/**
+ * The planned support `bot` will not go (its start gate skipped it, `why`): its spot goes to another free support, once per
+ * support, and the plan logs again (rspchk2: 3 of 10 plans uncovered with the other support free). Returns the replacement.
+ */
+export function Drop(bot: Unit, why: string, busy: (this: void, u: Unit) => boolean): Unit | undefined {
+    const p = plans[bot.GetTeam()];
+    if (p === undefined || p.sup !== bot) return undefined;
+    p.dropped = [...(p.dropped ?? []), bot];
+    p.sup = freeSupport(p.supSpot, busy, p.dropped);
+    p.why = `${p.sup !== undefined ? "swap" : "drop"}:${why}`;
+    logPlan(bot.GetTeam(), p);
+    return p.sup;
+}
+
+/** True when `bot` holds its spot as a replacement for a dropped support. */
+export function Replaces(bot: Unit): boolean {
+    const p = plans[bot.GetTeam()];
+    return p !== undefined && p.sup === bot && p.dropped !== undefined;
 }
 
 /** The spot this hero holds in its team's plan, if any. */
