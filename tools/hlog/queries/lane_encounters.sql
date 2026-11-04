@@ -4,8 +4,10 @@
 -- of the hero (lineup snaps within 0.6 s), the lowest such enemy's HP and the hero's own. Outcome, to 5 s after its last snap:
 -- died (the hero's death, dated at the snapshot before the dead gap, as fragment hero_death), kill (an enemy hero died within
 -- 1,600 of the hero's mean position: a kill near it, not necessarily its own), hp_drop (the hero's HP-% range inside it).
+-- Only encounters whose first snapshot is within :width (default 1,200, fight_read's lane width) of a lane path by the snapshot's
+-- `ld` (nearest lane, not necessarily the hero's own; a build without `ld` keeps every encounter).
 -- held: `roam` when team roam or roam held the hero in 30% or more of its snaps, else `other`.
--- Params: like (LIKE pattern on games.file), from, until.
+-- Params: like (LIKE pattern on games.file), from, until, width.
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
 sn AS MATERIALIZED (
     SELECT s.game_id, s.pid, l.team, l.pos, s.t, s.x, s.y, s.hp, s.deaths, s.mode, s.ed, s.alive
@@ -33,11 +35,12 @@ e AS (
     FROM g WHERE near AND ep > 0 GROUP BY game_id, pid, team, pos, ep HAVING count(*) >= 2
 ),
 f AS (
-    SELECT e.*, s0.x AS x0, s0.y AS y0, s0.hp AS hp0,
+    SELECT e.*, s0.x AS x0, s0.y AS y0, s0.hp AS hp0, s0.ld AS ld0,
         EXISTS (SELECT 1 FROM dd WHERE dd.game_id = e.game_id AND dd.pid = e.pid AND dd.t BETWEEN e.t0 AND e.t1 + 5) AS died,
         EXISTS (SELECT 1 FROM dd WHERE dd.game_id = e.game_id AND dd.team <> e.team AND dd.t BETWEEN e.t0 AND e.t1 + 5
             AND (dd.x - e.x) * (dd.x - e.x) + (dd.y - e.y) * (dd.y - e.y) < 1600 * 1600) AS kill
     FROM e JOIN ev_snap s0 ON s0.game_id = e.game_id AND s0.pid = e.pid AND s0.t = e.t0
+    WHERE coalesce(s0.ld, 0) <= coalesce(:width, 1200)
 ),
 n AS (
     SELECT f.*,

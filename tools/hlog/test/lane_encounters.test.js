@@ -8,9 +8,9 @@ const { Store } = require('../store');
 
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const snap = (t, pid, o) => line(t, `snap pid=${pid} x=${o.x ?? 0} y=${o.y ?? 0} alive=1 hp=${o.hp ?? 100} deaths=${o.deaths ?? 0}`
-    + ` mode=${o.mode ?? 'laning'} d=0.5${o.ed !== undefined ? ` ed=${o.ed}` : ''} by="${o.mode ?? 'laning'} 0.50 by raw"`);
+    + ` ld=${o.ld ?? 0} mode=${o.mode ?? 'laning'} d=0.5${o.ed !== undefined ? ` ed=${o.ed}` : ''} by="${o.mode ?? 'laning'} 0.50 by raw"`);
 
-test('lane encounters: numbers and enemy HP at the start, a kill near the hero and its own death dated before the dead gap', () => {
+test('lane encounters: numbers and enemy HP at the start, a kill near the hero, its own death dated before the dead gap; off-lane ones left out', () => {
     const lines = [
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         line(0, 'bot pid=4 hero=h4 team=2 pos=4'),
@@ -34,6 +34,8 @@ test('lane encounters: numbers and enemy HP at the start, a kill near the hero a
         lines.push(snap(t, 7, { x: 1500, deaths: 0 }));
     }
     lines.push(snap(230, 1, { x: -7000, y: -7000, deaths: 1 }));
+    // Encounter 3: off every lane (2,000 from the nearest path): not an in-lane encounter.
+    for (let t = 300; t <= 302; t++) lines.push(snap(t, 1, { x: 3000, ed: 300, ld: 2000 }));
     // Outside :until: not read.
     lines.push(snap(700, 1, { ed: 300 }), snap(701, 1, { ed: 300 }));
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-enc-')), 'a.log');
