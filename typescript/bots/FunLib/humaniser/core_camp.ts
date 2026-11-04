@@ -476,19 +476,19 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
             hooks
         );
         const now = DotaTime();
-        if (r.success) {
-            if (r.message === "cleared" && t.engagedAt !== undefined) learn(bot, now - t.engagedAt, t.plan.prior);
-            markCleared(bot.GetTeam(), t.plan.camp, now);
-            const next = Plan(bot, bot.GetLocation(), now, t.clash);
-            if (next === undefined) break;
-            t.plan = next;
-            t.camps++;
-            log(bot, "next", t.clash, [["after", r.message ?? "ok"], ...planFields(next)]);
-            continue;
+        // No `continue` in this loop: TSTL lowers it to a flag set after the final `break`, which Lua 5.1 rejects.
+        if (!r.success) {
+            if (r.reason !== "timeout") return r;
+            if (t.engagedAt !== undefined) growLate(bot);
+            break;
         }
-        if (r.reason !== "timeout") return r;
-        if (t.engagedAt !== undefined) growLate(bot);
-        break;
+        if (r.message === "cleared" && t.engagedAt !== undefined) learn(bot, now - t.engagedAt, t.plan.prior);
+        markCleared(bot.GetTeam(), t.plan.camp, now);
+        const next = Plan(bot, bot.GetLocation(), now, t.clash);
+        if (next === undefined) break;
+        t.plan = next;
+        t.camps++;
+        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ...planFields(next)]);
     }
     return yield* walkBack(bot, t, ctx);
 }

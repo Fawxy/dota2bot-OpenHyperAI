@@ -896,74 +896,63 @@ local body = __TS__Generator(function(bot, t, ctx)
         urgent = ctx.urgent
     }
     while true do
-        do
-            local __continue117
-            repeat
-                local spawner = Camps.SpawnerByIdx(t.plan.camp)
-                if spawner == nil then
-                    break
-                end
-                t.engagedAt = nil
-                local r = __TS__DelegatedYield(V.clearCamp(
-                    bot,
-                    {
-                        at = Camps.BoxCenter(spawner),
-                        radius = ____exports.SETTINGS.CampRadius,
-                        deadline = t.plan.leaveBy,
-                        onEngage = function(at)
-                            local ____at_2 = at
-                            t.engagedAt = ____at_2
-                            return ____at_2
-                        end
-                    },
-                    hooks
-                ))
-                local now = DotaTime()
-                if r.success then
-                    if r.message == "cleared" and t.engagedAt ~= nil then
-                        learn(bot, now - t.engagedAt, t.plan.prior)
-                    end
-                    markCleared(
-                        bot:GetTeam(),
-                        t.plan.camp,
-                        now
-                    )
-                    local next = ____exports.Plan(
-                        bot,
-                        bot:GetLocation(),
-                        now,
-                        t.clash
-                    )
-                    if next == nil then
-                        break
-                    end
-                    t.plan = next
-                    t.camps = t.camps + 1
-                    log(
-                        bot,
-                        "next",
-                        t.clash,
-                        {
-                            {"after", r.message or "ok"},
-                            unpack(planFields(next))
-                        }
-                    )
-                    __continue117 = true
-                    break
-                end
-                if r.reason ~= "timeout" then
-                    return r
-                end
-                if t.engagedAt ~= nil then
-                    growLate(bot)
-                end
-                break
-                __continue117 = true
-            until true
-            if not __continue117 then
-                break
-            end
+        local spawner = Camps.SpawnerByIdx(t.plan.camp)
+        if spawner == nil then
+            break
         end
+        t.engagedAt = nil
+        local r = __TS__DelegatedYield(V.clearCamp(
+            bot,
+            {
+                at = Camps.BoxCenter(spawner),
+                radius = ____exports.SETTINGS.CampRadius,
+                deadline = t.plan.leaveBy,
+                onEngage = function(at)
+                    local ____at_2 = at
+                    t.engagedAt = ____at_2
+                    return ____at_2
+                end
+            },
+            hooks
+        ))
+        local now = DotaTime()
+        if not r.success then
+            if r.reason ~= "timeout" then
+                return r
+            end
+            if t.engagedAt ~= nil then
+                growLate(bot)
+            end
+            break
+        end
+        if r.message == "cleared" and t.engagedAt ~= nil then
+            learn(bot, now - t.engagedAt, t.plan.prior)
+        end
+        markCleared(
+            bot:GetTeam(),
+            t.plan.camp,
+            now
+        )
+        local next = ____exports.Plan(
+            bot,
+            bot:GetLocation(),
+            now,
+            t.clash
+        )
+        if next == nil then
+            break
+        end
+        t.plan = next
+        t.camps = t.camps + 1
+        log(
+            bot,
+            "next",
+            t.clash,
+            {
+                {"after", r.message or "ok"},
+                unpack(planFields(next))
+            }
+        )
     end
     return __TS__DelegatedYield(walkBack(bot, t, ctx))
 end)
