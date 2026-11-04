@@ -841,6 +841,7 @@ ____exports.EVENTS = {
         hid = "num",
         sh = "num",
         sph = "num",
+        via = "num",
         play = "num",
         gank = "num"
     },

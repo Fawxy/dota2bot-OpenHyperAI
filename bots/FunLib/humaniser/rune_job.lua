@@ -647,7 +647,7 @@ local function finish(bot, t, r, label)
     local ____opt_5 = t.stand
     __TS__SparseArrayPush(____array_13, {"sh", ____opt_5 and ____opt_5.height})
     local ____opt_7 = t.stand
-    __TS__SparseArrayPush(____array_13, {"sph", ____opt_7 and ____opt_7.spotHeight})
+    __TS__SparseArrayPush(____array_13, {"sph", ____opt_7 and ____opt_7.spotHeight}, {"via", t.via ~= nil and #t.via or nil})
     local ____opt_9 = t.play or t.fight
     __TS__SparseArrayPush(____array_13, {"play", ____opt_9 and ____opt_9.id})
     local ____opt_11 = t.gank

@@ -290,6 +290,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["hid", t.hidden],
         ["sh", t.stand?.height],
         ["sph", t.stand?.spotHeight],
+        ["via", t.via !== undefined ? t.via.length : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
     ]);
