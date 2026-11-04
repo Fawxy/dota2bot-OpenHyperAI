@@ -1003,10 +1003,12 @@
    "se": "num",
    "sh": "num",
    "lv": "num",
-   "sf": "num",
    "s0": "num",
-   "pz": "num",
    "pk": "str",
+   "hr": "str",
+   "hc": "num",
+   "hn": "num",
+   "hb": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -1456,7 +1458,8 @@
    "res": "text",
    "why": "text",
    "label": "text",
-   "pk": "text"
+   "pk": "text",
+   "hr": "text"
   },
   "ev_pull_watch": {
    "ph": "text",

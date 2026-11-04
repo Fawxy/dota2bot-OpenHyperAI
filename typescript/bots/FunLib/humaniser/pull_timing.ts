@@ -42,6 +42,8 @@ export interface PullTiming {
     ahead?: number;
     /** The team whose wave is pulled (ours or the other team's); LiveRead reads that team's creeps. */
     team?: number;
+    /** Seconds the neutrals take from the hit to the meet point (the lead path at NeutralSpeed). */
+    walk?: number;
 }
 
 /** A live reading of our wave against the plan: the shift from its body (applied) and from its front creep (logged). */
@@ -120,10 +122,11 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const ahead = LaneAhead(team, lane);
     const waveTravel = meetAlong / cfg.CreepSpeed - ahead;
     // A half pull is timed as a full pull to its own (later) meet point, then HalfPullLater later, as the seeds were.
-    const waveAfter = WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half ? t.HalfPullLater : 0);
+    const walk = WalkLength(origin, leadPath) / neutralSpeed;
+    const waveAfter = walk + cfg.Lead - (half ? t.HalfPullLater : 0);
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
-    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team };
+    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team, walk };
 }
 
 /** WaveAhead for `team`'s `lane`: the safe lane's or the off lane's, 0 for mid. */
@@ -169,6 +172,7 @@ export function ForCamp(data: Camps.CampJobData, half: boolean, meet?: Vector): 
 }
 
 /**
+ * The old camp-job pulls' live correction (camp_jobs; the pull job times its hit on the creeps, CreepTimer).
  * Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, its lane creeps
  * within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
  * WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
@@ -201,46 +205,90 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
     return { shift: clamp(sum / n), front: clamp(front) };
 }
 
+/**
+ * Each creep of the timed wave by its distance along the lane path, front first: the timing team's lane creeps within
+ * LiveWindow of where the wave should be at `now` for a hit at `aggroAt`, as LiveRead reads them, without its stop at the
+ * meet point. Empty without a wave model.
+ */
+export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): number[] {
+    const out: number[] = [];
+    if (timing.source !== "wave" || timing.waveAfter === undefined || timing.waveTravel === undefined || timing.lanePath === undefined) return out;
+    const cfg = settings();
+    const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
+    const expected = (now - spawnAt + (timing.ahead ?? 0)) * cfg.CreepSpeed;
+    const window = cfg.LiveWindow * cfg.CreepSpeed;
+    const kind = timing.team === undefined || timing.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
+    for (const c of GetUnitList(kind) ?? []) {
+        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        const [along, off] = Along(timing.lanePath, c.GetLocation());
+        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push(along);
+    }
+    out.sort((a, b) => b - a);
+    return out;
+}
+
 export function LiveShift(timing: PullTiming, aggroAt: number, now: number): number | undefined {
     return LiveRead(timing, aggroAt, now)?.shift;
 }
 
 /**
- * A pull's hit second followed live from its slot to the order and on through the lead: the wave is read again every
- * LiveEvery s until it reaches the meet point, and the last reading stands once it no longer can be read (the wave there,
- * or not seen). Any puller and either team's wave: it reads only the timing it is given.
+ * A pull's hit second timed on its wave's creeps (slice pull-half, user 05/11/2026): the hit goes out so the neutrals, walking
+ * `timing.walk` from the hit, reach the meet point just as the wave's creep `index` from the front (0 the front one) is `past`
+ * beyond it along the lane, from every creep's position at CreepSpeed. A full pull aims its front creep, a half pull its
+ * second (the front two walk on out of acquisition range). Read every LiveEvery s from the leave time to the order; the plan's
+ * slot stands until the aimed creep and one behind it are read. Any puller and either team's wave: it reads only the timing
+ * it is given.
  */
-export interface LiveHit {
+export interface CreepTimer {
     timing: PullTiming;
     slot: number;
-    /** The last reading taken (undefined until one is). */
-    read?: LiveReading;
-    /** The first reading's shift: what the hit was at the start. */
+    index: number;
+    past: number;
+    /** At the last read: the hit second, when the back creep reaches the meet point, the creeps read, and on that hit the
+     *  predicted distance past the meet point at the neutrals' arrival of the creep after the aimed one (`next`, the first
+     *  meant to turn) and of the back one (`back`; negative: short of it). */
+    hit?: number;
+    waveAt?: number;
+    n: number;
+    next?: number;
+    back?: number;
+    /** The first creep-timed hit's shift from the slot. */
     first?: number;
     readAt?: number;
     reads: number;
 }
 
-export function Track(timing: PullTiming, slot: number): LiveHit {
-    return { timing, slot, reads: 0 };
+export function Timer(timing: PullTiming, slot: number, index: number, past: number): CreepTimer {
+    return { timing, slot, index, past, n: 0, reads: 0 };
 }
 
-/** Reads the wave if LiveEvery has passed since the last read; returns the hit second (slot + the last shift). */
-export function Update(l: LiveHit, now: number): number {
-    if (l.readAt === undefined || now - l.readAt >= settings().LiveEvery) {
-        l.readAt = now;
-        const r = LiveRead(l.timing, l.slot, now);
-        if (r !== undefined) {
-            l.read = r;
-            l.reads += 1;
-            if (l.first === undefined) l.first = r.shift;
+/** Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed). */
+export function Read(c: CreepTimer, now: number): number {
+    const t = c.timing;
+    const meet = t.meetAlong;
+    const walk = t.walk;
+    if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && walk !== undefined) {
+        c.readAt = now;
+        const alongs = WaveAlongs(t, c.slot, now);
+        c.n = alongs.length;
+        if (alongs.length >= c.index + 2) {
+            const v = settings().CreepSpeed;
+            const hit = now + (meet + c.past - alongs[c.index]) / v - walk;
+            const pastAt = (along: number) => math.floor(along + v * (hit + walk - now) - meet + 0.5);
+            c.hit = hit;
+            c.waveAt = now + (meet - alongs[alongs.length - 1]) / v;
+            c.next = pastAt(alongs[c.index + 1]);
+            c.back = pastAt(alongs[alongs.length - 1]);
+            c.reads += 1;
+            if (c.first === undefined) c.first = hit - c.slot;
         }
     }
-    return l.slot + (l.read?.shift ?? 0);
+    return c.hit ?? c.slot;
 }
 
-/** When the wave's body reaches the meet point by the last reading; undefined for a timing with no wave model. */
-export function WaveAt(l: LiveHit, now: number): number | undefined {
-    const after = l.timing.waveAfter;
-    return after !== undefined ? Update(l, now) + after : undefined;
+/** When the wave's back creep reaches the meet point: from the last read, else the plan's. */
+export function WaveAt(c: CreepTimer, now: number): number | undefined {
+    Read(c, now);
+    if (c.waveAt !== undefined) return c.waveAt;
+    return c.timing.waveAfter !== undefined ? c.slot + c.timing.waveAfter : undefined;
 }

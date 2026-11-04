@@ -1079,14 +1079,19 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads (slice pull-half;
+        // before it, the wave body's shift and LiveRead's readings).
         sh: "num",
         lv: "num",
-        sf: "num",
-        // Slice pull-live: s0 the shift at the start (sh is the one at the order), pz seconds held after the hit for a late wave.
         s0: "num",
-        pz: "num",
-        // Slice pull-half: the pull's kind (full or half).
+        // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
+        // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
+        // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
         pk: "str",
+        hr: "str",
+        hc: "num",
+        hn: "num",
+        hb: "num",
         ht: "num",
         g4: "num",
         gh: "num",

@@ -75,15 +75,6 @@ export const SETTINGS = {
     BailReserve: 0.25,
     BailGrace: 2,
     BailFor: 6,
-    /** Live re-timing (slice pull-live): after the hit, the puller holds where it is (at most PaceFor s) while the wave,
-     *  read live, would reach the meet point more than PaceLead after the neutrals following the puller there, and every
-     *  tagged neutral is still within PaceGuard of its camp (EC-084: the 5 s give-up timer starts past 400, so a wait
-     *  inside it costs the chase nothing; a wait outside it does). PaceLead is under the plan's Lead (1.5 s), so an on-time
-     *  pull waits about a second too: neutrals there too soon took the front two creeps and turned home before the rest
-     *  came (the user's replays of camp 1 partial pulls, 04/11/2026). All `judgement`. */
-    PaceLead: 0.5,
-    PaceGuard: 350,
-    PaceFor: 3,
     /** Neutrals within this of the puller are the ones that can be hitting it. */
     BailScan: 1200,
     /** With no tower of ours on the lane, step this far straight away from the neutrals. */
@@ -137,11 +128,7 @@ interface Pull {
     neutrals: number;
     /** The hit second as last read (the live wave up to the order), and the shift it had at the start. */
     hitAt: number;
-    startShift: number;
-    track: PullTiming.LiveHit;
-    /** Seconds the puller held after the hit for a late wave (`pz`). */
-    paced?: number;
-    pacedFrom?: number;
+    timer: PullTiming.CreepTimer;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -176,11 +163,11 @@ const running: Record<number, Pull | undefined> = {};
 const trailing: Record<number, Trail | undefined> = {};
 const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
-const tracks: Record<number, PullTiming.LiveHit | undefined> = {};
+const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, tracks] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -471,10 +458,12 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nn", p.neutrals],
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
-        ["s0", math.floor(p.startShift * 10 + 0.5) / 10],
-        ["lv", p.track.reads],
-        ["sf", p.track.read !== undefined ? math.floor(p.track.read.front * 10 + 0.5) / 10 : undefined],
-        ["pz", p.paced !== undefined ? math.floor(p.paced * 10 + 0.5) / 10 : undefined],
+        ["s0", p.timer.first !== undefined ? math.floor(p.timer.first * 10 + 0.5) / 10 : undefined],
+        ["lv", p.timer.reads],
+        ["hr", p.timer.hit !== undefined ? "geo" : "plan"],
+        ["hc", p.timer.n],
+        ["hn", p.timer.next],
+        ["hb", p.timer.back],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -488,7 +477,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         return;
     }
     const now = DotaTime();
-    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.track, now) ?? now) + SETTINGS.TrailSec };
+    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer, now) ?? now) + SETTINGS.TrailSec };
 }
 
 function share(p: Pull): number {
@@ -767,53 +756,24 @@ function verbCamp(p: Plan): JobVerbs.Camp {
     };
 }
 
-/**
- * After the hit: true while the neutrals would reach the meet point more than PaceLead before the wave (read live), and none
- * of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
- */
-function pace(bot: Unit, p: Pull): boolean {
-    const now = DotaTime();
-    const waveAt = PullTiming.WaveAt(p.track, now);
-    const speed = (LaneConfig.Settings().PullTiming.NeutralSpeed as Record<string, number>)[p.plan.spawner.type];
-    if (waveAt === undefined || speed === undefined || p.tagged === undefined) return false;
-    // The neutrals follow the puller: their walk to the meet point is the nearest one's gap to it plus the puller's lead.
-    let gap: number | undefined;
-    for (const u of p.tagged) {
-        if (stale(u)) continue;
-        if (GetUnitToLocationDistance(u, p.plan.spawner.location) > SETTINGS.PaceGuard) return false;
-        const d = GetUnitToUnitDistance(u, bot);
-        if (gap === undefined || d < gap) gap = d;
-    }
-    if (gap === undefined) return false;
-    const eta = (gap + PullTiming.WalkLength(bot.GetLocation(), p.plan.lead)) / speed;
-    // A half pull aims the neutrals HalfLag after the wave's body instead of PaceLead before it.
-    const lead = p.plan.kind === "half" ? -LaneConfig.Settings().PullTiming.HalfLag : SETTINGS.PaceLead;
-    if (waveAt - now - eta <= lead) return false;
-    p.pacedFrom = p.pacedFrom ?? now;
-    p.paced = now - p.pacedFrom;
-    return true;
-}
-
 function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     const camp = verbCamp(p);
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
-        pull.hitAt = PullTiming.Update(pull.track, DotaTime());
+        pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
         return aggroAt - pull.hitAt;
     };
     return {
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
-        pace: () => pace(bot, pull),
-        paceFor: SETTINGS.PaceFor,
         camp,
         aggroAt,
         lead: p.lead as unknown as Lib.Vec[],
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
-            const w = PullTiming.WaveAt(pull.track, DotaTime());
+            const w = PullTiming.WaveAt(pull.timer, DotaTime());
             return w !== undefined ? w + s.PullTiming.WatchAfterWave : undefined;
         },
         leadDeadline: aggroAt + s.Timing.JobMaxAfterAggro,
@@ -863,15 +823,15 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const kind = decided[pid]?.slot === full.key ? decided[pid]!.kind : "full";
     const p = kind === "half" ? planFor(bot, now, "half") ?? full : full;
     const walk = travel(bot, p);
-    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead, read again every LiveEvery s up
-    // to the hit, slice pull-live); the leave time, the late check and the hit all use the shifted second (pw2: 12 starts
-    // planned against the slot failed `late` while still walking, the hit having moved up to LiveMaxShift earlier).
-    let track = tracks[pid];
-    if (track === undefined || track.slot !== p.slot) {
-        track = PullTiming.Track(p.timing, p.slot);
-        tracks[pid] = track;
+    // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
+    // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
+    let timer = timers[pid];
+    if (timer === undefined || timer.slot !== p.slot) {
+        const cfg = LaneConfig.Settings().PullTiming;
+        timer = p.kind === "half" ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear) : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
+        timers[pid] = timer;
     }
-    const hitAt = PullTiming.Update(track, now);
+    const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.key) {
@@ -906,7 +866,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, startShift: hitAt - p.slot, track, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

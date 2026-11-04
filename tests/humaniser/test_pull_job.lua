@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfLag = o.halfLag } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -211,27 +211,44 @@ do
 	out = run(w, (ended or 0) + 30)
 	local pull = lines(out, "pull_job")[1]
 	local ht, gu, gh, g4 = tonumber(field(pull, "ht")), tonumber(field(pull, "gu")), tonumber(field(pull, "gh")), tonumber(field(pull, "g4"))
-	-- The world's neutral walks home 3 s after the puller leaves the camp, which a pace hold (`pz`) after the hit delays.
-	local pz = tonumber(field(pull, "pz")) or 0
-	check("diag: a chase with no attack target is not giving up; gu comes once it walks home (3-4.5 s after ht and any pace), the box member staying home neither holds nor sets it",
-		ht ~= nil and gu ~= nil and gu - ht - pz >= 3 and gu - ht - pz <= 4.5, pull)
+	-- The world's neutral walks home 3 s after the puller leaves the camp.
+	check("diag: a chase with no attack target is not giving up; gu comes once it walks home (3-4.5 s after ht), the box member staying home neither holds nor sets it",
+		ht ~= nil and gu ~= nil and gu - ht >= 3 and gu - ht <= 4.5, pull)
 	check("diag: g4 when it passed 400 from its camp, gh how far it followed, no shift", g4 ~= nil and g4 >= ht and g4 < gu
 		and gh ~= nil and gh > 400 and field(pull, "sh") == "0" and field(pull, "lv") == "0", pull)
 end
 
--- An early wave moves the hit earlier (LiveRead): the support leaves that much earlier, so a pull it starts can still be
--- made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
+-- A wave of four creeps 150 apart on the lane path, `shift(now)` seconds behind the one whose front creep FullPast (100)
+-- puts a full pull's hit on its slot: WaveAlongs stubbed for the creep timer.
+local function waveBehind(shift)
+	return function(t, aggroAt, now)
+		if t.meetAlong == nil or t.walk == nil then return {} end
+		local a0 = t.meetAlong + 100 - 325 * (aggroAt + t.walk - now) - 325 * shift(now)
+		return { a0, a0 - 150, a0 - 300, a0 - 450 }
+	end
+end
+
+local function stubAlongs(fn, body)
+	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+	local alongs = PT.WaveAlongs
+	PT.WaveAlongs = fn
+	local ok, r = pcall(body)
+	PT.WaveAlongs = alongs
+	if not ok then error(r, 0) end
+	return r
+end
+
+-- An early wave moves the hit earlier (its creeps time it): the support leaves that much earlier, so a pull it starts can
+-- still be made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
 -- ~/.dotactl/logs/2026-11-03T00-51-30-pw2_A_on_1.log t=108.8).
 do
 	local function startAt(shift)
 		local w = world({ reading = OUT })
-		local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-		local live = PT.LiveRead
-		PT.LiveRead = function() return shift ~= 0 and { shift = shift, front = shift } or nil end
-		local at
-		capture(function() while T < 90 and at == nil do frame(w) if w.H.PullJob.Running(w.sup) then at = T end end end)
-		PT.LiveRead = live
-		return at
+		return stubAlongs(waveBehind(function() return shift end), function()
+			local at
+			capture(function() while T < 90 and at == nil do frame(w) if w.H.PullJob.Running(w.sup) then at = T end end end)
+			return at
+		end)
 	end
 	local on, early = startAt(0), startAt(-4)
 	check("early wave: the pull starts 4 s earlier than on time", on ~= nil and early ~= nil and math.abs((on - early) - 4) < 0.15, tostring(on) .. " " .. tostring(early))
@@ -240,73 +257,56 @@ do
 	local w = world({ reading = OUT, coreHp = 30 })
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
 	enemy.lane, enemy.pos = Lane.Bot, 3
-	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-	local live = PT.LiveRead
-	PT.LiveRead = function() return { shift = -4, front = -4 } end
-	local out = capture(function()
-		while T < 90 do
-			if early ~= nil and T >= early + 6 then enemy.loc = Vector(9000, 9000) end
-			frame(w)
-		end
+	local out = stubAlongs(waveBehind(function() return -4 end), function()
+		return capture(function()
+			while T < 90 do
+				if early ~= nil and T >= early + 6 then enemy.loc = Vector(9000, 9000) end
+				frame(w)
+			end
+		end)
 	end)
-	PT.LiveRead = live
 	local choice = lines(out, "choice")
 	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
 		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
 end
 
--- Slice pull-live: the wave read again up to the order and after it. `shiftAt(t, started)` stubs LiveRead from the job's
--- start; `neutralAt` places the camp's one neutral (on the puller) each frame. Returns the pull_job line.
-local function livePull(shiftAt, neutralAt, o)
+-- A pull with the camp's one neutral on the puller and the wave stubbed by `o.alongs` (default waveBehind(0)); `o.onFrame`
+-- runs after each frame. Returns the pull_job line.
+local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfLag = o.halfLag })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear })
 	ACTIONS = {}
-	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-	local live = PT.LiveRead
-	local started
-	PT.LiveRead = function()
-		local sh = shiftAt(T, started)
-		return sh ~= nil and { shift = sh, front = sh } or nil
-	end
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local out = capture(function()
-		while T < 120 do
-			frame(w)
-			if started == nil and w.H.PullJob.Running(w.sup) then started = T end
-			if neutralAt ~= nil then kobold.loc = neutralAt(w) end
-		end
+	local out = stubAlongs(o.alongs or waveBehind(function() return 0 end), function()
+		return capture(function()
+			while T < 120 do
+				frame(w)
+				if o.onFrame ~= nil then o.onFrame(w) end
+			end
+		end)
 	end)
-	PT.LiveRead = live
 	return lines(out, "pull_job")[1]
 end
 
 do
-	-- On time at the start, 1.5 s late from 1 s after it: the hit lands 1.5 s later than on a wave that stays on time.
-	local steady = livePull(function() return 0 end)
-	local slowed = livePull(function(t, started) if started ~= nil and t >= started + 1 then return 1.5 end return 0 end)
+	-- A full pull's hit is timed on its front creep: on its slot for a wave on time, 1.5 s later for one that falls 1.5 s
+	-- behind after the start.
+	local started
+	local steady = livePull()
+	local slowed = livePull({
+		onFrame = function(w) if started == nil and w.H.PullJob.Running(w.sup) then started = T end end,
+		alongs = waveBehind(function(now) if started ~= nil and now >= started + 1 then return 1.5 end return 0 end),
+	})
 	local d = tonumber(field(slowed, "ht")) - tonumber(field(steady, "ht"))
-	check("live: a wave slowed after the start moves the hit with it (1.5 s)", math.abs(d - 1.5) <= 0.15, d)
-	check("live: sh is the shift at the order, s0 the start's", tonumber(field(slowed, "sh")) == 1.5 and tonumber(field(slowed, "s0")) == 0, slowed)
-end
-
-do
-	-- The wave falls 4 s behind once the attack order is out: the puller holds the whole PaceFor
-	-- (3 s) while the neutral stays in its camp (the wave read every frame, LiveEvery 0, so the first read after the order sees it), and walks the lead at once when the neutral is already past the guard.
-	-- On time it still holds about a second: the plan puts the neutrals at the meet point Lead (1.5 s) before the wave, the
-	-- pace PaceLead (0.5 s), plus the hit landing about 0.5 s before the slot in this world.
-	local function ordered()
-		for _, a in ipairs(ACTIONS) do if a.pid == 5 and a.kind == "AttackUnit" then return true end end
-		return false
-	end
-	local function late(t, started) if started ~= nil and ordered() then return 4 end return 0 end
-	local held = livePull(late)
-	local onTime = tonumber(field(livePull(function() return 0 end), "pz") or "0")
-	check("pace: a late wave holds the puller after the hit for PaceFor", math.abs(tonumber(field(held, "pz") or "0") - 3) <= 0.15, held)
-	check("pace: an on-time pull holds about a second, so the neutrals come PaceLead before the wave: " .. onTime, onTime >= 1 and onTime <= 2)
-	local out = livePull(late, function(w) return Vector(SMALL.x, SMALL.y + 500) end)
-	check("pace: a neutral past the guard (500 from its camp) is not held for", field(out, "pz") == nil, out)
+	check("creep hit: a wave slowed after the start moves the hit with it (1.5 s)", math.abs(d - 1.5) <= 0.15, d)
+	check("creep hit: sh the shift at the order, s0 the first read's, hr=geo, hc=4", tonumber(field(slowed, "sh")) == 1.5
+		and tonumber(field(slowed, "s0")) == 0 and field(slowed, "hr") == "geo" and field(slowed, "hc") == "4", slowed)
+	check("creep hit: the next creep 50 short, the back one 350 short at the neutrals' arrival", field(steady, "hn") == "-50"
+		and field(steady, "hb") == "-350", steady)
+	local plan = livePull({ alongs = function() return {} end })
+	check("creep hit: no creeps read, the plan's slot (hr=plan)", field(plan, "hr") == "plan" and field(plan, "sh") == "0", plan)
 end
 
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
@@ -358,17 +358,31 @@ do
 	check("half: pos4 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
 end
 
--- The half pull's pace aims the neutrals HalfLag after the wave's body (a full pull's PaceLead before it): one more second
--- of HalfLag holds the puller about a second longer after the same hit.
+-- The half pull's hit is timed on the creeps: it goes out so the neutrals reach the meet point (their walk after the hit)
+-- as the second creep from the front is HalfClear past it. A wave of four 150 apart, its second creep
+-- placed so that a HalfClear of 500 puts the hit 0.5 s after the half plan's second: 800 hits (800 - 500) / 325 s later,
+-- the third creep then 150 short of the second, and with no creeps read the plan's second stands.
 do
-	local function hold(lag)
-		local line = livePull(function() return 0 end, nil, { reading = HOLD, halfLag = lag })
-		return tonumber(field(line, "pz") or "0"), line
+	local function wave(t, aggroAt, now)
+		if t.meetAlong == nil or t.walk == nil then return {} end
+		local a2 = t.meetAlong + 500 - 325 * (aggroAt + 0.5 + t.walk - now)
+		return { a2 + 150, a2, a2 - 150, a2 - 300 }
 	end
-	local one, l1 = hold(1)
-	local two, l2 = hold(2)
-	check("half pace: pk=half on the pull_job line", field(l1, "pk") == "half", l1)
-	check("half pace: HalfLag 2 holds about 1 s more than HalfLag 1: " .. one .. " / " .. two, math.abs(two - one - 1) <= 0.2, l2)
+	local function half(o)
+		o.reading = HOLD
+		return livePull(o)
+	end
+	local near, far = half({ alongs = wave, halfClear = 500 }), half({ alongs = wave, halfClear = 800 })
+	local plan = half({ alongs = function() return {} end })
+	local d = tonumber(field(far, "ht")) - tonumber(field(near, "ht"))
+	check("half hit: pk=half, timed on the creeps (hr=geo, hc=4)", field(near, "pk") == "half" and field(near, "hr") == "geo"
+		and field(near, "hc") == "4", near)
+	check("half hit: HalfClear 800 hits (800 - 500) / 325 s after 500: " .. d, math.abs(d - 300 / 325) <= 0.15, far)
+	check("half hit: the third creep 350 past the meet point at the neutrals' arrival, the back one 200", field(near, "hn") == "350"
+		and field(near, "hb") == "200", near)
+	check("half hit: the creep hit is 0.5 s after the plan's: " .. tonumber(field(near, "ht")) - tonumber(field(plan, "ht")),
+		math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht")) - 0.5) <= 0.15)
+	check("half hit: no creeps read, the plan's second (hr=plan)", field(plan, "hr") == "plan", plan)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.

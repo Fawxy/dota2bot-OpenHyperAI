@@ -791,9 +791,6 @@ ____exports.SETTINGS = {
     BailReserve = 0.25,
     BailGrace = 2,
     BailFor = 6,
-    PaceLead = 0.5,
-    PaceGuard = 350,
-    PaceFor = 3,
     BailScan = 1200,
     BailStep = 700
 }
@@ -801,7 +798,7 @@ running = {}
 local trailing = {}
 local handled = {}
 local decided = {}
-local tracks = {}
+local timers = {}
 local gateWhy = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({
@@ -810,7 +807,7 @@ function ____exports.ResetCache()
         handled,
         decided,
         gateWhy,
-        tracks
+        timers
     }) do
         for k in pairs(t) do
             t[k] = nil
@@ -1317,17 +1314,13 @@ local function finish(bot, p, r, label)
         },
         {
             "s0",
-            math.floor(p.startShift * 10 + 0.5) / 10
+            p.timer.first ~= nil and math.floor(p.timer.first * 10 + 0.5) / 10 or nil
         },
-        {"lv", p.track.reads},
-        {
-            "sf",
-            p.track.read ~= nil and math.floor(p.track.read.front * 10 + 0.5) / 10 or nil
-        },
-        {
-            "pz",
-            p.paced ~= nil and math.floor(p.paced * 10 + 0.5) / 10 or nil
-        },
+        {"lv", p.timer.reads},
+        {"hr", p.timer.hit ~= nil and "geo" or "plan"},
+        {"hc", p.timer.n},
+        {"hn", p.timer.next},
+        {"hb", p.timer.back},
         {"ht", p.hat},
         {"g4", p.g4},
         {
@@ -1353,7 +1346,7 @@ local function finish(bot, p, r, label)
         fields = fields,
         ["until"] = math.max(
             now,
-            PullTiming.WaveAt(p.track, now) or now
+            PullTiming.WaveAt(p.timer, now) or now
         ) + ____exports.SETTINGS.TrailSec
     }
 end
@@ -1472,60 +1465,13 @@ local function verbCamp(p)
         search = radii.NeutralSearch
     }
 end
---- After the hit: true while the neutrals would reach the meet point more than PaceLead before the wave (read live), and none
--- of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
-local function pace(bot, p)
-    local now = DotaTime()
-    local waveAt = PullTiming.WaveAt(p.track, now)
-    local speed = LaneConfig.Settings().PullTiming.NeutralSpeed[p.plan.spawner.type]
-    if waveAt == nil or speed == nil or p.tagged == nil then
-        return false
-    end
-    local gap
-    for ____, u in ipairs(p.tagged) do
-        do
-            local __continue186
-            repeat
-                if stale(u) then
-                    __continue186 = true
-                    break
-                end
-                if GetUnitToLocationDistance(u, p.plan.spawner.location) > ____exports.SETTINGS.PaceGuard then
-                    return false
-                end
-                local d = GetUnitToUnitDistance(u, bot)
-                if gap == nil or d < gap then
-                    gap = d
-                end
-                __continue186 = true
-            until true
-            if not __continue186 then
-                break
-            end
-        end
-    end
-    if gap == nil then
-        return false
-    end
-    local eta = (gap + PullTiming.WalkLength(
-        bot:GetLocation(),
-        p.plan.lead
-    )) / speed
-    local lead = p.plan.kind == "half" and -LaneConfig.Settings().PullTiming.HalfLag or ____exports.SETTINGS.PaceLead
-    if waveAt - now - eta <= lead then
-        return false
-    end
-    p.pacedFrom = p.pacedFrom or now
-    p.paced = now - p.pacedFrom
-    return true
-end
 local function verbPlan(bot, pull, aggroAt)
     local p = pull.plan
     local s = LaneConfig.Settings()
     local camp = verbCamp(p)
     camp.earlier = function()
-        pull.hitAt = PullTiming.Update(
-            pull.track,
+        pull.hitAt = PullTiming.Read(
+            pull.timer,
             DotaTime()
         )
         return aggroAt - pull.hitAt
@@ -1533,15 +1479,13 @@ local function verbPlan(bot, pull, aggroAt)
     return {
         bail = function() return bailPoint(bot) end,
         bailFor = ____exports.SETTINGS.BailFor,
-        pace = function() return pace(bot, pull) end,
-        paceFor = ____exports.SETTINGS.PaceFor,
         camp = camp,
         aggroAt = aggroAt,
         lead = p.lead,
         watchSec = s.Timing.WatchSec,
         watchUntil = function()
             local w = PullTiming.WaveAt(
-                pull.track,
+                pull.timer,
                 DotaTime()
             )
             return w ~= nil and w + s.PullTiming.WatchAfterWave or nil
@@ -1601,12 +1545,13 @@ function ____exports.Wants(bot, blocked, host)
     local kind = (____opt_19 and ____opt_19.slot) == full.key and decided[pid].kind or "full"
     local p = kind == "half" and (planFor(bot, now, "half") or full) or full
     local walk = travel(bot, p)
-    local track = tracks[pid]
-    if track == nil or track.slot ~= p.slot then
-        track = PullTiming.Track(p.timing, p.slot)
-        tracks[pid] = track
+    local timer = timers[pid]
+    if timer == nil or timer.slot ~= p.slot then
+        local cfg = LaneConfig.Settings().PullTiming
+        timer = p.kind == "half" and PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear) or PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast)
+        timers[pid] = timer
     end
-    local hitAt = PullTiming.Update(track, now)
+    local hitAt = PullTiming.Read(timer, now)
     if now < hitAt - walk - ____exports.SETTINGS.Early then
         return false
     end
@@ -1669,8 +1614,7 @@ function ____exports.Wants(bot, blocked, host)
         peak = 0,
         neutrals = 0,
         hitAt = hitAt,
-        startShift = hitAt - p.slot,
-        track = track,
+        timer = timer,
         start = camp
     }
     local ok = Tasks.Start(

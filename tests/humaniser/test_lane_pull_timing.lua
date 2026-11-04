@@ -160,8 +160,9 @@ do
 end
 
 do
-	-- Live re-timing (slice pull-live): the hit follows the wave every LiveEvery s, keeps its last reading once the wave
-	-- cannot be read, and WaveAt moves with it.
+	-- The creep timer (slice pull-half): the hit puts the neutrals (their walk after it) at the meet point as the aimed creep is
+	-- `past` beyond it, from each creep's place at 325 a second; the slot stands until the aimed creep and one behind it are
+	-- read; one read per LiveEvery. Three creeps 150 apart, the front one 1,000 short of the meet point.
 	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH, dire_bot = PATH }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
 	CURRENT_TEAM = 2
 	CREEPS[2], CREEPS[3] = {}, {}
@@ -169,22 +170,27 @@ do
 	local timing = PT.For(2, Lane.Bot, SMALL, "small", { meet }, false, { 15, 45 })
 	local slot = timing.seconds[1] + 60
 	local spawnAt = slot + timing.waveAfter - timing.waveTravel
-	local function at(s) return PATH[1][1] + (s - spawnAt + AHEAD) * 325 end
-	local live = PT.Track(timing, slot)
-	T = spawnAt + 5
-	local c = MakeCreep({ team = 2, x = at(T), y = -5000 })
-	check("on schedule: the hit is the slot", within(PT.Update(live, T), slot, 1e-6), PT.Update(live, T))
-	T = T + 2
-	c.loc = Vector(at(T) - 325, -5000)
-	check("the wave falls 1 s behind after the first read: the hit moves 1 s later", within(PT.Update(live, T), slot + 1, 1e-6), PT.Update(live, T))
-	check("the first reading's shift is kept", within(live.first, 0, 1e-6), live.first)
-	check("WaveAt moves with the hit", within(PT.WaveAt(live, T), slot + 1 + timing.waveAfter, 1e-6))
-	T = T + 0.1
-	c.loc = Vector(at(T) - 650, -5000)
-	check("no re-read inside LiveEvery", within(PT.Update(live, T), slot + 1, 1e-6), PT.Update(live, T))
-	T = T + 1
-	CREEPS[2] = {}
-	check("the wave out of reach keeps the last reading", within(PT.Update(live, T), slot + 1, 1e-6), PT.Update(live, T))
+	local m = timing.meetAlong
+	-- The time the wave's expected place (LiveRead's model) is 1,000 short of the meet point.
+	T = spawnAt - AHEAD + (m - 1000) / 325
+	local full, half = PT.Timer(timing, slot, 0, 100), PT.Timer(timing, slot, 1, 500)
+	check("no creeps read: the slot", within(PT.Read(full, T), slot, 1e-6) and full.n == 0, PT.Read(full, T))
+	MakeCreep({ team = 2, x = PATH[1][1] + m - 1000, y = -5000 })
+	full.readAt = nil
+	check("one creep read: still the slot", within(PT.Read(full, T), slot, 1e-6) and full.n == 1)
+	MakeCreep({ team = 2, x = PATH[1][1] + m - 1150, y = -5000 })
+	MakeCreep({ team = 2, x = PATH[1][1] + m - 1300, y = -5000 })
+	full.readAt = nil
+	local walk = timing.walk
+	check("full: the front creep 100 past at the neutrals' arrival", within(PT.Read(full, T), T + 1100 / 325 - walk, 1e-6), PT.Read(full, T))
+	check("full: the next creep 50 short, the back one 200 short", full.next == -50 and full.back == -200, tostring(full.next) .. " " .. tostring(full.back))
+	check("full: WaveAt is the back creep at the meet point", within(PT.WaveAt(full, T), T + 1300 / 325, 1e-6))
+	check("half: the second creep 500 past", within(PT.Read(half, T), T + 1650 / 325 - walk, 1e-6) and half.next == 350 and half.back == 350, half.next)
+	local at = full.hit
+	-- 0.3 s on, the wave 1 s behind where it would have walked: every creep 0.3 * 325 forward less 325.
+	for _, c in ipairs(CREEPS[2]) do c.loc = Vector(c.loc.x + 0.3 * 325 - 325, -5000) end
+	check("no re-read inside LiveEvery", within(PT.Read(full, T + 0.1), at, 1e-6))
+	check("a wave 1 s slower moves the full hit 1 s later", within(PT.Read(full, T + 0.3), at + 1, 1e-6), PT.Read(full, T + 0.3) - at)
 
 	-- The other team's wave on the same lane geometry: its creeps are read, ours ignored.
 	CREEPS[2], CREEPS[3] = {}, {}
@@ -192,9 +198,12 @@ do
 	local tslot = theirs.seconds[1] + 60
 	local tspawn = tslot + theirs.waveAfter - theirs.waveTravel
 	T = tspawn + 5
-	MakeCreep({ team = 3, x = PATH[1][1] + (5 + theirs.ahead) * 325 + 650, y = -5000 })
-	MakeCreep({ team = 2, x = PATH[1][1] + (5 + theirs.ahead) * 325 - 650, y = -5000 })
-	check("the other team's wave is read from its own creeps", within(PT.Update(PT.Track(theirs, tslot), T), tslot - 2, 1e-6))
+	local e = PATH[1][1] + (5 + theirs.ahead) * 325
+	MakeCreep({ team = 3, x = e, y = -5000 })
+	MakeCreep({ team = 3, x = e - 150, y = -5000 })
+	MakeCreep({ team = 2, x = e + 300, y = -5000 })
+	local tt = PT.Timer(theirs, tslot, 0, 0)
+	check("the other team's wave is read from its own creeps", within(PT.Read(tt, T), T + (theirs.meetAlong - (e - PATH[1][1])) / 325 - theirs.walk, 1e-6) and tt.n == 2, tt.n)
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 

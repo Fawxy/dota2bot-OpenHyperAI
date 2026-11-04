@@ -198,7 +198,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
     local t = LaneConfig.Settings().Timing
     local ahead = LaneAhead(team, lane)
     local waveTravel = meetAlong / cfg.CreepSpeed - ahead
-    local waveAfter = ____exports.WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half and t.HalfPullLater or 0)
+    local walk = ____exports.WalkLength(origin, leadPath) / neutralSpeed
+    local waveAfter = walk + cfg.Lead - (half and t.HalfPullLater or 0)
     local seconds = __TS__ArrayMap(
         cfg.WaveSlots,
         function(____, slot) return normalise(slot + waveTravel - waveAfter, t.PullPeriod) end
@@ -215,7 +216,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         meetAlong = meetAlong,
         lanePath = path,
         ahead = ahead,
-        team = team
+        team = team,
+        walk = walk
     }
 end
 --- The camp's lead waypoints with its own meet point replaced by `meet`.
@@ -282,7 +284,8 @@ function ____exports.ForCamp(data, half, meet)
         seed
     )
 end
---- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, its lane creeps
+--- The old camp-job pulls' live correction (camp_jobs; the pull job times its hit on the creeps, CreepTimer).
+-- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, its lane creeps
 -- within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
 -- WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
 -- ahead of the creeps that take the neutrals (camp 1 hit 0.5-1 s early on the front creep, replay pdg3_C), so it is only
@@ -347,33 +350,94 @@ function ____exports.LiveRead(timing, aggroAt, now)
         front = clamp(front)
     }
 end
+--- Each creep of the timed wave by its distance along the lane path, front first: the timing team's lane creeps within
+-- LiveWindow of where the wave should be at `now` for a hit at `aggroAt`, as LiveRead reads them, without its stop at the
+-- meet point. Empty without a wave model.
+function ____exports.WaveAlongs(timing, aggroAt, now)
+    local out = {}
+    if timing.source ~= "wave" or timing.waveAfter == nil or timing.waveTravel == nil or timing.lanePath == nil then
+        return out
+    end
+    local cfg = settings()
+    local spawnAt = aggroAt + timing.waveAfter - timing.waveTravel
+    local expected = (now - spawnAt + (timing.ahead or 0)) * cfg.CreepSpeed
+    local window = cfg.LiveWindow * cfg.CreepSpeed
+    local kind = (timing.team == nil or timing.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
+    for ____, c in ipairs(GetUnitList(kind) or ({})) do
+        do
+            local __continue44
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue44 = true
+                    break
+                end
+                local along, off = ____exports.Along(
+                    timing.lanePath,
+                    c:GetLocation()
+                )
+                if off <= cfg.LiveMaxOffset and math.abs(along - expected) <= window then
+                    out[#out + 1] = along
+                end
+                __continue44 = true
+            until true
+            if not __continue44 then
+                break
+            end
+        end
+    end
+    __TS__ArraySort(
+        out,
+        function(____, a, b) return b - a end
+    )
+    return out
+end
 function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_0 and ____opt_0.shift
 end
-function ____exports.Track(timing, slot)
-    return {timing = timing, slot = slot, reads = 0}
+function ____exports.Timer(timing, slot, index, past)
+    return {
+        timing = timing,
+        slot = slot,
+        index = index,
+        past = past,
+        n = 0,
+        reads = 0
+    }
 end
---- Reads the wave if LiveEvery has passed since the last read; returns the hit second (slot + the last shift).
-function ____exports.Update(l, now)
-    if l.readAt == nil or now - l.readAt >= settings().LiveEvery then
-        l.readAt = now
-        local r = ____exports.LiveRead(l.timing, l.slot, now)
-        if r ~= nil then
-            l.read = r
-            l.reads = l.reads + 1
-            if l.first == nil then
-                l.first = r.shift
+--- Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed).
+function ____exports.Read(c, now)
+    local t = c.timing
+    local meet = t.meetAlong
+    local walk = t.walk
+    if (c.readAt == nil or now - c.readAt >= settings().LiveEvery) and meet ~= nil and walk ~= nil then
+        c.readAt = now
+        local alongs = ____exports.WaveAlongs(t, c.slot, now)
+        c.n = #alongs
+        if #alongs >= c.index + 2 then
+            local v = settings().CreepSpeed
+            local hit = now + (meet + c.past - alongs[c.index + 1]) / v - walk
+            local function pastAt(along)
+                return math.floor(along + v * (hit + walk - now) - meet + 0.5)
+            end
+            c.hit = hit
+            c.waveAt = now + (meet - alongs[#alongs]) / v
+            c.next = pastAt(alongs[c.index + 1 + 1])
+            c.back = pastAt(alongs[#alongs])
+            c.reads = c.reads + 1
+            if c.first == nil then
+                c.first = hit - c.slot
             end
         end
     end
-    local ____l_slot_4 = l.slot
-    local ____opt_2 = l.read
-    return ____l_slot_4 + (____opt_2 and ____opt_2.shift or 0)
+    return c.hit or c.slot
 end
---- When the wave's body reaches the meet point by the last reading; undefined for a timing with no wave model.
-function ____exports.WaveAt(l, now)
-    local after = l.timing.waveAfter
-    return after ~= nil and ____exports.Update(l, now) + after or nil
+--- When the wave's back creep reaches the meet point: from the last read, else the plan's.
+function ____exports.WaveAt(c, now)
+    ____exports.Read(c, now)
+    if c.waveAt ~= nil then
+        return c.waveAt
+    end
+    return c.timing.waveAfter ~= nil and c.slot + c.timing.waveAfter or nil
 end
 return ____exports

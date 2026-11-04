@@ -47,7 +47,6 @@ const STAND_STUCK_S = 1.5;
 const STAND_STUCK_GAIN = 25;
 const LEAD_MAX_AFTER_AGGRO = 15;
 const WATCH_SEC = 8;
-const PACE_FOR = 3;
 const BAIL_FOR = 6;
 /** Seconds early to arrive at a rune (players aim for 3-5 s). */
 const RUNE_EARLY = 4;
@@ -357,11 +356,6 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
-    /** Checked every frame after the hit, before the lead: true holds the bot where it is (the neutrals come to it), for
-     *  at most `paceFor` s, so a lead that would bring them to the meet point too early waits first (the host's call). */
-    pace?: (this: void) => boolean;
-    /** Default 3. */
-    paceFor?: number;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -394,15 +388,6 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
 
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;
-    if (p.pace !== undefined) {
-        const until = now() + (p.paceFor ?? PACE_FOR);
-        while (now() < until && p.pace()) {
-            if (!bot.IsAlive()) return fail("dead");
-            if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
-            hold(bot, "job_pace");
-            yield;
-        }
-    }
     if (p.lead.length > 0) {
         const led = yield* E().Verbs.walkPath(bot, p.lead, {
             tolerance: arrive,

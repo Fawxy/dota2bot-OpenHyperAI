@@ -180,7 +180,6 @@ local STAND_STUCK_S = 1.5
 local STAND_STUCK_GAIN = 25
 local LEAD_MAX_AFTER_AGGRO = 15
 local WATCH_SEC = 8
-local PACE_FOR = 3
 local BAIL_FOR = 6
 --- Seconds early to arrive at a rune (players aim for 3-5 s).
 local RUNE_EARLY = 4
@@ -587,19 +586,6 @@ ____exports.pull = __TS__Generator(function(bot, p, h)
         ____opt_36("lead")
     end
     local arrive = p.arrive or ARRIVE
-    if p.pace ~= nil then
-        local ____until = now() + (p.paceFor or PACE_FOR)
-        while now() < ____until and p.pace() do
-            if not bot:IsAlive() then
-                return fail("dead")
-            end
-            if p.bail ~= nil and p.bail() ~= nil then
-                return __TS__DelegatedYield(stepBack(bot, p, h))
-            end
-            hold(bot, "job_pace")
-            coroutine.yield()
-        end
-    end
     if #p.lead > 0 then
         local led = __TS__DelegatedYield(E().Verbs.walkPath(
             bot,
@@ -964,7 +950,7 @@ local function campOf(bot, p)
     local r = p.radius or CLEAR_RADIUS
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
         do
-            local __continue118
+            local __continue114
             repeat
                 local ____opt_82 = n.IsNull
                 local ____temp_84 = ____opt_82 and ____opt_82(n)
@@ -981,7 +967,7 @@ local function campOf(bot, p)
                     ____temp_88 = not ____temp_87
                 end
                 if ____temp_88 then
-                    __continue118 = true
+                    __continue114 = true
                     break
                 end
                 if dist(
@@ -990,9 +976,9 @@ local function campOf(bot, p)
                 ) <= r then
                     out[#out + 1] = n
                 end
-                __continue118 = true
+                __continue114 = true
             until true
-            if not __continue118 then
+            if not __continue114 then
                 break
             end
         end
@@ -1034,7 +1020,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
     end
     while true do
         do
-            local __continue128
+            local __continue124
             repeat
                 if not bot:IsAlive() then
                     return fail("dead")
@@ -1047,7 +1033,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 local kept = {}
                 for ____, e in ipairs(seen) do
                     do
-                        local __continue131
+                        local __continue127
                         repeat
                             local ____this_92
                             ____this_92 = e.n
@@ -1058,7 +1044,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             end
                             local alive = not ____temp_93 and e.n:IsAlive()
                             if not alive then
-                                __continue131 = true
+                                __continue127 = true
                                 break
                             end
                             local inCamp = __TS__ArrayIndexOf(camp, e.n) >= 0
@@ -1076,16 +1062,16 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                             local visibleNow = ____inCamp_97
                             local at = visibleNow and t or e.at
                             if t - at > CLEAR_LOST then
-                                __continue131 = true
+                                __continue127 = true
                                 break
                             end
                             if not inCamp and visibleNow then
                                 camp[#camp + 1] = e.n
                             end
                             kept[#kept + 1] = {n = e.n, at = at}
-                            __continue131 = true
+                            __continue127 = true
                         until true
-                        if not __continue131 then
+                        if not __continue127 then
                             break
                         end
                     end
@@ -1120,7 +1106,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                         hold(bot, "camp_look")
                     end
                     coroutine.yield()
-                    __continue128 = true
+                    __continue124 = true
                     break
                 end
                 emptySince = nil
@@ -1128,7 +1114,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 if t < nextOrderAt then
                     hold(bot, "camp_react")
                     coroutine.yield()
-                    __continue128 = true
+                    __continue124 = true
                     break
                 end
                 local ____target_99 = target
@@ -1162,9 +1148,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     end
                 end
                 coroutine.yield()
-                __continue128 = true
+                __continue124 = true
             until true
-            if not __continue128 then
+            if not __continue124 then
                 break
             end
         end
