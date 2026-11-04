@@ -55,6 +55,16 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
     end
     return result
 end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -242,19 +252,38 @@ function ____exports.Run(bot)
                             start,
                             to,
                             avoid,
-                            function(d, wp)
-                                guard(
-                                    (("cb:" .. name) .. ":") .. v,
-                                    function() return report(
-                                        team,
-                                        name,
-                                        v,
-                                        start,
-                                        towers,
-                                        d,
-                                        wp or ({})
-                                    ) end
+                            function(...)
+                                local args = {...}
+                                local kinds = table.concat(
+                                    __TS__ArrayMap(
+                                        args,
+                                        function(____, x) return type(x) == "table" and "table#" .. tostring(#x) or (type(x) .. ":") .. tostring(x) end
+                                    ),
+                                    ","
                                 )
+                                hev((((((((("team=" .. tostring(team)) .. " step=cbargs from=") .. name) .. " v=") .. v) .. " n=") .. tostring(#args)) .. " args=") .. kinds)
+                                local wp = __TS__ArrayFind(
+                                    args,
+                                    function(____, x) return type(x) == "table" end
+                                )
+                                local d = __TS__ArrayFind(
+                                    args,
+                                    function(____, x) return type(x) == "number" end
+                                )
+                                if wp ~= nil then
+                                    guard(
+                                        (("cb:" .. name) .. ":") .. v,
+                                        function() return report(
+                                            team,
+                                            name,
+                                            v,
+                                            start,
+                                            towers,
+                                            d or -1,
+                                            wp
+                                        ) end
+                                    )
+                                end
                             end
                         ) end
                     )

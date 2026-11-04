@@ -87,9 +87,13 @@ export function Run(bot: Unit): void {
     for (const [name, start] of starts) {
         if (start === undefined) continue;
         for (const [v, avoid] of variants) {
-            guard(`gen:${name}:${v}`, () => GeneratePath(start, to, avoid, (d, wp) => {
-                guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d, wp ?? []));
-            }));
+            guard(`gen:${name}:${v}`, () => GeneratePath(start, to, avoid, ((...args: unknown[]) => {
+                const kinds = args.map((x) => (type(x) === "table" ? `table#${(x as unknown[]).length}` : `${type(x)}:${tostring(x)}`)).join(",");
+                hev(`team=${team} step=cbargs from=${name} v=${v} n=${args.length} args=${kinds}`);
+                const wp = args.find((x) => type(x) === "table") as Vector[] | undefined;
+                const d = args.find((x) => type(x) === "number") as number | undefined;
+                if (wp !== undefined) guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d ?? -1, wp));
+            }) as any));
             hev(`team=${team} step=called from=${name} v=${v}`);
         }
     }
