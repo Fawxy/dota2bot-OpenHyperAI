@@ -5,6 +5,7 @@
 -- death_rate = deaths / taken. :lf 1 (default) reads only commits under `Ours.CoreLaneFight` (`lf=1`), 0 only the others
 -- (builds before the field read as 0).
 -- Params: like (LIKE pattern on games.file), until, lf.
+-- ensure: ev_trade(pid, kind, result, dur, role, lf)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 k AS (
     SELECT tr.game_id, tr.t, tr.pid, tr.role, tr.result, tr.dur
