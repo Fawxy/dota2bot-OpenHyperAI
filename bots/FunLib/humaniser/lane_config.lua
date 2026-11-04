@@ -291,6 +291,7 @@ ____exports.DEFAULTS = {
         CreepSpeed = 325,
         NeutralSpeed = {small = 290, medium = 300, large = 300, ancient = 290},
         Lead = 1.5,
+        WaveAhead = {safe = 3, off = 0.5},
         WaveSlots = {0, 30},
         PathMaxOffset = 500,
         LiveFrom = 2,

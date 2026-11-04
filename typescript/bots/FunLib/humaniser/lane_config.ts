@@ -335,6 +335,11 @@ export const DEFAULTS = {
         NeutralSpeed: { small: 290, medium: 300, large: 300, ancient: 290 } as Record<string, number>,
         // Seconds the neutrals reach the meet point before the wave.
         Lead: 1.5,
+        // Seconds our wave reaches a point ahead of CreepSpeed from spawn. 7.41 speeds the safe-lane wave up and slows the
+        // off lane's after spawn (patch notes, no figure); these are the banked LiveShift (front creep) on every pull with
+        // `ht` (pdg1-3): safe -2.2 to -4 s (camp 1 about -3, camp 26 at the -4 cap on 37 of 51), off -1.2 to +0.2 s.
+        // `judgement` from those logs; LiveRead corrects the rest.
+        WaveAhead: { safe: 3, off: 0.5 },
         WaveSlots: [0, 30],
         // evil_2's meet from GetLocationAlongLane stands ~340 off the Dire top creep path (watch positions, 9055874680).
         PathMaxOffset: 500,

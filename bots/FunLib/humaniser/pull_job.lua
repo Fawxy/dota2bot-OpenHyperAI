@@ -1240,6 +1240,11 @@ local function finish(bot, p, r, label)
             "sh",
             math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
         },
+        {"lv", p.live ~= nil and 1 or 0},
+        {
+            "sf",
+            p.live ~= nil and math.floor(p.live.front * 10 + 0.5) / 10 or nil
+        },
         {"ht", p.hat},
         {"g4", p.g4},
         {
@@ -1444,7 +1449,8 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local walk = travel(bot, p)
-    local hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) or 0)
+    local live = PullTiming.LiveRead(p.timing, p.slot, now)
+    local hitAt = p.slot + (live and live.shift or 0)
     if now < hitAt - walk - ____exports.SETTINGS.Early then
         return false
     end
@@ -1500,6 +1506,7 @@ function ____exports.Wants(bot, blocked, host)
         peak = 0,
         neutrals = 0,
         hitAt = hitAt,
+        live = live,
         start = camp
     }
     local ok = Tasks.Start(

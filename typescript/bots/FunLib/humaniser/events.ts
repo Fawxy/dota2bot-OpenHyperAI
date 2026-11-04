@@ -939,7 +939,9 @@ export const EVENTS = {
     // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
     // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
-    // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh), ht the game time the verb's hit
+    // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh; slice pull-timing: the
+    // wave's body against the plan, which already holds the lane's WaveAhead), lv 1 when the wave was read live (0: sh is 0
+    // because nothing was seen), sf the shift its front creep alone would have given; ht the game time the verb's hit
     // was confirmed (label lead began; absent when it never got there). The camp's own neutrals are tagged at ht (in its
     // box, or attacking the puller within PullJob TagRadius); on them, sampled every PullJob WatchEvery to the trail's end:
     // g4 the first time one was past PullJob Left (400, EC-084: the give-up timer starts there), gh the farthest any came
@@ -974,6 +976,8 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         sh: "num",
+        lv: "num",
+        sf: "num",
         ht: "num",
         g4: "num",
         gh: "num",

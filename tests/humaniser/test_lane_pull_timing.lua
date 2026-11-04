@@ -3,16 +3,18 @@ local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
 -- Radiant bot lane at y = -5000 (lane_world), small camp south of it. The wave path starts 7,800 west of the camp's
--- meet point, so the :00 wave reaches it at 7800 / 325 = 24 s.
+-- meet point, so the :00 wave reaches it at 7800 / 325 = 24 s at creep speed, AHEAD s sooner (the safe lane's WaveAhead).
 local SMALL = Vector(-1600, -6200)
 local PATH = { { -9400, -5000 }, { 7000, -5000 } }
+
+local AHEAD = 1
 
 local function within(a, b, tol) return math.abs(a - b) <= (tol or 1e-6) end
 local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
 
 local function world(opts)
 	opts = opts or {}
-	local timing = opts.timing or { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 } }
+	local timing = opts.timing or { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0.5 } }
 	local H = LaneFresh({ Enable = true, PullTiming = timing, Timing = opts.timingCfg }, { skill = 1 })
 	T = opts.t or 70
 	CURRENT_TEAM = 2
@@ -33,7 +35,7 @@ local function world(opts)
 end
 
 -- The formula restated from the world's own geometry: wave travel along PATH minus the neutrals' walk (origin, lead
--- waypoints, meet) at 300, minus the 1.5 s lead.
+-- waypoints, meet) at 300, minus the 1.5 s lead and the safe lane's WaveAhead.
 local function expected(data, meet, half)
 	local walk, prev = 0, SMALL
 	for i, p in ipairs(data.pull.path) do
@@ -41,7 +43,7 @@ local function expected(data, meet, half)
 		walk = walk + dist(prev, q)
 		prev = q
 	end
-	return (meet.x - PATH[1][1]) / 325 - walk / 300 - 1.5 + (half and 2 or 0)
+	return (meet.x - PATH[1][1]) / 325 - AHEAD - walk / 300 - 1.5 + (half and 2 or 0)
 end
 
 do
@@ -52,7 +54,7 @@ do
 	local job = H.Lane.CampJobs.Current(bot)
 	check("full pull planned from the wave", within(job.plannedSec, want, 1e-3), job.plannedSec)
 	check("full pull logged as wave-timed", job.timing == "wave")
-	check("watch waits for the :60 wave at the meet point", within(job.waveAt, 60 + (data.pull.meetPoint.x - PATH[1][1]) / 325, 1e-3), job.waveAt)
+	check("watch waits for the :60 wave at the meet point", within(job.waveAt, 60 + (data.pull.meetPoint.x - PATH[1][1]) / 325 - AHEAD, 1e-3), job.waveAt)
 end
 
 do
@@ -64,14 +66,17 @@ do
 end
 
 do
-	-- At 1:10 the :60 wave has walked 3,250; a lead creep 650 further on is 2 s early, so the aggro moves 2 s earlier.
+	-- At 1:10 the plan puts the :60 wave (10 + AHEAD) * 325 along. Two creeps 550 and 750 further on: the wave's body is
+	-- 650 (2 s) early, its front creep 750 (2.3 s); the aggro moves by the body (camp 1 hit early on the front creep,
+	-- replay pdg3_C).
 	local H, bot, data = world()
 	local want = expected(data, data.pull.meetPoint)
-	MakeCreep({ team = 2, x = PATH[1][1] + 3250 + 650, y = -5000 })
-	MakeCreep({ team = 2, x = PATH[1][1] + 3250 + 650 - 100, y = -5000 })
+	local plan = (10 + AHEAD) * 325
+	MakeCreep({ team = 2, x = PATH[1][1] + plan + 750, y = -5000 })
+	MakeCreep({ team = 2, x = PATH[1][1] + plan + 550, y = -5000 })
 	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
 	local job = H.Lane.CampJobs.Current(bot)
-	check("wave seen ahead of schedule pulls earlier", within(job.plannedSec, want - 2, 1e-3), job.plannedSec)
+	check("wave seen ahead of schedule pulls earlier by its body, not its front creep", within(job.plannedSec, want - 2, 1e-3), job.plannedSec)
 	check("live-shifted pull logged as live", job.timing == "live")
 	check("the slot stays the unshifted aggro", within(job.slot - job.baseAggro, 2, 1e-3))
 end
@@ -105,14 +110,31 @@ do
 	check("missing spawner origin falls back to the seed", t.source == "seed" and t.seconds[1] == 15)
 	-- 7.41 good_1 (radiant_safe_small): spawner origin and derived meet from the map data.
 	t = PT.For(2, Lane.Bot, Vector(3978, -5027), "small", { Vector(4050, -6139) }, false, { 15, 45 })
-	check("7.41 radiant safe small camp pulls near :20/:50", t.source == "wave" and t.seconds[1] > 19.5 and t.seconds[1] < 21.5
+	check("7.41 radiant safe small camp pulls near :17/:47", t.source == "wave" and t.seconds[1] > 16.5 and t.seconds[1] < 18.5
 		and within(t.seconds[2] - t.seconds[1], 30, 1e-6), t.seconds[1])
 	-- 7.41 evil_2 (dire_safe_small): its in-game meet (GetLocationAlongLane, from bots' watch positions in
 	-- console.9055874680) is ~340 off the Dire top creep path; it used to fall back to the :15 seed (every double pull on
 	-- it logged timing=seed). Valve's dire_pull window is 21-23.
 	CURRENT_TEAM = 3
 	t = PT.For(3, Lane.Top, Vector(-3911, 4829), "small", { Vector(-4002, 5490), Vector(-4005, 5520) }, false, { 15, 45 })
-	check("7.41 Dire safe small camp, meet 340 off the path, pulls near :21.7", t.source == "wave" and t.seconds[1] > 21 and t.seconds[1] < 22.5, t.seconds[1])
+	check("7.41 Dire safe small camp, meet 340 off the path, pulls near :18.7", t.source == "wave" and t.seconds[1] > 18 and t.seconds[1] < 19.5, t.seconds[1])
+end
+
+do
+	-- WaveAhead by lane kind, one path for every camp: Radiant top and Dire bot are off lanes, Radiant bot and Dire top
+	-- safe, mid neither. The same camp geometry on each lane, timed with and without the offsets.
+	local function sec(team, lane, ahead)
+		local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_top = PATH, radiant_bot = PATH, radiant_mid = PATH,
+			dire_top = PATH, dire_bot = PATH }, WaveAhead = ahead } }).Lane.PullTiming
+		CURRENT_TEAM = team
+		return PT.For(team, lane, Vector(-1600, -6200), "small", { Vector(-1600, -5000) }, false, { 15, 45 }).seconds[1]
+	end
+	local zero, on = { safe = 0, off = 0 }, { safe = 3, off = 1 }
+	local function earlier(team, lane) return sec(team, lane, zero) - sec(team, lane, on) end
+	check("WaveAhead: safe lanes 3 s earlier, off lanes 1 s, mid unchanged", within(earlier(2, Lane.Bot), 3, 1e-6)
+		and within(earlier(3, Lane.Top), 3, 1e-6) and within(earlier(2, Lane.Top), 1, 1e-6) and within(earlier(3, Lane.Bot), 1, 1e-6)
+		and within(earlier(2, Lane.Mid), 0, 1e-6), earlier(2, Lane.Bot) .. " " .. earlier(3, Lane.Top) .. " " .. earlier(2, Lane.Top)
+		.. " " .. earlier(3, Lane.Bot) .. " " .. earlier(2, Lane.Mid))
 end
 
 do

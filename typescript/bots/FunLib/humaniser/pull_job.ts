@@ -117,6 +117,8 @@ interface Pull {
     near?: number;
     neutrals: number;
     hitAt: number;
+    /** The live reading the hit was set from (none when the wave was not seen). */
+    live?: PullTiming.LiveReading;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -399,6 +401,8 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nn", p.neutrals],
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
+        ["lv", p.live !== undefined ? 1 : 0],
+        ["sf", p.live !== undefined ? math.floor(p.live.front * 10 + 0.5) / 10 : undefined],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -746,10 +750,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    // Once our wave is out its lead says how early or late it really is (pull_timing's LiveShift); the leave time, the late
+    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead); the leave time, the late
     // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
     // the hit having moved up to LiveMaxShift earlier).
-    const hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    const live = PullTiming.LiveRead(p.timing, p.slot, now);
+    const hitAt = p.slot + (live?.shift ?? 0);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
@@ -781,7 +786,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, live, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );
