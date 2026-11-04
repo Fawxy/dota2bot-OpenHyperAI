@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { plan, runArgs, seconds } = require('../batch');
+const { plan, planSummary, runArgs, seconds } = require('../batch');
 const bank = require('../bank');
 const { readManifest, expandPath } = require('../manifest');
 const { health, bar, cond } = require('../er');
@@ -22,6 +22,12 @@ test('batch plan: slice 1 order (s1.sh): arms alternate per rep, seeds per lineu
 test('batch plan: three arms rotate by one each rep (shared OFF arm)', () => {
     const p = plan({ ...SPEC, lineups: ['A', 'B', 'C'], arms: { off: { set: OFF }, f1: { set: ['Ours.F1=true'] }, f2: { set: ['Ours.F2=true'] } } });
     assert.deepStrictEqual(p.map(g => g.arm), ['off', 'f1', 'f2', 'f1', 'f2', 'off', 'f2', 'off', 'f1']);
+});
+
+test('batch planSummary: an ON+OFF spec shows its doubled game count and both arms', () => {
+    assert.strictEqual(planSummary(SPEC, plan(SPEC)), `${SPEC.lineups.length * 2} games: ${SPEC.lineups.length} reps x 2 arms (on, off)`);
+    const onOnly = { ...SPEC, arms: { on: SPEC.arms.on } };
+    assert.strictEqual(planSummary(onOnly, plan(onOnly)), `${SPEC.lineups.length} games: ${SPEC.lineups.length} reps x 1 arm (on)`);
 });
 
 test('batch runArgs: --build only when asked, one --set per key', () => {
