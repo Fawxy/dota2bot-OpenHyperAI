@@ -6,6 +6,10 @@
 import { Unit, Vector, Team, Rune } from "bots/ts_libs/dota";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
+import * as Utils from "bots/FunLib/utils";
+
+// OHA's global print drops output unless Utils.DebugMode (aba_global_overrides); probes v2 and v3 printed nothing.
+const out: (this: void, s: string) => void = (Utils as any).RawPrint ?? print;
 
 declare function GeneratePath(this: void, a: Vector, b: Vector, avoid: unknown[], cb: (this: void, d: number, wp: Vector[]) => void): void;
 declare function AddAvoidanceZone(this: void, v: Vector, dur?: number): unknown;
@@ -37,11 +41,11 @@ function report(team: number, from: string, variant: string, start: Vector, towe
     }
     const pts = wp.map((p) => `${math.floor(p.x)},${math.floor(p.y)}`).join(";");
     const tw = which >= 0 ? `${math.floor(towers[which].x)},${math.floor(towers[which].y)}` : "-";
-    print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe team=${team} from=${from} v=${variant} d=${math.floor(d)} n=${wp.length} min=${math.floor(min)} tw=${tw} wp=${pts}`);
+    out(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe team=${team} from=${from} v=${variant} d=${math.floor(d)} n=${wp.length} min=${math.floor(min)} tw=${tw} wp=${pts}`);
 }
 
 function hev(rest: string): void {
-    print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe ${rest}`);
+    out(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe ${rest}`);
 }
 
 function guard<T>(step: string, f: () => T): T | undefined {

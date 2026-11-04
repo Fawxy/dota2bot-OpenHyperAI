@@ -62,6 +62,12 @@ local Team = ____dota.Team
 local Rune = ____dota.Rune
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
+local Utils = require(GetScriptDirectory().."/FunLib/utils")
+local ____Utils_RawPrint_0 = Utils.RawPrint
+if ____Utils_RawPrint_0 == nil then
+    ____Utils_RawPrint_0 = print
+end
+local out = ____Utils_RawPrint_0
 local done = {}
 local function segDist(a, b, p)
     local dx = b.x - a.x
@@ -100,13 +106,13 @@ local function report(team, from, variant, start, towers, d, wp)
         ";"
     )
     local tw = which >= 0 and (tostring(math.floor(towers[which + 1].x)) .. ",") .. tostring(math.floor(towers[which + 1].y)) or "-"
-    print((((((((((((((((("[HEV] t=" .. string.format(
+    out((((((((((((((((("[HEV] t=" .. string.format(
         "%.3f",
         DotaTime()
     )) .. " ev=pathprobe team=") .. tostring(team)) .. " from=") .. from) .. " v=") .. variant) .. " d=") .. tostring(math.floor(d))) .. " n=") .. tostring(#wp)) .. " min=") .. tostring(math.floor(min))) .. " tw=") .. tw) .. " wp=") .. pts)
 end
 local function hev(rest)
-    print((("[HEV] t=" .. string.format(
+    out((("[HEV] t=" .. string.format(
         "%.3f",
         DotaTime()
     )) .. " ev=pathprobe ") .. rest)
@@ -183,13 +189,13 @@ function ____exports.Run(bot)
     local handle = guard(
         "zone",
         function()
-            local ____AddAvoidanceZone_6 = AddAvoidanceZone
-            local ____Vector_5 = Vector
-            local ____opt_0 = towers[1]
-            local ____temp_4 = ____opt_0 and ____opt_0.x or 0
-            local ____opt_2 = towers[1]
-            return ____AddAvoidanceZone_6(
-                ____Vector_5(____temp_4, ____opt_2 and ____opt_2.y or 0, 1000),
+            local ____AddAvoidanceZone_7 = AddAvoidanceZone
+            local ____Vector_6 = Vector
+            local ____opt_1 = towers[1]
+            local ____temp_5 = ____opt_1 and ____opt_1.x or 0
+            local ____opt_3 = towers[1]
+            return ____AddAvoidanceZone_7(
+                ____Vector_6(____temp_5, ____opt_3 and ____opt_3.y or 0, 1000),
                 30
             )
         end
