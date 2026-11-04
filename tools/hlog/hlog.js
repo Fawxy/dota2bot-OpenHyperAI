@@ -6,7 +6,7 @@
 //   node hlog.js digest <log> [--game N]                 one game in a few lines: run facts, event counts, errors, marks
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
-// Options: --db <file> (default ~/.dotactl/hlog.sqlite), --logs <dir>, --json, --wide (no cell truncation), --no-ingest.
+// Options: --db <file> (default ~/.dotactl/hlog-<store version>.sqlite), --logs <dir>, --json, --wide (no cell truncation), --no-ingest.
 'use strict';
 
 const fs = require('fs');

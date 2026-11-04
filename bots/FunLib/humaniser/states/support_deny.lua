@@ -18,4 +18,9 @@ end
 function ____exports.LastHits(_bot)
     return Ours.On("SupportLastHit")
 end
+--- Ours.SupportHarass (slice support-spot): this support's attack mode is ours in lane (harass, states/core_trade) and, with
+-- Ours.LaneSpot, it stands on our lane spot (states/support_lane step `hold`). Decided at load by mode_attack_generic.
+function ____exports.Harass(bot)
+    return ____exports.Applies(bot) and Ours.On("SupportHarass")
+end
 return ____exports

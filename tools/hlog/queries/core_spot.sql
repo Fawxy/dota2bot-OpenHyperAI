@@ -1,7 +1,7 @@
--- Where lineup cores (pos 1-3) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
+-- Where lineup cores (pos 1-3, or the positions :pos_lo to :pos_hi) stood while idle in lane, :from to :until (default 90-600), per game and core (slice
 -- lane-positioning, step 1 targets). Idle = laning mode with no attack target (lane_activity activity 'lane'), one snapshot a
 -- second, less the seconds the laning body was walking to a last hit or deny (ev=lane_pos label lasthit/deny in that second or
--- the one before; lane_pos comes every 2 s): those belong to the last-hit picker, not the spot, and are counted apart.
+-- up to the next sample, at most 2 s: lane_pos came every 2 s before step 1c and every 1 s since): those belong to the last-hit picker, not the spot, and are counted apart.
 --   lh_walk     idle snapshots spent walking to a last hit or deny;  lh_walk_hpl  HP-% points lost from them
 --   idle        the other idle snapshots (the spot's)
 --   off         idle snapshots more than 300 from the spot (lane_pos `d`): chased off it, or walking to a spot that moved;
@@ -14,7 +14,7 @@
 --   near_hpl    HP-% points lost from those snapshots to the next;  hpl  all idle HP lost (ring_hpl + out_hpl)
 --   per_min     ring seconds per idle minute
 --   why_*       ev=lane_pos samples by the limit that decided our spot (absent on OHA's spot)
--- Params: like, from, until.
+-- Params: like, from, until; pos_lo, pos_hi the lineup positions (default 1-3, the cores; 4-5 reads the supports the same way).
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 -- ensure: ev_lane_pos(pid, spot, why, label)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -27,8 +27,10 @@ fr AS MATERIALIZED (
 a AS MATERIALIZED (
     SELECT a.game_id, a.pid, a.team, a.t, a.x, a.y, a.hp, a.activity, a.ed, s.ln,
         lead(a.hp) OVER (PARTITION BY a.game_id, a.pid ORDER BY a.t) AS nhp
-    FROM lane_activity a JOIN gm ON gm.game_id = a.game_id JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
-    WHERE a.pos <= 3 AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
+    -- pid and t let the join use ev_snap's (game_id, pid, t) index: on seq alone it read every snapshot of the game per row
+    -- (about 11 minutes for 5 games).
+    FROM lane_activity a JOIN gm ON gm.game_id = a.game_id JOIN ev_snap s ON s.game_id = a.game_id AND s.pid = a.pid AND s.t = a.t AND s.seq = a.seq
+    WHERE a.pos >= coalesce(:pos_lo, 1) AND a.pos <= coalesce(:pos_hi, 3) AND a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
 ),
 -- Enemy tower positions: the table @core_deaths keeps equal to dynamic.js TOWERS.
 tw (team, x, y) AS (VALUES
@@ -37,25 +39,27 @@ tw (team, x, y) AS (VALUES
     (3, 4944, 4776), (3, -128, 6016), (3, -5275, 6036), (3, 2496, 2112), (3, 524, 652), (3, 6400, 384), (3, 6336, 3032),
     (3, 3552, 5776), (3, 4272, 3759), (3, 5280, 4432), (3, 6269, -2240)),
 lb0 AS MATERIALIZED (
-    SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
-    FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3
+    SELECT game_id, pid, sec, lh, d, lead(sec) OVER (PARTITION BY game_id, pid ORDER BY sec) AS nsec
+    FROM (SELECT lp.game_id, lp.pid, CAST(round(lp.t) AS INTEGER) AS sec, max(lp.label IN ('lasthit', 'deny')) AS lh, max(lp.d) AS d
+          FROM ev_lane_pos lp JOIN gm ON gm.game_id = lp.game_id GROUP BY 1, 2, 3)
 ),
--- Each sample covers its own second and the next (its own second's distance first).
+-- Each sample covers its own second, and the next one too when no sample lands in it (the 2 s cadence before step 1c).
 lb AS MATERIALIZED (
-    SELECT game_id, pid, sec, max(lh) AS lh, coalesce(max(CASE WHEN nxt = 0 THEN d END), max(d)) AS d
-    FROM (SELECT game_id, pid, sec, lh, d, 0 AS nxt FROM lb0 UNION ALL SELECT game_id, pid, sec + 1, lh, d, 1 FROM lb0)
-    GROUP BY 1, 2, 3
+    SELECT game_id, pid, sec, lh, d FROM lb0
+    UNION ALL SELECT game_id, pid, sec + 1, lh, d FROM lb0 WHERE nsec IS NULL OR nsec > sec + 1
 ),
-i AS (
+-- The other team's front in the same second, as a keyed join (teams are 2 and 3), not a subquery run per snapshot and per use of `ring`.
+i AS MATERIALIZED (
     SELECT a.*,
         coalesce(lb.lh, 0) AS lhw, coalesce(lb.d > 300, 0) AS off,
-        (SELECT CASE a.ln WHEN 'top' THEN (fr.topx - a.x) * (fr.topx - a.x) + (fr.topy - a.y) * (fr.topy - a.y)
-                          WHEN 'mid' THEN (fr.midx - a.x) * (fr.midx - a.x) + (fr.midy - a.y) * (fr.midy - a.y)
-                          WHEN 'bot' THEN (fr.botx - a.x) * (fr.botx - a.x) + (fr.boty - a.y) * (fr.boty - a.y) END
-            FROM fr WHERE fr.game_id = a.game_id AND fr.sec = CAST(round(a.t) AS INTEGER) AND fr.team <> a.team) <= 520 * 520 AS ring,
+        CASE a.ln WHEN 'top' THEN (fr.topx - a.x) * (fr.topx - a.x) + (fr.topy - a.y) * (fr.topy - a.y)
+                  WHEN 'mid' THEN (fr.midx - a.x) * (fr.midx - a.x) + (fr.midy - a.y) * (fr.midy - a.y)
+                  WHEN 'bot' THEN (fr.botx - a.x) * (fr.botx - a.x) + (fr.boty - a.y) * (fr.boty - a.y) END <= 520 * 520 AS ring,
         EXISTS (SELECT 1 FROM tw WHERE tw.team <> a.team AND (tw.x - a.x) * (tw.x - a.x) + (tw.y - a.y) * (tw.y - a.y) <= 750 * 750) AS twr,
         CASE WHEN a.nhp IS NULL THEN 0 ELSE max(0, a.hp - a.nhp) END AS lost
-    FROM a LEFT JOIN lb ON lb.game_id = a.game_id AND lb.pid = a.pid AND lb.sec = CAST(round(a.t) AS INTEGER) WHERE a.activity = 'lane'
+    FROM a LEFT JOIN lb ON lb.game_id = a.game_id AND lb.pid = a.pid AND lb.sec = CAST(round(a.t) AS INTEGER)
+        LEFT JOIN fr ON fr.game_id = a.game_id AND fr.sec = CAST(round(a.t) AS INTEGER) AND fr.team = 5 - a.team
+    WHERE a.activity = 'lane'
 ),
 p AS (
     SELECT lp.game_id, lp.pid, sum(lp.why = 'pref') AS why_pref, sum(lp.why = 'hero') AS why_hero, sum(lp.why = 'creep') AS why_creep, sum(lp.why = 'hp') AS why_hp,

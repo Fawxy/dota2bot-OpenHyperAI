@@ -119,6 +119,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local DEFAULTS, settings
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -133,14 +134,6 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LaneClaims = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_claims")
 local PreHit = require(GetScriptDirectory().."/FunLib/humaniser/states/pre_hit")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
-____exports.NAME = "laning"
---- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
-local NEAR = 600
-local FAR = 1200
---- A last-hit attempt is dropped when it would take the bot this far from its spot.
-local LEASH = 900
-local DEFAULTS = {Spot = "oha", LastHit = {}, LastHitWithin = 1}
-local settings
 --- Read once: Customize is fixed for the game (tests reload the module with each config).
 function ____exports.Settings()
     if settings ~= nil then
@@ -154,6 +147,35 @@ function ____exports.Settings()
     settings = {Spot = s and s.Spot or DEFAULTS.Spot, LastHit = s and s.LastHit or DEFAULTS.LastHit, LastHitWithin = s and s.LastHitWithin or DEFAULTS.LastHitWithin}
     return settings
 end
+--- Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua).
+function ____exports.OwnsLastHit(bot)
+    if CoreLastHit.Applies(bot) then
+        return true
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    if pos == nil then
+        return false
+    end
+    for ____, p in ipairs(____exports.Settings().LastHit) do
+        if p == pos then
+            return true
+        end
+    end
+    return false
+end
+--- Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
+-- no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
+-- other frames.
+function ____exports.OwnsSupportHits(bot)
+    return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
+end
+____exports.NAME = "laning"
+--- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
+local NEAR = 600
+local FAR = 1200
+--- A last-hit attempt is dropped when it would take the bot this far from its spot.
+local LEASH = 900
+DEFAULTS = {Spot = "oha", LastHit = {}, LastHitWithin = 1}
 local spots = {}
 function ____exports.SetSpot(bot, fn)
     spots[bot:GetPlayerID()] = fn
@@ -177,9 +199,14 @@ function ____exports.RoleOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
 local spotCache = {}
---- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says (cores under Ours.CoreLastHit).
+--- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
+-- support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
+-- mode, so the body's hold no longer cancels them).
 function ____exports.OwnsSpot(bot)
-    return Ours.On("LaneSpot") and CoreLastHit.Applies(bot)
+    if not Ours.On("LaneSpot") then
+        return false
+    end
+    return CoreLastHit.Applies(bot) or ____exports.OwnsSupportHits(bot) and SupportDeny.Harass(bot)
 end
 --- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). OHA's spot only when
 -- ours is not on for the bot or cannot be computed (no lane direction, an error).
@@ -213,28 +240,6 @@ end
 function ____exports.SpotInfo(bot)
     local ____opt_9 = spotCache[bot:GetPlayerID()]
     return ____opt_9 and ____opt_9.info
-end
---- Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua).
-function ____exports.OwnsLastHit(bot)
-    if CoreLastHit.Applies(bot) then
-        return true
-    end
-    local pos = LaneConfig.PositionOf(bot)
-    if pos == nil then
-        return false
-    end
-    for ____, p in ipairs(____exports.Settings().LastHit) do
-        if p == pos then
-            return true
-        end
-    end
-    return false
-end
---- Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
--- no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
--- other frames.
-function ____exports.OwnsSupportHits(bot)
-    return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
 end
 --- The creeps this laner may take: undefined for a core (all), the support's claims otherwise.
 local function claimsFor(bot)

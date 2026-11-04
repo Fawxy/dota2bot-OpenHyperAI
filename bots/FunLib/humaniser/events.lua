@@ -752,6 +752,8 @@ ____exports.EVENTS = {
     },
     trade = {
         pid = "num",
+        role = "str",
+        lf = "num",
         kind = "str",
         tgt = "num",
         result = "str",
@@ -846,7 +848,18 @@ ____exports.EVENTS = {
         chp = "num",
         cv = "num",
         cdmg = "num",
-        php = "num"
+        php = "num",
+        se = "num",
+        sh = "num",
+        lv = "num",
+        sf = "num",
+        ht = "num",
+        g4 = "num",
+        gh = "num",
+        na = "num",
+        gu = "num",
+        gd = "num",
+        wa = "num"
     },
     pull_watch = {
         pid = "num",
@@ -865,7 +878,12 @@ ____exports.EVENTS = {
         nd = "num",
         nh = "num",
         nt = "str",
-        pd = "num"
+        pd = "num",
+        tn = "num",
+        tp = "num",
+        tc = "num",
+        td = "num",
+        th = "num"
     },
     choice = {
         pid = "num",
@@ -887,7 +905,8 @@ ____exports.EVENTS = {
         chp = "num",
         cv = "num",
         cdmg = "num",
-        php = "num"
+        php = "num",
+        se = "num"
     },
     gank = {
         pid = "num",
@@ -913,7 +932,13 @@ ____exports.EVENTS = {
         pushed = "num",
         why = "str",
         hm = "num",
-        hph = "num"
+        ut = "num",
+        sx = "num",
+        sy = "num",
+        hph = "num",
+        ne = "num",
+        nk = "num",
+        nr = "num"
     }
 }
 return ____exports

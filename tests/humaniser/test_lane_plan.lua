@@ -336,7 +336,7 @@ do
 	end
 	check("seed seconds: human at the camp at :26 is not pulling", pullAllowedAt26(nil) == true)
 	check("wave-timed seconds: human at the camp at :26 blocks bot pulls",
-		pullAllowedAt26({ Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }) == false)
+		pullAllowedAt26({ Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } }, WaveAhead = { safe = 0, off = 0 } } }) == false)
 end
 
 -- Rotation is read live

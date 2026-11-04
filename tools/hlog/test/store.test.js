@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Store, INGEST_VERSION, DECLARED, versionOf } = require('../store');
+const { Store, INGEST_VERSION, DECLARED, versionOf, storeFile, STALE_MS } = require('../store');
 
 const { jobEnds, runeJobs, lanePartnerLvl10 } = require('../dynamic');
 const QUERY = fs.readFileSync(path.join(__dirname, '../queries/stack_attempts.sql'), 'utf8');
@@ -170,6 +170,102 @@ test('same content under a new mtime is not re-ingested; manifests name their ok
     assert.strictEqual(s.query('PRAGMA user_version')[0].user_version, versionOf(DECLARED));
     assert.strictEqual(s.query('SELECT count(*) AS n FROM logs')[0].n, 0);
     assert.strictEqual(s.ingest(f), true);
+});
+
+test('stores of two versions keep their own files: opening one never empties the other', () => {
+    const dir = tmp();
+    const kindsA = { ev_probe: { a: 'num' } };
+    const kindsB = { ev_probe: { a: 'text' } };
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    let a = new Store(storeFile(versionOf(kindsA), dir), { views: null, kinds: kindsA });
+    a.ingest(f);
+    a.close();
+    const b = new Store(storeFile(versionOf(kindsB), dir), { views: null, kinds: kindsB });
+    b.ingest(f);
+    b.close();
+    a = new Store(storeFile(versionOf(kindsA), dir), { views: null, kinds: kindsA });
+    assert.strictEqual(a.ingest(f), false);
+    assert.deepStrictEqual(a.query('SELECT a, typeof(a) AS k FROM ev_probe').map(r => [r.a, r.k]), [[1, 'integer']]);
+});
+
+test('two processes on one store: a log the other ingested while this one waited for the lock is not written twice', () => {
+    const dir = tmp();
+    const db = storeFile(versionOf(DECLARED), dir);
+    const a = new Store(db, { views: null });
+    const b = new Store(db, { views: null });
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    // b has checked the log and found it new; a takes the lock first and ingests it.
+    const exec = b.db.exec.bind(b.db);
+    b.db.exec = sql => {
+        if (sql === 'BEGIN IMMEDIATE') { b.db.exec = exec; a.ingest(f); }
+        return exec(sql);
+    };
+    assert.strictEqual(b.ingest(f), false);
+    assert.strictEqual(b.query('SELECT count(*) AS n FROM logs')[0].n, 1);
+    assert.strictEqual(b.query('SELECT count(*) AS n FROM ev_probe')[0].n, 1);
+});
+
+test('two processes on one store: tables and columns the other added are known before this one writes', () => {
+    const dir = tmp();
+    const db = storeFile(versionOf(DECLARED), dir);
+    const a = new Store(db, { views: null });
+    const b = new Store(db, { views: null });
+    a.ingest(log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']));
+    b.ingest(log(dir, 'b.log', [BOT, '[HEV] t=2 ev=probe pid=1 a=2 extra=3']));
+    assert.deepStrictEqual(b.query('SELECT a, extra FROM ev_probe ORDER BY t').map(r => [r.a, r.extra]), [[1, null], [2, 3]]);
+});
+
+test('two processes open a new store at once: the second does not empty what the first built meanwhile', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const dir = tmp();
+    const db = storeFile(versionOf(DECLARED), dir);
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    const exec = DatabaseSync.prototype.exec;
+    let raced = false;
+    // b has read the new file's version as unset; a builds the store and ingests before b takes the lock.
+    DatabaseSync.prototype.exec = function (sql) {
+        if (sql === 'BEGIN IMMEDIATE' && !raced) {
+            raced = true;
+            const a = new Store(db, { views: null });
+            a.ingest(f);
+            a.close();
+        }
+        return exec.call(this, sql);
+    };
+    let b;
+    try { b = new Store(db, { views: null }); } finally { DatabaseSync.prototype.exec = exec; }
+    assert.strictEqual(b.query('SELECT count(*) AS n FROM ev_probe')[0].n, 1);
+});
+
+test('two processes on one store: views open on tables the other wrote while this one ingested nothing', () => {
+    const dir = tmp();
+    const views = path.join(dir, 'views');
+    fs.mkdirSync(views);
+    fs.writeFileSync(path.join(views, 'probe_x.sql'), '-- needs: ev_probe(x)\nSELECT game_id, a, x FROM ev_probe\n');
+    const db = storeFile(versionOf(DECLARED), dir);
+    const a = new Store(db, { views });
+    const b = new Store(db, { views });
+    const f = log(dir, 'a.log', [BOT, '[HEV] t=1 ev=probe pid=1 a=1']);
+    a.ingestAll([f]);
+    assert.strictEqual(b.ingestAll([f]).wrote, 0);
+    assert.deepStrictEqual(b.query('SELECT a, x FROM probe_x').map(r => [r.a, r.x]), [[1, null]]);
+});
+
+test('opening a version store deletes other version stores unopened for a week, and nothing else', () => {
+    const dir = tmp();
+    const old = Date.now() / 1000 - STALE_MS / 1000 - 3600;
+    const make = (name, mtime) => {
+        const p = path.join(dir, name);
+        fs.writeFileSync(p, '');
+        if (mtime) fs.utimesSync(p, mtime, mtime);
+        return p;
+    };
+    const stale = make('hlog-1.sqlite', old);
+    const staleWal = make('hlog-1.sqlite-wal', old);
+    const fresh = make('hlog-2.sqlite');
+    const other = make('hlog.sqlite', old);
+    new Store(storeFile(versionOf(DECLARED), dir), { views: null }).close();
+    assert.deepStrictEqual([stale, staleWal, fresh, other].map(p => fs.existsSync(p)), [false, false, true, true]);
 });
 
 test('stack view keeps stackCause results when a column also holds text and when why is only ever numeric', () => {

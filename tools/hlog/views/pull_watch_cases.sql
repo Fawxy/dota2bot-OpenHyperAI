@@ -7,7 +7,12 @@
 -- sampled); no-neutral (none within the search); home (the nearest neutral within 400 of its camp and over 500 from our
 -- creeps: it never followed or went back); apart (over 500 from our creeps, away from its camp); near-no-fight (within 500,
 -- no creep of ours on it at any sample); partial (some of ours fought, under the diverted share).
--- needs: ev_pull_job(pid, slot, res)
+-- Slice pull-diag (logs with ht): hit_wave = wa - ht, the wave's arrival at the meet point (within 300, sampled every
+-- 0.25 s, creeps already there at the hit not counted) after the confirmed hit; hit_g4 = g4 - ht, when one of the camp's
+-- neutrals passed 400 from its camp (EC-084: the 5 s give-up timer starts there); hit_gu = gu - ht, when every one that
+-- passed 400 was walking home (150 back from its farthest, no attack target); gave-up (before the other causes): they
+-- walked home before any came within acquisition range (500) of our creeps.
+-- needs: ev_pull_job(pid, slot, res, sh, ht, g4, gh, na, gu, gd, wa)
 -- needs: ev_choice(pid, kind, slot)
 -- needs: ev_pull_watch(pid, slot, ph, wc, won, whe, wcr, wid, wd, nn, ntp, ntc, ntx, nd, nh, nt, pd)
 WITH w AS (
@@ -22,8 +27,9 @@ a AS (
 )
 SELECT p.game_id, p.t, p.pid, p.team, p.lane, p.camp, p.slot, p.res, p.why, p.diverted, p.div, p.dt, p.d30,
     a.samples, a.arrival, a.arrival - p.slot AS arr_after, a.a_ph, a.a_wc, a.a_won, a.a_nn, a.a_nd, a.a_nh, a.a_nt, a.a_pd,
-    a.mwon, a.mnd, a.ntc,
+    a.mwon, a.mnd, a.ntc, p.sh, p.ht, p.g4, p.gh, p.na, p.gu, p.gd, p.wa, p.wa - p.ht AS hit_wave, p.g4 - p.ht AS hit_g4, p.gu - p.ht AS hit_gu,
     CASE WHEN p.diverted = 1 THEN 'diverted'
+        WHEN p.gu IS NOT NULL AND (p.na IS NULL OR p.na > p.gu) THEN 'gave-up'
         WHEN a.arrival IS NULL THEN 'no-wave'
         WHEN a.a_nd IS NULL THEN 'no-neutral'
         WHEN a.a_nd > 500 AND a.a_nh <= 400 THEN 'home'

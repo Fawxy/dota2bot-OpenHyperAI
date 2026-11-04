@@ -335,6 +335,12 @@ export const DEFAULTS = {
         NeutralSpeed: { small: 290, medium: 300, large: 300, ancient: 290 } as Record<string, number>,
         // Seconds the neutrals reach the meet point before the wave.
         Lead: 1.5,
+        // Seconds our wave reaches a point ahead of CreepSpeed from spawn. 7.41 speeds the safe-lane wave up and slows the
+        // off lane's after spawn (patch notes, no figure). From the wave's body (LiveRead's `sh` on top of the first values,
+        // safe 3 / off 0.5, in ptm1): Radiant safe about 2.4, Dire safe about 3.7, off lane about -0.5 (camp 18) and -0.3
+        // (camp 2). Safe is not split by side on 9-11 pulls each; LiveRead corrects the rest. `judgement`. Plans read with
+        // no live reading (counterplay, lane_plan, camp jobs) take these as they are.
+        WaveAhead: { safe: 3, off: -0.4 },
         WaveSlots: [0, 30],
         // evil_2's meet from GetLocationAlongLane stands ~340 off the Dire top creep path (watch positions, 9055874680).
         PathMaxOffset: 500,

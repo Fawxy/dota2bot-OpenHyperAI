@@ -228,7 +228,7 @@ do
 	-- The enemy's pull seconds come from their wave (pull_timing) when their camp is wave-timed, as ours do: with a Dire
 	-- creep path along the stub top lane their small camp pulls at :18.3 (half :21.4), so a support unseen by it at :22
 	-- reads as pulling; on the :15/:17 seeds it does not (5 s off, CounterPullWindow 3).
-	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
+	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
 	local function at22(cfg)
 		local H, support, _, _, esup = world(1, { cfg = cfg })
 		tick(H, support, 81)
@@ -309,7 +309,7 @@ do
 	check("a seen pull 3.5 s ago: contested", seen(78.5) ~= nil)
 	check("a seen pull 4.5 s ago: too late, not contested", seen(79.5) == nil)
 
-	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } } } }
+	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
 	local H, support, _, _, esup = world(1, { cfg = WAVE })
 	tick(H, support, 81)
 	hide(esup, 4)

@@ -43,6 +43,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
@@ -118,7 +119,7 @@ function ____exports.Step(bot, mode)
     local l = lib()
     return l ~= nil and l.States.Step(bot, mode)
 end
-local LANE_POS_EVERY = 2
+local LANE_POS_EVERY = 1
 local function shadowTeam(bot)
     return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
@@ -213,8 +214,10 @@ local function lanePos(bot, l)
     local spot = Laning.Spot(bot)
     local task = Tasks.Current(bot)
     local info = Laning.SpotInfo(bot)
-    local ____Telemetry_Event_11 = Telemetry.Event
-    local ____array_10 = __TS__SparseArrayNew(
+    local nok, nuke = pcall(LaneSpot.NearestNuke, bot)
+    local ne, nk, nr = unpack(nok and nuke ~= nil and nuke or ({nil, nil, nil}))
+    local ____Telemetry_Event_13 = Telemetry.Event
+    local ____array_12 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -230,7 +233,7 @@ local function lanePos(bot, l)
         ____cur_running_5 = nil
     end
     __TS__SparseArrayPush(
-        ____array_10,
+        ____array_12,
         {"label", ____cur_running_5},
         {
             "mode",
@@ -243,14 +246,32 @@ local function lanePos(bot, l)
             "hm",
             info ~= nil and math.floor(info.margin) or nil
         },
+        {"ut", info and info.covered},
+        {
+            "sx",
+            spot ~= nil and math.floor(spot.x) or nil
+        },
+        {
+            "sy",
+            spot ~= nil and math.floor(spot.y) or nil
+        },
         {
             "hph",
             LaneMetrics.HeroLost(bot)
+        },
+        {
+            "ne",
+            ne ~= nil and math.floor(ne) or nil
+        },
+        {"nk", nk},
+        {
+            "nr",
+            nr ~= nil and math.floor(nr) or nil
         }
     )
-    ____Telemetry_Event_11(
+    ____Telemetry_Event_13(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_10)}
+        {__TS__SparseArraySpread(____array_12)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
@@ -286,8 +307,8 @@ function ____exports.Owns(bot, state)
 end
 --- Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body.
 local function stepFarm(bot, names)
-    local ____opt_12 = lib()
-    local cur = ____opt_12 and ____opt_12.States.Current(bot)
+    local ____opt_14 = lib()
+    local cur = ____opt_14 and ____opt_14.States.Current(bot)
     return cur ~= nil and names[cur.name] == true and ____exports.Step(bot, BotMode.Farm)
 end
 local FARM_STATES = {[Farm.NAME] = true}
@@ -319,8 +340,8 @@ function ____exports.BodyLastHits(bot)
     if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
         return false
     end
-    local ____opt_14 = Tasks.Loaded()
-    local cur = ____opt_14 and ____opt_14.States.Current(bot)
+    local ____opt_16 = Tasks.Loaded()
+    local cur = ____opt_16 and ____opt_16.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
 --- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
@@ -330,13 +351,13 @@ function ____exports.BodyBusy(bot)
     if not ____exports.BodyLastHits(bot) then
         return false
     end
-    local ____opt_16 = Tasks.Current(bot)
-    local label = ____opt_16 and ____opt_16.label
+    local ____opt_18 = Tasks.Current(bot)
+    local label = ____opt_18 and ____opt_18.label
     return label == "lasthit" or label == "deny"
 end
 local function laningRunning(bot)
-    local ____opt_18 = Tasks.Loaded()
-    local cur = ____opt_18 and ____opt_18.States.Current(bot)
+    local ____opt_20 = Tasks.Loaded()
+    local cur = ____opt_20 and ____opt_20.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
 --- True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink.
@@ -367,8 +388,8 @@ function ____exports.SupportStep(bot)
         {
             bodyRunning = function() return laningRunning(bot) end,
             bodyLabel = function()
-                local ____opt_20 = Tasks.Current(bot)
-                return ____opt_20 and ____opt_20.label
+                local ____opt_22 = Tasks.Current(bot)
+                return ____opt_22 and ____opt_22.label
             end,
             stepBody = function() return ____exports.Step(bot, BotMode.Laning) end
         }
@@ -383,8 +404,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_22 = Tasks.Loaded()
-    local cur = ____opt_22 and ____opt_22.States.Current(bot)
+    local ____opt_24 = Tasks.Loaded()
+    local cur = ____opt_24 and ____opt_24.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

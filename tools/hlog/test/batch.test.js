@@ -270,6 +270,17 @@ test('remote batch: runRemote saves the log, surfaces the reason, stops on a cur
     assert.ok(!silent.ok && /no state in 3 polls/.test(silent.out));
     const refused = await runRemote({ host: 'h', token: 't' }, spec, game, opts({ fetchFn: host([() => res(403, { error: 'forbidden' })]) }));
     assert.ok(!refused.ok && refused.out === 'submit 403 forbidden');
+    // record: the job asks the host to keep the replay, which is saved beside the log; a missing demo keeps the game.
+    const rspec = { ...spec, record: true };
+    assert.strictEqual(remoteJob(rspec, game).record, true);
+    assert.strictEqual(remoteJob(spec, game).record, undefined, 'no record field unless the spec asks');
+    const rec = await runRemote({ host: 'h', token: 't' }, rspec, game, opts({ fetchFn: host([
+        (url, o) => (assert.strictEqual(JSON.parse(o.body).record, true), res(201, { id: 'j5', state: 'queued' })), () => res(200, { state: 'done' }),
+        () => res(200, { text: 'LOG' }), url => (assert.match(url, /\/jobs\/j5\/files\/replay\.dem$/), res(200, { text: 'DEM' }))]) }));
+    assert.ok(rec.ok && rec.replay === rec.log.replace(/\.log$/, '.dem') && fsx.readFileSync(rec.replay, 'utf8') === 'DEM');
+    const nodem = await runRemote({ host: 'h', token: 't' }, rspec, game, opts({ fetchFn: host([
+        () => res(201, { id: 'j6', state: 'queued' }), () => res(200, { state: 'done' }), () => res(200, { text: 'LOG' }), () => res(404, {})]) }));
+    assert.ok(nodem.ok && nodem.replay === undefined && /replay\.dem 404/.test(nodem.out));
 });
 
 // Review 2026-10-30 eval-cost cc9740e L4, M2: the stop-when-decided wiring.

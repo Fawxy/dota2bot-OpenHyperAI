@@ -31,6 +31,10 @@ export const SETTINGS = {
     PartnerHp: 0.5,
     PartnerRadius: 900,
     PartnerGank: 3,
+    /** No start with an enemy hero within SiteEnemy of the stand point or the meet point (`why=enemy-site`). Banked `ok`
+     *  off-lane pulls with one under 1,200 of the pull site at the start: 5 of 19 hit by a hero, 4 diverted; 1,200 or more:
+     *  6 of 36 hit, 16 diverted (04/11/2026, the user's ptm1_A 4:21: a pull into an enemy offlaner). `judgement`. */
+    SiteEnemy: 1200,
     /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
      *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
      *  LaneConfig Radii). */
@@ -43,6 +47,16 @@ export const SETTINGS = {
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
     WatchNeutralSearch: 3000,
+    /** Diagnosis (slice pull-diag): at the hit the camp's own neutrals are tagged, those in its box or attacking the puller
+     *  within TagRadius; Acquire is the creep acquisition range (EC-053) for `na`; ArriveR the wave's arrival for `wa`. */
+    TagRadius: 1200,
+    Acquire: 500,
+    ArriveR: 300,
+    /** A tagged neutral counts once it is Left from its camp origin (EC-084: the 5 s give-up timer starts past 400); it is
+     *  walking home once it is HomeMargin back from its own farthest point. A chasing neutral out of attack range reports
+     *  no attack target (review 2026-11-04-pull-diag H1), so giving up is read from movement. */
+    Left: 400,
+    HomeMargin: 150,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -79,6 +93,8 @@ interface CampState {
     /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
     dmg?: number;
     php?: number;
+    /** At a decision: the nearest enemy hero to the stand point or the meet point (siteThreat). */
+    se?: number;
 }
 
 interface Plan {
@@ -107,7 +123,23 @@ interface Pull {
     near?: number;
     neutrals: number;
     hitAt: number;
+    /** The live reading the hit was set from (none when the wave was not seen). */
+    live?: PullTiming.LiveReading;
     start: CampState;
+    /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
+    hat?: number;
+    tagged?: Unit[];
+    /** Per tagged neutral: its farthest distance from the camp origin so far. */
+    peaks?: Map<Unit, number>;
+    /** Lane creeps already within ArriveR of the meet point at the hit (they do not set `wa`). */
+    early?: Unit[];
+    g4?: number;
+    diagErr?: boolean;
+    gh?: number;
+    na?: number;
+    gu?: number;
+    gd?: number;
+    wa?: number;
 }
 
 interface Decision {
@@ -300,6 +332,18 @@ function partnerThreat(bot: Unit): string | undefined {
     return undefined;
 }
 
+/** The nearest enemy hero to the pull site (stand or meet point) into `camp.se`; `enemy-site` within SiteEnemy. */
+function siteThreat(p: Plan, camp: CampState): string | undefined {
+    let near: number | undefined;
+    for (const e of GetUnitList(UnitType.EnemyHeroes)) {
+        if (!e.IsAlive() || e.IsIllusion()) continue;
+        const d = math.min(GetUnitToLocationDistance(e, p.stand), GetUnitToLocationDistance(e, p.meet));
+        if (near === undefined || d < near) near = d;
+    }
+    camp.se = near;
+    return near !== undefined && near <= SETTINGS.SiteEnemy ? "enemy-site" : undefined;
+}
+
 /** OHA's own action holds the hero (rune_job's check: a queued TP, a cast or channel). */
 function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
@@ -314,6 +358,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cv", s.vis ? 1 : 0],
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
+        ["se", r0(s.se)],
     ];
 }
 
@@ -374,6 +419,16 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["wd", p.near !== undefined ? math.floor(p.near + 0.5) : undefined],
         ["nn", p.neutrals],
         ...campFields(p.start),
+        ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
+        ["lv", p.live !== undefined ? 1 : 0],
+        ["sf", p.live !== undefined ? math.floor(p.live.front * 10 + 0.5) / 10 : undefined],
+        ["ht", p.hat],
+        ["g4", p.g4],
+        ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
+        ["na", p.na],
+        ["gu", p.gu],
+        ["gd", p.gd !== undefined ? math.floor(p.gd + 0.5) : undefined],
+        ["wa", p.wa],
     ];
     if (!r.success) {
         Telemetry.Event("pull_job", fields);
@@ -393,7 +448,7 @@ function trail(bot: Unit, flush: boolean): void {
     const tr = trailing[pid];
     if (tr === undefined) return;
     if (!flush && DotaTime() < tr.until) {
-        sampleWave(tr.pull);
+        sampleWave(bot, tr.pull);
         watchLine(bot, tr.pull, "trail");
         return;
     }
@@ -436,13 +491,105 @@ function sample(bot: Unit, p: Pull): void {
     for (const u of GetUnitList(UnitType.NeutralCreeps)) if (u.IsAlive() && GetUnitToLocationDistance(u, p.plan.meet) <= radii.MeetWatch) nn++;
     p.neutrals = math.max(p.neutrals, nn);
     countDiverted(p);
+    diag(bot, p, trackTagged);
 }
 
-function sampleWave(p: Pull): void {
+function sampleWave(bot: Unit, p: Pull): void {
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
+    diag(bot, p, trackTagged);
+}
+
+/** A diagnostics error is printed once per pull, so a missing field is not read as "never happened" (review L5). */
+function diag(bot: Unit, p: Pull, fn: (this: void, bot: Unit, p: Pull) => void): void {
+    const [ok, err] = pcall(fn, bot, p);
+    if (ok || p.diagErr === true) return;
+    p.diagErr = true;
+    print(`[Humaniser] pull diag error slot=${p.plan.slot}: ${tostring(err)}`);
+}
+
+/** At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only. */
+function tagCamp(bot: Unit, p: Pull): void {
+    p.hat = DotaTime();
+    const tagged = CampStateOf(p.plan.spawner).units;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive() || tagged.indexOf(u) >= 0 || GetUnitToUnitDistance(u, bot) > SETTINGS.TagRadius) continue;
+        if (u.GetAttackTarget() === bot) tagged.push(u);
+    }
+    p.tagged = tagged;
+    p.peaks = new Map();
+    p.early = [];
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+        if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
+    }
+}
+
+interface TaggedState {
+    alive: number;
+    onPuller: number;
+    onCreep: number;
+    nearest?: number;
+    farthest?: number;
+}
+
+/** CANDIDATE(stale): same as ally_last_hit's. A tagged neutral that died is freed, and IsAlive on its handle throws. */
+function stale(u: Unit): boolean {
+    return ((u as any).IsNull !== undefined && u.IsNull()) || !u.IsAlive();
+}
+
+function taggedState(bot: Unit, p: Pull, ours: Unit[]): TaggedState {
+    const s: TaggedState = { alive: 0, onPuller: 0, onCreep: 0 };
+    for (const u of p.tagged ?? []) {
+        if (stale(u)) continue;
+        s.alive++;
+        const k = targetKind(bot, u.GetAttackTarget());
+        if (k === "p") s.onPuller++;
+        else if (k === "c") s.onCreep++;
+        let d = ours.length > 0 ? math.huge : GetUnitToLocationDistance(u, p.plan.meet);
+        for (const c of ours) d = math.min(d, GetUnitToUnitDistance(u, c));
+        if (s.nearest === undefined || d < s.nearest) s.nearest = d;
+        const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
+        if (s.farthest === undefined || h > s.farthest) s.farthest = h;
+    }
+    return s;
+}
+
+function trackTagged(bot: Unit, p: Pull): void {
+    const now = DotaTime();
+    if (p.wa === undefined && p.early !== undefined) {
+        for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+            if (!c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName()) || p.early.indexOf(c) >= 0) continue;
+            if (GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) {
+                p.wa = now;
+                break;
+            }
+        }
+    }
+    if (p.tagged === undefined || p.peaks === undefined) return;
+    const s = taggedState(bot, p, laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch));
+    if (s.farthest !== undefined && (p.gh === undefined || s.farthest > p.gh)) p.gh = s.farthest;
+    if (p.na === undefined && s.nearest !== undefined && s.nearest <= SETTINGS.Acquire && s.alive > 0) p.na = now;
+    // Only neutrals that left their camp count (box members that never followed stay out); give-up is every one of them
+    // back HomeMargin from its own peak with no attack target at all.
+    let left = 0;
+    let home = 0;
+    for (const u of p.tagged) {
+        if (stale(u)) continue;
+        const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
+        const peak = math.max(p.peaks.get(u) ?? 0, h);
+        p.peaks.set(u, peak);
+        if (peak <= SETTINGS.Left) continue;
+        if (p.g4 === undefined) p.g4 = now;
+        left++;
+        const t = u.GetAttackTarget();
+        if (h < peak - SETTINGS.HomeMargin && (t === undefined || t === null)) home++;
+    }
+    if (p.gu === undefined && left > 0 && home === left) {
+        p.gu = now;
+        p.gd = s.nearest;
+    }
 }
 
 function countDiverted(p: Pull): void {
@@ -533,7 +680,21 @@ function watchLine(bot: Unit, p: Pull, ph: string): void {
         ["nh", best !== undefined ? r0(GetUnitToLocationDistance(best, p.plan.spawner.location)) : undefined],
         ["nt", best !== undefined ? targetKind(bot, best.GetAttackTarget()) : undefined],
         ["pd", bot.IsAlive() ? r0(GetUnitToLocationDistance(bot, meet)) : undefined],
+        ...taggedFields(bot, p, ours),
     ]);
+}
+
+function taggedFields(bot: Unit, p: Pull, ours: Unit[]): Telemetry.Fields<"pull_watch"> {
+    if (p.tagged === undefined) return [];
+    const s = taggedState(bot, p, ours);
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    return [
+        ["tn", s.alive],
+        ["tp", s.onPuller],
+        ["tc", s.onCreep],
+        ["td", r0(s.nearest)],
+        ["th", r0(s.farthest)],
+    ];
 }
 
 function verbCamp(p: Plan): JobVerbs.Camp {
@@ -578,6 +739,8 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
         label: (l) => {
             ctx.label(l);
             p.label = l;
+            // Diagnostics only: an error here must not end the pull (review 2026-11-04-pull-diag L3).
+            if (l === "lead" && p.hat === undefined) diag(bot, p, tagCamp);
         },
         urgent: ctx.urgent,
     };
@@ -606,10 +769,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    // Once our wave is out its lead says how early or late it really is (pull_timing's LiveShift); the leave time, the late
+    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead); the leave time, the late
     // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
     // the hit having moved up to LiveMaxShift earlier).
-    const hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    const live = PullTiming.LiveRead(p.timing, p.slot, now);
+    const hitAt = p.slot + (live?.shift ?? 0);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
@@ -630,7 +794,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
     camp.php = bot.GetHealth();
-    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    const site = siteThreat(p, camp);
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -641,7 +806,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, live, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

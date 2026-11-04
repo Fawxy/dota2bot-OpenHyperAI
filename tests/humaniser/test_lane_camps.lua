@@ -89,6 +89,10 @@ do
 	local dm = C.DeriveMeetPoint(DIRE, Lane.Top, Vector(2000, 4500, 0))
 	local dh = C.DeriveHalfMeetPoint(DIRE, Lane.Top, dm)
 	check("dire half meet 500 further -x", math.abs(dm.x - dh.x - 500) < 1, dm.x - dh.x)
+	-- A negative shift walks back towards the team's own base: Radiant -x on the bot lane, Dire +x on the top lane.
+	local rb = C.ShiftAlongLane(RAD, Lane.Bot, meet, -600)
+	local db = C.ShiftAlongLane(DIRE, Lane.Top, dm, -600)
+	check("meetBack: radiant 600 back -x, dire 600 back +x", math.abs(meet.x - rb.x - 600) < 1 and math.abs(db.x - dm.x - 600) < 1, (meet.x - rb.x) .. " " .. (db.x - dm.x))
 end
 
 do
@@ -215,14 +219,26 @@ withMapLanes(function()
 	local C, names = mapWorld()
 	local radOff = campNamesFor(C, names, RAD, Lane.Top)
 	check("7.41 radiant offlane resolves the dire hard camp", radOff == "evil_1=radiant_off_large", radOff)
+	-- meetBack: the off-lane meet point is 600 back down our wave's path from the lane point nearest the camp, south on
+	-- Radiant's top lane (user 04/11/2026), north on Dire's bot lane.
+	for _, c in ipairs({ { "evil_1", RAD, Lane.Top, -1 }, { "good_2", DIRE, Lane.Bot, 1 } }) do
+		local idx = idxOf(names, c[1])
+		local job, s = C.ByIdx(idx, c[2]), C.SpawnerByIdx(idx)
+		local nearest = C.DeriveMeetPoint(c[2], c[3], s.location)
+		local m = job.pull.meetPoint
+		local d = math.sqrt((m.x - nearest.x) ^ 2 + (m.y - nearest.y) ^ 2)
+		check("7.41 " .. c[1] .. " meet 600 back along the lane, " .. (c[4] < 0 and "south" or "north"),
+			math.abs(d - 600) < 60 and (m.y - nearest.y) * c[4] > 400, string.format("%.0f,%.0f from %.0f,%.0f", m.x, m.y, nearest.x, nearest.y))
+	end
 	local direOff = campNamesFor(C, names, DIRE, Lane.Bot)
 	check("7.41 dire offlane resolves the radiant hard camp", direOff == "good_2=dire_off_large", direOff)
 	local direOffJob = C.PullCampsFor(DIRE, Lane.Bot)[1]
 	check("off-lane camp stays seed and unverified", direOffJob and direOffJob.source == "seed" and direOffJob.unverified == true and direOffJob.derived == true)
 	check("off-lane job belongs to the pulling team", direOffJob and direOffJob.team == DIRE and C.SpawnerByIdx(direOffJob.campIdx).team == RAD)
-	-- Dire's laners stood at (6150..6230, -4100..-3450): the meet point is on their side of the bot-lane corner.
+	-- Dire's laners stood at (6150..6230, -4100..-3450): the meet point is on their side of the bot-lane corner, meetBack 600
+	-- north of the nearest lane point (about y -3830).
 	local m = direOffJob and direOffJob.pull.meetPoint
-	check("dire off meet point where dire's wave walks", m and m.x > 6100 and m.x < 6300 and m.y > -4200 and m.y < -3400, m and (m.x .. "," .. m.y))
+	check("dire off meet point where dire's wave walks", m and m.x > 6100 and m.x < 6300 and m.y > -3600 and m.y < -2900, m and (m.x .. "," .. m.y))
 	local h = direOffJob and direOffJob.pull.halfMeetPoint
 	check("dire off half meet further toward the radiant base", h and m and h.y < m.y - 400, h and h.y)
 	local path = direOffJob and direOffJob.pull.path

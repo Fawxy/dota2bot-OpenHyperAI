@@ -892,9 +892,13 @@ export const EVENTS = {
         fs: "str",
         fire: "str",
     },
-    /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
+    /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",
+        /** `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot). */
+        role: "str",
+        /** 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%. */
+        lf: "num",
         kind: "str",
         tgt: "num",
         result: "str",
@@ -987,6 +991,17 @@ export const EVENTS = {
     // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
     // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
+    // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh; slice pull-timing: the
+    // wave's body against the plan, which already holds the lane's WaveAhead), lv 1 when the wave was read live (0: sh is 0
+    // because nothing was seen), sf the shift its front creep alone would have given; ht the game time the verb's hit
+    // was confirmed (label lead began; absent when it never got there). The camp's own neutrals are tagged at ht (in its
+    // box, or attacking the puller within PullJob TagRadius); on them, sampled every PullJob WatchEvery to the trail's end:
+    // g4 the first time one was past PullJob Left (400, EC-084: the give-up timer starts there), gh the farthest any came
+    // from the camp origin, na the first time one came within PullJob Acquire of our lane creeps, gu the first time every
+    // tagged neutral that went past Left was back PullJob HomeMargin from its own farthest point with no attack target (they
+    // gave up; a chasing neutral out of attack range also reads no target, so movement decides), gd the nearest of them to
+    // our lane creeps at gu, wa the first time a lane creep not already there at ht came within PullJob ArriveR of the meet
+    // point.
     pull_job: {
         pid: "num",
         pos: "num",
@@ -1012,12 +1027,26 @@ export const EVENTS = {
         cv: "num",
         cdmg: "num",
         php: "num",
+        se: "num",
+        sh: "num",
+        lv: "num",
+        sf: "num",
+        ht: "num",
+        g4: "num",
+        gh: "num",
+        na: "num",
+        gu: "num",
+        gd: "num",
+        wa: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
     // else, wid idle; wd the nearest of our lane creeps to the meet point. Neutrals within WaveSize of it: nn, of them ntp on the
     // puller, ntc on a creep, ntx idle; the neutral within WatchNeutralSearch nearest our creeps there (the meet point when none): nd its distance, nh its
     // distance from its camp origin, nt its target (p puller, h other hero, c creep, o other, x none). pd: the puller to the meet point.
+    // Slice pull-diag: the camp's own neutrals tagged at the hit (see pull_job): tn alive, tp of them attacking the puller
+    // (in attack range; a chase out of range reads no target, as for ntp/nt), tc on a creep, td the nearest of them to our lane creeps near the watch (to the meet point when none), th the farthest of them
+    // from the camp origin. nd/nh/nt above may name another camp's neutral (nh over 3000 in banked logs).
     pull_watch: {
         pid: "num",
         slot: "num",
@@ -1036,6 +1065,11 @@ export const EVENTS = {
         nh: "num",
         nt: "str",
         pd: "num",
+        tn: "num",
+        tp: "num",
+        tc: "num",
+        td: "num",
+        th: "num",
     },
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
@@ -1043,7 +1077,8 @@ export const EVENTS = {
     // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
-    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve).
+    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
+    // hero to the stand or meet point, within PullJob SiteEnemy).
     choice: {
         pid: "num",
         kind: "str",
@@ -1065,6 +1100,7 @@ export const EVENTS = {
         cv: "num",
         cdmg: "num",
         php: "num",
+        se: "num",
     },
     gank: {
         pid: "num",
@@ -1090,7 +1126,15 @@ export const EVENTS = {
         pushed: "num",
         why: "str",
         hm: "num",
+        ut: "num",
+        sx: "num",
+        sy: "num",
         hph: "num",
+        /** The nearest visible enemy hero (slice support-spot): its distance, its ready damaging abilities (trained, not
+         *  passive, off cooldown, mana for it) and the longest cast range among them (0 with none ready). */
+        ne: "num",
+        nk: "num",
+        nr: "num",
     },
 } as const;
 

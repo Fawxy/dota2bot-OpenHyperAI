@@ -11,6 +11,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
@@ -39,7 +40,7 @@ export interface StatesSettings {
     LanePosEvery: number;
 }
 
-const LANE_POS_EVERY = 2;
+const LANE_POS_EVERY = 1;
 
 export function Settings(): StatesSettings {
     return Config.Get().States as StatesSettings;
@@ -155,6 +156,9 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
     const spot = Laning.Spot(bot);
     const task = Tasks.Current(bot);
     const info = Laning.SpotInfo(bot);
+    // Telemetry only: an ability handle the API answers oddly must not cost the frame.
+    const [nok, nuke] = pcall(LaneSpot.NearestNuke, bot);
+    const [ne, nk, nr] = nok && nuke !== undefined ? nuke : [undefined, undefined, undefined];
     Telemetry.Event("lane_pos", [
         ["pid", pid],
         ["d", spot !== undefined ? math.floor(GetUnitToLocationDistance(bot, spot)) : undefined],
@@ -166,7 +170,13 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["pushed", info?.pushed],
         ["why", info?.why],
         ["hm", info !== undefined ? math.floor(info.margin) : undefined],
+        ["ut", info?.covered],
+        ["sx", spot !== undefined ? math.floor(spot.x) : undefined],
+        ["sy", spot !== undefined ? math.floor(spot.y) : undefined],
         ["hph", LaneMetrics.HeroLost(bot)],
+        ["ne", ne !== undefined ? math.floor(ne) : undefined],
+        ["nk", nk],
+        ["nr", nr !== undefined ? math.floor(nr) : undefined],
     ]);
 }
 
