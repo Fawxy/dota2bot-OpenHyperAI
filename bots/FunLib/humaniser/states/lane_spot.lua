@@ -403,11 +403,18 @@ function ____exports.Compute(bot, role)
         px = px + nx * side * shift
         py = py + ny * side * shift
     end
-    local margin = ____exports.HpMargin(bot:GetHealth() / math.max(
+    local hpFrac = bot:GetHealth() / math.max(
         1,
         bot:GetMaxHealth()
-    ))
-    local cover = coverFor(bot, creeps, heroes)
+    )
+    local margin = ____exports.HpMargin(hpFrac)
+    local ____temp_0
+    if hpFrac > HP_LOW then
+        ____temp_0 = coverFor(bot, creeps, heroes)
+    else
+        ____temp_0 = nil
+    end
+    local cover = ____temp_0
     local function covered(p)
         return cover ~= nil and ____exports.Breaks(
             p,

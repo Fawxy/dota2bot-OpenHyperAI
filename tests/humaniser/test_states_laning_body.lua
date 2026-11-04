@@ -291,6 +291,11 @@ do
 	check("creep with no target: the 520 ring", sn ~= nil and dist(sn, c.loc) >= 520, sn and dist(sn, c.loc))
 	local so = spotFor(SDK, { laneSpotTower = false }, held("ours"))
 	check("LaneSpotTower off: the 520 ring under our tower", so ~= nil and dist(so, c.loc) >= 520, so and dist(so, c.loc))
+	-- At 20% HP (HP_LOW 25%) the tower's cover is off: the 520 ring plus the full 300 margin (tspchk1 death at 1% HP).
+	local sl = spotFor(SDK, { hp = 20 }, held("ours"))
+	check("held creep at 20% HP: the 820 ring", sl ~= nil and dist(sl, c.loc) >= 820, sl and dist(sl, c.loc))
+	local sm = spotFor(SDK, { hp = 40 }, held("ours"))
+	check("held creep at 40% HP: 200 plus the 120 margin", sm ~= nil and dist(sm, c.loc) >= 320 and dist(sm, c.loc) < 520, sm and dist(sm, c.loc))
 	local sf = spotFor(SDK, nil, function(bot) held("ours")(bot) TOWERS = { ownTower(-1500, 0) } end)
 	check("creep outside our tower's range: the 520 ring", sf ~= nil and dist(sf, c.loc) >= 520, sf and dist(sf, c.loc))
 end
