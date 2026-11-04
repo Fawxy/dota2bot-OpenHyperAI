@@ -31,6 +31,10 @@ export const SETTINGS = {
     PartnerHp: 0.5,
     PartnerRadius: 900,
     PartnerGank: 3,
+    /** No start with an enemy hero within SiteEnemy of the stand point or the meet point (`why=enemy-site`). Banked `ok`
+     *  off-lane pulls with one under 1,200 of the pull site at the start: 5 of 19 hit by a hero, 4 diverted; 1,200 or more:
+     *  6 of 36 hit, 16 diverted (04/11/2026, the user's ptm1_A 4:21: a pull into an enemy offlaner). `judgement`. */
+    SiteEnemy: 1200,
     /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
      *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
      *  LaneConfig Radii). */
@@ -89,6 +93,8 @@ interface CampState {
     /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
     dmg?: number;
     php?: number;
+    /** At a decision: the nearest enemy hero to the stand point or the meet point (siteThreat). */
+    se?: number;
 }
 
 interface Plan {
@@ -117,6 +123,8 @@ interface Pull {
     near?: number;
     neutrals: number;
     hitAt: number;
+    /** The live reading the hit was set from (none when the wave was not seen). */
+    live?: PullTiming.LiveReading;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -324,6 +332,18 @@ function partnerThreat(bot: Unit): string | undefined {
     return undefined;
 }
 
+/** The nearest enemy hero to the pull site (stand or meet point) into `camp.se`; `enemy-site` within SiteEnemy. */
+function siteThreat(p: Plan, camp: CampState): string | undefined {
+    let near: number | undefined;
+    for (const e of GetUnitList(UnitType.EnemyHeroes)) {
+        if (!e.IsAlive() || e.IsIllusion()) continue;
+        const d = math.min(GetUnitToLocationDistance(e, p.stand), GetUnitToLocationDistance(e, p.meet));
+        if (near === undefined || d < near) near = d;
+    }
+    camp.se = near;
+    return near !== undefined && near <= SETTINGS.SiteEnemy ? "enemy-site" : undefined;
+}
+
 /** OHA's own action holds the hero (rune_job's check: a queued TP, a cast or channel). */
 function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
@@ -338,6 +358,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cv", s.vis ? 1 : 0],
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
+        ["se", r0(s.se)],
     ];
 }
 
@@ -399,6 +420,8 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nn", p.neutrals],
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
+        ["lv", p.live !== undefined ? 1 : 0],
+        ["sf", p.live !== undefined ? math.floor(p.live.front * 10 + 0.5) / 10 : undefined],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -746,10 +769,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    // Once our wave is out its lead says how early or late it really is (pull_timing's LiveShift); the leave time, the late
+    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead); the leave time, the late
     // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
     // the hit having moved up to LiveMaxShift earlier).
-    const hitAt = p.slot + (PullTiming.LiveShift(p.timing, p.slot, now) ?? 0);
+    const live = PullTiming.LiveRead(p.timing, p.slot, now);
+    const hitAt = p.slot + (live?.shift ?? 0);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
@@ -770,7 +794,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
     camp.php = bot.GetHealth();
-    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    const site = siteThreat(p, camp);
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -781,7 +806,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, live, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

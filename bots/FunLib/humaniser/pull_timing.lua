@@ -21,6 +21,7 @@ local function __TS__ArraySort(self, compareFn)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local settings, LaneAhead
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -28,6 +29,17 @@ local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+function settings()
+    return LaneConfig.Settings().PullTiming
+end
+function LaneAhead(team, lane)
+    local ahead = settings().WaveAhead
+    if lane == Lane.Mid then
+        return 0
+    end
+    local safe = team == Team.Radiant == (lane == Lane.Bot)
+    return safe and ahead.safe or ahead.off
+end
 --- 7.41 lane creep paths from maps/dota.vpk (entity lump, 22/10/2026): each team's npc_dota_spawner_<team>_<lane>
 -- origin (the melee spawner), then the path_corner chain from its NPCFirstWaypoint. The first corner lies ~150-540
 -- behind the spawner on every lane; creeps walk it, so it is kept.
@@ -113,9 +125,6 @@ local LANE_PATHS = {
     }
 }
 local LANE_NAME = {[Lane.Top] = "top", [Lane.Mid] = "mid", [Lane.Bot] = "bot"}
-local function settings()
-    return LaneConfig.Settings().PullTiming
-end
 local function hypot(ax, ay, bx, by)
     local dx = ax - bx
     local dy = ay - by
@@ -187,7 +196,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         return fallback
     end
     local t = LaneConfig.Settings().Timing
-    local waveTravel = meetAlong / cfg.CreepSpeed
+    local ahead = LaneAhead(team, lane)
+    local waveTravel = meetAlong / cfg.CreepSpeed - ahead
     local waveAfter = ____exports.WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half and t.HalfPullLater or 0)
     local seconds = __TS__ArrayMap(
         cfg.WaveSlots,
@@ -203,7 +213,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         waveAfter = waveAfter,
         waveTravel = waveTravel,
         meetAlong = meetAlong,
-        lanePath = path
+        lanePath = path,
+        ahead = ahead
     }
 end
 --- The camp's lead waypoints with its own meet point replaced by `meet`.
@@ -214,17 +225,17 @@ function ____exports.LeadPath(pull, meet)
         local i = 0
         while i < n do
             do
-                local __continue20
+                local __continue22
                 repeat
                     local p = pull.path[i + 1]
                     if i == n - 1 and hypot(p.x, p.y, pull.meetPoint.x, pull.meetPoint.y) < 1 then
-                        __continue20 = true
+                        __continue22 = true
                         break
                     end
                     result[#result + 1] = p
-                    __continue20 = true
+                    __continue22 = true
                 until true
-                if not __continue20 then
+                if not __continue22 then
                     break
                 end
             end
@@ -270,11 +281,12 @@ function ____exports.ForCamp(data, half, meet)
         seed
     )
 end
---- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, the lead creep
--- of our lane creeps within LiveWindow of where the wave should be says how early or late it really is. 7.41 speeds
--- safe-lane waves up and slows off-lane ones for a few seconds after spawn (patch notes, no figure given), and a wave
--- can be blocked or held up on the way. Returns the shift in seconds, or undefined when nothing reliable is seen.
-function ____exports.LiveShift(timing, aggroAt, now)
+--- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, our lane creeps
+-- within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
+-- WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
+-- ahead of the creeps that take the neutrals (camp 1 hit 0.5-1 s early on the front creep, replay pdg3_C), so it is only
+-- logged. A wave can also be blocked or held up on the way. Undefined when nothing reliable is seen.
+function ____exports.LiveRead(timing, aggroAt, now)
     if timing.source ~= "wave" or timing.waveAfter == nil or timing.waveTravel == nil or timing.meetAlong == nil or timing.lanePath == nil then
         return nil
     end
@@ -283,18 +295,20 @@ function ____exports.LiveShift(timing, aggroAt, now)
     if now < spawnAt + cfg.LiveFrom then
         return nil
     end
-    local expected = (now - spawnAt) * cfg.CreepSpeed
+    local expected = (now - spawnAt + (timing.ahead or 0)) * cfg.CreepSpeed
     if expected >= timing.meetAlong then
         return nil
     end
     local window = cfg.LiveWindow * cfg.CreepSpeed
-    local lead
+    local front
+    local sum = 0
+    local n = 0
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue33
+            local __continue35
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue33 = true
+                    __continue35 = true
                     break
                 end
                 local along, off = ____exports.Along(
@@ -302,26 +316,37 @@ function ____exports.LiveShift(timing, aggroAt, now)
                     c:GetLocation()
                 )
                 if off > cfg.LiveMaxOffset or math.abs(along - expected) > window then
-                    __continue33 = true
+                    __continue35 = true
                     break
                 end
-                if lead == nil or along > lead then
-                    lead = along
+                if front == nil or along > front then
+                    front = along
                 end
-                __continue33 = true
+                sum = sum + along
+                n = n + 1
+                __continue35 = true
             until true
-            if not __continue33 then
+            if not __continue35 then
                 break
             end
         end
     end
-    if lead == nil then
+    if front == nil then
         return nil
     end
-    local shift = (expected - lead) / cfg.CreepSpeed
-    return math.max(
-        -cfg.LiveMaxShift,
-        math.min(cfg.LiveMaxShift, shift)
-    )
+    local function clamp(d)
+        return math.max(
+            -cfg.LiveMaxShift,
+            math.min(cfg.LiveMaxShift, (expected - d) / cfg.CreepSpeed)
+        )
+    end
+    return {
+        shift = clamp(sum / n),
+        front = clamp(front)
+    }
+end
+function ____exports.LiveShift(timing, aggroAt, now)
+    local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
+    return ____opt_0 and ____opt_0.shift
 end
 return ____exports

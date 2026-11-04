@@ -928,7 +928,10 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
+   "se": "num",
    "sh": "num",
+   "lv": "num",
+   "sf": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -981,7 +984,8 @@
    "chp": "num",
    "cv": "num",
    "cdmg": "num",
-   "php": "num"
+   "php": "num",
+   "se": "num"
   },
   "gank": {
    "pid": "num",
@@ -1007,6 +1011,7 @@
    "pushed": "num",
    "why": "str",
    "hm": "num",
+   "ut": "num",
    "sx": "num",
    "sy": "num",
    "hph": "num",
