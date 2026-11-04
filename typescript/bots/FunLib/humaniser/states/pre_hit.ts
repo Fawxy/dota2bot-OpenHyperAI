@@ -12,6 +12,7 @@ import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 /** Seconds of forecast: a pre-hit's landing plus one attack cycle (about 1.4-1.7 s early) plus the window after it. `judgement`. */
 export const HORIZON = 3.5;
@@ -123,7 +124,7 @@ export function NoteOf(pid: number, creep: Lib.TaskCreep): Note | undefined {
  * `continue`: TSTL's Lua 5.1 `continue` (a `repeat ... until true` block) put a statement after the loop's `break`, which LuaJIT
  * (Dota) refuses to compile, so the module and everything requiring it failed to load in game (prhchk1, 04/11/2026).
  */
-function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, target: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
+function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: Unit, target: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
     if (!target.IsAlive() || target.GetTeam() === bot.GetTeam() || !target.IsCreep() || target.IsHero()) return [undefined, undefined];
     const creep = target as unknown as Lib.TaskCreep;
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
@@ -147,6 +148,7 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, target: 
     }
     const note: Note = { verdict, creep, hp: f.hp, t0, lo };
     if (verdict !== "go") return [note, undefined];
+    startWatch(bot, verbs, tower, target, f, lo);
     let dies = math.huge;
     for (let t = 0; t <= HORIZON && dies === math.huge; t += STEP) if (hpAt(t) <= 0) dies = t;
     return [note, { creep, kind: "prehit", eta: walk, due: 0, walk, dies, ranged: LanePick.IsRanged(creep) }];
@@ -161,15 +163,97 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
     for (const tower of bot.GetNearbyTowers(TOWER_RADIUS, false) ?? []) {
         const target = tower.GetAttackTarget();
         if (best === undefined && target !== undefined && target !== null) {
-            const [n, pre] = consider(bot, me, verbs, target);
+            const [n, pre] = consider(bot, me, verbs, tower, target);
             // A far creep's verdict never hides a nearer one's.
             if (n !== undefined && (note === undefined || n.verdict !== "far")) note = n;
             best = pre;
         }
     }
+    sampleWatch(bot, verbs);
     if (note !== undefined) {
         notes[pid] = note;
         LanePick.NoteVerdict(pid, DotaTime(), note.verdict);
     }
     return best;
+}
+
+/**
+ * Forecast probe (prhchk3 04/11/2026: creeps the forecast had alive 2.4-3.5 s died 0.7-2.3 s after the pre-hit fired, the
+ * damage rate about twice the forecast's, source unread). From each `go` decision, the creep's real HP is sampled on later
+ * scans beside the forecast HP at the same time (spread, without our hit), until it dies or WATCH_FOR passes; one
+ * ev=prehit_fc then carries both series and what the forecast counted against what was attacking the creep at the decision.
+ */
+const WATCH_FOR = 2.5;
+const WATCH_EVERY = 0.1;
+const WATCH_SAMPLES = 20;
+interface Watch {
+    creep: Unit;
+    f: Lib.Verbs.HpForecast;
+    t: number;
+    last: number;
+    hs: string[];
+    fs: string[];
+    fields: [string, any][];
+}
+const watches: Record<number, Watch | undefined> = {};
+
+function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit, f: Lib.Verbs.HpForecast, lo: number): void {
+    const pid = bot.GetPlayerID();
+    if (watches[pid] !== undefined) return;
+    let kt = 0, kc = 0, kh = 0, ks = 0, td = -1;
+    for (const h of f.hits) {
+        if (h.t > 1) continue;
+        if (h.by === "tower") { kt++; td = h.damage; } else if (h.by === "creep") kc++; else if (h.by === "hero") kh++; else ks++;
+    }
+    let ac = 0, ah = 0;
+    for (const c of bot.GetNearbyLaneCreeps(1600, false) ?? []) if (c.GetAttackTarget() === creep) ac++;
+    for (const h of bot.GetNearbyHeroes(1600, false, 0) ?? []) if (h !== bot && h.GetAttackTarget() === creep) ah++;
+    const tw = creep.GetActualIncomingDamage(tower.GetAttackDamage(), DamageType.Physical);
+    watches[pid] = {
+        creep, f, t: DotaTime(), last: -1, hs: [], fs: [],
+        fields: [
+            ["pid", pid],
+            ["hp", math.floor(f.hp)],
+            ["lo", math.floor(lo)],
+            ["tw", math.floor(tw)],
+            ["td", math.floor(td)],
+            ["twp", math.floor(((tower as any).GetSecondsPerAttack?.() ?? -1) * 100) / 100],
+            ["kt", kt], ["kc", kc], ["kh", kh], ["ks", ks],
+            ["nu", f.unphasedHits.length],
+            ["ud", math.floor(f.unphased)],
+            ["ac", ac],
+            ["ah", ah],
+        ],
+    };
+    sampleWatch(bot, verbs);
+}
+
+function sampleWatch(bot: Unit, verbs: typeof Lib.Verbs): void {
+    const pid = bot.GetPlayerID();
+    const w = watches[pid];
+    if (w === undefined) return;
+    const dt = DotaTime() - w.t;
+    const alive = w.creep.IsAlive();
+    if (alive && dt < WATCH_FOR && w.hs.length < WATCH_SAMPLES) {
+        if (dt - w.last < WATCH_EVERY) return;
+        w.last = dt;
+        const r = math.floor(dt * 100) / 100;
+        w.hs.push(`${r}:${math.floor(w.creep.GetHealth())}`);
+        w.fs.push(`${math.floor(verbs.forecastHp(w.f, dt))}`);
+        return;
+    }
+    watches[pid] = undefined;
+    Telemetry.Event("prehit_fc", [
+        ...(w.fields as any),
+        ["end", math.floor(dt * 100) / 100],
+        ["dead", !alive],
+        ["fdies", forecastDeath(verbs, w.f)],
+        ["hs", w.hs.join(",")],
+        ["fs", w.fs.join(",")],
+    ]);
+}
+
+function forecastDeath(verbs: typeof Lib.Verbs, f: Lib.Verbs.HpForecast): number {
+    for (let t = 0; t <= HORIZON; t += STEP) if (verbs.forecastHp(f, t) <= 0) return math.floor(t * 100) / 100;
+    return -1;
 }

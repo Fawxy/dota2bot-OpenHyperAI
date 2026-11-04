@@ -1,10 +1,295 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local function __TS__Spread(iterable)
+    local arr = {}
+    if type(iterable) == "string" then
+        for i = 0, #iterable - 1 do
+            arr[i + 1] = __TS__StringAccess(iterable, i)
+        end
+    else
+        local len = 0
+        for ____, item in __TS__Iterator(iterable) do
+            len = len + 1
+            arr[len] = item
+        end
+    end
+    return __TS__Unpack(arr)
+end
+-- End of Lua Library inline imports
 local ____exports = {}
+local startWatch, sampleWatch, forecastDeath, WATCH_FOR, WATCH_EVERY, WATCH_SAMPLES, watches
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function startWatch(bot, verbs, tower, creep, f, lo)
+    local pid = bot:GetPlayerID()
+    if watches[pid] ~= nil then
+        return
+    end
+    local kt = 0
+    local kc = 0
+    local kh = 0
+    local ks = 0
+    local td = -1
+    for ____, h in ipairs(f.hits) do
+        do
+            local __continue48
+            repeat
+                if h.t > 1 then
+                    __continue48 = true
+                    break
+                end
+                if h.by == "tower" then
+                    kt = kt + 1
+                    td = h.damage
+                elseif h.by == "creep" then
+                    kc = kc + 1
+                elseif h.by == "hero" then
+                    kh = kh + 1
+                else
+                    ks = ks + 1
+                end
+                __continue48 = true
+            until true
+            if not __continue48 then
+                break
+            end
+        end
+    end
+    local ac = 0
+    local ah = 0
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(1600, false) or ({})) do
+        if c:GetAttackTarget() == creep then
+            ac = ac + 1
+        end
+    end
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, false, 0) or ({})) do
+        if h ~= bot and h:GetAttackTarget() == creep then
+            ah = ah + 1
+        end
+    end
+    local tw = creep:GetActualIncomingDamage(
+        tower:GetAttackDamage(),
+        DamageType.Physical
+    )
+    local ____creep_9 = creep
+    local ____f_10 = f
+    local ____DotaTime_result_11 = DotaTime()
+    local ____temp_12 = -1
+    local ____temp_13 = {}
+    local ____temp_14 = {}
+    local ____array_8 = __TS__SparseArrayNew(
+        {"pid", pid},
+        {
+            "hp",
+            math.floor(f.hp)
+        },
+        {
+            "lo",
+            math.floor(lo)
+        },
+        {
+            "tw",
+            math.floor(tw)
+        },
+        {
+            "td",
+            math.floor(td)
+        }
+    )
+    local ____math_floor_7 = math.floor
+    local ____opt_4 = tower.GetSecondsPerAttack
+    if ____opt_4 ~= nil then
+        ____opt_4 = ____opt_4()
+    end
+    local ____opt_4_6 = ____opt_4
+    if ____opt_4_6 == nil then
+        ____opt_4_6 = -1
+    end
+    __TS__SparseArrayPush(
+        ____array_8,
+        {
+            "twp",
+            ____math_floor_7(____opt_4_6 * 100) / 100
+        },
+        {"kt", kt},
+        {"kc", kc},
+        {"kh", kh},
+        {"ks", ks},
+        {"nu", #f.unphasedHits},
+        {
+            "ud",
+            math.floor(f.unphased)
+        },
+        {"ac", ac},
+        {"ah", ah}
+    )
+    watches[pid] = {
+        creep = ____creep_9,
+        f = ____f_10,
+        t = ____DotaTime_result_11,
+        last = ____temp_12,
+        hs = ____temp_13,
+        fs = ____temp_14,
+        fields = {__TS__SparseArraySpread(____array_8)}
+    }
+    sampleWatch(bot, verbs)
+end
+function sampleWatch(bot, verbs)
+    local pid = bot:GetPlayerID()
+    local w = watches[pid]
+    if w == nil then
+        return
+    end
+    local dt = DotaTime() - w.t
+    local alive = w.creep:IsAlive()
+    if alive and dt < WATCH_FOR and #w.hs < WATCH_SAMPLES then
+        if dt - w.last < WATCH_EVERY then
+            return
+        end
+        w.last = dt
+        local r = math.floor(dt * 100) / 100
+        local ____w_hs_15 = w.hs
+        ____w_hs_15[#____w_hs_15 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_16 = w.fs
+        ____w_fs_16[#____w_fs_16 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        return
+    end
+    watches[pid] = nil
+    local ____Telemetry_Event_18 = Telemetry.Event
+    local ____array_17 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    __TS__SparseArrayPush(
+        ____array_17,
+        {
+            "end",
+            math.floor(dt * 100) / 100
+        },
+        {"dead", not alive},
+        {
+            "fdies",
+            forecastDeath(verbs, w.f)
+        },
+        {
+            "hs",
+            table.concat(w.hs, ",")
+        },
+        {
+            "fs",
+            table.concat(w.fs, ",")
+        }
+    )
+    ____Telemetry_Event_18(
+        "prehit_fc",
+        {__TS__SparseArraySpread(____array_17)}
+    )
+end
+function forecastDeath(verbs, f)
+    do
+        local t = 0
+        while t <= ____exports.HORIZON do
+            if verbs.forecastHp(f, t) <= 0 then
+                return math.floor(t * 100) / 100
+            end
+            t = t + ____exports.STEP
+        end
+    end
+    return -1
+end
 --- Seconds of forecast: a pre-hit's landing plus one attack cycle (about 1.4-1.7 s early) plus the window after it. `judgement`.
 ____exports.HORIZON = 3.5
 --- Forecast sampling step in seconds (under a frame at 30 fps is not needed: windows are judged against WINDOW_MIN).
@@ -89,7 +374,7 @@ end
 --- The verdict on one tower's target and, on `go`, the pre-hit. A function with early returns rather than a loop body with
 -- `continue`: TSTL's Lua 5.1 `continue` (a `repeat ... until true` block) put a statement after the loop's `break`, which LuaJIT
 -- (Dota) refuses to compile, so the module and everything requiring it failed to load in game (prhchk1, 04/11/2026).
-local function consider(bot, me, verbs, target)
+local function consider(bot, me, verbs, tower, target)
     if not target:IsAlive() or target:GetTeam() == bot:GetTeam() or not target:IsCreep() or target:IsHero() then
         return {nil, nil}
     end
@@ -159,6 +444,14 @@ local function consider(bot, me, verbs, target)
     if verdict ~= "go" then
         return {note, nil}
     end
+    startWatch(
+        bot,
+        verbs,
+        tower,
+        target,
+        f,
+        lo
+    )
     local dies = math.huge
     do
         local t = 0
@@ -193,13 +486,20 @@ function ____exports.Find(bot, verbs)
     for ____, tower in ipairs(bot:GetNearbyTowers(TOWER_RADIUS, false) or ({})) do
         local target = tower:GetAttackTarget()
         if best == nil and target ~= nil and target ~= nil then
-            local n, pre = unpack(consider(bot, me, verbs, target))
+            local n, pre = unpack(consider(
+                bot,
+                me,
+                verbs,
+                tower,
+                target
+            ))
             if n ~= nil and (note == nil or n.verdict ~= "far") then
                 note = n
             end
             best = pre
         end
     end
+    sampleWatch(bot, verbs)
     if note ~= nil then
         notes[pid] = note
         LanePick.NoteVerdict(
@@ -210,4 +510,8 @@ function ____exports.Find(bot, verbs)
     end
     return best
 end
+WATCH_FOR = 2.5
+WATCH_EVERY = 0.1
+WATCH_SAMPLES = 20
+watches = {}
 return ____exports

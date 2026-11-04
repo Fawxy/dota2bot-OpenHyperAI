@@ -840,6 +840,27 @@
    "ol": "num",
    "contested": "bool"
   },
+  "prehit_fc": {
+   "pid": "num",
+   "hp": "num",
+   "lo": "num",
+   "tw": "num",
+   "td": "num",
+   "twp": "num",
+   "kt": "num",
+   "kc": "num",
+   "kh": "num",
+   "ks": "num",
+   "nu": "num",
+   "ud": "num",
+   "ac": "num",
+   "ah": "num",
+   "end": "num",
+   "dead": "bool",
+   "fdies": "num",
+   "hs": "str",
+   "fs": "str"
+  },
   "trade": {
    "pid": "num",
    "kind": "str",
@@ -1315,6 +1336,10 @@
   "ev_prehit": {
    "result": "text",
    "reason": "text"
+  },
+  "ev_prehit_fc": {
+   "hs": "text",
+   "fs": "text"
   },
   "ev_trade": {
    "kind": "text",

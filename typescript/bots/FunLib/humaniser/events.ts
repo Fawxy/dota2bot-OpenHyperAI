@@ -863,6 +863,34 @@ export const EVENTS = {
         ol: "num",
         contested: "bool",
     },
+    /**
+     * Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on later scans (`hs`, "s:hp" from the decision)
+     * beside the forecast's (`fs`, spread, without our hit) until it dies (`dead`, `end` s) or 2.5 s pass. At the decision:
+     * `hp`, our low roll `lo`, the tower's hit after armour `tw` and `GetSecondsPerAttack` `twp`, the forecast's own tower hit
+     * `td`, its known hits within 1 s by kind (`kt` tower, `kc` creep, `kh` hero, `ks` self), unphased attackers `nu` and their
+     * DPS `ud`, and our lane creeps `ac` and other own heroes `ah` attacking the creep; `fdies` the forecast's death time.
+     */
+    prehit_fc: {
+        pid: "num",
+        hp: "num",
+        lo: "num",
+        tw: "num",
+        td: "num",
+        twp: "num",
+        kt: "num",
+        kc: "num",
+        kh: "num",
+        ks: "num",
+        nu: "num",
+        ud: "num",
+        ac: "num",
+        ah: "num",
+        end: "num",
+        dead: "bool",
+        fdies: "num",
+        hs: "str",
+        fs: "str",
+    },
     /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",
