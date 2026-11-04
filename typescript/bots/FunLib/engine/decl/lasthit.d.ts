@@ -1,21 +1,75 @@
 /** @noSelfInFile */
 import { TaskBody, TaskCreep, TaskUnit } from "./types";
 /**
- * Damage (after armour) the creep takes from others within `horizon` seconds: attack projectiles in flight
- * plus every attacker of either team winding up an attack on it. Attacks not yet started are not counted;
- * the prediction runs every frame, so they enter it once their wind-up begins.
+ * Damage (after armour) the creep takes from others within `horizon` seconds (cut to FORECAST_MAX): attack projectiles in
+ * flight, every attacker of either team winding up an attack on it, and (since slice pre-hit, 05/11/2026) the repeats of a
+ * tower's or lane creep's such hit one attack cycle apart within the horizon, its phase being known. Attacks of an attacker
+ * whose phase is unknown are not counted; the prediction runs every frame, so they enter it once their wind-up begins or
+ * their projectile flies.
  */
 export declare function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number): number;
 /**
- * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those
- * not winding up an attack now (their next hit lands at an unknown time within one attack cycle, so it is
- * extrapolated; an attacker in its wind-up is credited with that hit by `incomingDamage` and its next one comes a
- * cycle later, beyond any horizon the verbs use).
+ * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those whose
+ * phase is unknown (no wind-up now and no attack projectile in flight: their next hit lands at an unknown time within one
+ * attack cycle, so it is extrapolated; one winding up or with a projectile in flight is credited with that hit and its
+ * repeats by `incomingDamage`; since slice pre-hit, 05/11/2026, before which only a wind-up counted as known).
  */
 export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): {
     dps: number;
     between: number;
 };
+/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+export interface ForecastHit {
+    t: number;
+    damage: number;
+    by: "tower" | "creep" | "hero" | "self";
+}
+export interface HpForecast {
+    /** HP and regen now. */
+    hp: number;
+    regen: number;
+    horizon: number;
+    /**
+     * Hits at known times, sorted by `t`: attack projectiles in flight (the bot's own included), wind-ups seen, and for towers
+     * and lane creeps the repeats of their latest known hit every attack cycle while they keep attacking it.
+     */
+    hits: ForecastHit[];
+    /**
+     * DPS after armour of the attackers on the creep with no hit in flight or wind-up (their next hit time is unknown),
+     * spread evenly from SEEN_AHEAD on, as `believe` extrapolates them.
+     */
+    unphased: number;
+    /** A tower among those: its hits are the forecast's largest, so with one unphased the hit times are not known. */
+    unphasedTower: boolean;
+    /**
+     * The same attackers one by one: damage after armour, attack cycle, `first` the earliest their next hit can land (a wind-up
+     * from now, plus flight for a ranged one) and `last` the latest (one cycle from now, plus flight: no wind-up is seen, so the
+     * attacker is in its backswing or cooldown and its last hit landed by now). The bracket assumes the attacker is in range and
+     * its wind-up readable; one still walking to the creep can land later.
+     */
+    unphasedHits: {
+        damage: number;
+        period: number;
+        first: number;
+        last: number;
+    }[];
+}
+/**
+ * How `forecastHp` places the hits of the attackers whose phase is unknown: `spread` evenly from SEEN_AHEAD on (as the last-hit
+ * belief), `early` each one's next hit at its `first` and every cycle after, `late` at its `last` and every cycle after.
+ */
+export type ForecastSchedule = "spread" | "early" | "late";
+/**
+ * The creep's HP over the next `horizon` seconds from the hits the attacker index already sees: projectiles in flight
+ * (arrival = distance / projectile speed), wind-ups (`windupLanding`), and for a tower or lane creep, its latest known hit
+ * repeated every `GetSecondsPerAttack` while it attacks the creep now (UNVERIFIED in-game that it stays on it: a tower re-targets
+ * on hero aggro or when the creep leaves its range, and a lane creep on aggro, which the repeats do not foresee). Heroes are not repeated: their next attacks are choices, not a cycle. Repeats assume the distance, and so the
+ * flight time, stays as now. A fact for a caller that plans more than the one swing `lastHit` makes (the pre-hit under a
+ * tower); `forecastHp` reads it.
+ */
+export declare function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast;
+/** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then), the unknown-phase hits placed by `schedule`. */
+export declare function forecastHp(f: HpForecast, t: number, schedule?: ForecastSchedule): number;
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
@@ -28,7 +82,8 @@ export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 export interface LaneTarget {
     creep: TaskCreep;
-    kind: "lasthit" | "deny";
+    /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */
+    kind: "lasthit" | "deny" | "prehit";
     /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
     eta: number;
     /** Seconds until a swing ordered then would be due (0: due now). */

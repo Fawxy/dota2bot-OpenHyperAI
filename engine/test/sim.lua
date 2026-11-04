@@ -92,6 +92,10 @@ function Sim:_add(kind, o)
         facing = o.facing,
         variance = o.variance,
         whiff = o.whiff or false,
+        -- As Dota: an attack order outlives its one attack, so a `keepAttacking` unit swings at its target again every
+        -- secondsPerAttack after each hit until another order (move or attack) replaces it.
+        keepAttacking = o.keepAttacking or false,
+        pendingAttack = nil,
         mode = 0,
         actions = {}, -- log of issued actions: {kind=, t=, loc=/target=, targetHp=}
     }, Unit)
@@ -156,6 +160,10 @@ function Sim:step(dt)
         if sw and self.t >= sw.landAt - 1e-9 then
             u.swing = nil
             local c = sw.target
+            if u.keepAttacking and c.alive then
+                u.pendingAttack = c
+                u.nextSwingAt = sw.start + u.secondsPerAttack
+            end
             if u.alive and c.alive and not u.whiff and (u.autoAttack or dist(u.loc, c.loc) <= u.range + 1e-6) then
                 if u.projectileSpeed then
                     -- As Dota (GetLastAttackTime is the fire time): `fireTime` units stamp the launch.
@@ -191,10 +199,12 @@ function Sim:step(dt)
     self.projectiles = flying
 
     for _, u in ipairs(self.units) do
-        local tg = u.attackTarget
-        if u.autoAttack and u.alive and not u.swing and tg and tg.alive and self.t >= u.nextSwingAt - 1e-9 then
+        local tg = u.autoAttack and u.attackTarget or u.pendingAttack
+        if (u.autoAttack or u.pendingAttack) and u.alive and not u.swing and tg and tg.alive and self.t >= u.nextSwingAt - 1e-9 then
             u.swing = { target = tg, start = u.nextSwingAt, landAt = u.nextSwingAt + u.attackPoint }
+            u.lastSwingStart = u.nextSwingAt
             u.nextSwingAt = u.nextSwingAt + u.secondsPerAttack
+            u.pendingAttack = nil
         end
     end
 
@@ -304,6 +314,7 @@ end
 function Unit:Action_MoveToLocation(loc)
     self.sim:_count("Action_MoveToLocation", self)
     self.actions[#self.actions + 1] = { kind = "move", t = self.sim.t, loc = { x = loc.x, y = loc.y }, native = loc.native }
+    self.pendingAttack = nil
     if self.swing then return end
     self.moveTarget = { x = loc.x, y = loc.y }
 end
@@ -312,6 +323,7 @@ function Unit:Action_AttackUnit(target, once)
     self.sim:_count("Action_AttackUnit", self)
     self.actions[#self.actions + 1] = { kind = "attack", t = self.sim.t, target = target, targetHp = target.hp, once = once }
     self.moveTarget = nil
+    self.pendingAttack = nil
     self.attackTarget = target
     -- `cooldown` units cannot start a swing before secondsPerAttack after their last one started.
     local start = self.sim.t

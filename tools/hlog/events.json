@@ -835,7 +835,47 @@
    "cx": "num",
    "cy": "num",
    "ca": "num",
+   "ph": "bool",
    "msg": "str"
+  },
+  "prehit": {
+   "pid": "num",
+   "result": "str",
+   "reason": "str",
+   "ranged": "bool",
+   "walk": "num",
+   "dies": "num",
+   "hp": "num",
+   "t0": "num",
+   "lo": "num",
+   "np": "num",
+   "tk": "num",
+   "hk": "num",
+   "mg": "num",
+   "ol": "num",
+   "contested": "bool"
+  },
+  "prehit_fc": {
+   "pid": "num",
+   "hp": "num",
+   "lo": "num",
+   "tw": "num",
+   "td": "num",
+   "twp": "num",
+   "kt": "num",
+   "kc": "num",
+   "kh": "num",
+   "ks": "num",
+   "nu": "num",
+   "ud": "num",
+   "ac": "num",
+   "ah": "num",
+   "end": "num",
+   "dead": "bool",
+   "fdies": "num",
+   "hs": "str",
+   "fs": "str",
+   "fire": "str"
   },
   "trade": {
    "pid": "num",
@@ -1398,6 +1438,15 @@
    "reason": "text",
    "claim": "text",
    "msg": "text"
+  },
+  "ev_prehit": {
+   "result": "text",
+   "reason": "text"
+  },
+  "ev_prehit_fc": {
+   "hs": "text",
+   "fs": "text",
+   "fire": "text"
   },
   "ev_trade": {
    "role": "text",
