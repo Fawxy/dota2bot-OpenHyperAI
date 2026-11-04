@@ -78,3 +78,11 @@ test('core trades: pos_lo and pos_hi read a support harass the same way', () => 
     assert.deepStrictEqual(sup.map(r => [r.pid, r.taken, r.won, r.hpd, r.thpd, r.hero]), [[4, 1, 1, 20, 60, 1]]);
     assert.deepStrictEqual(run('core_trades', lines).map(r => [r.pid, r.taken]), [[1, 1]]);
 });
+
+test('core deaths: pos_lo and pos_hi count a support death the same way, the default leaves it out', () => {
+    const lines = [line(0, 'bot pid=4 hero=h4 team=2 pos=4')];
+    const at = (t, mode, deaths) => lines.push(line(t, `snap pid=4 x=0 y=-3000 alive=1 hp=30 mode=${mode} d=0.4 deaths=${deaths}`));
+    at(440, 'laning', 0); at(445, 'laning', 0); at(475, 'laning', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).length, 0);
+    assert.deepStrictEqual(run('core_deaths', lines, { pos_lo: 4, pos_hi: 5 }).map(r => [r.pid, r.t, r.cause]), [[4, 445, 'lane']]);
+});
