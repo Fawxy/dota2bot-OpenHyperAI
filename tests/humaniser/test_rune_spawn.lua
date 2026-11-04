@@ -406,6 +406,32 @@ check("shrine: the contest ran on Valve's path (route=path, clearance logged)", 
 	check("shrine: the contest walks the path's waypoints, not the straight line", south)
 end
 
+-- drill2: from a lane start Valve's path runs up the lane past the safe-lane tier-1 (519-596 from it); the contest takes
+-- the edge route instead, which keeps TowerAvoid, and walks to its first point.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.0)
+	local tw = { GetLocation = function() return Vector(6269, -2241) end, IsAlive = function() return true end }
+	local real = GetTower
+	GetTower = function(team, id) if team == 3 and id == 0 then return tw end end
+	GeneratePath = function(a, b, z, cb)
+		local wp = {}
+		for y = a.y, -2400, 128 do table.insert(wp, Vector(6612, y)) end
+		for k = 0, 10 do table.insert(wp, Vector(6612 + (8029 - 6612) * k / 10, -2400 + (2400 - 1126) * k / 10)) end
+		cb(4000, 3, wp)
+	end
+	local p5 = hero(4, 5, Vector(6612, -4500))
+	local out = run(H, { p5 }, 450)
+	GeneratePath = nil
+	GetTower = real
+	local trip
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
+	local east = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].x > 8000 and m.args[1].y < -3000 then east = true end end
+	check("shrine: a path past the tier-1 loses to the edge route, which keeps TowerAvoid", trip ~= nil and field(trip, "route") == "edge" and tonumber(field(trip, "vclr")) >= H.RuneJob.SETTINGS.TowerAvoid, trip)
+	check("shrine: the contest walks to the edge route's first point", east)
+end
+
 -- An enemy hero on the spot at the spawn: the rune-fight roll; fired, the support fights it instead of the race's act.
 do
 	local H = world()

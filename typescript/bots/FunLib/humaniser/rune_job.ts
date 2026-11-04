@@ -18,7 +18,6 @@ import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
-declare function IsLocationPassable(this: void, loc: Vector): boolean;
 
 type Kind = "power" | "wisdom" | "contest";
 
@@ -47,11 +46,15 @@ export const SETTINGS = {
     GankReach: 4000,
     GankEngageBy: 20,
     GankFightFor: 8,
-    /** The shrine contest's route keeps this far from enemy towers (attack range 700 plus OHA's retreat margin; judgement),
-     *  with waypoints this much farther out, at most DetourMax of them. */
+    /** The shrine contest takes Valve's path when it keeps this far from every enemy tower (attack range 700 plus OHA's
+     *  retreat margin; judgement), or keeps farther than the edge route; otherwise the edge route. */
     TowerAvoid: 1000,
-    DetourMargin: 200,
-    DetourMax: 3,
+    /** The edge route to each team's shrine, before the shrine: points of Valve's own path along the map edge from the far
+     *  safe lane (probe genpath7, 05/11/2026; walkable, 1,108-1,912 from the towers). */
+    Edge: {
+        [Team.Dire]: [[8281, -3787], [8538, -3017], [8538, -2632]],
+        [Team.Radiant]: [[-7255, 2632], [-7897, 1990]],
+    } as Record<number, [number, number][]>,
     /** Valve's GeneratePath waypoints come about 128 apart; legs are merged up to this length (judgement). */
     RouteStep: 600,
     /** A cached path is asked again once the hero has moved this far from where it was asked, or after RouteFresh s. */
@@ -95,8 +98,8 @@ interface Trip {
     hidden?: number;
     /** Waypoints before `at`: the contest's route around enemy towers. */
     via?: Vector[];
-    /** Where `via` came from: Valve's path, or the straight-leg detour while the path is pending or unavailable. */
-    route?: "path" | "detour";
+    /** Where `via` came from: Valve's path, or the edge route when the path passes nearer a tower or has not answered. */
+    route?: "path" | "edge";
     /** The route's least distance from an enemy tower. */
     clear?: number;
     /** Valve's answer behind a `path` route: seconds since it was asked, and its distance from the start. */
@@ -212,37 +215,9 @@ function leaveAt(bot: Unit, t: Trip): number {
     return arrive - (walk * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed());
 }
 
-/**
- * CANDIDATE(route): waypoints from `from` to `to` that keep each leg TowerAvoid from every tower in `towers`: a leg passing
- * closer gets a point beside the nearest such tower, on the side the leg passes (the other side when that is not
- * passable), at most DetourMax points. rspchk1: both fired shrine contests walked past the enemy's tower and OHA's retreat
- * took the hero (405 s, retreat 1.10 and 1.26). Exported for tests.
- */
-export function Detour(from: Vector, to: Vector, towers: Vector[]): Vector[] {
-    const s = SETTINGS;
-    const via: Vector[] = [];
-    let a = from;
-    for (let n = 0; n < s.DetourMax; n++) {
-        let worst: Vector | undefined;
-        let worstD = s.TowerAvoid;
-        let near = a;
-        for (const tw of towers) {
-            const c = closestOn(a, to, tw);
-            const d = FR.Dist(c, tw);
-            if (d < worstD) [worst, worstD, near] = [tw, d, c];
-        }
-        if (worst === undefined) break;
-        let dx = near.x - worst.x;
-        let dy = near.y - worst.y;
-        let len = math.sqrt(dx * dx + dy * dy);
-        if (len < 1) [dx, dy, len] = [-(to.y - a.y), to.x - a.x, math.max(1, FR.Dist(a, to))];
-        const r = s.TowerAvoid + s.DetourMargin;
-        let p = Vector(worst.x + (dx / len) * r, worst.y + (dy / len) * r, worst.z);
-        if (!IsLocationPassable(p)) p = Vector(worst.x - (dx / len) * r, worst.y - (dy / len) * r, worst.z);
-        via.push(p);
-        a = p;
-    }
-    return via;
+/** The edge route's waypoints to `team`'s shrine. */
+function edgeVia(team: number): Vector[] {
+    return (SETTINGS.Edge[team] ?? []).map(([x, y]) => Vector(x, y, 256));
 }
 
 declare function GeneratePath(this: void, from: Vector, to: Vector, avoid: unknown[], done: (this: void, ...args: unknown[]) => void): void;
@@ -259,10 +234,9 @@ const rejected: Record<number, number> = {};
  * answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
  * waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
  * called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
- * Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`). An answer
- * that does not run from where it was asked to `to` is dropped: rspchk5's five contests walked fresh answers (0.9-9.9 s,
- * asked 82-331 away) that kept only 540-596 from a tower, with 7-10 waypoints where the probe's path from such starts has
- * 11-14 and keeps 1,677-1,912, so the answers were likely another request's.
+ * Valve's path is the shortest walk, which passes enemy towers: drill2 (05/11/2026) logged 10 contest paths from lane
+ * starts keeping 519-596 from the safe-lane tier-1, inside OHA retreat's 898 (`X.ShouldRun`). An answer that does not run
+ * from where it was asked to `to` is dropped (`vbad`; probe v8: 1 of 70 same-frame answers was another hero's).
  */
 export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
     if (typeof GeneratePath === "undefined") return undefined;
@@ -281,7 +255,7 @@ export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
                 else rejected[pid] = (rejected[pid] ?? 0) + 1;
             }
         });
-        return undefined;
+        return entry.via;
     }
     return c.via;
 }
@@ -342,10 +316,23 @@ function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: numb
         const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
         const at = Rotate.ShrineFor(enemy);
         const towers = FR.TowerSpots(enemy);
+        const here = bot.GetLocation();
         const path = PathVia(bot, at);
-        const via = path ?? Detour(bot.GetLocation(), at, towers);
-        const age = path !== undefined ? pathAge(bot) : undefined;
-        return { kind, spawn, at, via, route: path !== undefined ? "path" : "detour", clear: Clearance(bot.GetLocation(), [...via, at], towers), pathAge: age, left: DotaTime(), host };
+        const edge = edgeVia(enemy);
+        const pathClear = path !== undefined ? Clearance(here, [...path, at], towers) : -1;
+        const edgeClear = Clearance(here, [...edge, at], towers);
+        const usePath = path !== undefined && (pathClear >= SETTINGS.TowerAvoid || pathClear >= edgeClear);
+        return {
+            kind,
+            spawn,
+            at,
+            via: usePath ? path : edge,
+            route: usePath ? "path" : "edge",
+            clear: usePath ? pathClear : edgeClear,
+            pathAge: path !== undefined ? pathAge(bot) : undefined,
+            left: DotaTime(),
+            host,
+        };
     }
     if (mine !== undefined) {
         const at = RunePlan.SpotAt(mine);
@@ -459,8 +446,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         if (kind === "contest") {
             // The contest is a play: a free pos5 rolls for it at its leave time; no fire, no trip.
             if (Busy(bot)) return skip("busy");
-            // The start waits a frame or so for Valve's path rather than walk the straight-leg fallback.
-            if (t.route === "detour" && PathPending(bot)) return false;
+            // The start waits a frame or so for Valve's path, which may be clear and shorter than the edge route.
+            if (t.route === "edge" && PathPending(bot)) return false;
             const play = Plays.Roll({ kind: "shrine", by: bot, at: t.at });
             if (play === undefined) return skip("roll");
             t.play = play;
