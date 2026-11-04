@@ -299,6 +299,139 @@ do
 	check("shrine: a fired roll sends the pos5 to the enemy shrine", H.RuneJob.Running(p5) and dist(p5.loc, Vector(8029, -1126)) < dist(Vector(6500, -1500), Vector(8029, -1126)))
 end
 
+-- Valve's path, 128 apart (probe genpath5): south, east, then north to the shrine; the callback is (distance, id, waypoints).
+local function lpath(from)
+	local wp, corners = {}, { from, Vector(from.x, -3000), Vector(8029, -3000), Vector(8029, -1126) }
+	for i = 1, #corners - 1 do
+		local a, b = corners[i], corners[i + 1]
+		local n = math.max(1, math.floor(dist(a, b) / 128))
+		for k = 0, n - 1 do table.insert(wp, Vector(a.x + (b.x - a.x) * k / n, a.y + (b.y - a.y) * k / n)) end
+	end
+	table.insert(wp, corners[#corners])
+	return wp
+end
+
+-- PathVia: nothing until Valve answers on a later frame, one request at a time; the answer's legs merged up to RouteStep;
+-- asked again once the hero has moved, with no route until the new answer arrives.
+do
+	local H = world({ t = 395 })
+	local asked = {}
+	GeneratePath = function(a, b, z, cb) table.insert(asked, { from = a, cb = cb }) end
+	local S = H.RuneJob.SETTINGS
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local to = Vector(8029, -1126)
+	local first, again = H.RuneJob.PathVia(p5, to), H.RuneJob.PathVia(p5, to)
+	check("path: none before the answer, one request pending", first == nil and again == nil and #asked == 1, #asked)
+	local raw = lpath(p5.loc)
+	asked[1].cb(4000, 0, raw)
+	local via = H.RuneJob.PathVia(p5, to)
+	local long, a = 0, p5.loc
+	for _, q in ipairs(via or {}) do long = math.max(long, dist(a, q)) a = q end
+	long = math.max(long, dist(a, to))
+	local south = false
+	for _, q in ipairs(via or {}) do if q.y < -2700 then south = true end end
+	check("path: the answer is thinned, no leg over RouteStep, and keeps the path's detour", via ~= nil and #via < #raw and long <= S.RouteStep and south, via and #via, long)
+	p5.loc = Vector(6500, -2100)
+	local moved = H.RuneJob.PathVia(p5, to)
+	check("path: moved past RouteMoved asks again and drops the old answer (its first leg would start elsewhere)", #asked == 2 and moved == nil and H.RuneJob.PathPending(p5), #asked)
+	asked[2].cb(4000, 1, lpath(p5.loc))
+	local fresh = H.RuneJob.PathVia(p5, to)
+	check("path: the new answer is used once it arrives", fresh ~= nil and fresh ~= via and #asked == 2, #asked)
+	GeneratePath = nil
+end
+
+-- rspchk5: fresh answers kept 540-596 from a tower where the hero's own path keeps over 1,600, so they started elsewhere.
+-- An answer that does not run from where it was asked to the goal is dropped and counted; the hero's own is used.
+do
+	local H = world({ t = 395 })
+	local asked = {}
+	GeneratePath = function(a, b, z, cb) table.insert(asked, { from = a, cb = cb }) end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local to = Vector(8029, -1126)
+	H.RuneJob.PathVia(p5, to)
+	asked[1].cb(4000, 7, lpath(Vector(4400, -6000)))
+	local crossed = H.RuneJob.PathVia(p5, to)
+	local short = lpath(p5.loc)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	asked[1].cb(4000, 7, short)
+	local cut = H.RuneJob.PathVia(p5, to)
+	asked[1].cb(4000, 7, lpath(p5.loc))
+	local own = H.RuneJob.PathVia(p5, to)
+	check("path: another start's answer and one stopping short of the goal are dropped; the hero's own is used", crossed == nil and cut == nil and own ~= nil, crossed, cut)
+	GeneratePath = nil
+end
+
+-- Valve answers on a later frame (genpath5): the contest waits for the answer at its leave time and walks the path, not
+-- the straight-leg fallback.
+do
+	local H = world({ t = 380 })
+	draws(H, 0.0)
+	local pending = {}
+	GeneratePath = function(a, b, z, cb) table.insert(pending, function() cb(4000, 3, lpath(a)) end) end
+	local wants = H.RuneJob.Wants
+	H.RuneJob.Wants = function(...)
+		local due = pending
+		pending = {}
+		for _, f in ipairs(due) do f() end
+		return wants(...)
+	end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local out = run(H, { p5 }, 450)
+	H.RuneJob.Wants = wants
+	GeneratePath = nil
+	local trip
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
+	local south = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].y < -2500 then south = true end end
+	check("shrine: with a late answer the contest still runs on Valve's path, its age logged", trip ~= nil and field(trip, "route") == "path" and field(trip, "vage") ~= nil and south, trip)
+end
+
+-- With Valve's path the fired contest walks it: its trip line names route=path and the hero heads south first.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.0)
+	GeneratePath = function(a, b, z, cb) cb(4000, 3, lpath(a)) end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local out = run(H, { p5 }, 450)
+	GeneratePath = nil
+	local start
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then start = x end end
+	local south = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].y < -2500 then south = true end end
+check("shrine: the contest ran on Valve's path (route=path, clearance logged)", start ~= nil and field(start, "route") == "path" and field(start, "vclr") ~= nil, start)
+	check("shrine: the contest walks the path's waypoints, not the straight line", south)
+end
+
+-- drill2: from a lane start Valve's path runs up the lane past the safe-lane tier-1 (519-596 from it); the contest takes
+-- the edge route instead, which keeps TowerAvoid, and walks to its first point.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.0)
+	local tw = { GetLocation = function() return Vector(6269, -2241) end, IsAlive = function() return true end }
+	local real = GetTower
+	GetTower = function(team, id) if team == 3 and id == 0 then return tw end end
+	GeneratePath = function(a, b, z, cb)
+		local wp = {}
+		for y = a.y, -2400, 128 do table.insert(wp, Vector(6612, y)) end
+		for k = 0, 10 do table.insert(wp, Vector(6612 + (8029 - 6612) * k / 10, -2400 + (2400 - 1126) * k / 10)) end
+		cb(4000, 3, wp)
+	end
+	local p5 = hero(4, 5, Vector(6612, -4500))
+	local out = run(H, { p5 }, 450)
+	GeneratePath = nil
+	GetTower = real
+	local trip
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
+	local east = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].x > 8000 and m.args[1].y < -3000 then east = true end end
+	check("shrine: a path past the tier-1 loses to the edge route, which keeps TowerAvoid", trip ~= nil and field(trip, "route") == "edge" and tonumber(field(trip, "vclr")) >= H.RuneJob.SETTINGS.TowerAvoid, trip)
+	check("shrine: the contest walks to the edge route's first point", east)
+end
+
 -- An enemy hero on the spot at the spawn: the rune-fight roll; fired, the support fights it instead of the race's act.
 do
 	local H = world()

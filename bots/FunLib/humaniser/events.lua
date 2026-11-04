@@ -896,6 +896,12 @@ ____exports.EVENTS = {
         sh = "num",
         sph = "num",
         via = "num",
+        route = "str",
+        vclr = "num",
+        vage = "num",
+        voff = "num",
+        vbad = "num",
+        vpts = "str",
         play = "num",
         gank = "num"
     },
