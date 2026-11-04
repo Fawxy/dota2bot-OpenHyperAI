@@ -846,6 +846,16 @@ local function finish(bot, t, r, label)
         {
             "vbad",
             t.kind == "contest" and takeRejected(bot) or nil
+        },
+        {
+            "vpts",
+            t.via ~= nil and t.route ~= nil and table.concat(
+                __TS__ArrayMap(
+                    t.via,
+                    function(____, q) return (tostring(math.floor(q.x)) .. ",") .. tostring(math.floor(q.y)) end
+                ),
+                ";"
+            ) or nil
         }
     )
     local ____opt_21 = t.play or t.fight
@@ -1104,20 +1114,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue156
+                local __continue157
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue156 = true
+                        __continue157 = true
                         break
                     end
                     local ____opt_32 = running[m:GetPlayerID()]
                     if (____opt_32 and ____opt_32.kind) == "wisdom" then
                         return true
                     end
-                    __continue156 = true
+                    __continue157 = true
                 until true
-                if not __continue156 then
+                if not __continue157 then
                     break
                 end
             end

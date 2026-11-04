@@ -975,6 +975,7 @@
    "vage": "num",
    "voff": "num",
    "vbad": "num",
+   "vpts": "str",
    "play": "num",
    "gank": "num"
   },
@@ -1452,7 +1453,8 @@
    "label": "text",
    "side": "text",
    "phase": "text",
-   "route": "text"
+   "route": "text",
+   "vpts": "text"
   },
   "ev_pull_job": {
    "res": "text",
