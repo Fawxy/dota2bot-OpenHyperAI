@@ -1022,6 +1022,8 @@ export const EVENTS = {
         sh: "num",
         sph: "num",
         via: "num",
+        route: "str",
+        vclr: "num",
         play: "num",
         gank: "num",
     },

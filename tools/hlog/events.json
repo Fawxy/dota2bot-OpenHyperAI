@@ -970,6 +970,8 @@
    "sh": "num",
    "sph": "num",
    "via": "num",
+   "route": "str",
+   "vclr": "num",
    "play": "num",
    "gank": "num"
   },
@@ -1446,7 +1448,8 @@
    "why": "text",
    "label": "text",
    "side": "text",
-   "phase": "text"
+   "phase": "text",
+   "route": "text"
   },
   "ev_pull_job": {
    "res": "text",

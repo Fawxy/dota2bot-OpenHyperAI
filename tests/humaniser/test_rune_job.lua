@@ -247,7 +247,6 @@ do
 	check("pos2: no rune line", #lines(out, "rune_job") == 0)
 end
 
-finish()
 
 -- The shrine contest's route: no waypoint on a clear line; past a tower on the line, every leg keeps TowerAvoid from it;
 -- with that side impassable the point goes on the other side (rspchk1: both fired contests retreated at the enemy tower).
@@ -274,3 +273,5 @@ do
 	IMPASSABLE = nil
 	check("route: an impassable side puts the point on the other side", other ~= nil and dist(other, free) > S.TowerAvoid, other)
 end
+
+finish()
