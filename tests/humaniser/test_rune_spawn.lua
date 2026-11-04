@@ -340,6 +340,31 @@ do
 	GeneratePath = nil
 end
 
+-- rspchk5: fresh answers kept 540-596 from a tower where the hero's own path keeps over 1,600, so they started elsewhere.
+-- An answer that does not run from where it was asked to the goal is dropped and counted; the hero's own is used.
+do
+	local H = world({ t = 395 })
+	local asked = {}
+	GeneratePath = function(a, b, z, cb) table.insert(asked, { from = a, cb = cb }) end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local to = Vector(8029, -1126)
+	H.RuneJob.PathVia(p5, to)
+	asked[1].cb(4000, 7, lpath(Vector(4400, -6000)))
+	local crossed = H.RuneJob.PathVia(p5, to)
+	local short = lpath(p5.loc)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	table.remove(short)
+	asked[1].cb(4000, 7, short)
+	local cut = H.RuneJob.PathVia(p5, to)
+	asked[1].cb(4000, 7, lpath(p5.loc))
+	local own = H.RuneJob.PathVia(p5, to)
+	check("path: another start's answer and one stopping short of the goal are dropped; the hero's own is used", crossed == nil and cut == nil and own ~= nil, crossed, cut)
+	GeneratePath = nil
+end
+
 -- Valve answers on a later frame (genpath5): the contest waits for the answer at its leave time and walks the path, not
 -- the straight-leg fallback.
 do

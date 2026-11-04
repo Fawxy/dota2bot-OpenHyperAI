@@ -57,6 +57,9 @@ export const SETTINGS = {
     /** A cached path is asked again once the hero has moved this far from where it was asked, or after RouteFresh s. */
     RouteMoved: 400,
     RouteFresh: 10,
+    /** An answer is the hero's own only when its first waypoint is this near where it was asked and its last this near the
+     *  goal (judgement: Valve's waypoints are about 128 apart; the shrine itself is not walkable). */
+    RouteEnds: 300,
     /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
     FightNear: 700,
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
@@ -246,6 +249,8 @@ declare function GeneratePath(this: void, from: Vector, to: Vector, avoid: unkno
 
 type Path = { from: Vector; asked: number; to: Vector; via?: Vector[] };
 const paths: Record<number, Path> = {};
+/** Answers PathVia threw away since the hero's last rune_job line, as `vbad`. */
+const rejected: Record<number, number> = {};
 
 /**
  * CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
@@ -254,7 +259,10 @@ const paths: Record<number, Path> = {};
  * answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
  * waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
  * called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
- * Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`).
+ * Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`). An answer
+ * that does not run from where it was asked to `to` is dropped: rspchk5's five contests walked fresh answers (0.9-9.9 s,
+ * asked 82-331 away) that kept only 540-596 from a tower, with 7-10 waypoints where the probe's path from such starts has
+ * 11-14 and keeps 1,677-1,912, so the answers were likely another request's.
  */
 export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
     if (typeof GeneratePath === "undefined") return undefined;
@@ -266,7 +274,12 @@ export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
         const entry: Path = { from: here, asked: DotaTime(), to };
         paths[pid] = entry;
         GeneratePath(here, to, [], (...args: unknown[]) => {
-            for (const a of args) if (type(a) === "table") entry.via = Thin(a as Vector[], to);
+            for (const a of args) {
+                if (type(a) !== "table") continue;
+                const wp = a as Vector[];
+                if (wp.length > 0 && FR.Dist(wp[0], entry.from) <= SETTINGS.RouteEnds && FR.Dist(wp[wp.length - 1], to) <= SETTINGS.RouteEnds) entry.via = Thin(wp, to);
+                else rejected[pid] = (rejected[pid] ?? 0) + 1;
+            }
         });
         return undefined;
     }
@@ -283,6 +296,12 @@ export function PathPending(bot: Unit): boolean {
 function pathAge(bot: Unit): [number, number] | undefined {
     const c = paths[bot.GetPlayerID()];
     return c?.via !== undefined ? [DotaTime() - c.asked, FR.Dist(c.from, bot.GetLocation())] : undefined;
+}
+
+function takeRejected(bot: Unit): number {
+    const n = rejected[bot.GetPlayerID()] ?? 0;
+    rejected[bot.GetPlayerID()] = 0;
+    return n;
 }
 
 /** Valve's waypoints (the first is the start) with a point kept only where skipping it would make a leg longer than RouteStep. */
@@ -380,6 +399,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["vclr", t.clear !== undefined ? math.floor(t.clear) : undefined],
         ["vage", t.pathAge !== undefined ? r1(t.pathAge[0]) : undefined],
         ["voff", t.pathAge !== undefined ? math.floor(t.pathAge[1]) : undefined],
+        ["vbad", t.kind === "contest" ? takeRejected(bot) : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
     ]);

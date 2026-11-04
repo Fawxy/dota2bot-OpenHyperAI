@@ -858,6 +858,7 @@ ____exports.EVENTS = {
         vclr = "num",
         vage = "num",
         voff = "num",
+        vbad = "num",
         play = "num",
         gank = "num"
     },

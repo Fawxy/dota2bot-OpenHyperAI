@@ -348,6 +348,7 @@ ____exports.SETTINGS = {
     RouteStep = 600,
     RouteMoved = 400,
     RouteFresh = 10,
+    RouteEnds = 300,
     FightNear = 700,
     StopTower = 700,
     StopHp = 0.3,
@@ -540,13 +541,18 @@ function ____exports.Detour(from, to, towers)
     return via
 end
 local paths = {}
+--- Answers PathVia threw away since the hero's last rune_job line, as `vbad`.
+local rejected = {}
 --- CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
 -- until an answer asked within RouteMoved of where the hero is now and at most RouteFresh s ago arrives (an older answer
 -- starts from somewhere else: its first leg is a straight line that can cross the lane by a tower). A request that has not
 -- answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
 -- waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
 -- called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
--- Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`).
+-- Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`). An answer
+-- that does not run from where it was asked to `to` is dropped: rspchk5's five contests walked fresh answers (0.9-9.9 s,
+-- asked 82-331 away) that kept only 540-596 from a tower, with 7-10 waypoints where the probe's path from such starts has
+-- 11-14 and keeps 1,677-1,912, so the answers were likely another request's.
 function ____exports.PathVia(bot, to)
     if type(GeneratePath) == "nil" then
         return nil
@@ -569,8 +575,24 @@ function ____exports.PathVia(bot, to)
             function(...)
                 local args = {...}
                 for ____, a in ipairs(args) do
-                    if type(a) == "table" then
-                        entry.via = ____exports.Thin(a, to)
+                    do
+                        local __continue45
+                        repeat
+                            if type(a) ~= "table" then
+                                __continue45 = true
+                                break
+                            end
+                            local wp = a
+                            if #wp > 0 and FR.Dist(wp[1], entry.from) <= ____exports.SETTINGS.RouteEnds and FR.Dist(wp[#wp], to) <= ____exports.SETTINGS.RouteEnds then
+                                entry.via = ____exports.Thin(wp, to)
+                            else
+                                rejected[pid] = (rejected[pid] or 0) + 1
+                            end
+                            __continue45 = true
+                        until true
+                        if not __continue45 then
+                            break
+                        end
                     end
                 end
             end
@@ -594,6 +616,11 @@ local function pathAge(bot)
             bot:GetLocation()
         )
     }) or nil
+end
+local function takeRejected(bot)
+    local n = rejected[bot:GetPlayerID()] or 0
+    rejected[bot:GetPlayerID()] = 0
+    return n
 end
 --- The least distance from any tower to the walk from `from` through `legs`.
 function ____exports.Clearance(from, legs, towers)
@@ -801,6 +828,10 @@ local function finish(bot, t, r, label)
         {
             "voff",
             t.pathAge ~= nil and math.floor(t.pathAge[2]) or nil
+        },
+        {
+            "vbad",
+            t.kind == "contest" and takeRejected(bot) or nil
         }
     )
     local ____opt_21 = t.play or t.fight
@@ -838,7 +869,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue75
+            local __continue78
             repeat
                 local mine
                 local function skip(why)
@@ -855,12 +886,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue75 = true
+                    __continue78 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue75 = true
+                        __continue78 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -920,7 +951,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue75 then
+            if not __continue78 then
                 break
             end
         end
@@ -1064,20 +1095,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue153
+                local __continue156
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue153 = true
+                        __continue156 = true
                         break
                     end
                     local ____opt_32 = running[m:GetPlayerID()]
                     if (____opt_32 and ____opt_32.kind) == "wisdom" then
                         return true
                     end
-                    __continue153 = true
+                    __continue156 = true
                 until true
-                if not __continue153 then
+                if not __continue156 then
                     break
                 end
             end

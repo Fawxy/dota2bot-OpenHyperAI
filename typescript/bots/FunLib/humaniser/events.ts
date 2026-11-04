@@ -1026,6 +1026,7 @@ export const EVENTS = {
         vclr: "num",
         vage: "num",
         voff: "num",
+        vbad: "num",
         play: "num",
         gank: "num",
     },
