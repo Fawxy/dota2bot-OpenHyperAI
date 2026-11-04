@@ -766,7 +766,8 @@ function ____exports.Wants(bot, blocked, host)
     end
     return false
 end
---- The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95), below a retreat's.
+--- The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95). Only OHA retreat's 1.0 and 1.1 returns
+-- beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose, and the trip has no HP gate of its own (slice open item).
 ____exports.MID_DESIRE = 0.97
 local MID_HOST = BotMode.Rune
 --- Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or

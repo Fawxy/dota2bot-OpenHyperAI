@@ -459,7 +459,10 @@ export function spawnPlanFor(bot: Unit, t: Trip): JobVerbs.SpawnPlan {
     };
 }
 
-/** The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95), below a retreat's. */
+/**
+ * The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95). Only OHA retreat's 1.0 and 1.1 returns
+ * beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose, and the trip has no HP gate of its own (slice open item).
+ */
 export const MID_DESIRE = 0.97;
 const MID_HOST = BotMode.Rune;
 
