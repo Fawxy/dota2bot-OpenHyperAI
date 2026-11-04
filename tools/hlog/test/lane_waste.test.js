@@ -94,9 +94,9 @@ test('a build without tw has only untagged rows, so its tower creeps never read 
     assert.deepStrictEqual(out.map(r => [r.place, r.deaths, r.waste, r.core_on]), [['untagged', 2, 1, 1]]);
 });
 
-test('the camp table equals camp_boxes.json spawn points', () => {
-    const view = fs.readFileSync(path.join(__dirname, '..', 'views', 'lane_waste.sql'), 'utf8');
-    const got = [...view.slice(view.indexOf('camps(idx, x, y)'), view.indexOf('),\nd AS')).matchAll(/\((\d+), (-?\d+), (-?\d+)\)/g)]
+test('the camp_spawns fragment equals camp_boxes.json spawn points', () => {
+    const frag = fs.readFileSync(path.join(__dirname, '..', 'queries', 'fragments', 'camp_spawns.sql'), 'utf8');
+    const got = [...frag.slice(frag.indexOf('camps(idx, x, y) AS')).matchAll(/\((\d+), (-?\d+), (-?\d+)\)/g)]
         .map(m => [m[1], +m[2], +m[3]]);
     const want = Object.entries(require('../camp_boxes.json')).map(([k, b]) => [k, b.x, b.y]);
     assert.deepStrictEqual(got, want);

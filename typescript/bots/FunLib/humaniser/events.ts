@@ -193,6 +193,19 @@ export const EVENTS = {
         p3t: "bool",
         p3a: "num",
     },
+    /** Slice lane-farm-logs: a neutral creep that died within 1,500 of one of the logging team's heroes. `by` the hero whose
+     *  last hits rose (a pid) or `none`; `camp` the nearest camp's spawner index within 1,200; `np`/`nd` the nearest own hero. */
+    neutral_death: {
+        team: "num",
+        kind: "str",
+        x: "num",
+        y: "num",
+        hp: "num",
+        by: "mixed",
+        camp: "num",
+        np: "num",
+        nd: "num",
+    },
     own_creep_death: {
         team: "num",
         kind: "str",

@@ -10,9 +10,10 @@ function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetLastAttackTime() return self.attackAt or -1 end
 function UnitMeta:GetGold() return 600 end
 
-CREEPS, ENEMIES, OWN = {}, {}, {}
+CREEPS, ENEMIES, OWN, NEUTRALS = {}, {}, {}, {}
 function GetUnitList(kind)
 	if kind == UnitType.EnemyCreeps then return CREEPS end
+	if kind == UnitType.NeutralCreeps then return NEUTRALS end
 	if kind == UnitType.AlliedCreeps then return OWN end
 	if kind == UnitType.EnemyHeroes then return ENEMIES end
 	return {}
@@ -23,7 +24,7 @@ function GetBarracks() return nil end
 local lines
 local function fresh()
 	ResetWorld()
-	CREEPS, ENEMIES, OWN = {}, {}, {}
+	CREEPS, ENEMIES, OWN, NEUTRALS = {}, {}, {}, {}
 	CURRENT_TEAM = 2
 	local H = FreshHumaniser({ Enable = false, Telemetry = { Enable = true } })
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
@@ -53,12 +54,13 @@ local function creep(name, loc, hp, list)
 	c._GetHealth = function(self) return self.hp end
 	c._GetMaxHealth = function() return 100 end
 	c._IsAlive = function() return true end
-	for _, f in ipairs({ "GetUnitName", "GetLocation", "GetHealth", "GetMaxHealth", "IsAlive" }) do c[f] = live(f) end
+	c._IsAncientCreep = function(self) return self.ancient == true end
+	for _, f in ipairs({ "GetUnitName", "GetLocation", "GetHealth", "GetMaxHealth", "IsAlive", "IsAncientCreep" }) do c[f] = live(f) end
 	table.insert(list or CREEPS, c)
 	return c
 end
 local function kill(c)
-	for _, l in ipairs({ CREEPS, OWN }) do
+	for _, l in ipairs({ CREEPS, OWN, NEUTRALS }) do
 		for i, u in ipairs(l) do if u == c then table.remove(l, i) end end
 	end
 	c.removed = true
@@ -254,3 +256,44 @@ do
 end
 
 finish()
+
+-- Neutral deaths (slice lane-farm-logs): a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths.
+-- The core's rise goes to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR; the neutral
+-- names its camp (the nearest spawner box within 1,200) and the nearest own hero. A neutral with no own hero within 1,500, or
+-- one that vanished above half HP (left vision), is not logged.
+do
+	local realSpawners = GetNeutralSpawners
+	GetNeutralSpawners = function()
+		return { [13] = { team = 2, type = "small", location = Vector(1000, 0), min = Vector(900, -100), max = Vector(1100, 100) } }
+	end
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(900, 0) })
+	core.pos = 1
+	local lane = creep("npc_dota_creep_badguys_melee", Vector(300, 0), 20)
+	local n = creep("npc_dota_neutral_kobold", Vector(1000, 0), 10, NEUTRALS)
+	local far = creep("npc_dota_neutral_kobold", Vector(5000, 0), 10, NEUTRALS)
+	local fled = creep("npc_dota_neutral_kobold", Vector(1050, 0), 80, NEUTRALS)
+	local anc = creep("npc_dota_neutral_black_drake", Vector(3000, 0), 10, NEUTRALS)
+	anc.ancient = true
+	tick(H, { core }, 60)
+	kill(lane)
+	kill(n)
+	kill(far)
+	kill(fled)
+	core.lh = 1
+	tick(H, { core }, 60.1)
+	local nd = events("neutral_death")
+	local cd = events("creep_death")
+	check("neutral: one logged (far and above-half-HP ones are not)", #nd == 1, #nd)
+	check("neutral: the core's rise is the neutral's", nd[1] and field(nd[1], "by") == "1", nd[1])
+	check("neutral: the lane creep that died beside it is no one's", #cd == 1 and field(cd[1], "by") == "none", cd[1])
+	check("neutral: camp 13, nearest hero pid 1 at 100", nd[1] and field(nd[1], "camp") == "13" and field(nd[1], "np") == "1" and field(nd[1], "nd") == "100", nd[1])
+	check("neutral: kind neutral", nd[1] and field(nd[1], "kind") == "neutral", nd[1])
+	core.loc = Vector(2500, 0)
+	tick(H, { core }, 60.2)
+	kill(anc)
+	tick(H, { core }, 60.3)
+	nd = events("neutral_death")
+	check("neutral: an ancient beyond 1,200 of every camp has no camp, kind ancient, no one's", #nd == 2 and field(nd[2], "camp") == nil and field(nd[2], "kind") == "ancient" and field(nd[2], "by") == "none", nd[2])
+	GetNeutralSpawners = realSpawners
+end

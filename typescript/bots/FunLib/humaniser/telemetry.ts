@@ -901,6 +901,8 @@ interface CreepTrack {
     attackMode: Record<number, number | undefined>;
     /** Enemy creeps one of our towers was attacking last frame (`tw` on ev=creep_death). */
     towerOn: LuaTable<Unit, boolean>;
+    /** Neutral creeps seen last frame (slice lane-farm-logs): a death near an own hero is ev=neutral_death. */
+    neutrals: LuaTable<Unit, CreepSeen>;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -909,6 +911,14 @@ const DEATH_MAX_HP = 0.5;
 const DEATH_NEAR = 1500;
 /** A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance. */
 const KILLER_NEAR = 1200;
+
+/** A neutral dying this far from every camp's box centre has no `camp` (it was led away, or is a summon). `judgement`. */
+const NEUTRAL_CAMP_NEAR = 1200;
+
+/** "ancient" for ancient-camp neutrals, else "neutral": the camp's own type is the `camp` index's. */
+function neutralKind(u: Unit): string {
+    return u.IsAncientCreep() ? "ancient" : "neutral";
+}
 
 function creepKind(name: string): string | undefined {
     const lane = string.find(name, "creep_goodguys", 1, true)[0] !== undefined || string.find(name, "creep_badguys", 1, true)[0] !== undefined;
@@ -951,7 +961,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable() };
+        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable() };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -985,9 +995,32 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             }
         }
     }
+    // A neutral kill raises GetLastHits too, so neutral deaths share the claim pool: a rise is never given to a lane creep
+    // that died beside the neutral the hero killed.
+    const neutralAlive = new LuaTable<Unit, boolean>();
+    const neutralList: Unit[] = [];
+    for (const u of GetUnitList(UnitType.NeutralCreeps) ?? []) {
+        if (u === null || u === undefined || !u.IsAlive()) continue;
+        neutralList.push(u);
+        neutralAlive.set(u, true);
+    }
+    const neutralDeaths: CreepDeath[] = [];
+    for (const [creep, seen] of c.neutrals) {
+        if (neutralAlive.get(creep) === true) continue;
+        c.neutrals.delete(creep);
+        if (seen.hp > DEATH_MAX_HP) continue;
+        const d: CreepDeath = { creep, seen };
+        for (const h of heroes) {
+            if (deathDistance(h, d) <= DEATH_NEAR) {
+                neutralDeaths.push(d);
+                break;
+            }
+        }
+    }
+    const pool: CreepDeath[] = [...deaths, ...neutralDeaths];
     for (const h of heroes) {
         const n = rise(c.lastHits, h.GetPlayerID(), (h as unknown as StatsUnit).GetLastHits());
-        if (n > 0) claimDeaths(deaths, h, n, tostring(h.GetPlayerID()));
+        if (n > 0) claimDeaths(pool, h, n, tostring(h.GetPlayerID()));
     }
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
@@ -1029,6 +1062,36 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         }
         Event("creep_death", fields);
         c.dead.set(d.creep, d.seen);
+    }
+    for (const d of neutralDeaths) {
+        const [camp, campD] = Camps.NearestSpawner(Vector(d.seen.x, d.seen.y, 0));
+        let near: Unit | undefined;
+        let nearD = math.huge;
+        for (const h of heroes) {
+            const dist = deathDistance(h, d);
+            if (dist < nearD) {
+                near = h;
+                nearD = dist;
+            }
+        }
+        const fields: Fields<"neutral_death"> = [
+            ["team", team],
+            ["kind", d.seen.kind],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+        ];
+        if (camp !== undefined && campD <= NEUTRAL_CAMP_NEAR) fields.push(["camp", camp.idx]);
+        if (near !== undefined) {
+            fields.push(["np", near.GetPlayerID()]);
+            fields.push(["nd", math.floor(nearD)]);
+        }
+        Event("neutral_death", fields);
+    }
+    for (const u of neutralList) {
+        const loc = u.GetLocation();
+        c.neutrals.set(u, { kind: neutralKind(u), x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
     }
     // This frame's state, read for next frame's deaths.
     c.towerOn = new LuaTable();

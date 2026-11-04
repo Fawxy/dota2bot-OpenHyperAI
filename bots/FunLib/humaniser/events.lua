@@ -167,6 +167,17 @@ ____exports.EVENTS = {
         p3t = "bool",
         p3a = "num"
     },
+    neutral_death = {
+        team = "num",
+        kind = "str",
+        x = "num",
+        y = "num",
+        hp = "num",
+        by = "mixed",
+        camp = "num",
+        np = "num",
+        nd = "num"
+    },
     own_creep_death = {
         team = "num",
         kind = "str",
