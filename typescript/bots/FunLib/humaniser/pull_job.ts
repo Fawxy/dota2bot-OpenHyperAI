@@ -151,6 +151,8 @@ interface Decision {
     want: boolean;
     kind: Kind;
     reading?: LanePush.Reading;
+    /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
+    hm?: number;
 }
 
 interface Trail {
@@ -417,6 +419,7 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
         ["ms", r?.ms],
         ["pk", d.want ? d.kind : undefined],
+        ["hm", d.hm],
         ...campFields(camp),
     ]);
 }
@@ -467,6 +470,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["hf", p.timer.clear],
         ["hu", p.timer.turn],
         ["hm", p.timer.margin],
+        ["hs", p.timer.standBack],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -763,9 +767,12 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     const camp = verbCamp(p);
+    // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit.
+    const lead = [...p.lead];
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
         pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
+        if (pull.timer.stand !== undefined && lead.length > 0) lead[lead.length - 1] = pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
     return {
@@ -773,7 +780,7 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
         bailFor: SETTINGS.BailFor,
         camp,
         aggroAt,
-        lead: p.lead as unknown as Lib.Vec[],
+        lead: lead as unknown as Lib.Vec[],
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
             const w = PullTiming.WaveAt(pull.timer);
@@ -831,7 +838,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     let timer = timers[pid];
     if (timer === undefined || timer.slot !== p.slot) {
         const cfg = LaneConfig.Settings().PullTiming;
-        timer = p.kind === "half" ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear, 2) : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
+        timer =
+            p.kind === "half"
+                ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear, 2, bot.GetCurrentMovementSpeed())
+                : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
         timers[pid] = timer;
     }
     const hitAt = PullTiming.Read(timer, now);
@@ -853,6 +863,12 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     };
     if (!d.want) {
         done(false, d.reading === undefined ? "no-read" : "lane");
+        return false;
+    }
+    // No hit splits the wave: a half that takes all four is the full pull the lane reading turned down.
+    if (d.kind === "half" && timer.margin !== undefined && timer.margin <= 0) {
+        d.hm = timer.margin;
+        done(false, "half-geo");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);

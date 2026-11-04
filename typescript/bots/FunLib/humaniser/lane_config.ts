@@ -367,6 +367,16 @@ export const DEFAULTS = {
         HalfSearch: [-3, 6] as number[],
         HalfStep: 0.2,
         HalfHold: 2,
+        // Lane creeps within this of their hero while neutrals hit it turn onto the neutrals (EC-090: no written rule). The
+        // phchk2 replays (11 half pulls, 0.2 s samples): creeps that turned with the neutrals out of range had the hit puller
+        // 138-418 off; three passed 462-490 off and walked on.
+        HalfHeroAggro: 450,
+        // The search's puller and neutrals (phchk2 replays, 11 half pulls): the puller hits from 360-440 off the camp and the
+        // neutrals start 0.4-2.3 s after the hit (camp 1 0.6-1.4); the puller may stand short of the meet point by any of
+        // HalfStandBack on the lead's last leg. `judgement`.
+        HalfHeroStart: 400,
+        HalfNeutralDelay: 1,
+        HalfStandBack: [0, 150, 300, 450] as number[],
         // Tuning only: every wanted slot of a half-pulling support is a half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.

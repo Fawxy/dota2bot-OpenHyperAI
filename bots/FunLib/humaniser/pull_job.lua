@@ -1234,6 +1234,7 @@ local function choiceLine(bot, d, slot, go, why, camp)
             {"tw", r ~= nil and (r.tower and 1 or 0) or nil},
             {"ms", r and r.ms},
             {"pk", d.want and d.kind or nil},
+            {"hm", d.hm},
             unpack(campFields(camp))
         }
     )
@@ -1324,6 +1325,7 @@ local function finish(bot, p, r, label)
         {"hf", p.timer.clear},
         {"hu", p.timer.turn},
         {"hm", p.timer.margin},
+        {"hs", p.timer.standBack},
         {"ht", p.hat},
         {"g4", p.g4},
         {
@@ -1472,11 +1474,15 @@ local function verbPlan(bot, pull, aggroAt)
     local p = pull.plan
     local s = LaneConfig.Settings()
     local camp = verbCamp(p)
+    local lead = {unpack(p.lead)}
     camp.earlier = function()
         pull.hitAt = PullTiming.Read(
             pull.timer,
             DotaTime()
         )
+        if pull.timer.stand ~= nil and #lead > 0 then
+            lead[#lead] = pull.timer.stand
+        end
         return aggroAt - pull.hitAt
     end
     return {
@@ -1484,7 +1490,7 @@ local function verbPlan(bot, pull, aggroAt)
         bailFor = ____exports.SETTINGS.BailFor,
         camp = camp,
         aggroAt = aggroAt,
-        lead = p.lead,
+        lead = lead,
         watchSec = s.Timing.WatchSec,
         watchUntil = function()
             local w = PullTiming.WaveAt(pull.timer)
@@ -1553,7 +1559,8 @@ function ____exports.Wants(bot, blocked, host)
             p.slot,
             1,
             cfg.HalfClear,
-            2
+            2,
+            bot:GetCurrentMovementSpeed()
         ) or PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast)
         timers[pid] = timer
     end
@@ -1596,6 +1603,11 @@ function ____exports.Wants(bot, blocked, host)
     end
     if not d.want then
         done(false, d.reading == nil and "no-read" or "lane")
+        return false
+    end
+    if d.kind == "half" and timer.margin ~= nil and timer.margin <= 0 then
+        d.hm = timer.margin
+        done(false, "half-geo")
         return false
     end
     camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter)

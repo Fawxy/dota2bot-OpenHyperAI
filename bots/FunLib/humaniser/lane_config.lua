@@ -307,6 +307,10 @@ ____exports.DEFAULTS = {
         HalfSearch = {-3, 6},
         HalfStep = 0.2,
         HalfHold = 2,
+        HalfHeroAggro = 450,
+        HalfHeroStart = 400,
+        HalfNeutralDelay = 1,
+        HalfStandBack = {0, 150, 300, 450},
         HalfAll = false,
         LanePaths = {}
     },

@@ -896,6 +896,7 @@ ____exports.EVENTS = {
         hf = "num",
         hu = "num",
         hm = "num",
+        hs = "num",
         ht = "num",
         g4 = "num",
         gh = "num",
@@ -950,7 +951,8 @@ ____exports.EVENTS = {
         cdmg = "num",
         php = "num",
         se = "num",
-        pk = "str"
+        pk = "str",
+        hm = "num"
     },
     gank = {
         pid = "num",

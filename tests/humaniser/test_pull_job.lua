@@ -287,7 +287,7 @@ local function livePull(o)
 			end
 		end)
 	end)
-	return lines(out, "pull_job")[1]
+	return lines(out, "pull_job")[1], out
 end
 
 do
@@ -376,6 +376,20 @@ do
 		and field(near, "hc") == "4" and field(near, "hm") ~= nil and field(near, "hf") ~= nil and field(near, "hu") ~= nil, near)
 	check("half hit: the creep hit moves off the plan's", math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht"))) >= 0.2, near)
 	check("half hit: no creeps read, the plan's second (hr=plan, no search)", field(plan, "hr") == "plan" and field(plan, "hm") == nil, plan)
+end
+
+-- A wave bunched on one point has no hit that keeps the front two out and turns the third: the half stays (why=half-geo,
+-- the margin logged) rather than starting what would be a full pull from a lane that wanted none.
+do
+	local function bunched(t, aggroAt, now)
+		if t.meetAlong == nil or t.walk == nil then return {} end
+		local a = t.meetAlong - 325 * (aggroAt + t.walk - now)
+		return { a, a, a, a }
+	end
+	local job, out = livePull({ reading = HOLD, alongs = bunched })
+	local stay = lines(out, "choice")[1]
+	check("half geo: no split, no pull started, why=half-geo with hm <= 0", job == nil and stay ~= nil and field(stay, "go") == "0"
+		and field(stay, "why") == "half-geo" and field(stay, "hm") ~= nil and tonumber(field(stay, "hm")) <= 0, stay)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.

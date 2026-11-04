@@ -19,6 +19,42 @@ local function __TS__ArraySort(self, compareFn)
     end
     return self
 end
+
+local function __TS__ArraySlice(self, first, last)
+    local len = #self
+    first = first or 0
+    if first < 0 then
+        first = len + first
+        if first < 0 then
+            first = 0
+        end
+    else
+        if first > len then
+            first = len
+        end
+    end
+    last = last or len
+    if last < 0 then
+        last = len + last
+        if last < 0 then
+            last = 0
+        end
+    else
+        if last > len then
+            last = len
+        end
+    end
+    local out = {}
+    first = first + 1
+    last = last + 1
+    local n = 1
+    while first < last do
+        out[n] = self[first]
+        first = first + 1
+        n = n + 1
+    end
+    return out
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local settings, LaneAhead
@@ -398,7 +434,7 @@ function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_0 and ____opt_0.shift
 end
-function ____exports.Timer(timing, slot, index, past, keep)
+function ____exports.Timer(timing, slot, index, past, keep, heroSpeed)
     if keep == nil then
         keep = 0
     end
@@ -408,6 +444,7 @@ function ____exports.Timer(timing, slot, index, past, keep)
         index = index,
         past = past,
         keep = keep,
+        heroSpeed = heroSpeed,
         n = 0,
         reads = 0
     }
@@ -434,7 +471,7 @@ local function PathPoint(path, along)
     end
     return {path[1][1], path[1][2]}
 end
---- Where the neutrals are `s` seconds after the hit: down the lead path from the origin, then at the meet point.
+--- Where a walker of the lead path is `s` seconds after the hit: down it from the origin, then at the meet point.
 local function NeutralAt(origin, lead, speed, s)
     local left = math.max(0, s) * speed
     local px = origin.x
@@ -451,10 +488,31 @@ local function NeutralAt(origin, lead, speed, s)
     end
     return {px, py}
 end
---- A half pull's hit from `centre`: candidate hits every HalfStep over HalfSearch around it (none before `now`); for each, the
--- neutrals walk the lead path, stand at the meet point to HalfHold past their arrival, and stop where the first creep from
--- `keep` back comes within HalfAcquire (the fight). Keeps the hit with the largest margin (CreepTimer `margin`).
-local function Clearance(t, alongs, keep, now, centre)
+--- `lead` with its last point moved `back` towards the point before it (the origin for a one-point lead).
+local function Shorten(origin, lead, back)
+    if back <= 0 or #lead == 0 then
+        return lead
+    end
+    local ____end = lead[#lead]
+    local prev = #lead > 1 and lead[#lead - 2 + 1] or origin
+    local len = hypot(prev.x, prev.y, ____end.x, ____end.y)
+    if len <= 0 then
+        return lead
+    end
+    local f = math.max(0, len - back) / len
+    local out = __TS__ArraySlice(lead, 0, #lead - 1)
+    out[#out + 1] = Vector(prev.x + (____end.x - prev.x) * f, prev.y + (____end.y - prev.y) * f, ____end.z)
+    return out
+end
+--- A half pull's hit and stand point from `centre`: candidate hits every HalfStep over HalfSearch around it (none before
+-- `now`), each with the puller standing HalfStandBack short of the meet point on the lead's last leg. The puller starts
+-- HalfHeroStart down the lead path at the hit (it hits from range) and walks it at `heroSpeed` to the stand point; the
+-- neutrals leave the origin HalfNeutralDelay after the hit (the phchk2 replays: 0.4-2.3 s, camp 1 0.6-1.4) and follow it
+-- there at NeutralSpeed, stopping where the first creep from `keep` back comes within HalfAcquire (the fight). A lane creep
+-- turns within HalfAcquire of the neutrals or HalfHeroAggro of the puller they are hitting (EC-090: no written rule; in the
+-- replays all four turned at 6:23 in A_on_4 with the neutrals 970-1025 off and the puller 280-390), the puller counted from
+-- the hit on. Keeps the candidate with the largest margin (CreepTimer `margin`).
+local function Clearance(t, alongs, keep, now, centre, heroSpeed)
     local cfg = settings()
     local path = t.lanePath
     local origin = t.origin
@@ -466,6 +524,7 @@ local function Clearance(t, alongs, keep, now, centre)
     end
     local step = cfg.HalfStep
     local r = cfg.HalfAcquire
+    local rh = cfg.HalfHeroAggro
     local v = cfg.CreepSpeed
     local lo, hi = unpack(cfg.HalfSearch)
     local first = math.max(
@@ -476,7 +535,8 @@ local function Clearance(t, alongs, keep, now, centre)
     if last < first then
         return nil
     end
-    local span = math.ceil((walk + cfg.HalfHold) / step)
+    local delay = cfg.HalfNeutralDelay
+    local span = math.ceil((walk + delay + cfg.HalfHold) / step)
     local creeps = {}
     do
         local k = 0
@@ -493,60 +553,74 @@ local function Clearance(t, alongs, keep, now, centre)
             k = k + 1
         end
     end
-    local walked = {}
-    do
-        local j = 0
-        while j <= span do
-            walked[#walked + 1] = NeutralAt(origin, lead, speed, j * step)
-            j = j + 1
-        end
-    end
+    local hs = heroSpeed ~= nil and heroSpeed > 0 and heroSpeed or nil
     local best
-    do
-        local h = first
-        while h <= last do
-            local clear = math.huge
-            local turn = math.huge
-            local stop
-            do
-                local j = 0
-                while j <= span do
-                    local nx, ny = unpack(stop or walked[j + 1])
-                    local fight = false
-                    do
-                        local k = 0
-                        while k < #creeps do
-                            local cx, cy = unpack(creeps[k + 1][h + j + 1])
-                            local d = hypot(nx, ny, cx, cy)
-                            if k < keep then
-                                clear = math.min(clear, d)
-                            else
-                                if k == keep then
-                                    turn = math.min(turn, d)
-                                end
-                                if d <= r then
-                                    fight = true
-                                end
-                            end
-                            k = k + 1
-                        end
-                    end
-                    if fight and stop == nil then
-                        stop = {nx, ny}
-                    end
-                    j = j + 1
+    for ____, back in ipairs(cfg.HalfStandBack) do
+        local route = Shorten(origin, lead, back)
+        local walked = {}
+        local hero = {}
+        do
+            local j = 0
+            while j <= span do
+                walked[#walked + 1] = NeutralAt(origin, route, speed, j * step - delay)
+                if hs ~= nil then
+                    hero[#hero + 1] = NeutralAt(origin, route, hs, cfg.HalfHeroStart / hs + j * step)
                 end
+                j = j + 1
             end
-            local margin = math.min(clear - r, r - turn)
-            if best == nil or margin > best.margin then
-                best = {
-                    hit = now + h * step,
-                    clear = math.floor(clear + 0.5),
-                    turn = math.floor(turn + 0.5),
-                    margin = math.floor(margin + 0.5)
-                }
+        end
+        do
+            local h = first
+            while h <= last do
+                local clear = math.huge
+                local turn = math.huge
+                local stop
+                do
+                    local j = 0
+                    while j <= span do
+                        local nx, ny = unpack(stop or walked[j + 1])
+                        local fight = false
+                        do
+                            local k = 0
+                            while k < #creeps do
+                                local cx, cy = unpack(creeps[k + 1][h + j + 1])
+                                local d = hypot(nx, ny, cx, cy)
+                                local e = hs ~= nil and math.min(
+                                    d,
+                                    hypot(hero[j + 1][1], hero[j + 1][2], cx, cy) - rh + r
+                                ) or d
+                                if k < keep then
+                                    clear = math.min(clear, e)
+                                else
+                                    if k == keep then
+                                        turn = math.min(turn, e)
+                                    end
+                                    if d <= r then
+                                        fight = true
+                                    end
+                                end
+                                k = k + 1
+                            end
+                        end
+                        if fight and stop == nil then
+                            stop = {nx, ny}
+                        end
+                        j = j + 1
+                    end
+                end
+                local margin = math.min(clear - r, r - turn)
+                if best == nil or margin > best.margin then
+                    best = {
+                        hit = now + h * step,
+                        clear = math.floor(clear + 0.5),
+                        turn = math.floor(turn + 0.5),
+                        margin = math.floor(margin + 0.5),
+                        back = back,
+                        stand = route[#route]
+                    }
+                end
+                h = h + 1
             end
-            h = h + 1
         end
     end
     return best
@@ -569,13 +643,16 @@ function ____exports.Read(c, now)
                     alongs,
                     c.keep,
                     now,
-                    hit
+                    hit,
+                    c.heroSpeed
                 )
                 if s ~= nil then
                     hit = s.hit
                     c.clear = s.clear
                     c.turn = s.turn
                     c.margin = s.margin
+                    c.standBack = s.back
+                    c.stand = s.stand
                 end
             end
             local function pastAt(along)

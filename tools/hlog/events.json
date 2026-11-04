@@ -1012,6 +1012,7 @@
    "hf": "num",
    "hu": "num",
    "hm": "num",
+   "hs": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -1066,7 +1067,8 @@
    "cdmg": "num",
    "php": "num",
    "se": "num",
-   "pk": "str"
+   "pk": "str",
+   "hm": "num"
   },
   "gank": {
    "pid": "num",

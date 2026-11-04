@@ -1087,8 +1087,10 @@ export const EVENTS = {
         // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
         // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
         // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
-        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to the neutrals, hu the nearest
-        // the third comes, hm the smaller of hf - 500 and 500 - hu (negative: no hit keeps the front two out and turns the third).
+        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
+        // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
+        // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
+        // puller stands (HalfStandBack).
         pk: "str",
         hr: "str",
         hc: "num",
@@ -1097,6 +1099,7 @@ export const EVENTS = {
         hf: "num",
         hu: "num",
         hm: "num",
+        hs: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1167,8 +1170,10 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
-        // Slice pull-half: the pull's kind for kind=pull (full or half).
+        // Slice pull-half: the pull's kind for kind=pull (full or half); hm a half pull's clearance margin when it stayed for
+        // want of one (why=half-geo; pull_job hm).
         pk: "str",
+        hm: "num",
     },
     gank: {
         pid: "num",

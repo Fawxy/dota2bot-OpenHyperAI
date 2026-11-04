@@ -222,32 +222,61 @@ do
 	T = slot + timing.waveAfter - timing.waveTravel - AHEAD + (m - 1000) / 325
 	local alongs = { m - 1000, m - 1100, m - 1200, m - 1300 }
 	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
-	local function nearest(h)
-		local len, out, stop = dist(origin, meet), { math.huge, math.huge, math.huge }, nil
-		for s = 0, len / 300 + 2, 0.01 do
-			local f = math.min(1, s * 300 / len)
-			local n = stop or Vector(origin.x + (meet.x - origin.x) * f, origin.y + (meet.y - origin.y) * f)
+	-- The search's model walked at 0.01 s: the neutrals leave the origin 1 s after the hit (HalfNeutralDelay) at 300 for
+	-- the stand point `back` short of the meet point, stopping at the fight (a creep from the third back within 500); the
+	-- puller (when `speed` is given) starts 400 down the path (HalfHeroStart) and stands there. Returns the nearest the
+	-- front two and the third come to the neutrals and to the puller.
+	local function walk(h, back, speed)
+		local len = dist(origin, meet)
+		local f0 = math.max(0, len - (back or 0)) / len
+		local stand = Vector(origin.x + (meet.x - origin.x) * f0, origin.y + (meet.y - origin.y) * f0)
+		local sl = dist(origin, stand)
+		local function at(d) local f = math.min(1, math.max(0, d) / sl) return Vector(origin.x + (stand.x - origin.x) * f, origin.y + (stand.y - origin.y) * f) end
+		local nf, nt, hf, ht, stop = math.huge, math.huge, math.huge, math.huge, nil
+		for s = 0, len / 300 + 3, 0.01 do
+			local n = stop or at((s - 1) * 300)
+			local p = speed and at(400 + s * speed)
 			local fight = false
 			for k, a in ipairs(alongs) do
-				local d = dist(n, Vector(PATH[1][1] + a + 325 * (h + s - T), -5000))
-				if k <= 3 then out[k] = math.min(out[k], d) end
+				local c = Vector(PATH[1][1] + a + 325 * (h + s - T), -5000)
+				local d = dist(n, c)
+				if k <= 2 then nf = math.min(nf, d) elseif k == 3 then nt = math.min(nt, d) end
+				if p then
+					local e = dist(p, c)
+					if k <= 2 then hf = math.min(hf, e) elseif k == 3 then ht = math.min(ht, e) end
+				end
 				if k >= 3 and d <= 500 then fight = true end
 			end
 			if fight and stop == nil then stop = n end
 		end
-		return math.min(out[1], out[2]), out[3]
+		return nf, nt, hf, ht
 	end
 	local aim = T + (m + 500 - alongs[2]) / 325 - timing.walk
-	local aimClear = nearest(aim)
+	local aimClear = walk(aim, 0)
 	check("precondition: at the HalfClear aim a front creep comes within 500", aimClear < 500, aimClear)
 	local half = PT.Timer(timing, slot, 1, 500, 2)
 	local hit = PT.Read(half, T)
-	local clear, turn = nearest(hit)
+	local clear, turn = walk(hit, half.standBack)
 	check("half: the search's hit keeps the front two out (" .. math.floor(clear) .. ") and turns the third (" .. math.floor(turn) .. ")",
-		clear > 500 and turn <= 500 and half.margin >= 0, half.margin)
+		clear > 500 and turn <= 500 and half.margin > 0, half.margin)
 	-- The search walks a 0.2 s grid, so its fight stop and nearest approaches sit within about 0.2 * 325 / 4 of the fine walk's.
 	check("half: hf and hu are the walk's nearest approaches", math.abs(half.clear - clear) <= 20 and math.abs(half.turn - turn) <= 20,
 		tostring(half.clear) .. " " .. tostring(half.turn) .. " vs " .. math.floor(clear) .. " " .. math.floor(turn))
+	-- A camp off the side of the lane, as camp 1 (phchk2 A_on_4: 1100 off it). The puller reaches the lane ahead of the
+	-- neutrals, and a creep within 450 (HalfHeroAggro) of it turns as one within 500 of the neutrals does (the replays: all
+	-- four turned with the neutrals 1000 off): a search on the neutrals alone walks a front creep past the puller.
+	origin = Vector(-1450, -3900)
+	timing = PT.For(2, Lane.Bot, origin, "small", { meet }, true, { 15, 45 })
+	local side = PT.Timer(timing, slot, 1, 500, 2)
+	local sh = PT.Read(side, T)
+	local _, _, heroClear = walk(sh, side.standBack, 330)
+	check("precondition: the neutrals-only hit walks a front creep within 450 of the puller", side.margin > 0 and heroClear < 450, heroClear)
+	local withHero = PT.Timer(timing, slot, 1, 500, 2, 330)
+	local hh = PT.Read(withHero, T)
+	local nClear, nTurn, hClear, hTurn = walk(hh, withHero.standBack, 330)
+	check("half with the puller: the hit keeps the front two out of both (" .. math.floor(nClear) .. ", " .. math.floor(hClear) ..
+		") and turns the third (" .. math.floor(nTurn) .. ", " .. math.floor(hTurn) .. ")",
+		withHero.margin > 0 and nClear > 500 and hClear > 450 and (nTurn <= 500 or hTurn <= 450), withHero.margin)
 	local full = PT.Timer(timing, slot, 0, 100)
 	PT.Read(full, T)
 	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)

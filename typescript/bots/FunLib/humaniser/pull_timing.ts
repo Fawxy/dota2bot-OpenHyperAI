@@ -253,6 +253,8 @@ export interface CreepTimer {
     past: number;
     /** Front creeps meant to walk on (0: a full pull). */
     keep: number;
+    /** The puller's move speed: it walks the lead path ahead of the neutrals and stands at the meet point (half pulls). */
+    heroSpeed?: number;
     /** At the last read: the hit second, when the back creep reaches the meet point, the creeps read, and on that hit the
      *  predicted distance past the meet point at the neutrals' arrival of the creep after the aimed one (`next`) and of the
      *  back one (`back`; negative: short of it). */
@@ -261,20 +263,23 @@ export interface CreepTimer {
     n: number;
     next?: number;
     back?: number;
-    /** A half pull's search on that hit: the nearest the kept creeps come to the neutrals (`clear`), the nearest the
-     *  first creep meant to turn comes (`turn`), and `margin`, the smaller of clear - HalfAcquire and HalfAcquire - turn
-     *  (negative: no hit in the search keeps the front creeps out and turns the next one). */
+    /** A half pull's search on that hit: the nearest the kept creeps come to an aggro source, the neutrals or the hit
+     *  puller (`clear`), the nearest the first creep meant to turn comes (`turn`), and `margin`, the smaller of clear -
+     *  HalfAcquire and HalfAcquire - turn (negative: no hit in the search keeps the front creeps out and turns the next one). */
     clear?: number;
     turn?: number;
     margin?: number;
+    /** The search's stand point for the puller (the lead's end), `standBack` short of the meet point. */
+    standBack?: number;
+    stand?: Vector;
     /** The first creep-timed hit's shift from the slot. */
     first?: number;
     readAt?: number;
     reads: number;
 }
 
-export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0): CreepTimer {
-    return { timing, slot, index, past, keep, n: 0, reads: 0 };
+export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0, heroSpeed?: number): CreepTimer {
+    return { timing, slot, index, past, keep, heroSpeed, n: 0, reads: 0 };
 }
 
 /** The point `along` down `path` (clamped to its ends). */
@@ -293,7 +298,7 @@ function PathPoint(path: number[][], along: number): [number, number] {
     return [path[0][0], path[0][1]];
 }
 
-/** Where the neutrals are `s` seconds after the hit: down the lead path from the origin, then at the meet point. */
+/** Where a walker of the lead path is `s` seconds after the hit: down it from the origin, then at the meet point. */
 function NeutralAt(origin: Vector, lead: Vector[], speed: number, s: number): [number, number] {
     let left = math.max(0, s) * speed;
     let px = origin.x;
@@ -311,12 +316,40 @@ function NeutralAt(origin: Vector, lead: Vector[], speed: number, s: number): [n
     return [px, py];
 }
 
+/** `lead` with its last point moved `back` towards the point before it (the origin for a one-point lead). */
+function Shorten(origin: Vector, lead: Vector[], back: number): Vector[] {
+    if (back <= 0 || lead.length === 0) return lead;
+    const end = lead[lead.length - 1];
+    const prev = lead.length > 1 ? lead[lead.length - 2] : origin;
+    const len = hypot(prev.x, prev.y, end.x, end.y);
+    if (len <= 0) return lead;
+    const f = math.max(0, len - back) / len;
+    const out = lead.slice(0, lead.length - 1);
+    out.push(Vector(prev.x + (end.x - prev.x) * f, prev.y + (end.y - prev.y) * f, end.z));
+    return out;
+}
+
+export interface Clear {
+    hit: number;
+    clear: number;
+    turn: number;
+    margin: number;
+    /** How far short of the meet point the puller stands (HalfStandBack), and that point. */
+    back: number;
+    stand: Vector;
+}
+
 /**
- * A half pull's hit from `centre`: candidate hits every HalfStep over HalfSearch around it (none before `now`); for each, the
- * neutrals walk the lead path, stand at the meet point to HalfHold past their arrival, and stop where the first creep from
- * `keep` back comes within HalfAcquire (the fight). Keeps the hit with the largest margin (CreepTimer `margin`).
+ * A half pull's hit and stand point from `centre`: candidate hits every HalfStep over HalfSearch around it (none before
+ * `now`), each with the puller standing HalfStandBack short of the meet point on the lead's last leg. The puller starts
+ * HalfHeroStart down the lead path at the hit (it hits from range) and walks it at `heroSpeed` to the stand point; the
+ * neutrals leave the origin HalfNeutralDelay after the hit (the phchk2 replays: 0.4-2.3 s, camp 1 0.6-1.4) and follow it
+ * there at NeutralSpeed, stopping where the first creep from `keep` back comes within HalfAcquire (the fight). A lane creep
+ * turns within HalfAcquire of the neutrals or HalfHeroAggro of the puller they are hitting (EC-090: no written rule; in the
+ * replays all four turned at 6:23 in A_on_4 with the neutrals 970-1025 off and the puller 280-390), the puller counted from
+ * the hit on. Keeps the candidate with the largest margin (CreepTimer `margin`).
  */
-function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, centre: number): { hit: number; clear: number; turn: number; margin: number } | undefined {
+function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, centre: number, heroSpeed: number | undefined): Clear | undefined {
     const cfg = settings();
     const path = t.lanePath;
     const origin = t.origin;
@@ -326,42 +359,63 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
     if (path === undefined || origin === undefined || lead === undefined || speed === undefined || walk === undefined) return undefined;
     const step = cfg.HalfStep;
     const r = cfg.HalfAcquire;
+    const rh = cfg.HalfHeroAggro;
     const v = cfg.CreepSpeed;
     const [lo, hi] = cfg.HalfSearch;
     const first = math.max(0, math.ceil((centre + lo - now) / step));
     const last = math.floor((centre + hi - now) / step);
     if (last < first) return undefined;
-    const span = math.ceil((walk + cfg.HalfHold) / step);
-    // Creep positions on the shared grid now + i * step, and the neutrals' at j steps after a hit.
+    const delay = cfg.HalfNeutralDelay;
+    const span = math.ceil((walk + delay + cfg.HalfHold) / step);
+    // Creep positions on the shared grid now + i * step.
     const creeps: [number, number][][] = [];
     for (let k = 0; k < alongs.length; k++) {
         const row: [number, number][] = [];
         for (let i = 0; i <= last + span; i++) row.push(PathPoint(path, alongs[k] + v * i * step));
         creeps.push(row);
     }
-    const walked: [number, number][] = [];
-    for (let j = 0; j <= span; j++) walked.push(NeutralAt(origin, lead, speed, j * step));
-    let best: { hit: number; clear: number; turn: number; margin: number } | undefined;
-    for (let h = first; h <= last; h++) {
-        let clear = math.huge;
-        let turn = math.huge;
-        let stop: [number, number] | undefined;
+    const hs = heroSpeed !== undefined && heroSpeed > 0 ? heroSpeed : undefined;
+    let best: Clear | undefined;
+    for (const back of cfg.HalfStandBack) {
+        const route = Shorten(origin, lead, back);
+        // Neutrals and puller at j steps after a hit.
+        const walked: [number, number][] = [];
+        const hero: [number, number][] = [];
         for (let j = 0; j <= span; j++) {
-            const [nx, ny] = stop ?? walked[j];
-            let fight = false;
-            for (let k = 0; k < creeps.length; k++) {
-                const [cx, cy] = creeps[k][h + j];
-                const d = hypot(nx, ny, cx, cy);
-                if (k < keep) clear = math.min(clear, d);
-                else {
-                    if (k === keep) turn = math.min(turn, d);
-                    if (d <= r) fight = true;
-                }
-            }
-            if (fight && stop === undefined) stop = [nx, ny];
+            walked.push(NeutralAt(origin, route, speed, j * step - delay));
+            if (hs !== undefined) hero.push(NeutralAt(origin, route, hs, cfg.HalfHeroStart / hs + j * step));
         }
-        const margin = math.min(clear - r, r - turn);
-        if (best === undefined || margin > best.margin) best = { hit: now + h * step, clear: math.floor(clear + 0.5), turn: math.floor(turn + 0.5), margin: math.floor(margin + 0.5) };
+        for (let h = first; h <= last; h++) {
+            let clear = math.huge;
+            let turn = math.huge;
+            let stop: [number, number] | undefined;
+            for (let j = 0; j <= span; j++) {
+                const [nx, ny] = stop ?? walked[j];
+                let fight = false;
+                for (let k = 0; k < creeps.length; k++) {
+                    const [cx, cy] = creeps[k][h + j];
+                    const d = hypot(nx, ny, cx, cy);
+                    // The nearer source in HalfAcquire's frame (a creep HalfHeroAggro from the puller counts as HalfAcquire).
+                    const e = hs !== undefined ? math.min(d, hypot(hero[j][0], hero[j][1], cx, cy) - rh + r) : d;
+                    if (k < keep) clear = math.min(clear, e);
+                    else {
+                        if (k === keep) turn = math.min(turn, e);
+                        if (d <= r) fight = true;
+                    }
+                }
+                if (fight && stop === undefined) stop = [nx, ny];
+            }
+            const margin = math.min(clear - r, r - turn);
+            if (best === undefined || margin > best.margin)
+                best = {
+                    hit: now + h * step,
+                    clear: math.floor(clear + 0.5),
+                    turn: math.floor(turn + 0.5),
+                    margin: math.floor(margin + 0.5),
+                    back,
+                    stand: route[route.length - 1],
+                };
+        }
     }
     return best;
 }
@@ -379,12 +433,14 @@ export function Read(c: CreepTimer, now: number): number {
             const v = settings().CreepSpeed;
             let hit = now + (meet + c.past - alongs[c.index]) / v - walk;
             if (c.keep > 0) {
-                const s = Clearance(t, alongs, c.keep, now, hit);
+                const s = Clearance(t, alongs, c.keep, now, hit, c.heroSpeed);
                 if (s !== undefined) {
                     hit = s.hit;
                     c.clear = s.clear;
                     c.turn = s.turn;
                     c.margin = s.margin;
+                    c.standBack = s.back;
+                    c.stand = s.stand;
                 }
             }
             const pastAt = (along: number) => math.floor(along + v * (hit + walk - now) - meet + 0.5);
