@@ -8,40 +8,14 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
     return result
 end
 
-local function __TS__ArraySlice(self, first, last)
-    local len = #self
-    first = first or 0
-    if first < 0 then
-        first = len + first
-        if first < 0 then
-            first = 0
-        end
-    else
-        if first > len then
-            first = len
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
         end
     end
-    last = last or len
-    if last < 0 then
-        last = len + last
-        if last < 0 then
-            last = 0
-        end
-    else
-        if last > len then
-            last = len
-        end
-    end
-    local out = {}
-    first = first + 1
-    last = last + 1
-    local n = 1
-    while first < last do
-        out[n] = self[first]
-        first = first + 1
-        n = n + 1
-    end
-    return out
+    return nil
 end
 
 local function __TS__ArrayFilter(self, callbackfn, thisArg)
@@ -55,21 +29,10 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
     end
     return result
 end
-
-local function __TS__ArrayFind(self, predicate, thisArg)
-    for i = 1, #self do
-        local elem = self[i]
-        if predicate(thisArg, elem, i - 1, self) then
-            return elem
-        end
-    end
-    return nil
-end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
-local Rune = ____dota.Rune
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
@@ -139,161 +102,111 @@ local function guard(step, f)
     end
     return v
 end
+local queue = {}
 function ____exports.Run(bot)
+    local next = table.remove(queue, 1)
+    if next ~= nil then
+        next()
+    end
     local team = bot:GetTeam()
     if done[team] == true or DotaTime() < 30 then
         return
     end
     done[team] = true
-    hev(("team=" .. tostring(team)) .. " step=begin")
     local enemy = team == Team.Radiant and Team.Dire or Team.Radiant
-    local to = guard(
-        "shrine",
-        function() return Rotate.ShrineFor(enemy) end
-    )
-    local towers = guard(
-        "towers",
-        function() return FR.TowerSpots(enemy) end
-    ) or ({})
-    if to == nil then
-        return
-    end
-    hev((((((("team=" .. tostring(team)) .. " step=inputs towers=") .. table.concat(
-        __TS__ArrayMap(
-            towers,
-            function(____, t) return (tostring(math.floor(t.x)) .. ",") .. tostring(math.floor(t.y)) end
-        ),
-        ";"
-    )) .. " to=") .. tostring(math.floor(to.x))) .. ",") .. tostring(math.floor(to.y)))
-    hev((("team=" .. tostring(team)) .. " step=pass pass=") .. tostring(guard(
-        "passable",
-        function() return IsLocationPassable(to) end
-    )))
-    local lane = team == Team.Dire and Vector(-5800, 5000, 0) or Vector(5800, -5000, 0)
-    local starts = {
-        {"lane", lane},
+    local to = Rotate.ShrineFor(enemy)
+    local towers = FR.TowerSpots(enemy)
+    local starts = team == Team.Radiant and ({
         {
-            "rune0",
-            guard(
-                "rune0",
-                function() return GetRuneSpawnLocation(Rune.Power1) end
-            )
+            "safe",
+            Vector(4025, -6225, 0)
         },
         {
-            "rune1",
-            guard(
-                "rune1",
-                function() return GetRuneSpawnLocation(Rune.Power2) end
-            )
-        },
-        {
-            "bot",
-            bot:GetLocation()
+            "lane",
+            Vector(5004, -4874, 0)
         }
-    }
+    }) or ({
+        {
+            "safe",
+            Vector(-4002, 5473, 0)
+        },
+        {
+            "lane",
+            Vector(-4601, 4782, 0)
+        }
+    })
     local vecs = __TS__ArrayMap(
         towers,
-        function(____, t) return Vector(t.x, t.y, 1000) end
+        function(____, t) return Vector(t.x, t.y, 1100) end
     )
-    local variants = {{"none", {}}, {"vec", vecs}}
-    local handle = guard(
-        "zone",
-        function()
-            local ____AddAvoidanceZone_7 = AddAvoidanceZone
-            local ____Vector_6 = Vector
-            local ____opt_1 = towers[1]
-            local ____temp_5 = ____opt_1 and ____opt_1.x or 0
-            local ____opt_3 = towers[1]
-            return ____AddAvoidanceZone_7(
-                ____Vector_6(____temp_5, ____opt_3 and ____opt_3.y or 0, 1000),
-                30
-            )
-        end
+    local handles = __TS__ArrayMap(
+        towers,
+        function(____, t) return guard(
+            "zone",
+            function() return AddAvoidanceZone(
+                Vector(t.x, t.y, 1100),
+                120
+            ) end
+        ) end
     )
-    hev((((("team=" .. tostring(team)) .. " step=zone h=") .. tostring(handle)) .. " type=") .. type(handle))
-    if handle ~= nil then
-        local handles = {
-            handle,
-            unpack(__TS__ArrayMap(
-                __TS__ArraySlice(towers, 1),
-                function(____, t) return guard(
-                    "zone",
-                    function() return AddAvoidanceZone(
-                        Vector(t.x, t.y, 1000),
-                        30
-                    ) end
-                ) end
-            ))
-        }
-        variants[#variants + 1] = {
-            "handle",
-            __TS__ArrayFilter(
-                handles,
-                function(____, h) return h ~= nil end
-            )
-        }
-    end
+    hev((("team=" .. tostring(team)) .. " step=zones h=") .. table.concat(
+        __TS__ArrayMap(
+            handles,
+            function(____, h) return tostring(h) end
+        ),
+        ","
+    ))
     for ____, ____value in ipairs(starts) do
         local name = ____value[1]
         local start = ____value[2]
-        do
-            local __continue27
-            repeat
-                if start == nil then
-                    __continue27 = true
-                    break
-                end
-                for ____, ____value in ipairs(variants) do
-                    local v = ____value[1]
-                    local avoid = ____value[2]
-                    guard(
-                        (("gen:" .. name) .. ":") .. v,
-                        function() return GeneratePath(
-                            start,
-                            to,
-                            avoid,
-                            function(...)
-                                local args = {...}
-                                local kinds = table.concat(
-                                    __TS__ArrayMap(
-                                        args,
-                                        function(____, x) return type(x) == "table" and "table#" .. tostring(#x) or (type(x) .. ":") .. tostring(x) end
-                                    ),
-                                    ","
-                                )
-                                hev((((((((("team=" .. tostring(team)) .. " step=cbargs from=") .. name) .. " v=") .. v) .. " n=") .. tostring(#args)) .. " args=") .. kinds)
-                                local wp = __TS__ArrayFind(
-                                    args,
-                                    function(____, x) return type(x) == "table" end
-                                )
-                                local d = __TS__ArrayFind(
-                                    args,
-                                    function(____, x) return type(x) == "number" end
-                                )
-                                if wp ~= nil then
-                                    guard(
-                                        (("cb:" .. name) .. ":") .. v,
-                                        function() return report(
-                                            team,
-                                            name,
-                                            v,
-                                            start,
-                                            towers,
-                                            d or -1,
-                                            wp
-                                        ) end
-                                    )
-                                end
-                            end
-                        ) end
-                    )
-                    hev((((("team=" .. tostring(team)) .. " step=called from=") .. name) .. " v=") .. v)
-                end
-                __continue27 = true
-            until true
-            if not __continue27 then
-                break
-            end
+        for ____, ____value in ipairs({
+            {"none", {}},
+            {"vec", vecs},
+            {
+                "handle",
+                __TS__ArrayFilter(
+                    handles,
+                    function(____, h) return h ~= nil end
+                )
+            }
+        }) do
+            local v = ____value[1]
+            local avoid = ____value[2]
+            queue[#queue + 1] = function() return guard(
+                (("gen:" .. name) .. ":") .. v,
+                function() return GeneratePath(
+                    start,
+                    to,
+                    avoid,
+                    function(...)
+                        local args = {...}
+                        local wp = __TS__ArrayFind(
+                            args,
+                            function(____, x) return type(x) == "table" end
+                        )
+                        local d = __TS__ArrayFind(
+                            args,
+                            function(____, x) return type(x) == "number" end
+                        )
+                        if wp ~= nil then
+                            guard(
+                                (("cb:" .. name) .. ":") .. v,
+                                function() return report(
+                                    team,
+                                    name,
+                                    v,
+                                    start,
+                                    towers,
+                                    d or -1,
+                                    wp
+                                ) end
+                            )
+                        else
+                            hev((((((("team=" .. tostring(team)) .. " from=") .. name) .. " v=") .. v) .. " nowp n=") .. tostring(#args))
+                        end
+                    end
+                ) end
+            ) end
         end
     end
 end

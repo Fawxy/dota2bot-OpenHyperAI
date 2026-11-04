@@ -3,7 +3,7 @@
  * whether it honours avoidance zones passed as Vector(x, y, radius) or as AddAvoidanceZone handles. Prints raw [HEV]
  * ev=pathprobe lines (not declared; read with grep).
  */
-import { Unit, Vector, Team, Rune } from "bots/ts_libs/dota";
+import { Unit, Vector, Team } from "bots/ts_libs/dota";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import * as Utils from "bots/FunLib/utils";
@@ -57,44 +57,36 @@ function guard<T>(step: string, f: () => T): T | undefined {
     return v as T;
 }
 
-// v2: v1 died at t=30 with "error in error handling" before its header line; every API call is now guarded and logged.
+// v6: starts from rspchk4's contest walks (own safe lane, 7:00), zones of radius 1,100, one request per frame.
+const queue: (() => void)[] = [];
 export function Run(bot: Unit): void {
+    const next = queue.shift();
+    if (next !== undefined) next();
     const team = bot.GetTeam();
     if (done[team] === true || DotaTime() < 30) return;
     done[team] = true;
-    hev(`team=${team} step=begin`);
     const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    const to = guard("shrine", () => Rotate.ShrineFor(enemy));
-    const towers = guard("towers", () => FR.TowerSpots(enemy)) ?? [];
-    if (to === undefined) return;
-    hev(`team=${team} step=inputs towers=${towers.map((t) => `${math.floor(t.x)},${math.floor(t.y)}`).join(";")} to=${math.floor(to.x)},${math.floor(to.y)}`);
-    hev(`team=${team} step=pass pass=${tostring(guard("passable", () => IsLocationPassable(to)))}`);
-    const lane = team === Team.Dire ? Vector(-5800, 5000, 0) : Vector(5800, -5000, 0);
-    const starts: [string, Vector | undefined][] = [
-        ["lane", lane],
-        ["rune0", guard("rune0", () => GetRuneSpawnLocation(Rune.Power1))],
-        ["rune1", guard("rune1", () => GetRuneSpawnLocation(Rune.Power2))],
-        ["bot", bot.GetLocation()],
-    ];
-    const vecs = towers.map((t) => Vector(t.x, t.y, 1000));
-    const variants: [string, unknown[]][] = [["none", []], ["vec", vecs]];
-    const handle = guard("zone", () => AddAvoidanceZone(Vector(towers[0]?.x ?? 0, towers[0]?.y ?? 0, 1000), 30));
-    hev(`team=${team} step=zone h=${tostring(handle)} type=${type(handle)}`);
-    if (handle !== undefined) {
-        const handles = [handle, ...towers.slice(1).map((t) => guard("zone", () => AddAvoidanceZone(Vector(t.x, t.y, 1000), 30)))];
-        variants.push(["handle", handles.filter((h) => h !== undefined)]);
-    }
+    const to = Rotate.ShrineFor(enemy);
+    const towers = FR.TowerSpots(enemy);
+    const starts: [string, Vector][] =
+        team === Team.Radiant
+            ? [["safe", Vector(4025, -6225, 0)], ["lane", Vector(5004, -4874, 0)]]
+            : [["safe", Vector(-4002, 5473, 0)], ["lane", Vector(-4601, 4782, 0)]];
+    const vecs = towers.map((t) => Vector(t.x, t.y, 1100));
+    const handles = towers.map((t) => guard("zone", () => AddAvoidanceZone(Vector(t.x, t.y, 1100), 120)));
+    hev(`team=${team} step=zones h=${handles.map((h) => tostring(h)).join(",")}`);
     for (const [name, start] of starts) {
-        if (start === undefined) continue;
-        for (const [v, avoid] of variants) {
-            guard(`gen:${name}:${v}`, () => GeneratePath(start, to, avoid, ((...args: unknown[]) => {
-                const kinds = args.map((x) => (type(x) === "table" ? `table#${(x as unknown[]).length}` : `${type(x)}:${tostring(x)}`)).join(",");
-                hev(`team=${team} step=cbargs from=${name} v=${v} n=${args.length} args=${kinds}`);
-                const wp = args.find((x) => type(x) === "table") as Vector[] | undefined;
-                const d = args.find((x) => type(x) === "number") as number | undefined;
-                if (wp !== undefined) guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d ?? -1, wp));
-            }) as any));
-            hev(`team=${team} step=called from=${name} v=${v}`);
+        for (const [v, avoid] of [["none", []], ["vec", vecs], ["handle", handles.filter((h) => h !== undefined)]] as [string, unknown[]][]) {
+            queue.push(() =>
+                guard(`gen:${name}:${v}`, () =>
+                    GeneratePath(start, to, avoid, ((...args: unknown[]) => {
+                        const wp = args.find((x) => type(x) === "table") as Vector[] | undefined;
+                        const d = args.find((x) => type(x) === "number") as number | undefined;
+                        if (wp !== undefined) guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d ?? -1, wp));
+                        else hev(`team=${team} from=${name} v=${v} nowp n=${args.length}`);
+                    }) as any)
+                )
+            );
         }
     }
 }
