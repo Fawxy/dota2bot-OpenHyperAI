@@ -400,7 +400,7 @@ if bOwnsThink then
 
 		-- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
 		-- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With Ours.SupportHarass its hold is a support_lane
-		-- step above and this line is not reached.
+		-- step above, so this line runs for it only on a frame the body is not running or its task is guarded.
 		if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 	end
 end

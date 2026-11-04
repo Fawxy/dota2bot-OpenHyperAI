@@ -40,7 +40,8 @@ export const DEFAULTS = {
     SupportPull: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
-     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget.
+     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
+     * SupportDeny and SupportHarass on, a pos4-5 too, instead of OHA's PositionThink.
      */
     LaneSpot: true,
     /**

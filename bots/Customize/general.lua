@@ -252,7 +252,8 @@ Customize.Humaniser = {
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
 -- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
 -- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: enemy heroes' reach and creep
--- rings widened below half HP, every enemy tower's range, the XP limit). Off: OHA's PositionTarget.
+-- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny and SupportHarass on pos4-5 too.
+-- Off: OHA's PositionTarget (cores) and PositionThink (supports).
 -- SupportHarass (slice support-spot): with SupportDeny on, pos4-5 harass enemy heroes in lane through our attack mode (the
 -- trade rule with a support's reach, hits that draw no creep aggro) and, with LaneSpot on, stand on our lane spot instead of
 -- OHA's PositionThink. Off: Valve's attack mode and OHA's positioning and harass for supports.
