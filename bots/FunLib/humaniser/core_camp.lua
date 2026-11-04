@@ -1,0 +1,1122 @@
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local function __TS__ClassExtends(target, base)
+    target.____super = base
+    local staticMetatable = setmetatable({__index = base}, base)
+    setmetatable(target, staticMetatable)
+    local baseMetatable = getmetatable(base)
+    if baseMetatable then
+        if type(baseMetatable.__index) == "function" then
+            staticMetatable.__index = baseMetatable.__index
+        end
+        if type(baseMetatable.__newindex) == "function" then
+            staticMetatable.__newindex = baseMetatable.__newindex
+        end
+    end
+    setmetatable(target.prototype, base.prototype)
+    if type(base.prototype.__index) == "function" then
+        target.prototype.__index = base.prototype.__index
+    end
+    if type(base.prototype.__newindex) == "function" then
+        target.prototype.__newindex = base.prototype.__newindex
+    end
+    if type(base.prototype.__tostring) == "function" then
+        target.prototype.__tostring = base.prototype.__tostring
+    end
+end
+
+local Error, RangeError, ReferenceError, SyntaxError, TypeError, URIError
+do
+    local function getErrorStack(self, constructor)
+        if debug == nil then
+            return nil
+        end
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "f")
+            level = level + 1
+            if not info then
+                level = 1
+                break
+            elseif info.func == constructor then
+                break
+            end
+        end
+        if __TS__StringIncludes(_VERSION, "Lua 5.0") then
+            return debug.traceback(("[Level " .. tostring(level)) .. "]")
+        else
+            return debug.traceback(nil, level)
+        end
+    end
+    local function wrapErrorToString(self, getDescription)
+        return function(self)
+            local description = getDescription(self)
+            local caller = debug.getinfo(3, "f")
+            local isClassicLua = __TS__StringIncludes(_VERSION, "Lua 5.0") or _VERSION == "Lua 5.1"
+            if isClassicLua or caller and caller.func ~= error then
+                return description
+            else
+                return (description .. "\n") .. tostring(self.stack)
+            end
+        end
+    end
+    local function initErrorClass(self, Type, name)
+        Type.name = name
+        return setmetatable(
+            Type,
+            {__call = function(____, _self, message) return __TS__New(Type, message) end}
+        )
+    end
+    local ____initErrorClass_1 = initErrorClass
+    local ____class_0 = __TS__Class()
+    ____class_0.name = ""
+    function ____class_0.prototype.____constructor(self, message)
+        if message == nil then
+            message = ""
+        end
+        self.message = message
+        self.name = "Error"
+        self.stack = getErrorStack(nil, self.constructor.new)
+        local metatable = getmetatable(self)
+        if metatable and not metatable.__errorToStringPatched then
+            metatable.__errorToStringPatched = true
+            metatable.__tostring = wrapErrorToString(nil, metatable.__tostring)
+        end
+    end
+    function ____class_0.prototype.__tostring(self)
+        return self.message ~= "" and (self.name .. ": ") .. self.message or self.name
+    end
+    Error = ____initErrorClass_1(nil, ____class_0, "Error")
+    local function createErrorClass(self, name)
+        local ____initErrorClass_3 = initErrorClass
+        local ____class_2 = __TS__Class()
+        ____class_2.name = ____class_2.name
+        __TS__ClassExtends(____class_2, Error)
+        function ____class_2.prototype.____constructor(self, ...)
+            ____class_2.____super.prototype.____constructor(self, ...)
+            self.name = name
+        end
+        return ____initErrorClass_3(nil, ____class_2, name)
+    end
+    RangeError = createErrorClass(nil, "RangeError")
+    ReferenceError = createErrorClass(nil, "ReferenceError")
+    SyntaxError = createErrorClass(nil, "SyntaxError")
+    TypeError = createErrorClass(nil, "TypeError")
+    URIError = createErrorClass(nil, "URIError")
+end
+
+local function __TS__ObjectGetOwnPropertyDescriptors(object)
+    local metatable = getmetatable(object)
+    if not metatable then
+        return {}
+    end
+    return rawget(metatable, "_descriptors") or ({})
+end
+
+local function __TS__Delete(target, key)
+    local descriptors = __TS__ObjectGetOwnPropertyDescriptors(target)
+    local descriptor = descriptors[key]
+    if descriptor then
+        if not descriptor.configurable then
+            error(
+                __TS__New(
+                    TypeError,
+                    ((("Cannot delete property " .. tostring(key)) .. " of ") .. tostring(target)) .. "."
+                ),
+                0
+            )
+        end
+        descriptors[key] = nil
+        return true
+    end
+    target[key] = nil
+    return true
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
+local Team = ____dota.Team
+local UnitType = ____dota.UnitType
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
+local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
+local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
+local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
+local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
+local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+local Tasks = ____tasks.ForOurs
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+____exports.SETTINGS = {
+    Priority = 0.8,
+    PlanEvery = 1,
+    From = 120,
+    StartHP = 0.65,
+    AbortHP = 0.3,
+    FrontRadius = 1800,
+    WaveClearRadius = 1000,
+    Horizon = 60,
+    ClashGap = 300,
+    MinGap = 12,
+    MaxLate = 15,
+    CreepGold = 40,
+    LaneShare = 0.5,
+    CampGold = {small = 80, medium = 120, large = 160, ancient = 250},
+    MinNet = 30,
+    CampMinLevel = {small = 3, medium = 4, large = 6, ancient = 12},
+    MaxCampDist = 3800,
+    PathFactor = 1.2,
+    ThreatMargin = 600,
+    MidRuneGuard = 40,
+    CampRadius = 700,
+    ReturnArrive = 900,
+    ReturnMax = 25,
+    ReturnReorder = 0.5,
+    ClearSec = {small = 7, medium = 10, large = 13, ancient = 18},
+    RefLevel = 8,
+    LevelScale = {0.6, 1.6},
+    StackedClearMul = 0.8,
+    Learn = 0.3,
+    LearnClamp = {0.4, 2.5},
+    LateGrowth = 1.15
+}
+local running = {}
+local nextPlanAt = {}
+local pace = {}
+--- Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next).
+local cleared = {}
+--- Skip lines written, by pid: one per wave window and reason.
+local skipped = {}
+function ____exports.ResetCache()
+    for ____, t in ipairs({
+        running,
+        nextPlanAt,
+        pace,
+        cleared,
+        skipped
+    }) do
+        for k in pairs(t) do
+            __TS__Delete(t, k)
+        end
+    end
+end
+local function clamp(v, r)
+    return math.max(
+        r[1],
+        math.min(r[2], v)
+    )
+end
+local function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+local function distToSegment(p, a, b)
+    local vx = b.x - a.x
+    local vy = b.y - a.y
+    local len2 = vx * vx + vy * vy
+    local u = len2 > 0 and math.max(
+        0,
+        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
+    ) or 0
+    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
+end
+local function hpOf(bot)
+    local m = bot:GetMaxHealth()
+    return m > 0 and bot:GetHealth() / m or 0
+end
+local function speedOf(bot)
+    return math.max(
+        bot:GetCurrentMovementSpeed(),
+        100
+    )
+end
+--- Meepo's clones and Arc's tempest double share the hero's player ID.
+local function sharesPlayerID(bot)
+    return bot:GetUnitName() == "npc_dota_hero_meepo" or bot:HasModifier("modifier_arc_warden_tempest_double")
+end
+function ____exports.Applies(bot)
+    if not Ours.On("CoreCampTrip") or not Ours.On("CoreLastHit") or not Ours.On("JobChooser") or not bot:IsBot() or sharesPlayerID(bot) then
+        return false
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    return pos ~= nil and pos >= 1 and pos <= 3
+end
+--- The core's lane-stage camp trips are this job's: FarmPattern starts none for it.
+function ____exports.Owns(bot)
+    return ____exports.Applies(bot) and LaneConfig.InLaningPhase()
+end
+function ____exports.Priority(bot)
+    return ____exports.Owns(bot) and ____exports.SETTINGS.Priority or nil
+end
+function ____exports.Running(bot)
+    return running[bot:GetPlayerID()] ~= nil
+end
+function ____exports.Claims(bot)
+    return ____exports.Running(bot)
+end
+function ____exports.PriorClearTime(____type, level, stacks)
+    local s = ____exports.SETTINGS
+    return (s.ClearSec[____type] or s.ClearSec.medium) * clamp(
+        s.RefLevel / math.max(level, 1),
+        s.LevelScale
+    ) * (1 + s.StackedClearMul * stacks)
+end
+function ____exports.Pace(bot)
+    return pace[bot:GetPlayerID()] or 1
+end
+local function learn(bot, measured, prior)
+    if prior <= 0 then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local old = pace[pid] or 1
+    pace[pid] = clamp(old + ____exports.SETTINGS.Learn * (measured / prior - old), ____exports.SETTINGS.LearnClamp)
+end
+local function growLate(bot)
+    local pid = bot:GetPlayerID()
+    pace[pid] = clamp((pace[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
+end
+--- The first second of `samples` with the fronts within ClashGap, and the clash point there; undefined when none.
+function ____exports.ClashOf(samples, path, team)
+    local enemy = team == Team.Radiant and Team.Dire or Team.Radiant
+    for ____, smp in ipairs(samples) do
+        local r = smp.front[Team.Radiant]
+        local d = smp.front[Team.Dire]
+        if r ~= nil and d ~= nil and d - r <= ____exports.SETTINGS.ClashGap then
+            local x, y = unpack(LanePush.PointAt(path, (r + d) / 2))
+            return {
+                t = smp.t,
+                at = Vector(x, y, 0),
+                t0 = samples[1].t,
+                samples = samples,
+                enemy = enemy
+            }
+        end
+    end
+    return nil
+end
+--- Enemy lane creeps the run kills from its start to `t` (the last sample when `t` lies beyond it).
+function ____exports.DeadBy(c, t)
+    local n = 0
+    for ____, smp in ipairs(c.samples) do
+        if smp.t > t then
+            break
+        end
+        n = smp.dead[c.enemy] or 0
+    end
+    return n
+end
+--- The lane gold the core would have taken from the creeps the run kills between `from` and `to`.
+function ____exports.LossBetween(c, from, to)
+    return math.max(
+        0,
+        ____exports.DeadBy(c, to) - ____exports.DeadBy(c, from)
+    ) * ____exports.SETTINGS.CreepGold * ____exports.SETTINGS.LaneShare
+end
+local function currentMinute(t)
+    return math.floor(t / 60)
+end
+local function campNeutralsSeen(center)
+    for ____, n in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        if n ~= nil and n ~= nil and n:IsAlive() and dist(
+            n:GetLocation(),
+            center
+        ) <= ____exports.SETTINGS.CampRadius then
+            return true
+        end
+    end
+    return false
+end
+local function markCleared(team, idx, now)
+    cleared[team] = cleared[team] or ({})
+    cleared[team][idx] = currentMinute(now)
+end
+--- Lane mates whose pull is planned: our lane's pull camps are theirs.
+local function matePulling(bot)
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    for ____, h in ipairs(s.allies) do
+        if h.assigned and h.pid ~= pid and h.alive and PullJob.Claims(h.unit) then
+            return true
+        end
+    end
+    return false
+end
+local function otherTripOn(bot, idx)
+    local pid = bot:GetPlayerID()
+    for other, t in pairs(running) do
+        if other ~= pid and t ~= nil and t.plan.camp == idx then
+            return true
+        end
+    end
+    return false
+end
+local function allyInBox(bot, idx)
+    local pid = bot:GetPlayerID()
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        if a ~= nil and a ~= nil and a:IsAlive() and a:GetPlayerID() ~= pid and Camps.InBox(
+            idx,
+            a:GetLocation(),
+            300
+        ) then
+            return true
+        end
+    end
+    return false
+end
+local function campOpen(bot, spawner, center, now, pullCamps)
+    local team = bot:GetTeam()
+    local ____opt_0 = cleared[team]
+    if (____opt_0 and ____opt_0[spawner.idx]) == currentMinute(now) then
+        return false
+    end
+    if IsLocationVisible(center) and not campNeutralsSeen(center) then
+        return false
+    end
+    if pullCamps[spawner.idx] == true then
+        return false
+    end
+    return not allyInBox(bot, spawner.idx) and not otherTripOn(bot, spawner.idx) and not Stacking.ReservedByAlly(
+        spawner.idx,
+        bot:GetPlayerID()
+    )
+end
+--- The best camp of the core's own jungle from `from` against the forecast `c`, or undefined: open, of a type its level
+-- allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
+function ____exports.Plan(bot, from, now, c)
+    local s = ____exports.SETTINGS
+    local speed = speedOf(bot) / s.PathFactor
+    local level = bot:GetLevel()
+    local pullCamps = {}
+    if matePulling(bot) then
+        for ____, p in ipairs(Camps.PullCampsFor(
+            bot:GetTeam(),
+            bot:GetAssignedLane()
+        )) do
+            pullCamps[p.campIdx] = true
+        end
+    end
+    local best
+    for ____, spawner in ipairs(Camps.Spawners()) do
+        do
+            local __continue58
+            repeat
+                if spawner.team ~= bot:GetTeam() or level < (s.CampMinLevel[spawner.type] or 1) then
+                    __continue58 = true
+                    break
+                end
+                local center = Camps.BoxCenter(spawner)
+                if dist(center, c.at) > s.MaxCampDist or not campOpen(
+                    bot,
+                    spawner,
+                    center,
+                    now,
+                    pullCamps
+                ) then
+                    __continue58 = true
+                    break
+                end
+                local stacks = Stacking.StackCount(spawner.idx)
+                local prior = ____exports.PriorClearTime(spawner.type, level, stacks)
+                local clr = prior * ____exports.Pace(bot)
+                local back = dist(center, c.at) / speed
+                local ret = now + dist(from, center) / speed + clr + back
+                if ret > c.t + s.MaxLate then
+                    __continue58 = true
+                    break
+                end
+                local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
+                local loss = ____exports.LossBetween(c, now, ret)
+                local net = gold - loss
+                if net >= s.MinNet and (best == nil or net > best.net) then
+                    best = {
+                        camp = spawner.idx,
+                        type = spawner.type,
+                        ret = ret,
+                        leaveBy = ret - back,
+                        clr = clr,
+                        prior = prior,
+                        gold = gold,
+                        loss = loss,
+                        net = net
+                    }
+                end
+                __continue58 = true
+            until true
+            if not __continue58 then
+                break
+            end
+        end
+    end
+    return best
+end
+--- Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then.
+local function anyCamp(bot, front, now)
+    local level = bot:GetLevel()
+    for ____, spawner in ipairs(Camps.Spawners()) do
+        do
+            local __continue65
+            repeat
+                if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
+                    __continue65 = true
+                    break
+                end
+                local center = Camps.BoxCenter(spawner)
+                if dist(center, front) <= ____exports.SETTINGS.MaxCampDist and campOpen(
+                    bot,
+                    spawner,
+                    center,
+                    now,
+                    {}
+                ) then
+                    return true
+                end
+                __continue65 = true
+            until true
+            if not __continue65 then
+                break
+            end
+        end
+    end
+    return false
+end
+--- A visible enemy hero whose reach (plus ThreatMargin) touches the walk from the core to `at` or the camp itself.
+local function threatOnWay(bot, at)
+    local here = bot:GetLocation()
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue70
+            repeat
+                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                    __continue70 = true
+                    break
+                end
+                if distToSegment(
+                    e:GetLocation(),
+                    here,
+                    at
+                ) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
+                    return true
+                end
+                __continue70 = true
+            until true
+            if not __continue70 then
+                break
+            end
+        end
+    end
+    return false
+end
+local function mateOnJob(bot)
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    for ____, h in ipairs(s.allies) do
+        do
+            local __continue76
+            repeat
+                if not h.assigned or h.pid == pid or not h.alive then
+                    __continue76 = true
+                    break
+                end
+                if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
+                    return true
+                end
+                __continue76 = true
+            until true
+            if not __continue76 then
+                break
+            end
+        end
+    end
+    return false
+end
+local function enemyLaneCreepNear(at, radius)
+    for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
+        if c ~= nil and c ~= nil and c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and dist(
+            c:GetLocation(),
+            at
+        ) <= radius then
+            return true
+        end
+    end
+    return false
+end
+--- Why the core is not looking for a camp now (cheap reads, before the forecast), or undefined.
+local function inLaneGate(bot, now)
+    local s = ____exports.SETTINGS
+    if not bot:IsAlive() then
+        return "dead"
+    end
+    if now < s.From then
+        return "time"
+    end
+    local mode = bot:GetActiveMode()
+    if mode ~= BotMode.Laning and mode ~= BotMode.None then
+        return "mode"
+    end
+    if hpOf(bot) < s.StartHP then
+        return "low-hp"
+    end
+    local front = GetLaneFrontLocation(
+        bot:GetTeam(),
+        bot:GetAssignedLane(),
+        0
+    )
+    if dist(
+        bot:GetLocation(),
+        front
+    ) > s.FrontRadius then
+        return "far"
+    end
+    if enemyLaneCreepNear(
+        bot:GetLocation(),
+        s.WaveClearRadius
+    ) or enemyLaneCreepNear(front, s.WaveClearRadius) then
+        return "wave"
+    end
+    return nil
+end
+--- Why a fitting trip may not start now, or undefined.
+local function startGate(bot, plan, now)
+    if mateOnJob(bot) then
+        return "mate-job"
+    end
+    if LaneHooks.EnemiesMissing(
+        bot,
+        LaneConfig.Settings().Thresholds.JobMissingFresh
+    ) > 0 then
+        return "enemy-missing"
+    end
+    if LaneConfig.PositionOf(bot) == 2 and Runes.NextSpawn("power", now) - now < ____exports.SETTINGS.MidRuneGuard then
+        return "rune"
+    end
+    local spawner = Camps.SpawnerByIdx(plan.camp)
+    if spawner ~= nil and threatOnWay(
+        bot,
+        Camps.BoxCenter(spawner)
+    ) then
+        return "threat"
+    end
+    return nil
+end
+local function r1(x)
+    return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil
+end
+local function planFields(p)
+    return {
+        {"camp", p.camp},
+        {"type", p.type},
+        {
+            "ret",
+            r1(p.ret)
+        },
+        {
+            "clr",
+            r1(p.clr)
+        },
+        {
+            "gold",
+            math.floor(p.gold)
+        },
+        {
+            "loss",
+            math.floor(p.loss)
+        },
+        {
+            "net",
+            math.floor(p.net)
+        }
+    }
+end
+local function log(bot, phase, c, fields)
+    Telemetry.Event(
+        "core_camp",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {
+                "pos",
+                LaneConfig.PositionOf(bot)
+            },
+            {
+                "lane",
+                bot:GetAssignedLane()
+            },
+            {"phase", phase},
+            {"clash", c.t},
+            {
+                "win",
+                math.floor(c.t / 30)
+            },
+            unpack(fields)
+        }
+    )
+end
+--- One skip line per wave window and reason: the coverage count's windows where a camp fitted and no trip started.
+local function noteSkip(bot, why, c, plan)
+    local pid = bot:GetPlayerID()
+    local key = (tostring(math.floor(c.t / 30)) .. ":") .. why
+    skipped[pid] = skipped[pid] or ({})
+    if skipped[pid][key] == true then
+        return
+    end
+    skipped[pid][key] = true
+    log(
+        bot,
+        "skip",
+        c,
+        {
+            {"why", why},
+            unpack(planFields(plan))
+        }
+    )
+end
+local function jobLine(bot, t, phase, why)
+    Telemetry.Event(
+        "job",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"job", "camp"},
+            {"phase", phase},
+            {"why", why},
+            {"host", t.host},
+            unpack(phase == "end" and ({{"hit", t.hit == true and 1 or 0}}) or ({}))
+        }
+    )
+end
+--- Why the trip must stop now (the task's guard, every frame), or undefined. The walk back ignores heroes: laning decides.
+local function guard(bot, t)
+    if hpOf(bot) < ____exports.SETTINGS.AbortHP then
+        return "hp"
+    end
+    if t.returning == true then
+        return nil
+    end
+    local near = false
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if e ~= nil and e ~= nil and e:IsAlive() and not e:IsIllusion() and dist(
+            e:GetLocation(),
+            bot:GetLocation()
+        ) <= LaneSpot.HeroReach(bot, e) then
+            near = true
+        end
+    end
+    if not near then
+        t.threatSince = nil
+        return nil
+    end
+    local now = DotaTime()
+    t.threatSince = t.threatSince or now
+    return now - t.threatSince >= Profile.Get(bot).reactBase and "threat" or nil
+end
+local walkBack = __TS__Generator(function(bot, t, ctx)
+    ctx.label("return")
+    t.returning = true
+    local from = DotaTime()
+    local orderedAt = -math.huge
+    while true do
+        if not bot:IsAlive() then
+            return {success = false, reason = "dead"}
+        end
+        local now = DotaTime()
+        local front = GetLaneFrontLocation(
+            bot:GetTeam(),
+            t.lane,
+            0
+        )
+        if dist(
+            bot:GetLocation(),
+            front
+        ) <= ____exports.SETTINGS.ReturnArrive or enemyLaneCreepNear(
+            bot:GetLocation(),
+            ____exports.SETTINGS.WaveClearRadius
+        ) then
+            t.back = now
+            return {
+                success = true,
+                reason = "ok",
+                message = dist(
+                    bot:GetLocation(),
+                    front
+                ) <= ____exports.SETTINGS.ReturnArrive and "back" or "wave"
+            }
+        end
+        if now - from > ____exports.SETTINGS.ReturnMax then
+            return {success = false, reason = "timeout", message = "late"}
+        end
+        if now - orderedAt >= ____exports.SETTINGS.ReturnReorder then
+            bot:Action_MoveToLocation(front)
+            orderedAt = now
+        end
+        coroutine.yield()
+    end
+end)
+local body = __TS__Generator(function(bot, t, ctx)
+    local V = Tasks.Jobs()
+    local hooks = {
+        label = function(l) return ctx.label(l) end,
+        urgent = ctx.urgent
+    }
+    while true do
+        do
+            local __continue117
+            repeat
+                local spawner = Camps.SpawnerByIdx(t.plan.camp)
+                if spawner == nil then
+                    break
+                end
+                t.engagedAt = nil
+                local r = __TS__DelegatedYield(V.clearCamp(
+                    bot,
+                    {
+                        at = Camps.BoxCenter(spawner),
+                        radius = ____exports.SETTINGS.CampRadius,
+                        deadline = t.plan.leaveBy,
+                        onEngage = function(at)
+                            local ____at_2 = at
+                            t.engagedAt = ____at_2
+                            return ____at_2
+                        end
+                    },
+                    hooks
+                ))
+                local now = DotaTime()
+                if r.success then
+                    if r.message == "cleared" and t.engagedAt ~= nil then
+                        learn(bot, now - t.engagedAt, t.plan.prior)
+                    end
+                    markCleared(
+                        bot:GetTeam(),
+                        t.plan.camp,
+                        now
+                    )
+                    local next = ____exports.Plan(
+                        bot,
+                        bot:GetLocation(),
+                        now,
+                        t.clash
+                    )
+                    if next == nil then
+                        break
+                    end
+                    t.plan = next
+                    t.camps = t.camps + 1
+                    log(
+                        bot,
+                        "next",
+                        t.clash,
+                        {
+                            {"after", r.message or "ok"},
+                            unpack(planFields(next))
+                        }
+                    )
+                    __continue117 = true
+                    break
+                end
+                if r.reason ~= "timeout" then
+                    return r
+                end
+                if t.engagedAt ~= nil then
+                    growLate(bot)
+                end
+                break
+                __continue117 = true
+            until true
+            if not __continue117 then
+                break
+            end
+        end
+    end
+    return __TS__DelegatedYield(walkBack(bot, t, ctx))
+end)
+local function finish(bot, t, r, label)
+    running[bot:GetPlayerID()] = nil
+    local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
+    jobLine(bot, t, "end", why)
+    log(
+        bot,
+        "end",
+        t.clash,
+        {
+            {"res", r.success and "ok" or "fail"},
+            {"why", why},
+            {"label", label},
+            {"camp", t.plan.camp},
+            {"camps", t.camps},
+            {
+                "ret",
+                r1(t.plan.ret)
+            },
+            {
+                "back",
+                r1(t.back)
+            },
+            {"g0", t.g0},
+            {
+                "g1",
+                bot:GetGold()
+            },
+            {
+                "secs",
+                r1(DotaTime() - t.left)
+            },
+            {
+                "pace",
+                r1(____exports.Pace(bot))
+            }
+        }
+    )
+end
+--- Every frame while the chooser asks: true while a trip runs or as one starts. Planned at most every PlanEvery: the cheap
+-- in-lane reads, then the forecast and the camps, then the start gates (`blocked`: the chooser's own and higher jobs').
+function ____exports.Wants(bot, blocked, host)
+    if not ____exports.Owns(bot) then
+        return false
+    end
+    Tasks.Tick(bot)
+    local pid = bot:GetPlayerID()
+    if running[pid] ~= nil then
+        return true
+    end
+    if Tasks.Jobs() == nil then
+        return false
+    end
+    local now = DotaTime()
+    if now < (nextPlanAt[pid] or -math.huge) then
+        return false
+    end
+    nextPlanAt[pid] = now + ____exports.SETTINGS.PlanEvery
+    if inLaneGate(bot, now) ~= nil then
+        return false
+    end
+    local lane = bot:GetAssignedLane()
+    if not anyCamp(
+        bot,
+        GetLaneFrontLocation(
+            bot:GetTeam(),
+            lane,
+            0
+        ),
+        now
+    ) then
+        return false
+    end
+    local samples, path = LanePush.Forecast(
+        bot:GetTeam(),
+        lane,
+        ____exports.SETTINGS.Horizon
+    )
+    if samples == nil or path == nil or #samples == 0 then
+        return false
+    end
+    local clash = ____exports.ClashOf(
+        samples,
+        path,
+        bot:GetTeam()
+    )
+    if clash == nil or clash.t - now < ____exports.SETTINGS.MinGap then
+        return false
+    end
+    local plan = ____exports.Plan(
+        bot,
+        bot:GetLocation(),
+        now,
+        clash
+    )
+    if plan == nil then
+        return false
+    end
+    local why = blocked(bot) or startGate(bot, plan, now)
+    if why ~= nil then
+        noteSkip(bot, why, clash, plan)
+        return false
+    end
+    local t = {
+        lane = lane,
+        clash = clash,
+        plan = plan,
+        camps = 1,
+        left = now,
+        g0 = bot:GetGold(),
+        host = host
+    }
+    local ok = Tasks.Start(
+        bot,
+        {
+            name = "camp",
+            host = host,
+            preemptAfter = 1,
+            stallAfter = 4,
+            guard = function() return guard(bot, t) end,
+            onEnd = function(r, info) return finish(bot, t, r, info.label) end
+        },
+        function(ctx) return body(bot, t, ctx) end
+    )
+    if not ok then
+        return false
+    end
+    running[pid] = t
+    jobLine(bot, t, "start", "trigger")
+    log(
+        bot,
+        "start",
+        clash,
+        planFields(plan)
+    )
+    return true
+end
+function ____exports.Step(bot, host)
+    return running[bot:GetPlayerID()] ~= nil and Tasks.Step(bot, host)
+end
+function ____exports.End(bot, why)
+    if running[bot:GetPlayerID()] ~= nil then
+        Tasks.Cancel(bot, "cancelled", why)
+    end
+end
+function ____exports.NoteHit(bot)
+    local t = running[bot:GetPlayerID()]
+    if t ~= nil then
+        t.hit = true
+    end
+end
+function ____exports.NoteIdleHeld(_bot)
+end
+return ____exports

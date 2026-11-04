@@ -63,6 +63,10 @@ export const DEFAULTS = {
      * LaneFight makes no claim. Off: team roam's fight branches and LaneFight's claims, and the trade's 25% kill cut.
      */
     CoreLaneFight: true,
+    /** Slice core-next-gold: with CoreLastHit and JobChooser on, an in-lane pos1-3 leaves for a camp of its own jungle when the
+     *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
+     *  for it in the laning phase. */
+    CoreCampTrip: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
