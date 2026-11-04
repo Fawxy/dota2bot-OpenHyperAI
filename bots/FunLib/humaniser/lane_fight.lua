@@ -29,6 +29,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 function stateFor(bot)
     local pid = bot:GetPlayerID()
@@ -59,6 +60,9 @@ function stateFor(bot)
 end
 function gatesOpen(bot)
     if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+        return false
+    end
+    if CoreTrade.OwnsLaneFights(bot) then
         return false
     end
     return LaneFightConfig.IsOn("Trade") or LaneFightConfig.IsOn("Kill")
@@ -185,11 +189,11 @@ function holdsReadyKey(u)
         local i = 0
         while i < 6 do
             do
-                local __continue47
+                local __continue48
                 repeat
                     local a = u:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:GetLevel() < 1 then
-                        __continue47 = true
+                        __continue48 = true
                         break
                     end
                     local name = a:GetName()
@@ -199,9 +203,9 @@ function holdsReadyKey(u)
                     ) == "key" and not AbilityClasses.IsEscape(name) and a:IsFullyCastable() then
                         return true
                     end
-                    __continue47 = true
+                    __continue48 = true
                 until true
-                if not __continue47 then
+                if not __continue48 then
                     break
                 end
             end
@@ -341,10 +345,10 @@ function partnerCommitTarget(bot, s, ally, now)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue80
+            local __continue81
             repeat
                 if e == nil or not e.visible or not usableUnit(e.unit) then
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 local prev = sampleDistance(bot, ally, e.unit, now)
@@ -358,9 +362,9 @@ function partnerCommitTarget(bot, s, ally, now)
                         s.partnerSeen[ally:GetPlayerID()] = now
                     end
                 end
-                __continue80 = true
+                __continue81 = true
             until true
-            if not __continue80 then
+            if not __continue81 then
                 break
             end
         end
@@ -448,15 +452,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue106
+            local __continue107
             repeat
                 if not a.learned then
-                    __continue106 = true
+                    __continue107 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue106 = true
+                    __continue107 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -470,9 +474,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue106 = true
+                __continue107 = true
             until true
-            if not __continue106 then
+            if not __continue107 then
                 break
             end
         end

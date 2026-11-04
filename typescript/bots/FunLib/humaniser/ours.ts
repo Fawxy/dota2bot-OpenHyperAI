@@ -54,6 +54,12 @@ export const DEFAULTS = {
      *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
      *  and off: the open-lane limits. */
     LaneSpotTower: true,
+    /**
+     * Slice lane-fight: with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours (states/core_trade): it commits on
+     * a target at 40% HP or less with even numbers or more, OHA's team roam keeps only its non-fight branches for it and
+     * LaneFight makes no claim. Off: team roam's fight branches and LaneFight's claims, and the trade's 25% kill cut.
+     */
+    CoreLaneFight: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

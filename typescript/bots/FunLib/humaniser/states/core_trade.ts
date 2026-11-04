@@ -36,6 +36,12 @@ export const DESIRE_KILL = 0.75;
 const MIN_HP = 0.5;
 const BEHIND_BY = 0.15;
 const KILL_HP = 0.25;
+/**
+ * Slice lane-fight: a core whose lane fights are ours (`OwnsLaneFights`) commits on a target at this HP or less. Banked read on
+ * cil5, lposchk3, sspotchk1 (`@lane_encounters`): with the lowest enemy at 40% or less at an encounter's start cores saw 11 kills
+ * and no deaths per 100 encounters, 26 and 0 when we were more; 41-70% gave 1.8 and 1.8. The cut is `judgement` from that.
+ */
+const COMMIT_HP = 0.4;
 const MAX_WAVE = 3;
 const MAX_CREEPS_ON_ME = 2;
 /**
@@ -86,11 +92,11 @@ const LOST_AFTER = 1;
  * Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
  * the borders get their slack.
  */
-export function Decide(i: Inputs, running = false): { kind?: Kind; respect?: Respect } {
+export function Decide(i: Inputs, running = false, killHp = KILL_HP): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
-    if (i.targetHp <= KILL_HP && i.hp >= i.targetHp) return { kind: "kill" };
+    if (i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
     if (i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
@@ -111,6 +117,8 @@ interface Episode {
     target: Unit;
     tpid: number;
     offeredAt: number;
+    /** Whether the core's lane fights were ours at the offer: at the close a dead or out-of-lane core no longer reads as owned. */
+    lf: boolean;
     startedAt?: number;
     hp0: number;
     thp0: number;
@@ -153,6 +161,19 @@ const primedAt: Record<number, number | undefined> = {};
 /** Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it). */
 export function Owns(bot: Unit): boolean {
     return (Ours.On("CoreTrade") && CoreLastHit.Applies(bot)) || isSupport(bot);
+}
+
+/**
+ * Slice lane-fight (`Ours.CoreLaneFight`, OWNERSHIP H9): every fight of this in-lane core beyond a trade is this module's. Team
+ * roam keeps only its non-fight branches for it and LaneFight makes no claim (its gates close), so a commit is `kill` here.
+ * Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
+ */
+export function OwnsLaneFights(bot: Unit): boolean {
+    return Ours.On("CoreLaneFight") && Ours.On("CoreTrade") && CoreLastHit.Applies(bot) && bot.IsAlive() && inLane(bot);
+}
+
+function killHpFor(bot: Unit): number {
+    return OwnsLaneFights(bot) ? COMMIT_HP : KILL_HP;
 }
 
 /** A support whose harass is ours (a bot under CoreLastHit is a core whatever its position). */
@@ -241,6 +262,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     Telemetry.Event("trade", [
         ["pid", pid],
         ["role", isSupport(bot) ? "support" : "core"],
+        ["lf", ep.lf ? 1 : 0],
         ["kind", ep.kind],
         ["tgt", ep.tpid],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
@@ -288,14 +310,14 @@ export function Desire(bot: Unit): number | undefined {
     const target = nearestTarget(bot);
     if (target === undefined) return 0;
     const inputs = Gather(bot, target);
-    const d = Decide(inputs);
+    const d = Decide(inputs, false, killHpFor(bot));
     if (d.kind === undefined) return 0;
     const gap = recoverTo[pid];
     if (d.kind === "trade" && gap !== undefined) {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
         recoverTo[pid] = undefined;
     }
-    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
+    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, lf: OwnsLaneFights(bot), hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
     return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
 }
 
@@ -318,7 +340,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
-    const d = Decide(Gather(bot, ep.target), true);
+    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot));
     if (d.kind === undefined) return d.respect;
     return undefined;
 }

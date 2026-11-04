@@ -38,6 +38,8 @@ local function world(o)
 	-- The follow mechanics below are pinned at the old FollowMargin (0.8); the default (1.0) has its own test.
 	if laneFight.FollowMargin == nil and not o.defaultFollow then laneFight.FollowMargin = 0.8 end
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true } })
+	-- LaneFight's own mechanics, so the cores' in-lane fights stay LaneFight's (slice lane-fight's switch off).
+	package.loaded["bots/FunLib/custom_loader"].Ours.CoreLaneFight = o.coreLaneFight == true
 	T = 100
 	CURRENT_TEAM = team
 	PINGS = {}

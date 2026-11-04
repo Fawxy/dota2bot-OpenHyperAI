@@ -849,6 +849,8 @@ export const EVENTS = {
         pid: "num",
         /** `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot). */
         role: "str",
+        /** 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%. */
+        lf: "num",
         kind: "str",
         tgt: "num",
         result: "str",

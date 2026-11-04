@@ -46,6 +46,11 @@ local IsAvoidingAbilityZone = false
 
 local hTargetCreep = nil
 
+-- Slice lane-fight (Ours.CoreLaneFight, OWNERSHIP H9): set at the top of GetDesire, before anything reads it. True while this
+-- core's in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
+-- are skipped and their targets cleared; the item, avoid-zone, special-unit, tower-creep and last-hit branches stay.
+local bLaneFightsOurs = false
+
 -- Target stickiness + desire clamp
 local TARGET_LOCK_SEC = 1.2
 local targetLockUntil = -90
@@ -74,6 +79,10 @@ function GetDesire()
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 
+    bLaneFightsOurs = J.Humaniser.CoreTrade.OwnsLaneFights(bot)
+    if bLaneFightsOurs then
+        targetUnit, ShouldHelpAlly, ShouldHelpWhenCoreIsTargeted = nil, false, false
+    end
     local res = GetDesireHelper()
     res = CapForLanePush(res)
     res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)
@@ -109,7 +118,9 @@ function GetDesireHelper()
     ItemOpsDesire()
 
     local target
-    target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
+    if not bLaneFightsOurs then
+        target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
+    end
     if ShouldHelpWhenCoreIsTargeted then
         SetStickyTarget(target)
         targetUnit = target
@@ -119,7 +130,9 @@ function GetDesireHelper()
     nearbyAllies = J.GetAlliesNearLoc(bot:GetLocation(), 2200)
     nearbyEnemies = J.GetEnemiesNearLoc(bot:GetLocation(), 2000)
 
-    target, ShouldHelpAlly = ConsiderHelpAlly()
+    if not bLaneFightsOurs then
+        target, ShouldHelpAlly = ConsiderHelpAlly()
+    end
     if ShouldHelpAlly then
         SetStickyTarget(target)
         targetUnit = target
@@ -162,7 +175,7 @@ function GetDesireHelper()
     and bot:GetActiveMode() ~= BOT_MODE_ROAM then
         return BOT_ACTION_DESIRE_NONE
     elseif #nearbyAllies >= #nearbyEnemies then
-        if IsHeroCore then
+        if IsHeroCore and not bLaneFightsOurs then
             local botTarget, targetDesire = X.CarryFindTarget()
             if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget
@@ -170,7 +183,7 @@ function GetDesireHelper()
                 return RemapValClamped(J.GetHP(bot), 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
             end
         end
-        if IsSupport then
+        if IsSupport and not bLaneFightsOurs then
             local botTarget, targetDesire = X.SupportFindTarget()
             if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget

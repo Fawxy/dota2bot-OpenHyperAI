@@ -104,6 +104,40 @@ do
 	check("once the gap is back a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 end
 
+-- Slice lane-fight: a core whose lane fights are ours commits on a target at 40% HP or less; with the switch off the trade's 25%
+-- kill cut stands, so the same 35% target is only a trade. Out of lane the core's fights are not ours (OHA's team roam).
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local function open(lf)
+		Ours.CoreLaneFight = lf
+		CoreTrade.Reset()
+		bot.attacking, enemy.dead = nil, false
+		bot.hp, enemy.hp = 80, 35
+		T = T + 50
+		return CoreTrade.Desire(bot)
+	end
+	check("lane fights ours: a 35% target is a commit", open(true) == CoreTrade.DESIRE_KILL and CoreTrade.OwnsLaneFights(bot))
+	CoreTrade.Think(bot)
+	T = T + 0.5
+	enemy.dead = true
+	CoreTrade.Desire(bot)
+	check("the commit's line carries lf=1 and the kill", last():find("kind=kill") and last():find("lf=1") and last():find("result=kill"))
+	-- A commit that ends in the core's death keeps the offer's lf=1, so @lane_commits counts the death.
+	open(true)
+	CoreTrade.Think(bot)
+	T = T + 0.5
+	bot.alive = false
+	CoreTrade.Desire(bot)
+	check("a commit ended by the core's death still carries lf=1", last():find("why=dead") and last():find("lf=1"), last())
+	bot.alive = true
+	check("switch off: the same target is a trade", open(false) == CoreTrade.DESIRE_TRADE and not CoreTrade.OwnsLaneFights(bot))
+	Ours.CoreLaneFight = true
+	world.laning = false
+	check("out of the laning phase the core's fights are not ours", not CoreTrade.OwnsLaneFights(bot))
+	world.laning = true
+	CoreTrade.Reset()
+end
+
 do
 	check("aggro: inside its own order's cooldown the core just attacks", CoreTrade.AggroPlan(10, 8, 3) == "attack")
 	check("aggro: cooldown over and no creep within 550: a fresh order primes it", CoreTrade.AggroPlan(10, 7, 0) == "prime")
