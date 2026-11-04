@@ -177,8 +177,9 @@ function noteSeen(pid: number, creep: Lib.TaskCreep): void {
 }
 
 function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number | undefined, number | undefined] {
-    // A creep can read alive with no location (prhfc2 game C t=155.533: ev=state_task reason=error, `at` nil).
-    const at = creep.IsAlive() ? creep.GetLocation() : undefined;
+    // A creep can read alive with no location (prhfc2 game C t=155.533), and a removed creep's handle raises on IsAlive
+    // (prhchk5 game A on 1, t=215.833).
+    const at = !(creep.IsNull?.() ?? false) && creep.IsAlive() ? creep.GetLocation() : undefined;
     if (at !== undefined) return [math.floor(at.x), math.floor(at.y), 0];
     const s = seen[pid];
     if (s === undefined || s.creep !== creep) return [undefined, undefined, undefined];

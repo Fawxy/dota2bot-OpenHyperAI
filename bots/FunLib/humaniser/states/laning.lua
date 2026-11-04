@@ -305,7 +305,14 @@ local function noteSeen(pid, creep)
     }
 end
 local function placeOf(pid, creep)
-    local at = creep:IsAlive() and creep:GetLocation() or nil
+    local ____this_13
+    ____this_13 = creep
+    local ____opt_12 = ____this_13.IsNull
+    local ____temp_14 = ____opt_12 and ____opt_12(____this_13)
+    if ____temp_14 == nil then
+        ____temp_14 = false
+    end
+    local at = not ____temp_14 and creep:IsAlive() and creep:GetLocation() or nil
     if at ~= nil then
         return {
             math.floor(at.x),
@@ -414,13 +421,13 @@ local body = __TS__Generator(function(bot, ctx)
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets, current)
                 local verbs = Tasks.Verbs()
-                local ____temp_12
+                local ____temp_15
                 if verbs ~= nil then
-                    ____temp_12 = PreHit.Find(bot, verbs)
+                    ____temp_15 = PreHit.Find(bot, verbs)
                 else
-                    ____temp_12 = nil
+                    ____temp_15 = nil
                 end
-                local pre = ____temp_12
+                local pre = ____temp_15
                 local chosen = choose(bot, targets, current, pre)
                 if chosen ~= nil then
                     noteSeen(
@@ -513,22 +520,22 @@ local body = __TS__Generator(function(bot, ctx)
                     )
                     return
                 end
-                local ____OwnsSupportHits_result_19
+                local ____OwnsSupportHits_result_22
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_19 = claimOf(
+                    ____OwnsSupportHits_result_22 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_19 = nil
+                    ____OwnsSupportHits_result_22 = nil
                 end
-                local claim = ____OwnsSupportHits_result_19
+                local claim = ____OwnsSupportHits_result_22
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
                 ))
-                local ____Telemetry_Event_22 = Telemetry.Event
-                local ____array_21 = __TS__SparseArrayNew(
+                local ____Telemetry_Event_25 = Telemetry.Event
+                local ____array_24 = __TS__SparseArrayNew(
                     {
                         "pid",
                         bot:GetPlayerID()
@@ -558,19 +565,19 @@ local body = __TS__Generator(function(bot, ctx)
                     {"cy", cy},
                     {"ca", ca}
                 )
-                local ____temp_20
+                local ____temp_23
                 if t.kind == "lasthit" and wasPreHit(
                     bot:GetPlayerID(),
                     t.creep
                 ) then
-                    ____temp_20 = true
+                    ____temp_23 = true
                 else
-                    ____temp_20 = nil
+                    ____temp_23 = nil
                 end
-                __TS__SparseArrayPush(____array_21, {"ph", ____temp_20}, {"msg", res.message})
-                ____Telemetry_Event_22(
+                __TS__SparseArrayPush(____array_24, {"ph", ____temp_23}, {"msg", res.message})
+                ____Telemetry_Event_25(
                     "lh",
-                    {__TS__SparseArraySpread(____array_21)}
+                    {__TS__SparseArraySpread(____array_24)}
                 )
             end
         }
