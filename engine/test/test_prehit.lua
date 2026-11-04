@@ -156,13 +156,55 @@ do
     T.eq("prehit: confirmed by the attack firing", attempts[1] and attempts[1].reason, "ok")
     T.eq("prehit: one attack order", bot:actionsOf("attack"), 1)
     T.check("prehit: the bot's hit landed", hp0 - creep.hp >= 40)
-    -- The attack order is cancelled once the pre-hit has fired (a move to the bot's own location after the attack action).
-    local attackAt, cancelled
-    for _, a in ipairs(bot.actions) do
-        if a.kind == "attack" then attackAt = a.t end
-        if a.kind == "move" and attackAt ~= nil and a.t >= attackAt then cancelled = true end
-    end
-    T.check("prehit: the attack order is cancelled after the attempt", cancelled == true)
+end
+
+-- The pre-hit's attack order is cancelled after the attempt. As in Dota, the sim's `keepAttacking` bot swings at its target
+-- again every attack cycle until another order comes; the last-hit wait that follows the pre-hit (pick answers a `lasthit` on
+-- the same creep, never due at 2000 HP) gives no order of its own, so without the cancel the bot hits a second time at 1.5 s
+-- (prhchk5, 04/11/2026). Only the bot damages the creep here (the tower stands by).
+do
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(7), attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, speed = 300, team = 2,
+        secondsPerAttack = 1.5, cooldown = true, keepAttacking = true }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 2000, maxHp = 2000, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    sim:addTower{ x = -700, y = 0, team = 2, damage = 100, range = 700, attackPoint = 0.3, projectileSpeed = 750,
+        secondsPerAttack = 1, attackTarget = creep, passive = true }
+    local preDone = false
+    local g = V.laneFarm(bot, function() return { x = -100, y = 0 } end, {
+        retarget = true,
+        pick = function()
+            if preDone then return { creep = creep, kind = "lasthit", eta = 0, due = 0, walk = 0, dies = 99, ranged = false } end
+            return { creep = creep, kind = "prehit", eta = 0, due = 0, walk = 0, dies = 99, ranged = false }
+        end,
+        onAttempt = function(t) if t.kind == "prehit" then preDone = true end end,
+    })
+    for _ = 1, 100 do g:next() sim:step(DT) end
+    T.eq("prehit cancel: one attack order", bot:actionsOf("attack"), 1)
+    T.eq("prehit cancel: exactly one hit of the bot's in 3.3 s (the standing order did not swing again)", 2000 - creep.hp, 40)
+end
+
+-- The sim's standing order itself: without the cancel a keepAttacking bot hits again one attack cycle later.
+do
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(7), attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2, secondsPerAttack = 1.5,
+        cooldown = true, keepAttacking = true }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 2000, team = 3, passive = true }
+    bot:Action_AttackUnit(creep, true)
+    for _ = 1, 100 do sim:step(DT) end
+    T.eq("sim keepAttacking: two hits from one order in 3.3 s", 2000 - creep.hp, 80)
+end
+
+-- The forecast and the belief read an attacker's phase from the same place: a tower projectile landing past a short horizon
+-- still phases the tower for both (review 2026-11-05-sdk-slice-prehit F2: the forecast called it unphased, the belief not).
+do
+    local sim, bot, creep = towerScene({ noCreep = true })
+    while sim.t < 0.5 do sim:step(DT) end
+    local f = V.hpForecast(bot, creep, 0.5)
+    T.check("short horizon: the tower is phased by its projectile beyond it", not f.unphasedTower and f.unphased == 0)
+    T.eq("short horizon: no hit inside 0.5 s", #f.hits, 0)
+    T.eq("short horizon: the belief agrees (nothing between swings)", V.incomingDps(bot, creep).between, 0)
 end
 
 -- A tower whose projectile is in flight has a known phase: the last-hit belief counts that hit and its repeat one cycle

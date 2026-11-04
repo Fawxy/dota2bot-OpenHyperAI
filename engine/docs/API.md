@@ -145,8 +145,8 @@ of that rate the indexed attackers' DPS and the creep's regen do not explain is 
 the index sees every attacker the belief is unchanged. Beyond 0.45 s (a creep's attack point) hits that land before
 ours have not begun their wind-up, so the DPS of the indexed attackers that are between swings is extrapolated over
 the part of the horizon past 0.45 s; an attacker already winding up, or with an attack projectile in flight, is
-credited with that hit and, for a tower or creep, its repeats one attack cycle apart within the horizon, not with its rate
-(counting its rate as well read 0.6-1 s horizons 12-30 HP too heavy and half of those swings missed early, llhscn2
+credited with that hit and, for a tower or creep, its repeats one attack cycle apart within the horizon (assuming it stays
+on the creep: UNVERIFIED in-game, as `hpForecast`'s repeats), not with its rate (counting its rate as well read 0.6-1 s horizons 12-30 HP too heavy and half of those swings missed early, llhscn2
 03/11/2026; a tower's projectile in flight plus its rate read a ranged core 30-45 HP heavy under its own tower, slice
 pre-hit 05/11/2026). With the adapter's `attackClock` the verb does not order a
 swing while the attack cooldown has more than the frame margin left (0.034 s, or 1.2x the observed frame time up to
@@ -223,7 +223,7 @@ Moved to bot code in slice 0b: `typescript/bots/FunLib/humaniser/job_verbs.ts` (
 | `Tasks.task/Step/Tick/Cancel/Urgent/Label/Current/Last/Describe` | runner (unchanged signatures; bodies now receive `ctx`) |
 | `Verbs.walkTo/walkPath/wait/waitUntil/retreatTo/lastHit/deny/attackAndConfirm` | movement and combat verbs, all with `deadline` (`attackAndConfirm` confirms on the bot's last attack time rising, the target attacking the bot unless `aggroConfirms: false`, or `confirmed()`) |
 | `Verbs.hpForecast/forecastHp` | a creep's HP over the next seconds from the hits the attacker index sees (facts) |
-| `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves. `incomingDps` returns `{ dps, between }` since slice lane-last-hits (03/11/2026; it returned the number now in `dps`): `between` is the rate of the attackers not winding up an attack, the part extrapolated past 0.45 s |
+| `Verbs.incomingDamage/incomingDps/ownHitTime` | the last-hit prediction, for bodies that pick creeps themselves. `incomingDps` returns `{ dps, between }` since slice lane-last-hits (03/11/2026; it returned the number now in `dps`): `between` is the rate of the attackers whose phase is unknown (no wind-up now and no attack projectile in flight; before slice pre-hit, 05/11/2026, only a wind-up counted as known), the part extrapolated past 0.45 s. Since the same slice `incomingDamage` also counts a phased tower's or lane creep's repeats one attack cycle apart within the horizon (cut to 10 s), assuming it stays on the creep (UNVERIFIED in-game) |
 | `Skill.of/profile/react/jitter/lastHitError/random` | skill and human-timing helpers read through the adapter |
 | `Verbs.cast/useItem/pickUpRune` | ability, item and rune verbs |
 | `Skill.timingError/timingSigma/gauss` | skill-scaled timing error for timed actions |

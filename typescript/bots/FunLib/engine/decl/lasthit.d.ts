@@ -1,16 +1,18 @@
 /** @noSelfInFile */
 import { TaskBody, TaskCreep, TaskUnit } from "./types";
 /**
- * Damage (after armour) the creep takes from others within `horizon` seconds: attack projectiles in flight
- * plus every attacker of either team winding up an attack on it. Attacks not yet started are not counted;
- * the prediction runs every frame, so they enter it once their wind-up begins.
+ * Damage (after armour) the creep takes from others within `horizon` seconds (cut to FORECAST_MAX): attack projectiles in
+ * flight, every attacker of either team winding up an attack on it, and (since slice pre-hit, 05/11/2026) the repeats of a
+ * tower's or lane creep's such hit one attack cycle apart within the horizon, its phase being known. Attacks of an attacker
+ * whose phase is unknown are not counted; the prediction runs every frame, so they enter it once their wind-up begins or
+ * their projectile flies.
  */
 export declare function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number): number;
 /**
- * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those
- * not winding up an attack now (their next hit lands at an unknown time within one attack cycle, so it is
- * extrapolated; an attacker in its wind-up is credited with that hit by `incomingDamage` and its next one comes a
- * cycle later, beyond any horizon the verbs use).
+ * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those whose
+ * phase is unknown (no wind-up now and no attack projectile in flight: their next hit lands at an unknown time within one
+ * attack cycle, so it is extrapolated; one winding up or with a projectile in flight is credited with that hit and its
+ * repeats by `incomingDamage`; since slice pre-hit, 05/11/2026, before which only a wind-up counted as known).
  */
 export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): {
     dps: number;

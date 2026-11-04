@@ -1,7 +1,8 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 2 (slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
+name / version / owner:  lastHit, deny / 3 (slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
+                within the horizon are counted and its rate is not spread; v2 slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
                 hpt` on every message and an enemy-hero query each frame; v1 slice lane-last-hits, 03/11/2026: first
                 contract, written as the kill belief, the outcome rule and the message fields changed) / engine (main loop)
 layer:          atomic action (one swing on one lane creep, confirmed on the bot's last-hit or deny count)
@@ -21,7 +22,8 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
                 on it whose hit lands at least one server tick (0.034 s) before ours, after armour
                 (GetActualIncomingDamage); a tower's or creep's hit in flight or winding up repeats one attack cycle
-                later within the horizon (its phase is known; slice pre-hit, 05/11/2026); past 0.45 s of horizon the
+                later within the horizon (its phase is known; the repeat assumes it stays on the creep, UNVERIFIED in-game
+                as for hpForecast; slice pre-hit, 05/11/2026); past 0.45 s of horizon the
                 DPS of the attackers with no such hit (between swings, phase unknown) is extrapolated over the rest;
                 the creep's own HP loss over the last 1.5 s of waiting (less its largest
                 single-frame drop) is a lower bound on the rate, and the part of it the indexed attackers and regen do

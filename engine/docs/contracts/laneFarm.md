@@ -1,7 +1,7 @@
 # Contract: `laneFarm` (posture verb)
 
 ```
-name / version / owner:  laneFarm / 5 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits. Slice pre-hit, 04/11/2026: `pick` asked on every scan, also with nothing offered; a `prehit` pick is one attackAndConfirm; a pick of the same creep with another kind replaces the wait; v6, 05/11/2026: a `prehit`'s attack order is cancelled after the attempt) / engine (main loop)
+name / version / owner:  laneFarm / 6 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits. Slice pre-hit, 04/11/2026: `pick` asked on every scan, also with nothing offered; a `prehit` pick is one attackAndConfirm; a pick of the same creep with another kind replaces the wait; v6, 05/11/2026: a `prehit`'s attack order is cancelled after the attempt) / engine (main loop)
 layer:          atomic action (a composite of holdAt, lastHit, deny and attackAndConfirm)
 intent:         A laner holds a spot and breaks off for the lane creeps its caller picks, swinging with lastHit/deny.
 applicability:  A bot handle; `spot()` read every frame (undefined: no spot to hold). Without `pick` it only holds (the

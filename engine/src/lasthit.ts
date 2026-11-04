@@ -165,19 +165,21 @@ function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
 }
 
 /**
- * Damage (after armour) the creep takes from others within `horizon` seconds: attack projectiles in flight
- * plus every attacker of either team winding up an attack on it. Attacks not yet started are not counted;
- * the prediction runs every frame, so they enter it once their wind-up begins.
+ * Damage (after armour) the creep takes from others within `horizon` seconds (cut to FORECAST_MAX): attack projectiles in
+ * flight, every attacker of either team winding up an attack on it, and (since slice pre-hit, 05/11/2026) the repeats of a
+ * tower's or lane creep's such hit one attack cycle apart within the horizon, its phase being known. Attacks of an attacker
+ * whose phase is unknown are not counted; the prediction runs every frame, so they enter it once their wind-up begins or
+ * their projectile flies.
  */
 export function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number): number {
     return physical(creep, scanAttackers(bot, creep, horizon).raw);
 }
 
 /**
- * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those
- * not winding up an attack now (their next hit lands at an unknown time within one attack cycle, so it is
- * extrapolated; an attacker in its wind-up is credited with that hit by `incomingDamage` and its next one comes a
- * cycle later, beyond any horizon the verbs use).
+ * Damage per second (after armour) of the attackers targeting the creep: `dps` all of them, `between` only those whose
+ * phase is unknown (no wind-up now and no attack projectile in flight: their next hit lands at an unknown time within one
+ * attack cycle, so it is extrapolated; one winding up or with a projectile in flight is credited with that hit and its
+ * repeats by `incomingDamage`; since slice pre-hit, 05/11/2026, before which only a wind-up counted as known).
  */
 export function incomingDps(bot: TaskUnit, creep: TaskCreep): { dps: number; between: number } {
     const s = scanAttackers(bot, creep, 0);
@@ -210,29 +212,55 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     return by;
 }
 
+/** The longest horizon the belief and `hpForecast` list repeats over, in seconds (a larger one is cut to it: the repeat loops run to the horizon). */
+const FORECAST_MAX = 10;
+
+/** An attack projectile in flight at the creep: its caster, seconds to landing and raw damage. */
+interface Flight {
+    caster: TaskAttacker;
+    t: number;
+    damage: number;
+}
+
+/**
+ * The attack projectiles in flight at the creep (the bot's own left out unless `withSelf`), whatever the horizon, and per
+ * caster the latest landing among them: the phase of its attack cycle. The belief (`scanAttackers`) and the forecast
+ * (`hpForecast`) read the phase from this one place, so both see the same attacker as phased (review
+ * 2026-11-05-sdk-slice-prehit F2: two copies disagreed on a projectile landing past a short horizon).
+ */
+function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean): { flights: Flight[]; latest: LuaTable<TaskAttacker, number> } {
+    const flights: Flight[] = [];
+    const latest = new LuaTable<TaskAttacker, number>();
+    const here = creep.GetLocation();
+    for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
+        const c = p.caster;
+        if (p.is_attack !== true || c === undefined || c === null || (c.IsNull?.() ?? false)) continue;
+        if (!withSelf && c === (bot as unknown)) continue;
+        const speed = c.GetAttackProjectileSpeed?.() ?? 0;
+        if (speed <= 0) continue;
+        const t = dist(p.location, here) / speed;
+        flights.push({ caster: c, t, damage: c.GetAttackDamage?.() ?? 0 });
+        latest.set(c, math.max(latest.get(c) ?? -math.huge, t));
+    }
+    return { flights, latest };
+}
+
 /**
  * An attacker with a hit in flight or a wind-up seen has a known phase: its next hit comes one attack cycle after that one
  * (`raw` counts the repeats within the horizon of a tower or creep; a hero's next attack is a choice), and it is not among
  * the `between` attackers whose next hit is spread as a rate. Counting a tower both ways read a ranged core's belief 30-45 HP
  * heavy under its own tower (its 80 per 0.81 s smeared past SEEN_AHEAD on top of the projectile already in flight), so it
- * swung early (slice pre-hit, 05/11/2026).
+ * swung early (slice pre-hit, 05/11/2026). The repeats assume the attacker stays on the creep (UNVERIFIED in-game: a tower
+ * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro), as `hpForecast`'s do.
  */
 function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
+    horizon = math.min(horizon, FORECAST_MAX);
     let raw = 0;
     let dps = 0;
     let between = 0;
     const n = nearby(bot);
-    const inFlight = new LuaTable<TaskAttacker, number>();
-    for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
-        const c = p.caster;
-        if (p.is_attack === true && c !== undefined && c !== null && c !== (bot as unknown) && !(c.IsNull?.() ?? false)) {
-            const speed = c.GetAttackProjectileSpeed?.() ?? 0;
-            if (speed <= 0) continue;
-            const t = dist(p.location, creep.GetLocation()) / speed;
-            if (t <= horizon) raw += c.GetAttackDamage?.() ?? 0;
-            inFlight.set(c, math.max(inFlight.get(c) ?? -math.huge, t));
-        }
-    }
+    const { flights, latest } = flightsAt(bot, creep, false);
+    for (const f of flights) if (f.t <= horizon) raw += f.damage;
     for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
         if (a === (creep as TaskAttacker)) continue;
         const land = windupLanding(a, creep);
@@ -240,15 +268,12 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
         const period = a.GetSecondsPerAttack?.() ?? 1;
         if (land !== undefined && land <= horizon) raw += damage;
         dps += damage / period;
-        const last = land ?? inFlight.get(a);
+        const last = land ?? latest.get(a);
         if (last === undefined) between += damage / period;
         else if (period > 0 && n.heroes?.get(a) !== true) for (let t = last + period; t <= horizon; t += period) raw += damage;
     }
     return { raw, dps, between };
 }
-
-/** The longest forecast `hpForecast` makes, in seconds (a larger horizon is cut to it). */
-const FORECAST_MAX = 10;
 
 /** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
 export interface ForecastHit {
@@ -307,18 +332,11 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
     const kindOf = (a: TaskAttacker): ForecastHit["by"] =>
         a === (bot as unknown) ? "self" : towers.get(a) === true ? "tower" : heroes.get(a) === true ? "hero" : "creep";
     const hits: ForecastHit[] = [];
-    const latest = new LuaTable<TaskAttacker, number>();
     const here = creep.GetLocation();
-    for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
-        const c = p.caster;
-        if (p.is_attack !== true || c === undefined || c === null || (c.IsNull?.() ?? false)) continue;
-        const speed = c.GetAttackProjectileSpeed?.() ?? 0;
-        if (speed <= 0) continue;
-        const t = dist(p.location, here) / speed;
-        if (t > horizon) continue;
-        hits.push({ t, damage: physical(creep, c.GetAttackDamage?.() ?? 0), by: kindOf(c) });
-        latest.set(c, math.max(latest.get(c) ?? -math.huge, t));
-    }
+    // The phase comes from every projectile in flight, one landing past the horizon included (it still says when the next
+    // hit comes); only the hits themselves are cut to the horizon.
+    const { flights, latest } = flightsAt(bot, creep, true);
+    for (const f of flights) if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster) });
     let unphased = 0;
     let unphasedTower = false;
     const unphasedHits: { damage: number; period: number; first: number; last: number }[] = [];
@@ -328,10 +346,7 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         const damage = physical(creep, a.GetAttackDamage?.() ?? 0);
         const period = a.GetSecondsPerAttack?.() ?? 1;
         const land = windupLanding(a, creep);
-        if (land !== undefined && land <= horizon) {
-            hits.push({ t: land, damage, by: kind });
-            latest.set(a, math.max(latest.get(a) ?? -math.huge, land));
-        }
+        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind });
         const last = land ?? latest.get(a);
         if (last === undefined) {
             unphased += damage / period;
