@@ -109,7 +109,7 @@ local function __TS__Spread(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local startWatch, sampleWatch, forecastDeath, WATCH_FOR, WATCH_EVERY, WATCH_SAMPLES, watches
+local startWatch, sampleWatch, noteFires, forecastDeath, WATCH_FOR, WATCH_EVERY, WATCH_SAMPLES, WATCH_FIRES, watches
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -173,6 +173,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
     local ____temp_11 = -1
     local ____temp_12 = {}
     local ____temp_13 = {}
+    local ____GameTime_result_14 = GameTime()
+    local ____temp_15 = {}
+    local ____temp_16 = {}
     local ____array_7 = __TS__SparseArrayNew(
         {"pid", pid},
         {
@@ -221,6 +224,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         last = ____temp_11,
         hs = ____temp_12,
         fs = ____temp_13,
+        g0 = ____GameTime_result_14,
+        lat = ____temp_15,
+        fire = ____temp_16,
         fields = {__TS__SparseArraySpread(____array_7)}
     }
     sampleWatch(bot, verbs)
@@ -234,22 +240,23 @@ function sampleWatch(bot, verbs)
     local dt = DotaTime() - w.t
     local alive = w.creep:IsAlive()
     if alive and dt < WATCH_FOR and #w.hs < WATCH_SAMPLES then
+        noteFires(bot, w)
         if dt - w.last < WATCH_EVERY then
             return
         end
         w.last = dt
         local r = math.floor(dt * 100) / 100
-        local ____w_hs_14 = w.hs
-        ____w_hs_14[#____w_hs_14 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
-        local ____w_fs_15 = w.fs
-        ____w_fs_15[#____w_fs_15 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        local ____w_hs_17 = w.hs
+        ____w_hs_17[#____w_hs_17 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_18 = w.fs
+        ____w_fs_18[#____w_fs_18 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
         return
     end
     watches[pid] = nil
-    local ____Telemetry_Event_17 = Telemetry.Event
-    local ____array_16 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    local ____Telemetry_Event_20 = Telemetry.Event
+    local ____array_19 = __TS__SparseArrayNew(__TS__Spread(w.fields))
     __TS__SparseArrayPush(
-        ____array_16,
+        ____array_19,
         {
             "end",
             math.floor(dt * 100) / 100
@@ -266,12 +273,51 @@ function sampleWatch(bot, verbs)
         {
             "fs",
             table.concat(w.fs, ",")
+        },
+        {
+            "fire",
+            table.concat(w.fire, ",")
         }
     )
-    ____Telemetry_Event_17(
+    ____Telemetry_Event_20(
         "prehit_fc",
-        {__TS__SparseArraySpread(____array_16)}
+        {__TS__SparseArraySpread(____array_19)}
     )
+end
+function noteFires(bot, w)
+    local function note(u, kind)
+        if u:GetAttackTarget() ~= w.creep then
+            return
+        end
+        local at = u:GetLastAttackTime()
+        local before = w.lat[u]
+        w.lat[u] = at
+        if at > w.g0 and (before == nil or at > before) and #w.fire < WATCH_FIRES then
+            local ____w_fire_21 = w.fire
+            ____w_fire_21[#____w_fire_21 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
+        end
+    end
+    note(bot, "S")
+    for ____, u in ipairs(bot:GetNearbyTowers(1600, false) or ({})) do
+        note(u, "T")
+    end
+    for ____, u in ipairs(bot:GetNearbyTowers(1600, true) or ({})) do
+        note(u, "X")
+    end
+    for ____, u in ipairs(bot:GetNearbyLaneCreeps(1600, false) or ({})) do
+        note(u, "C")
+    end
+    for ____, u in ipairs(bot:GetNearbyLaneCreeps(1600, true) or ({})) do
+        note(u, "E")
+    end
+    for ____, u in ipairs(bot:GetNearbyHeroes(1600, false, 0) or ({})) do
+        if u ~= bot then
+            note(u, "H")
+        end
+    end
+    for ____, u in ipairs(bot:GetNearbyHeroes(1600, true, 0) or ({})) do
+        note(u, "D")
+    end
 end
 function forecastDeath(verbs, f)
     do
@@ -508,5 +554,6 @@ end
 WATCH_FOR = 2.5
 WATCH_EVERY = 0.1
 WATCH_SAMPLES = 20
+WATCH_FIRES = 30
 watches = {}
 return ____exports

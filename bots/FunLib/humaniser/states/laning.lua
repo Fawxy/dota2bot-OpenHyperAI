@@ -289,6 +289,9 @@ end
 local seen = {}
 local function noteSeen(pid, creep)
     local at = creep:GetLocation()
+    if at == nil then
+        return
+    end
     seen[pid] = {
         creep = creep,
         x = at.x,
@@ -297,8 +300,8 @@ local function noteSeen(pid, creep)
     }
 end
 local function placeOf(pid, creep)
-    if creep:IsAlive() then
-        local at = creep:GetLocation()
+    local at = creep:IsAlive() and creep:GetLocation() or nil
+    if at ~= nil then
         return {
             math.floor(at.x),
             math.floor(at.y),

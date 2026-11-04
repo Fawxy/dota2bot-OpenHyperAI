@@ -167,14 +167,14 @@ const seen: Record<number, { creep: Lib.TaskCreep; x: number; y: number; t: numb
 
 function noteSeen(pid: number, creep: Lib.TaskCreep): void {
     const at = creep.GetLocation();
+    if (at === undefined) return;
     seen[pid] = { creep, x: at.x, y: at.y, t: DotaTime() };
 }
 
 function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number | undefined, number | undefined] {
-    if (creep.IsAlive()) {
-        const at = creep.GetLocation();
-        return [math.floor(at.x), math.floor(at.y), 0];
-    }
+    // A creep can read alive with no location (prhfc2 game C t=155.533: ev=state_task reason=error, `at` nil).
+    const at = creep.IsAlive() ? creep.GetLocation() : undefined;
+    if (at !== undefined) return [math.floor(at.x), math.floor(at.y), 0];
     const s = seen[pid];
     if (s === undefined || s.creep !== creep) return [undefined, undefined, undefined];
     return [math.floor(s.x), math.floor(s.y), math.floor((DotaTime() - s.t) * 100) / 100];

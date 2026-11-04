@@ -890,6 +890,7 @@ export const EVENTS = {
         fdies: "num",
         hs: "str",
         fs: "str",
+        fire: "str",
     },
     /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {

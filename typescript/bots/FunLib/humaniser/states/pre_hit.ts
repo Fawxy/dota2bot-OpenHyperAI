@@ -194,7 +194,12 @@ interface Watch {
     hs: string[];
     fs: string[];
     fields: [string, any][];
+    /** GameTime at the decision, and each attacker's last attack time seen, for `fire`. */
+    g0: number;
+    lat: LuaTable<Unit, number>;
+    fire: string[];
 }
+const WATCH_FIRES = 30;
 const watches: Record<number, Watch | undefined> = {};
 
 function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit, f: Lib.Verbs.HpForecast, lo: number): void {
@@ -210,7 +215,7 @@ function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit
     for (const h of bot.GetNearbyHeroes(1600, false, 0) ?? []) if (h !== bot && h.GetAttackTarget() === creep) ah++;
     const tw = creep.GetActualIncomingDamage(tower.GetAttackDamage(), DamageType.Physical);
     watches[pid] = {
-        creep, f, t: DotaTime(), last: -1, hs: [], fs: [],
+        creep, f, t: DotaTime(), last: -1, hs: [], fs: [], g0: GameTime(), lat: new LuaTable(), fire: [],
         fields: [
             ["pid", pid],
             ["hp", math.floor(f.hp)],
@@ -235,6 +240,7 @@ function sampleWatch(bot: Unit, verbs: typeof Lib.Verbs): void {
     const dt = DotaTime() - w.t;
     const alive = w.creep.IsAlive();
     if (alive && dt < WATCH_FOR && w.hs.length < WATCH_SAMPLES) {
+        noteFires(bot, w);
         if (dt - w.last < WATCH_EVERY) return;
         w.last = dt;
         const r = math.floor(dt * 100) / 100;
@@ -250,7 +256,32 @@ function sampleWatch(bot: Unit, verbs: typeof Lib.Verbs): void {
         ["fdies", forecastDeath(verbs, w.f)],
         ["hs", w.hs.join(",")],
         ["fs", w.fs.join(",")],
+        ["fire", w.fire.join(",")],
     ]);
+}
+
+/**
+ * Each attack fired at the watched creep since the decision, as `<kind>:<seconds>` (attack time, not landing): T own tower,
+ * C own lane creep, S this bot, H another own hero, D enemy hero, E enemy creep, X enemy tower. Read from each attacker's
+ * GetLastAttackTime while its attack target is the creep, so one aimed elsewhere when it fired is missed.
+ */
+function noteFires(bot: Unit, w: Watch): void {
+    const note = (u: Unit, kind: string): void => {
+        if (u.GetAttackTarget() !== w.creep) return;
+        const at = u.GetLastAttackTime();
+        const before = w.lat.get(u);
+        w.lat.set(u, at);
+        if (at > w.g0 && (before === undefined || at > before) && w.fire.length < WATCH_FIRES) {
+            w.fire.push(`${kind}:${math.floor((at - w.g0) * 100) / 100}`);
+        }
+    };
+    note(bot, "S");
+    for (const u of bot.GetNearbyTowers(1600, false) ?? []) note(u, "T");
+    for (const u of bot.GetNearbyTowers(1600, true) ?? []) note(u, "X");
+    for (const u of bot.GetNearbyLaneCreeps(1600, false) ?? []) note(u, "C");
+    for (const u of bot.GetNearbyLaneCreeps(1600, true) ?? []) note(u, "E");
+    for (const u of bot.GetNearbyHeroes(1600, false, 0) ?? []) if (u !== bot) note(u, "H");
+    for (const u of bot.GetNearbyHeroes(1600, true, 0) ?? []) note(u, "D");
 }
 
 function forecastDeath(verbs: typeof Lib.Verbs, f: Lib.Verbs.HpForecast): number {

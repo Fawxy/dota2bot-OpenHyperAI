@@ -859,7 +859,8 @@
    "dead": "bool",
    "fdies": "num",
    "hs": "str",
-   "fs": "str"
+   "fs": "str",
+   "fire": "str"
   },
   "trade": {
    "pid": "num",
@@ -1339,7 +1340,8 @@
   },
   "ev_prehit_fc": {
    "hs": "text",
-   "fs": "text"
+   "fs": "text",
+   "fire": "text"
   },
   "ev_trade": {
    "kind": "text",

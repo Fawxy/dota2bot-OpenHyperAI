@@ -747,7 +747,8 @@ ____exports.EVENTS = {
         dead = "bool",
         fdies = "num",
         hs = "str",
-        fs = "str"
+        fs = "str",
+        fire = "str"
     },
     trade = {
         pid = "num",
