@@ -257,8 +257,9 @@ Customize.Humaniser = {
 -- SupportHarass (slice support-spot): with SupportDeny on, pos4-5 harass enemy heroes in lane through our attack mode (the
 -- trade rule with a support's reach, hits that draw no creep aggro) and, with LaneSpot on, stand on our lane spot instead of
 -- OHA's PositionThink. Off: Valve's attack mode and OHA's positioning and harass for supports.
--- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax the spot's limits in their range (enemy creeps attacking
--- something else keep a 200 ring, enemy heroes our tower would punish a short reach). Off: the open-lane limits everywhere.
+-- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (enemy
+-- creeps attacking something else keep a 200 ring, enemy heroes our tower would punish a short reach). Supports, and off: the
+-- open-lane limits everywhere.
 Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
