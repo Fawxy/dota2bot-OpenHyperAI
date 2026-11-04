@@ -11,6 +11,7 @@ H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 local world = { laning = true, applies = true }
 package.loaded["bots/FunLib/humaniser/transitions/phase"] = { IsLaningFor = function() return world.laning end }
 package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return world.applies end }
+package.loaded["bots/FunLib/humaniser/states/support_deny"] = { Harass = function() return world.support == true end }
 package.loaded["bots/FunLib/humaniser/states/core_trade"] = nil
 local CoreTrade = require("bots/FunLib/humaniser/states/core_trade")
 
@@ -273,6 +274,63 @@ do
 	GetAmountAlongLane = function() return { amount = 0.5, distance = 2000 } end
 	check("our core away from its lane: OHA's run triggers stay", not CoreTrade.TradeOwnsLaneRun(bot))
 	GetAmountAlongLane = along
+end
+
+-- Slice support-spot: a support's harass is the same rule with a longer reach (attack range + radii + 300, against the core's
+-- + 100), and it prefers an enemy hero swinging at a lane creep.
+do
+	CoreTrade.Reset()
+	bot.mode, bot.desire, bot.attacking = LANING, 0, nil
+	bot.loc = Vector(0, 0)
+	bot.hp, enemy.hp = 80, 70
+	function Unit:GetNearbyLaneCreeps() return {} end
+	enemy.loc = Vector(750, 0)
+	T = 600
+	check("a core does not trade with an enemy hero 750 away (reach 648)", CoreTrade.Desire(bot) == 0)
+	world.applies, world.support = false, true
+	check("support harass owned: our attack mode for the support", CoreTrade.Owns(bot))
+	check("a support harasses the same hero 750 away (reach 848)", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	CoreTrade.Think(bot)
+	check("the harass attacks that hero", bot.attacking == enemy)
+	enemy.dead = true
+	CoreTrade.Desire(bot)
+	check("the harass line says role=support", last():find("ev=trade") and last():find("role=support"))
+	enemy.dead = false
+	world.support = false
+	check("switch off (neither core nor harassing support): OHA's attack mode", not CoreTrade.Owns(bot))
+
+	-- Two enemy heroes: the nearer one idle, the farther one swinging at one of our creeps.
+	CoreTrade.Reset()
+	local ours = MakeUnit({ pid = 30, team = 2, loc = Vector(700, 100) })
+	local ally = hero(2, 2, -100, 90)
+	function ours:IsHero() return false end
+	function ours:IsCreep() return true end
+	local busy = hero(7, 3, 800, 70)
+	busy.attacking = ours
+	enemy.loc = Vector(600, 0)
+	local heroes = Unit.GetNearbyHeroes
+	function Unit:GetNearbyHeroes(r, enemies)
+		-- Two of us against the two of them, so the window is not outnumbered.
+		if not enemies then return { self, ally } end
+		local out = {}
+		for _, h in ipairs({ enemy, busy }) do if GetUnitToUnitDistance(self, h) <= r then table.insert(out, h) end end
+		return out
+	end
+	local alive = IsHeroAlive
+	IsHeroAlive = function(pid) return pid == 7 or alive(pid) end
+	world.support = true
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("a support prefers the enemy hero busy last-hitting over a nearer idle one", bot.attacking == busy)
+	CoreTrade.Reset()
+	bot.attacking = nil
+	world.applies, world.support = true, false
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("a core takes the nearest", bot.attacking == enemy)
+	Unit.GetNearbyHeroes = heroes
+	IsHeroAlive = alive
+	enemy.loc = Vector(400, 0)
 end
 
 finish()

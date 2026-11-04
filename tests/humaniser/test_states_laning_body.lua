@@ -66,7 +66,8 @@ local function Fresh(states, o)
 	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
-		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot }
+		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
+		LaneSpotTower = o.laneSpotTower }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -139,6 +140,40 @@ do
 	local sup = spotFor(SDK, { pos = 5 }, setup)
 	check("core shifts away from the enemy hero", core ~= nil and core.y < 0, core and core.y)
 	check("support shifts towards the enemy hero", sup ~= nil and sup.y > 0, sup and sup.y)
+end
+
+-- Slice support-spot: a support (range 600) stands attack range - 50 behind our front, so the front creeps stay in deny reach;
+-- a melee core 100 behind it. The enemy creep is far enough ahead that no ring moves either point.
+do
+	local setup = function() creep({ loc = Vector(800, 0) }) end
+	local sup = spotFor(SDK, { pos = 5, range = 600 }, setup)
+	local core = spotFor(SDK, { pos = 2 }, setup)
+	check("support: 550 behind our front", sup ~= nil and sup.x == -550 and sup.y == 0, sup and sup.x)
+	check("melee core: 100 behind our front", core ~= nil and core.x == -100, core and core.x)
+end
+
+-- An enemy hero's ready nukes for ev=lane_pos: trained, not passive or hidden, off cooldown, affordable and with damage; the
+-- longest cast range among them.
+do
+	local function ability(o)
+		return { IsNull = function() return false end, IsHidden = function() return o.hidden == true end,
+			IsPassive = function() return o.passive == true end, GetLevel = function() return o.level or 1 end,
+			GetAbilityDamage = function() return o.dmg or 100 end, GetCooldownTimeRemaining = function() return o.cd or 0 end,
+			GetManaCost = function() return o.mana or 50 end, GetCastRange = function() return o.range end }
+	end
+	ResetWorld()
+	local e = MakeUnit({ pid = 7, team = 3, loc = Vector(0, 0) })
+	e.mana = 120
+	e.abilities = { [0] = ability({ range = 700 }), [1] = ability({ range = 900, cd = 4 }), [2] = ability({ range = 1000, passive = true }),
+		[3] = ability({ range = 1100, mana = 200 }), [4] = ability({ range = 1200, dmg = 0 }), [5] = ability({ range = 650, level = 0 }) }
+	local LaneSpot = require("bots/FunLib/humaniser/states/lane_spot")
+	local res = LaneSpot.ReadyNukes(e)
+	local n, r = res[1], res[2]
+	check("ready nukes: one of six is castable now, range 700", n == 1 and r == 700, tostring(n) .. " " .. tostring(r))
+	e.abilities[1] = ability({ range = 900 })
+	res = LaneSpot.ReadyNukes(e)
+	n, r = res[1], res[2]
+	check("ready nukes: the second off cooldown, the longer range", n == 2 and r == 900, tostring(n) .. " " .. tostring(r))
 end
 
 -- No enemy wave in sight (between waves, walking out): our own front, 100 behind it, not OHA's spot; the tower ring still holds.
@@ -221,6 +256,91 @@ do
 	check("both rings kept", s ~= nil and dist(s, Vector(60, 0)) >= 520 and dist(s, c.loc) >= 520, s and (s.x .. "," .. s.y))
 end
 
+-- Our own tower (Ours.LaneSpotTower). prhchk2: under our tower the creep ring kept melee cores beyond a 1 s walk of the creeps
+-- the tower was hitting. Our tower at (-500, 0), range 700.
+local function ownTower(x, y, target)
+	local tower = { team = 2, loc = Vector(x, y), target = target }
+	tower.GetLocation = function() return tower.loc end
+	tower.IsAlive = function() return true end
+	tower.IsNull = function() return false end
+	tower.GetAttackRange = function() return 700 end
+	tower.GetAttackTarget = function() return tower.target end
+	return tower
+end
+
+-- A melee creep in our tower's range, attacking one of our creeps: the core may stand 200 from it, not 520.
+do
+	local Laning = require("bots/FunLib/humaniser/states/laning")
+	local c
+	local held = function(target)
+		return function(bot)
+			local ours = creep({ loc = Vector(-20, 0), team = 2 })
+			c = creep({ loc = Vector(60, 0) })
+			c.target = target == "ours" and ours or target == "bot" and bot or nil
+			TOWERS = { ownTower(-500, 0) }
+		end
+	end
+	local s, bot = spotFor(SDK, nil, held("ours"))
+	Laning = require("bots/FunLib/humaniser/states/laning")
+	local info = Laning.SpotInfo(bot)
+	check("held creep: inside the 520 ring, outside 200", s ~= nil and dist(s, c.loc) >= 200 and dist(s, c.loc) < 520, s and dist(s, c.loc))
+	check("held creep: ut=1 (closer than the open-lane limits allow)", info ~= nil and info.covered == 1, info and info.covered)
+	local sb = spotFor(SDK, nil, held("bot"))
+	check("creep attacking us: the 520 ring", sb ~= nil and dist(sb, c.loc) >= 520, sb and dist(sb, c.loc))
+	local sn = spotFor(SDK, nil, held(nil))
+	check("creep with no target: the 520 ring", sn ~= nil and dist(sn, c.loc) >= 520, sn and dist(sn, c.loc))
+	local so = spotFor(SDK, { laneSpotTower = false }, held("ours"))
+	check("LaneSpotTower off: the 520 ring under our tower", so ~= nil and dist(so, c.loc) >= 520, so and dist(so, c.loc))
+	-- At 20% HP (HP_LOW 25%) the tower's cover is off: the 520 ring plus the full 300 margin (tspchk1 death at 1% HP).
+	local sl = spotFor(SDK, { hp = 20 }, held("ours"))
+	check("held creep at 20% HP: the 820 ring", sl ~= nil and dist(sl, c.loc) >= 820, sl and dist(sl, c.loc))
+	local sm = spotFor(SDK, { hp = 40 }, held("ours"))
+	check("held creep at 40% HP: 200 plus the 120 margin", sm ~= nil and dist(sm, c.loc) >= 320 and dist(sm, c.loc) < 520, sm and dist(sm, c.loc))
+	-- A support (pos 5, with SupportHarass on our spot) under the same tower keeps the open-lane ring: step 1d checked cores
+	-- only (review tower-spot H1).
+	local ss = spotFor(SDK, { pos = 5, supportDeny = true, supportHarass = true }, held("ours"))
+	check("support under our tower: the 520 ring", ss ~= nil and dist(ss, c.loc) >= 520, ss and dist(ss, c.loc))
+	local sf = spotFor(SDK, nil, function(bot) held("ours")(bot) TOWERS = { ownTower(-1500, 0) } end)
+	check("creep outside our tower's range: the 520 ring", sf ~= nil and dist(sf, c.loc) >= 520, sf and dist(sf, c.loc))
+end
+
+-- A melee enemy hero 400 from the preferred point: in the open lane the 800 floor; with our tower 200 behind the point it would
+-- have to stand inside the tower's range to hit the core there, so the point holds (reach 198 + 150).
+do
+	local e
+	local setup = function(x)
+		return function() e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 TOWERS = x and { ownTower(x, 0) } or {} end
+	end
+	local s, bot = spotFor(SDK, nil, setup(-300))
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("covered point: the preferred point holds", s ~= nil and s.x == -100 and info.why == "pref", s and (s.x .. "," .. s.y))
+	check("covered point: ut=1", info.covered == 1, info.covered)
+	local open = spotFor(SDK, nil, setup(nil))
+	check("no tower of ours: the 800 floor", open ~= nil and dist(open, e.loc) >= 800, open and dist(open, e.loc))
+	-- Our tower 800 behind the point: the enemy could hit the point from outside the tower's range, so the spot backs off only
+	-- to where the tower covers it (within 700 - 198 of the tower), not to the 800 floor.
+	local edge = spotFor(SDK, nil, setup(-900))
+	check("tower further back: the spot backs into its cover", edge ~= nil and dist(edge, Vector(-900, 0)) <= 502
+		and dist(edge, e.loc) >= 348 and dist(edge, e.loc) < 800, edge and (edge.x .. "," .. edge.y))
+end
+
+-- A ranged enemy hero our tower is attacking: reach 550 + 48 + 150, not 550 + 48 + 450.
+do
+	local e
+	local setup = function(tanked)
+		return function()
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 550
+			TOWERS = { ownTower(-300, 0, tanked and e or nil) }
+		end
+	end
+	local s, bot = spotFor(SDK, nil, setup(true))
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("tanking enemy: outside 748", s ~= nil and dist(s, e.loc) >= 748, s and dist(s, e.loc))
+	check("tanking enemy: inside 1,048 (the open-lane reach)", s ~= nil and dist(s, e.loc) < 1048 and info.covered == 1, s and dist(s, e.loc))
+	local n = spotFor(SDK, nil, setup(false))
+	check("same enemy, tower on something else: 1,048", n ~= nil and dist(n, e.loc) >= 1048, n and dist(n, e.loc))
+end
+
 -- Ours.LaneSpot: a core under CoreLastHit stands on our spot although States.Laning.Spot is 'oha'; off, OHA's spot.
 do
 	local c
@@ -241,7 +361,18 @@ do
 	Hsup.States.SetLaneSpot(bsup, function() return Vector(-250, 0) end)
 	T = T + 1
 	local sup = require("bots/FunLib/humaniser/states/laning").Spot(bsup)
-	check("LaneSpot: a support keeps OHA's spot (step 2)", sup ~= nil and sup.x == -250, sup and sup.x)
+	check("LaneSpot: a support whose lane hits are OHA's keeps OHA's spot", sup ~= nil and sup.x == -250, sup and sup.x)
+	-- Slice support-spot: a support whose lane hits and harass are ours stands on our spot; SupportHarass off, OHA's.
+	local _, bsh, Hsh = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true }, setup)
+	Hsh.States.SetLaneSpot(bsh, function() return Vector(-250, 0) end)
+	T = T + 1
+	local sh = require("bots/FunLib/humaniser/states/laning").Spot(bsh)
+	check("LaneSpot: a support with SupportHarass on stands on our spot", sh ~= nil and sh.x ~= -250 and dist(sh, c.loc) >= 520, sh and sh.x)
+	local _, bso, Hso = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true, supportHarass = false }, setup)
+	Hso.States.SetLaneSpot(bso, function() return Vector(-250, 0) end)
+	T = T + 1
+	local so = require("bots/FunLib/humaniser/states/laning").Spot(bso)
+	check("LaneSpot: SupportHarass off, the support keeps OHA's spot", so ~= nil and so.x == -250, so and so.x)
 end
 
 -- Spot = 'oha' (the default) ignores the wave: slice 1's behaviour.
@@ -402,7 +533,7 @@ do
 	local function support(o)
 		local H, bot, c
 		silenced(function()
-			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff, supportLastHit = o.lastHits })
+			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff, supportLastHit = o.lastHits, supportHarass = o.harass })
 			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
 			for _ = 1, 4 do frame(H, bot) end
 			local team = o.enemy and 3 or (o.team or 2)
@@ -441,7 +572,8 @@ do
 	end)
 	check("support last hits off: a dying enemy creep is not the body's (OHA's last hit)", offeredEnemy == false and bote.attacks == nil and He.States.BodySupportLastHits(bote) == false)
 
-	local Hl, botl = support({ at = Vector(-200, 0) })
+	-- OHA's spot (SupportHarass off): the leash is measured from whichever spot the support holds.
+	local Hl, botl = support({ at = Vector(-200, 0), harass = false })
 	silenced(function() Hl.States.SetLaneSpot(botl, function() return Vector(-1500, 0) end) end)
 	local past
 	silenced(function() past = require("bots/FunLib/humaniser/states/laning").HitOffered(botl) end)

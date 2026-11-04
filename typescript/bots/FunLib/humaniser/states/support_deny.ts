@@ -20,3 +20,11 @@ export function Applies(bot: Unit): boolean {
 export function LastHits(_bot: Unit): boolean {
     return Ours.On("SupportLastHit");
 }
+
+/**
+ * Ours.SupportHarass (slice support-spot): this support's attack mode is ours in lane (harass, states/core_trade) and, with
+ * Ours.LaneSpot, it stands on our lane spot (states/support_lane step `hold`). Decided at load by mode_attack_generic.
+ */
+export function Harass(bot: Unit): boolean {
+    return Applies(bot) && Ours.On("SupportHarass");
+}

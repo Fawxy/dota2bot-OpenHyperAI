@@ -13,8 +13,8 @@ if Utils.BuggyHeroesDueToValveTooLazy[botName] then
 	local_mode_attack_generic = dofile( GetScriptDirectory().."/FunLib/override_generic/mode_attack_generic" )
 end
 
--- Core in lane (Ours.CoreTrade, OWNERSHIP H13): our attack desire and Think while the core lanes, OHA's Lua port outside
--- lane. Decided once at load: defining GetDesire removes Valve's attack desire for the whole game, so the port covers the rest.
+-- Core in lane (Ours.CoreTrade) and Support in lane (Ours.SupportHarass), OWNERSHIP H13: our attack desire and Think while the
+-- laner lanes (core trades, support harass), OHA's Lua port outside lane. Decided once at load: defining GetDesire removes Valve's attack desire for the whole game, so the port covers the rest.
 local CoreTrade = require( GetScriptDirectory()..'/FunLib/humaniser/index' ).CoreTrade
 if CoreTrade.Owns(bot) then
 	local Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )

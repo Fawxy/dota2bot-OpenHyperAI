@@ -10,7 +10,7 @@
 --   idle_tower idle within 750 of an enemy tower (lane_spot TOWER_RING)
 --   hit        snapshots hit by a hero in the last second;  hit_idle  the same while idle
 --   en_last    enemy heroes within 1,200 at the last snapshot
--- Params: like, until.
+-- Params: like, until; pos_lo, pos_hi the lineup positions (default 1-3; 4-5 reads the supports, slice support-spot).
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: core_death
@@ -19,7 +19,7 @@ w AS MATERIALIZED (
     SELECT cd.game_id, cd.pid, cd.t AS dt, cd.team, cd.cause, cd.x AS dx, cd.y AS dy, a.t, CAST(round(a.t) AS INTEGER) AS sec, a.x, a.y, a.hp, a.mode,
         a.activity, a.hit, s.ln, lag(a.mode) OVER (PARTITION BY cd.game_id, cd.pid, cd.t ORDER BY a.t) AS pmode
     FROM dd cd JOIN lane_activity a ON a.game_id = cd.game_id AND a.pid = cd.pid AND a.t > cd.t - 30 AND a.t <= cd.t
-    JOIN ev_snap s ON s.game_id = a.game_id AND s.seq = a.seq
+    JOIN ev_snap s ON s.game_id = a.game_id AND s.pid = a.pid AND s.t = a.t AND s.seq = a.seq
 ),
 -- Enemy hero positions and the enemy lane fronts, by whole second (equality joins: the window is a few thousand snapshots).
 es AS MATERIALIZED (

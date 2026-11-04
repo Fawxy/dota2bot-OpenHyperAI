@@ -716,6 +716,7 @@ ____exports.EVENTS = {
     },
     trade = {
         pid = "num",
+        role = "str",
         kind = "str",
         tgt = "num",
         result = "str",
@@ -894,9 +895,13 @@ ____exports.EVENTS = {
         pushed = "num",
         why = "str",
         hm = "num",
+        ut = "num",
         sx = "num",
         sy = "num",
-        hph = "num"
+        hph = "num",
+        ne = "num",
+        nk = "num",
+        nr = "num"
     }
 }
 return ____exports

@@ -1,4 +1,4 @@
--- Fragment (`-- include: core_death`): every death of a lineup core (pos 1-3) before :until (default 600) and what it was doing,
+-- Fragment (`-- include: core_death`): every death of a lineup core (pos 1-3, or :pos_lo to :pos_hi) before :until (default 600) and what it was doing,
 -- as @core_deaths reads them (its header has the rules). The including query defines `gm(game_id, file)` first. CTEs: s, d, last,
 -- x, tw (enemy tower positions), c, and cd(game_id, pid, t, team, pos, hp, mode, activity, in_range, x, y, trade, cut, tower, cause).
 -- Ends with a comma.
@@ -6,7 +6,7 @@
 s AS (
     SELECT s.game_id, s.t, s.pid, s.deaths, lag(s.deaths) OVER w AS prev, lag(s.t) OVER w AS prev_t
     FROM ev_snap s JOIN gm ON gm.game_id = s.game_id JOIN lineup l ON l.game_id = s.game_id AND l.pid = s.pid
-    WHERE l.pos <= 3 AND s.deaths IS NOT NULL
+    WHERE l.pos >= coalesce(:pos_lo, 1) AND l.pos <= coalesce(:pos_hi, 3) AND s.deaths IS NOT NULL
     WINDOW w AS (PARTITION BY s.game_id, s.pid ORDER BY s.seq)
 ),
 d AS (SELECT game_id, pid, prev_t AS t FROM s WHERE prev IS NOT NULL AND deaths > prev AND prev_t < coalesce(:until, 600)),

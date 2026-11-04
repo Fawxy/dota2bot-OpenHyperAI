@@ -126,7 +126,7 @@ do
 	check('laning: cancels a swing on a core creep first in Think, not the support body\'s own claimed last hit', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return end'))
 	check('laning: predicate is the filter', has(laning, 'if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end'))
 	local general = source('bots/Customize/general.lua')
-	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, SupportPull = true, LaneSpot = true }'))
+	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true }'))
 end
 
 finish()

@@ -64,3 +64,25 @@ test('core deaths: the tower table equals dynamic.js TOWERS', () => {
     const rows = [...values.matchAll(/\((\d), (-?\d+), (-?\d+)\)/g)].map(m => m.slice(1).map(Number));
     assert.deepStrictEqual(rows, TOWERS);
 });
+
+test('core trades: pos_lo and pos_hi read a support harass the same way', () => {
+    const lines = [
+        line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
+        line(0, 'bot pid=4 hero=h4 team=2 pos=4'),
+        line(100, 'snap pid=4 x=0 y=0 alive=1 mode=attack tgt=npc_dota_hero_x deaths=0 ol=0 ar=600 ed=500'),
+        line(100, 'snap pid=1 x=0 y=0 alive=1 mode=laning deaths=0'),
+        line(110, 'trade pid=4 role=support kind=trade tgt=6 result=done why=losing dur=2 hpd=20 thpd=60 hp=0.8 thp=0.7 en=1 al=1 cr=0 ag=0 mode=2 md=0.6'),
+        trade(120, 'done', 90, 40),
+    ];
+    const sup = run('core_trades', lines, { pos_lo: 4, pos_hi: 5 });
+    assert.deepStrictEqual(sup.map(r => [r.pid, r.taken, r.won, r.hpd, r.thpd, r.hero]), [[4, 1, 1, 20, 60, 1]]);
+    assert.deepStrictEqual(run('core_trades', lines).map(r => [r.pid, r.taken]), [[1, 1]]);
+});
+
+test('core deaths: pos_lo and pos_hi count a support death the same way, the default leaves it out', () => {
+    const lines = [line(0, 'bot pid=4 hero=h4 team=2 pos=4')];
+    const at = (t, mode, deaths) => lines.push(line(t, `snap pid=4 x=0 y=-3000 alive=1 hp=30 mode=${mode} d=0.4 deaths=${deaths}`));
+    at(440, 'laning', 0); at(445, 'laning', 0); at(475, 'laning', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).length, 0);
+    assert.deepStrictEqual(run('core_deaths', lines, { pos_lo: 4, pos_hi: 5 }).map(r => [r.pid, r.t, r.cause]), [[4, 445, 'lane']]);
+});

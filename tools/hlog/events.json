@@ -828,6 +828,7 @@
   },
   "trade": {
    "pid": "num",
+   "role": "str",
    "kind": "str",
    "tgt": "num",
    "result": "str",
@@ -927,7 +928,10 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
+   "se": "num",
    "sh": "num",
+   "lv": "num",
+   "sf": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -980,7 +984,8 @@
    "chp": "num",
    "cv": "num",
    "cdmg": "num",
-   "php": "num"
+   "php": "num",
+   "se": "num"
   },
   "gank": {
    "pid": "num",
@@ -1006,9 +1011,13 @@
    "pushed": "num",
    "why": "str",
    "hm": "num",
+   "ut": "num",
    "sx": "num",
    "sy": "num",
-   "hph": "num"
+   "hph": "num",
+   "ne": "num",
+   "nk": "num",
+   "nr": "num"
   }
  },
  "kinds": {
@@ -1314,6 +1323,7 @@
    "msg": "text"
   },
   "ev_trade": {
+   "role": "text",
    "kind": "text",
    "result": "text",
    "why": "text"

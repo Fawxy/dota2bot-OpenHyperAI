@@ -1,5 +1,7 @@
 /**
- * Core in lane, trading (L.2c): a pos1-3 core's attacks on enemy heroes while it lanes. mode_attack_generic defines its
+ * A laner's attacks on enemy heroes while it lanes: Core in lane's trades (L.2c, pos1-3) and, since slice support-spot, Support
+ * in lane's harass (pos4-5, `Ours.SupportHarass`): one rule for both, the role an input (a support's reach is longer, and it
+ * prefers a target busy last-hitting). mode_attack_generic defines its
  * GetDesire/Think for the bots this owns (decided at load, OWNERSHIP H13): in lane, this module's desire and Think; out of
  * lane, OHA's Lua port override_generic/mode_attack_generic, since defining GetDesire removes Valve's attack desire for the
  * whole game. The desire sits under the laning 0.9 last-hit desire and under any retreat, so a due last hit or a retreat
@@ -8,6 +10,7 @@
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
+import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -50,6 +53,16 @@ const LOSING_BY = 0.05;
 const KILL_TIME = 6;
 /** Reach beyond the bot's attack range (plus both bounding radii) within which a hero is a target. */
 const REACH = 100;
+/**
+ * A support's reach instead (judgement): its spot holds it outside the enemy heroes' reach (states/lane_spot, at least 800), so
+ * a harass starts with a walk in. 300 is about 1 s of walking, inside the 3 s aggro cooldown the order primes.
+ */
+const HARASS_REACH = 300;
+/**
+ * A support prefers an enemy hero whose attack target is a lane creep (a last-hit attempt: its swing goes to the creep, not back
+ * at us) by counting it this much nearer (judgement).
+ */
+const PUNISH_BONUS = 300;
 const NEAR = 1200;
 const CREEP_AGGRO = 500;
 const TOWER_REACH = 850;
@@ -117,8 +130,8 @@ interface Episode {
 export type AggroAction = "attack" | "prime" | "step_out";
 
 /**
- * CANDIDATE(aggroFreeAttack): Support in lane's harass is the second consumer, then the engine's. What a trading hero does this
- * frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
+ * The aggro-free attack, for core trades and support harass alike (one plan, so not an engine verb: a lane technique is bot code,
+ * CLAUDE.md rule 3; slice support-spot). What a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
  * order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
  */
 export function AggroPlan(now: number, primedAt: number | undefined, creepsWithinClear: number): AggroAction {
@@ -139,7 +152,23 @@ const primedAt: Record<number, number | undefined> = {};
 
 /** Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it). */
 export function Owns(bot: Unit): boolean {
-    return Ours.On("CoreTrade") && CoreLastHit.Applies(bot);
+    return (Ours.On("CoreTrade") && CoreLastHit.Applies(bot)) || isSupport(bot);
+}
+
+/** A support whose harass is ours (a bot under CoreLastHit is a core whatever its position). */
+function isSupport(bot: Unit): boolean {
+    return !CoreLastHit.Applies(bot) && SupportDeny.Harass(bot);
+}
+
+/** How far from the bot an enemy hero is a target: attack range, both bounding radii and the role's walk-in. */
+function reachOf(bot: Unit): number {
+    return bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + (isSupport(bot) ? HARASS_REACH : REACH);
+}
+
+/** The enemy hero is swinging at a lane creep: a last-hit or deny attempt. */
+function lastHitting(h: Unit): boolean {
+    const t = h.GetAttackTarget();
+    return t !== undefined && t !== null && !t.IsNull() && t.IsCreep() && !t.IsHero();
 }
 
 /** The core lanes: laning phase for it (transitions/phase) and standing by its own lane; elsewhere OHA's port fights. */
@@ -156,12 +185,13 @@ function valid(u: Unit | undefined | null): u is Unit {
 }
 
 function nearestTarget(bot: Unit): Unit | undefined {
-    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
+    const reach = reachOf(bot);
+    const support = isSupport(bot);
     let best: Unit | undefined;
     let bestD = math.huge;
     for (const h of bot.GetNearbyHeroes(reach, true, BotMode.None)) {
         if (!valid(h)) continue;
-        const d = GetUnitToUnitDistance(bot, h);
+        const d = GetUnitToUnitDistance(bot, h) - (support && lastHitting(h) ? PUNISH_BONUS : 0);
         if (d < bestD) {
             best = h;
             bestD = d;
@@ -210,6 +240,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const i = ep.inputs;
     Telemetry.Event("trade", [
         ["pid", pid],
+        ["role", isSupport(bot) ? "support" : "core"],
         ["kind", ep.kind],
         ["tgt", ep.tpid],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
@@ -279,7 +310,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         if (now - ep.startedAt > KILL_TIME) return "time";
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
-        const reach = bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + REACH;
+        const reach = reachOf(bot);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
         // cooldown covers the hits.
         const primed = primedAt[bot.GetPlayerID()];
@@ -372,12 +403,12 @@ export function OnEnd(bot: Unit): void {
 }
 
 /**
- * OHA's farm mode runs a laning core off for 1-4 s on its own triggers (`X.ShouldRun`: a trade it judges lost, creep hits,
+ * OHA's farm mode runs a laning core (or, since slice support-spot, a harassing support) off for 1-4 s on its own triggers (`X.ShouldRun`: a trade it judges lost, creep hits,
  * enemy tower proximity at low level, ...). In lane this context decides when its core backs off, so farm GetDesire skips
  * ShouldRun for it (user 03/11/2026; cil4: with only the trade triggers skipped, the tower branches still held cores 330 s).
  */
 export function TradeOwnsLaneRun(bot: Unit): boolean {
-    return Ours.On("CoreTrade") && CoreLastHit.Applies(bot) && inLane(bot);
+    return Owns(bot) && inLane(bot);
 }
 
 /**
