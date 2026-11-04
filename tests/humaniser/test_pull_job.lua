@@ -213,21 +213,21 @@ do
 	check("diag: a chase with no attack target is not giving up; gu comes once it walks home (3-4.5 s after ht), the box member staying home neither holds nor sets it",
 		ht ~= nil and gu ~= nil and gu - ht >= 3 and gu - ht <= 4.5, pull)
 	check("diag: g4 when it passed 400 from its camp, gh how far it followed, no shift", g4 ~= nil and g4 >= ht and g4 < gu
-		and gh ~= nil and gh > 400 and field(pull, "sh") == "0", pull)
+		and gh ~= nil and gh > 400 and field(pull, "sh") == "0" and field(pull, "lv") == "0", pull)
 end
 
--- An early wave moves the hit earlier (LiveShift): the support leaves that much earlier, so a pull it starts can still be
+-- An early wave moves the hit earlier (LiveRead): the support leaves that much earlier, so a pull it starts can still be
 -- made (pw2: 12 starts planned against the unshifted slot failed `late` while still walking; first in
 -- ~/.dotactl/logs/2026-11-03T00-51-30-pw2_A_on_1.log t=108.8).
 do
 	local function startAt(shift)
 		local w = world({ reading = OUT })
 		local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-		local live = PT.LiveShift
-		PT.LiveShift = function() return shift end
+		local live = PT.LiveRead
+		PT.LiveRead = function() return shift ~= 0 and { shift = shift, front = shift } or nil end
 		local at
 		capture(function() while T < 90 and at == nil do frame(w) if w.H.PullJob.Running(w.sup) then at = T end end end)
-		PT.LiveShift = live
+		PT.LiveRead = live
 		return at
 	end
 	local on, early = startAt(0), startAt(-4)
@@ -238,15 +238,15 @@ do
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
 	enemy.lane, enemy.pos = Lane.Bot, 3
 	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-	local live = PT.LiveShift
-	PT.LiveShift = function() return -4 end
+	local live = PT.LiveRead
+	PT.LiveRead = function() return { shift = -4, front = -4 } end
 	local out = capture(function()
 		while T < 90 do
 			if early ~= nil and T >= early + 6 then enemy.loc = Vector(9000, 9000) end
 			frame(w)
 		end
 	end)
-	PT.LiveShift = live
+	PT.LiveRead = live
 	local choice = lines(out, "choice")
 	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
 		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
@@ -280,6 +280,24 @@ do
 	local choice = lines(out, "choice")
 	check("partner low: go=0 want=1 why=partner-low, no job", #choice == 1 and field(choice[1], "go") == "0" and field(choice[1], "want") == "1"
 		and field(choice[1], "why") == "partner-low" and #lines(out, "job") == 0, choice[1])
+end
+
+-- An enemy hero beside the camp (the user's ptm1_A 4:21: a pull walked into the enemy offlaner): skipped, with its distance;
+-- the same hero 1,500 away lets the pull start.
+for _, case in ipairs({ { "enemy at the camp", Vector(-1600, -6600), "0" }, { "enemy 1,500 from the site", Vector(-1600, -8100), "1" } }) do
+	local w = world({ reading = OUT })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = case[2] })
+	enemy.lane, enemy.pos = Lane.Bot, 3
+	local out = run(w, 80)
+	local choice = lines(out, "choice")
+	local se = tonumber(field(choice[1], "se") or "")
+	if case[3] == "0" then
+		check(case[1] .. ": go=0 why=enemy-site, se within 1,200, no job", #choice == 1 and field(choice[1], "go") == "0"
+			and field(choice[1], "why") == "enemy-site" and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
+	else
+		check(case[1] .. ": pull started, se logged over 1,200", #lines(out, "job") >= 1 and field(choice[1], "go") == "1"
+			and se ~= nil and se > 1200, choice[1])
+	end
 end
 
 -- Both supports in the bot lane: the pos5 pulls, the pos4 does not apply.

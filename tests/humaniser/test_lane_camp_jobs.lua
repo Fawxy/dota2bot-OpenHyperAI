@@ -284,7 +284,8 @@ end
 
 -- A creep path along the stub bot lane (y = -5000), so the small camp's pull is wave-timed: the :00 wave reaches its
 -- meet (-1600, -5000) after 7,800 / 325 = 24 s.
-local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }
+-- WaveAhead 0: the seconds below are the stub geometry's; test_lane_pull_timing covers the offset.
+local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
 
 do
 	-- Double pull, hard camp first: the large camp is hit from its side facing the small camp, then the small camp on its

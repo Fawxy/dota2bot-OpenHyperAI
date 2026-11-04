@@ -38,6 +38,14 @@ export interface PullTiming {
     /** Path distance from the spawner to the meet point (live wave reading). */
     meetAlong?: number;
     lanePath?: number[][];
+    /** Seconds the wave runs ahead of the constant-speed model on this lane (WaveAhead). */
+    ahead?: number;
+}
+
+/** A live reading of our wave against the plan: the shift from its body (applied) and from its front creep (logged). */
+export interface LiveReading {
+    shift: number;
+    front: number;
 }
 
 function settings(): LaneConfig.LaneSettings["PullTiming"] {
@@ -107,12 +115,21 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const [meetAlong, off] = Along(path, meet);
     if (off > cfg.PathMaxOffset) return fallback;
     const t = LaneConfig.Settings().Timing;
-    const waveTravel = meetAlong / cfg.CreepSpeed;
+    const ahead = LaneAhead(team, lane);
+    const waveTravel = meetAlong / cfg.CreepSpeed - ahead;
     // A half pull is timed as a full pull to its own (later) meet point, then HalfPullLater later, as the seeds were.
     const waveAfter = WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half ? t.HalfPullLater : 0);
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
-    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path };
+    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead };
+}
+
+/** WaveAhead for `team`'s `lane`: the safe lane's or the off lane's, 0 for mid. */
+function LaneAhead(team: number, lane: Lane): number {
+    const ahead = settings().WaveAhead;
+    if (lane === Lane.Mid) return 0;
+    const safe = (team === Team.Radiant) === (lane === Lane.Bot);
+    return safe ? ahead.safe : ahead.off;
 }
 
 /** The camp's lead waypoints with its own meet point replaced by `meet`. */
@@ -150,28 +167,37 @@ export function ForCamp(data: Camps.CampJobData, half: boolean, meet?: Vector): 
 }
 
 /**
- * Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, the lead creep
- * of our lane creeps within LiveWindow of where the wave should be says how early or late it really is. 7.41 speeds
- * safe-lane waves up and slows off-lane ones for a few seconds after spawn (patch notes, no figure given), and a wave
- * can be blocked or held up on the way. Returns the shift in seconds, or undefined when nothing reliable is seen.
+ * Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, our lane creeps
+ * within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
+ * WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
+ * ahead of the creeps that take the neutrals (camp 1 hit 0.5-1 s early on the front creep, replay pdg3_C), so it is only
+ * logged. A wave can also be blocked or held up on the way. Undefined when nothing reliable is seen.
  */
-export function LiveShift(timing: PullTiming, aggroAt: number, now: number): number | undefined {
+export function LiveRead(timing: PullTiming, aggroAt: number, now: number): LiveReading | undefined {
     if (timing.source !== "wave" || timing.waveAfter === undefined || timing.waveTravel === undefined || timing.meetAlong === undefined || timing.lanePath === undefined)
         return undefined;
     const cfg = settings();
     const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
     if (now < spawnAt + cfg.LiveFrom) return undefined;
-    const expected = (now - spawnAt) * cfg.CreepSpeed;
+    const expected = (now - spawnAt + (timing.ahead ?? 0)) * cfg.CreepSpeed;
     if (expected >= timing.meetAlong) return undefined;
     const window = cfg.LiveWindow * cfg.CreepSpeed;
-    let lead: number | undefined;
+    let front: number | undefined;
+    let sum = 0;
+    let n = 0;
     for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
         if (off > cfg.LiveMaxOffset || math.abs(along - expected) > window) continue;
-        if (lead === undefined || along > lead) lead = along;
+        if (front === undefined || along > front) front = along;
+        sum += along;
+        n += 1;
     }
-    if (lead === undefined) return undefined;
-    const shift = (expected - lead) / cfg.CreepSpeed;
-    return math.max(-cfg.LiveMaxShift, math.min(cfg.LiveMaxShift, shift));
+    if (front === undefined) return undefined;
+    const clamp = (d: number) => math.max(-cfg.LiveMaxShift, math.min(cfg.LiveMaxShift, (expected - d) / cfg.CreepSpeed));
+    return { shift: clamp(sum / n), front: clamp(front) };
+}
+
+export function LiveShift(timing: PullTiming, aggroAt: number, now: number): number | undefined {
+    return LiveRead(timing, aggroAt, now)?.shift;
 }

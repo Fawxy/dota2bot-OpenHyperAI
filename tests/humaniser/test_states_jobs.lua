@@ -275,7 +275,7 @@ end
 -- Pulls: the safe-lane small camp (the stacking world above has no pull camp). Default fronts make the planner want a
 -- full pull at :15/:45; the support waits at its stand point.
 local LARGE_PULL = Vector(-1000, -6300)
-local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } } } }
+local WAVE_CFG = { Enable = true, PullTiming = { LanePaths = { radiant_bot = { { -9400, -5000 }, { 7000, -5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
 
 local function pullWorld(opts)
 	opts = opts or {}
