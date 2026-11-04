@@ -16,7 +16,6 @@ import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as PathProbe from "bots/FunLib/humaniser/path_probe";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function IsLocationPassable(this: void, loc: Vector): boolean;
@@ -312,7 +311,6 @@ function acting(bot: Unit): boolean {
  */
 export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
     if (!Applies(bot)) return false;
-    if (LaneConfig.PositionOf(bot) === 5) PathProbe.Run(bot);
     const pid = bot.GetPlayerID();
     // Ends timed-out plays and writes settled play lines every frame, whether a trip runs or not.
     Plays.Tick();

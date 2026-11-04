@@ -20,6 +20,8 @@ import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as PathProbe from "bots/FunLib/humaniser/path_probe";
+import * as ProbeLane from "bots/FunLib/humaniser/lane_config";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
@@ -138,6 +140,7 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    if (ProbeLane.PositionOf(bot) === 5) PathProbe.Run(bot);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
     Difficulty.Init();

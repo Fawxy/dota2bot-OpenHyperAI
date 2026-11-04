@@ -142,7 +142,6 @@ local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local PathProbe = require(GetScriptDirectory().."/FunLib/humaniser/path_probe")
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
@@ -683,9 +682,6 @@ function ____exports.Wants(bot, blocked, host)
     if not ____exports.Applies(bot) then
         return false
     end
-    if LaneConfig.PositionOf(bot) == 5 then
-        PathProbe.Run(bot)
-    end
     local pid = bot:GetPlayerID()
     Plays.Tick()
     Tasks.Tick(bot)
@@ -700,7 +696,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue59
+            local __continue58
             repeat
                 local mine
                 local function skip(why)
@@ -717,12 +713,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue59 = true
+                    __continue58 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue59 = true
+                        __continue58 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -779,7 +775,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue59 then
+            if not __continue58 then
                 break
             end
         end
@@ -923,20 +919,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue136
+                local __continue135
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue136 = true
+                        __continue135 = true
                         break
                     end
                     local ____opt_20 = running[m:GetPlayerID()]
                     if (____opt_20 and ____opt_20.kind) == "wisdom" then
                         return true
                     end
-                    __continue136 = true
+                    __continue135 = true
                 until true
-                if not __continue136 then
+                if not __continue135 then
                     break
                 end
             end
