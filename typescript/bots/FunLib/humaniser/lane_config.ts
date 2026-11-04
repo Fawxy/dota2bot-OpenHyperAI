@@ -354,6 +354,11 @@ export const DEFAULTS = {
         // Live re-timing (slice pull-live): the wave is read again this often from the leave time to the meet point.
         LiveEvery: 0.25,
         WatchAfterWave: 3,
+        // Half pull (slice pull-half): the neutrals reach the meet point this long after the wave's body (the pull job's pace
+        // holds for it), so the front creeps have walked past their acquisition range and only the back ones turn. `judgement`.
+        HalfLag: 1,
+        // Tuning only: every wanted slot of a half-pulling support is a half pull, whatever the lane reading.
+        HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
     },

@@ -1006,6 +1006,7 @@
    "sf": "num",
    "s0": "num",
    "pz": "num",
+   "pk": "str",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -1059,7 +1060,8 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
-   "se": "num"
+   "se": "num",
+   "pk": "str"
   },
   "gank": {
    "pid": "num",
@@ -1453,7 +1455,8 @@
   "ev_pull_job": {
    "res": "text",
    "why": "text",
-   "label": "text"
+   "label": "text",
+   "pk": "text"
   },
   "ev_pull_watch": {
    "ph": "text",
@@ -1463,7 +1466,8 @@
    "kind": "text",
    "why": "text",
    "src": "text",
-   "st": "text"
+   "st": "text",
+   "pk": "text"
   },
   "ev_gank": {
    "score": "text",

@@ -106,7 +106,12 @@ interface CampState {
     se?: number;
 }
 
+export type Kind = "full" | "half";
+
 interface Plan {
+    kind: Kind;
+    /** The full pull's hit second for this wave: the slot the lane is read and decided for, whatever the kind. */
+    key: number;
     camp: Camps.CampJobData;
     spawner: Camps.Spawner;
     stand: Vector;
@@ -157,6 +162,7 @@ interface Pull {
 interface Decision {
     slot: number;
     want: boolean;
+    kind: Kind;
     reading?: LanePush.Reading;
 }
 
@@ -220,20 +226,45 @@ export function NextSlot(from: number, seconds: number[], period: number): numbe
     return best;
 }
 
-function planFor(bot: Unit, now: number): Plan | undefined {
+/**
+ * The next wave's pull of `kind`. A half pull is the same wave and the same meet point hit HalfPullLater after the full
+ * pull's second (pull_timing's half timing), so its slot is the first half second at or after the full one; `key` stays
+ * the full slot, so one wave is read and decided once whatever the kind.
+ */
+function planFor(bot: Unit, now: number, kind: Kind): Plan | undefined {
     const camp = campFor(bot);
     const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
     if (camp === undefined || camp.pull === undefined || spawner === undefined) return undefined;
     const t = LaneConfig.Settings().Timing;
-    const timing = PullTiming.ForCamp(camp, false);
-    if (timing.seconds.length === 0) return undefined;
-    const slot = NextSlot(now - t.JobStartLate, timing.seconds, t.PullPeriod);
+    const full = PullTiming.ForCamp(camp, false);
+    if (full.seconds.length === 0) return undefined;
+    const key = NextSlot(now - t.JobStartLate, full.seconds, t.PullPeriod);
     // Camps hold neutrals for a whole minute only from their first spawn on (camp_jobs' CampsUp).
-    if (math.floor(slot / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
+    if (math.floor(key / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
     const meet = camp.pull.meetPoint;
+    const timing = kind === "half" ? PullTiming.ForCamp(camp, true, meet) : full;
+    if (timing.seconds.length === 0) return undefined;
+    const slot = kind === "half" ? NextSlot(key, timing.seconds, t.PullPeriod) : key;
     const lead = PullTiming.LeadPath(camp.pull, meet);
     const stand = Camps.StandPoint(spawner, lead[0], LaneConfig.Settings().Radii.StandOffset);
-    return { camp, spawner, stand, lead, meet, timing, slot };
+    return { kind, key, camp, spawner, stand, lead, meet, timing, slot };
+}
+
+/** The safe lane of `bot`'s team (pull_timing's LaneAhead rule). */
+function safeLane(bot: Unit): boolean {
+    const lane = bot.GetAssignedLane();
+    return lane !== Lane.Mid && (bot.GetTeam() === Team.Radiant) === (lane === Lane.Bot);
+}
+
+/**
+ * Which pull a wanted slot gets: the safe-lane pos5 half-pulls when the lane holds on their half (it is out a little: slow
+ * and thin the wave rather than reset it; banked full pulls from there took the clash to -0.66 in 30 s and back to +0.07
+ * in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
+ */
+export function KindFor(bot: Unit, r: LanePush.Reading | undefined): Kind {
+    if (!Ours.On("SupportHalfPull") || LaneConfig.PositionOf(bot) !== 5 || !safeLane(bot)) return "full";
+    if (LaneConfig.Settings().PullTiming.HalfAll === true) return "half";
+    return r !== undefined && r.state === "HOLD" ? "half" : "full";
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -379,7 +410,8 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
     ];
 }
 
-function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined, camp: CampState): void {
+/** `slot` the plan's hit second (a half pull's, not the wave's `key`), so the line joins its `pull_job` line. */
+function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
     Telemetry.Event("choice", [
@@ -390,13 +422,14 @@ function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined
         ["why", why],
         ["src", "own"],
         ["lane", bot.GetAssignedLane()],
-        ["slot", d.slot],
+        ["slot", slot],
         ["st", r?.state],
         ["q", r !== undefined ? math.floor(r.q * 100 + 0.5) / 100 : undefined],
         ["mv", r1(r?.move)],
         ["cf", r1(r?.cf)],
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
         ["ms", r?.ms],
+        ["pk", d.want ? d.kind : undefined],
         ...campFields(camp),
     ]);
 }
@@ -423,6 +456,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["lane", bot.GetAssignedLane()],
         ["camp", p.plan.camp.campIdx],
         ["slot", p.plan.slot],
+        ["pk", p.plan.kind],
         ["res", r.success ? "ok" : "fail"],
         ["why", why],
         ["label", label ?? p.label],
@@ -752,7 +786,9 @@ function pace(bot: Unit, p: Pull): boolean {
     }
     if (gap === undefined) return false;
     const eta = (gap + PullTiming.WalkLength(bot.GetLocation(), p.plan.lead)) / speed;
-    if (waveAt - now - eta <= SETTINGS.PaceLead) return false;
+    // A half pull aims the neutrals HalfLag after the wave's body instead of PaceLead before it.
+    const lead = p.plan.kind === "half" ? -LaneConfig.Settings().PullTiming.HalfLag : SETTINGS.PaceLead;
+    if (waveAt - now - eta <= lead) return false;
     p.pacedFrom = p.pacedFrom ?? now;
     p.paced = now - p.pacedFrom;
     return true;
@@ -821,8 +857,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
-    const p = planFor(bot, now);
-    if (p === undefined || handled[pid] === p.slot) return false;
+    const full = planFor(bot, now, "full");
+    if (full === undefined || handled[pid] === full.key) return false;
+    // A wave decided a half pull waits for the half's own (later) leave time.
+    const kind = decided[pid]?.slot === full.key ? decided[pid]!.kind : "full";
+    const p = kind === "half" ? planFor(bot, now, "half") ?? full : full;
     const walk = travel(bot, p);
     // Once our wave is out it says how early or late it really is (pull_timing's LiveRead, read again every LiveEvery s up
     // to the hit, slice pull-live); the leave time, the late check and the hit all use the shifted second (pw2: 12 starts
@@ -835,17 +874,19 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const hitAt = PullTiming.Update(track, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
-    if (d === undefined || d.slot !== p.slot) {
+    if (d === undefined || d.slot !== p.key) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
-        d = { slot: p.slot, want: Wanted(reading), reading };
+        const want = Wanted(reading);
+        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading };
         decided[pid] = d;
         gateWhy[pid] = undefined;
+        if (d.kind === "half") return false;
     }
     const camp = CampStateOf(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
-        handled[pid] = p.slot;
+        handled[pid] = p.key;
         gateWhy[pid] = undefined;
-        choiceLine(bot, d!, go, why, camp);
+        choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
         done(false, d.reading === undefined ? "no-read" : "lane");

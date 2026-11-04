@@ -1085,6 +1085,8 @@ export const EVENTS = {
         // Slice pull-live: s0 the shift at the start (sh is the one at the order), pz seconds held after the hit for a late wave.
         s0: "num",
         pz: "num",
+        // Slice pull-half: the pull's kind (full or half).
+        pk: "str",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1155,6 +1157,8 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // Slice pull-half: the pull's kind for kind=pull (full or half).
+        pk: "str",
     },
     gank: {
         pid: "num",

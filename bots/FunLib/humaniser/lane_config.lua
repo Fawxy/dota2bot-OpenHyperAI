@@ -301,6 +301,8 @@ ____exports.DEFAULTS = {
         LiveMaxShift = 4,
         LiveEvery = 0.25,
         WatchAfterWave = 3,
+        HalfLag = 1,
+        HalfAll = false,
         LanePaths = {}
     },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},

@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfLag = o.halfLag } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -43,6 +43,7 @@ local function world(o)
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	H.Lane.Camps.ResetCache()
 	H.PullJob.ResetCache()
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportHalfPull = o.half
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
@@ -256,8 +257,9 @@ end
 
 -- Slice pull-live: the wave read again up to the order and after it. `shiftAt(t, started)` stubs LiveRead from the job's
 -- start; `neutralAt` places the camp's one neutral (on the puller) each frame. Returns the pull_job line.
-local function livePull(shiftAt, neutralAt)
-	local w = world({ reading = OUT, liveEvery = 0 })
+local function livePull(shiftAt, neutralAt, o)
+	o = o or {}
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfLag = o.halfLag })
 	ACTIONS = {}
 	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
 	local live = PT.LiveRead
@@ -324,6 +326,49 @@ do
 	local w = world({ reading = { state = "HOLD", clash = 9500, move = 50, q = 0.62, tower = false } })
 	local out = run(w, 75)
 	check("HOLD on their half: pull started", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "go") == "1")
+end
+
+-- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full
+-- pull's leave time, hit HalfPullLater (2 s) later; with the switch off it full-pulls. A pushing lane is still a full pull.
+local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, tower = false }
+do
+	local function pull(o)
+		local w = world(o)
+		local out = run(w, 80)
+		return lines(out, "choice")[1], lines(out, "job")[1], w
+	end
+	local full = pull({ reading = OUT })
+	local half, job, w = pull({ reading = HOLD })
+	local off = pull({ reading = HOLD, half = false })
+	local d = tonumber(field(half, "slot")) - tonumber(field(full, "slot"))
+	check("half: HOLD on their half gets pk=half, its slot 2 s after the full pull's", field(half, "pk") == "half" and field(half, "go") == "1"
+		and math.abs(d - 2) < 0.01 and job ~= nil, half)
+	check("half: the lane read once for the wave", w.reads == 1, w.reads)
+	check("half: OUT gets a full pull", field(full, "pk") == "full", full)
+	check("half: switch off, HOLD gets a full pull on the full slot", field(off, "pk") == "full" and field(off, "slot") == field(full, "slot"), off)
+end
+
+-- Only the safe-lane pos5: an off-lane support (Radiant top) or a pos4 full-pulls the same reading.
+do
+	local w = world({ reading = HOLD })
+	check("half: safe-lane pos5 half-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "half")
+	w.sup.lane = Lane.Top
+	check("half: off-lane pos5 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
+	w.sup.lane, w.sup.pos = Lane.Bot, 4
+	check("half: pos4 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
+end
+
+-- The half pull's pace aims the neutrals HalfLag after the wave's body (a full pull's PaceLead before it): one more second
+-- of HalfLag holds the puller about a second longer after the same hit.
+do
+	local function hold(lag)
+		local line = livePull(function() return 0 end, nil, { reading = HOLD, halfLag = lag })
+		return tonumber(field(line, "pz") or "0"), line
+	end
+	local one, l1 = hold(1)
+	local two, l2 = hold(2)
+	check("half pace: pk=half on the pull_job line", field(l1, "pk") == "half", l1)
+	check("half pace: HalfLag 2 holds about 1 s more than HalfLag 1: " .. one .. " / " .. two, math.abs(two - one - 1) <= 0.2, l2)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.
