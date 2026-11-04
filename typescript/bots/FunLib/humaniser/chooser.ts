@@ -2,11 +2,12 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * Jobs: StackJob, RuneJob (slice rune-rotation) and PullJob (slice support-lane), ranked per hero by priority; a running job is never interrupted by another.
+ * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane) and CoreCamp (slice core-next-gold), ranked per hero by priority; a running job is never interrupted by another.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
+import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
@@ -88,7 +89,19 @@ const PULL: Job = {
     NoteIdleHeld: (bot) => PullJob.NoteIdleHeld(bot),
 };
 
-const JOBS: Job[] = [STACK, RUNE, PULL];
+const CAMP: Job = {
+    name: "camp",
+    Priority: (bot) => CoreCamp.Priority(bot),
+    Claims: (bot) => CoreCamp.Claims(bot),
+    Wants: (bot, blocked, host) => CoreCamp.Wants(bot, blocked, host),
+    Running: (bot) => CoreCamp.Running(bot),
+    Step: (bot, host) => CoreCamp.Step(bot, host),
+    End: (bot, why) => CoreCamp.End(bot, why),
+    NoteHit: (bot) => CoreCamp.NoteHit(bot),
+    NoteIdleHeld: (bot) => CoreCamp.NoteIdleHeld(bot),
+};
+
+const JOBS: Job[] = [STACK, RUNE, PULL, CAMP];
 
 /** The jobs that apply to this hero, highest priority first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {

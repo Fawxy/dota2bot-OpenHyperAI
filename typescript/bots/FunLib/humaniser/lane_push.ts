@@ -84,6 +84,8 @@ export interface StartCreep {
 export interface Sample {
     t: number;
     front: Record<number, number | undefined>;
+    /** Each team's lane creeps the run has killed so far (from its start, towers not counted). */
+    dead: Record<number, number>;
 }
 
 function armorMult(a: number): number {
@@ -161,9 +163,13 @@ export function Run(lane: LanePath, from: number, until: number, init: StartCree
     }
     const projectiles: { at: number; dst: SimUnit; dmg: number }[] = [];
     const samples: Sample[] = [];
+    const dead: Record<number, number> = { [R]: 0, [D]: 0 };
     const hit = (v: SimUnit, dmg: number) => {
         v.hp -= dmg;
-        if (v.hp <= 0 && v.alive) v.alive = false;
+        if (v.hp <= 0 && v.alive) {
+            v.alive = false;
+            if (v.building !== true) dead[v.team] += 1;
+        }
     };
     const inReach = (u: SimUnit, v: SimUnit, r: number) => math.abs(v.s - u.s) <= r + REACH;
     let live: SimUnit[] = [];
@@ -247,7 +253,7 @@ export function Run(lane: LanePath, from: number, until: number, init: StartCree
                 const f = front[u.team];
                 front[u.team] = f === undefined ? u.s : u.team === R ? math.max(f, u.s) : math.min(f, u.s);
             }
-            samples.push({ t: nextSample, front });
+            samples.push({ t: nextSample, front, dead: { [R]: dead[R], [D]: dead[D] } });
             nextSample++;
         }
     }
@@ -438,13 +444,40 @@ function t1Hp(team: number, lane: Lane): number | false {
     return t === undefined || t === null || !t.IsAlive() ? false : t.GetHealth();
 }
 
+/** `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from. */
+function viewNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], Record<number, number | false | undefined>]> {
+    const path = LANE_PATHS[lane];
+    const t0 = math.floor(DotaTime());
+    if (path === undefined) return $multi(undefined, t0, [], {});
+    const enemy = team === R ? D : R;
+    const init = ViewStart(path, team, t0, creepsOn(path, GetUnitList(UnitType.AlliedCreeps), team, false), creepsOn(path, GetUnitList(UnitType.EnemyCreeps), enemy, true));
+    return $multi(path, t0, init, { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) });
+}
+
 /** The reading for `team`'s side of `lane` now (the calling script must be `team`'s). `dropBefore`: a point along the path,
  *  see ReadFrom. */
 export function Read(team: number, lane: Lane, dropBefore?: number): Reading | undefined {
-    const path = LANE_PATHS[lane];
+    const [path, t0, init, towerHp] = viewNow(team, lane);
     if (path === undefined) return undefined;
-    const t0 = math.floor(DotaTime());
-    const enemy = team === R ? D : R;
-    const init = ViewStart(path, team, t0, creepsOn(path, GetUnitList(UnitType.AlliedCreeps), team, false), creepsOn(path, GetUnitList(UnitType.EnemyCreeps), enemy, true));
-    return ReadFrom(path, team, t0, init, { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) }, dropBefore);
+    return ReadFrom(path, team, t0, init, towerHp, dropBefore);
+}
+
+/** One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined. */
+export function Forecast(team: number, lane: Lane, horizon: number): LuaMultiReturn<[Sample[] | undefined, LanePath | undefined]> {
+    const [path, t0, init, towerHp] = viewNow(team, lane);
+    if (path === undefined) return $multi(undefined, undefined);
+    return $multi(Run(path, t0, t0 + horizon, init, towerHp), path);
+}
+
+/** The map point at distance `s` along the lane path. */
+export function PointAt(lane: LanePath, s: number): [number, number] {
+    const n = lane.pts.length;
+    if (s <= lane.s[0]) return [lane.pts[0][0], lane.pts[0][1]];
+    for (let i = 1; i < n; i++) {
+        if (s <= lane.s[i]) {
+            const u = (s - lane.s[i - 1]) / math.max(1e-9, lane.s[i] - lane.s[i - 1]);
+            return [lane.pts[i - 1][0] + u * (lane.pts[i][0] - lane.pts[i - 1][0]), lane.pts[i - 1][1] + u * (lane.pts[i][1] - lane.pts[i - 1][1])];
+        }
+    }
+    return [lane.pts[n - 1][0], lane.pts[n - 1][1]];
 }

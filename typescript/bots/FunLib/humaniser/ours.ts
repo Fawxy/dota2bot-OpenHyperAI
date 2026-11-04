@@ -74,6 +74,10 @@ export const DEFAULTS = {
      * from an enemy hero for a safe last hit. Off: no draws, and OHA-era lane_tech keeps its aggro pull.
      */
     LaneAggro: true,
+    /** Slice core-next-gold: with CoreLastHit and JobChooser on, an in-lane pos1-3 leaves for a camp of its own jungle when the
+     *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
+     *  for it in the laning phase. */
+    CoreCampTrip: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
