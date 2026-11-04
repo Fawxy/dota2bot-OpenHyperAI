@@ -137,6 +137,17 @@ do
 	core.level = 5
 	local r = CC.Plan(core, FRONT, 300, c)
 	check("plan: below level 6 the large camp is not offered", r ~= nil and r.type == "small", r and r.type)
+	core.level, core.hp = 6, 480
+	local h = CC.Plan(core, FRONT, 300, c)
+	check("plan: at 80% HP a level-6 core still takes an unstacked large camp", h ~= nil and h.type == "large" and h.gold == 160, h and h.type)
+	for _ = 1, 5 do MakeNeutral({ x = LARGE.x + 50, y = LARGE.y, hp = 300 }) end
+	local st = CC.Plan(core, FRONT, 300, c)
+	check("plan: six neutrals read as a stack the stack job never made; at 80% HP it would leave the core under 40% (cnghar2 camp 2)", st ~= nil and st.type == "small", st and st.type)
+	core.hp = 600
+	check("plan: a level-6 core skips the stacked large camp even at full HP", (CC.Plan(core, FRONT, 300, c) or {}).type == "small")
+	core.level = 9
+	local full = CC.Plan(core, FRONT, 300, c)
+	check("plan: at level 9 the stacked large camp is taken, at double gold", full ~= nil and full.type == "large" and full.gold == 320, full and full.gold)
 end
 
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.
@@ -202,6 +213,8 @@ do
 	check("trip: ended back at the front, in time", ended ~= nil and field(ended, "why") == "back" and tonumber(field(ended, "back")) <= tonumber(field(ended, "ret")) + 5, ended)
 	check("trip: FarmPattern never bid for the owned core", fp == 0, fp)
 	check("trip: pace learned from the measured clear", math.abs(H.CoreCamp.Pace(core) - 1) > 1e-3, H.CoreCamp.Pace(core))
+	check("trip: a clear that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
+	check("trip: the end line logs the HP and the rate", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil, ended)
 end
 
 -- Switch off: no trip of ours; the core is FarmPattern's again.

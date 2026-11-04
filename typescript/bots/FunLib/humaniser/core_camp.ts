@@ -73,6 +73,17 @@ export const SETTINGS = {
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
     LateGrowth: 1.15,
+    /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within LevelScale),
+     *  plus StackedClearMul per stack, times the bot's learned HP rate (Learn, LearnClamp; LateGrowth on an HP abort). A camp
+     *  is taken only when the core keeps ArriveHP after it. cnghar2/cngchk5 (05/11/2026): HP lost from start to end of a trip,
+     *  median (80th percentile), small 0.08 (0.17) at levels 3-5, medium 0.16 (0.35) at 3-5, large 0.42 (0.64) at 6-7, the
+     *  large ones mostly on camps OHA had stacked (11 neutral deaths in a minute); `judgement` puts an unstacked large lower. */
+    ClearHP: { small: 0.12, medium: 0.2, large: 0.35, ancient: 0.6 } as Record<string, number>,
+    /** Live neutrals in the box that read as one more stack: a camp spawns 2-4. */
+    NeutralsPerStack: 3,
+    HPRefLevel: 6,
+    HPLevelStep: 0.88,
+    ArriveHP: 0.4,
 };
 
 /** One priced camp. */
@@ -85,6 +96,9 @@ export interface CampPlan {
     clr: number;
     /** The clear estimate before the pace factor, which the measured clear is learned against. */
     prior: number;
+    /** The clear's HP cost (fraction of max HP) and its estimate before the learned rate. */
+    hpc: number;
+    hpPrior: number;
     gold: number;
     loss: number;
     net: number;
@@ -110,6 +124,7 @@ interface Trip {
     g0: number;
     host: number;
     engagedAt?: number;
+    hpAtEngage?: number;
     returning?: boolean;
     threatSince?: number;
     back?: number;
@@ -119,6 +134,7 @@ interface Trip {
 const running: Record<number, Trip | undefined> = {};
 const nextPlanAt: Record<number, number> = {};
 const pace: Record<number, number> = {};
+const hpRate: Record<number, number> = {};
 /** Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next). */
 const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
@@ -126,7 +142,7 @@ const skipped: Record<number, Record<string, boolean>> = {};
 const gates: Record<number, { min: number; n: Record<string, number> }> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, nextPlanAt, pace, cleared, skipped, gates] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
+    for (const t of [running, nextPlanAt, pace, hpRate, cleared, skipped, gates] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
 }
 
 function clamp(v: number, r: number[]): number {
@@ -205,6 +221,28 @@ function growLate(bot: Unit): void {
     pace[pid] = clamp((pace[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
 }
 
+export function PriorClearHP(type: Camps.CampType, level: number, stacks: number): number {
+    const s = SETTINGS;
+    const scale = clamp(s.HPLevelStep ** (level - s.HPRefLevel), s.LevelScale);
+    return (s.ClearHP[type] ?? s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks);
+}
+
+export function HPRate(bot: Unit): number {
+    return hpRate[bot.GetPlayerID()] ?? 1;
+}
+
+function learnHP(bot: Unit, measured: number, prior: number): void {
+    if (prior <= 0) return;
+    const pid = bot.GetPlayerID();
+    const old = hpRate[pid] ?? 1;
+    hpRate[pid] = clamp(old + SETTINGS.Learn * (math.max(measured, 0) / prior - old), SETTINGS.LearnClamp);
+}
+
+function growHP(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    hpRate[pid] = clamp((hpRate[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
+}
+
 // ------------------------------------------------------------------------------------------------ the forecast
 
 /** The first second of `samples` with the fronts within ClashGap, and the clash point there; undefined when none. */
@@ -266,6 +304,15 @@ function currentMinute(t: number): number {
     return math.floor(t / 60);
 }
 
+/** Stacks read from the camp itself (any stacker's, not only our stack job's): floor(live neutrals / NeutralsPerStack) - 1. */
+function seenStacks(center: Vector): number {
+    let n = 0;
+    for (const u of GetUnitList(UnitType.NeutralCreeps) ?? []) {
+        if (u !== null && u !== undefined && u.IsAlive() && dist(u.GetLocation(), center) <= SETTINGS.CampRadius) n++;
+    }
+    return math.max(0, math.floor(n / SETTINGS.NeutralsPerStack) - 1);
+}
+
 function campNeutralsSeen(center: Vector): boolean {
     for (const n of GetUnitList(UnitType.NeutralCreeps) ?? []) {
         if (n !== null && n !== undefined && n.IsAlive() && dist(n.GetLocation(), center) <= SETTINGS.CampRadius) return true;
@@ -325,9 +372,12 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         if (spawner.team !== bot.GetTeam() || level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
-        const stacks = Stacking.StackCount(spawner.idx);
+        const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
         const prior = PriorClearTime(spawner.type, level, stacks);
         const clr = prior * Pace(bot);
+        const hpPrior = PriorClearHP(spawner.type, level, stacks);
+        const hpc = hpPrior * HPRate(bot);
+        if (hpOf(bot) - hpc < s.ArriveHP) continue;
         const back = dist(center, c.at) / speed;
         const ret = now + dist(from, center) / speed + clr + back;
         const force = Overrides.CampForce();
@@ -336,7 +386,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
         if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
-            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, gold, loss, net };
+            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, hpc, hpPrior, gold, loss, net };
     }
     return best;
 }
@@ -411,6 +461,7 @@ function startGate(bot: Unit, plan: CampPlan, now: number): string | undefined {
 // ------------------------------------------------------------------------------------------------ telemetry
 
 const r1 = (x: number | undefined): number | undefined => (x !== undefined ? math.floor(x * 10 + 0.5) / 10 : undefined);
+const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
 
 function planFields(p: CampPlan): Telemetry.Fields<"core_camp"> {
     return [
@@ -418,6 +469,7 @@ function planFields(p: CampPlan): Telemetry.Fields<"core_camp"> {
         ["type", p.type],
         ["ret", r1(p.ret)],
         ["clr", r1(p.clr)],
+        ["hpc", r2(p.hpc)],
         ["gold", math.floor(p.gold)],
         ["loss", math.floor(p.loss)],
         ["net", math.floor(p.net)],
@@ -542,9 +594,13 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         const spawner = Camps.SpawnerByIdx(t.plan.camp);
         if (spawner === undefined) break;
         t.engagedAt = undefined;
+        t.hpAtEngage = undefined;
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
-            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => (t.engagedAt = at) },
+            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => {
+                t.engagedAt = at;
+                t.hpAtEngage = hpOf(bot);
+            } },
             hooks
         );
         const now = DotaTime();
@@ -554,7 +610,10 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
             if (t.engagedAt !== undefined) growLate(bot);
             break;
         }
-        if (r.message === "cleared" && t.engagedAt !== undefined) learn(bot, now - t.engagedAt, t.plan.prior);
+        if (r.message === "cleared" && t.engagedAt !== undefined) {
+            learn(bot, now - t.engagedAt, t.plan.prior);
+            if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.plan.hpPrior);
+        }
         markCleared(bot.GetTeam(), t.plan.camp, now);
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
         if (next === undefined) break;
@@ -568,6 +627,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
 function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
     const why = r.success ? (r.message ?? "ok") : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
+    if (why === "interrupted:hp" && t.returning !== true) growHP(bot);
     jobLine(bot, t, "end", why);
     log(bot, "end", t.clash, [
         ["res", r.success ? "ok" : "fail"],
@@ -581,6 +641,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["g1", bot.GetNetWorth()],
         ["secs", r1(DotaTime() - t.left)],
         ["pace", r1(Pace(bot))],
+        ["hp", r2(hpOf(bot))],
+        ["hpr", r2(HPRate(bot))],
     ]);
 }
 
