@@ -915,6 +915,77 @@ export const EVENTS = {
     },
     // Slice rune-rotation: one line per rune trip or skip (RuneJob). res ok|fail|skip; why: the verb's end reason or the
     // skip's gate; arr: when the bot reached the spot (wait or channel label); died: dead at the trip's end.
+    // Slice rune-spawn (6:00 trip under the spot plan): why plan-other (a skip: the plan gave the other spot to the mid or the
+    // other support); phase the act at the spawn (take, deny, off, cross, none); ta / te our and the soonest enemy hero's
+    // seconds to the rune's spot at the decision; hid seconds hidden at the stand; sh / sph the stand's and the spot's
+    // GetHeightLevel; play the id of the play this trip ran on (kind contest: the shrine roll that sent it; power: a rune
+    // fight), gank the id of the gank rolled after it (ev=play / ev=play_end carry their rolls and results). Kind contest:
+    // pos5 to the enemy wisdom shrine at 7:00 on a fired shrine roll (skip why roll / busy otherwise).
+    // Slice rune-spawn: one line when a hero starts ordering a rune pickup (res try) and one when that try ends: gone (the rune
+    // left the spot), left (the hero walked off, or ordered another rune), gave_up (RunePickup GiveUpAfter s of orders within
+    // Near with the rune still available: unpickable for the team until the next river spawn). d distance to the spot; act0 and
+    // act the hero's current action type at the first order and now; st GetRuneStatus; dt seconds since the first order.
+    // Slice rune-spawn, library plays: one line per chance offered (Plays.Roll), fired or not. w the weight after the hard
+    // zeros and MaxWeight; fl fc fh fr ft ff the level, count, HP-and-mana, power-rune, tower and forecast factors; al/en our
+    // and their heroes within Radius of the place (initiator and target always counted); fth the target-HP factor; zero the
+    // hard zero (hp, outnumbered, tower, unknown-kind, or the kind's own), in-play (the initiator is already in a play) or
+    // no-rng (a positive weight with no engine Skill rng: no draw); sure the kind's sure-tier reason (the play commits with no
+    // weighted roll) and pc its commit chance at the initiator's skill (Curve SureCommit; 1 at skill 1: no draw); draw the
+    // Skill draw (against pc for a sure chance, else w); fire 1 when the play fired; id the play.
+    play: {
+        pid: "num",
+        kind: "str",
+        tgt: "num",
+        w: "num",
+        fl: "num",
+        fc: "num",
+        fh: "num",
+        fr: "num",
+        ft: "num",
+        ff: "num",
+        fth: "num",
+        al: "num",
+        en: "num",
+        zero: "str",
+        sure: "str",
+        pc: "num",
+        draw: "num",
+        fire: "num",
+        id: "num",
+    },
+    // One line per fired play's end (Plays.End): res kill (target dead with a play hero within KillNear, up to KillAfter s
+    // after the end) | trade (target and initiator dead) | died | forced (target under ForcedHp or moved ForcedMoved) | none,
+    // or the consumer's own; written up to KillAfter s after the end (dur stays the play's own length); why the consumer's end reason or timeout (Plays.Tick); join heroes that joined; dur seconds.
+    play_end: {
+        id: "num",
+        pid: "num",
+        kind: "str",
+        tgt: "num",
+        res: "str",
+        why: "str",
+        join: "num",
+        dur: "num",
+    },
+    // Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt: mid / sup the planned heroes' pids, ms / ss
+    // their spots' rune ids; why no-free-support or no-mid when a side is empty.
+    rune_plan: {
+        team: "num",
+        mid: "num",
+        ms: "num",
+        sup: "num",
+        ss: "num",
+        why: "str",
+    },
+    rune_try: {
+        pid: "num",
+        rune: "num",
+        res: "str",
+        d: "num",
+        act0: "num",
+        act: "num",
+        st: "num",
+        dt: "num",
+    },
     rune_job: {
         pid: "num",
         pos: "num",
@@ -930,6 +1001,15 @@ export const EVENTS = {
         died: "num",
         hit: "num",
         idle: "num",
+        phase: "str",
+        ta: "num",
+        te: "num",
+        hid: "num",
+        sh: "num",
+        sph: "num",
+        via: "num",
+        play: "num",
+        gank: "num",
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;

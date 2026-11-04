@@ -71,6 +71,24 @@ do
 	check("power from 6:00", p and field(p, "kind") == "power", p)
 end
 
+-- An unpicked rune despawning on the next spawn tick is no pickup, even with a hero waiting on the spot
+-- (rspchk2 game 3, t=360.067: a 4:00 water rune read as pid 2's power pickup).
+do
+	local H = fresh()
+	local mid = MakeUnit({ pid = 2, loc = Vector(-1650, 1150) })
+	RUNE_SPOTS[Rune.Power1] = Vector(-1700, 1100)
+	RUNES[Rune.Power1] = RUNE_STATUS_AVAILABLE
+	tick(H, { mid }, 300)
+	RUNES[Rune.Power1] = RUNE_STATUS_MISSING
+	tick(H, { mid }, 360.067)
+	check("despawn on the spawn tick: no pickup", #events("rune_pickup") == 0, #events("rune_pickup"))
+	RUNES[Rune.Power1] = RUNE_STATUS_AVAILABLE
+	tick(H, { mid }, 360.1)
+	RUNES[Rune.Power1] = RUNE_STATUS_MISSING
+	tick(H, { mid }, 360.3)
+	check("the new rune's pickup still counts", #events("rune_pickup") == 1, #events("rune_pickup"))
+end
+
 -- Rune status is stale across 0:00: nothing is tracked before 1 s.
 do
 	local H = fresh()

@@ -680,6 +680,13 @@ const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barr
 const POWER_FROM = 360;
 /** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
 const RUNE_TAKER_R = 400;
+/**
+ * A power spot's unpicked rune despawns on the next 2-minute spawn tick, which read as a pickup by the hero waiting there
+ * (rspchk2: every 6:00 "pickup" at t=360.067 was a 4:00 water rune left on the spot). judgement: under the 0.27 s of the
+ * fastest real pickup seen after a spawn (rspchk2 game 1).
+ */
+const RUNE_EXPIRE_FOR = 0.15;
+const RUNE_RESPAWN = 120;
 /** judgement: ward cast range 500 plus movement since the cast. */
 const WARD_OWNER_R = 800;
 /** Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this. */
@@ -746,6 +753,7 @@ function trackRunes(team: number, w: WorldState, now: number): void {
         if (seen === undefined || !seen.up) continue;
         // Gone or out of sight. Without an own hero next to it, either the enemy took it (their logger reports it) or fog.
         seen.up = false;
+        if ((r === Rune.Power1 || r === Rune.Power2) && now >= RUNE_RESPAWN && now % RUNE_RESPAWN < RUNE_EXPIRE_FOR) continue;
         const [taker, d] = nearest(teamHeroes(), seen.loc);
         if (taker === undefined || d > RUNE_TAKER_R) continue;
         const [, enemyD] = nearest(GetUnitList(UnitType.EnemyHeroes), seen.loc);

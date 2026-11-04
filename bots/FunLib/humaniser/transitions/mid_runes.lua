@@ -165,6 +165,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 ____exports.SOURCE = "transitions:mid_rune"
 local states = {}
 function ____exports.ResetCache()
@@ -196,7 +197,7 @@ function ____exports.IsMid(bot)
     return LaneConfig.PositionOf(bot) == 2
 end
 function ____exports.IsOn(bot)
-    return Settings.IsOn("MidRunes") and ____exports.IsMid(bot)
+    return Settings.IsOn("MidRunes") and ____exports.IsMid(bot) and not RunePlan.OwnsMid(bot)
 end
 local POWER_SPOTS = {Rune.Power1, Rune.Power2}
 local function distanceTo(loc, rune)

@@ -549,3 +549,10 @@ test('lane_read_check and @lane_read_check: the reading against the other team\'
         'dire\'s 0.9 is within 0.2 of even');
     assert.deepStrictEqual([q.n4, q.near4, q.recall4, q.precision4], [2, 2, 0.5, 1]);
 });
+
+test('a declared column exists before any line carries it', () => {
+    const dir = tmp();
+    const s = new Store(':memory:', { views: null, kinds: { ev_play: { kind: 'text', zero: 'text' } } });
+    s.ingest(log(dir, 'a.log', [BOT, '10/30 08:00:02 [HEV] t=360 ev=play pid=1 kind=gank w=0.3 fire=1']));
+    assert.deepStrictEqual(s.db.prepare('SELECT kind, zero FROM ev_play').all().map(r => ({ ...r })), [{ kind: 'gank', zero: null }]);
+});

@@ -888,6 +888,55 @@
    "taken": "num",
    "away": "num"
   },
+  "play": {
+   "pid": "num",
+   "kind": "str",
+   "tgt": "num",
+   "w": "num",
+   "fl": "num",
+   "fc": "num",
+   "fh": "num",
+   "fr": "num",
+   "ft": "num",
+   "ff": "num",
+   "fth": "num",
+   "al": "num",
+   "en": "num",
+   "zero": "str",
+   "sure": "str",
+   "pc": "num",
+   "draw": "num",
+   "fire": "num",
+   "id": "num"
+  },
+  "play_end": {
+   "id": "num",
+   "pid": "num",
+   "kind": "str",
+   "tgt": "num",
+   "res": "str",
+   "why": "str",
+   "join": "num",
+   "dur": "num"
+  },
+  "rune_plan": {
+   "team": "num",
+   "mid": "num",
+   "ms": "num",
+   "sup": "num",
+   "ss": "num",
+   "why": "str"
+  },
+  "rune_try": {
+   "pid": "num",
+   "rune": "num",
+   "res": "str",
+   "d": "num",
+   "act0": "num",
+   "act": "num",
+   "st": "num",
+   "dt": "num"
+  },
   "rune_job": {
    "pid": "num",
    "pos": "num",
@@ -902,7 +951,16 @@
    "away": "num",
    "died": "num",
    "hit": "num",
-   "idle": "num"
+   "idle": "num",
+   "phase": "str",
+   "ta": "num",
+   "te": "num",
+   "hid": "num",
+   "sh": "num",
+   "sph": "num",
+   "via": "num",
+   "play": "num",
+   "gank": "num"
   },
   "pull_job": {
    "pid": "num",
@@ -1350,12 +1408,29 @@
    "reason": "text",
    "label": "text"
   },
+  "ev_play": {
+   "kind": "text",
+   "zero": "text",
+   "sure": "text"
+  },
+  "ev_play_end": {
+   "kind": "text",
+   "res": "text",
+   "why": "text"
+  },
+  "ev_rune_plan": {
+   "why": "text"
+  },
+  "ev_rune_try": {
+   "res": "text"
+  },
   "ev_rune_job": {
    "kind": "text",
    "res": "text",
    "why": "text",
    "label": "text",
-   "side": "text"
+   "side": "text",
+   "phase": "text"
   },
   "ev_pull_job": {
    "res": "text",
