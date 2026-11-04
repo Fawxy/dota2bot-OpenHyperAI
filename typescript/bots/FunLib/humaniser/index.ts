@@ -26,12 +26,13 @@ import * as Etiquette from "bots/FunLib/humaniser/etiquette";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as RunePickup from "bots/FunLib/humaniser/rune_pickup";
+import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, PullJob, Chooser, Overrides };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, Plays, PullJob, Chooser, Overrides };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike

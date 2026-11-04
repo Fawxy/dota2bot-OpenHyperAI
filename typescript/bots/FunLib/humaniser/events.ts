@@ -917,6 +917,43 @@ export const EVENTS = {
     // left the spot), left (the hero walked off, or ordered another rune), gave_up (RunePickup GiveUpAfter s of orders within
     // Near with the rune still available: unpickable for the team until the next river spawn). d distance to the spot; act0 and
     // act the hero's current action type at the first order and now; st GetRuneStatus; dt seconds since the first order.
+    // Slice rune-spawn, library plays: one line per chance offered (Plays.Roll), fired or not. w the weight after the hard
+    // zeros and MaxWeight; fl fc fh fr ft ff the level, count, HP-and-mana, power-rune, tower and forecast factors; al/en our
+    // and their heroes within Radius of the place (initiator and target always counted); fth the target-HP factor; zero the
+    // hard zero (hp, outnumbered, tower, unknown-kind, or the kind's own), in-play (the initiator is already in a play) or
+    // no-rng (a positive weight with no engine Skill rng: no draw); draw the Skill draw; fire 1 when draw < w; id the play.
+    play: {
+        pid: "num",
+        kind: "str",
+        tgt: "num",
+        w: "num",
+        fl: "num",
+        fc: "num",
+        fh: "num",
+        fr: "num",
+        ft: "num",
+        ff: "num",
+        fth: "num",
+        al: "num",
+        en: "num",
+        zero: "str",
+        draw: "num",
+        fire: "num",
+        id: "num",
+    },
+    // One line per fired play's end (Plays.End): res kill (target dead with a play hero within KillNear, up to KillAfter s
+    // after the end) | trade (target and initiator dead) | died | forced (target under ForcedHp or moved ForcedMoved) | none,
+    // or the consumer's own; written up to KillAfter s after the end (dur stays the play's own length); why the consumer's end reason or timeout (Plays.Tick); join heroes that joined; dur seconds.
+    play_end: {
+        id: "num",
+        pid: "num",
+        kind: "str",
+        tgt: "num",
+        res: "str",
+        why: "str",
+        join: "num",
+        dur: "num",
+    },
     rune_try: {
         pid: "num",
         rune: "num",

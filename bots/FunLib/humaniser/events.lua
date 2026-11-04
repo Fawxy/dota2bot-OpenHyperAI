@@ -771,6 +771,35 @@ ____exports.EVENTS = {
         taken = "num",
         away = "num"
     },
+    play = {
+        pid = "num",
+        kind = "str",
+        tgt = "num",
+        w = "num",
+        fl = "num",
+        fc = "num",
+        fh = "num",
+        fr = "num",
+        ft = "num",
+        ff = "num",
+        fth = "num",
+        al = "num",
+        en = "num",
+        zero = "str",
+        draw = "num",
+        fire = "num",
+        id = "num"
+    },
+    play_end = {
+        id = "num",
+        pid = "num",
+        kind = "str",
+        tgt = "num",
+        res = "str",
+        why = "str",
+        join = "num",
+        dur = "num"
+    },
     rune_try = {
         pid = "num",
         rune = "num",

@@ -482,6 +482,12 @@ export function Jitter(skill: number): number {
     return Gauss() * Curve("JitterSigma", skill);
 }
 
+/** One uniform [0, 1) draw from the engine's Skill rng, or undefined without the tasks bundle (no host fallback). */
+export function Draw(): number | undefined {
+    const r = rng();
+    return r !== undefined ? r.random() : undefined;
+}
+
 export function Roll(chance: number): boolean {
     const r = rng();
     return (r !== undefined ? r.random() : RandomFloat(0, 1)) < chance;
