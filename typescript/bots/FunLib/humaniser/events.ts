@@ -404,7 +404,11 @@ export const EVENTS = {
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
         near: "num",
         drawn: "num",
+        /** Enemy creeps near at the order that moved MovedR since (drawn off their fight), most at once. */
+        mv: "num",
         onr: "num",
+        /** feed: the fed creep's HP fraction at the result line, when alive. */
+        rhp: "num",
         /** HP the bot lost from the start to the hand-back (min HP), and its HP fraction at the start. */
         dhp: "num",
         hp: "num",

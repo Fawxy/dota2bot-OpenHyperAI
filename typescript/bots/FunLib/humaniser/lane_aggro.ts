@@ -55,8 +55,13 @@ export const SETTINGS = {
     DropNear: 220,
     DropAfter: 0.8,
     DropBy: 1.8,
-    /** No creep drawn this long after the order: `no_draw`. */
-    DrawCheck: 0.6,
+    /**
+     * No creep drawn this long after the order: `no_draw`. Drawn: an enemy creep within 500 at the order that targets the bot,
+     * or that has moved MovedR since (melee creeps fighting stand still; a chasing creep may not report its target until it
+     * swings: lagchk1 logged 22 of 33 tries as no_draw at 0.6 s on the target alone).
+     */
+    DrawCheck: 1.0,
+    MovedR: 120,
     /** Feed: the clash where it sits between the T1s (0 ours, 1 theirs) at least this far out. */
     FeedMinQ: 0.3,
     /** Drag: a last hit due in this window (s): sooner the body just takes it, later it is not worth a draw yet. */
@@ -71,7 +76,7 @@ export const SETTINGS = {
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** Results are read until then: the fed creep's death, the dragged creep's death. */
-    FeedWatch: 9,
+    FeedWatch: 15,
     DragWatch: 3.5,
     /** A support's lane core is away when no allied core of that lane is alive within this. */
     CoreNear: 1600,
@@ -85,7 +90,11 @@ interface Attempt {
     walkedAt?: number;
     droppedAt?: number;
     hero: Unit;
+    tpid: number;
     creep: Unit;
+    /** Enemy lane creeps within 500 at the order and where they stood. */
+    start?: { unit: Unit; x: number; y: number }[];
+    mv: number;
     approach?: Vector;
     back: Vector;
     hp0: number;
@@ -360,7 +369,9 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
         phase,
         startedAt: now,
         hero,
+        tpid: hero.GetPlayerID(),
         creep,
+        mv: 0,
         approach,
         back,
         hp0: bot.GetHealth(),
@@ -381,9 +392,11 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["role", a.role],
         ["kind", a.kind],
         ["result", result],
-        ["tgt", a.hero.IsNull() ? undefined : a.hero.GetPlayerID()],
+        ["tgt", a.tpid],
         ["near", a.near],
         ["drawn", a.drawn],
+        ["mv", a.mv],
+        ["rhp", a.kind === "feed" && !a.creep.IsNull() && a.creep.IsAlive() ? math.floor(frac(a.creep) * 100) / 100 : undefined],
         ["onr", a.onr],
         ["dhp", a.hp0 - a.hpMin],
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -393,6 +406,18 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
     ]);
+}
+
+/** Enemy creeps near at the order that have since moved MovedR or more (drawn off their fight). */
+function movedOf(a: Attempt): number {
+    let n = 0;
+    for (const s0 of a.start ?? []) {
+        const u = s0.unit;
+        if (u.IsNull() || !u.IsAlive()) continue;
+        const l = u.GetLocation();
+        if (d2(l, Vector(s0.x, s0.y, l.z)) >= SETTINGS.MovedR) n++;
+    }
+    return n;
 }
 
 function drawnOn(bot: Unit, target: Unit): Unit[] {
@@ -450,7 +475,9 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         a.phase = "walk";
     }
     if (a.orderedAt === undefined) {
-        a.near = enemyCreepsNear(bot, bot.GetLocation(), 500).length;
+        const near = enemyCreepsNear(bot, bot.GetLocation(), 500);
+        a.near = near.length;
+        a.start = near.map((c) => ({ unit: c, x: c.GetLocation().x, y: c.GetLocation().y }));
         bot.Action_AttackUnit(a.hero, true);
         a.orderedAt = now;
         orderedAt[pid] = now;
@@ -461,7 +488,8 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     const t = now - a.orderedAt;
     a.drawn = math.max(a.drawn, drawnOn(bot, bot).length);
-    if (t >= SETTINGS.DrawCheck && a.drawn === 0) {
+    a.mv = math.max(a.mv, movedOf(a));
+    if (t >= SETTINGS.DrawCheck && a.drawn === 0 && a.mv === 0) {
         finish(bot, a, "no_draw", now);
         return false;
     }
@@ -472,13 +500,19 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
                 const d = GetUnitToUnitDistance(c, a.creep);
                 if (nearest === undefined || d < nearest) nearest = d;
             }
+            for (const s0 of a.start ?? []) {
+                const u = s0.unit;
+                if (u.IsNull() || !u.IsAlive() || d2(u.GetLocation(), Vector(s0.x, s0.y, 0)) < SETTINGS.MovedR) continue;
+                const d = GetUnitToUnitDistance(u, a.creep);
+                if (nearest === undefined || d < nearest) nearest = d;
+            }
         }
         if (!a.creep.IsAlive()) {
             a.phase = "watch";
             a.droppedAt = now;
             return false;
         }
-        if (DropNow(t, a.drawn, nearest)) {
+        if (DropNow(t, a.drawn + a.mv, nearest)) {
             bot.Action_AttackUnit(a.creep, true);
             a.droppedAt = now;
             a.phase = "watch";

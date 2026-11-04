@@ -10,29 +10,12 @@ local function __TS__StringIncludes(self, searchString, position)
     return index ~= nil
 end
 
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
     end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+    return result
 end
 -- End of Lua Library inline imports
 local ____exports = {}
@@ -71,7 +54,9 @@ function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
         phase = phase,
         startedAt = now,
         hero = hero,
+        tpid = hero:GetPlayerID(),
         creep = creep,
+        mv = 0,
         approach = approach,
         back = back,
         hp0 = bot:GetHealth(),
@@ -101,7 +86,8 @@ ____exports.SETTINGS = {
     DropNear = 220,
     DropAfter = 0.8,
     DropBy = 1.8,
-    DrawCheck = 0.6,
+    DrawCheck = 1,
+    MovedR = 120,
     FeedMinQ = 0.3,
     DragDueMin = 0.8,
     DragDueMax = 3,
@@ -110,7 +96,7 @@ ____exports.SETTINGS = {
     DragWalk = 1.2,
     BusyWithin = 1.5,
     HurtShare = 0.12,
-    FeedWatch = 9,
+    FeedWatch = 15,
     DragWatch = 3.5,
     CoreNear = 1600
 }
@@ -537,70 +523,92 @@ local function tryFeed(bot, heroes, now)
 end
 local function finish(bot, a, result, now)
     attempts[bot:GetPlayerID()] = nil
-    local ____Telemetry_Event_5 = Telemetry.Event
-    local ____array_4 = __TS__SparseArrayNew(
+    Telemetry.Event(
+        "aggro",
         {
-            "pid",
-            bot:GetPlayerID()
-        },
-        {"role", a.role},
-        {"kind", a.kind},
-        {"result", result}
-    )
-    local ____a_hero_IsNull_result_3
-    if a.hero:IsNull() then
-        ____a_hero_IsNull_result_3 = nil
-    else
-        ____a_hero_IsNull_result_3 = a.hero:GetPlayerID()
-    end
-    __TS__SparseArrayPush(
-        ____array_4,
-        {"tgt", ____a_hero_IsNull_result_3},
-        {"near", a.near},
-        {"drawn", a.drawn},
-        {"onr", a.onr},
-        {"dhp", a.hp0 - a.hpMin},
-        {
-            "hp",
-            math.floor(a.hp0 / math.max(
-                1,
-                bot:GetMaxHealth()
-            ) * 100) / 100
-        },
-        {"q", a.q},
-        {"st", a.st},
-        {"hd", a.hd},
-        {
-            "drop",
-            a.droppedAt ~= nil and math.floor((a.droppedAt - (a.orderedAt or a.startedAt)) * 100) / 100 or nil
-        },
-        {
-            "dur",
-            math.floor((now - a.startedAt) * 100) / 100
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"role", a.role},
+            {"kind", a.kind},
+            {"result", result},
+            {"tgt", a.tpid},
+            {"near", a.near},
+            {"drawn", a.drawn},
+            {"mv", a.mv},
+            {
+                "rhp",
+                a.kind == "feed" and not a.creep:IsNull() and a.creep:IsAlive() and math.floor(frac(a.creep) * 100) / 100 or nil
+            },
+            {"onr", a.onr},
+            {"dhp", a.hp0 - a.hpMin},
+            {
+                "hp",
+                math.floor(a.hp0 / math.max(
+                    1,
+                    bot:GetMaxHealth()
+                ) * 100) / 100
+            },
+            {"q", a.q},
+            {"st", a.st},
+            {"hd", a.hd},
+            {
+                "drop",
+                a.droppedAt ~= nil and math.floor((a.droppedAt - (a.orderedAt or a.startedAt)) * 100) / 100 or nil
+            },
+            {
+                "dur",
+                math.floor((now - a.startedAt) * 100) / 100
+            }
         }
     )
-    ____Telemetry_Event_5(
-        "aggro",
-        {__TS__SparseArraySpread(____array_4)}
-    )
+end
+--- Enemy creeps near at the order that have since moved MovedR or more (drawn off their fight).
+local function movedOf(a)
+    local n = 0
+    for ____, s0 in ipairs(a.start or ({})) do
+        do
+            local __continue94
+            repeat
+                local u = s0.unit
+                if u:IsNull() or not u:IsAlive() then
+                    __continue94 = true
+                    break
+                end
+                local l = u:GetLocation()
+                if d2(
+                    l,
+                    Vector(s0.x, s0.y, l.z)
+                ) >= ____exports.SETTINGS.MovedR then
+                    n = n + 1
+                end
+                __continue94 = true
+            until true
+            if not __continue94 then
+                break
+            end
+        end
+    end
+    return n
 end
 local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue94
+            local __continue99
             repeat
                 if not valid(c) then
-                    __continue94 = true
+                    __continue99 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue94 = true
+                __continue99 = true
             until true
-            if not __continue94 then
+            if not __continue99 then
                 break
             end
         end
@@ -682,10 +690,19 @@ local function act(bot, a, now)
         a.phase = "walk"
     end
     if a.orderedAt == nil then
-        a.near = #enemyCreepsNear(
+        local near = enemyCreepsNear(
             bot,
             bot:GetLocation(),
             500
+        )
+        a.near = #near
+        a.start = __TS__ArrayMap(
+            near,
+            function(____, c) return {
+                unit = c,
+                x = c:GetLocation().x,
+                y = c:GetLocation().y
+            } end
         )
         bot:Action_AttackUnit(a.hero, true)
         a.orderedAt = now
@@ -705,7 +722,11 @@ local function act(bot, a, now)
         a.drawn,
         #drawnOn(bot, bot)
     )
-    if t >= ____exports.SETTINGS.DrawCheck and a.drawn == 0 then
+    a.mv = math.max(
+        a.mv,
+        movedOf(a)
+    )
+    if t >= ____exports.SETTINGS.DrawCheck and a.drawn == 0 and a.mv == 0 then
         finish(bot, a, "no_draw", now)
         return false
     end
@@ -718,13 +739,36 @@ local function act(bot, a, now)
                     nearest = d
                 end
             end
+            for ____, s0 in ipairs(a.start or ({})) do
+                do
+                    local __continue129
+                    repeat
+                        local u = s0.unit
+                        if u:IsNull() or not u:IsAlive() or d2(
+                            u:GetLocation(),
+                            Vector(s0.x, s0.y, 0)
+                        ) < ____exports.SETTINGS.MovedR then
+                            __continue129 = true
+                            break
+                        end
+                        local d = GetUnitToUnitDistance(u, a.creep)
+                        if nearest == nil or d < nearest then
+                            nearest = d
+                        end
+                        __continue129 = true
+                    until true
+                    if not __continue129 then
+                        break
+                    end
+                end
+            end
         end
         if not a.creep:IsAlive() then
             a.phase = "watch"
             a.droppedAt = now
             return false
         end
-        if ____exports.DropNow(t, a.drawn, nearest) then
+        if ____exports.DropNow(t, a.drawn + a.mv, nearest) then
             bot:Action_AttackUnit(a.creep, true)
             a.droppedAt = now
             a.phase = "watch"
