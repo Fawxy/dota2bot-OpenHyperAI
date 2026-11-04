@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local isSupport, reachOf, frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, TOWER_REACH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, primedAt
+local killHpFor, isSupport, reachOf, inLane, frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, primedAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
@@ -10,9 +10,12 @@ local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
 -- the borders get their slack.
-function ____exports.Decide(i, running)
+function ____exports.Decide(i, running, killHp)
     if running == nil then
         running = false
+    end
+    if killHp == nil then
+        killHp = KILL_HP
     end
     local slack = running and KEEP_HP_SLACK or 0
     if i.tower then
@@ -21,7 +24,7 @@ function ____exports.Decide(i, running)
     if i.enemiesNear > i.alliesNear then
         return {respect = "outnumbered"}
     end
-    if i.targetHp <= KILL_HP and i.hp >= i.targetHp then
+    if i.targetHp <= killHp and i.hp >= i.targetHp then
         return {kind = "kill"}
     end
     if i.hp < MIN_HP - slack then
@@ -43,11 +46,26 @@ end
 function ____exports.Deficit(hp0, hp, thp0, thp, maxHp)
     return (hp0 - hp - (thp0 - thp)) / math.max(1, maxHp)
 end
+--- Slice lane-fight (`Ours.CoreLaneFight`, OWNERSHIP H9): every fight of this in-lane core beyond a trade is this module's. Team
+-- roam keeps only its non-fight branches for it and LaneFight makes no claim (its gates close), so a commit is `kill` here.
+-- Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
+function ____exports.OwnsLaneFights(bot)
+    return Ours.On("CoreLaneFight") and Ours.On("CoreTrade") and CoreLastHit.Applies(bot) and bot:IsAlive() and inLane(bot)
+end
+function killHpFor(bot)
+    return ____exports.OwnsLaneFights(bot) and COMMIT_HP or KILL_HP
+end
 function isSupport(bot)
     return not CoreLastHit.Applies(bot) and SupportDeny.Harass(bot)
 end
 function reachOf(bot)
     return bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + (isSupport(bot) and HARASS_REACH or REACH)
+end
+function inLane(bot)
+    return Phase.IsLaningFor(bot) and GetAmountAlongLane(
+        bot:GetAssignedLane(),
+        bot:GetLocation()
+    ).distance <= LANE_WIDTH
 end
 function frac(u)
     return u:GetHealth() / math.max(
@@ -75,19 +93,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue32
+            local __continue34
             repeat
                 if not c:IsAlive() then
-                    __continue32 = true
+                    __continue34 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue32 = true
+                __continue34 = true
             until true
-            if not __continue32 then
+            if not __continue34 then
                 break
             end
         end
@@ -95,10 +113,10 @@ function ____exports.Gather(bot, target)
     local tower = false
     for ____, t in ipairs(bot:GetNearbyTowers(TOWER_REACH + 1000, true)) do
         do
-            local __continue36
+            local __continue38
             repeat
                 if not t:IsAlive() then
-                    __continue36 = true
+                    __continue38 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= TOWER_REACH or GetUnitToUnitDistance(target, t) <= TOWER_REACH then
@@ -107,9 +125,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue36 = true
+                __continue38 = true
             until true
-            if not __continue36 then
+            if not __continue38 then
                 break
             end
         end
@@ -162,7 +180,8 @@ function keepWhy(bot, ep, now)
     end
     local d = ____exports.Decide(
         ____exports.Gather(bot, ep.target),
-        true
+        true,
+        killHpFor(bot)
     )
     if d.kind == nil then
         return d.respect
@@ -176,19 +195,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue78
+            local __continue80
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue78 = true
+                    __continue80 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue78 = true
+                __continue80 = true
             until true
-            if not __continue78 then
+            if not __continue80 then
                 break
             end
         end
@@ -223,6 +242,7 @@ ____exports.DESIRE_KILL = 0.75
 MIN_HP = 0.5
 BEHIND_BY = 0.15
 KILL_HP = 0.25
+COMMIT_HP = 0.4
 MAX_WAVE = 3
 MAX_CREEPS_ON_ME = 2
 KEEP_HP_SLACK = 0.05
@@ -237,8 +257,7 @@ local PUNISH_BONUS = 300
 NEAR = 1200
 CREEP_AGGRO = 500
 TOWER_REACH = 850
---- Within this of its assigned lane's path the core is in lane (fight_read's LANE_WIDTH).
-local LANE_WIDTH = 1200
+LANE_WIDTH = 1200
 AGGRO_CLEAR = 550
 AGGRO_COOLDOWN = 3
 COOLDOWN_LEFT = 0.3
@@ -269,13 +288,6 @@ local function lastHitting(h)
     local t = h:GetAttackTarget()
     return t ~= nil and t ~= nil and not t:IsNull() and t:IsCreep() and not t:IsHero()
 end
---- The core lanes: laning phase for it (transitions/phase) and standing by its own lane; elsewhere OHA's port fights.
-local function inLane(bot)
-    return Phase.IsLaningFor(bot) and GetAmountAlongLane(
-        bot:GetAssignedLane(),
-        bot:GetLocation()
-    ).distance <= LANE_WIDTH
-end
 local function nearestTarget(bot)
     local reach = reachOf(bot)
     local support = isSupport(bot)
@@ -283,10 +295,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue21
+            local __continue23
             repeat
                 if not valid(h) then
-                    __continue21 = true
+                    __continue23 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -294,9 +306,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue21 = true
+                __continue23 = true
             until true
-            if not __continue21 then
+            if not __continue23 then
                 break
             end
         end
@@ -320,6 +332,10 @@ local function close(bot, ep, why, now)
             {
                 "role",
                 isSupport(bot) and "support" or "core"
+            },
+            {
+                "lf",
+                ____exports.OwnsLaneFights(bot) and 1 or 0
             },
             {"kind", ep.kind},
             {"tgt", ep.tpid},
@@ -406,7 +422,11 @@ function ____exports.Desire(bot)
         return 0
     end
     local inputs = ____exports.Gather(bot, target)
-    local d = ____exports.Decide(inputs)
+    local d = ____exports.Decide(
+        inputs,
+        false,
+        killHpFor(bot)
+    )
     if d.kind == nil then
         return 0
     end
@@ -450,19 +470,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue68
+            local __continue70
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue68 = true
+                    __continue70 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue68 = true
+                __continue70 = true
             until true
-            if not __continue68 then
+            if not __continue70 then
                 break
             end
         end
