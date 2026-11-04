@@ -443,6 +443,35 @@ do
 	CoreTrade.Desire(bot)
 	check("the play's end ends the joiner's fight", lastOf("trade"):find("why=play_end") and lastOf("trade"):find("join=1"))
 
+	-- A joiner whose own fight ended (its HP floor) stays in the play: deferred to it, no roll of its own on the target.
+	fresh()
+	draw = 0.01
+	enemy.loc = Vector(400, 0)
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = T + 1
+	bot.hp = 35
+	CoreTrade.Desire(bot)
+	check("(setup) the joiner's fight ended on its HP floor", lastOf("trade"):find("why=hp") and lastOf("trade"):find("join=1"))
+	bot.hp = 80
+	plays = count("play")
+	T = T + 1
+	check("a joiner still in the play gets no desire and no roll here", CoreTrade.Desire(bot) == 0 and count("play") == plays)
+	Plays.End(play, "test", "none", T)
+
+	-- A clear commit wins over joining an ally's play on the same enemy, and laning's last hit yields to it until OnEnd.
+	fresh()
+	draw = 0.01
+	enemy.hp = 35
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	check("a 35% target in reach: the commit, not the join", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and Plays.Of(bot) == nil)
+	CoreTrade.Think(bot)
+	check("a running commit is not cut by laning's last hit", CoreTrade.LastHitYields(bot))
+	CoreTrade.OnEnd(bot)
+	check("once attack mode lost the bot, laning's last hit is back", not CoreTrade.LastHitYields(bot))
+	Plays.End(play, "test", "none", T)
+
 	fresh()
 	draw = 0.01
 	enemy.loc = Vector(1400, 0)
@@ -470,6 +499,14 @@ do
 	Ours.CoreLaneFight = false
 	plays = count("play")
 	check("switch off: no lane-fight chance, the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and count("play") == plays)
+	fresh()
+	enemy.hp = 20
+	check("(setup) switch off: a 20% target is the trade's kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	CoreTrade.Think(bot)
+	check("switch off: a running kill still gives way to laning's last hit", not CoreTrade.LastHitYields(bot))
+	fresh()
+	Plays.Roll({ kind = "test_rune", by = bot, target = enemy, at = enemy.loc }, T)
+	check("switch off: a core in another context's play keeps the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	Ours.CoreLaneFight = true
 	LaneConfig.SetRng(nil)
 	CoreTrade.Reset()

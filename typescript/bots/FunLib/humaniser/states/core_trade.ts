@@ -349,10 +349,10 @@ export function Desire(bot: Unit): number | undefined {
         close(bot, ep, why, now);
         ep = undefined;
     }
-    // A hero that started a play of another context (the rune spawn's) is driven by it (OWNERSHIP H24).
-    const mine = Plays.Of(bot);
-    if (mine !== undefined && mine.by === bot) return 0;
+    // A hero in a play with no fight of ours running (one it started in another context, the rune spawn's, or one it
+    // joined whose fight already ended) is driven by that play until it ends (OWNERSHIP H24).
     const owns = OwnsLaneFights(bot);
+    if (owns && Plays.Of(bot) !== undefined) return 0;
     const target = nearestTarget(bot);
     const inputs = target !== undefined ? Gather(bot, target) : undefined;
     const d = inputs !== undefined ? Decide(inputs, false, killHpFor(bot)) : {};
@@ -546,15 +546,15 @@ export function TradeOwnsLaneRun(bot: Unit): boolean {
 
 /**
  * Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
- * within 15 s of such a cut was 4 times as likely), nor a kill or fight it has committed to (lfpchk1: 2 of 8 fights and 1
- * of 6 kills ended in a last hit, t=236 and t=154 at 4.9 s). Trades still give way to it. A predicate on the laning
- * GetDesire (OWNERSHIP H2).
+ * within 15 s of such a cut was 4 times as likely), nor a kill or fight this context's lane fights committed to (lfpchk1:
+ * 2 of 8 fights ended in a last hit at 4.9 s, t=154 and t=236; kills by the same reasoning, `judgement`). Trades still
+ * give way to it, as does a commit with Ours.CoreLaneFight off. A predicate on the laning GetDesire (OWNERSHIP H2).
  */
 export function LastHitYields(bot: Unit): boolean {
     if (!CoreLastHit.Applies(bot)) return false;
     if (bot.GetActiveMode() === BotMode.Retreat) return true;
     const ep = episodes[bot.GetPlayerID()];
-    return ep !== undefined && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
+    return ep !== undefined && ep.lf && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
 }
 
 export function Reset(): void {

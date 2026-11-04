@@ -604,11 +604,10 @@ function ____exports.Desire(bot)
         close(bot, ep, why, now)
         ep = nil
     end
-    local mine = Plays.Of(bot)
-    if mine ~= nil and mine.by == bot then
+    local owns = ____exports.OwnsLaneFights(bot)
+    if owns and Plays.Of(bot) ~= nil then
         return 0
     end
-    local owns = ____exports.OwnsLaneFights(bot)
     local target = nearestTarget(bot)
     local inputs = target ~= nil and ____exports.Gather(bot, target) or nil
     local d = inputs ~= nil and ____exports.Decide(
@@ -731,9 +730,9 @@ function ____exports.TradeOwnsLaneRun(bot)
     return ____exports.Owns(bot) and inLane(bot)
 end
 --- Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
--- within 15 s of such a cut was 4 times as likely), nor a kill or fight it has committed to (lfpchk1: 2 of 8 fights and 1
--- of 6 kills ended in a last hit, t=236 and t=154 at 4.9 s). Trades still give way to it. A predicate on the laning
--- GetDesire (OWNERSHIP H2).
+-- within 15 s of such a cut was 4 times as likely), nor a kill or fight this context's lane fights committed to (lfpchk1:
+-- 2 of 8 fights ended in a last hit at 4.9 s, t=154 and t=236; kills by the same reasoning, `judgement`). Trades still
+-- give way to it, as does a commit with Ours.CoreLaneFight off. A predicate on the laning GetDesire (OWNERSHIP H2).
 function ____exports.LastHitYields(bot)
     if not CoreLastHit.Applies(bot) then
         return false
@@ -742,7 +741,7 @@ function ____exports.LastHitYields(bot)
         return true
     end
     local ep = episodes[bot:GetPlayerID()]
-    return ep ~= nil and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
+    return ep ~= nil and ep.lf and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
 function ____exports.Reset()
     for k in pairs(episodes) do
