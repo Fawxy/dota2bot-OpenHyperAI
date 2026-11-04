@@ -129,6 +129,8 @@ interface Pull {
     /** The hit second as last read (the live wave up to the order), and the shift it had at the start. */
     hitAt: number;
     timer: PullTiming.CreepTimer;
+    /** A half pull's step-in: the puller's offset from the stand point towards the meet point when the wave engaged (hi). */
+    stepIn?: number;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -471,6 +473,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["hu", p.timer.turn],
         ["hm", p.timer.margin],
         ["hs", p.timer.standBack],
+        ["hi", p.stepIn],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -508,6 +511,14 @@ function trail(bot: Unit, flush: boolean): void {
 /** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
  *  into the camp and fights there (pw1: the Radiant safe small camp sits about 1100 from its meet point, so a watch of the
  *  meet point alone logged those waves as never diverted). */
+/** How far `at` is from `stand` towards the meet point (negative: back towards the camp). */
+function stepped(p: Plan, stand: Vector, at: Vector): number {
+    const dx = p.meet.x - stand.x;
+    const dy = p.meet.y - stand.y;
+    const l = math.max(1, math.sqrt(dx * dx + dy * dy));
+    return math.floor(((at.x - stand.x) * dx + (at.y - stand.y) * dy) / l + 0.5);
+}
+
 function laneCreepsNear(p: Plan, radius: number): Unit[] {
     const out: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
@@ -781,6 +792,16 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
         camp,
         aggroAt,
         lead: lead as unknown as Lib.Vec[],
+        watchAt:
+            pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true
+                ? () => {
+                      const end = lead[lead.length - 1];
+                      const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
+                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, bot.GetLocation());
+                      if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());
+                      return at as unknown as Lib.Vec;
+                  }
+                : undefined,
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
             const w = PullTiming.WaveAt(pull.timer);

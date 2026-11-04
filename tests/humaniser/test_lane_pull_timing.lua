@@ -277,6 +277,34 @@ do
 	check("half with the puller: the hit keeps the front two out of both (" .. math.floor(nClear) .. ", " .. math.floor(hClear) ..
 		") and turns the third (" .. math.floor(nTurn) .. ", " .. math.floor(hTurn) .. ")",
 		withHero.margin > 0 and nClear > 500 and hClear > 450 and (nTurn <= 500 or hTurn <= 450), withHero.margin)
+	-- The live step-in from the side camp: the puller holds off the lane while the front two are near the meet point and
+	-- steps in to it once they are past (front creeps more than 450 + 50 from where it stands, now and 0.5 s on).
+	local stand = Vector(meet.x + (origin.x - meet.x) * 300 / dist(origin, meet), meet.y + (origin.y - meet.y) * 300 / dist(origin, meet))
+	local function waveAt(front)
+		CREEPS[2] = {}
+		for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + front - 100 * k, y = -5000 }) end
+		local c = PT.Timer(timing, slot, 1, 500, 2, 330)
+		-- The wave's read window follows its expected place, which walks with the clock.
+		return PT.StepIn(c, origin, stand, meet, T + (front + 1000) / 325, false, stand)
+	end
+	local function frontsOut(p, front, gap)
+		for k = 0, 1 do
+			for _, ahead in ipairs({ 0, 162.5 }) do
+				if dist(p, Vector(meet.x + front - 100 * k + ahead, -5000)) <= gap then return false end
+			end
+		end
+		return true
+	end
+	local near = waveAt(100)
+	check("step-in: front two at the meet point, the puller stands where neither comes within 500 now or in 0.5 s",
+		frontsOut(near, 100, 500) and dist(near, meet) > dist(stand, meet) - 1, tostring(near.x) .. "," .. tostring(near.y))
+	local past = waveAt(700)
+	check("step-in: the second creep 600 past, the puller steps on to the meet point", dist(past, meet) < 1, tostring(past.x) .. "," .. tostring(past.y))
+	local mid = waveAt(400)
+	check("step-in: in between, as far in as keeps the front two out", frontsOut(mid, 400, 500) and dist(mid, meet) < dist(near, meet)
+		and dist(mid, meet) > 0, dist(mid, meet))
+	CREEPS[2] = {}
+	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
 	local full = PT.Timer(timing, slot, 0, 100)
 	PT.Read(full, T)
 	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)

@@ -311,6 +311,10 @@ ____exports.DEFAULTS = {
         HalfHeroStart = 400,
         HalfNeutralDelay = 1,
         HalfStandBack = {0, 150, 300, 450},
+        HalfStepIn = true,
+        HalfStepBack = 300,
+        HalfStepAhead = 0.5,
+        HalfStepBuffer = 50,
         HalfAll = false,
         LanePaths = {}
     },

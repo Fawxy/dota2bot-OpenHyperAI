@@ -356,6 +356,8 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
+    /** Read every frame of the watch: where to stand now instead of the lead's end (a half pull's step-in), within 30. */
+    watchAt?: (this: void) => Vec | undefined;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -409,7 +411,9 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
         const w = typeof p.watchUntil === "function" ? p.watchUntil() : p.watchUntil;
         if (now() >= math.max(least, w ?? 0)) return ok();
         if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
-        if (dist(bot.GetLocation(), spot) > arrive) bot.Action_MoveToLocation(spot);
+        const at = p.watchAt?.();
+        const to = at ?? spot;
+        if (dist(bot.GetLocation(), to) > (at !== undefined ? 30 : arrive)) bot.Action_MoveToLocation(to);
         else hold(bot, "job_watch");
         yield;
     }

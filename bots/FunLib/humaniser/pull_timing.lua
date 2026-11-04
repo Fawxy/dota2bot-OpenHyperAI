@@ -625,6 +625,68 @@ local function Clearance(t, alongs, keep, now, centre, heroSpeed)
     end
     return best
 end
+--- A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): during the watch the puller, its
+-- neutrals following, stands at the point on the line from HalfStepBack behind `stand` (towards `origin`) through `stand` to
+-- `meet` that is nearest the meet point while every front creep, now and HalfStepAhead s on, stays more than HalfHeroAggro +
+-- HalfStepBuffer from it; none clear: the back end. Once `engaged` (a creep of the wave on a neutral) it stays at `at`. The
+-- hit's timing error (the neutrals' start 0.4-2.1 s after the hit, phchk3) is far above the search's margins (10-38).
+function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
+    if engaged then
+        return at
+    end
+    local cfg = settings()
+    local t = c.timing
+    local path = t.lanePath
+    if path == nil then
+        return stand
+    end
+    local alongs = ____exports.WaveAlongs(t, c.slot, now)
+    if #alongs < c.keep + 1 then
+        return stand
+    end
+    local fronts = {}
+    do
+        local k = 0
+        while k < c.keep do
+            fronts[#fronts + 1] = PathPoint(path, alongs[k + 1])
+            fronts[#fronts + 1] = PathPoint(path, alongs[k + 1] + cfg.CreepSpeed * cfg.HalfStepAhead)
+            k = k + 1
+        end
+    end
+    local ox = stand.x - origin.x
+    local oy = stand.y - origin.y
+    local ol = math.max(
+        1,
+        math.sqrt(ox * ox + oy * oy)
+    )
+    local back = Vector(stand.x - ox / ol * cfg.HalfStepBack, stand.y - oy / ol * cfg.HalfStepBack, stand.z)
+    local len = hypot(back.x, back.y, meet.x, meet.y)
+    local n = math.max(
+        1,
+        math.ceil(len / 50)
+    )
+    local reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer
+    do
+        local i = n
+        while i >= 0 do
+            local x = back.x + (meet.x - back.x) * i / n
+            local y = back.y + (meet.y - back.y) * i / n
+            local clear = true
+            for ____, ____value in ipairs(fronts) do
+                local fx = ____value[1]
+                local fy = ____value[2]
+                if hypot(x, y, fx, fy) <= reach then
+                    clear = false
+                end
+            end
+            if clear then
+                return Vector(x, y, stand.z)
+            end
+            i = i - 1
+        end
+    end
+    return back
+end
 --- Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed).
 function ____exports.Read(c, now)
     local t = c.timing

@@ -1090,7 +1090,8 @@ export const EVENTS = {
         // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
         // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
         // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
-        // puller stands (HalfStandBack).
+        // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
+        // engaged (negative: back towards the camp).
         pk: "str",
         hr: "str",
         hc: "num",
@@ -1100,6 +1101,7 @@ export const EVENTS = {
         hu: "num",
         hm: "num",
         hs: "num",
+        hi: "num",
         ht: "num",
         g4: "num",
         gh: "num",

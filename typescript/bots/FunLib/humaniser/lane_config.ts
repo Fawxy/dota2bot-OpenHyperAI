@@ -377,6 +377,13 @@ export const DEFAULTS = {
         HalfHeroStart: 400,
         HalfNeutralDelay: 1,
         HalfStandBack: [0, 150, 300, 450] as number[],
+        // The live step-in (PullTiming.StepIn): the puller may stand up to HalfStepBack behind the search's stand point, and
+        // steps towards the meet point only while the front creeps, now and HalfStepAhead s on, stay HalfStepBuffer outside
+        // HalfHeroAggro of it. `judgement`.
+        HalfStepIn: true,
+        HalfStepBack: 300,
+        HalfStepAhead: 0.5,
+        HalfStepBuffer: 50,
         // Tuning only: every wanted slot of a half-pulling support is a half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.

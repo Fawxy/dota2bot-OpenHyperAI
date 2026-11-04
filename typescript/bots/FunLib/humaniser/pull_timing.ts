@@ -420,6 +420,43 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
     return best;
 }
 
+/**
+ * A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): during the watch the puller, its
+ * neutrals following, stands at the point on the line from HalfStepBack behind `stand` (towards `origin`) through `stand` to
+ * `meet` that is nearest the meet point while every front creep, now and HalfStepAhead s on, stays more than HalfHeroAggro +
+ * HalfStepBuffer from it; none clear: the back end. Once `engaged` (a creep of the wave on a neutral) it stays at `at`. The
+ * hit's timing error (the neutrals' start 0.4-2.1 s after the hit, phchk3) is far above the search's margins (10-38).
+ */
+export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector): Vector {
+    if (engaged) return at;
+    const cfg = settings();
+    const t = c.timing;
+    const path = t.lanePath;
+    if (path === undefined) return stand;
+    const alongs = WaveAlongs(t, c.slot, now);
+    if (alongs.length < c.keep + 1) return stand;
+    const fronts: [number, number][] = [];
+    for (let k = 0; k < c.keep; k++) {
+        fronts.push(PathPoint(path, alongs[k]));
+        fronts.push(PathPoint(path, alongs[k] + cfg.CreepSpeed * cfg.HalfStepAhead));
+    }
+    const ox = stand.x - origin.x;
+    const oy = stand.y - origin.y;
+    const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
+    const back = Vector(stand.x - (ox / ol) * cfg.HalfStepBack, stand.y - (oy / ol) * cfg.HalfStepBack, stand.z);
+    const len = hypot(back.x, back.y, meet.x, meet.y);
+    const n = math.max(1, math.ceil(len / 50));
+    const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
+    for (let i = n; i >= 0; i--) {
+        const x = back.x + ((meet.x - back.x) * i) / n;
+        const y = back.y + ((meet.y - back.y) * i) / n;
+        let clear = true;
+        for (const [fx, fy] of fronts) if (hypot(x, y, fx, fy) <= reach) clear = false;
+        if (clear) return Vector(x, y, stand.z);
+    }
+    return back;
+}
+
 /** Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed). */
 export function Read(c: CreepTimer, now: number): number {
     const t = c.timing;
