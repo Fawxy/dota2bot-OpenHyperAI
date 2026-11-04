@@ -1,6 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 --- User rule 02/11/2026: the support's lane hits before anything else (denies, and since slice support-lane-hits the last hits
 -- its claims give it). Wants the frame while the body is in an attempt or would start one now; its scan picks the creep.
 local hit = {
@@ -22,7 +23,14 @@ local hold = {
     wants = function(bot, ctx) return Laning.OwnsSupportHits(bot) and Laning.OwnsSpot(bot) and ctx.bodyRunning() end,
     run = function(_bot, ctx) return ctx.stepBody() end
 }
-____exports.STEPS = {hit, hold}
+--- Slice lane-aggro: with its lane core away a support draws creeps itself (feed, drag); after its lane hits, before the hold,
+-- and only while the body runs (so never inside another state's frame).
+local aggro = {
+    name = "aggro",
+    wants = function(bot, ctx) return ctx.bodyRunning() and LaneAggro.Owns(bot) end,
+    run = function(bot) return LaneAggro.Step(bot) end
+}
+____exports.STEPS = {hit, aggro, hold}
 --- The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing).
 function ____exports.Step(bot, ctx)
     for ____, s in ipairs(____exports.STEPS) do

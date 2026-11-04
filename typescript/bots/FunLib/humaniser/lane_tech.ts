@@ -15,6 +15,7 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Intent from "bots/FunLib/humaniser/intent";
+import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
 
 type Phase = "approach" | "block" | "walk" | "swap";
 
@@ -439,6 +440,11 @@ function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: 
 }
 
 function startAggro(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], choice: LanePlanner.Choice, lastHit: LastHit): boolean {
+    // Ours.LaneAggro owns this bot's draws (lane_aggro); the tower swap and drop stay here.
+    if (LaneAggro.OwnsTechnique(bot) && s !== undefined) {
+        overlay(bot, "tech=aggro_pull ours");
+        return false;
+    }
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     let at = drawAt[pid];

@@ -390,6 +390,33 @@ export const EVENTS = {
         ed: "str",
         ns: "str",
     },
+    /** Slice lane-aggro: one line per draw (lane_aggro). */
+    aggro: {
+        pid: "num",
+        /** `core`, or `support` (its lane core away). */
+        role: "str",
+        /** `feed` (enemy wave onto our ranged creep) or `drag` (a dying creep away from an enemy hero). */
+        kind: "str",
+        /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
+         *  `lost`, `alive`; both: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`. */
+        result: "str",
+        tgt: "num",
+        /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
+        near: "num",
+        drawn: "num",
+        onr: "num",
+        /** HP the bot lost from the start to the hand-back (min HP), and its HP fraction at the start. */
+        dhp: "num",
+        hp: "num",
+        /** Lane push reading at a feed: clash between the T1s (0 ours) and its state. */
+        q: "num",
+        st: "str",
+        /** drag: enemy hero to creep distance at the hand-back. */
+        hd: "num",
+        /** feed: seconds from the order to the drop order. */
+        drop: "num",
+        dur: "num",
+    },
     lane_tech: {
         pid: "num",
         tech: "str",

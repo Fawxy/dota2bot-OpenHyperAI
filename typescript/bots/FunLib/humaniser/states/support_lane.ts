@@ -6,6 +6,7 @@
  */
 import { Unit } from "bots/ts_libs/dota";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
 
 export interface StepCtx {
     /** Whether the laning body runs for this bot now (state current, owned, running). */
@@ -47,7 +48,17 @@ const hold: LaneStep = {
     run: (_bot, ctx) => ctx.stepBody(),
 };
 
-export const STEPS: LaneStep[] = [hit, hold];
+/**
+ * Slice lane-aggro: with its lane core away a support draws creeps itself (feed, drag); after its lane hits, before the hold,
+ * and only while the body runs (so never inside another state's frame).
+ */
+const aggro: LaneStep = {
+    name: "aggro",
+    wants: (bot, ctx) => ctx.bodyRunning() && LaneAggro.Owns(bot),
+    run: (bot) => LaneAggro.Step(bot),
+};
+
+export const STEPS: LaneStep[] = [hit, aggro, hold];
 
 /** The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing). */
 export function Step(bot: Unit, ctx: StepCtx): string | undefined {

@@ -268,6 +268,8 @@ function LaneFresh(laneCfg, extra)
 		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true
+	-- lane_tech's aggro pull is Ours.LaneAggro's OFF arm, so this world tests it unless a test asks for ours.
+	package.loaded["bots/FunLib/custom_loader"].Ours.LaneAggro = extra.laneAggro == true
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

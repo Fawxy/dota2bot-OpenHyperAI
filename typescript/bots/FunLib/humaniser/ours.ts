@@ -63,6 +63,12 @@ export const DEFAULTS = {
      * LaneFight makes no claim. Off: team roam's fight branches and LaneFight's claims, and the trade's 25% kill cut.
      */
     CoreLaneFight: true,
+    /**
+     * Slice lane-aggro: an in-lane core (and a support whose lane core is away) draws enemy lane creeps on purpose
+     * (lane_aggro): `feed` walks the enemy wave onto our ranged creep for our deny, `drag` walks a creep about to die away
+     * from an enemy hero for a safe last hit. Off: no draws, and OHA-era lane_tech keeps its aggro pull.
+     */
+    LaneAggro: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
