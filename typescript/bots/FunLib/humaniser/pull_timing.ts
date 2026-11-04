@@ -44,6 +44,10 @@ export interface PullTiming {
     team?: number;
     /** Seconds the neutrals take from the hit to the meet point (the lead path at NeutralSpeed). */
     walk?: number;
+    /** The neutrals' walk: from the camp origin along the lead path at NeutralSpeed (a half pull's clearance search). */
+    origin?: Vector;
+    leadPath?: Vector[];
+    neutralSpeed?: number;
 }
 
 /** A live reading of our wave against the plan: the shift from its body (applied) and from its front creep (logged). */
@@ -126,7 +130,7 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const waveAfter = walk + cfg.Lead - (half ? t.HalfPullLater : 0);
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
-    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team, walk };
+    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team, walk, origin, leadPath, neutralSpeed };
 }
 
 /** WaveAhead for `team`'s `lane`: the safe lane's or the off lane's, 0 for mid. */
@@ -234,32 +238,132 @@ export function LiveShift(timing: PullTiming, aggroAt: number, now: number): num
 /**
  * A pull's hit second timed on its wave's creeps (slice pull-half, user 05/11/2026): the hit goes out so the neutrals, walking
  * `timing.walk` from the hit, reach the meet point just as the wave's creep `index` from the front (0 the front one) is `past`
- * beyond it along the lane, from every creep's position at CreepSpeed. A full pull aims its front creep, a half pull its
- * second (the front two walk on out of acquisition range). Read every LiveEvery s from the leave time to the order; the plan's
- * slot stands until the aimed creep and one behind it are read. Any puller and either team's wave: it reads only the timing
- * it is given.
+ * beyond it along the lane, from every creep's position at CreepSpeed. A full pull aims its front creep. A half pull
+ * (`keep` 2) takes that as the centre of a search: each candidate hit walks the neutrals along the lead path against every
+ * creep's path, and the hit kept is the one where the front `keep` creeps stay farthest outside HalfAcquire of them while
+ * the next one still comes inside it (phchk1: the second creep aimed 500 past turned the whole wave on camp 1, whose
+ * neutrals walk towards the front creeps). Read every LiveEvery s from the leave time to the order; the plan's slot stands
+ * until the aimed creep and one behind it (a half pull: every creep up to the first meant to turn) are read. Any puller and
+ * either team's wave: it reads only the timing it is given.
  */
 export interface CreepTimer {
     timing: PullTiming;
     slot: number;
     index: number;
     past: number;
+    /** Front creeps meant to walk on (0: a full pull). */
+    keep: number;
     /** At the last read: the hit second, when the back creep reaches the meet point, the creeps read, and on that hit the
-     *  predicted distance past the meet point at the neutrals' arrival of the creep after the aimed one (`next`, the first
-     *  meant to turn) and of the back one (`back`; negative: short of it). */
+     *  predicted distance past the meet point at the neutrals' arrival of the creep after the aimed one (`next`) and of the
+     *  back one (`back`; negative: short of it). */
     hit?: number;
     waveAt?: number;
     n: number;
     next?: number;
     back?: number;
+    /** A half pull's search on that hit: the nearest the kept creeps come to the neutrals (`clear`), the nearest the
+     *  first creep meant to turn comes (`turn`), and `margin`, the smaller of clear - HalfAcquire and HalfAcquire - turn
+     *  (negative: no hit in the search keeps the front creeps out and turns the next one). */
+    clear?: number;
+    turn?: number;
+    margin?: number;
     /** The first creep-timed hit's shift from the slot. */
     first?: number;
     readAt?: number;
     reads: number;
 }
 
-export function Timer(timing: PullTiming, slot: number, index: number, past: number): CreepTimer {
-    return { timing, slot, index, past, n: 0, reads: 0 };
+export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0): CreepTimer {
+    return { timing, slot, index, past, keep, n: 0, reads: 0 };
+}
+
+/** The point `along` down `path` (clamped to its ends). */
+function PathPoint(path: number[][], along: number): [number, number] {
+    let acc = 0;
+    for (let i = 0; i + 1 < path.length; i++) {
+        const [ax, ay] = path[i];
+        const [bx, by] = path[i + 1];
+        const len = hypot(ax, ay, bx, by);
+        if (along <= acc + len || i + 2 === path.length) {
+            const f = len > 0 ? math.max(0, math.min(1, (along - acc) / len)) : 0;
+            return [ax + (bx - ax) * f, ay + (by - ay) * f];
+        }
+        acc += len;
+    }
+    return [path[0][0], path[0][1]];
+}
+
+/** Where the neutrals are `s` seconds after the hit: down the lead path from the origin, then at the meet point. */
+function NeutralAt(origin: Vector, lead: Vector[], speed: number, s: number): [number, number] {
+    let left = math.max(0, s) * speed;
+    let px = origin.x;
+    let py = origin.y;
+    for (const p of lead) {
+        const len = hypot(px, py, p.x, p.y);
+        if (left <= len) {
+            const f = len > 0 ? left / len : 0;
+            return [px + (p.x - px) * f, py + (p.y - py) * f];
+        }
+        left -= len;
+        px = p.x;
+        py = p.y;
+    }
+    return [px, py];
+}
+
+/**
+ * A half pull's hit from `centre`: candidate hits every HalfStep over HalfSearch around it (none before `now`); for each, the
+ * neutrals walk the lead path, stand at the meet point to HalfHold past their arrival, and stop where the first creep from
+ * `keep` back comes within HalfAcquire (the fight). Keeps the hit with the largest margin (CreepTimer `margin`).
+ */
+function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, centre: number): { hit: number; clear: number; turn: number; margin: number } | undefined {
+    const cfg = settings();
+    const path = t.lanePath;
+    const origin = t.origin;
+    const lead = t.leadPath;
+    const speed = t.neutralSpeed;
+    const walk = t.walk;
+    if (path === undefined || origin === undefined || lead === undefined || speed === undefined || walk === undefined) return undefined;
+    const step = cfg.HalfStep;
+    const r = cfg.HalfAcquire;
+    const v = cfg.CreepSpeed;
+    const [lo, hi] = cfg.HalfSearch;
+    const first = math.max(0, math.ceil((centre + lo - now) / step));
+    const last = math.floor((centre + hi - now) / step);
+    if (last < first) return undefined;
+    const span = math.ceil((walk + cfg.HalfHold) / step);
+    // Creep positions on the shared grid now + i * step, and the neutrals' at j steps after a hit.
+    const creeps: [number, number][][] = [];
+    for (let k = 0; k < alongs.length; k++) {
+        const row: [number, number][] = [];
+        for (let i = 0; i <= last + span; i++) row.push(PathPoint(path, alongs[k] + v * i * step));
+        creeps.push(row);
+    }
+    const walked: [number, number][] = [];
+    for (let j = 0; j <= span; j++) walked.push(NeutralAt(origin, lead, speed, j * step));
+    let best: { hit: number; clear: number; turn: number; margin: number } | undefined;
+    for (let h = first; h <= last; h++) {
+        let clear = math.huge;
+        let turn = math.huge;
+        let stop: [number, number] | undefined;
+        for (let j = 0; j <= span; j++) {
+            const [nx, ny] = stop ?? walked[j];
+            let fight = false;
+            for (let k = 0; k < creeps.length; k++) {
+                const [cx, cy] = creeps[k][h + j];
+                const d = hypot(nx, ny, cx, cy);
+                if (k < keep) clear = math.min(clear, d);
+                else {
+                    if (k === keep) turn = math.min(turn, d);
+                    if (d <= r) fight = true;
+                }
+            }
+            if (fight && stop === undefined) stop = [nx, ny];
+        }
+        const margin = math.min(clear - r, r - turn);
+        if (best === undefined || margin > best.margin) best = { hit: now + h * step, clear: math.floor(clear + 0.5), turn: math.floor(turn + 0.5), margin: math.floor(margin + 0.5) };
+    }
+    return best;
 }
 
 /** Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed). */
@@ -271,9 +375,18 @@ export function Read(c: CreepTimer, now: number): number {
         c.readAt = now;
         const alongs = WaveAlongs(t, c.slot, now);
         c.n = alongs.length;
-        if (alongs.length >= c.index + 2) {
+        if (alongs.length >= math.max(c.index, c.keep) + 2) {
             const v = settings().CreepSpeed;
-            const hit = now + (meet + c.past - alongs[c.index]) / v - walk;
+            let hit = now + (meet + c.past - alongs[c.index]) / v - walk;
+            if (c.keep > 0) {
+                const s = Clearance(t, alongs, c.keep, now, hit);
+                if (s !== undefined) {
+                    hit = s.hit;
+                    c.clear = s.clear;
+                    c.turn = s.turn;
+                    c.margin = s.margin;
+                }
+            }
             const pastAt = (along: number) => math.floor(along + v * (hit + walk - now) - meet + 0.5);
             c.hit = hit;
             c.waveAt = now + (meet - alongs[alongs.length - 1]) / v;
@@ -286,9 +399,9 @@ export function Read(c: CreepTimer, now: number): number {
     return c.hit ?? c.slot;
 }
 
-/** When the wave's back creep reaches the meet point: from the last read, else the plan's. */
-export function WaveAt(c: CreepTimer, now: number): number | undefined {
-    Read(c, now);
+/** When the wave's back creep reaches the meet point: from the last read (none after the order goes out, so the logged
+ *  read is the one the hit went on), else the plan's. */
+export function WaveAt(c: CreepTimer): number | undefined {
     if (c.waveAt !== undefined) return c.waveAt;
     return c.timing.waveAfter !== undefined ? c.slot + c.timing.waveAfter : undefined;
 }

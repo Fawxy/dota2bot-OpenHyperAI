@@ -464,6 +464,9 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["hc", p.timer.n],
         ["hn", p.timer.next],
         ["hb", p.timer.back],
+        ["hf", p.timer.clear],
+        ["hu", p.timer.turn],
+        ["hm", p.timer.margin],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -477,7 +480,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         return;
     }
     const now = DotaTime();
-    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer, now) ?? now) + SETTINGS.TrailSec };
+    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer) ?? now) + SETTINGS.TrailSec };
 }
 
 function share(p: Pull): number {
@@ -773,7 +776,7 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
         lead: p.lead as unknown as Lib.Vec[],
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
-            const w = PullTiming.WaveAt(pull.timer, DotaTime());
+            const w = PullTiming.WaveAt(pull.timer);
             return w !== undefined ? w + s.PullTiming.WatchAfterWave : undefined;
         },
         leadDeadline: aggroAt + s.Timing.JobMaxAfterAggro,
@@ -828,7 +831,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     let timer = timers[pid];
     if (timer === undefined || timer.slot !== p.slot) {
         const cfg = LaneConfig.Settings().PullTiming;
-        timer = p.kind === "half" ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear) : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
+        timer = p.kind === "half" ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear, 2) : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
         timers[pid] = timer;
     }
     const hitAt = PullTiming.Read(timer, now);

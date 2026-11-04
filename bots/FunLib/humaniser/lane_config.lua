@@ -303,6 +303,10 @@ ____exports.DEFAULTS = {
         WatchAfterWave = 3,
         FullPast = 100,
         HalfClear = 500,
+        HalfAcquire = 500,
+        HalfSearch = {-3, 6},
+        HalfStep = 0.2,
+        HalfHold = 2,
         HalfAll = false,
         LanePaths = {}
     },

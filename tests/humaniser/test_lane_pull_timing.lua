@@ -173,7 +173,7 @@ do
 	local m = timing.meetAlong
 	-- The time the wave's expected place (LiveRead's model) is 1,000 short of the meet point.
 	T = spawnAt - AHEAD + (m - 1000) / 325
-	local full, half = PT.Timer(timing, slot, 0, 100), PT.Timer(timing, slot, 1, 500)
+	local full = PT.Timer(timing, slot, 0, 100)
 	check("no creeps read: the slot", within(PT.Read(full, T), slot, 1e-6) and full.n == 0, PT.Read(full, T))
 	MakeCreep({ team = 2, x = PATH[1][1] + m - 1000, y = -5000 })
 	full.readAt = nil
@@ -185,7 +185,6 @@ do
 	check("full: the front creep 100 past at the neutrals' arrival", within(PT.Read(full, T), T + 1100 / 325 - walk, 1e-6), PT.Read(full, T))
 	check("full: the next creep 50 short, the back one 200 short", full.next == -50 and full.back == -200, tostring(full.next) .. " " .. tostring(full.back))
 	check("full: WaveAt is the back creep at the meet point", within(PT.WaveAt(full, T), T + 1300 / 325, 1e-6))
-	check("half: the second creep 500 past", within(PT.Read(half, T), T + 1650 / 325 - walk, 1e-6) and half.next == 350 and half.back == 350, half.next)
 	local at = full.hit
 	-- 0.3 s on, the wave 1 s behind where it would have walked: every creep 0.3 * 325 forward less 325.
 	for _, c in ipairs(CREEPS[2]) do c.loc = Vector(c.loc.x + 0.3 * 325 - 325, -5000) end
@@ -204,6 +203,54 @@ do
 	MakeCreep({ team = 2, x = e + 300, y = -5000 })
 	local tt = PT.Timer(theirs, tslot, 0, 0)
 	check("the other team's wave is read from its own creeps", within(PT.Read(tt, T), T + (theirs.meetAlong - (e - PATH[1][1])) / 325 - theirs.walk, 1e-6) and tt.n == 2, tt.n)
+	CREEPS[2], CREEPS[3] = {}, {}
+end
+
+do
+	-- A half pull's clearance search (phchk1: on camp 1 the second creep aimed 500 past the meet point turned the whole
+	-- wave, the neutrals walking towards the front creeps). A camp 900 ahead along the lane and 700 off it: at the
+	-- HalfClear aim the front creeps pass within 500 of the neutrals' walk. The search's hit keeps the front two outside
+	-- 500 and brings the third inside it, checked here by walking both at 0.01 s, the neutrals stopping at the fight.
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	CURRENT_TEAM = 2
+	CREEPS[2], CREEPS[3] = {}, {}
+	local meet = Vector(-1600, -5000)
+	local origin = Vector(-700, -5700)
+	local timing = PT.For(2, Lane.Bot, origin, "small", { meet }, true, { 15, 45 })
+	local slot = timing.seconds[1] + 60
+	local m = timing.meetAlong
+	T = slot + timing.waveAfter - timing.waveTravel - AHEAD + (m - 1000) / 325
+	local alongs = { m - 1000, m - 1100, m - 1200, m - 1300 }
+	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
+	local function nearest(h)
+		local len, out, stop = dist(origin, meet), { math.huge, math.huge, math.huge }, nil
+		for s = 0, len / 300 + 2, 0.01 do
+			local f = math.min(1, s * 300 / len)
+			local n = stop or Vector(origin.x + (meet.x - origin.x) * f, origin.y + (meet.y - origin.y) * f)
+			local fight = false
+			for k, a in ipairs(alongs) do
+				local d = dist(n, Vector(PATH[1][1] + a + 325 * (h + s - T), -5000))
+				if k <= 3 then out[k] = math.min(out[k], d) end
+				if k >= 3 and d <= 500 then fight = true end
+			end
+			if fight and stop == nil then stop = n end
+		end
+		return math.min(out[1], out[2]), out[3]
+	end
+	local aim = T + (m + 500 - alongs[2]) / 325 - timing.walk
+	local aimClear = nearest(aim)
+	check("precondition: at the HalfClear aim a front creep comes within 500", aimClear < 500, aimClear)
+	local half = PT.Timer(timing, slot, 1, 500, 2)
+	local hit = PT.Read(half, T)
+	local clear, turn = nearest(hit)
+	check("half: the search's hit keeps the front two out (" .. math.floor(clear) .. ") and turns the third (" .. math.floor(turn) .. ")",
+		clear > 500 and turn <= 500 and half.margin >= 0, half.margin)
+	-- The search walks a 0.2 s grid, so its fight stop and nearest approaches sit within about 0.2 * 325 / 4 of the fine walk's.
+	check("half: hf and hu are the walk's nearest approaches", math.abs(half.clear - clear) <= 20 and math.abs(half.turn - turn) <= 20,
+		tostring(half.clear) .. " " .. tostring(half.turn) .. " vs " .. math.floor(clear) .. " " .. math.floor(turn))
+	local full = PT.Timer(timing, slot, 0, 100)
+	PT.Read(full, T)
+	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 

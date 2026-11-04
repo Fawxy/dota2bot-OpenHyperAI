@@ -358,10 +358,8 @@ do
 	check("half: pos4 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
 end
 
--- The half pull's hit is timed on the creeps: it goes out so the neutrals reach the meet point (their walk after the hit)
--- as the second creep from the front is HalfClear past it. A wave of four 150 apart, its second creep
--- placed so that a HalfClear of 500 puts the hit 0.5 s after the half plan's second: 800 hits (800 - 500) / 325 s later,
--- the third creep then 150 short of the second, and with no creeps read the plan's second stands.
+-- The half pull's hit is timed on the creeps by the clearance search (pull_timing CreepTimer): with four creeps read it is
+-- creep-timed and logs the search (hf, hu, hm); with none read the plan's second stands.
 do
 	local function wave(t, aggroAt, now)
 		if t.meetAlong == nil or t.walk == nil then return {} end
@@ -372,17 +370,12 @@ do
 		o.reading = HOLD
 		return livePull(o)
 	end
-	local near, far = half({ alongs = wave, halfClear = 500 }), half({ alongs = wave, halfClear = 800 })
+	local near = half({ alongs = wave })
 	local plan = half({ alongs = function() return {} end })
-	local d = tonumber(field(far, "ht")) - tonumber(field(near, "ht"))
-	check("half hit: pk=half, timed on the creeps (hr=geo, hc=4)", field(near, "pk") == "half" and field(near, "hr") == "geo"
-		and field(near, "hc") == "4", near)
-	check("half hit: HalfClear 800 hits (800 - 500) / 325 s after 500: " .. d, math.abs(d - 300 / 325) <= 0.15, far)
-	check("half hit: the third creep 350 past the meet point at the neutrals' arrival, the back one 200", field(near, "hn") == "350"
-		and field(near, "hb") == "200", near)
-	check("half hit: the creep hit is 0.5 s after the plan's: " .. tonumber(field(near, "ht")) - tonumber(field(plan, "ht")),
-		math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht")) - 0.5) <= 0.15)
-	check("half hit: no creeps read, the plan's second (hr=plan)", field(plan, "hr") == "plan", plan)
+	check("half hit: pk=half, timed on the creeps (hr=geo, hc=4) with the search logged", field(near, "pk") == "half" and field(near, "hr") == "geo"
+		and field(near, "hc") == "4" and field(near, "hm") ~= nil and field(near, "hf") ~= nil and field(near, "hu") ~= nil, near)
+	check("half hit: the creep hit moves off the plan's", math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht"))) >= 0.2, near)
+	check("half hit: no creeps read, the plan's second (hr=plan, no search)", field(plan, "hr") == "plan" and field(plan, "hm") == nil, plan)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.

@@ -1118,7 +1118,9 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         c.deadNeutrals.set(d.creep, d.seen);
     }
     for (const u of neutralList) {
-        const loc = u.GetLocation();
+        // Alive when listed, yet GetLocation can come back nil later in the frame (phchk1, telemetry.lua lua_error at t=271).
+        const loc = u.GetLocation() as Vector | undefined;
+        if (loc === undefined) continue;
         c.neutrals.set(u, { kind: neutralKind(u), x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
     }
     // This frame's state, read for next frame's deaths.

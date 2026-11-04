@@ -360,6 +360,13 @@ export const DEFAULTS = {
         // acquisition about 500, EC-053), so the front two walk on and the back ones turn. Both `judgement`.
         FullPast: 100,
         HalfClear: 500,
+        // A half pull's clearance search (CreepTimer): candidate hits every HalfStep s over HalfSearch s around the HalfClear
+        // aim; the neutrals stand at the meet point to HalfHold s past their arrival; HalfAcquire is lane creep acquisition
+        // (EC-053). `judgement` but the 500.
+        HalfAcquire: 500,
+        HalfSearch: [-3, 6] as number[],
+        HalfStep: 0.2,
+        HalfHold: 2,
         // Tuning only: every wanted slot of a half-pulling support is a half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.

@@ -1321,6 +1321,9 @@ local function finish(bot, p, r, label)
         {"hc", p.timer.n},
         {"hn", p.timer.next},
         {"hb", p.timer.back},
+        {"hf", p.timer.clear},
+        {"hu", p.timer.turn},
+        {"hm", p.timer.margin},
         {"ht", p.hat},
         {"g4", p.g4},
         {
@@ -1346,7 +1349,7 @@ local function finish(bot, p, r, label)
         fields = fields,
         ["until"] = math.max(
             now,
-            PullTiming.WaveAt(p.timer, now) or now
+            PullTiming.WaveAt(p.timer) or now
         ) + ____exports.SETTINGS.TrailSec
     }
 end
@@ -1484,10 +1487,7 @@ local function verbPlan(bot, pull, aggroAt)
         lead = p.lead,
         watchSec = s.Timing.WatchSec,
         watchUntil = function()
-            local w = PullTiming.WaveAt(
-                pull.timer,
-                DotaTime()
-            )
+            local w = PullTiming.WaveAt(pull.timer)
             return w ~= nil and w + s.PullTiming.WatchAfterWave or nil
         end,
         leadDeadline = aggroAt + s.Timing.JobMaxAfterAggro,
@@ -1548,7 +1548,13 @@ function ____exports.Wants(bot, blocked, host)
     local timer = timers[pid]
     if timer == nil or timer.slot ~= p.slot then
         local cfg = LaneConfig.Settings().PullTiming
-        timer = p.kind == "half" and PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear) or PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast)
+        timer = p.kind == "half" and PullTiming.Timer(
+            p.timing,
+            p.slot,
+            1,
+            cfg.HalfClear,
+            2
+        ) or PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast)
         timers[pid] = timer
     end
     local hitAt = PullTiming.Read(timer, now)

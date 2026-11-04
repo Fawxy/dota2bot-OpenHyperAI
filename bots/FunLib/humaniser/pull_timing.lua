@@ -217,7 +217,10 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         lanePath = path,
         ahead = ahead,
         team = team,
-        walk = walk
+        walk = walk,
+        origin = origin,
+        leadPath = leadPath,
+        neutralSpeed = neutralSpeed
     }
 end
 --- The camp's lead waypoints with its own meet point replaced by `meet`.
@@ -395,15 +398,158 @@ function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_0 and ____opt_0.shift
 end
-function ____exports.Timer(timing, slot, index, past)
+function ____exports.Timer(timing, slot, index, past, keep)
+    if keep == nil then
+        keep = 0
+    end
     return {
         timing = timing,
         slot = slot,
         index = index,
         past = past,
+        keep = keep,
         n = 0,
         reads = 0
     }
+end
+--- The point `along` down `path` (clamped to its ends).
+local function PathPoint(path, along)
+    local acc = 0
+    do
+        local i = 0
+        while i + 1 < #path do
+            local ax, ay = unpack(path[i + 1])
+            local bx, by = unpack(path[i + 1 + 1])
+            local len = hypot(ax, ay, bx, by)
+            if along <= acc + len or i + 2 == #path then
+                local f = len > 0 and math.max(
+                    0,
+                    math.min(1, (along - acc) / len)
+                ) or 0
+                return {ax + (bx - ax) * f, ay + (by - ay) * f}
+            end
+            acc = acc + len
+            i = i + 1
+        end
+    end
+    return {path[1][1], path[1][2]}
+end
+--- Where the neutrals are `s` seconds after the hit: down the lead path from the origin, then at the meet point.
+local function NeutralAt(origin, lead, speed, s)
+    local left = math.max(0, s) * speed
+    local px = origin.x
+    local py = origin.y
+    for ____, p in ipairs(lead) do
+        local len = hypot(px, py, p.x, p.y)
+        if left <= len then
+            local f = len > 0 and left / len or 0
+            return {px + (p.x - px) * f, py + (p.y - py) * f}
+        end
+        left = left - len
+        px = p.x
+        py = p.y
+    end
+    return {px, py}
+end
+--- A half pull's hit from `centre`: candidate hits every HalfStep over HalfSearch around it (none before `now`); for each, the
+-- neutrals walk the lead path, stand at the meet point to HalfHold past their arrival, and stop where the first creep from
+-- `keep` back comes within HalfAcquire (the fight). Keeps the hit with the largest margin (CreepTimer `margin`).
+local function Clearance(t, alongs, keep, now, centre)
+    local cfg = settings()
+    local path = t.lanePath
+    local origin = t.origin
+    local lead = t.leadPath
+    local speed = t.neutralSpeed
+    local walk = t.walk
+    if path == nil or origin == nil or lead == nil or speed == nil or walk == nil then
+        return nil
+    end
+    local step = cfg.HalfStep
+    local r = cfg.HalfAcquire
+    local v = cfg.CreepSpeed
+    local lo, hi = unpack(cfg.HalfSearch)
+    local first = math.max(
+        0,
+        math.ceil((centre + lo - now) / step)
+    )
+    local last = math.floor((centre + hi - now) / step)
+    if last < first then
+        return nil
+    end
+    local span = math.ceil((walk + cfg.HalfHold) / step)
+    local creeps = {}
+    do
+        local k = 0
+        while k < #alongs do
+            local row = {}
+            do
+                local i = 0
+                while i <= last + span do
+                    row[#row + 1] = PathPoint(path, alongs[k + 1] + v * i * step)
+                    i = i + 1
+                end
+            end
+            creeps[#creeps + 1] = row
+            k = k + 1
+        end
+    end
+    local walked = {}
+    do
+        local j = 0
+        while j <= span do
+            walked[#walked + 1] = NeutralAt(origin, lead, speed, j * step)
+            j = j + 1
+        end
+    end
+    local best
+    do
+        local h = first
+        while h <= last do
+            local clear = math.huge
+            local turn = math.huge
+            local stop
+            do
+                local j = 0
+                while j <= span do
+                    local nx, ny = unpack(stop or walked[j + 1])
+                    local fight = false
+                    do
+                        local k = 0
+                        while k < #creeps do
+                            local cx, cy = unpack(creeps[k + 1][h + j + 1])
+                            local d = hypot(nx, ny, cx, cy)
+                            if k < keep then
+                                clear = math.min(clear, d)
+                            else
+                                if k == keep then
+                                    turn = math.min(turn, d)
+                                end
+                                if d <= r then
+                                    fight = true
+                                end
+                            end
+                            k = k + 1
+                        end
+                    end
+                    if fight and stop == nil then
+                        stop = {nx, ny}
+                    end
+                    j = j + 1
+                end
+            end
+            local margin = math.min(clear - r, r - turn)
+            if best == nil or margin > best.margin then
+                best = {
+                    hit = now + h * step,
+                    clear = math.floor(clear + 0.5),
+                    turn = math.floor(turn + 0.5),
+                    margin = math.floor(margin + 0.5)
+                }
+            end
+            h = h + 1
+        end
+    end
+    return best
 end
 --- Reads the wave if LiveEvery has passed since the last read; returns the hit second (the slot until one is timed).
 function ____exports.Read(c, now)
@@ -414,9 +560,24 @@ function ____exports.Read(c, now)
         c.readAt = now
         local alongs = ____exports.WaveAlongs(t, c.slot, now)
         c.n = #alongs
-        if #alongs >= c.index + 2 then
+        if #alongs >= math.max(c.index, c.keep) + 2 then
             local v = settings().CreepSpeed
             local hit = now + (meet + c.past - alongs[c.index + 1]) / v - walk
+            if c.keep > 0 then
+                local s = Clearance(
+                    t,
+                    alongs,
+                    c.keep,
+                    now,
+                    hit
+                )
+                if s ~= nil then
+                    hit = s.hit
+                    c.clear = s.clear
+                    c.turn = s.turn
+                    c.margin = s.margin
+                end
+            end
             local function pastAt(along)
                 return math.floor(along + v * (hit + walk - now) - meet + 0.5)
             end
@@ -432,9 +593,9 @@ function ____exports.Read(c, now)
     end
     return c.hit or c.slot
 end
---- When the wave's back creep reaches the meet point: from the last read, else the plan's.
-function ____exports.WaveAt(c, now)
-    ____exports.Read(c, now)
+--- When the wave's back creep reaches the meet point: from the last read (none after the order goes out, so the logged
+-- read is the one the hit went on), else the plan's.
+function ____exports.WaveAt(c)
     if c.waveAt ~= nil then
         return c.waveAt
     end
