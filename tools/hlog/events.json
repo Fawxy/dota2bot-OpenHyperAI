@@ -829,6 +829,7 @@
   "trade": {
    "pid": "num",
    "role": "str",
+   "lf": "num",
    "kind": "str",
    "tgt": "num",
    "result": "str",
@@ -1007,6 +1008,7 @@
    "pushed": "num",
    "why": "str",
    "hm": "num",
+   "ut": "num",
    "sx": "num",
    "sy": "num",
    "hph": "num",
