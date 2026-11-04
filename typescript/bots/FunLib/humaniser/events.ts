@@ -975,6 +975,7 @@ export const EVENTS = {
         cv: "num",
         cdmg: "num",
         php: "num",
+        se: "num",
         sh: "num",
         lv: "num",
         sf: "num",
@@ -1024,7 +1025,8 @@ export const EVENTS = {
     // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
-    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve).
+    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
+    // hero to the stand or meet point, within PullJob SiteEnemy).
     choice: {
         pid: "num",
         kind: "str",
@@ -1046,6 +1048,7 @@ export const EVENTS = {
         cv: "num",
         cdmg: "num",
         php: "num",
+        se: "num",
     },
     gank: {
         pid: "num",

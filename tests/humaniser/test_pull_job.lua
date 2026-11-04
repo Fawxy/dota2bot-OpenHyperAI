@@ -282,6 +282,24 @@ do
 		and field(choice[1], "why") == "partner-low" and #lines(out, "job") == 0, choice[1])
 end
 
+-- An enemy hero beside the camp (the user's ptm1_A 4:21: a pull walked into the enemy offlaner): skipped, with its distance;
+-- the same hero 1,500 away lets the pull start.
+for _, case in ipairs({ { "enemy at the camp", Vector(-1600, -6600), "0" }, { "enemy 1,500 from the site", Vector(-1600, -8100), "1" } }) do
+	local w = world({ reading = OUT })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = case[2] })
+	enemy.lane, enemy.pos = Lane.Bot, 3
+	local out = run(w, 80)
+	local choice = lines(out, "choice")
+	local se = tonumber(field(choice[1], "se") or "")
+	if case[3] == "0" then
+		check(case[1] .. ": go=0 why=enemy-site, se within 1,200, no job", #choice == 1 and field(choice[1], "go") == "0"
+			and field(choice[1], "why") == "enemy-site" and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
+	else
+		check(case[1] .. ": pull started, se logged over 1,200", #lines(out, "job") >= 1 and field(choice[1], "go") == "1"
+			and se ~= nil and se > 1200, choice[1])
+	end
+end
+
 -- Both supports in the bot lane: the pos5 pulls, the pos4 does not apply.
 do
 	local w = world({ reading = OUT })

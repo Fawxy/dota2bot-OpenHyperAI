@@ -811,6 +811,7 @@ ____exports.EVENTS = {
         cv = "num",
         cdmg = "num",
         php = "num",
+        se = "num",
         sh = "num",
         lv = "num",
         sf = "num",
@@ -866,7 +867,8 @@ ____exports.EVENTS = {
         chp = "num",
         cv = "num",
         cdmg = "num",
-        php = "num"
+        php = "num",
+        se = "num"
     },
     gank = {
         pid = "num",

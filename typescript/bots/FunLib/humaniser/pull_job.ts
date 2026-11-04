@@ -31,6 +31,10 @@ export const SETTINGS = {
     PartnerHp: 0.5,
     PartnerRadius: 900,
     PartnerGank: 3,
+    /** No start with an enemy hero within SiteEnemy of the stand point or the meet point (`why=enemy-site`). Banked `ok`
+     *  off-lane pulls with one under 1,200 of the pull site at the start: 5 of 19 hit by a hero, 4 diverted; 1,200 or more:
+     *  6 of 36 hit, 16 diverted (04/11/2026, the user's ptm1_A 4:21: a pull into an enemy offlaner). `judgement`. */
+    SiteEnemy: 1200,
     /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
      *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
      *  LaneConfig Radii). */
@@ -89,6 +93,8 @@ interface CampState {
     /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
     dmg?: number;
     php?: number;
+    /** At a decision: the nearest enemy hero to the stand point or the meet point (siteThreat). */
+    se?: number;
 }
 
 interface Plan {
@@ -326,6 +332,18 @@ function partnerThreat(bot: Unit): string | undefined {
     return undefined;
 }
 
+/** The nearest enemy hero to the pull site (stand or meet point) into `camp.se`; `enemy-site` within SiteEnemy. */
+function siteThreat(p: Plan, camp: CampState): string | undefined {
+    let near: number | undefined;
+    for (const e of GetUnitList(UnitType.EnemyHeroes)) {
+        if (!e.IsAlive() || e.IsIllusion()) continue;
+        const d = math.min(GetUnitToLocationDistance(e, p.stand), GetUnitToLocationDistance(e, p.meet));
+        if (near === undefined || d < near) near = d;
+    }
+    camp.se = near;
+    return near !== undefined && near <= SETTINGS.SiteEnemy ? "enemy-site" : undefined;
+}
+
 /** OHA's own action holds the hero (rune_job's check: a queued TP, a cast or channel). */
 function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
@@ -340,6 +358,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cv", s.vis ? 1 : 0],
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
+        ["se", r0(s.se)],
     ];
 }
 
@@ -775,7 +794,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
     camp.php = bot.GetHealth();
-    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    const site = siteThreat(p, camp);
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
