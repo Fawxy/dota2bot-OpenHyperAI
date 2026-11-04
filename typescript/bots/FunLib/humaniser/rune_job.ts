@@ -52,6 +52,11 @@ export const SETTINGS = {
     TowerAvoid: 1000,
     DetourMargin: 200,
     DetourMax: 3,
+    /** Valve's GeneratePath waypoints come about 128 apart; legs are merged up to this length (judgement). */
+    RouteStep: 600,
+    /** A cached path is asked again once the hero has moved this far from where it was asked, or after RouteFresh s. */
+    RouteMoved: 400,
+    RouteFresh: 10,
     /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
     FightNear: 700,
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
@@ -87,6 +92,10 @@ interface Trip {
     hidden?: number;
     /** Waypoints before `at`: the contest's route around enemy towers. */
     via?: Vector[];
+    /** Where `via` came from: Valve's path, or the straight-leg detour while the path is pending or unavailable. */
+    route?: "path" | "detour";
+    /** The route's least distance from an enemy tower. */
+    clear?: number;
     /** Plays this trip started: the shrine contest's roll, the rune fight, the gank after the trip. */
     play?: Plays.Play;
     fight?: Plays.Play;
@@ -231,6 +240,58 @@ export function Detour(from: Vector, to: Vector, towers: Vector[]): Vector[] {
     return via;
 }
 
+declare function GeneratePath(this: void, from: Vector, to: Vector, avoid: unknown[], done: (this: void, ...args: unknown[]) => void): void;
+
+const paths: Record<number, { from: Vector; asked: number; to: Vector; via?: Vector[] }> = {};
+
+/**
+ * CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
+ * until the first answer. Asked again when the hero moved RouteMoved or after RouteFresh s; the last answer is kept meanwhile.
+ * The callback's arguments are (distance, request id, waypoints), not the (distance, waypoints) of Valve's docs, and it runs on
+ * a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame called back, so one request per hero at a time).
+ * Avoidance zones changed no path there; Valve's path from either lane or the top rune to the enemy shrine kept 1,002-1,198
+ * from every enemy tower, outside OHA retreat's 898 (`X.ShouldRun`).
+ */
+export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
+    if (typeof GeneratePath === "undefined") return undefined;
+    const pid = bot.GetPlayerID();
+    const here = bot.GetLocation();
+    const c = paths[pid];
+    const stale = c === undefined || FR.Dist(c.to, to) > 1 || FR.Dist(c.from, here) > SETTINGS.RouteMoved || DotaTime() - c.asked > SETTINGS.RouteFresh;
+    if (stale && (c === undefined || c.via !== undefined || DotaTime() - c.asked > 1)) {
+        const entry: { from: Vector; asked: number; to: Vector; via?: Vector[] } = { from: here, asked: DotaTime(), to, via: c?.via };
+        paths[pid] = entry;
+        GeneratePath(here, to, [], (...args: unknown[]) => {
+            for (const a of args) if (type(a) === "table") entry.via = Thin(a as Vector[], to);
+        });
+    }
+    return paths[pid].via;
+}
+
+/** Valve's waypoints (the first is the start) with a point kept only where skipping it would make a leg longer than RouteStep. */
+export function Thin(wp: Vector[], to: Vector): Vector[] {
+    const out: Vector[] = [];
+    let last = wp[0];
+    for (let i = 1; i < wp.length; i++) {
+        if (FR.Dist(last, wp[i + 1] ?? to) > SETTINGS.RouteStep) {
+            out.push(wp[i]);
+            last = wp[i];
+        }
+    }
+    return out;
+}
+
+/** The least distance from any tower to the walk from `from` through `legs`. */
+export function Clearance(from: Vector, legs: Vector[], towers: Vector[]): number {
+    let min = math.huge;
+    let a = from;
+    for (const b of legs) {
+        for (const tw of towers) min = math.min(min, FR.Dist(closestOn(a, b, tw), tw));
+        a = b;
+    }
+    return min;
+}
+
 function closestOn(a: Vector, b: Vector, p: Vector): Vector {
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -244,7 +305,10 @@ function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: numb
     if (kind === "contest") {
         const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
         const at = Rotate.ShrineFor(enemy);
-        return { kind, spawn, at, via: Detour(bot.GetLocation(), at, FR.TowerSpots(enemy)), left: DotaTime(), host };
+        const towers = FR.TowerSpots(enemy);
+        const path = PathVia(bot, at);
+        const via = path ?? Detour(bot.GetLocation(), at, towers);
+        return { kind, spawn, at, via, route: path !== undefined ? "path" : "detour", clear: Clearance(bot.GetLocation(), [...via, at], towers), left: DotaTime(), host };
     }
     if (mine !== undefined) {
         const at = RunePlan.SpotAt(mine);
@@ -294,6 +358,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["sh", t.stand?.height],
         ["sph", t.stand?.spotHeight],
         ["via", t.via !== undefined ? t.via.length : undefined],
+        ["route", t.route],
+        ["vclr", t.clear !== undefined ? math.floor(t.clear) : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
     ]);

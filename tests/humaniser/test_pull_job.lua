@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 } } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -210,8 +210,10 @@ do
 	out = run(w, (ended or 0) + 30)
 	local pull = lines(out, "pull_job")[1]
 	local ht, gu, gh, g4 = tonumber(field(pull, "ht")), tonumber(field(pull, "gu")), tonumber(field(pull, "gh")), tonumber(field(pull, "g4"))
-	check("diag: a chase with no attack target is not giving up; gu comes once it walks home (3-4.5 s after ht), the box member staying home neither holds nor sets it",
-		ht ~= nil and gu ~= nil and gu - ht >= 3 and gu - ht <= 4.5, pull)
+	-- The world's neutral walks home 3 s after the puller leaves the camp, which a pace hold (`pz`) after the hit delays.
+	local pz = tonumber(field(pull, "pz")) or 0
+	check("diag: a chase with no attack target is not giving up; gu comes once it walks home (3-4.5 s after ht and any pace), the box member staying home neither holds nor sets it",
+		ht ~= nil and gu ~= nil and gu - ht - pz >= 3 and gu - ht - pz <= 4.5, pull)
 	check("diag: g4 when it passed 400 from its camp, gh how far it followed, no shift", g4 ~= nil and g4 >= ht and g4 < gu
 		and gh ~= nil and gh > 400 and field(pull, "sh") == "0" and field(pull, "lv") == "0", pull)
 end
@@ -250,6 +252,59 @@ do
 	local choice = lines(out, "choice")
 	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
 		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
+end
+
+-- Slice pull-live: the wave read again up to the order and after it. `shiftAt(t, started)` stubs LiveRead from the job's
+-- start; `neutralAt` places the camp's one neutral (on the puller) each frame. Returns the pull_job line.
+local function livePull(shiftAt, neutralAt)
+	local w = world({ reading = OUT, liveEvery = 0 })
+	ACTIONS = {}
+	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+	local live = PT.LiveRead
+	local started
+	PT.LiveRead = function()
+		local sh = shiftAt(T, started)
+		return sh ~= nil and { shift = sh, front = sh } or nil
+	end
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local out = capture(function()
+		while T < 120 do
+			frame(w)
+			if started == nil and w.H.PullJob.Running(w.sup) then started = T end
+			if neutralAt ~= nil then kobold.loc = neutralAt(w) end
+		end
+	end)
+	PT.LiveRead = live
+	return lines(out, "pull_job")[1]
+end
+
+do
+	-- On time at the start, 1.5 s late from 1 s after it: the hit lands 1.5 s later than on a wave that stays on time.
+	local steady = livePull(function() return 0 end)
+	local slowed = livePull(function(t, started) if started ~= nil and t >= started + 1 then return 1.5 end return 0 end)
+	local d = tonumber(field(slowed, "ht")) - tonumber(field(steady, "ht"))
+	check("live: a wave slowed after the start moves the hit with it (1.5 s)", math.abs(d - 1.5) <= 0.15, d)
+	check("live: sh is the shift at the order, s0 the start's", tonumber(field(slowed, "sh")) == 1.5 and tonumber(field(slowed, "s0")) == 0, slowed)
+end
+
+do
+	-- The wave falls 4 s behind once the attack order is out: the puller holds the whole PaceFor
+	-- (3 s) while the neutral stays in its camp (the wave read every frame, LiveEvery 0, so the first read after the order sees it), and walks the lead at once when the neutral is already past the guard.
+	-- On time it still holds about a second: the plan puts the neutrals at the meet point Lead (1.5 s) before the wave, the
+	-- pace PaceLead (0.5 s), plus the hit landing about 0.5 s before the slot in this world.
+	local function ordered()
+		for _, a in ipairs(ACTIONS) do if a.pid == 5 and a.kind == "AttackUnit" then return true end end
+		return false
+	end
+	local function late(t, started) if started ~= nil and ordered() then return 4 end return 0 end
+	local held = livePull(late)
+	local onTime = tonumber(field(livePull(function() return 0 end), "pz") or "0")
+	check("pace: a late wave holds the puller after the hit for PaceFor", math.abs(tonumber(field(held, "pz") or "0") - 3) <= 0.15, held)
+	check("pace: an on-time pull holds about a second, so the neutrals come PaceLead before the wave: " .. onTime, onTime >= 1 and onTime <= 2)
+	local out = livePull(late, function(w) return Vector(SMALL.x, SMALL.y + 500) end)
+	check("pace: a neutral past the guard (500 from its camp) is not held for", field(out, "pz") == nil, out)
 end
 
 -- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
@@ -329,6 +384,13 @@ do
 		and field(choice[1], "why") == "empty" and field(choice[1], "cn") == "0" and field(choice[1], "cv") == "1", choice[1])
 	local s = { n = 0, seen = 0, hp = 0, vis = true, units = {} }
 	check("empty, seen, a spawn minute before the hit: no gate", w.H.PullJob.CampGate(s, 58, 63) == nil and w.H.PullJob.CampGate(s, 61, 78) == "empty")
+	-- One neutral left in a camp the team sees: not pulled (user 04/11/2026); two are; out of sight or a spawn before the
+	-- hit says nothing.
+	local one = { n = 1, seen = 1, hp = 300, vis = true, units = {} }
+	local two = { n = 2, seen = 2, hp = 600, vis = true, units = {} }
+	local fogged = { n = 1, seen = 1, hp = 300, vis = false, units = {} }
+	check("one neutral, seen: why=one; two: no gate; out of sight or a spawn first: no gate", w.H.PullJob.CampGate(one, 61, 78) == "one"
+		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage over the pull would leave less than StartReserve of

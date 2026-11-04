@@ -299,6 +299,60 @@ do
 	check("shrine: a fired roll sends the pos5 to the enemy shrine", H.RuneJob.Running(p5) and dist(p5.loc, Vector(8029, -1126)) < dist(Vector(6500, -1500), Vector(8029, -1126)))
 end
 
+-- Valve's path, 128 apart (probe genpath5): south, east, then north to the shrine; the callback is (distance, id, waypoints).
+local function lpath(from)
+	local wp, corners = {}, { from, Vector(from.x, -3000), Vector(8029, -3000), Vector(8029, -1126) }
+	for i = 1, #corners - 1 do
+		local a, b = corners[i], corners[i + 1]
+		local n = math.max(1, math.floor(dist(a, b) / 128))
+		for k = 0, n - 1 do table.insert(wp, Vector(a.x + (b.x - a.x) * k / n, a.y + (b.y - a.y) * k / n)) end
+	end
+	table.insert(wp, corners[#corners])
+	return wp
+end
+
+-- PathVia: nothing until Valve answers on a later frame, one request at a time; the answer's legs merged up to RouteStep;
+-- asked again once the hero has moved, the old answer kept meanwhile.
+do
+	local H = world({ t = 395 })
+	local asked = {}
+	GeneratePath = function(a, b, z, cb) table.insert(asked, { from = a, cb = cb }) end
+	local S = H.RuneJob.SETTINGS
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local to = Vector(8029, -1126)
+	local first, again = H.RuneJob.PathVia(p5, to), H.RuneJob.PathVia(p5, to)
+	check("path: none before the answer, one request pending", first == nil and again == nil and #asked == 1, #asked)
+	local raw = lpath(p5.loc)
+	asked[1].cb(4000, 0, raw)
+	local via = H.RuneJob.PathVia(p5, to)
+	local long, a = 0, p5.loc
+	for _, q in ipairs(via or {}) do long = math.max(long, dist(a, q)) a = q end
+	long = math.max(long, dist(a, to))
+	local south = false
+	for _, q in ipairs(via or {}) do if q.y < -2700 then south = true end end
+	check("path: the answer is thinned, no leg over RouteStep, and keeps the path's detour", via ~= nil and #via < #raw and long <= S.RouteStep and south, via and #via, long)
+	p5.loc = Vector(6500, -2100)
+	local kept = H.RuneJob.PathVia(p5, to)
+	check("path: moved past RouteMoved asks again and keeps the old answer meanwhile", #asked == 2 and kept == via, #asked)
+	GeneratePath = nil
+end
+
+-- With Valve's path the fired contest walks it: its trip line names route=path and the hero heads south first.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.0)
+	GeneratePath = function(a, b, z, cb) cb(4000, 3, lpath(a)) end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local out = run(H, { p5 }, 450)
+	GeneratePath = nil
+	local start
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then start = x end end
+	local south = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].y < -2500 then south = true end end
+check("shrine: the contest ran on Valve's path (route=path, clearance logged)", start ~= nil and field(start, "route") == "path" and field(start, "vclr") ~= nil, start)
+	check("shrine: the contest walks the path's waypoints, not the straight line", south)
+end
+
 -- An enemy hero on the spot at the spawn: the rune-fight roll; fired, the support fights it instead of the race's act.
 do
 	local H = world()

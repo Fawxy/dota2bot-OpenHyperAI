@@ -351,6 +351,8 @@ export const DEFAULTS = {
         LiveWindow: 5,
         LiveMaxOffset: 600,
         LiveMaxShift: 4,
+        // Live re-timing (slice pull-live): the wave is read again this often from the leave time to the meet point.
+        LiveEvery: 0.25,
         WatchAfterWave: 3,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,

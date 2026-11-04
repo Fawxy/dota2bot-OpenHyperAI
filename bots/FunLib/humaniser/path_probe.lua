@@ -18,6 +18,31 @@ local function __TS__ArrayFind(self, predicate, thisArg)
     return nil
 end
 
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__ArrayFilter(self, callbackfn, thisArg)
     local result = {}
     local len = 0
@@ -36,6 +61,7 @@ local Team = ____dota.Team
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
+local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local ____Utils_RawPrint_0 = Utils.RawPrint
 if ____Utils_RawPrint_0 == nil then
     ____Utils_RawPrint_0 = print
@@ -109,7 +135,7 @@ function ____exports.Run(bot)
         next()
     end
     local team = bot:GetTeam()
-    if done[team] == true or DotaTime() < 30 then
+    if done[team] == true or DotaTime() < 390 then
         return
     end
     done[team] = true
@@ -201,6 +227,27 @@ function ____exports.Run(bot)
                                     wp
                                 ) end
                             )
+                            local th = RuneJob.Thin(wp, to)
+                            local ____hev_8 = hev
+                            local ____name_5 = name
+                            local ____v_6 = v
+                            local ____temp_7 = #th
+                            local ____math_floor_4 = math.floor
+                            local ____RuneJob_Clearance_3 = RuneJob.Clearance
+                            local ____start_2 = start
+                            local ____array_1 = __TS__SparseArrayNew(unpack(th))
+                            __TS__SparseArrayPush(____array_1, to)
+                            ____hev_8((((((((((("team=" .. tostring(team)) .. " from=") .. ____name_5) .. " v=") .. ____v_6) .. " thin=") .. tostring(____temp_7)) .. " tclr=") .. tostring(____math_floor_4(____RuneJob_Clearance_3(
+                                ____start_2,
+                                {__TS__SparseArraySpread(____array_1)},
+                                towers
+                            )))) .. " pts=") .. table.concat(
+                                __TS__ArrayMap(
+                                    th,
+                                    function(____, q) return (tostring(math.floor(q.x)) .. ",") .. tostring(math.floor(q.y)) end
+                                ),
+                                ";"
+                            ))
                         else
                             hev((((((("team=" .. tostring(team)) .. " from=") .. name) .. " v=") .. v) .. " nowp n=") .. tostring(#args))
                         end

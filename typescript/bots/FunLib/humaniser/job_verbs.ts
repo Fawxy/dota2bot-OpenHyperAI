@@ -47,6 +47,7 @@ const STAND_STUCK_S = 1.5;
 const STAND_STUCK_GAIN = 25;
 const LEAD_MAX_AFTER_AGGRO = 15;
 const WATCH_SEC = 8;
+const PACE_FOR = 3;
 const BAIL_FOR = 6;
 /** Seconds early to arrive at a rune (players aim for 3-5 s). */
 const RUNE_EARLY = 4;
@@ -112,8 +113,8 @@ export interface Camp {
     pick?: (this: void) => TaskAttacker | undefined;
     /** Extra proof the aggro landed (e.g. a neutral targets the bot), passed to `attackAndConfirm`. */
     confirmed?: (this: void) => boolean;
-    /** Seconds to pull the hit forward, read every frame until the order (e.g. stacks already in the box block each other).
-     *  CANDIDATE(earlier): one consumer, the double stack. */
+    /** Seconds to pull the hit forward (negative: later), read every frame until the order: stacks already in the box
+     *  block each other (double stack); a pull's wave read live (pull job). */
     earlier?: (this: void) => number;
 }
 
@@ -346,8 +347,8 @@ export interface PullPlan extends AggroOpts {
     first?: { camp: Camp; aggroAt: number };
     /** Watch at the meet point at least this long. Default 8. */
     watchSec?: number;
-    /** And until this time (e.g. a little after the wave arrives). */
-    watchUntil?: number;
+    /** And until this time (e.g. a little after the wave arrives); a function is read every frame of the watch. */
+    watchUntil?: number | ((this: void) => number | undefined);
     /** Absolute time the lead must be done by. Default aggroAt + 15. */
     leadDeadline?: number;
     /** Checked every frame of the lead and watch: a point to step back to while the camp is hitting the bot too hard (the
@@ -356,6 +357,11 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
+    /** Checked every frame after the hit, before the lead: true holds the bot where it is (the neutrals come to it), for
+     *  at most `paceFor` s, so a lead that would bring them to the meet point too early waits first (the host's call). */
+    pace?: (this: void) => boolean;
+    /** Default 3. */
+    paceFor?: number;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -388,6 +394,15 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
 
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;
+    if (p.pace !== undefined) {
+        const until = now() + (p.paceFor ?? PACE_FOR);
+        while (now() < until && p.pace()) {
+            if (!bot.IsAlive()) return fail("dead");
+            if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
+            hold(bot, "job_pace");
+            yield;
+        }
+    }
     if (p.lead.length > 0) {
         const led = yield* E().Verbs.walkPath(bot, p.lead, {
             tolerance: arrive,
@@ -403,10 +418,11 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
 
     h.label?.("watch");
     const spot = p.lead.length > 0 ? p.lead[p.lead.length - 1] : bot.GetLocation();
-    const until = math.max(now() + (p.watchSec ?? WATCH_SEC), p.watchUntil ?? 0);
+    const least = now() + (p.watchSec ?? WATCH_SEC);
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
-        if (now() >= until) return ok();
+        const w = typeof p.watchUntil === "function" ? p.watchUntil() : p.watchUntil;
+        if (now() >= math.max(least, w ?? 0)) return ok();
         if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
         if (dist(bot.GetLocation(), spot) > arrive) bot.Action_MoveToLocation(spot);
         else hold(bot, "job_watch");

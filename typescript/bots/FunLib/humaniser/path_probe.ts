@@ -7,6 +7,7 @@ import { Unit, Vector, Team } from "bots/ts_libs/dota";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import * as Utils from "bots/FunLib/utils";
+import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 
 // OHA's global print drops output unless Utils.DebugMode (aba_global_overrides); probes v2 and v3 printed nothing.
 const out: (this: void, s: string) => void = (Utils as any).RawPrint ?? print;
@@ -57,13 +58,13 @@ function guard<T>(step: string, f: () => T): T | undefined {
     return v as T;
 }
 
-// v6: starts from rspchk4's contest walks (own safe lane, 7:00), zones of radius 1,100, one request per frame.
+// v7: v6's starts at 6:30 (rspchk4's contest leave time), raw min and the slice's Thin + Clearance per path.
 const queue: (() => void)[] = [];
 export function Run(bot: Unit): void {
     const next = queue.shift();
     if (next !== undefined) next();
     const team = bot.GetTeam();
-    if (done[team] === true || DotaTime() < 30) return;
+    if (done[team] === true || DotaTime() < 390) return;
     done[team] = true;
     const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
     const to = Rotate.ShrineFor(enemy);
@@ -82,8 +83,11 @@ export function Run(bot: Unit): void {
                     GeneratePath(start, to, avoid, ((...args: unknown[]) => {
                         const wp = args.find((x) => type(x) === "table") as Vector[] | undefined;
                         const d = args.find((x) => type(x) === "number") as number | undefined;
-                        if (wp !== undefined) guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d ?? -1, wp));
-                        else hev(`team=${team} from=${name} v=${v} nowp n=${args.length}`);
+                        if (wp !== undefined) {
+                            guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d ?? -1, wp));
+                            const th = RuneJob.Thin(wp, to);
+                            hev(`team=${team} from=${name} v=${v} thin=${th.length} tclr=${math.floor(RuneJob.Clearance(start, [...th, to], towers))} pts=${th.map((q) => `${math.floor(q.x)},${math.floor(q.y)}`).join(";")}`);
+                        } else hev(`team=${team} from=${name} v=${v} nowp n=${args.length}`);
                     }) as any)
                 )
             );

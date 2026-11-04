@@ -854,6 +854,8 @@ ____exports.EVENTS = {
         sh = "num",
         sph = "num",
         via = "num",
+        route = "str",
+        vclr = "num",
         play = "num",
         gank = "num"
     },
@@ -886,6 +888,8 @@ ____exports.EVENTS = {
         sh = "num",
         lv = "num",
         sf = "num",
+        s0 = "num",
+        pz = "num",
         ht = "num",
         g4 = "num",
         gh = "num",
