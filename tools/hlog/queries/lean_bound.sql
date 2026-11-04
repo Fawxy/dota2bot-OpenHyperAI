@@ -7,7 +7,9 @@
 -- off the spot are all ignored, so the bound is loose.
 --   starts      job starts;  in_lane  those whose snapshot nearest the start is within :width of the lane path
 --   trip_s      mean seconds from start to the job's `phase=end` (all starts)
---   corr_s      mean corridor seconds over the in-lane starts;  ge2  in-lane starts with 2 s or more
+--   corr_s      mean corridor seconds over the in-lane starts, ending at the job's end when that comes first
+--   per_trip    corridor seconds over all starts (an out-of-lane start or an open one counts 0): the plan's per-trip measure
+--   ge2         in-lane starts with 2 s or more
 --   open        in-lane starts with no exit snapshot within 45 s (left out of corr_s)
 -- Params: like, from, until, width, back.
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -32,11 +34,13 @@ ex AS (
     FROM s JOIN o USING (game_id, pid, t0) GROUP BY 1, 2, 3
 ),
 c AS (
-    SELECT st.job, st.t1 - st.t0 AS trip, o.ld0 <= coalesce(:width, 250) AS inl, ex.tx - st.t0 AS corr
+    SELECT st.job, st.t1 - st.t0 AS trip, o.ld0 <= coalesce(:width, 250) AS inl,
+        CASE WHEN st.t1 IS NOT NULL AND st.t1 < ex.tx THEN st.t1 ELSE ex.tx END - st.t0 AS corr
     FROM st JOIN o USING (game_id, pid, t0) JOIN ex USING (game_id, pid, t0)
 )
 SELECT job, count(*) AS starts, sum(inl) AS in_lane, round(avg(trip), 1) AS trip_s,
     round(avg(CASE WHEN inl THEN corr END), 1) AS corr_s,
+    round(sum(CASE WHEN inl THEN coalesce(corr, 0) ELSE 0 END) * 1.0 / count(*), 1) AS per_trip,
     sum(CASE WHEN inl AND corr >= 2 THEN 1 ELSE 0 END) AS ge2,
     sum(CASE WHEN inl AND corr IS NULL THEN 1 ELSE 0 END) AS open
 FROM c GROUP BY job ORDER BY job;

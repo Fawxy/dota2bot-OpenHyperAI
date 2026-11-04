@@ -39,11 +39,11 @@ test('lean bound: corridor seconds end at the lane-path width or the spot\'s bac
     for (let i = 0; i <= 46; i++) lines.push(snap(400 + i, 0, 100));
     // A pull before :from is left out.
     lines.push(job(50, 'pull', 'start'), job(52, 'pull', 'end'), snap(50, 0, 100), snap(51, 0, 400));
-    const out = run(lines).map(r => [r.job, r.starts, r.in_lane, r.trip_s, r.corr_s, r.ge2, r.open]);
+    const out = run(lines).map(r => [r.job, r.starts, r.in_lane, r.trip_s, r.corr_s, r.per_trip, r.ge2, r.open]);
     assert.deepStrictEqual(out, [
-        ['pull', 1, 1, 12, 4, 1, 0],
-        ['rune', 1, 1, null, null, 0, 1],
-        ['stack', 2, 1, 15, 3, 1, 0],
+        ['pull', 1, 1, 12, 4, 4, 1, 0],
+        ['rune', 1, 1, null, null, 0, 0, 1],
+        ['stack', 2, 1, 15, 3, 1.5, 1, 0],
     ]);
 });
 
@@ -52,4 +52,10 @@ test('lean bound: a wider corridor keeps a sideways walk in it longer', () => {
     [100, 200, 300, 400, 500].forEach((ld, i) => lines.push(snap(100 + i, 0, ld)));
     assert.deepStrictEqual(run(lines).map(r => r.corr_s), [2]);
     assert.deepStrictEqual(run(lines, { width: 450 }).map(r => r.corr_s), [4]);
+});
+
+test('lean bound: a job that ends before its hero leaves the corridor counts only to its end', () => {
+    const lines = [line(0, 'bot pid=4 hero=h4 team=2 pos=5'), job(100, 'pull', 'start'), job(102, 'pull', 'end')];
+    [100, 100, 100, 100, 400].forEach((ld, i) => lines.push(snap(100 + i, 0, ld)));
+    assert.deepStrictEqual(run(lines).map(r => r.corr_s), [2]);
 });
