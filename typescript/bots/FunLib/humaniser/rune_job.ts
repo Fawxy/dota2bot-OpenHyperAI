@@ -25,7 +25,8 @@ type Kind = "power" | "wisdom" | "contest";
 // All judgement (slice file, Decisions).
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
-    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [["power", 360], ["contest", 420]] } as Record<number, [Kind, number][]>,
+    // DRILL (probe/contest-drill, never merged): pos5 contests every 60 s from 2:00 to 8:00, no roll.
+    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [120, 180, 240, 300, 360, 420, 480].map((n) => ["contest", n]) } as Record<number, [Kind, number][]>,
     /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
@@ -460,9 +461,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             if (Busy(bot)) return skip("busy");
             // The start waits a frame or so for Valve's path rather than walk the straight-leg fallback.
             if (t.route === "detour" && PathPending(bot)) return false;
-            const play = Plays.Roll({ kind: "shrine", by: bot, at: t.at });
-            if (play === undefined) return skip("roll");
-            t.play = play;
+            // DRILL: no roll.
         }
         const ok = Tasks.Start(bot, { name: "rune", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
             body(bot, t, ctx)

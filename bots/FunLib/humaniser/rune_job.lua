@@ -330,7 +330,21 @@ function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
 ____exports.SETTINGS = {
-    Trips = {[4] = {{"power", 360}, {"wisdom", 420}}, [5] = {{"power", 360}, {"contest", 420}}},
+    Trips = {
+        [4] = {{"power", 360}, {"wisdom", 420}},
+        [5] = __TS__ArrayMap(
+            {
+                120,
+                180,
+                240,
+                300,
+                360,
+                420,
+                480
+            },
+            function(____, n) return {"contest", n} end
+        )
+    },
     Priority = {[4] = 0.95, [5] = 0.85},
     ClaimFrom = 60,
     StartSlack = 3,
@@ -399,19 +413,19 @@ local function open(bot)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue12
+            local __continue13
             repeat
                 if kind == "contest" and not RunePlan.On() then
-                    __continue12 = true
+                    __continue13 = true
                     break
                 end
                 local ____opt_0 = handled[pid]
                 if (____opt_0 and ____opt_0[key(kind, spawn)]) ~= true and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.LateBy[kind] then
                     out[#out + 1] = {kind, spawn}
                 end
-                __continue12 = true
+                __continue13 = true
             until true
-            if not __continue12 then
+            if not __continue13 then
                 break
             end
         end
@@ -438,20 +452,20 @@ local function takenSpots(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue20
+                local __continue21
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot then
-                        __continue20 = true
+                        __continue21 = true
                         break
                     end
                     local t = running[m:GetPlayerID()]
                     if t ~= nil and t.rune ~= nil then
                         out[t.rune] = true
                     end
-                    __continue20 = true
+                    __continue21 = true
                 until true
-                if not __continue20 then
+                if not __continue21 then
                     break
                 end
             end
@@ -576,10 +590,10 @@ function ____exports.PathVia(bot, to)
                 local args = {...}
                 for ____, a in ipairs(args) do
                     do
-                        local __continue45
+                        local __continue46
                         repeat
                             if type(a) ~= "table" then
-                                __continue45 = true
+                                __continue46 = true
                                 break
                             end
                             local wp = a
@@ -588,9 +602,9 @@ function ____exports.PathVia(bot, to)
                             else
                                 rejected[pid] = (rejected[pid] or 0) + 1
                             end
-                            __continue45 = true
+                            __continue46 = true
                         until true
-                        if not __continue45 then
+                        if not __continue46 then
                             break
                         end
                     end
@@ -869,7 +883,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue78
+            local __continue79
             repeat
                 local mine
                 local function skip(why)
@@ -886,12 +900,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue78 = true
+                    __continue79 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue78 = true
+                        __continue79 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -925,11 +939,6 @@ function ____exports.Wants(bot, blocked, host)
                     if t.route == "detour" and ____exports.PathPending(bot) then
                         return false
                     end
-                    local play = Plays.Roll({kind = "shrine", by = bot, at = t.at})
-                    if play == nil then
-                        return skip("roll")
-                    end
-                    t.play = play
                 end
                 local ok = Tasks.Start(
                     bot,
@@ -951,7 +960,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue78 then
+            if not __continue79 then
                 break
             end
         end
