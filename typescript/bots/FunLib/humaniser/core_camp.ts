@@ -116,9 +116,10 @@ const pace: Record<number, number> = {};
 const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
 const skipped: Record<number, Record<string, boolean>> = {};
+const gates: Record<number, { min: number; n: Record<string, number> }> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, nextPlanAt, pace, cleared, skipped] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
+    for (const t of [running, nextPlanAt, pace, cleared, skipped, gates] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
 }
 
 function clamp(v: number, r: number[]): number {
@@ -411,6 +412,43 @@ function noteSkip(bot: Unit, why: string, c: Clash, plan: CampPlan): void {
     log(bot, "skip", c, [["why", why], ...planFields(plan)]);
 }
 
+type GateField = "h_dead" | "h_mode" | "h_hp" | "h_far" | "h_wave" | "h_camp" | "h_fc" | "h_clash" | "h_gap" | "h_plan" | "h_skip" | "h_trip";
+const GATE_FIELD: Record<string, GateField> = {
+    dead: "h_dead",
+    mode: "h_mode",
+    "low-hp": "h_hp",
+    far: "h_far",
+    wave: "h_wave",
+    "no-camp": "h_camp",
+    "no-forecast": "h_fc",
+    "no-clash": "h_clash",
+    gap: "h_gap",
+    "no-plan": "h_plan",
+    skip: "h_skip",
+    trip: "h_trip",
+};
+
+/**
+ * The coverage's denominator: each planning second of the laning phase counted by what held it, one `phase=gates` line per
+ * core per game minute. The skip lines only see seconds where a camp already fitted.
+ */
+function tally(bot: Unit, now: number, why: string): void {
+    const pid = bot.GetPlayerID();
+    const min = math.floor(now / 60);
+    let g: { min: number; n: Record<string, number> } | undefined = gates[pid];
+    if (g !== undefined && g.min !== min) {
+        const fields: Telemetry.Fields<"core_camp"> = [["min", g.min]];
+        for (const [k, n] of pairs(g.n)) fields.push([GATE_FIELD[k as string], n as number]);
+        Telemetry.Event("core_camp", [["pid", pid], ["pos", LaneConfig.PositionOf(bot)], ["lane", bot.GetAssignedLane()], ["phase", "gates"], ...fields]);
+        g = undefined;
+    }
+    if (g === undefined) {
+        g = { min, n: {} };
+        gates[pid] = g;
+    }
+    g.n[why] = (g.n[why] ?? 0) + 1;
+}
+
 function jobLine(bot: Unit, t: Trip, phase: string, why: string): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
@@ -525,21 +563,29 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const now = DotaTime();
     if (now < (nextPlanAt[pid] ?? -math.huge)) return false;
     nextPlanAt[pid] = now + SETTINGS.PlanEvery;
-    if (inLaneGate(bot, now) !== undefined) return false;
+    const held = (why: string): false => {
+        tally(bot, now, why);
+        return false;
+    };
+    const gate = inLaneGate(bot, now);
+    if (gate === "time") return false;
+    if (gate !== undefined) return held(gate);
     const lane = bot.GetAssignedLane();
-    if (!anyCamp(bot, GetLaneFrontLocation(bot.GetTeam(), lane, 0), now)) return false;
+    if (!anyCamp(bot, GetLaneFrontLocation(bot.GetTeam(), lane, 0), now)) return held("no-camp");
     const [samples, path] = LanePush.Forecast(bot.GetTeam(), lane, SETTINGS.Horizon);
-    if (samples === undefined || path === undefined || samples.length === 0) return false;
+    if (samples === undefined || path === undefined || samples.length === 0) return held("no-forecast");
     const clash = ClashOf(samples, path, bot.GetTeam());
     // No clash within the horizon: the run says nothing about the lane's loss, so no trip on it.
-    if (clash === undefined || clash.t - now < SETTINGS.MinGap) return false;
+    if (clash === undefined) return held("no-clash");
+    if (clash.t - now < SETTINGS.MinGap) return held("gap");
     const plan = Plan(bot, bot.GetLocation(), now, clash);
-    if (plan === undefined) return false;
+    if (plan === undefined) return held("no-plan");
     const why = blocked(bot) ?? startGate(bot, plan, now);
     if (why !== undefined) {
         noteSkip(bot, why, clash, plan);
-        return false;
+        return held("skip");
     }
+    tally(bot, now, "trip");
     const t: Trip = { lane, clash, plan, camps: 1, left: now, g0: bot.GetGold(), host };
     const ok = Tasks.Start(bot, { name: "camp", host, preemptAfter: 1, stallAfter: 4, guard: () => guard(bot, t), onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, t, ctx)

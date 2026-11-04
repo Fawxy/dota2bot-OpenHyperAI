@@ -315,13 +315,15 @@ local pace = {}
 local cleared = {}
 --- Skip lines written, by pid: one per wave window and reason.
 local skipped = {}
+local gates = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({
         running,
         nextPlanAt,
         pace,
         cleared,
-        skipped
+        skipped,
+        gates
     }) do
         for k in pairs(t) do
             __TS__Delete(t, k)
@@ -806,6 +808,55 @@ local function noteSkip(bot, why, c, plan)
         }
     )
 end
+local GATE_FIELD = {
+    dead = "h_dead",
+    mode = "h_mode",
+    ["low-hp"] = "h_hp",
+    far = "h_far",
+    wave = "h_wave",
+    ["no-camp"] = "h_camp",
+    ["no-forecast"] = "h_fc",
+    ["no-clash"] = "h_clash",
+    gap = "h_gap",
+    ["no-plan"] = "h_plan",
+    skip = "h_skip",
+    trip = "h_trip"
+}
+--- The coverage's denominator: each planning second of the laning phase counted by what held it, one `phase=gates` line per
+-- core per game minute. The skip lines only see seconds where a camp already fitted.
+local function tally(bot, now, why)
+    local pid = bot:GetPlayerID()
+    local min = math.floor(now / 60)
+    local g = gates[pid]
+    if g ~= nil and g.min ~= min then
+        local fields = {{"min", g.min}}
+        for k, n in pairs(g.n) do
+            fields[#fields + 1] = {GATE_FIELD[k], n}
+        end
+        Telemetry.Event(
+            "core_camp",
+            {
+                {"pid", pid},
+                {
+                    "pos",
+                    LaneConfig.PositionOf(bot)
+                },
+                {
+                    "lane",
+                    bot:GetAssignedLane()
+                },
+                {"phase", "gates"},
+                unpack(fields)
+            }
+        )
+        g = nil
+    end
+    if g == nil then
+        g = {min = min, n = {}}
+        gates[pid] = g
+    end
+    g.n[why] = (g.n[why] or 0) + 1
+end
 local function jobLine(bot, t, phase, why)
     Telemetry.Event(
         "job",
@@ -1013,8 +1064,16 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     nextPlanAt[pid] = now + ____exports.SETTINGS.PlanEvery
-    if inLaneGate(bot, now) ~= nil then
+    local function held(why)
+        tally(bot, now, why)
         return false
+    end
+    local gate = inLaneGate(bot, now)
+    if gate == "time" then
+        return false
+    end
+    if gate ~= nil then
+        return held(gate)
     end
     local lane = bot:GetAssignedLane()
     if not anyCamp(
@@ -1026,7 +1085,7 @@ function ____exports.Wants(bot, blocked, host)
         ),
         now
     ) then
-        return false
+        return held("no-camp")
     end
     local samples, path = LanePush.Forecast(
         bot:GetTeam(),
@@ -1034,15 +1093,18 @@ function ____exports.Wants(bot, blocked, host)
         ____exports.SETTINGS.Horizon
     )
     if samples == nil or path == nil or #samples == 0 then
-        return false
+        return held("no-forecast")
     end
     local clash = ____exports.ClashOf(
         samples,
         path,
         bot:GetTeam()
     )
-    if clash == nil or clash.t - now < ____exports.SETTINGS.MinGap then
-        return false
+    if clash == nil then
+        return held("no-clash")
+    end
+    if clash.t - now < ____exports.SETTINGS.MinGap then
+        return held("gap")
     end
     local plan = ____exports.Plan(
         bot,
@@ -1051,13 +1113,14 @@ function ____exports.Wants(bot, blocked, host)
         clash
     )
     if plan == nil then
-        return false
+        return held("no-plan")
     end
     local why = blocked(bot) or startGate(bot, plan, now)
     if why ~= nil then
         noteSkip(bot, why, clash, plan)
-        return false
+        return held("skip")
     end
+    tally(bot, now, "trip")
     local t = {
         lane = lane,
         clash = clash,

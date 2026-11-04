@@ -182,6 +182,15 @@ do
 	check("threat at the camp: one skip line for the window, why=threat", #skips == 1 and field(skips[1], "why") == "threat", #skips)
 end
 
+-- The gate tally: each planning second of a minute counted by what held it, flushed when the minute turns.
+do
+	local H, core = world({ t = 294.5, camps = { { "small", SMALL } }, enemyAt = Vector(300, -6600), clash = 8 })
+	local out = run(H, core, 301)
+	local g = lines(out, "core_camp", "gates")
+	check("gates: one line for minute 4 once minute 5 starts", #g == 1 and field(g[1], "min") == "4", #g)
+	check("gates: a clash 8 s away counts every second as gap, nothing as a fitted camp", g[1] ~= nil and tonumber(field(g[1], "h_gap")) >= 5 and field(g[1], "h_skip") == nil, g[1])
+end
+
 -- An enemy hero walks up during the clear: the trip ends `threat` after the core's reaction time, not at once.
 do
 	local H, core, camp, enemy = world({ camps = { { "small", SMALL, 5000 } } })
