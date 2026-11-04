@@ -40,27 +40,53 @@ function report(team: number, from: string, variant: string, start: Vector, towe
     print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe team=${team} from=${from} v=${variant} d=${math.floor(d)} n=${wp.length} min=${math.floor(min)} tw=${tw} wp=${pts}`);
 }
 
+function hev(rest: string): void {
+    print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe ${rest}`);
+}
+
+function guard<T>(step: string, f: () => T): T | undefined {
+    const [ok, v] = pcall(f);
+    if (!ok) {
+        hev(`step=${step} err=${string.gsub(tostring(v), " ", "_")[0]}`);
+        return undefined;
+    }
+    return v as T;
+}
+
+// v2: v1 died at t=30 with "error in error handling" before its header line; every API call is now guarded and logged.
 export function Run(bot: Unit): void {
     const team = bot.GetTeam();
     if (done[team] === true || DotaTime() < 30) return;
     done[team] = true;
+    hev(`team=${team} step=begin`);
     const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    const to = Rotate.ShrineFor(enemy);
-    const towers = FR.TowerSpots(enemy);
+    const to = guard("shrine", () => Rotate.ShrineFor(enemy));
+    const towers = guard("towers", () => FR.TowerSpots(enemy)) ?? [];
+    if (to === undefined) return;
+    hev(`team=${team} step=inputs towers=${towers.map((t) => `${math.floor(t.x)},${math.floor(t.y)}`).join(";")} to=${math.floor(to.x)},${math.floor(to.y)}`);
+    hev(`team=${team} step=pass pass=${tostring(guard("passable", () => IsLocationPassable(to)))}`);
     const lane = team === Team.Dire ? Vector(-5800, 5000, 0) : Vector(5800, -5000, 0);
-    const starts: [string, Vector][] = [
+    const starts: [string, Vector | undefined][] = [
         ["lane", lane],
-        ["rune0", GetRuneSpawnLocation(Rune.Power1)],
-        ["rune1", GetRuneSpawnLocation(Rune.Power2)],
+        ["rune0", guard("rune0", () => GetRuneSpawnLocation(Rune.Power1))],
+        ["rune1", guard("rune1", () => GetRuneSpawnLocation(Rune.Power2))],
         ["bot", bot.GetLocation()],
     ];
     const vecs = towers.map((t) => Vector(t.x, t.y, 1000));
-    const handles = towers.map((t) => AddAvoidanceZone(Vector(t.x, t.y, 1000), 30));
-    print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe team=${team} towers=${towers.map((t) => `${math.floor(t.x)},${math.floor(t.y)}`).join(";")} to=${math.floor(to.x)},${math.floor(to.y)} pass=${IsLocationPassable(to) ? 1 : 0}`);
+    const variants: [string, unknown[]][] = [["none", []], ["vec", vecs]];
+    const handle = guard("zone", () => AddAvoidanceZone(Vector(towers[0]?.x ?? 0, towers[0]?.y ?? 0, 1000), 30));
+    hev(`team=${team} step=zone h=${tostring(handle)} type=${type(handle)}`);
+    if (handle !== undefined) {
+        const handles = [handle, ...towers.slice(1).map((t) => guard("zone", () => AddAvoidanceZone(Vector(t.x, t.y, 1000), 30)))];
+        variants.push(["handle", handles.filter((h) => h !== undefined)]);
+    }
     for (const [name, start] of starts) {
-        for (const [v, avoid] of [["none", []], ["vec", vecs], ["handle", handles]] as [string, unknown[]][]) {
-            const [ok, err] = pcall(() => GeneratePath(start, to, avoid, (d, wp) => report(team, name, v, start, towers, d, wp ?? [])));
-            if (!ok) print(`[HEV] t=${string.format("%.3f", DotaTime())} ev=pathprobe team=${team} from=${name} v=${v} err=${string.gsub(tostring(err), " ", "_")[0]}`);
+        if (start === undefined) continue;
+        for (const [v, avoid] of variants) {
+            guard(`gen:${name}:${v}`, () => GeneratePath(start, to, avoid, (d, wp) => {
+                guard(`cb:${name}:${v}`, () => report(team, name, v, start, towers, d, wp ?? []));
+            }));
+            hev(`team=${team} step=called from=${name} v=${v}`);
         }
     }
 }
