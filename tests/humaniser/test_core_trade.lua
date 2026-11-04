@@ -61,6 +61,11 @@ function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) 
 function IsHeroAlive(pid) return pid == enemy.pid and not enemy.dead or pid == bot.pid end
 
 local function last() return lines[#lines] or "" end
+-- The play roll's readings (fight_readings): the enemy heroes (pids 6-10; creeps here are pids 20 and up), no towers; our team
+-- is Radiant.
+function GetUnitList() local r = {} for _, u in ipairs(UNITS[3]) do if u.alive and u.pid <= 10 then table.insert(r, u) end end return r end
+function GetTower() return nil end
+CURRENT_TEAM = 2
 
 do
 	T = 100
@@ -294,12 +299,12 @@ end
 
 do
 	bot.mode = BOT_MODE_RETREAT
-	check("a core already retreating keeps its retreat over a last hit", CoreTrade.LastHitYieldsToRetreat(bot))
+	check("a core already retreating keeps its retreat over a last hit", CoreTrade.LastHitYields(bot))
 	bot.mode = LANING
-	check("a laning core still takes the last-hit desire", not CoreTrade.LastHitYieldsToRetreat(bot))
+	check("a laning core still takes the last-hit desire", not CoreTrade.LastHitYields(bot))
 	bot.mode = BOT_MODE_RETREAT
 	world.applies = false
-	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYieldsToRetreat(bot))
+	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYields(bot))
 	bot.mode = LANING
 	check("not our core: OHA's run-from-a-trade triggers stay", not CoreTrade.TradeOwnsLaneRun(bot))
 	world.applies = true
@@ -365,6 +370,147 @@ do
 	Unit.GetNearbyHeroes = heroes
 	IsHeroAlive = alive
 	enemy.loc = Vector(400, 0)
+end
+
+-- Slice lane-fight, the play roll: an owned core with no clear window rolls a `lane_fight` play at most every 15 s per target
+-- (one draw from the engine's Skill rng, none without it), joins an ally's running play near it, and defers to a play of
+-- another context it started. A fight commits like a kill and ends below the roll's HP floor, ending its play.
+do
+	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local draw
+	LaneConfig.SetRng(function() return draw ~= nil and { random = function() return draw end, gauss = function() return 0 end } or nil end)
+	local function count(ev) local n = 0 for _, l in ipairs(lines) do if l:find("ev=" .. ev .. " ", 1, true) then n = n + 1 end end return n end
+	local function lastOf(ev) for i = #lines, 1, -1 do if lines[i]:find("ev=" .. ev .. " ", 1, true) then return lines[i] end end return "" end
+	local function fresh()
+		CoreTrade.Reset()
+		Plays.ResetCache()
+		bot.loc, enemy.loc = Vector(0, 0), Vector(400, 0)
+		bot.hp, enemy.hp, bot.attacking, enemy.dead, bot.alive = 80, 70, nil, false, true
+		T = T + 100
+	end
+
+	fresh()
+	draw = 0.99
+	local plays = count("play")
+	check("a healthy even encounter with the draw above the weight: the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	check("the chance is logged, not fired", count("play") == plays + 1 and lastOf("play"):find("kind=lane_fight") and lastOf("play"):find("fire=0"))
+	CoreTrade.Think(bot)
+	check("a running trade still gives way to laning's last hit", not CoreTrade.LastHitYields(bot))
+	T = T + 5
+	draw = 0.01
+	CoreTrade.Desire(bot)
+	check("no second chance on the same target within 15 s, even with a winning draw", count("play") == plays + 1 and not Plays.Of(bot))
+
+	fresh()
+	draw = 0.01
+	check("a winning draw fires a lane fight: the commit's desire", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and Plays.Of(bot) ~= nil)
+	function Unit:GetNearbyLaneCreeps() return { MakeUnit({ pid = 40, team = 3, loc = Vector(100, 0) }) } end
+	CoreTrade.Think(bot)
+	check("a fight attacks with enemy creeps beside it (no step out)", bot.attacking == enemy)
+	check("a running fight is not cut by laning's last hit (lfpchk1 t=236)", CoreTrade.LastHitYields(bot))
+	function Unit:GetNearbyLaneCreeps() return {} end
+	T = T + 1
+	bot.hp = 35
+	CoreTrade.Desire(bot)
+	check("under the roll's HP floor the fight ends", lastOf("trade"):find("kind=fight") and lastOf("trade"):find("why=hp") and lastOf("trade"):find("join=0"))
+	check("and its play ends with it", Plays.Of(bot) == nil)
+	T = T + Plays.SETTINGS.KillAfter
+	Plays.Tick(T)
+	check("its end line once the kill window passes", lastOf("play_end"):find("kind=lane_fight") and lastOf("play_end"):find("why=hp"))
+
+	fresh()
+	draw = 0.01
+	bot.hp, enemy.hp = 50, 90
+	CoreTrade.Desire(bot)
+	check("well behind the target on HP: a lane fight's own hard zero", lastOf("play"):find("zero=behind") and Plays.Of(bot) == nil)
+
+	-- An ally's play on the enemy: our pos4 ganks it.
+	fresh()
+	draw = 0.01
+	Plays.Define("test_gank", { base = 0.9, timeout = 20, chases = true })
+	local sup = MakeUnit({ pid = 4, team = 2, loc = Vector(900, 300), hp = 90, mode = LANING })
+	local play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	check("(setup) the ally's play fired", play ~= nil)
+	enemy.loc = Vector(1000, 0)
+	plays = count("play")
+	check("the enemy 1,000 away, outside the core's reach but inside reach + 600: the core joins the play",
+		CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and Plays.Of(bot) == play and count("play") == plays)
+	CoreTrade.Think(bot)
+	check("the joiner attacks the play's target", bot.attacking == enemy)
+	Plays.End(play, "test", "none", T)
+	T = T + 0.5
+	CoreTrade.Desire(bot)
+	check("the play's end ends the joiner's fight", lastOf("trade"):find("why=play_end") and lastOf("trade"):find("join=1"))
+
+	-- A joiner whose own fight ended (its HP floor) stays in the play: deferred to it, no roll of its own on the target.
+	fresh()
+	draw = 0.01
+	enemy.loc = Vector(400, 0)
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = T + 1
+	bot.hp = 35
+	CoreTrade.Desire(bot)
+	check("(setup) the joiner's fight ended on its HP floor", lastOf("trade"):find("why=hp") and lastOf("trade"):find("join=1"))
+	bot.hp = 80
+	plays = count("play")
+	T = T + 1
+	check("a joiner still in the play gets no desire and no roll here", CoreTrade.Desire(bot) == 0 and count("play") == plays)
+	Plays.End(play, "test", "none", T)
+
+	-- A clear commit wins over joining an ally's play on the same enemy, and laning's last hit yields to it until OnEnd.
+	fresh()
+	draw = 0.01
+	enemy.hp = 35
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	check("a 35% target in reach: the commit, not the join", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and Plays.Of(bot) == nil)
+	CoreTrade.Think(bot)
+	check("a running commit is not cut by laning's last hit", CoreTrade.LastHitYields(bot))
+	CoreTrade.OnEnd(bot)
+	check("once attack mode lost the bot, laning's last hit is back", not CoreTrade.LastHitYields(bot))
+	Plays.End(play, "test", "none", T)
+
+	fresh()
+	draw = 0.01
+	enemy.loc = Vector(1400, 0)
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	CoreTrade.Desire(bot)
+	check("a play whose target is beyond reach + 600 is not joined", Plays.Of(bot) == nil)
+
+	fresh()
+	draw = 0.01
+	bot.hp = 35
+	enemy.loc = Vector(400, 0)
+	play = Plays.Roll({ kind = "test_gank", by = sup, target = enemy, at = enemy.loc }, T)
+	CoreTrade.Desire(bot)
+	check("a core under the roll's HP floor does not join (the library's hard zero for it)", Plays.Of(bot) == nil)
+
+	fresh()
+	draw = 0.01
+	Plays.Define("test_rune", { base = 0.9, timeout = 20, chases = false })
+	Plays.Roll({ kind = "test_rune", by = bot, target = enemy, at = enemy.loc }, T)
+	check("a core that started another context's play is driven by it: no desire here", CoreTrade.Desire(bot) == 0)
+
+	fresh()
+	draw = 0.01
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	Ours.CoreLaneFight = false
+	plays = count("play")
+	check("switch off: no lane-fight chance, the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and count("play") == plays)
+	fresh()
+	enemy.hp = 20
+	check("(setup) switch off: a 20% target is the trade's kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	CoreTrade.Think(bot)
+	check("switch off: a running kill still gives way to laning's last hit", not CoreTrade.LastHitYields(bot))
+	fresh()
+	Plays.Roll({ kind = "test_rune", by = bot, target = enemy, at = enemy.loc }, T)
+	check("switch off: a core in another context's play keeps the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	Ours.CoreLaneFight = true
+	LaneConfig.SetRng(nil)
+	CoreTrade.Reset()
+	Plays.ResetCache()
 end
 
 finish()

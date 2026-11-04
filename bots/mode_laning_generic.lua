@@ -156,7 +156,7 @@ function GetDesire()
 			if J.IsValid(hitCreep) then
 				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
-				and not J.Humaniser.CoreTrade.LastHitYieldsToRetreat(bot) -- nor a retreat our core is already in (Ours.CoreLastHit)
+				and not J.Humaniser.CoreTrade.LastHitYields(bot) -- nor a retreat, kill or fight our core is already in (Ours.CoreLastHit)
 				then
 					return 0.9
 				end

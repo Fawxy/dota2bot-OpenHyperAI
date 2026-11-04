@@ -1,11 +1,59 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
+-- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, inLane, frac, valid, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, primedAt
+local killHpFor, isSupport, reachOf, inLane, frac, valid, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, episodes, primedAt, rolledAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
@@ -48,7 +96,8 @@ function ____exports.Deficit(hp0, hp, thp0, thp, maxHp)
 end
 --- Slice lane-fight (`Ours.CoreLaneFight`, OWNERSHIP H9): every fight of this in-lane core beyond a trade is this module's. Team
 -- roam keeps only its non-fight branches for it and LaneFight makes no claim (its gates close), so a commit is `kill` here.
--- Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
+-- Beyond the commit, in Desire's order: join a running play near it (`fight`, joined), else roll a `lane_fight` play when no
+-- clear window decides (`fight`, rolled), else the trade rule. Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
 function ____exports.OwnsLaneFights(bot)
     return Ours.On("CoreLaneFight") and Ours.On("CoreTrade") and CoreLastHit.Applies(bot) and bot:IsAlive() and inLane(bot)
 end
@@ -93,19 +142,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue34
+            local __continue37
             repeat
                 if not c:IsAlive() then
-                    __continue34 = true
+                    __continue37 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue34 = true
+                __continue37 = true
             until true
-            if not __continue34 then
+            if not __continue37 then
                 break
             end
         end
@@ -113,10 +162,10 @@ function ____exports.Gather(bot, target)
     local tower = false
     for ____, t in ipairs(bot:GetNearbyTowers(TOWER_REACH + 1000, true)) do
         do
-            local __continue38
+            local __continue41
             repeat
                 if not t:IsAlive() then
-                    __continue38 = true
+                    __continue41 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= TOWER_REACH or GetUnitToUnitDistance(target, t) <= TOWER_REACH then
@@ -125,9 +174,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue38 = true
+                __continue41 = true
             until true
-            if not __continue38 then
+            if not __continue41 then
                 break
             end
         end
@@ -141,6 +190,93 @@ function ____exports.Gather(bot, target)
         hitByCreeps = hitByCreeps,
         tower = tower
     }
+end
+function open(bot, kind, target, now, play, joined)
+    if joined then
+        Plays.Join(play, bot)
+    end
+    episodes[bot:GetPlayerID()] = {
+        kind = kind,
+        target = target,
+        tpid = target:GetPlayerID(),
+        offeredAt = now,
+        lf = ____exports.OwnsLaneFights(bot),
+        hp0 = bot:GetHealth(),
+        thp0 = target:GetHealth(),
+        thpSeen = target:GetHealth(),
+        inputs = ____exports.Gather(bot, target),
+        primes = 0,
+        stepOuts = 0,
+        aggro = 0,
+        play = play,
+        joined = joined
+    }
+    return kind == "trade" and ____exports.DESIRE_TRADE or ____exports.DESIRE_KILL
+end
+function joinable(bot)
+    if Plays.Of(bot) ~= nil then
+        return nil
+    end
+    local reach = reachOf(bot) + JOIN_WALK
+    for ____, p in ipairs(Plays.Near(
+        bot:GetLocation(),
+        JOIN_NEAR
+    )) do
+        do
+            local __continue68
+            repeat
+                local t = p.target
+                if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
+                    __continue68 = true
+                    break
+                end
+                local r = ____exports.Decide(
+                    ____exports.Gather(bot, t),
+                    false,
+                    killHpFor(bot)
+                ).respect
+                if r == "tower" or r == "outnumbered" then
+                    __continue68 = true
+                    break
+                end
+                if Plays.Weigh(Plays.InputsOf({
+                    kind = p.kind,
+                    by = bot,
+                    target = t,
+                    at = t:GetLocation()
+                })).zero ~= nil then
+                    __continue68 = true
+                    break
+                end
+                return p
+            until true
+            if not __continue68 then
+                break
+            end
+        end
+    end
+    return nil
+end
+function rollFight(bot, target, now)
+    local pid = bot:GetPlayerID()
+    local ____temp_5 = rolledAt[pid] or ({})
+    rolledAt[pid] = ____temp_5
+    local seen = ____temp_5
+    local tpid = target:GetPlayerID()
+    local last = seen[tpid]
+    if last ~= nil and now - last < FIGHT_ROLL_EVERY then
+        return nil
+    end
+    seen[tpid] = now
+    return Plays.Roll(
+        {
+            kind = ____exports.LANE_FIGHT,
+            by = bot,
+            target = target,
+            at = target:GetLocation()
+        },
+        now
+    )
 end
 function keepWhy(bot, ep, now)
     local t = ep.target
@@ -158,6 +294,25 @@ function keepWhy(bot, ep, now)
         if now - ep.startedAt > KILL_TIME then
             return "time"
         end
+    elseif ep.kind == "fight" then
+        if now - ep.startedAt > FIGHT_TIME then
+            return "time"
+        end
+        if ep.play ~= nil and not __TS__ArrayIncludes(
+            Plays.Active(),
+            ep.play
+        ) then
+            return "play_end"
+        end
+        if FR.HpFraction(bot) < Plays.SETTINGS.HpFloor then
+            return "hp"
+        end
+        local r = ____exports.Decide(
+            ____exports.Gather(bot, ep.target),
+            true,
+            killHpFor(bot)
+        ).respect
+        return (r == "tower" or r == "outnumbered") and r or nil
     else
         if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
             return "no_clear"
@@ -195,19 +350,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue80
+            local __continue104
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue80 = true
+                    __continue104 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue80 = true
+                __continue104 = true
             until true
-            if not __continue80 then
+            if not __continue104 then
                 break
             end
         end
@@ -243,6 +398,16 @@ MIN_HP = 0.5
 BEHIND_BY = 0.15
 KILL_HP = 0.25
 COMMIT_HP = 0.4
+--- The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll).
+-- Before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at even numbers with the enemy
+-- over 40%, about 110 such core encounters a game, so the base is low (`judgement`). lfpchk1 at 0.05: 68 chances and 1.6
+-- fired a game at a mean weight of 0.03, so 0.1 for about 4. A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
+____exports.LANE_FIGHT = "lane_fight"
+local FIGHT_BASE = 0.1
+FIGHT_ROLL_EVERY = 15
+FIGHT_TIME = 8
+JOIN_NEAR = 1600
+JOIN_WALK = 600
 MAX_WAVE = 3
 MAX_CREEPS_ON_ME = 2
 KEEP_HP_SLACK = 0.05
@@ -272,13 +437,26 @@ function ____exports.AggroPlan(now, primedAt, creepsWithinClear)
     end
     return creepsWithinClear == 0 and "prime" or "step_out"
 end
-local episodes = {}
+episodes = {}
 --- After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
 -- gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
 local recoverTo = {}
 --- Which arm this frame's GetDesire took: Think follows it.
 local ownsFrame = {}
 primedAt = {}
+rolledAt = {}
+--- The lane fight's own hard zeros on top of the library's (HP floor, two down, a target by its tower): the decline rule (the
+-- other side more near the place) and the trade's `behind` (the hero well under the target's HP).
+function ____exports.FightZero(i)
+    if i.theirs > i.ours then
+        return "outnumbered"
+    end
+    if i.targetHp ~= nil and i.hp < i.targetHp - BEHIND_BY then
+        return "behind"
+    end
+    return nil
+end
+Plays.Define(____exports.LANE_FIGHT, {base = FIGHT_BASE, timeout = FIGHT_TIME + 2, chases = true, zero = ____exports.FightZero})
 --- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
 function ____exports.Owns(bot)
     return Ours.On("CoreTrade") and CoreLastHit.Applies(bot) or isSupport(bot)
@@ -295,10 +473,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue23
+            local __continue26
             repeat
                 if not valid(h) then
-                    __continue23 = true
+                    __continue26 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -306,9 +484,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue23 = true
+                __continue26 = true
             until true
-            if not __continue23 then
+            if not __continue26 then
                 break
             end
         end
@@ -319,57 +497,68 @@ local function close(bot, ep, why, now)
     local pid = bot:GetPlayerID()
     episodes[pid] = nil
     local started = ep.startedAt ~= nil
+    if ep.play ~= nil and not ep.joined then
+        Plays.End(ep.play, why)
+    end
     if started and why == "losing" then
         recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp
     end
     local killed = started and not IsHeroAlive(ep.tpid)
     local thp = killed and 0 or (valid(ep.target) and ep.target:GetHealth() or ep.thpSeen)
     local i = ep.inputs
-    Telemetry.Event(
-        "trade",
+    local ____Telemetry_Event_3 = Telemetry.Event
+    local ____array_2 = __TS__SparseArrayNew(
+        {"pid", pid},
         {
-            {"pid", pid},
-            {
-                "role",
-                isSupport(bot) and "support" or "core"
-            },
-            {"lf", ep.lf and 1 or 0},
-            {"kind", ep.kind},
-            {"tgt", ep.tpid},
-            {"result", started and (killed and "kill" or "done") or "lost"},
-            {"why", why},
-            {
-                "dur",
-                started and math.floor((now - ep.startedAt) * 10) / 10 or 0
-            },
-            {
-                "hpd",
-                started and ep.hp0 - bot:GetHealth() or 0
-            },
-            {"thpd", started and ep.thp0 - thp or 0},
-            {
-                "hp",
-                math.floor(i.hp * 100) / 100
-            },
-            {
-                "thp",
-                math.floor(i.targetHp * 100) / 100
-            },
-            {"en", i.enemiesNear},
-            {"al", i.alliesNear},
-            {"cr", i.enemyCreepsNear},
-            {"pr", ep.primes},
-            {"so", ep.stepOuts},
-            {"ag", ep.aggro},
-            {
-                "mode",
-                bot:GetActiveMode()
-            },
-            {
-                "md",
-                math.floor(bot:GetActiveModeDesire() * 100) / 100
-            }
+            "role",
+            isSupport(bot) and "support" or "core"
+        },
+        {"lf", ep.lf and 1 or 0},
+        {"kind", ep.kind},
+        {"tgt", ep.tpid}
+    )
+    local ____opt_0 = ep.play
+    __TS__SparseArrayPush(
+        ____array_2,
+        {"play", ____opt_0 and ____opt_0.id},
+        {"join", ep.play ~= nil and (ep.joined and 1 or 0) or nil},
+        {"result", started and (killed and "kill" or "done") or "lost"},
+        {"why", why},
+        {
+            "dur",
+            started and math.floor((now - ep.startedAt) * 10) / 10 or 0
+        },
+        {
+            "hpd",
+            started and ep.hp0 - bot:GetHealth() or 0
+        },
+        {"thpd", started and ep.thp0 - thp or 0},
+        {
+            "hp",
+            math.floor(i.hp * 100) / 100
+        },
+        {
+            "thp",
+            math.floor(i.targetHp * 100) / 100
+        },
+        {"en", i.enemiesNear},
+        {"al", i.alliesNear},
+        {"cr", i.enemyCreepsNear},
+        {"pr", ep.primes},
+        {"so", ep.stepOuts},
+        {"ag", ep.aggro},
+        {
+            "mode",
+            bot:GetActiveMode()
+        },
+        {
+            "md",
+            math.floor(bot:GetActiveModeDesire() * 100) / 100
         }
+    )
+    ____Telemetry_Event_3(
+        "trade",
+        {__TS__SparseArraySpread(____array_2)}
     )
 end
 --- The in-lane attack desire, or undefined outside lane (the caller then asks OHA's port). Opens, keeps and ends the
@@ -388,15 +577,16 @@ function ____exports.Desire(bot)
             )
         end
         ownsFrame[pid] = false
-        local ____bot_IsAlive_result_0
+        local ____bot_IsAlive_result_4
         if bot:IsAlive() then
-            ____bot_IsAlive_result_0 = nil
+            ____bot_IsAlive_result_4 = nil
         else
-            ____bot_IsAlive_result_0 = 0
+            ____bot_IsAlive_result_4 = 0
         end
-        return ____bot_IsAlive_result_0
+        return ____bot_IsAlive_result_4
     end
     ownsFrame[pid] = true
+    Plays.Tick(now)
     if ep ~= nil and ep.ended then
         close(
             bot,
@@ -409,21 +599,51 @@ function ____exports.Desire(bot)
     if ep ~= nil then
         local why = keepWhy(bot, ep, now)
         if why == nil then
-            return ep.kind == "kill" and ____exports.DESIRE_KILL or ____exports.DESIRE_TRADE
+            return ep.kind == "trade" and ____exports.DESIRE_TRADE or ____exports.DESIRE_KILL
         end
         close(bot, ep, why, now)
         ep = nil
     end
-    local target = nearestTarget(bot)
-    if target == nil then
+    local owns = ____exports.OwnsLaneFights(bot)
+    if owns and Plays.Of(bot) ~= nil then
         return 0
     end
-    local inputs = ____exports.Gather(bot, target)
-    local d = ____exports.Decide(
+    local target = nearestTarget(bot)
+    local inputs = target ~= nil and ____exports.Gather(bot, target) or nil
+    local d = inputs ~= nil and ____exports.Decide(
         inputs,
         false,
         killHpFor(bot)
-    )
+    ) or ({})
+    if d.kind ~= "kill" and owns then
+        local join = joinable(bot)
+        if join ~= nil then
+            return open(
+                bot,
+                "fight",
+                join.target,
+                now,
+                join,
+                true
+            )
+        end
+    end
+    if target == nil or inputs == nil then
+        return 0
+    end
+    if owns and d.kind ~= "kill" and d.respect ~= "tower" and d.respect ~= "outnumbered" then
+        local play = rollFight(bot, target, now)
+        if play ~= nil then
+            return open(
+                bot,
+                "fight",
+                target,
+                now,
+                play,
+                false
+            )
+        end
+    end
     if d.kind == nil then
         return 0
     end
@@ -434,21 +654,7 @@ function ____exports.Desire(bot)
         end
         recoverTo[pid] = nil
     end
-    episodes[pid] = {
-        kind = d.kind,
-        target = target,
-        tpid = target:GetPlayerID(),
-        offeredAt = now,
-        lf = ____exports.OwnsLaneFights(bot),
-        hp0 = bot:GetHealth(),
-        thp0 = target:GetHealth(),
-        thpSeen = target:GetHealth(),
-        inputs = inputs,
-        primes = 0,
-        stepOuts = 0,
-        aggro = 0
-    }
-    return d.kind == "kill" and ____exports.DESIRE_KILL or ____exports.DESIRE_TRADE
+    return open(bot, d.kind, target, now)
 end
 --- Whether this frame's GetDesire took our arm; mode_attack_generic's Think runs ours when true, OHA's port otherwise.
 function ____exports.OwnsFrame(bot)
@@ -468,25 +674,26 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue70
+            local __continue94
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue70 = true
+                    __continue94 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue70 = true
+                __continue94 = true
             until true
-            if not __continue70 then
+            if not __continue94 then
                 break
             end
         end
     end
     ep.aggro = math.max(ep.aggro, onMe)
-    local plan = ep.kind == "kill" and "attack" or ____exports.AggroPlan(now, primedAt[pid], #creeps)
+    local commits = ep.kind ~= "trade"
+    local plan = commits and "attack" or ____exports.AggroPlan(now, primedAt[pid], #creeps)
     if plan == "step_out" then
         if ep.stepSince == nil then
             ep.stepSince = now
@@ -503,7 +710,7 @@ function ____exports.Think(bot)
         return
     end
     if bot:GetAttackTarget() ~= ep.target then
-        if ep.kind == "kill" then
+        if commits then
             primedAt[pid] = now
         end
         bot:Action_AttackUnit(ep.target, false)
@@ -523,9 +730,18 @@ function ____exports.TradeOwnsLaneRun(bot)
     return ____exports.Owns(bot) and inLane(bot)
 end
 --- Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
--- within 15 s of such a cut was 4 times as likely). A predicate on the laning GetDesire (OWNERSHIP H2).
-function ____exports.LastHitYieldsToRetreat(bot)
-    return CoreLastHit.Applies(bot) and bot:GetActiveMode() == BotMode.Retreat
+-- within 15 s of such a cut was 4 times as likely), nor a kill or fight this context's lane fights committed to (lfpchk1:
+-- 2 of 8 fights ended in a last hit at 4.9 s, t=154 and t=236; kills by the same reasoning, `judgement`). Trades still
+-- give way to it, as does a commit with Ours.CoreLaneFight off. A predicate on the laning GetDesire (OWNERSHIP H2).
+function ____exports.LastHitYields(bot)
+    if not CoreLastHit.Applies(bot) then
+        return false
+    end
+    if bot:GetActiveMode() == BotMode.Retreat then
+        return true
+    end
+    local ep = episodes[bot:GetPlayerID()]
+    return ep ~= nil and ep.lf and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
 function ____exports.Reset()
     for k in pairs(episodes) do
@@ -539,6 +755,9 @@ function ____exports.Reset()
     end
     for k in pairs(ownsFrame) do
         ownsFrame[k] = nil
+    end
+    for k in pairs(rolledAt) do
+        rolledAt[k] = nil
     end
 end
 return ____exports

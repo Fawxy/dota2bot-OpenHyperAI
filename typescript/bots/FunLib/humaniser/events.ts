@@ -864,8 +864,12 @@ export const EVENTS = {
         role: "str",
         /** 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%. */
         lf: "num",
+        /** `trade`, `kill` (a commit) or `fight` (a lane fight from the play roll: rolled here or joined). */
         kind: "str",
         tgt: "num",
+        /** A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own. */
+        play: "num",
+        join: "num",
         result: "str",
         why: "str",
         dur: "num",

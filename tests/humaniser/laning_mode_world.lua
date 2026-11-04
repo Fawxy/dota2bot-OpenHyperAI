@@ -120,7 +120,7 @@ function LaningLoad(opts)
 		-- Slice lane-last-hits: opts.laneOnly is a lane-only scenario game (Overrides.LaneOnly).
 		Overrides = { LaneOnly = function() return opts.laneOnly == true end },
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
-		CoreTrade = { LastHitYieldsToRetreat = function() return opts.retreating == true end },
+		CoreTrade = { LastHitYields = function() return opts.retreating == true end },
 		States = {
 			MayOwn = function() return false end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
