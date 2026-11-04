@@ -154,6 +154,7 @@ Customize.Humaniser = {
         Enable = true,
         -- Who gets OHA's laning Think() for in-lane techniques: 'allies' (allies of humans), 'all' (every bot), 'off'.
         OwnLaningThink = 'allies',
+        PullTiming = { HalfAll = true, HalfLag = 2 }, -- arm phtune-h2 (tuning only)
         Plan = true, Block = true, FullPull = true, HalfPull = true, StackPull = true,
         AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
         Mid = true, CounterPlay = true, Telegraph = true,
