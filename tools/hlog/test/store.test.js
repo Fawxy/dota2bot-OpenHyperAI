@@ -315,7 +315,7 @@ test('rune_jobs counts started trips, on time by spawn + 2, and deaths on a trip
     assert.deepStrictEqual(runeJobs(new Store(':memory:'), file, 1), []);
 });
 
-test('pull_attempts: diverted at div 0.75, split under it, the kind (full before slice pull-half), the start choice by slot, the lane eq 30 and 60 s after from the puller team', () => {
+test('pull_attempts: diverted at div 0.75, split short of the whole wave (3 of 4 counts) and whole at 1, the kind (full before slice pull-half), the start choice by slot, the lane eq 30 and 60 s after from the puller team', () => {
     const s = new Store(':memory:');
     const f = log(tmp(), 'p.log', ['[HEV] t=-60 ev=bot pid=5 hero=lion team=2 pos=5 schema=2 build=0123456', '[HEV] t=-60 ev=bot pid=9 hero=lich team=3 pos=5',
         '[HEV] t=74 ev=choice pid=5 kind=pull go=1 want=1 src=own lane=3 slot=78.5 st=OUT q=0.7 mv=640 cf=-420 tw=0 ms=3.1',
@@ -324,10 +324,12 @@ test('pull_attempts: diverted at div 0.75, split under it, the kind (full before
         '[HEV] t=104 ev=choice pid=5 kind=pull go=0 want=1 why=hit src=own lane=3 slot=108.5 st=OUT',
         '[HEV] t=109 ev=lane_read team=2 lane=3 eq=-0.2', '[HEV] t=139 ev=lane_read team=2 lane=3 eq=-0.5',
         '[HEV] t=140 ev=choice pid=9 kind=pull go=1 want=1 src=own lane=3 slot=138.5 st=HOLD q=0.6',
-        '[HEV] t=150 ev=pull_job pid=9 pos=5 lane=3 camp=7 slot=138.5 pk=half res=fail why=timeout:late label=travel div=0.5 n=4 left=130 away=20 died=1 hit=1']);
+        '[HEV] t=150 ev=pull_job pid=9 pos=5 lane=3 camp=7 slot=138.5 pk=half res=fail why=timeout:late label=travel div=0.5 n=4 left=130 away=20 died=1 hit=1',
+        '[HEV] t=180 ev=pull_job pid=9 pos=5 lane=3 camp=7 slot=168.5 pk=half res=ok why=ok label=watch div=1 n=4 left=160 away=20 died=0 hit=0 dt=1']);
     s.ingestAll([f]);
-    const rows = s.query('SELECT pid, pk, diverted, split, died, st, cf, eq0, d30, d60 FROM pull_attempts ORDER BY t');
-    assert.deepStrictEqual(rows.map(r => [r.pid, r.pk, r.diverted, r.split, r.died, r.st, r.cf]), [[5, 'full', 1, 0, 0, 'OUT', -420], [9, 'half', 0, 1, 1, 'HOLD', null]]);
+    const rows = s.query('SELECT pid, pk, diverted, split, whole, died, st, cf, eq0, d30, d60 FROM pull_attempts ORDER BY t');
+    assert.deepStrictEqual(rows.map(r => [r.pid, r.pk, r.diverted, r.split, r.whole, r.died, r.st, r.cf]),
+        [[5, 'full', 1, 1, 0, 0, 'OUT', -420], [9, 'half', 0, 1, 0, 1, 'HOLD', null], [9, 'half', 1, 0, 1, 0, undefined, undefined]].map(r => r.map(x => x === undefined ? null : x)));
     // Radiant's row at the slot (0.3 at t=79, not Dire's -0.3), then -0.2 at +30 and -0.5 at +60.
     assert.deepStrictEqual([rows[0].eq0, Math.round(rows[0].d30 * 10) / 10, Math.round(rows[0].d60 * 10) / 10], [0.3, -0.5, -0.8]);
     assert.strictEqual(rows[1].eq0, null);
