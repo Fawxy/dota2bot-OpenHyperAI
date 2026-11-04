@@ -916,7 +916,9 @@ export const EVENTS = {
     // Slice rune-spawn (6:00 trip under the spot plan): why plan-other (a skip: the plan gave the other spot to the mid or the
     // other support); phase the act at the spawn (take, deny, off, cross, none); ta / te our and the soonest enemy hero's
     // seconds to the rune's spot at the decision; hid seconds hidden at the stand; sh / sph the stand's and the spot's
-    // GetHeightLevel.
+    // GetHeightLevel; play the id of the play this trip ran on (kind contest: the shrine roll that sent it; power: a rune
+    // fight), gank the id of the gank rolled after it (ev=play / ev=play_end carry their rolls and results). Kind contest:
+    // pos5 to the enemy wisdom shrine at 7:00 on a fired shrine roll (skip why roll / busy otherwise).
     // Slice rune-spawn: one line when a hero starts ordering a rune pickup (res try) and one when that try ends: gone (the rune
     // left the spot), left (the hero walked off, or ordered another rune), gave_up (RunePickup GiveUpAfter s of orders within
     // Near with the rune still available: unpickable for the team until the next river spawn). d distance to the spot; act0 and
@@ -999,6 +1001,8 @@ export const EVENTS = {
         hid: "num",
         sh: "num",
         sph: "num",
+        play: "num",
+        gank: "num",
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;

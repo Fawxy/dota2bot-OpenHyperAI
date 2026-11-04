@@ -127,12 +127,15 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local planFor, running, body
+local planFor, nearestEnemy, offerGank, running, body, playFight
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
+local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
+local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
@@ -140,7 +143,7 @@ local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function planFor(t)
-    if t.kind == "wisdom" then
+    if t.kind == "wisdom" or t.kind == "contest" then
         return {
             at = t.at,
             spawnAt = t.spawn,
@@ -164,17 +167,75 @@ body = __TS__Generator(function(bot, t, ctx)
         urgent = ctx.urgent
     }
     if t.stand ~= nil and t.rune ~= nil then
-        return __TS__DelegatedYield(Tasks.Jobs().runeSpawnRun(
+        local r = __TS__DelegatedYield(Tasks.Jobs().runeSpawnRun(
             bot,
             ____exports.spawnPlanFor(bot, t),
             hooks
         ))
+        if t.fight ~= nil then
+            __TS__DelegatedYield(playFight(bot, t.fight, hooks))
+        elseif LaneConfig.PositionOf(bot) ~= 2 and bot:IsAlive() then
+            t.gank = offerGank(bot)
+            if t.gank ~= nil then
+                __TS__DelegatedYield(playFight(bot, t.gank, hooks))
+            end
+        end
+        return r
     end
     return __TS__DelegatedYield(Tasks.Jobs().runeRun(
         bot,
         planFor(t),
         hooks
     ))
+end)
+function nearestEnemy(at, within)
+    local best
+    local bestD = within
+    for ____, e in ipairs(FR.EnemiesNear(at, within)) do
+        local d = FR.Dist(
+            e:GetLocation(),
+            at
+        )
+        if d <= bestD then
+            best, bestD = e, d
+        end
+    end
+    return best
+end
+function offerGank(bot)
+    local e = nearestEnemy(
+        bot:GetLocation(),
+        ____exports.SETTINGS.GankReach
+    )
+    if e == nil then
+        return nil
+    end
+    return Plays.Roll({
+        kind = "gank",
+        by = bot,
+        target = e,
+        at = e:GetLocation()
+    })
+end
+--- A fired gank or rune fight: the gank verb on the play's target, straight in, ended by the verb or the play's stops.
+playFight = __TS__Generator(function(bot, play, hooks)
+    local target = play.target
+    local r = __TS__DelegatedYield(Tasks.Jobs().gank(
+        bot,
+        {
+            target = function() return target:IsAlive() and target or nil end,
+            path = {},
+            deadline = DotaTime() + ____exports.SETTINGS.GankEngageBy,
+            engageFor = ____exports.SETTINGS.GankFightFor,
+            commit = function() return FR.HpFraction(bot) < ____exports.SETTINGS.StopHp and "hp" or (target:IsAlive() and FR.TowerDistance(
+                target:GetTeam(),
+                target:GetLocation()
+            ) < ____exports.SETTINGS.StopTower and "tower" or nil) end
+        },
+        hooks
+    ))
+    Plays.End(play, r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or ""))
+    return r
 end)
 --- The 6:00 spawn run's plan: the spot and stand from rune_plan, its race as the decision.
 function ____exports.spawnPlanFor(bot, t)
@@ -191,6 +252,15 @@ function ____exports.spawnPlanFor(bot, t)
         decide = function()
             local act, race = unpack(RunePlan.Race(bot, t.rune))
             t.race = race
+            if t.fight == nil and act ~= "none" and t.race ~= nil then
+                local e = nearestEnemy(t.at, ____exports.SETTINGS.FightNear)
+                if e ~= nil then
+                    t.fight = Plays.Roll({kind = "rune_fight", by = bot, target = e, at = t.at})
+                    if t.fight ~= nil then
+                        return "off"
+                    end
+                end
+            end
             return act
         end,
         denyResult = function() return RunePlan.DenyResult(t.rune) end,
@@ -214,16 +284,25 @@ function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
 ____exports.SETTINGS = {
-    Trips = {[4] = {{"power", 360}, {"wisdom", 420}}, [5] = {{"power", 360}}},
+    Trips = {[4] = {{"power", 360}, {"wisdom", 420}}, [5] = {{"power", 360}, {"contest", 420}}},
     Priority = {[4] = 0.95, [5] = 0.85},
     ClaimFrom = 60,
     StartSlack = 3,
     PathFactor = 1.2,
-    LateBy = {power = 5, wisdom = 15},
-    OwnFor = {power = 120, wisdom = 420},
+    LateBy = {power = 5, wisdom = 15, contest = 15},
+    OwnFor = {power = 120, wisdom = 420, contest = 0},
     ShrineChannel = 3,
-    ShrineRadius = 300
+    ShrineRadius = 300,
+    GankReach = 4000,
+    GankEngageBy = 20,
+    GankFightFor = 8,
+    FightNear = 700,
+    StopTower = 700,
+    StopHp = 0.3
 }
+Plays.Define("gank", {base = 0.35, timeout = 30, chases = true})
+Plays.Define("rune_fight", {base = 0.5, timeout = 15, chases = false})
+Plays.Define("shrine", {base = 0.4, timeout = 60, chases = false})
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
@@ -264,9 +343,22 @@ local function open(bot)
     for ____, ____value in ipairs(____exports.SETTINGS.Trips[LaneConfig.PositionOf(bot) or 0] or ({})) do
         local kind = ____value[1]
         local spawn = ____value[2]
-        local ____opt_0 = handled[pid]
-        if (____opt_0 and ____opt_0[key(kind, spawn)]) ~= true and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.LateBy[kind] then
-            out[#out + 1] = {kind, spawn}
+        do
+            local __continue12
+            repeat
+                if kind == "contest" and not RunePlan.On() then
+                    __continue12 = true
+                    break
+                end
+                local ____opt_0 = handled[pid]
+                if (____opt_0 and ____opt_0[key(kind, spawn)]) ~= true and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.LateBy[kind] then
+                    out[#out + 1] = {kind, spawn}
+                end
+                __continue12 = true
+            until true
+            if not __continue12 then
+                break
+            end
         end
     end
     return out
@@ -291,20 +383,20 @@ local function takenSpots(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue19
+                local __continue20
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot then
-                        __continue19 = true
+                        __continue20 = true
                         break
                     end
                     local t = running[m:GetPlayerID()]
                     if t ~= nil and t.rune ~= nil then
                         out[t.rune] = true
                     end
-                    __continue19 = true
+                    __continue20 = true
                 until true
-                if not __continue19 then
+                if not __continue20 then
                     break
                 end
             end
@@ -347,6 +439,15 @@ local function tripFor(bot, kind, spawn, host, mine)
             kind = kind,
             spawn = spawn,
             at = Rotate.ShrineFor(bot:GetTeam()),
+            left = DotaTime(),
+            host = host
+        }
+    end
+    if kind == "contest" then
+        return {
+            kind = kind,
+            spawn = spawn,
+            at = Rotate.ShrineFor(bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant),
             left = DotaTime(),
             host = host
         }
@@ -412,13 +513,18 @@ end
 local function finish(bot, t, r, label)
     running[bot:GetPlayerID()] = nil
     local why = r.success and "ok" or r.reason .. (r.message ~= nil and ":" .. r.message or "")
+    for ____, p in ipairs({t.play, t.fight, t.gank}) do
+        if p ~= nil then
+            Plays.End(p, "trip:" .. why, p == t.play and r.success and "contested" or nil)
+        end
+    end
     jobLine(bot, t, "end", why)
     local function r1(x)
         return x ~= nil and math.floor(x * 10) / 10 or nil
     end
-    local ____log_10 = log
-    local ____array_9 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
-    local ____array_8 = __TS__SparseArrayNew(
+    local ____log_14 = log
+    local ____array_13 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
+    local ____array_12 = __TS__SparseArrayNew(
         {"res", r.success and "ok" or "fail"},
         {"why", why},
         {"label", label},
@@ -449,23 +555,27 @@ local function finish(bot, t, r, label)
     else
         ____temp_2 = nil
     end
-    __TS__SparseArrayPush(____array_8, {"ta", ____temp_2})
+    __TS__SparseArrayPush(____array_12, {"ta", ____temp_2})
     local ____temp_3
     if t.race ~= nil and t.race.theirs < math.huge then
         ____temp_3 = r1(t.race.theirs)
     else
         ____temp_3 = nil
     end
-    __TS__SparseArrayPush(____array_8, {"te", ____temp_3}, {"hid", t.hidden})
+    __TS__SparseArrayPush(____array_12, {"te", ____temp_3}, {"hid", t.hidden})
     local ____opt_4 = t.stand
-    __TS__SparseArrayPush(____array_8, {"sh", ____opt_4 and ____opt_4.height})
+    __TS__SparseArrayPush(____array_12, {"sh", ____opt_4 and ____opt_4.height})
     local ____opt_6 = t.stand
-    __TS__SparseArrayPush(____array_8, {"sph", ____opt_6 and ____opt_6.spotHeight})
+    __TS__SparseArrayPush(____array_12, {"sph", ____opt_6 and ____opt_6.spotHeight})
+    local ____opt_8 = t.play or t.fight
+    __TS__SparseArrayPush(____array_12, {"play", ____opt_8 and ____opt_8.id})
+    local ____opt_10 = t.gank
+    __TS__SparseArrayPush(____array_12, {"gank", ____opt_10 and ____opt_10.id})
     __TS__SparseArrayPush(
-        ____array_9,
-        {__TS__SparseArraySpread(____array_8)}
+        ____array_13,
+        {__TS__SparseArraySpread(____array_12)}
     )
-    ____log_10(__TS__SparseArraySpread(____array_9))
+    ____log_14(__TS__SparseArraySpread(____array_13))
 end
 --- OHA's own action holds the hero (a queued TP, a cast or channel): the host's Think does not step a job then
 -- (J.CanNotUseAction), so a trip started now ends `never_started` (probe rr2: a pos4 in its fountain with a queued TP).
@@ -479,6 +589,7 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     local pid = bot:GetPlayerID()
+    Plays.Tick()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
         return true
@@ -491,7 +602,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue42
+            local __continue47
             repeat
                 local function skip(why)
                     handled[pid][key(kind, spawn)] = true
@@ -504,13 +615,13 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue42 = true
+                    __continue47 = true
                     break
                 end
                 local mine
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue42 = true
+                        __continue47 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -537,6 +648,16 @@ function ____exports.Wants(bot, blocked, host)
                     gateWhy[pid] = why
                     return false
                 end
+                if kind == "contest" then
+                    if ____exports.Busy(bot) then
+                        return skip("busy")
+                    end
+                    local play = Plays.Roll({kind = "shrine", by = bot, at = t.at})
+                    if play == nil then
+                        return skip("roll")
+                    end
+                    t.play = play
+                end
                 local ok = Tasks.Start(
                     bot,
                     {
@@ -557,7 +678,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue42 then
+            if not __continue47 then
                 break
             end
         end
@@ -575,6 +696,7 @@ function ____exports.MidWants(bot)
         return false
     end
     local pid = bot:GetPlayerID()
+    Plays.Tick()
     Tasks.Tick(bot)
     if running[pid] ~= nil then
         return true
@@ -599,13 +721,13 @@ function ____exports.MidWants(bot)
         return false
     end
     if not bot:IsAlive() then
-        local ____temp_11
+        local ____temp_15
         if now >= spawn then
-            ____temp_11 = skip("dead")
+            ____temp_15 = skip("dead")
         else
-            ____temp_11 = false
+            ____temp_15 = false
         end
-        return ____temp_11
+        return ____temp_15
     end
     local t = tripFor(
         bot,
@@ -619,13 +741,13 @@ function ____exports.MidWants(bot)
         return false
     end
     if acting(bot) then
-        local ____temp_12
+        local ____temp_16
         if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_12 = skip("acting")
+            ____temp_16 = skip("acting")
         else
-            ____temp_12 = false
+            ____temp_16 = false
         end
-        return ____temp_12
+        return ____temp_16
     end
     local ok = Tasks.Start(
         bot,
@@ -693,20 +815,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue96
+                local __continue119
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue96 = true
+                        __continue119 = true
                         break
                     end
-                    local ____opt_13 = running[m:GetPlayerID()]
-                    if (____opt_13 and ____opt_13.kind) == "wisdom" then
+                    local ____opt_17 = running[m:GetPlayerID()]
+                    if (____opt_17 and ____opt_17.kind) == "wisdom" then
                         return true
                     end
-                    __continue96 = true
+                    __continue119 = true
                 until true
-                if not __continue96 then
+                if not __continue119 then
                     break
                 end
             end

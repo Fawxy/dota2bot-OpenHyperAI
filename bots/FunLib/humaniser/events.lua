@@ -838,7 +838,9 @@ ____exports.EVENTS = {
         te = "num",
         hid = "num",
         sh = "num",
-        sph = "num"
+        sph = "num",
+        play = "num",
+        gank = "num"
     },
     pull_job = {
         pid = "num",

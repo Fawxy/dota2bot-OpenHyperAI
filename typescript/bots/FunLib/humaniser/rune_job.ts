@@ -5,10 +5,12 @@
  * the trip (the job verb `runeRun`) and logs one `ev=rune_job` line per trip or skip.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Rune, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Rune, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as FR from "bots/FunLib/humaniser/fight_readings";
+import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
@@ -17,12 +19,12 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
-type Kind = "power" | "wisdom";
+type Kind = "power" | "wisdom" | "contest";
 
 // All judgement (slice file, Decisions).
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
-    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [["power", 360]] } as Record<number, [Kind, number][]>,
+    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [["power", 360], ["contest", 420]] } as Record<number, [Kind, number][]>,
     /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
@@ -32,14 +34,30 @@ export const SETTINGS = {
     /** Walking paths run longer than the straight line (states/rotate's PATH_FACTOR). */
     PathFactor: 1.2,
     /** Not at the spot this long after the spawn: the verb ends `timeout:late`. Power: the verb's default. */
-    LateBy: { power: 5, wisdom: 15 } as Record<Kind, number>,
+    LateBy: { power: 5, wisdom: 15, contest: 15 } as Record<Kind, number>,
     /** After its spawn, the trip's decision stays ours until that rune's next spawn (power every 2 min, the next shrine at 14:00):
      *  OHA's rune mode does not send the hero there, whether the trip ran or was skipped. */
-    OwnFor: { power: 120, wisdom: 420 } as Record<Kind, number>,
+    OwnFor: { power: 120, wisdom: 420, contest: 0 } as Record<Kind, number>,
     /** Liquipedia/7.41: stand within 300 of the shrine for 3 s. */
     ShrineChannel: 3,
     ShrineRadius: 300,
+    /** Ours.RuneSpawn plays (slice rune-spawn; all judgement). A gank chance after a support's 6:00 trip goes to the nearest
+     *  visible enemy hero within GankReach; the gank must engage within GankEngageBy s and fights GankFightFor s. */
+    GankReach: 4000,
+    GankEngageBy: 20,
+    GankFightFor: 8,
+    /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
+    FightNear: 700,
+    /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
+    StopTower: 700,
+    StopHp: 0.3,
 };
+
+// The rune spawn's play kinds (slice rune-spawn, all judgement): the library holds no kind list (OWNERSHIP H24).
+Plays.Define("gank", { base: 0.35, timeout: 30, chases: true });
+Plays.Define("rune_fight", { base: 0.5, timeout: 15, chases: false });
+// The contest walks across the map and channels: its play lasts the trip.
+Plays.Define("shrine", { base: 0.4, timeout: 60, chases: false });
 
 interface Trip {
     kind: Kind;
@@ -57,6 +75,10 @@ interface Trip {
     act?: string;
     race?: RunePlan.RaceInputs;
     hidden?: number;
+    /** Plays this trip started: the shrine contest's roll, the rune fight, the gank after the trip. */
+    play?: Plays.Play;
+    fight?: Plays.Play;
+    gank?: Plays.Play;
 }
 
 /** A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack). */
@@ -98,6 +120,7 @@ function open(bot: Unit): [Kind, number][] {
     const now = DotaTime();
     const out: [Kind, number][] = [];
     for (const [kind, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
+        if (kind === "contest" && !RunePlan.On()) continue;
         if (handled[pid]?.[key(kind, spawn)] !== true && now >= spawn - SETTINGS.ClaimFrom && now < spawn + SETTINGS.LateBy[kind]) out.push([kind, spawn]);
     }
     return out;
@@ -137,7 +160,7 @@ function powerSpot(bot: Unit): [number, Vector] {
 }
 
 function planFor(t: Trip): JobVerbs.RunePlan {
-    if (t.kind === "wisdom") {
+    if (t.kind === "wisdom" || t.kind === "contest") {
         return {
             at: t.at as unknown as Lib.Vec,
             spawnAt: t.spawn,
@@ -161,6 +184,7 @@ function leaveAt(bot: Unit, t: Trip): number {
 
 function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: number): Trip {
     if (kind === "wisdom") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam()), left: DotaTime(), host };
+    if (kind === "contest") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant), left: DotaTime(), host };
     if (mine !== undefined) {
         const at = RunePlan.SpotAt(mine);
         return { kind, spawn, at, rune: mine, side: at.y > 0 ? "top" : "bot", left: DotaTime(), host, stand: RunePlan.StandFor(bot, at) };
@@ -187,6 +211,8 @@ function jobLine(bot: Unit, t: Trip, phase: string, why: string): void {
 function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
     const why = r.success ? "ok" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
+    // A play the trip started and its verb did not end (the task was preempted or cancelled) ends with the trip.
+    for (const p of [t.play, t.fight, t.gank]) if (p !== undefined) Plays.End(p, `trip:${why}`, p === t.play && r.success ? "contested" : undefined);
     jobLine(bot, t, "end", why);
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10) / 10 : undefined);
     log(bot, t.kind, t.spawn, [
@@ -206,6 +232,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["hid", t.hidden],
         ["sh", t.stand?.height],
         ["sph", t.stand?.spotHeight],
+        ["play", (t.play ?? t.fight)?.id],
+        ["gank", t.gank?.id],
     ]);
 }
 
@@ -222,6 +250,8 @@ function acting(bot: Unit): boolean {
 export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
     if (!Applies(bot)) return false;
     const pid = bot.GetPlayerID();
+    // Ends timed-out plays and writes settled play lines every frame, whether a trip runs or not.
+    Plays.Tick();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
     if (Tasks.Jobs() === undefined) return false;
@@ -256,6 +286,13 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             gateWhy[pid] = why;
             return false;
         }
+        if (kind === "contest") {
+            // The contest is a play: a free pos5 rolls for it at its leave time; no fire, no trip.
+            if (Busy(bot)) return skip("busy");
+            const play = Plays.Roll({ kind: "shrine", by: bot, at: t.at });
+            if (play === undefined) return skip("roll");
+            t.play = play;
+        }
         const ok = Tasks.Start(bot, { name: "rune", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
             body(bot, t, ctx)
         );
@@ -277,8 +314,56 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         },
         urgent: ctx.urgent,
     };
-    if (t.stand !== undefined && t.rune !== undefined) return yield* Tasks.Jobs()!.runeSpawnRun(bot as unknown as Lib.TaskUnit, spawnPlanFor(bot, t), hooks);
+    if (t.stand !== undefined && t.rune !== undefined) {
+        const r = yield* Tasks.Jobs()!.runeSpawnRun(bot as unknown as Lib.TaskUnit, spawnPlanFor(bot, t), hooks);
+        if (t.fight !== undefined) yield* playFight(bot, t.fight, hooks);
+        else if (LaneConfig.PositionOf(bot) !== 2 && bot.IsAlive()) {
+            t.gank = offerGank(bot);
+            if (t.gank !== undefined) yield* playFight(bot, t.gank, hooks);
+        }
+        return r;
+    }
     return yield* Tasks.Jobs()!.runeRun(bot as unknown as Lib.TaskUnit, planFor(t), hooks);
+}
+
+function nearestEnemy(at: Vector, within: number): Unit | undefined {
+    let best: Unit | undefined;
+    let bestD = within;
+    for (const e of FR.EnemiesNear(at, within)) {
+        const d = FR.Dist(e.GetLocation(), at);
+        if (d <= bestD) [best, bestD] = [e, d];
+    }
+    return best;
+}
+
+/** After a support's 6:00 trip: one gank chance on the nearest visible enemy hero within GankReach (none: no chance). */
+function offerGank(bot: Unit): Plays.Play | undefined {
+    const e = nearestEnemy(bot.GetLocation(), SETTINGS.GankReach);
+    if (e === undefined) return undefined;
+    return Plays.Roll({ kind: "gank", by: bot, target: e, at: e.GetLocation() });
+}
+
+/** A fired gank or rune fight: the gank verb on the play's target, straight in, ended by the verb or the play's stops. */
+function* playFight(bot: Unit, play: Plays.Play, hooks: JobVerbs.JobHooks): Lib.TaskBody {
+    const target = play.target!;
+    const r = yield* Tasks.Jobs()!.gank(
+        bot as unknown as Lib.TaskUnit,
+        {
+            target: () => (target.IsAlive() ? (target as unknown as Lib.TaskAttacker) : undefined),
+            path: [],
+            deadline: DotaTime() + SETTINGS.GankEngageBy,
+            engageFor: SETTINGS.GankFightFor,
+            commit: () =>
+                FR.HpFraction(bot) < SETTINGS.StopHp
+                    ? "hp"
+                    : target.IsAlive() && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < SETTINGS.StopTower
+                      ? "tower"
+                      : undefined,
+        },
+        hooks
+    );
+    Plays.End(play, r.success ? (r.message ?? "ok") : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`);
+    return r;
 }
 
 /** The 6:00 spawn run's plan: the spot and stand from rune_plan, its race as the decision. */
@@ -296,6 +381,14 @@ export function spawnPlanFor(bot: Unit, t: Trip): JobVerbs.SpawnPlan {
         decide: () => {
             const [act, race] = RunePlan.Race(bot, t.rune!);
             t.race = race;
+            // An enemy hero at the spot: one rune-fight roll (user 04/11/2026); a fired fight replaces the act.
+            if (t.fight === undefined && act !== "none" && t.race !== undefined) {
+                const e = nearestEnemy(t.at, SETTINGS.FightNear);
+                if (e !== undefined) {
+                    t.fight = Plays.Roll({ kind: "rune_fight", by: bot, target: e, at: t.at });
+                    if (t.fight !== undefined) return "off";
+                }
+            }
             return act;
         },
         denyResult: () => RunePlan.DenyResult(t.rune!),
@@ -319,6 +412,7 @@ const MID_HOST = BotMode.Rune;
 export function MidWants(bot: Unit): boolean {
     if (!RunePlan.On() || !bot.IsBot() || LaneConfig.PositionOf(bot) !== 2) return false;
     const pid = bot.GetPlayerID();
+    Plays.Tick();
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
     if (Tasks.Jobs() === undefined) return false;

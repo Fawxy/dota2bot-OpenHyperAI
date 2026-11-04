@@ -140,7 +140,7 @@ do
 	local out = run(H, { mid, p4, p5 }, 368)
 	local skipped, midLine
 	for _, l in ipairs(lines(out, "rune_job")) do
-		if field(l, "pid") == "4" then skipped = l end
+		if field(l, "pid") == "4" and field(l, "kind") == "power" then skipped = l end
 		if field(l, "pid") == "2" then midLine = l end
 	end
 	check("the other support skips with plan-other", skipped ~= nil and field(skipped, "res") == "skip" and field(skipped, "why") == "plan-other", skipped)
@@ -183,6 +183,70 @@ do
 	local bot = hero(3, 4, Vector(-4200, -1200))
 	local out = run(H, { bot }, 368)
 	check("switch off: no plan and no hide", #lines(out, "rune_plan") == 0 and field(lines(out, "rune_job")[1], "hid") == nil)
+end
+
+local function draws(H, x) H.Lane.Config.SetRng(function() return { random = function() return x end, gauss = function() return 0 end } end) end
+meta.Action_AttackUnit = function(self, u) table.insert(ACTIONS, { pid = self.pid, kind = "AttackUnit", args = { u } }) end
+
+-- After the trip: a gank chance on the nearest enemy hero in reach. A low draw fires it and the support goes in; the play
+-- ends with a line, and the trip's line names it.
+do
+	local H = world()
+	SPAWN_AT = P1
+	draws(H, 0.0)
+	local bot = hero(3, 4, Vector(-4200, -1200))
+	local enemy = hero(9, 2, Vector(-200, 400), DIRE)
+	enemy.speed = 0
+	local out = run(H, { bot }, 400)
+	local trip = lines(out, "rune_job")[1]
+	local roll, ended
+	for _, l in ipairs(lines(out, "play")) do if field(l, "kind") == "gank" then roll = l end end
+	ended = lines(out, "play_end")[1]
+	check("gank: rolled after the trip and fired", roll ~= nil and field(roll, "fire") == "1", roll)
+	check("gank: the support attacked its target", (function() for _, a in ipairs(ACTIONS) do if a.pid == 3 and a.kind == "AttackUnit" and a.args[1] == enemy then return true end end end)())
+	check("gank: the play ended with a line, the trip names it", ended ~= nil and field(trip, "gank") == field(roll, "id"), tostring(trip) .. " / " .. tostring(ended))
+end
+
+-- A high draw: the chance is logged and nothing fires; the support's trip ends as before.
+do
+	local H = world()
+	SPAWN_AT = P1
+	draws(H, 0.99)
+	local bot = hero(3, 4, Vector(-4200, -1200))
+	hero(9, 2, Vector(-200, 400), DIRE)
+	local out = run(H, { bot }, 375)
+	local roll = lines(out, "play")[1]
+	check("gank not fired: logged with fire=0, no play end", roll ~= nil and field(roll, "fire") == "0" and #lines(out, "play_end") == 0, roll)
+end
+
+-- The enemy shrine: a free pos5 rolls at its leave time; a miss skips with why=roll, a hit walks it there to channel.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.99)
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local out = run(H, { p5 }, 412)
+	local l
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" then l = x end end
+	check("shrine: a missed roll skips the contest", l ~= nil and field(l, "res") == "skip" and field(l, "why") == "roll", l)
+	H = world({ t = 395 })
+	draws(H, 0.0)
+	p5 = hero(4, 5, Vector(6500, -1500))
+	run(H, { p5 }, 412)
+	check("shrine: a fired roll sends the pos5 to the enemy shrine", H.RuneJob.Running(p5) and dist(p5.loc, Vector(8029, -1126)) < dist(Vector(6500, -1500), Vector(8029, -1126)))
+end
+
+-- An enemy hero on the spot at the spawn: the rune-fight roll; fired, the support fights it instead of the race's act.
+do
+	local H = world()
+	SPAWN_AT = P1
+	draws(H, 0.0)
+	local bot = hero(3, 4, Vector(-4200, -1200))
+	local enemy = hero(9, 4, Vector(-1640 + 300, 1112), DIRE)
+	enemy.speed = 0
+	local out = run(H, { bot }, 368)
+	local fight
+	for _, l in ipairs(lines(out, "play")) do if field(l, "kind") == "rune_fight" then fight = l end end
+	check("rune fight: rolled on the enemy at the spot and fired", fight ~= nil and field(fight, "fire") == "1" and field(fight, "tgt") == "9", fight)
 end
 
 finish()
