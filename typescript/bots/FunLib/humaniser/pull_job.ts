@@ -75,6 +75,13 @@ export const SETTINGS = {
     BailReserve: 0.25,
     BailGrace: 2,
     BailFor: 6,
+    /** Live re-timing (slice pull-live): after the hit, the puller holds where it is (at most PaceFor s) while the wave,
+     *  read live, would reach the meet point more than the plan's Lead + PaceSlack after the neutrals walking there from the
+     *  puller's place, and every tagged neutral is still within PaceGuard of its camp (EC-084: the 5 s give-up timer starts
+     *  past 400, so a wait inside it costs the chase nothing; a wait outside it does). All `judgement`. */
+    PaceSlack: 0.5,
+    PaceGuard: 350,
+    PaceFor: 3,
     /** Neutrals within this of the puller are the ones that can be hitting it. */
     BailScan: 1200,
     /** With no tower of ours on the lane, step this far straight away from the neutrals. */
@@ -104,9 +111,8 @@ interface Plan {
     lead: Vector[];
     meet: Vector;
     timing: PullTiming.PullTiming;
-    /** The planned hit second (no skill error), and when our wave should reach the meet point. */
+    /** The planned hit second (no skill error). */
     slot: number;
-    waveAt?: number;
 }
 
 interface Pull {
@@ -122,9 +128,13 @@ interface Pull {
     peak: number;
     near?: number;
     neutrals: number;
+    /** The hit second as last read (the live wave up to the order), and the shift it had at the start. */
     hitAt: number;
-    /** The live reading the hit was set from (none when the wave was not seen). */
-    live?: PullTiming.LiveReading;
+    startShift: number;
+    track: PullTiming.LiveHit;
+    /** Seconds the puller held after the hit for a late wave (`pz`). */
+    paced?: number;
+    pacedFrom?: number;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -158,10 +168,11 @@ const running: Record<number, Pull | undefined> = {};
 const trailing: Record<number, Trail | undefined> = {};
 const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
+const tracks: Record<number, PullTiming.LiveHit | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, tracks] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -220,7 +231,7 @@ function planFor(bot: Unit, now: number): Plan | undefined {
     const meet = camp.pull.meetPoint;
     const lead = PullTiming.LeadPath(camp.pull, meet);
     const stand = Camps.StandPoint(spawner, lead[0], LaneConfig.Settings().Radii.StandOffset);
-    return { camp, spawner, stand, lead, meet, timing, slot, waveAt: timing.waveAfter !== undefined ? slot + timing.waveAfter : undefined };
+    return { camp, spawner, stand, lead, meet, timing, slot };
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -420,8 +431,10 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nn", p.neutrals],
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
-        ["lv", p.live !== undefined ? 1 : 0],
-        ["sf", p.live !== undefined ? math.floor(p.live.front * 10 + 0.5) / 10 : undefined],
+        ["s0", math.floor(p.startShift * 10 + 0.5) / 10],
+        ["lv", p.track.reads],
+        ["sf", p.track.read !== undefined ? math.floor(p.track.read.front * 10 + 0.5) / 10 : undefined],
+        ["pz", p.paced !== undefined ? math.floor(p.paced * 10 + 0.5) / 10 : undefined],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -435,7 +448,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         return;
     }
     const now = DotaTime();
-    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, p.plan.waveAt ?? now) + SETTINGS.TrailSec };
+    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.track, now) ?? now) + SETTINGS.TrailSec };
 }
 
 function share(p: Pull): number {
@@ -714,17 +727,53 @@ function verbCamp(p: Plan): JobVerbs.Camp {
     };
 }
 
+/**
+ * After the hit: true while the wave, read live, is late enough that the neutrals would wait for it at the meet point past
+ * the plan's lead, and none of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
+ */
+function pace(bot: Unit, p: Pull): boolean {
+    const now = DotaTime();
+    const waveAt = PullTiming.WaveAt(p.track, now);
+    const speed = (LaneConfig.Settings().PullTiming.NeutralSpeed as Record<string, number>)[p.plan.spawner.type];
+    if (waveAt === undefined || speed === undefined || p.tagged === undefined) return false;
+    // The neutrals follow the puller: their walk to the meet point is the nearest one's gap to it plus the puller's lead.
+    let gap: number | undefined;
+    for (const u of p.tagged) {
+        if (stale(u)) continue;
+        if (GetUnitToLocationDistance(u, p.plan.spawner.location) > SETTINGS.PaceGuard) return false;
+        const d = GetUnitToUnitDistance(u, bot);
+        if (gap === undefined || d < gap) gap = d;
+    }
+    if (gap === undefined) return false;
+    const eta = (gap + PullTiming.WalkLength(bot.GetLocation(), p.plan.lead)) / speed;
+    if (waveAt - now - eta - LaneConfig.Settings().PullTiming.Lead <= SETTINGS.PaceSlack) return false;
+    p.pacedFrom = p.pacedFrom ?? now;
+    p.paced = now - p.pacedFrom;
+    return true;
+}
+
 function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
+    const camp = verbCamp(p);
+    // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
+    camp.earlier = () => {
+        pull.hitAt = PullTiming.Update(pull.track, DotaTime());
+        return aggroAt - pull.hitAt;
+    };
     return {
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
-        camp: verbCamp(p),
+        pace: () => pace(bot, pull),
+        paceFor: SETTINGS.PaceFor,
+        camp,
         aggroAt,
         lead: p.lead as unknown as Lib.Vec[],
         watchSec: s.Timing.WatchSec,
-        watchUntil: p.waveAt !== undefined ? p.waveAt + s.PullTiming.WatchAfterWave : undefined,
+        watchUntil: () => {
+            const w = PullTiming.WaveAt(pull.track, DotaTime());
+            return w !== undefined ? w + s.PullTiming.WatchAfterWave : undefined;
+        },
         leadDeadline: aggroAt + s.Timing.JobMaxAfterAggro,
         arrive: s.Radii.JobArrive,
         startLate: s.Timing.JobStartLate,
@@ -769,11 +818,15 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const p = planFor(bot, now);
     if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
-    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead); the leave time, the late
-    // check and the hit all use the shifted second (pw2: 12 starts planned against the slot failed `late` while still walking,
-    // the hit having moved up to LiveMaxShift earlier).
-    const live = PullTiming.LiveRead(p.timing, p.slot, now);
-    const hitAt = p.slot + (live?.shift ?? 0);
+    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead, read again every LiveEvery s up
+    // to the hit, slice pull-live); the leave time, the late check and the hit all use the shifted second (pw2: 12 starts
+    // planned against the slot failed `late` while still walking, the hit having moved up to LiveMaxShift earlier).
+    let track = tracks[pid];
+    if (track === undefined || track.slot !== p.slot) {
+        track = PullTiming.Track(p.timing, p.slot);
+        tracks[pid] = track;
+    }
+    const hitAt = PullTiming.Update(track, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.slot) {
@@ -806,7 +859,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, live, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, startShift: hitAt - p.slot, track, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

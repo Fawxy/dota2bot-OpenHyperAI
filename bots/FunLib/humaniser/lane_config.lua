@@ -299,6 +299,7 @@ ____exports.DEFAULTS = {
         LiveWindow = 5,
         LiveMaxOffset = 600,
         LiveMaxShift = 4,
+        LiveEvery = 0.25,
         WatchAfterWave = 3,
         LanePaths = {}
     },
