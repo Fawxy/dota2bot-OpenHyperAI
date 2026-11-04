@@ -57,6 +57,9 @@ export const SETTINGS = {
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
     StopTower: 700,
     StopHp: 0.3,
+    /** The mid's trip does not start under this HP fraction (the chooser's MinHpFraction for supports' jobs; rspchk2 game 1
+     *  started one at 2% HP). */
+    MidMinHp: 0.5,
 };
 
 // The rune spawn's play kinds (slice rune-spawn, all judgement): the library holds no kind list (OWNERSHIP H24).
@@ -316,10 +319,12 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (Tasks.Jobs() === undefined) return false;
     handled[pid] = handled[pid] ?? {};
     for (const [kind, spawn] of open(bot)) {
+        let mine: number | undefined;
         const skip = (why: string) => {
             handled[pid][key(kind, spawn)] = true;
             gateWhy[pid] = undefined;
             log(bot, kind, spawn, [["res", "skip"], ["why", why]]);
+            if (mine !== undefined && DotaTime() < spawn) dropFromPlan(bot, why);
             return false;
         };
         if (!bot.IsAlive()) {
@@ -328,7 +333,6 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             gateWhy[pid] = "dead";
             continue;
         }
-        let mine: number | undefined;
         if (planned(kind, spawn)) {
             // Before the plan exists nobody starts; after it, only the planned support goes.
             if (DotaTime() < RunePlan.SETTINGS.PlanAt) continue;
@@ -340,7 +344,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         if (DotaTime() < leave) return false;
         const why = blocked(bot) ?? (acting(bot) ? "acting" : undefined);
         // The leave time moves with the bot, so it can pass the slack in one frame: name what holds it now, if anything.
-        if (DotaTime() > leave + SETTINGS.StartSlack) return skip(gateWhy[pid] ?? why ?? "late");
+        if (DotaTime() > leave + SETTINGS.StartSlack && !canStillArrive(bot, t)) return skip(gateWhy[pid] ?? why ?? "late");
         if (why !== undefined) {
             gateWhy[pid] = why;
             return false;
@@ -383,6 +387,21 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         return r;
     }
     return yield* Tasks.Jobs()!.runeRun(bot as unknown as Lib.TaskUnit, planFor(t), hooks);
+}
+
+/** The plan's spot goes from a support that will not go to the other free one, whose own trip opens again. */
+function dropFromPlan(bot: Unit, why: string): void {
+    const next = RunePlan.Drop(bot, why, Busy);
+    if (next === undefined) return;
+    const pid = next.GetPlayerID();
+    handled[pid] = handled[pid] ?? {};
+    handled[pid][key("power", RunePlan.SETTINGS.Spawn)] = false;
+}
+
+/** A replacement support starts past its leave time while a straight walk still reaches the spot by the spawn (the verb
+ *  skips the stand once late). */
+function canStillArrive(bot: Unit, t: Trip): boolean {
+    return t.stand !== undefined && RunePlan.Replaces(bot) && DotaTime() + RunePlan.WalkSecs(bot, t.at) * SETTINGS.PathFactor <= t.spawn;
 }
 
 function nearestEnemy(at: Vector, within: number): Unit | undefined {
@@ -461,7 +480,7 @@ export function spawnPlanFor(bot: Unit, t: Trip): JobVerbs.SpawnPlan {
 
 /**
  * The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95). Only OHA retreat's 1.0 and 1.1 returns
- * beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose, and the trip has no HP gate of its own (slice open item).
+ * beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose once the trip runs (it starts only at MidMinHp or more).
  */
 export const MID_DESIRE = 0.97;
 const MID_HOST = BotMode.Rune;
@@ -495,7 +514,8 @@ export function MidWants(bot: Unit): boolean {
     const leave = leaveAt(bot, t);
     if (now < leave) return false;
     // A held start walks straight in when it goes (runeSpawnRun skips the stand once late); held past the slack it is skipped.
-    if (acting(bot)) return now > leave + SETTINGS.StartSlack ? skip("acting") : false;
+    const why = bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MidMinHp ? "low-hp" : acting(bot) ? "acting" : undefined;
+    if (why !== undefined) return now > leave + SETTINGS.StartSlack ? skip(why) : false;
     const ok = Tasks.Start(bot, { name: "rune", host: MID_HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, t, ctx)
     );

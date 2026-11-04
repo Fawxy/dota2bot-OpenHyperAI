@@ -35,6 +35,16 @@ test('rune spawn: a plan is covered only when every planned hero reached its spo
     assert.deepStrictEqual([late.covered, late.late], [0, 1]);
 });
 
+test('rune spawn: a dropped support\'s spot handed on: the last plan line names the planned heroes', () => {
+    const lines = [...bots, line(320, 'rune_plan team=2 mid=2 ms=0 sup=3 ss=1'),
+        line(347, 'rune_job pid=3 pos=4 kind=power spawn=360 res=skip why=low-hp'),
+        line(347, 'rune_plan team=2 mid=2 ms=0 sup=4 ss=1 why=swap:low-hp'),
+        line(362, 'rune_job pid=2 pos=2 kind=power spawn=360 res=ok why=ok arr=359.8 died=0 phase=take hid=5'),
+        line(361, 'rune_job pid=4 pos=5 kind=power spawn=360 res=fail why=cancelled:off arr=359.9 died=0 phase=off')];
+    const out = run(lines, 'rune_spawn');
+    assert.deepStrictEqual(out.map(r => [r.sup, r.swaps, r.trips, r.covered]), [[4, 1, 2, 1]]);
+});
+
 test('rune plays: chances, fires and ends by kind, an unended fired play counted', () => {
     const lines = [...bots,
         line(370, 'play pid=3 kind=gank tgt=7 w=0.3 fire=1 id=1 draw=0.1'),
