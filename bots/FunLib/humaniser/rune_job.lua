@@ -345,7 +345,7 @@ ____exports.SETTINGS = {
             function(____, n) return {"contest", n} end
         )
     },
-    Priority = {[4] = 0.95, [5] = 0.85},
+    Priority = {[4] = 0.95, [5] = 0.99},
     ClaimFrom = 60,
     StartSlack = 3,
     PathFactor = 1.2,
@@ -893,7 +893,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue79
+            local __continue80
             repeat
                 local mine
                 local function skip(why)
@@ -910,12 +910,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue79 = true
+                    __continue80 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue79 = true
+                        __continue80 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -934,7 +934,13 @@ function ____exports.Wants(bot, blocked, host)
                 if DotaTime() < leave then
                     return false
                 end
-                local why = blocked(bot) or (acting(bot) and "acting" or nil)
+                local ____temp_28
+                if kind == "contest" then
+                    ____temp_28 = nil
+                else
+                    ____temp_28 = blocked(bot) or (acting(bot) and "acting" or nil)
+                end
+                local why = ____temp_28
                 if DotaTime() > leave + ____exports.SETTINGS.StartSlack and not canStillArrive(bot, t) then
                     return skip(gateWhy[pid] or why or "late")
                 end
@@ -943,9 +949,6 @@ function ____exports.Wants(bot, blocked, host)
                     return false
                 end
                 if kind == "contest" then
-                    if ____exports.Busy(bot) then
-                        return skip("busy")
-                    end
                     if t.route == "detour" and ____exports.PathPending(bot) then
                         return false
                     end
@@ -970,7 +973,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue79 then
+            if not __continue80 then
                 break
             end
         end
@@ -1014,13 +1017,13 @@ function ____exports.MidWants(bot)
         return false
     end
     if not bot:IsAlive() then
-        local ____temp_28
+        local ____temp_29
         if now >= spawn then
-            ____temp_28 = skip("dead")
+            ____temp_29 = skip("dead")
         else
-            ____temp_28 = false
+            ____temp_29 = false
         end
-        return ____temp_28
+        return ____temp_29
     end
     local t = tripFor(
         bot,
@@ -1035,13 +1038,13 @@ function ____exports.MidWants(bot)
     end
     local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
     if why ~= nil then
-        local ____temp_29
+        local ____temp_30
         if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_29 = skip(why)
+            ____temp_30 = skip(why)
         else
-            ____temp_29 = false
+            ____temp_30 = false
         end
-        return ____temp_29
+        return ____temp_30
     end
     local ok = Tasks.Start(
         bot,
@@ -1067,8 +1070,8 @@ function ____exports.MidStep(bot)
 end
 --- The mode that steps this hero's running trip (the chooser's host, or the rune mode for the mid's 6:00 trip), if any.
 function ____exports.HostOf(bot)
-    local ____opt_30 = running[bot:GetPlayerID()]
-    return ____opt_30 and ____opt_30.host
+    local ____opt_31 = running[bot:GetPlayerID()]
+    return ____opt_31 and ____opt_31.host
 end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
@@ -1114,20 +1117,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue157
+                local __continue156
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue157 = true
+                        __continue156 = true
                         break
                     end
-                    local ____opt_32 = running[m:GetPlayerID()]
-                    if (____opt_32 and ____opt_32.kind) == "wisdom" then
+                    local ____opt_33 = running[m:GetPlayerID()]
+                    if (____opt_33 and ____opt_33.kind) == "wisdom" then
                         return true
                     end
-                    __continue157 = true
+                    __continue156 = true
                 until true
-                if not __continue157 then
+                if not __continue156 then
                     break
                 end
             end

@@ -28,7 +28,7 @@ export const SETTINGS = {
     // DRILL (probe/contest-drill, never merged): pos5 contests every 60 s from 2:00 to 8:00, no roll.
     Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [120, 180, 240, 300, 360, 420, 480].map((n) => ["contest", n]) } as Record<number, [Kind, number][]>,
     /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
-    Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
+    Priority: { [4]: 0.95, [5]: 0.99 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
     ClaimFrom: 60,
     /** A start held back (gate or another job) past its leave time by this much is skipped: it would arrive late. */
@@ -450,7 +450,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const t = tripFor(bot, kind, spawn, host, mine);
         const leave = leaveAt(bot, t);
         if (DotaTime() < leave) return false;
-        const why = blocked(bot) ?? (acting(bot) ? "acting" : undefined);
+        // DRILL: contests start whatever the gates say.
+        const why = kind === "contest" ? undefined : blocked(bot) ?? (acting(bot) ? "acting" : undefined);
         // The leave time moves with the bot, so it can pass the slack in one frame: name what holds it now, if anything.
         if (DotaTime() > leave + SETTINGS.StartSlack && !canStillArrive(bot, t)) return skip(gateWhy[pid] ?? why ?? "late");
         if (why !== undefined) {
@@ -459,7 +460,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         }
         if (kind === "contest") {
             // The contest is a play: a free pos5 rolls for it at its leave time; no fire, no trip.
-            if (Busy(bot)) return skip("busy");
+            // DRILL: busy or not.
             // The start waits a frame or so for Valve's path rather than walk the straight-leg fallback.
             if (t.route === "detour" && PathPending(bot)) return false;
             // DRILL: no roll.
