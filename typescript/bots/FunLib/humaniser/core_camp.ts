@@ -15,6 +15,7 @@ import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
@@ -36,6 +37,10 @@ export const SETTINGS = {
     AbortHP: 0.3,
     FrontRadius: 1800,
     WaveClearRadius: 1000,
+    /** A creep meeting within this of the enemy T1 (attack range 700 plus a margin) is mostly the tower's: the core's share
+     *  of those deaths is TowerShare (it can take some last hits there, at a risk), not LaneShare. */
+    TowerReach: 900,
+    TowerShare: 0.2,
     /** The forecast run's length, the fronts' gap that counts as a clash, the least gap worth a trip, and how far into the
      *  clash a return may fall when the camp pays for the creeps lost. */
     Horizon: 60,
@@ -92,6 +97,8 @@ export interface Clash {
     t0: number;
     samples: LanePush.Sample[];
     enemy: number;
+    path: LanePath;
+    team: number;
 }
 
 interface Trip {
@@ -201,32 +208,56 @@ function growLate(bot: Unit): void {
 // ------------------------------------------------------------------------------------------------ the forecast
 
 /** The first second of `samples` with the fronts within ClashGap, and the clash point there; undefined when none. */
+/** Whether lane position `s` lies within the enemy T1's reach (Radiant runs along increasing `s`). */
+export function UnderEnemyTower(path: LanePath, team: number, s: number): boolean {
+    for (const tw of path.towers) {
+        if (tw.team === team) continue;
+        return team === Team.Radiant ? s >= tw.s - SETTINGS.TowerReach : s <= tw.s + SETTINGS.TowerReach;
+    }
+    return false;
+}
+
+/** Where the fronts meet in a sample (their midpoint on the lane), or undefined when they are not within ClashGap. */
+function meetingAt(smp: LanePush.Sample): number | undefined {
+    const r = smp.front[Team.Radiant];
+    const d = smp.front[Team.Dire];
+    return r !== undefined && d !== undefined && d - r <= SETTINGS.ClashGap ? (r + d) / 2 : undefined;
+}
+
+/**
+ * The next lane gold: the first second the fronts meet outside the enemy T1's reach. A wave crashing into their tower is
+ * not it, so a pushed lane's gap runs to the next wave's meeting.
+ */
 export function ClashOf(samples: LanePush.Sample[], path: LanePath, team: number): Clash | undefined {
     const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
     for (const smp of samples) {
-        const r = smp.front[Team.Radiant];
-        const d = smp.front[Team.Dire];
-        if (r !== undefined && d !== undefined && d - r <= SETTINGS.ClashGap) {
-            const [x, y] = LanePush.PointAt(path, (r + d) / 2);
-            return { t: smp.t, at: Vector(x, y, 0), t0: samples[0].t, samples, enemy };
+        const m = meetingAt(smp);
+        if (m !== undefined && !UnderEnemyTower(path, team, m)) {
+            const [x, y] = LanePush.PointAt(path, m);
+            return { t: smp.t, at: Vector(x, y, 0), t0: samples[0].t, samples, enemy, path, team };
         }
     }
     return undefined;
 }
 
-/** Enemy lane creeps the run kills from its start to `t` (the last sample when `t` lies beyond it). */
-export function DeadBy(c: Clash, t: number): number {
-    let n = 0;
-    for (const smp of c.samples) {
-        if (smp.t > t) break;
-        n = smp.dead[c.enemy] ?? 0;
-    }
-    return n;
-}
-
-/** The lane gold the core would have taken from the creeps the run kills between `from` and `to`. */
+/**
+ * The lane gold the core would have taken from the enemy creeps the run kills between `from` and `to` (to the last sample
+ * when `to` lies beyond it): LaneShare of each, TowerShare of those killed while the fronts meet in the enemy T1's reach.
+ */
 export function LossBetween(c: Clash, from: number, to: number): number {
-    return math.max(0, DeadBy(c, to) - DeadBy(c, from)) * SETTINGS.CreepGold * SETTINGS.LaneShare;
+    let gold = 0;
+    let prev: number | undefined;
+    for (const smp of c.samples) {
+        if (smp.t > to) break;
+        const dead = smp.dead[c.enemy] ?? 0;
+        if (prev !== undefined && smp.t > from && dead > prev) {
+            const m = meetingAt(smp);
+            const share = m !== undefined && UnderEnemyTower(c.path, c.team, m) ? SETTINGS.TowerShare : SETTINGS.LaneShare;
+            gold += (dead - prev) * SETTINGS.CreepGold * share;
+        }
+        prev = dead;
+    }
+    return gold;
 }
 
 // ------------------------------------------------------------------------------------------------ camps
@@ -299,11 +330,12 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const clr = prior * Pace(bot);
         const back = dist(center, c.at) / speed;
         const ret = now + dist(from, center) / speed + clr + back;
-        if (ret > c.t + s.MaxLate) continue;
+        const force = Overrides.CampForce();
+        if (ret > (force ? now + s.Horizon : c.t + s.MaxLate)) continue;
         const gold = (s.CampGold[spawner.type] ?? s.CampGold.medium) * (1 + stacks);
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
-        if (net >= s.MinNet && (best === undefined || net > best.net))
+        if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
             best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, gold, loss, net };
     }
     return best;
@@ -360,7 +392,9 @@ function inLaneGate(bot: Unit, now: number): string | undefined {
     if (hpOf(bot) < s.StartHP) return "low-hp";
     const front = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane(), 0);
     if (dist(bot.GetLocation(), front) > s.FrontRadius) return "far";
-    if (enemyLaneCreepNear(bot.GetLocation(), s.WaveClearRadius) || enemyLaneCreepNear(front, s.WaveClearRadius)) return "wave";
+    // Only creeps at the core hold it: a wave fighting at the front is priced by the forecast (cngchk3: the front clause held
+    // 58-72% of laning seconds, a pushed lane never clears).
+    if (!Overrides.CampForce() && enemyLaneCreepNear(bot.GetLocation(), s.WaveClearRadius)) return "wave";
     return undefined;
 }
 
@@ -574,10 +608,16 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (!anyCamp(bot, GetLaneFrontLocation(bot.GetTeam(), lane, 0), now)) return held("no-camp");
     const [samples, path] = LanePush.Forecast(bot.GetTeam(), lane, SETTINGS.Horizon);
     if (samples === undefined || path === undefined || samples.length === 0) return held("no-forecast");
-    const clash = ClashOf(samples, path, bot.GetTeam());
+    const force = Overrides.CampForce();
+    let clash = ClashOf(samples, path, bot.GetTeam());
+    // The harness: a lane with no clash in the run returns to its front at the horizon.
+    if (clash === undefined && force) {
+        const at = GetLaneFrontLocation(bot.GetTeam(), lane, 0);
+        clash = { t: now + SETTINGS.Horizon, at, t0: samples[0].t, samples, enemy: bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant, path, team: bot.GetTeam() };
+    }
     // No clash within the horizon: the run says nothing about the lane's loss, so no trip on it.
     if (clash === undefined) return held("no-clash");
-    if (clash.t - now < SETTINGS.MinGap) return held("gap");
+    if (!force && clash.t - now < SETTINGS.MinGap) return held("gap");
     const plan = Plan(bot, bot.GetLocation(), now, clash);
     if (plan === undefined) return held("no-plan");
     const why = blocked(bot) ?? startGate(bot, plan, now);

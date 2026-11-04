@@ -265,6 +265,7 @@ local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
@@ -283,6 +284,8 @@ ____exports.SETTINGS = {
     AbortHP = 0.3,
     FrontRadius = 1800,
     WaveClearRadius = 1000,
+    TowerReach = 900,
+    TowerShare = 0.2,
     Horizon = 60,
     ClashGap = 300,
     MinGap = 12,
@@ -405,42 +408,76 @@ local function growLate(bot)
     local pid = bot:GetPlayerID()
     pace[pid] = clamp((pace[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
 end
---- The first second of `samples` with the fronts within ClashGap, and the clash point there; undefined when none.
+--- Whether lane position `s` lies within the enemy T1's reach (Radiant runs along increasing `s`).
+function ____exports.UnderEnemyTower(path, team, s)
+    for ____, tw in ipairs(path.towers) do
+        do
+            local __continue24
+            repeat
+                if tw.team == team then
+                    __continue24 = true
+                    break
+                end
+                local ____temp_0
+                if team == Team.Radiant then
+                    ____temp_0 = s >= tw.s - ____exports.SETTINGS.TowerReach
+                else
+                    ____temp_0 = s <= tw.s + ____exports.SETTINGS.TowerReach
+                end
+                return ____temp_0
+            until true
+            if not __continue24 then
+                break
+            end
+        end
+    end
+    return false
+end
+--- Where the fronts meet in a sample (their midpoint on the lane), or undefined when they are not within ClashGap.
+local function meetingAt(smp)
+    local r = smp.front[Team.Radiant]
+    local d = smp.front[Team.Dire]
+    return r ~= nil and d ~= nil and d - r <= ____exports.SETTINGS.ClashGap and (r + d) / 2 or nil
+end
+--- The next lane gold: the first second the fronts meet outside the enemy T1's reach. A wave crashing into their tower is
+-- not it, so a pushed lane's gap runs to the next wave's meeting.
 function ____exports.ClashOf(samples, path, team)
     local enemy = team == Team.Radiant and Team.Dire or Team.Radiant
     for ____, smp in ipairs(samples) do
-        local r = smp.front[Team.Radiant]
-        local d = smp.front[Team.Dire]
-        if r ~= nil and d ~= nil and d - r <= ____exports.SETTINGS.ClashGap then
-            local x, y = unpack(LanePush.PointAt(path, (r + d) / 2))
+        local m = meetingAt(smp)
+        if m ~= nil and not ____exports.UnderEnemyTower(path, team, m) then
+            local x, y = unpack(LanePush.PointAt(path, m))
             return {
                 t = smp.t,
                 at = Vector(x, y, 0),
                 t0 = samples[1].t,
                 samples = samples,
-                enemy = enemy
+                enemy = enemy,
+                path = path,
+                team = team
             }
         end
     end
     return nil
 end
---- Enemy lane creeps the run kills from its start to `t` (the last sample when `t` lies beyond it).
-function ____exports.DeadBy(c, t)
-    local n = 0
+--- The lane gold the core would have taken from the enemy creeps the run kills between `from` and `to` (to the last sample
+-- when `to` lies beyond it): LaneShare of each, TowerShare of those killed while the fronts meet in the enemy T1's reach.
+function ____exports.LossBetween(c, from, to)
+    local gold = 0
+    local prev
     for ____, smp in ipairs(c.samples) do
-        if smp.t > t then
+        if smp.t > to then
             break
         end
-        n = smp.dead[c.enemy] or 0
+        local dead = smp.dead[c.enemy] or 0
+        if prev ~= nil and smp.t > from and dead > prev then
+            local m = meetingAt(smp)
+            local share = m ~= nil and ____exports.UnderEnemyTower(c.path, c.team, m) and ____exports.SETTINGS.TowerShare or ____exports.SETTINGS.LaneShare
+            gold = gold + (dead - prev) * ____exports.SETTINGS.CreepGold * share
+        end
+        prev = dead
     end
-    return n
-end
---- The lane gold the core would have taken from the creeps the run kills between `from` and `to`.
-function ____exports.LossBetween(c, from, to)
-    return math.max(
-        0,
-        ____exports.DeadBy(c, to) - ____exports.DeadBy(c, from)
-    ) * ____exports.SETTINGS.CreepGold * ____exports.SETTINGS.LaneShare
+    return gold
 end
 local function currentMinute(t)
     return math.floor(t / 60)
@@ -498,8 +535,8 @@ local function allyInBox(bot, idx)
 end
 local function campOpen(bot, spawner, center, now, pullCamps)
     local team = bot:GetTeam()
-    local ____opt_0 = cleared[team]
-    if (____opt_0 and ____opt_0[spawner.idx]) == currentMinute(now) then
+    local ____opt_1 = cleared[team]
+    if (____opt_1 and ____opt_1[spawner.idx]) == currentMinute(now) then
         return false
     end
     if IsLocationVisible(center) and not campNeutralsSeen(center) then
@@ -531,10 +568,10 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue58
+            local __continue63
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue58 = true
+                    __continue63 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -545,7 +582,7 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue58 = true
+                    __continue63 = true
                     break
                 end
                 local stacks = Stacking.StackCount(spawner.idx)
@@ -553,14 +590,15 @@ function ____exports.Plan(bot, from, now, c)
                 local clr = prior * ____exports.Pace(bot)
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
-                if ret > c.t + s.MaxLate then
-                    __continue58 = true
+                local force = Overrides.CampForce()
+                if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
+                    __continue63 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
                 local loss = ____exports.LossBetween(c, now, ret)
                 local net = gold - loss
-                if net >= s.MinNet and (best == nil or net > best.net) then
+                if (force or net >= s.MinNet) and (best == nil or net > best.net) then
                     best = {
                         camp = spawner.idx,
                         type = spawner.type,
@@ -573,9 +611,9 @@ function ____exports.Plan(bot, from, now, c)
                         net = net
                     }
                 end
-                __continue58 = true
+                __continue63 = true
             until true
-            if not __continue58 then
+            if not __continue63 then
                 break
             end
         end
@@ -587,10 +625,10 @@ local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue65
+            local __continue70
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue65 = true
+                    __continue70 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -603,9 +641,9 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue65 = true
+                __continue70 = true
             until true
-            if not __continue65 then
+            if not __continue70 then
                 break
             end
         end
@@ -617,10 +655,10 @@ local function threatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue70
+            local __continue75
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue70 = true
+                    __continue75 = true
                     break
                 end
                 if distToSegment(
@@ -630,9 +668,9 @@ local function threatOnWay(bot, at)
                 ) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue70 = true
+                __continue75 = true
             until true
-            if not __continue70 then
+            if not __continue75 then
                 break
             end
         end
@@ -647,18 +685,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue76
+            local __continue81
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue76 = true
+                    __continue81 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue76 = true
+                __continue81 = true
             until true
-            if not __continue76 then
+            if not __continue81 then
                 break
             end
         end
@@ -703,10 +741,10 @@ local function inLaneGate(bot, now)
     ) > s.FrontRadius then
         return "far"
     end
-    if enemyLaneCreepNear(
+    if not Overrides.CampForce() and enemyLaneCreepNear(
         bot:GetLocation(),
         s.WaveClearRadius
-    ) or enemyLaneCreepNear(front, s.WaveClearRadius) then
+    ) then
         return "wave"
     end
     return nil
@@ -959,9 +997,9 @@ local body = __TS__Generator(function(bot, t, ctx)
                 radius = ____exports.SETTINGS.CampRadius,
                 deadline = t.plan.leaveBy,
                 onEngage = function(at)
-                    local ____at_2 = at
-                    t.engagedAt = ____at_2
-                    return ____at_2
+                    local ____at_3 = at
+                    t.engagedAt = ____at_3
+                    return ____at_3
                 end
             },
             hooks
@@ -1095,15 +1133,32 @@ function ____exports.Wants(bot, blocked, host)
     if samples == nil or path == nil or #samples == 0 then
         return held("no-forecast")
     end
+    local force = Overrides.CampForce()
     local clash = ____exports.ClashOf(
         samples,
         path,
         bot:GetTeam()
     )
+    if clash == nil and force then
+        local at = GetLaneFrontLocation(
+            bot:GetTeam(),
+            lane,
+            0
+        )
+        clash = {
+            t = now + ____exports.SETTINGS.Horizon,
+            at = at,
+            t0 = samples[1].t,
+            samples = samples,
+            enemy = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant,
+            path = path,
+            team = bot:GetTeam()
+        }
+    end
     if clash == nil then
         return held("no-clash")
     end
-    if clash.t - now < ____exports.SETTINGS.MinGap then
+    if not force and clash.t - now < ____exports.SETTINGS.MinGap then
         return held("gap")
     end
     local plan = ____exports.Plan(
