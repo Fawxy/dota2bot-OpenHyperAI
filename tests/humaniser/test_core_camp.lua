@@ -54,7 +54,7 @@ local function world(o)
 	H.CoreCamp.ResetCache()
 	local core = MakeUnit({ pid = 1, team = 2, loc = o.at or FRONT, level = o.level or 6, mode = LANING })
 	core.lane, core.pos, core.maxhp, core.hp, core.gold = Lane.Bot, 1, 600, 600, 500
-	getmetatable(core).__index.GetGold = function(self) return self.gold or 0 end
+	getmetatable(core).__index.GetNetWorth = function(self) return self.gold or 0 end
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = o.enemyAt or Vector(6000, 6000) })
 	enemy.pos = 3
 	H.Lane.Config.SkillOf(core)

@@ -1070,7 +1070,7 @@ local function finish(bot, t, r, label)
             {"g0", t.g0},
             {
                 "g1",
-                bot:GetGold()
+                bot:GetNetWorth()
             },
             {
                 "secs",
@@ -1182,7 +1182,7 @@ function ____exports.Wants(bot, blocked, host)
         plan = plan,
         camps = 1,
         left = now,
-        g0 = bot:GetGold(),
+        g0 = bot:GetNetWorth(),
         host = host
     }
     local ok = Tasks.Start(
