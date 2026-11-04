@@ -303,7 +303,7 @@ ____exports.SETTINGS = {
     ReturnArrive = 900,
     ReturnMax = 25,
     ReturnReorder = 0.5,
-    ClearSec = {small = 7, medium = 10, large = 13, ancient = 18},
+    ClearSec = {small = 7, medium = 14, large = 19, ancient = 26},
     RefLevel = 8,
     LevelScale = {0.6, 1.6},
     StackedClearMul = 0.8,
