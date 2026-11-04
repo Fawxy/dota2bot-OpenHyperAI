@@ -105,7 +105,7 @@ export function Plan(
 }
 
 /**
- * Why a pre-hit was or was not chosen, for the snapshot's `lf` (`pr=`) and ev=prehit (`why`): `go` a pre-hit now; `kills` the
+ * Why a pre-hit was or was not chosen, for the snapshot's `lf` (`pr=`): `go` a pre-hit now; `kills` the
  * plan's first swing is the kill now (the last-hit verb's); `wait` the plan's first swing comes after a later tower hit (remade
  * then); `none` no plan ends in a kill; `lh` a last hit on another creep comes due before our attack is ready again; `phase` the
  * tower's hit times unknown; `far` beyond the pick's walk.
@@ -138,7 +138,8 @@ export function NoteOf(pid: number, creep: Lib.TaskCreep): Note | undefined {
  * (Dota) refuses to compile, so the module and everything requiring it failed to load in game (prhchk1, 04/11/2026).
  */
 function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: Unit, target: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
-    if (!target.IsAlive() || target.GetTeam() === bot.GetTeam() || !target.IsCreep() || target.IsHero()) return [undefined, undefined];
+    // A removed unit's handle raises on IsAlive (prhfc3 game B); the tower's target is read fresh each look but guarded the same.
+    if (target.IsNull() || !target.IsAlive() || target.GetTeam() === bot.GetTeam() || !target.IsCreep() || target.IsHero()) return [undefined, undefined];
     const creep = target as unknown as Lib.TaskCreep;
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     const walk = math.max(0, GetUnitToUnitDistance(bot, target) - bot.GetAttackRange()) / speed;

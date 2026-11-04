@@ -74,11 +74,13 @@ do
 	check("plan fast 388: the pre-hits at 0.6 and 1.5, the kill at 2.4", p ~= nil and near(p.swings[1], 0.6) and near(p.swings[2], 1.5) and near(p.swings[3], 2.4))
 end
 
--- At most MAX_PREHITS pre-hits: a plan needing three never comes back (a very fast core on a creep that needs them).
+-- At most MAX_PREHITS pre-hits: 1000 HP loses 480 to the tower within the horizon and 120 to two pre-hits, never reaching our
+-- range, so no plan comes back; without the cap a core swinging every 0.5 s would plan eight swings and a kill on 40
+-- (review 2026-11-05-prehit-0f91d73 L3: the earlier check also passed on nil).
 do
 	local hpAt, lands = tower(1000)
 	local p = PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, 0.5, LO, MEAN)
-	check("plan: no more than MAX_PREHITS pre-hits", p == nil or #p.swings <= PreHit.MAX_PREHITS + 1)
+	check("plan: a kill needing more than MAX_PREHITS pre-hits is no plan", p == nil)
 end
 
 -- Choose: the pre-hit ranks below a reachable last hit on another creep, whatever its eta (a pre-hit spends our attack cycle;
@@ -101,6 +103,109 @@ do
 	-- A last hit that is not this laner's (a support's claims) does not block it.
 	local function denies(t) return t.kind == "deny" end
 	check("choose: a last hit not mine does not block it", Pick.Choose({ lh }, nil, denies, pre) == pre)
+end
+
+
+-- Find (states/pre_hit consider): the verdict path on a fake engine `verbs` and one own tower on an enemy creep, and the
+-- probe's two in-game faults as fixtures: prhfc1 (bot eecdf00) called the tower's GetSecondsPerAttack without self (the
+-- stub below asserts on self); prhfc3 game B (t=117.967) called IsAlive on a removed creep in sampleWatch and failed the
+-- laning task on every later scan (the creep below is removed between two looks).
+FreshHumaniser({ Enable = true })
+PreHit = require("bots/FunLib/humaniser/states/pre_hit")
+Pick = require("bots/FunLib/humaniser/states/lane_pick")
+local Customize = require("bots.Customize.general")
+require("bots/FunLib/humaniser/lane_config").SetHelpers({ GetPosition = function() return 1 end })
+ResetWorld()
+local Unit = getmetatable(MakeUnit({ pid = 97 }))
+function Unit:IsCreep() return self.creep == true end
+-- A removed unit raises on IsAlive in Dota (prhfc3 game B); the stub does the same so the guard is what the test proves.
+function Unit:IsAlive() assert(not self.removed, "IsAlive on a removed unit") return self.alive end
+function Unit:IsHero() return self.creep ~= true end
+function Unit:GetNearbyTowers(_, enemies) if enemies then return {} end return TOWERS end
+function Unit:GetNearbyLaneCreeps() return {} end
+function Unit:GetNearbyHeroes() return {} end
+function Unit:GetAttackTarget() return self.target end
+function Unit:GetAttackDamage() return self.damage or 60 end
+function Unit:GetBaseDamageVariance() return 6 end
+function Unit:GetActualIncomingDamage(d) return d end
+function Unit:GetCurrentMovementSpeed() return 300 end
+function Unit:GetLastAttackTime() return 0 end
+function Unit:GetSecondsPerAttack()
+	assert(getmetatable(self) == Unit, "GetSecondsPerAttack called without self")
+	return self.period or 0.81
+end
+if GetUnitToUnitDistance == nil then
+	function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
+end
+
+local function world(hp, o)
+	o = o or {}
+	ResetWorld()
+	local creep = MakeUnit({ pid = -2, team = 3, hp = hp, loc = Vector(o.creepX or 100, 0) })
+	creep.creep = true
+	local tw = MakeUnit({ pid = -3, team = 2, loc = Vector(-400, 0) })
+	tw.target = creep
+	tw.damage = 80
+	TOWERS = { tw }
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 0) })
+	bot.period = 1.4
+	bot.range = 150
+	local hpAt, lands = tower(hp)
+	local hits = {}
+	for _, t in ipairs(lands) do hits[#hits + 1] = { t = t, damage = TOWER, by = "tower" } end
+	local f = { hp = hp, regen = 0, horizon = PreHit.HORIZON, hits = hits, unphased = 0, unphasedTower = o.unphasedTower == true, unphasedHits = {} }
+	local verbs = {
+		hpForecast = function() return f end,
+		forecastHp = function(_, t) return hpAt(t) end,
+		ownHitTime = function() return FIRST end,
+		laneTargets = function() return o.offers or {} end,
+	}
+	return bot, creep, verbs
+end
+
+do -- 388 HP (the plan test above): go, a prehit LaneTarget on the tower's creep; the tower's period was read with self
+	local bot, creep, verbs = world(388)
+	local ok, pre = pcall(PreHit.Find, bot, verbs)
+	check("find: a go on 388 HP under the tower is a prehit pick on that creep", ok and pre ~= nil and pre.kind == "prehit" and pre.creep == creep)
+	-- the probe's watch is running from the go; the creep is removed before the next look (prhfc3 fixture): first while the
+	-- tower still names it (consider's guard), then with the tower on nothing (sampleWatch's guard)
+	T = T + 0.2
+	creep.removed = true
+	creep.alive = false
+	local ok2, pre2 = pcall(PreHit.Find, bot, verbs)
+	check("find: a removed creep the tower still names raises nothing and offers no pre-hit", ok2 and pre2 == nil)
+	TOWERS[1].target = nil
+	local ok3, pre3 = pcall(PreHit.Find, bot, verbs)
+	check("find: the watch on a removed creep ends without raising", ok3 and pre3 == nil)
+end
+
+do -- 130 HP: the first swing kills (kills), no pre-hit
+	local bot, _, verbs = world(130)
+	check("find: a kill now is left to the last-hit verb", PreHit.Find(bot, verbs) == nil)
+end
+
+do -- the tower's phase unknown: no pre-hit
+	local bot, _, verbs = world(388, { unphasedTower = true })
+	check("find: an unphased tower blocks the pre-hit", PreHit.Find(bot, verbs) == nil)
+end
+
+do -- the core more than MAX_WALK from the creep: far
+	local bot, _, verbs = world(388, { creepX = 150 + 300 * (Pick.MAX_WALK + 0.5) })
+	check("find: a creep beyond MAX_WALK is far", PreHit.Find(bot, verbs) == nil)
+end
+
+do -- a reachable last hit on another creep due before our attack is ready again: lh, no pre-hit
+	local other = MakeUnit({ pid = -4, team = 3, hp = 40, loc = Vector(120, 50) })
+	other.creep = true
+	local bot, _, verbs = world(388, { offers = { { creep = other, kind = "lasthit", eta = 0.5, due = 0.5, walk = 0, dies = 1.0, ranged = false } } })
+	check("find: a last hit on another creep due first blocks the pre-hit", PreHit.Find(bot, verbs) == nil)
+end
+
+do -- the switch off: Find offers nothing
+	Customize.Ours.PreHit = false
+	local bot, _, verbs = world(388)
+	check("find: Ours.PreHit off offers no pre-hit", PreHit.Find(bot, verbs) == nil)
+	Customize.Ours.PreHit = true
 end
 
 finish()
