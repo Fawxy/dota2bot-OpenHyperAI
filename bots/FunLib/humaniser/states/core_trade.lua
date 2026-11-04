@@ -400,10 +400,10 @@ KILL_HP = 0.25
 COMMIT_HP = 0.4
 --- The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll).
 -- Before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at even numbers with the enemy
--- over 40%, about 110 such core encounters a game, so the base is low: about 5 fights a game at the usual factors
--- (`judgement`). A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
+-- over 40%, about 110 such core encounters a game, so the base is low (`judgement`). lfpchk1 at 0.05: 68 chances and 1.6
+-- fired a game at a mean weight of 0.03, so 0.1 for about 4. A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
 ____exports.LANE_FIGHT = "lane_fight"
-local FIGHT_BASE = 0.05
+local FIGHT_BASE = 0.1
 FIGHT_ROLL_EVERY = 15
 FIGHT_TIME = 8
 JOIN_NEAR = 1600
@@ -731,9 +731,18 @@ function ____exports.TradeOwnsLaneRun(bot)
     return ____exports.Owns(bot) and inLane(bot)
 end
 --- Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
--- within 15 s of such a cut was 4 times as likely). A predicate on the laning GetDesire (OWNERSHIP H2).
-function ____exports.LastHitYieldsToRetreat(bot)
-    return CoreLastHit.Applies(bot) and bot:GetActiveMode() == BotMode.Retreat
+-- within 15 s of such a cut was 4 times as likely), nor a kill or fight it has committed to (lfpchk1: 2 of 8 fights and 1
+-- of 6 kills ended in a last hit, t=236 and t=154 at 4.9 s). Trades still give way to it. A predicate on the laning
+-- GetDesire (OWNERSHIP H2).
+function ____exports.LastHitYields(bot)
+    if not CoreLastHit.Applies(bot) then
+        return false
+    end
+    if bot:GetActiveMode() == BotMode.Retreat then
+        return true
+    end
+    local ep = episodes[bot:GetPlayerID()]
+    return ep ~= nil and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
 function ____exports.Reset()
     for k in pairs(episodes) do

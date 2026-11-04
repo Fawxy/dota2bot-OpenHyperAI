@@ -299,12 +299,12 @@ end
 
 do
 	bot.mode = BOT_MODE_RETREAT
-	check("a core already retreating keeps its retreat over a last hit", CoreTrade.LastHitYieldsToRetreat(bot))
+	check("a core already retreating keeps its retreat over a last hit", CoreTrade.LastHitYields(bot))
 	bot.mode = LANING
-	check("a laning core still takes the last-hit desire", not CoreTrade.LastHitYieldsToRetreat(bot))
+	check("a laning core still takes the last-hit desire", not CoreTrade.LastHitYields(bot))
 	bot.mode = BOT_MODE_RETREAT
 	world.applies = false
-	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYieldsToRetreat(bot))
+	check("not our core (switch off, or a support): laning's desire unchanged", not CoreTrade.LastHitYields(bot))
 	bot.mode = LANING
 	check("not our core: OHA's run-from-a-trade triggers stay", not CoreTrade.TradeOwnsLaneRun(bot))
 	world.applies = true
@@ -395,6 +395,8 @@ do
 	local plays = count("play")
 	check("a healthy even encounter with the draw above the weight: the trade rule", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	check("the chance is logged, not fired", count("play") == plays + 1 and lastOf("play"):find("kind=lane_fight") and lastOf("play"):find("fire=0"))
+	CoreTrade.Think(bot)
+	check("a running trade still gives way to laning's last hit", not CoreTrade.LastHitYields(bot))
 	T = T + 5
 	draw = 0.01
 	CoreTrade.Desire(bot)
@@ -406,6 +408,7 @@ do
 	function Unit:GetNearbyLaneCreeps() return { MakeUnit({ pid = 40, team = 3, loc = Vector(100, 0) }) } end
 	CoreTrade.Think(bot)
 	check("a fight attacks with enemy creeps beside it (no step out)", bot.attacking == enemy)
+	check("a running fight is not cut by laning's last hit (lfpchk1 t=236)", CoreTrade.LastHitYields(bot))
 	function Unit:GetNearbyLaneCreeps() return {} end
 	T = T + 1
 	bot.hp = 35
