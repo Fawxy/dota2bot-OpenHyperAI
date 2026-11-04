@@ -210,25 +210,39 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     return by;
 }
 
+/**
+ * An attacker with a hit in flight or a wind-up seen has a known phase: its next hit comes one attack cycle after that one
+ * (`raw` counts the repeats within the horizon of a tower or creep; a hero's next attack is a choice), and it is not among
+ * the `between` attackers whose next hit is spread as a rate. Counting a tower both ways read a ranged core's belief 30-45 HP
+ * heavy under its own tower (its 80 per 0.81 s smeared past SEEN_AHEAD on top of the projectile already in flight), so it
+ * swung early (slice pre-hit, 05/11/2026).
+ */
 function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
     let raw = 0;
     let dps = 0;
     let between = 0;
+    const n = nearby(bot);
+    const inFlight = new LuaTable<TaskAttacker, number>();
     for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
         const c = p.caster;
         if (p.is_attack === true && c !== undefined && c !== null && c !== (bot as unknown) && !(c.IsNull?.() ?? false)) {
             const speed = c.GetAttackProjectileSpeed?.() ?? 0;
-            if (speed > 0 && dist(p.location, creep.GetLocation()) / speed <= horizon) raw += c.GetAttackDamage?.() ?? 0;
+            if (speed <= 0) continue;
+            const t = dist(p.location, creep.GetLocation()) / speed;
+            if (t <= horizon) raw += c.GetAttackDamage?.() ?? 0;
+            inFlight.set(c, math.max(inFlight.get(c) ?? -math.huge, t));
         }
     }
-    for (const a of attackersByTarget(bot, nearby(bot)).get(creep as TaskAttacker) ?? []) {
+    for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
         if (a === (creep as TaskAttacker)) continue;
         const land = windupLanding(a, creep);
         const damage = a.GetAttackDamage?.() ?? 0;
+        const period = a.GetSecondsPerAttack?.() ?? 1;
         if (land !== undefined && land <= horizon) raw += damage;
-        const rate = damage / (a.GetSecondsPerAttack?.() ?? 1);
-        dps += rate;
-        if (land === undefined) between += rate;
+        dps += damage / period;
+        const last = land ?? inFlight.get(a);
+        if (last === undefined) between += damage / period;
+        else if (period > 0 && n.heroes?.get(a) !== true) for (let t = last + period; t <= horizon; t += period) raw += damage;
     }
     return { raw, dps, between };
 }

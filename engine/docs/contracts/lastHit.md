@@ -20,8 +20,10 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 adapter's attackClock) + projectile flight for a ranged bot (dist - 39, over projectile speed); incoming
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
                 on it whose hit lands at least one server tick (0.034 s) before ours, after armour
-                (GetActualIncomingDamage); past 0.45 s of horizon the DPS of the attackers between swings is
-                extrapolated over the rest; the creep's own HP loss over the last 1.5 s of waiting (less its largest
+                (GetActualIncomingDamage); a tower's or creep's hit in flight or winding up repeats one attack cycle
+                later within the horizon (its phase is known; slice pre-hit, 05/11/2026); past 0.45 s of horizon the
+                DPS of the attackers with no such hit (between swings, phase unknown) is extrapolated over the rest;
+                the creep's own HP loss over the last 1.5 s of waiting (less its largest
                 single-frame drop) is a lower bound on the rate, and the part of it the indexed attackers and regen do
                 not explain is extrapolated over the horizon. Own damage = (attack damage - damage variance) after
                 armour. Due when the creep survives the seen hits and the believed HP at our landing <= own damage.

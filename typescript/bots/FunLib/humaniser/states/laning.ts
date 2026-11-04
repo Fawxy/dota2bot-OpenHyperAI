@@ -287,6 +287,10 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                     ["hp", n?.hp !== undefined ? math.floor(n.hp) : undefined],
                     ["t0", n?.t0 !== undefined ? math.floor(n.t0 * 100) / 100 : undefined],
                     ["lo", n?.lo !== undefined ? math.floor(n.lo) : undefined],
+                    ["np", n?.plan !== undefined ? n.plan.swings.length - 1 : undefined],
+                    ["tk", n?.plan !== undefined ? math.floor(n.plan.swings[n.plan.swings.length - 1] * 100) / 100 : undefined],
+                    ["hk", n?.plan !== undefined ? math.floor(n.plan.hpKill) : undefined],
+                    ["mg", n?.plan !== undefined ? math.floor(n.plan.margin) : undefined],
                     ["ol", ol],
                     ["contested", contested],
                 ]);

@@ -156,6 +156,27 @@ do
     T.eq("prehit: confirmed by the attack firing", attempts[1] and attempts[1].reason, "ok")
     T.eq("prehit: one attack order", bot:actionsOf("attack"), 1)
     T.check("prehit: the bot's hit landed", hp0 - creep.hp >= 40)
+    -- The attack order is cancelled once the pre-hit has fired (a move to the bot's own location after the attack action).
+    local attackAt, cancelled
+    for _, a in ipairs(bot.actions) do
+        if a.kind == "attack" then attackAt = a.t end
+        if a.kind == "move" and attackAt ~= nil and a.t >= attackAt then cancelled = true end
+    end
+    T.check("prehit: the attack order is cancelled after the attempt", cancelled == true)
+end
+
+-- A tower whose projectile is in flight has a known phase: the last-hit belief counts that hit and its repeat one cycle
+-- later within the horizon, and no longer spreads the tower's rate past 0.45 s on top of them (a ranged core under its own
+-- tower read 30-45 HP heavy and swung early, slice pre-hit 05/11/2026).
+do
+    local sim, bot, creep = towerScene({ noCreep = true })
+    while sim.t < 0.5 do sim:step(DT) end
+    local d = V.incomingDps(bot, creep)
+    T.near("phased tower: its rate stays in dps", d.dps, 100, 1e-6)
+    T.eq("phased tower: nothing between swings while its projectile flies", d.between, 0)
+    -- The projectile lands at 0.3 + 700/750 = 1.23 s from its swing, the next one a cycle later: both inside 2.5 s from now.
+    T.eq("phased tower: the hit in flight and its repeat within the horizon", V.incomingDamage(bot, creep, 2.5), 200)
+    T.eq("phased tower: only the hit in flight within a shorter horizon", V.incomingDamage(bot, creep, 1.0), 100)
 end
 
 -- retarget: a `prehit` on the creep a last-hit attempt waits for replaces that attempt (sw=1), although the creep is the same.

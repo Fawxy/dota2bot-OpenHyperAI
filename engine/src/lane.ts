@@ -178,6 +178,10 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
                 : t.kind === "lasthit"
                   ? yield* lastHit(bot, o)
                   : yield* deny(bot, o);
+        // An attack order outlives the one attack it was given for: the bot keeps swinging at the creep until it dies or
+        // another order comes, and a last-hit wait in range gives none (prhchk5: a second, unplanned hit about one attack
+        // cycle after every pre-hit). A pre-hit is one attack, so its order is cancelled once it has fired or failed.
+        if (t.kind === "prehit") bot.Action_MoveToLocation(bot.GetLocation());
         if (res.reason === "interrupted" && (target !== undefined || dropped)) res.message = `${res.message ?? ""} sw=${target !== undefined ? 1 : 0}`;
         if (opts.onAttempt !== undefined) opts.onAttempt(t, res, contested);
         if (res.reason === "dead") return res;

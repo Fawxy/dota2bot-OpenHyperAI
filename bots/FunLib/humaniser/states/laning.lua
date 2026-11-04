@@ -514,28 +514,41 @@ local body = __TS__Generator(function(bot, ctx)
                                 "lo",
                                 (n and n.lo) ~= nil and math.floor(n.lo) or nil
                             },
+                            {"np", (n and n.plan) ~= nil and #n.plan.swings - 1 or nil},
+                            {
+                                "tk",
+                                (n and n.plan) ~= nil and math.floor(n.plan.swings[#n.plan.swings] * 100) / 100 or nil
+                            },
+                            {
+                                "hk",
+                                (n and n.plan) ~= nil and math.floor(n.plan.hpKill) or nil
+                            },
+                            {
+                                "mg",
+                                (n and n.plan) ~= nil and math.floor(n.plan.margin) or nil
+                            },
                             {"ol", ol},
                             {"contested", contested}
                         }
                     )
                     return
                 end
-                local ____OwnsSupportHits_result_22
+                local ____OwnsSupportHits_result_30
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_22 = claimOf(
+                    ____OwnsSupportHits_result_30 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_22 = nil
+                    ____OwnsSupportHits_result_30 = nil
                 end
-                local claim = ____OwnsSupportHits_result_22
+                local claim = ____OwnsSupportHits_result_30
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
                 ))
-                local ____Telemetry_Event_25 = Telemetry.Event
-                local ____array_24 = __TS__SparseArrayNew(
+                local ____Telemetry_Event_33 = Telemetry.Event
+                local ____array_32 = __TS__SparseArrayNew(
                     {
                         "pid",
                         bot:GetPlayerID()
@@ -565,19 +578,19 @@ local body = __TS__Generator(function(bot, ctx)
                     {"cy", cy},
                     {"ca", ca}
                 )
-                local ____temp_23
+                local ____temp_31
                 if t.kind == "lasthit" and wasPreHit(
                     bot:GetPlayerID(),
                     t.creep
                 ) then
-                    ____temp_23 = true
+                    ____temp_31 = true
                 else
-                    ____temp_23 = nil
+                    ____temp_31 = nil
                 end
-                __TS__SparseArrayPush(____array_24, {"ph", ____temp_23}, {"msg", res.message})
-                ____Telemetry_Event_25(
+                __TS__SparseArrayPush(____array_32, {"ph", ____temp_31}, {"msg", res.message})
+                ____Telemetry_Event_33(
                     "lh",
-                    {__TS__SparseArraySpread(____array_24)}
+                    {__TS__SparseArraySpread(____array_32)}
                 )
             end
         }

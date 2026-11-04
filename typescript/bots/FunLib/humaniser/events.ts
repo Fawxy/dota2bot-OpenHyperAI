@@ -872,6 +872,11 @@ export const EVENTS = {
         hp: "num",
         t0: "num",
         lo: "num",
+        /** The plan (states/pre_hit Plan): pre-hits before the kill, the kill's landing (s), the HP it lands on and its margin from the kill range's edges. */
+        np: "num",
+        tk: "num",
+        hk: "num",
+        mg: "num",
         /** Reachable last hits offered at the pick. */
         ol: "num",
         contested: "bool",

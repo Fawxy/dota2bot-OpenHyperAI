@@ -1,85 +1,84 @@
--- Slice pre-hit: the two questions on a creep's forecast HP (states/pre_hit Decide) and the pre-hit's rank in lane_pick Choose.
+-- Slice pre-hit: the plan of our swings against a tower's hits (states/pre_hit Plan) and the pre-hit's rank in lane_pick Choose.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 FreshHumaniser({ Enable = false })
 local PreHit = require("bots/FunLib/humaniser/states/pre_hit")
 local Pick = require("bots/FunLib/humaniser/states/lane_pick")
 
--- A tower hitting for 100 every second, the first hit landing at 0.3 s; `drain` HP per second from creeps spread evenly.
-local function towerHp(hp, drain)
-	return function(t)
-		local n = t >= 0.3 and math.floor((t - 0.3) / 1.0) + 1 or 0
-		return hp - 100 * n - (drain or 0) * t
+-- Our tower: 80 after armour every 0.81 s, the first landing at `first` (default 0.3 s); the creep's forecast HP without our
+-- hits, and the landing times the engine's forecast would list within the horizon.
+local TOWER, TOWER_PERIOD = 80, 0.81
+local function tower(hp, first)
+	first = first or 0.3
+	local hpAt = function(t)
+		local n = t >= first and math.floor((t - first) / TOWER_PERIOD) + 1 or 0
+		return hp - TOWER * n
 	end
+	local lands = {}
+	for k = 0, 10 do
+		local t = first + k * TOWER_PERIOD
+		if t <= PreHit.HORIZON then lands[#lands + 1] = t end
+	end
+	return hpAt, lands
 end
 
--- Our core: 50 at the low roll, 56 at the high, first landing at 0.4 s, 1.4 s between attacks.
-local LO, HI, T0, PERIOD = 50, 56, 0.4, 1.4
-local function decide(hp, drain) return PreHit.Decide({ towerHp(hp, drain) }, PreHit.HORIZON, T0, PERIOD, LO, HI) end
+-- Our core: 54 at the low roll, 60 mean, first landing at 0.6 s, 1.4 s between attacks (an early-game ranged core).
+local LO, MEAN, FIRST, PERIOD = 54, 60, 0.6, 1.4
+local function plan(hp, opts)
+	opts = opts or {}
+	local hpAt, lands = tower(hp, opts.towerFirst)
+	return PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, opts.period or PERIOD, LO, MEAN)
+end
+local function near(a, b) return math.abs(a - b) < 1e-6 end
 
--- 290 HP: the tower steps it 190, 90, then dead; never in (0, 50]. One hit of ours at 0.4 s makes it 140, 40 from 1.3 s
--- until the tower's 2.3 s hit, and our next swing can land from 1.8 s: a 0.5 s window. Pre-hit.
-check("decide: tower steps over our kill range, one hit makes a window: go", decide(290) == "go")
-
--- 230 HP: 130, then 30 from 1.3 s to 2.3 s, a window of its own: the last-hit verb takes it, no pre-hit.
-check("decide: a window already there: no pre-hit", decide(230) == "window")
-
--- 180 HP: 80, then dead at 1.3 s. A hit of ours at 0.4 s leaves 30 at 1.3 s, but our next swing lands at 1.8 s at the earliest:
--- the tower's 1.3 s hit already killed it. No pre-hit (it would only feed the tower).
-check("decide: the window a pre-hit makes closes before our next swing: no", decide(180) == "no-after")
-
--- 900 HP: still above 0 at the horizon, so the forecast cannot say yet.
-check("decide: creep outlives the horizon: undecided", decide(900) == "open")
-
--- 153 HP: 53 when our hit lands at 0.4 s, until the tower kills it at 1.3 s: no window at the low roll, but the high roll kills
--- at t0, so the swing is a last hit (a gamble on the roll), not a pre-hit.
-check("decide: a hit at t0 that may kill is not a pre-hit", decide(153) == "kills")
-
--- A weak hero (25 / 28): 290 HP steps 190, 90, dead; after our hit 165, 65, dead: still never in (0, 25]. No.
-check("decide: one hit is not enough to make a window: no",
-	PreHit.Decide({ towerHp(290) }, PreHit.HORIZON, T0, PERIOD, 25, 28) == "no-after")
-
--- Both rolls must make a window.
+-- 388 HP (prhchk5 game A, t=90.2): the tower steps it 308, 228, 148, 68, dead: never in (0, 54]. One hit of ours at 0.6 s
+-- makes 248, 168, 88, 8: the kill lands after the fourth tower hit (2.73 s) on 8 HP. Every plan here ends on 8 (the final HP
+-- is set by how many hits land, not when), so the earliest pre-hit is taken: go.
 do
-	-- 296 HP: low roll -> 46 at 1.3 s (window), high roll -> 40 (window): go.
-	check("decide: both rolls make a window: go", decide(296) == "go")
-	-- A wide spread (40 / 56): 295 HP steps 195, 95, dead. The high roll leaves 39 at 1.3 s, inside the low roll's range, but
-	-- the low roll leaves 55: above it. No.
-	check("decide: the low roll leaves it above our range: no",
-		PreHit.Decide({ towerHp(295) }, PreHit.HORIZON, T0, PERIOD, 40, 56) == "no-after")
+	local p = plan(388)
+	check("plan 388: a pre-hit now then the kill", p ~= nil and #p.swings == 2 and near(p.swings[1], FIRST))
+	check("plan 388: the kill lands just after the fourth tower hit", p ~= nil and near(p.swings[2], 0.3 + 3 * TOWER_PERIOD + PreHit.AFTER))
+	check("plan 388: on 8 HP, margin 8", p ~= nil and near(p.hpKill, 8) and near(p.margin, 8))
 end
 
--- Even creep damage between the tower's hits makes windows of its own: 290 HP with 40 HP/s from creeps is 38 at 1.3 s and
--- lasts about 0.9 s more, so the last-hit verb has it and there is no pre-hit.
-check("decide: creep damage spreads the steps into a window: no pre-hit", decide(290, 40) == "window")
-
--- An own creep in reach that may turn onto the creep (prhfc3: such creeps dealt most of the damage the forecast missed): 290 HP is
--- a go on the tower alone, but a joiner's 20 every second from 0.5 s brings it to 50 at 1.5 s and holds it there until the
--- tower's 2.3 s hit, a window of its own, so the swing is left to the last-hit verb rather than spent to feed the tower.
+-- 360 HP: the tower alone leaves 40 after its fourth hit, inside our range with 14 to spare either side, better than any plan
+-- with a hit of ours. The first swing is the kill, later than now: the last-hit verb's, no pre-hit (wait).
 do
-	local joined = PreHit.WithJoiners(towerHp(290), { { damage = 20, first = 0.5, period = 1.0 } })
-	check("joiners: alone the tower says go", decide(290) == "go")
-	check("joiners: a joining creep makes the window without our hit: no pre-hit",
-		PreHit.Decide({ towerHp(290), joined }, PreHit.HORIZON, T0, PERIOD, LO, HI) == "window")
-	check("joiners: each hit counted from its first landing", joined(0.49) == 190 and joined(0.5) == 170 and joined(1.5) == 50)
+	local p = plan(360)
+	check("plan 360: one swing, the kill", p ~= nil and #p.swings == 1)
+	check("plan 360: it waits for the tower's fourth hit", p ~= nil and p.swings[1] > FIRST and near(p.swings[1], 0.3 + 3 * TOWER_PERIOD + PreHit.AFTER))
+	check("plan 360: lands on 40 with margin 14", p ~= nil and near(p.hpKill, 40) and near(p.margin, 14))
 end
 
--- Every schedule must agree (Decide gets one HP function per placement of the hits whose time is unknown). A schedule that
--- alone says go (296 HP) and one that alone says the pre-hit's window closes before our next swing (180 HP) give no-after; one
--- that shows a window already (230 HP) rules the pre-hit out whatever the others say.
+-- 130 HP: 50 once the tower's first hit lands at 0.3 s, so a swing landing now (0.6 s) kills: the plan is that one swing.
 do
-	local function decideAll(...) return PreHit.Decide({ ... }, PreHit.HORIZON, T0, PERIOD, LO, HI) end
-	check("schedules: each alone as expected", decideAll(towerHp(296)) == "go" and decideAll(towerHp(180)) == "no-after")
-	check("schedules: one says no-after, so no", decideAll(towerHp(296), towerHp(180)) == "no-after")
-	check("schedules: one shows a window already, so no", decideAll(towerHp(296), towerHp(230)) == "window")
+	local p = plan(130)
+	check("plan 130: kill now", p ~= nil and #p.swings == 1 and near(p.swings[1], FIRST) and near(p.hpKill, 50))
 end
 
--- WindowFrom: a window counts only from `from` on, and only when it lasts WINDOW_MIN.
+-- A tower hit landing inside AFTER before our swing would land is not relied on: the swing is planned just after it instead.
 do
-	local hp = towerHp(230)
-	check("window: from inside the window on, still a window", PreHit.WindowFrom(hp, 3.5, LO, 2.0) == "window")
-	check("window: from after it closed, dead", PreHit.WindowFrom(hp, 3.5, LO, 2.35) == "dead")
-	-- 0.1 s in range before the tower's hit: under WINDOW_MIN.
-	check("window: shorter than WINDOW_MIN is none", PreHit.WindowFrom(hp, 3.5, LO, 2.2) == "dead")
+	local p = plan(130, { towerFirst = FIRST - 0.05 })
+	check("plan: a swing is not planned within AFTER of a tower hit", p ~= nil and near(p.swings[1], FIRST - 0.05 + PreHit.AFTER))
+end
+
+-- 300 HP is 60 + 3 x 80 exactly: with one hit of ours the tower's third hit leaves 0, without it the fourth leaves -20 and the
+-- third 60, above our range; two hits cannot both land before the tower's third. No plan ends in a kill.
+check("plan 300: no plan", plan(300) == nil)
+
+-- Margin decides: a faster core (0.9 s between attacks) on 388 HP can pre-hit twice (0.6 s and 1.5 s) and kill at 2.4 s on 28
+-- HP (margin 26), better than one pre-hit and the kill on 8 (margin 8).
+do
+	local p = plan(388, { period = 0.9 })
+	check("plan fast 388: two pre-hits then the kill", p ~= nil and #p.swings == 3)
+	check("plan fast 388: lands on 28 with margin 26", p ~= nil and near(p.hpKill, 28) and near(p.margin, 26))
+	check("plan fast 388: the pre-hits at 0.6 and 1.5, the kill at 2.4", p ~= nil and near(p.swings[1], 0.6) and near(p.swings[2], 1.5) and near(p.swings[3], 2.4))
+end
+
+-- At most MAX_PREHITS pre-hits: a plan needing three never comes back (a very fast core on a creep that needs them).
+do
+	local hpAt, lands = tower(1000)
+	local p = PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, 0.5, LO, MEAN)
+	check("plan: no more than MAX_PREHITS pre-hits", p == nil or #p.swings <= PreHit.MAX_PREHITS + 1)
 end
 
 -- Choose: the pre-hit ranks below a reachable last hit on another creep, whatever its eta (a pre-hit spends our attack cycle;

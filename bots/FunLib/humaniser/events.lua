@@ -736,6 +736,10 @@ ____exports.EVENTS = {
         hp = "num",
         t0 = "num",
         lo = "num",
+        np = "num",
+        tk = "num",
+        hk = "num",
+        mg = "num",
         ol = "num",
         contested = "bool"
     },

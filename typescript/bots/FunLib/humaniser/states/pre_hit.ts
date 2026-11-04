@@ -1,11 +1,14 @@
 /**
  * Ours.PreHit (slice pre-hit, `docs/team/slices/pre-hit.md` in the master repo): a core hits an enemy lane creep our tower is
  * attacking so that the tower then leaves it in the core's kill range. Under a tower the one-swing `lastHit` verb cannot win a
- * creep whose HP steps from above our hit to below zero in one tower hit. Two questions on the engine's `hpForecast`: will the
- * creep's HP ever sit in our kill range long enough for a swing to land there? If not, would one hit of ours now (low and
- * high damage roll alike) make such a window by the time our next swing can land? Pre-hit only on "no", then "yes". The
- * swing is laneFarm's `prehit` (one `attackAndConfirm`); the normal last-hit pick then takes the creep. A pre-hit never spends
- * the swing a last hit on another creep needs: none may come due before our attack is ready again (user 04/11/2026).
+ * creep whose HP steps from above our hit to below zero in one tower hit. On each scan the core plans its next few swings
+ * against the tower's known landing times (`Plan`): which of them to spend as pre-hits so that one lands on the creep inside
+ * the kill range (0, low roll], choosing the plan whose kill HP sits furthest from both edges of that range (prhchk2-5, 04/11/2026:
+ * one hit aimed at any window at all landed the kill on 2-15 HP, which one high roll or one creep hit undid; two hits aimed at
+ * the middle of the range leave about 25). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
+ * changes the next decision rather than the result. The swing is laneFarm's `prehit` (one `attackAndConfirm`); the kill is the
+ * normal last-hit pick's and verb's. A pre-hit never spends the swing a last hit on another creep needs: none may come due
+ * before our attack is ready again (user 04/11/2026).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { DamageType, Unit } from "bots/ts_libs/dota";
@@ -14,129 +17,100 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
-/** Seconds of forecast: a pre-hit's landing plus one attack cycle (about 1.4-1.7 s early) plus the window after it. `judgement`. */
-export const HORIZON = 3.5;
-/** Forecast sampling step in seconds (under a frame at 30 fps is not needed: windows are judged against WINDOW_MIN). */
+/** Seconds of forecast: two pre-hits and the kill (about 0.7 s to the first landing, then two attack cycles of 1.4-1.7 s). `judgement`. */
+export const HORIZON = 4.5;
+/** Forecast sampling step in seconds, for the forecast's own death time. */
 export const STEP = 0.05;
 /**
- * The shortest kill window a swing is trusted to land in: about one body step (0.167 s in game) plus a little for the timing
- * the verb still gets wrong. `judgement`.
+ * Seconds after a tower's hit lands that our own may land and count as after it: the verb relies on a hit one server tick
+ * before its own, plus a frame of slack for the timing it still gets wrong. `judgement`.
  */
-export const WINDOW_MIN = 0.2;
+export const AFTER = 0.1;
+/** The most pre-hits one plan spends before its kill: a third would reach past the horizon at early attack speeds. `judgement`. */
+export const MAX_PREHITS = 2;
 /** Own towers within this of the bot are read for their attack target (tower range 700 plus the reach of a short walk). */
 const TOWER_RADIUS = 1200;
 
-/**
- * From `from` on (seconds from now), the forecast HP with an optional extra hit: `window` when it stays in (0, mine] for at
- * least WINDOW_MIN before it dies, `dead` when it reaches 0 with no such run, `open` when it is still above 0 at the horizon
- * with none (the forecast cannot say).
- */
-export type Window = "window" | "dead" | "open";
-
-export interface Extra {
-    t: number;
-    d: number;
+/** A plan of our swings on one creep: when each lands (seconds from now), the last one the kill. */
+export interface Plan {
+    swings: number[];
+    /** The creep's HP as the kill lands, before our hit. */
+    hpKill: number;
+    /** How far `hpKill` sits from the kill range's edges: min(hpKill, lo - hpKill). Higher survives more forecast error. */
+    margin: number;
 }
 
-export function WindowFrom(
+function better(a: Plan, b: Plan | undefined): boolean {
+    if (b === undefined) return true;
+    if (a.margin !== b.margin) return a.margin > b.margin;
+    if (a.swings.length !== b.swings.length) return a.swings.length < b.swings.length;
+    return a.swings[a.swings.length - 1] < b.swings[b.swings.length - 1];
+}
+
+/**
+ * The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
+ * spent. A swing lands at `earliest` or just after a later tower hit (`AFTER`); landing where a tower hit falls inside the last
+ * AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it is the kill when inside
+ * (0, lo], else a pre-hit of `mean` damage followed by the best plan from one attack cycle later.
+ */
+function search(
+    hpAt: (this: void, t: number) => number,
+    horizon: number,
+    towers: number[],
+    earliest: number,
+    dealt: number,
+    pre: number,
+    period: number,
+    lo: number,
+    mean: number,
+): Plan | undefined {
+    const candidates: number[] = [];
+    let clear = true;
+    for (const t of towers) if (t > earliest - AFTER && t <= earliest) clear = false;
+    if (clear) candidates.push(earliest);
+    for (const t of towers) if (t + AFTER > earliest) candidates.push(t + AFTER);
+    let best: Plan | undefined;
+    for (const at of candidates) {
+        if (at > horizon) break;
+        const hp = hpAt(at) - dealt;
+        if (hp <= 0) continue;
+        let plan: Plan | undefined;
+        if (hp <= lo) plan = { swings: [at], hpKill: hp, margin: math.min(hp, lo - hp) };
+        else if (pre < MAX_PREHITS) {
+            const rest = search(hpAt, horizon, towers, at + period, dealt + mean, pre + 1, period, lo, mean);
+            if (rest !== undefined) plan = { swings: [at, ...rest.swings], hpKill: rest.hpKill, margin: rest.margin };
+        }
+        if (plan !== undefined && better(plan, best)) best = plan;
+    }
+    return best;
+}
+
+/**
+ * The plan for a creep whose forecast HP without our hits is `hpAt` and whose tower hits land at `towers` (seconds from now,
+ * sorted): our first swing can land at `first` (the walk plus our hit time) and every `period` after one, our low-roll damage
+ * after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes).
+ * Undefined when no plan within the horizon ends in a kill.
+ */
+export function Plan(
     this: void,
     hpAt: (this: void, t: number) => number,
     horizon: number,
-    mine: number,
-    from: number,
-    extra?: Extra,
-): Window {
-    let runStart: number | undefined;
-    for (let t = from; t <= horizon + 1e-9; t += STEP) {
-        const hp = hpAt(t) - (extra !== undefined && t >= extra.t ? extra.d : 0);
-        if (hp <= 0) return runStart !== undefined && t - runStart >= WINDOW_MIN ? "window" : "dead";
-        if (hp <= mine) {
-            if (runStart === undefined) runStart = t;
-            if (t - runStart >= WINDOW_MIN) return "window";
-        } else runStart = undefined;
-    }
-    return "open";
-}
-
-/** Why a pre-hit was or was not chosen, for the snapshot's `lf` (`pr=`) and ev=prehit (`why`). */
-export type Verdict = "go" | "window" | "open" | "kills" | "no-after" | "lh" | "phase" | "far";
-
-/**
- * The two questions, on the forecast under each schedule in `hpAts` (the engine's `spread`, `early`, `late` placements of the
- * hits whose time is unknown; prhchk2: with `spread` alone, 10 of 32 pre-hit creeps died before our next swing, 5 of them while
- * we were still on cooldown): no schedule may show a window already, and every schedule, at both rolls, must show one after our
- * hit. `t0` our earliest landing (walk plus own hit time), `period` our attack cycle, `lo`/`hi` our damage after armour at the
- * low and high roll. The kill range is the low roll's (as the last-hit verb's `mine`).
- */
-export function Decide(
-    this: void,
-    hpAts: ((this: void, t: number) => number)[],
-    horizon: number,
-    t0: number,
+    towers: number[],
+    first: number,
     period: number,
     lo: number,
-    hi: number,
-): Verdict {
-    let open = false;
-    for (const hpAt of hpAts) {
-        const now = WindowFrom(hpAt, horizon, lo, t0);
-        if (now === "window") return "window";
-        if (now === "open") open = true;
-    }
-    if (open) return "open";
-    for (const hpAt of hpAts) {
-        // A hit that may kill at t0 is a last hit, the last-hit verb's to take (it is also inside the window above at the low roll).
-        if (hpAt(t0) <= hi) return "kills";
-    }
-    for (const hpAt of hpAts) {
-        for (const d of [lo, hi]) {
-            if (WindowFrom(hpAt, horizon, lo, t0 + period, { t: t0, d }) !== "window") return "no-after";
-        }
-    }
-    return "go";
-}
-
-/** An own lane creep in reach of the creep that is not attacking it yet: its hit `damage` (after armour) every `period` from `first`. */
-export interface Joiner {
-    damage: number;
-    first: number;
-    period: number;
+    mean: number,
+): Plan | undefined {
+    return search(hpAt, horizon, towers, first, 0, 0, period, lo, mean);
 }
 
 /**
- * `hpAt` with the hits of creeps that may join the attack, each at its earliest (prhfc3 04/11/2026: own lane creeps that turned
- * onto the creep after the decision fired 55 times in 27 pre-hits against 26 creep hits forecast, the largest part of the 30-130
- * HP the forecast missed).
+ * Why a pre-hit was or was not chosen, for the snapshot's `lf` (`pr=`) and ev=prehit (`why`): `go` a pre-hit now; `kills` the
+ * plan's first swing is the kill now (the last-hit verb's); `wait` the plan's first swing comes after a later tower hit (remade
+ * then); `none` no plan ends in a kill; `lh` a last hit on another creep comes due before our attack is ready again; `phase` the
+ * tower's hit times unknown; `far` beyond the pick's walk.
  */
-export function WithJoiners(this: void, hpAt: (this: void, t: number) => number, joiners: Joiner[]): (this: void, t: number) => number {
-    return (t: number): number => {
-        let hp = hpAt(t);
-        for (const j of joiners) if (t >= j.first) hp -= j.damage * (math.floor((t - j.first) / j.period) + 1);
-        return hp;
-    };
-}
-
-/** Own creeps this far past their attack range from the creep count as joiners (about one body step of walking). `judgement`. */
-const JOIN_SLACK = 100;
-
-function joinersOf(bot: Unit, target: Unit): Joiner[] {
-    const out: Joiner[] = [];
-    for (const c of bot.GetNearbyLaneCreeps(1600, false) ?? []) {
-        if (c.GetAttackTarget() === target || !c.IsAlive()) continue;
-        const d = GetUnitToUnitDistance(c, target);
-        if (d > c.GetAttackRange() + JOIN_SLACK) continue;
-        const a = c as unknown as Lib.TaskUnit;
-        const period = a.GetSecondsPerAttack?.() ?? 1;
-        const speed = a.GetAttackProjectileSpeed?.() ?? 0;
-        const flight = c.GetAttackRange() > 300 && speed > 0 ? d / speed : 0;
-        out.push({
-            damage: target.GetActualIncomingDamage(c.GetAttackDamage(), DamageType.Physical),
-            first: (a.GetAttackPoint?.() ?? 0.5) * period + flight,
-            period: math.max(0.1, period),
-        });
-    }
-    return out;
-}
+export type Verdict = "go" | "kills" | "wait" | "none" | "lh" | "phase" | "far";
 
 export function Applies(bot: Unit): boolean {
     return Ours.On("PreHit") && CoreLastHit.Applies(bot);
@@ -148,6 +122,7 @@ interface Note {
     hp?: number;
     t0?: number;
     lo?: number;
+    plan?: Plan;
 }
 const notes: Record<number, Note | undefined> = {};
 
@@ -157,10 +132,6 @@ export function NoteOf(pid: number, creep: Lib.TaskCreep): Note | undefined {
     return n !== undefined && n.creep === creep ? n : undefined;
 }
 
-/**
- * The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
- * attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
- */
 /**
  * The verdict on one tower's target and, on `go`, the pre-hit. A function with early returns rather than a loop body with
  * `continue`: TSTL's Lua 5.1 `continue` (a `repeat ... until true` block) put a statement after the loop's `break`, which LuaJIT
@@ -174,24 +145,27 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
     if (walk > LanePick.MAX_WALK) return [{ verdict: "far" }, undefined];
     const f = verbs.hpForecast(me, creep, HORIZON);
     if (f.unphasedTower) return [{ verdict: "phase", creep }, undefined];
-    const t0 = walk + verbs.ownHitTime(me, creep);
+    const towers: number[] = [];
+    for (const h of f.hits) if (h.by === "tower") towers.push(h.t);
+    const first = walk + verbs.ownHitTime(me, creep);
     const period = me.GetSecondsPerAttack?.() ?? 1.7;
     const variance = me.GetBaseDamageVariance?.() ?? 0;
     const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
-    const hi = target.GetActualIncomingDamage(bot.GetAttackDamage() + variance, DamageType.Physical);
+    const mean = target.GetActualIncomingDamage(bot.GetAttackDamage(), DamageType.Physical);
     const hpAt = (t: number): number => verbs.forecastHp(f, t);
-    const early = (t: number): number => verbs.forecastHp(f, t, "early");
-    const hpAts = [hpAt, early, (t: number): number => verbs.forecastHp(f, t, "late")];
-    const joiners = joinersOf(bot, target);
-    if (joiners.length > 0) hpAts.push(WithJoiners(early, joiners));
-    let verdict = Decide(hpAts, HORIZON, t0, period, lo, hi);
+    const plan = Plan(hpAt, HORIZON, towers, first, period, lo, mean);
+    let verdict: Verdict;
+    if (plan === undefined) verdict = "none";
+    else if (plan.swings[0] > first + 1e-6) verdict = "wait";
+    else if (plan.swings.length === 1) verdict = "kills";
+    else verdict = "go";
     if (verdict === "go") {
-        // Our attack is busy until t0 + period: a last hit on another creep due before then would be lost to it.
-        for (const o of verbs.laneTargets(me, { within: t0 + period, deny: false })) {
-            if (o.creep !== creep && LanePick.Reachable(o) && o.eta <= t0 + period) verdict = "lh";
+        // Our attack is busy until first + period: a last hit on another creep due before then would be lost to it.
+        for (const o of verbs.laneTargets(me, { within: first + period, deny: false })) {
+            if (o.creep !== creep && LanePick.Reachable(o) && o.eta <= first + period) verdict = "lh";
         }
     }
-    const note: Note = { verdict, creep, hp: f.hp, t0, lo };
+    const note: Note = { verdict, creep, hp: f.hp, t0: first, lo, plan };
     if (verdict !== "go") return [note, undefined];
     startWatch(bot, verbs, tower, target, f, lo);
     let dies = math.huge;
@@ -199,6 +173,10 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
     return [note, { creep, kind: "prehit", eta: walk, due: 0, walk, dies, ranged: LanePick.IsRanged(creep) }];
 }
 
+/**
+ * The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
+ * attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
+ */
 export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget | undefined {
     if (!Applies(bot)) return undefined;
     const pid = bot.GetPlayerID();
