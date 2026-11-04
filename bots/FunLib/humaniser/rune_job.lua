@@ -127,7 +127,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local planFor, closestOn, nearestEnemy, offerGank, running, body, playFight
+local key, planFor, closestOn, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, body, playFight
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
@@ -142,6 +142,13 @@ local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+--- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
+function ____exports.Busy(u)
+    return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
+end
+function key(kind, spawn)
+    return (kind .. ":") .. tostring(spawn)
+end
 function planFor(t)
     if t.kind == "wisdom" or t.kind == "contest" then
         return {
@@ -199,6 +206,18 @@ body = __TS__Generator(function(bot, t, ctx)
         hooks
     ))
 end)
+function dropFromPlan(bot, why)
+    local next = RunePlan.Drop(bot, why, ____exports.Busy)
+    if next == nil then
+        return
+    end
+    local pid = next:GetPlayerID()
+    handled[pid] = handled[pid] or ({})
+    handled[pid][key("power", RunePlan.SETTINGS.Spawn)] = false
+end
+function canStillArrive(bot, t)
+    return t.stand ~= nil and RunePlan.Replaces(bot) and DotaTime() + RunePlan.WalkSecs(bot, t.at) * ____exports.SETTINGS.PathFactor <= t.spawn
+end
 function nearestEnemy(at, within)
     local best
     local bestD = within
@@ -312,7 +331,8 @@ ____exports.SETTINGS = {
     DetourMax = 3,
     FightNear = 700,
     StopTower = 700,
-    StopHp = 0.3
+    StopHp = 0.3,
+    MidMinHp = 0.5
 }
 Plays.Define("gank", {base = 0.35, timeout = 30, chases = true})
 Plays.Define(
@@ -325,16 +345,12 @@ Plays.Define(
     }
 )
 Plays.Define("shrine", {base = 0.4, timeout = 60, chases = false})
---- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
-function ____exports.Busy(u)
-    return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
-end
 --- The 6:00 power trip runs as rune_spawn's plan (spot plan, stand, timed walk) rather than the plain trip.
 local function planned(kind, spawn)
     return kind == "power" and spawn == RunePlan.SETTINGS.Spawn and RunePlan.On()
 end
 running = {}
-local handled = {}
+handled = {}
 local gateWhy = {}
 function ____exports.ResetCache()
     for k in pairs(running) do
@@ -353,9 +369,6 @@ end
 --- This hero's rank for the chooser, or undefined when the job never applies to it.
 function ____exports.Priority(bot)
     return ____exports.Applies(bot) and ____exports.SETTINGS.Priority[LaneConfig.PositionOf(bot) or 0] or nil
-end
-local function key(kind, spawn)
-    return (kind .. ":") .. tostring(spawn)
 end
 --- The trips still open for this bot now: from ClaimFrom before the spawn until its late limit, not yet handled.
 local function open(bot)
@@ -685,10 +698,14 @@ function ____exports.Wants(bot, blocked, host)
         do
             local __continue58
             repeat
+                local mine
                 local function skip(why)
                     handled[pid][key(kind, spawn)] = true
                     gateWhy[pid] = nil
                     log(bot, kind, spawn, {{"res", "skip"}, {"why", why}})
+                    if mine ~= nil and DotaTime() < spawn then
+                        dropFromPlan(bot, why)
+                    end
                     return false
                 end
                 if not bot:IsAlive() then
@@ -699,7 +716,6 @@ function ____exports.Wants(bot, blocked, host)
                     __continue58 = true
                     break
                 end
-                local mine
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
                         __continue58 = true
@@ -722,7 +738,7 @@ function ____exports.Wants(bot, blocked, host)
                     return false
                 end
                 local why = blocked(bot) or (acting(bot) and "acting" or nil)
-                if DotaTime() > leave + ____exports.SETTINGS.StartSlack then
+                if DotaTime() > leave + ____exports.SETTINGS.StartSlack and not canStillArrive(bot, t) then
                     return skip(gateWhy[pid] or why or "late")
                 end
                 if why ~= nil then
@@ -767,7 +783,7 @@ function ____exports.Wants(bot, blocked, host)
     return false
 end
 --- The rune mode's desire while the mid's trip runs: above laning's (up to about 0.95). Only OHA retreat's 1.0 and 1.1 returns
--- beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose, and the trip has no HP gate of its own (slice open item).
+-- beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose once the trip runs (it starts only at MidMinHp or more).
 ____exports.MID_DESIRE = 0.97
 local MID_HOST = BotMode.Rune
 --- Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or
@@ -822,10 +838,11 @@ function ____exports.MidWants(bot)
     if now < leave then
         return false
     end
-    if acting(bot) then
+    local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
+    if why ~= nil then
         local ____temp_17
         if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_17 = skip("acting")
+            ____temp_17 = skip(why)
         else
             ____temp_17 = false
         end
@@ -902,20 +919,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue131
+                local __continue135
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue131 = true
+                        __continue135 = true
                         break
                     end
                     local ____opt_20 = running[m:GetPlayerID()]
                     if (____opt_20 and ____opt_20.kind) == "wisdom" then
                         return true
                     end
-                    __continue131 = true
+                    __continue135 = true
                 until true
-                if not __continue131 then
+                if not __continue135 then
                     break
                 end
             end

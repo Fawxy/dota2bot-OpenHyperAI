@@ -348,7 +348,7 @@ if Telemetry.GuardsEnabled() then
         OwnsFrame = no,
         Think = none,
         OnEnd = none,
-        LastHitYieldsToRetreat = no,
+        LastHitYields = no,
         TradeOwnsLaneRun = no,
         OwnsLaneFights = no
     })

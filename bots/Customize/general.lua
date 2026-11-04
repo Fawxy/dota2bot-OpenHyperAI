@@ -263,8 +263,9 @@ Customize.Humaniser = {
 -- creeps attacking something else keep a 200 ring, enemy heroes our tower would punish a short reach). Supports, and off: the
 -- open-lane limits everywhere.
 -- CoreLaneFight (slice lane-fight): with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours: it commits on a target at
--- 40% HP or less with even numbers or more (our attack mode), team roam keeps only its non-fight branches for it and LaneFight
--- makes no claim. Off: team roam's fight branches, LaneFight's claims and the trade's 25% kill cut.
+-- 40% HP or less with even numbers or more (our attack mode), joins an ally's running play near it (hum/plays), and rolls a
+-- lane_fight play when no clear window decides; team roam keeps only its non-fight branches for it and LaneFight makes no claim.
+-- Off: team roam's fight branches, LaneFight's claims and the trade's 25% kill cut.
 Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,

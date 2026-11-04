@@ -8,7 +8,7 @@ const { Store } = require('../store');
 
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const snap = (t, pid, deaths) => line(t, `snap pid=${pid} x=0 y=0 alive=1 hp=50 deaths=${deaths} mode=attack d=0.75 by="attack 0.75 by raw"`);
-const trade = (t, o) => line(t, `trade pid=1 role=core lf=${o.lf ?? 1} kind=${o.kind ?? 'kill'} tgt=6 result=${o.result} why=${o.why ?? 'target_dead'}`
+const trade = (t, o) => line(t, `trade pid=1 role=core lf=${o.lf ?? 1} kind=${o.kind ?? 'kill'} tgt=6${o.join !== undefined ? ` play=1 join=${o.join}` : ''} result=${o.result} why=${o.why ?? 'target_dead'}`
     + ` dur=${o.dur ?? 0} hpd=0 thpd=0 hp=0.8 thp=0.3 en=1 al=1 cr=0 mode=2 md=0.75`);
 
 test('lane commits: taken, kills and lost per game and role; a death inside a taken commit counts, one long after does not', () => {
@@ -22,6 +22,8 @@ test('lane commits: taken, kills and lost per game and role; a death inside a ta
     lines.push(trade(200, { result: 'lost', why: 'not_taken' }));
     // A trade, and a commit outside lane fights (lf=0): neither is read by the default lf=1.
     lines.push(trade(210, { kind: 'trade', result: 'done' }), trade(220, { result: 'kill', lf: 0, dur: 1 }));
+    // Two lane fights from the play roll: one the core rolled, one it joined; neither is a commit.
+    lines.push(trade(230, { kind: 'fight', result: 'done', why: 'hp', join: 0, dur: 2 }), trade(240, { kind: 'fight', result: 'kill', join: 1, dur: 3 }));
     // A commit taken at 250 with the core dying at 261 (11 s after its line): not the commit's death.
     lines.push(trade(250, { result: 'done', dur: 2 }));
     lines.push(snap(261, 1, 1), snap(290, 1, 2));
@@ -33,8 +35,9 @@ test('lane commits: taken, kills and lost per game and role; a death inside a ta
     s.ingest(f);
     s.refreshViews();
     const sql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'lane_commits.sql'), 'utf8');
-    const rows = p => s.query(sql, p).map(r => [r.role, r.offers, r.taken, r.kills, r.lost, r.deaths]);
-    assert.deepStrictEqual(rows({}), [['core', 4, 3, 1, 1, 1]]);
-    assert.deepStrictEqual(rows({ lf: 0 }), [['core', 1, 1, 1, 0, 0]]);
+    const rows = p => s.query(sql, p).map(r => [r.role, r.offers, r.taken, r.kills, r.lost, r.deaths, r.joins]);
+    assert.deepStrictEqual(rows({}), [['core', 4, 3, 1, 1, 1, 0]]);
+    assert.deepStrictEqual(rows({ lf: 0 }), [['core', 1, 1, 1, 0, 0, 0]]);
+    assert.deepStrictEqual(rows({ kind: 'fight' }), [['core', 2, 2, 1, 0, 0, 1]]);
     s.db.close();
 });
