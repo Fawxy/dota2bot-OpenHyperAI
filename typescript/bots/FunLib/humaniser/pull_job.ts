@@ -76,10 +76,12 @@ export const SETTINGS = {
     BailGrace: 2,
     BailFor: 6,
     /** Live re-timing (slice pull-live): after the hit, the puller holds where it is (at most PaceFor s) while the wave,
-     *  read live, would reach the meet point more than the plan's Lead + PaceSlack after the neutrals walking there from the
-     *  puller's place, and every tagged neutral is still within PaceGuard of its camp (EC-084: the 5 s give-up timer starts
-     *  past 400, so a wait inside it costs the chase nothing; a wait outside it does). All `judgement`. */
-    PaceSlack: 0.5,
+     *  read live, would reach the meet point more than PaceLead after the neutrals following the puller there, and every
+     *  tagged neutral is still within PaceGuard of its camp (EC-084: the 5 s give-up timer starts past 400, so a wait
+     *  inside it costs the chase nothing; a wait outside it does). PaceLead is under the plan's Lead (1.5 s), so an on-time
+     *  pull waits about a second too: neutrals there too soon took the front two creeps and turned home before the rest
+     *  came (the user's replays of camp 1 partial pulls, 04/11/2026). All `judgement`. */
+    PaceLead: 0.5,
     PaceGuard: 350,
     PaceFor: 3,
     /** Neutrals within this of the puller are the ones that can be hitting it. */
@@ -259,11 +261,15 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
 /**
  * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
  * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
- * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`).
+ * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
+ * neutral left: too little to hold a wave (banked `ok` pulls with one neutral seen at the start diverted 26 of 56, two or
+ * more 243 of 385; user 04/11/2026: skip it). Stacking it instead is the stack job's call, not this one's.
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
     const period = LaneConfig.Settings().Timing.PullPeriod;
-    if (s.n === 0 && s.vis && math.floor(hitAt / period) <= math.floor(now / period)) return "empty";
+    if (!s.vis || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
+    if (s.n === 0) return "empty";
+    if (s.n === 1) return "one";
     return undefined;
 }
 
@@ -728,8 +734,8 @@ function verbCamp(p: Plan): JobVerbs.Camp {
 }
 
 /**
- * After the hit: true while the wave, read live, is late enough that the neutrals would wait for it at the meet point past
- * the plan's lead, and none of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
+ * After the hit: true while the neutrals would reach the meet point more than PaceLead before the wave (read live), and none
+ * of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
  */
 function pace(bot: Unit, p: Pull): boolean {
     const now = DotaTime();
@@ -746,7 +752,7 @@ function pace(bot: Unit, p: Pull): boolean {
     }
     if (gap === undefined) return false;
     const eta = (gap + PullTiming.WalkLength(bot.GetLocation(), p.plan.lead)) / speed;
-    if (waveAt - now - eta - LaneConfig.Settings().PullTiming.Lead <= SETTINGS.PaceSlack) return false;
+    if (waveAt - now - eta <= SETTINGS.PaceLead) return false;
     p.pacedFrom = p.pacedFrom ?? now;
     p.paced = now - p.pacedFrom;
     return true;
