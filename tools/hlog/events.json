@@ -927,7 +927,10 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
+   "se": "num",
    "sh": "num",
+   "lv": "num",
+   "sf": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
@@ -980,7 +983,8 @@
    "chp": "num",
    "cv": "num",
    "cdmg": "num",
-   "php": "num"
+   "php": "num",
+   "se": "num"
   },
   "gank": {
    "pid": "num",
