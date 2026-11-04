@@ -96,7 +96,8 @@ ____exports.SETTINGS = {
     DragWalk = 1.2,
     BusyWithin = 1.5,
     HurtShare = 0.12,
-    FeedWatch = 15,
+    FeedWatch = 30,
+    FeedHeroClear = 300,
     DragWatch = 3.5,
     CoreNear = 1600
 }
@@ -469,6 +470,11 @@ local function tryFeed(bot, heroes, now)
     if #fighting < ____exports.SETTINGS.FeedMinCreeps then
         return nil
     end
+    for ____, h in ipairs(heroes) do
+        if GetUnitToUnitDistance(h, ranged) <= h:GetAttackRange() + h:GetBoundingRadius() + ____exports.SETTINGS.FeedHeroClear then
+            return nil
+        end
+    end
     local cx = 0
     local cy = 0
     for ____, c in ipairs(fighting) do
@@ -569,11 +575,11 @@ local function movedOf(a)
     local n = 0
     for ____, s0 in ipairs(a.start or ({})) do
         do
-            local __continue94
+            local __continue97
             repeat
                 local u = s0.unit
                 if u:IsNull() or not u:IsAlive() then
-                    __continue94 = true
+                    __continue97 = true
                     break
                 end
                 local l = u:GetLocation()
@@ -583,9 +589,9 @@ local function movedOf(a)
                 ) >= ____exports.SETTINGS.MovedR then
                     n = n + 1
                 end
-                __continue94 = true
+                __continue97 = true
             until true
-            if not __continue94 then
+            if not __continue97 then
                 break
             end
         end
@@ -596,19 +602,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue99
+            local __continue102
             repeat
                 if not valid(c) then
-                    __continue99 = true
+                    __continue102 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue99 = true
+                __continue102 = true
             until true
-            if not __continue99 then
+            if not __continue102 then
                 break
             end
         end
@@ -741,23 +747,23 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue129
+                    local __continue132
                     repeat
                         local u = s0.unit
                         if u:IsNull() or not u:IsAlive() or d2(
                             u:GetLocation(),
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue129 = true
+                            __continue132 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue129 = true
+                        __continue132 = true
                     until true
-                    if not __continue129 then
+                    if not __continue132 then
                         break
                     end
                 end

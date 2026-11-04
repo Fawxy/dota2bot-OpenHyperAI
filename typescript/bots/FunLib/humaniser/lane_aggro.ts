@@ -76,7 +76,12 @@ export const SETTINGS = {
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** Results are read until then: the fed creep's death, the dragged creep's death. */
-    FeedWatch: 15,
+    FeedWatch: 30,
+    /**
+     * Feed: no enemy hero within its attack range + radius + this of our ranged creep (lagchk2: 2 of 4 fed creeps that died
+     * otherwise were the enemy hero's last hit, gold to them).
+     */
+    FeedHeroClear: 300,
     DragWatch: 3.5,
     /** A support's lane core is away when no allied core of that lane is alive within this. */
     CoreNear: 1600,
@@ -339,6 +344,9 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
     if (ranged === undefined) return undefined;
     const fighting = enemyCreepsNear(bot, ranged.GetLocation(), SETTINGS.FightR);
     if (fighting.length < SETTINGS.FeedMinCreeps) return undefined;
+    for (const h of heroes) {
+        if (GetUnitToUnitDistance(h, ranged) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.FeedHeroClear) return undefined;
+    }
     let cx = 0;
     let cy = 0;
     for (const c of fighting) {
