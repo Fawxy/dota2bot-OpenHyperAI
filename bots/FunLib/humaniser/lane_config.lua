@@ -49,7 +49,8 @@ ____exports.DEFAULTS = {
         PlanMisread = {0.3, 0.05},
         CoverAbsentCore = {0.3, 0.9},
         DoubleDraw = {0.2, 0},
-        Foresight = {0, 1}
+        Foresight = {0, 1},
+        SureCommit = {0.5, 1}
     },
     Eq = {
         Safe = -0.7,

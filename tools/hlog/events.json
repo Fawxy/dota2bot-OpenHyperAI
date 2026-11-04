@@ -902,6 +902,8 @@
    "al": "num",
    "en": "num",
    "zero": "str",
+   "sure": "str",
+   "pc": "num",
    "draw": "num",
    "fire": "num",
    "id": "num"
@@ -1402,7 +1404,8 @@
   },
   "ev_play": {
    "kind": "text",
-   "zero": "text"
+   "zero": "text",
+   "sure": "text"
   },
   "ev_play_end": {
    "kind": "text",

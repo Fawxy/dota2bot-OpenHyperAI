@@ -301,7 +301,15 @@ ____exports.SETTINGS = {
     StopHp = 0.3
 }
 Plays.Define("gank", {base = 0.35, timeout = 30, chases = true})
-Plays.Define("rune_fight", {base = 0.5, timeout = 15, chases = false})
+Plays.Define(
+    "rune_fight",
+    {
+        base = 0.5,
+        timeout = 15,
+        chases = false,
+        sure = Plays.SureKill(____exports.SETTINGS.FightNear)
+    }
+)
 Plays.Define("shrine", {base = 0.4, timeout = 60, chases = false})
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)

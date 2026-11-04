@@ -36,7 +36,8 @@ export type CurveName =
     | "PlanMisread"
     | "CoverAbsentCore"
     | "DoubleDraw"
-    | "Foresight";
+    | "Foresight"
+    | "SureCommit";
 
 export const DEFAULTS = {
     Enable: true,
@@ -88,6 +89,8 @@ export const DEFAULTS = {
         CoverAbsentCore: [0.3, 0.9],
         DoubleDraw: [0.2, 0.0],
         Foresight: [0, 1],
+        // Slice rune-spawn, Plays' sure tier: the chance a sure play commits (1 at skill 1: no draw). Judgement.
+        SureCommit: [0.5, 1],
     } as Record<string, number[]>,
     Eq: { Safe: -0.7, Off: -0.7, Mid: -0.1, MidPreRune: 0.15, XpDenyWeight: 0.2 },
     Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },

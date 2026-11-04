@@ -927,7 +927,9 @@ export const EVENTS = {
     // zeros and MaxWeight; fl fc fh fr ft ff the level, count, HP-and-mana, power-rune, tower and forecast factors; al/en our
     // and their heroes within Radius of the place (initiator and target always counted); fth the target-HP factor; zero the
     // hard zero (hp, outnumbered, tower, unknown-kind, or the kind's own), in-play (the initiator is already in a play) or
-    // no-rng (a positive weight with no engine Skill rng: no draw); draw the Skill draw; fire 1 when draw < w; id the play.
+    // no-rng (a positive weight with no engine Skill rng: no draw); sure the kind's sure-tier reason (the play commits with no
+    // weighted roll) and pc its commit chance at the initiator's skill (Curve SureCommit; 1 at skill 1: no draw); draw the
+    // Skill draw (against pc for a sure chance, else w); fire 1 when the play fired; id the play.
     play: {
         pid: "num",
         kind: "str",
@@ -943,6 +945,8 @@ export const EVENTS = {
         al: "num",
         en: "num",
         zero: "str",
+        sure: "str",
+        pc: "num",
         draw: "num",
         fire: "num",
         id: "num",

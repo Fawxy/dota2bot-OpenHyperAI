@@ -55,7 +55,8 @@ export const SETTINGS = {
 
 // The rune spawn's play kinds (slice rune-spawn, all judgement): the library holds no kind list (OWNERSHIP H24).
 Plays.Define("gank", { base: 0.35, timeout: 30, chases: true });
-Plays.Define("rune_fight", { base: 0.5, timeout: 15, chases: false });
+// A low enemy within reach with numbers even is a sure fight (Plays.SureKill), not a roll.
+Plays.Define("rune_fight", { base: 0.5, timeout: 15, chases: false, sure: Plays.SureKill(SETTINGS.FightNear) });
 // The contest walks across the map and channels: its play lasts the trip.
 Plays.Define("shrine", { base: 0.4, timeout: 60, chases: false });
 

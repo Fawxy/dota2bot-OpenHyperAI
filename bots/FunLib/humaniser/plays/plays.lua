@@ -324,6 +324,11 @@ end
 function ____exports.DefOf(kind)
     return kinds[kind]
 end
+--- The sure tier both lane commits and rune fights use: a target at or under TargetLow HP, within `reach`, with our heroes
+-- at least even. A kind passes `SureKill(reach)` as its `sure`.
+function ____exports.SureKill(reach)
+    return function(i) return i.targetHp ~= nil and i.targetHp <= ____exports.SETTINGS.TargetLow and i.reach ~= nil and i.reach <= reach and i.ours >= i.theirs and "low-target" or nil end
+end
 local function clamp(v, lo, hi)
     return math.max(
         lo,
@@ -388,6 +393,14 @@ function ____exports.Weigh(i)
     end
     local zero = ____temp_6
     local w = zero ~= nil and 0 or clamp(def.base * level * count * hp * target * rune * tower * forecast, 0, s.MaxWeight)
+    local ____temp_7
+    if zero == nil and def.sure ~= nil then
+        ____temp_7 = def.sure(i)
+    else
+        ____temp_7 = nil
+    end
+    local sure = ____temp_7
+    local commit = sure ~= nil and LaneConfig.Curve("SureCommit", i.skill) or nil
     return {
         w = w,
         level = level,
@@ -397,7 +410,9 @@ function ____exports.Weigh(i)
         rune = rune,
         tower = tower,
         forecast = forecast,
-        zero = zero
+        zero = zero,
+        sure = sure,
+        commit = commit
     }
 end
 local nextId = 1
@@ -428,14 +443,21 @@ function ____exports.InputsOf(c)
             target:GetTeam(),
             target:GetLocation()
         ) or math.huge,
-        forecast = c.forecast
+        forecast = c.forecast,
+        reach = target ~= nil and FR.Dist(
+            c.by:GetLocation(),
+            target:GetLocation()
+        ) or nil,
+        skill = LaneConfig.SkillOf(c.by)
     }
 end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
---- Offers one chance: weighs it, draws once from the engine's Skill rng and logs `ev=play`. Returns the fired play, or
--- undefined (weight zero, the draw above the weight, a hero already in a play, or no engine rng: never a host-side draw).
+--- Offers one chance: weighs it and logs `ev=play`. A sure chance commits with no weighted roll: at skill 1 with no draw at
+-- all, below it on one draw under Curve SureCommit (with no engine rng it commits). Any other chance draws once from the
+-- engine's Skill rng against its weight. Returns the fired play, or undefined (a hard zero, the draw above the weight or
+-- the commit chance, a hero already in a play, or no engine rng for a weighted chance: never a host-side draw).
 function ____exports.Roll(c, now)
     if now == nil then
         now = DotaTime()
@@ -444,22 +466,30 @@ function ____exports.Roll(c, now)
     local i = ____exports.InputsOf(c)
     local wt = ____exports.Weigh(i)
     local busy = ____exports.Of(c.by) ~= nil
-    local ____temp_7
-    if wt.w > 0 and not busy then
-        ____temp_7 = LaneConfig.Draw()
+    local sure = wt.sure ~= nil and not busy
+    local chance = sure and wt.commit or wt.w
+    local ____temp_8
+    if chance > 0 and chance < 1 and not busy then
+        ____temp_8 = LaneConfig.Draw()
     else
-        ____temp_7 = nil
+        ____temp_8 = nil
     end
-    local draw = ____temp_7
-    local fire = draw ~= nil and draw < wt.w
-    local why = wt.zero or (busy and "in-play" or (wt.w > 0 and draw == nil and "no-rng" or nil))
+    local draw = ____temp_8
+    local ____sure_9
+    if sure then
+        ____sure_9 = chance >= 1 or draw == nil or draw < chance
+    else
+        ____sure_9 = draw ~= nil and draw < chance
+    end
+    local fire = ____sure_9
+    local why = wt.zero or (busy and "in-play" or (not sure and wt.w > 0 and draw == nil and "no-rng" or nil))
     local play
     if fire then
         local target = FR.Alive(c.target) and c.target or nil
-        local ____nextId_8 = nextId
-        nextId = ____nextId_8 + 1
+        local ____nextId_10 = nextId
+        nextId = ____nextId_10 + 1
         play = {
-            id = ____nextId_8,
+            id = ____nextId_10,
             kind = c.kind,
             by = c.by,
             target = c.target,
@@ -518,6 +548,11 @@ function ____exports.Roll(c, now)
             {"al", i.ours},
             {"en", i.theirs},
             {"zero", why},
+            {"sure", wt.sure},
+            {
+                "pc",
+                wt.commit ~= nil and r2(wt.commit) or nil
+            },
             {
                 "draw",
                 draw ~= nil and r2(draw) or nil
@@ -547,8 +582,8 @@ function ____exports.Join(p, u)
     if not __TS__ArrayIncludes(active, p) or ____exports.Of(u) ~= nil then
         return false
     end
-    local ____p_joiners_11 = p.joiners
-    ____p_joiners_11[#____p_joiners_11 + 1] = u
+    local ____p_joiners_13 = p.joiners
+    ____p_joiners_13[#____p_joiners_13 + 1] = u
     return true
 end
 return ____exports

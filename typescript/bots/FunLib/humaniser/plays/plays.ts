@@ -15,12 +15,14 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 export type Kind = string;
 
 /** A consumer's kind: its base weight, how long a play may run, whether its target is chased (a tower beside the target is
- *  then a hard zero) and any hard zero of its own over the plain inputs. */
+ *  then a hard zero), any hard zero of its own over the plain inputs, and its sure tier: a reason the play commits with no
+ *  weighted roll (checked after the hard zeros). */
 export interface KindDef {
     base: number;
     timeout: number;
     chases: boolean;
     zero?: (this: void, i: Inputs) => string | undefined;
+    sure?: (this: void, i: Inputs) => string | undefined;
 }
 
 // All judgement (slice rune-spawn, Decisions) unless cited.
@@ -91,6 +93,21 @@ export interface Inputs {
     /** The target's distance to its nearest tower (math.huge with no target or no tower). */
     tower: number;
     forecast?: number;
+    /** The initiator's distance to the target (undefined with no target). */
+    reach?: number;
+    /** The initiator's skill (the difficulty model): a sure play commits with chance Curve SureCommit of it. */
+    skill: number;
+}
+
+/**
+ * The sure tier both lane commits and rune fights use: a target at or under TargetLow HP, within `reach`, with our heroes
+ * at least even. A kind passes `SureKill(reach)` as its `sure`.
+ */
+export function SureKill(reach: number): (this: void, i: Inputs) => string | undefined {
+    return (i) =>
+        i.targetHp !== undefined && i.targetHp <= SETTINGS.TargetLow && i.reach !== undefined && i.reach <= reach && i.ours >= i.theirs
+            ? "low-target"
+            : undefined;
 }
 
 export interface Weight {
@@ -104,6 +121,9 @@ export interface Weight {
     forecast: number;
     /** Why the weight is a hard zero, if it is. */
     zero?: string;
+    /** The sure tier's reason (no hard zero, and the kind's `sure` said so), and the chance it commits at this skill. */
+    sure?: string;
+    commit?: number;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -144,7 +164,9 @@ export function Weigh(i: Inputs): Weight {
                     ? def.zero(i)
                     : undefined;
     const w = zero !== undefined ? 0 : clamp(def!.base * level * count * hp * target * rune * tower * forecast, 0, s.MaxWeight);
-    return { w, level, count, hp, target, rune, tower, forecast, zero };
+    const sure = zero === undefined && def!.sure !== undefined ? def!.sure(i) : undefined;
+    const commit = sure !== undefined ? LaneConfig.Curve("SureCommit", i.skill) : undefined;
+    return { w, level, count, hp, target, rune, tower, forecast, zero, sure, commit };
 }
 
 export interface Chance {
@@ -202,6 +224,8 @@ export function InputsOf(c: Chance): Inputs {
         rune: FR.HoldsPowerRune(c.by),
         tower: target !== undefined ? FR.TowerDistance(target.GetTeam(), target.GetLocation()) : math.huge,
         forecast: c.forecast,
+        reach: target !== undefined ? FR.Dist(c.by.GetLocation(), target.GetLocation()) : undefined,
+        skill: LaneConfig.SkillOf(c.by),
     };
 }
 
@@ -210,17 +234,21 @@ function r2(x: number): number {
 }
 
 /**
- * Offers one chance: weighs it, draws once from the engine's Skill rng and logs `ev=play`. Returns the fired play, or
- * undefined (weight zero, the draw above the weight, a hero already in a play, or no engine rng: never a host-side draw).
+ * Offers one chance: weighs it and logs `ev=play`. A sure chance commits with no weighted roll: at skill 1 with no draw at
+ * all, below it on one draw under Curve SureCommit (with no engine rng it commits). Any other chance draws once from the
+ * engine's Skill rng against its weight. Returns the fired play, or undefined (a hard zero, the draw above the weight or
+ * the commit chance, a hero already in a play, or no engine rng for a weighted chance: never a host-side draw).
  */
 export function Roll(c: Chance, now: number = DotaTime()): Play | undefined {
     Tick(now);
     const i = InputsOf(c);
     const wt = Weigh(i);
     const busy = Of(c.by) !== undefined;
-    const draw = wt.w > 0 && !busy ? LaneConfig.Draw() : undefined;
-    const fire = draw !== undefined && draw < wt.w;
-    const why = wt.zero ?? (busy ? "in-play" : wt.w > 0 && draw === undefined ? "no-rng" : undefined);
+    const sure = wt.sure !== undefined && !busy;
+    const chance = sure ? wt.commit! : wt.w;
+    const draw = chance > 0 && chance < 1 && !busy ? LaneConfig.Draw() : undefined;
+    const fire = sure ? chance >= 1 || draw === undefined || draw < chance : draw !== undefined && draw < chance;
+    const why = wt.zero ?? (busy ? "in-play" : !sure && wt.w > 0 && draw === undefined ? "no-rng" : undefined);
     let play: Play | undefined;
     if (fire) {
         const target = FR.Alive(c.target) ? c.target : undefined;
@@ -252,6 +280,8 @@ export function Roll(c: Chance, now: number = DotaTime()): Play | undefined {
         ["al", i.ours],
         ["en", i.theirs],
         ["zero", why],
+        ["sure", wt.sure],
+        ["pc", wt.commit !== undefined ? r2(wt.commit) : undefined],
         ["draw", draw !== undefined ? r2(draw) : undefined],
         ["fire", fire ? 1 : 0],
         ["id", play?.id],
