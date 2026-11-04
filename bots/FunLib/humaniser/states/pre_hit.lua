@@ -128,10 +128,10 @@ function startWatch(bot, verbs, tower, creep, f, lo)
     local td = -1
     for ____, h in ipairs(f.hits) do
         do
-            local __continue48
+            local __continue59
             repeat
                 if h.t > 1 then
-                    __continue48 = true
+                    __continue59 = true
                     break
                 end
                 if h.by == "tower" then
@@ -144,9 +144,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
                 else
                     ks = ks + 1
                 end
-                __continue48 = true
+                __continue59 = true
             until true
-            if not __continue48 then
+            if not __continue59 then
                 break
             end
         end
@@ -167,16 +167,16 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         tower:GetAttackDamage(),
         DamageType.Physical
     )
-    local ____creep_8 = creep
-    local ____f_9 = f
-    local ____DotaTime_result_10 = DotaTime()
-    local ____temp_11 = -1
-    local ____temp_12 = {}
-    local ____temp_13 = {}
-    local ____GameTime_result_14 = GameTime()
-    local ____temp_15 = {}
-    local ____temp_16 = {}
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____creep_15 = creep
+    local ____f_16 = f
+    local ____DotaTime_result_17 = DotaTime()
+    local ____temp_18 = -1
+    local ____temp_19 = {}
+    local ____temp_20 = {}
+    local ____GameTime_result_21 = GameTime()
+    local ____temp_22 = {}
+    local ____temp_23 = {}
+    local ____array_14 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "hp",
@@ -195,15 +195,15 @@ function startWatch(bot, verbs, tower, creep, f, lo)
             math.floor(td)
         }
     )
-    local ____math_floor_6 = math.floor
-    local ____this_5
-    ____this_5 = tower
-    local ____opt_4 = ____this_5.GetSecondsPerAttack
+    local ____math_floor_13 = math.floor
+    local ____this_12
+    ____this_12 = tower
+    local ____opt_11 = ____this_12.GetSecondsPerAttack
     __TS__SparseArrayPush(
-        ____array_7,
+        ____array_14,
         {
             "twp",
-            ____math_floor_6((____opt_4 and ____opt_4(____this_5) or -1) * 100) / 100
+            ____math_floor_13((____opt_11 and ____opt_11(____this_12) or -1) * 100) / 100
         },
         {"kt", kt},
         {"kc", kc},
@@ -218,16 +218,16 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         {"ah", ah}
     )
     watches[pid] = {
-        creep = ____creep_8,
-        f = ____f_9,
-        t = ____DotaTime_result_10,
-        last = ____temp_11,
-        hs = ____temp_12,
-        fs = ____temp_13,
-        g0 = ____GameTime_result_14,
-        lat = ____temp_15,
-        fire = ____temp_16,
-        fields = {__TS__SparseArraySpread(____array_7)}
+        creep = ____creep_15,
+        f = ____f_16,
+        t = ____DotaTime_result_17,
+        last = ____temp_18,
+        hs = ____temp_19,
+        fs = ____temp_20,
+        g0 = ____GameTime_result_21,
+        lat = ____temp_22,
+        fire = ____temp_23,
+        fields = {__TS__SparseArraySpread(____array_14)}
     }
     sampleWatch(bot, verbs)
 end
@@ -238,7 +238,7 @@ function sampleWatch(bot, verbs)
         return
     end
     local dt = DotaTime() - w.t
-    local alive = w.creep:IsAlive()
+    local alive = not w.creep:IsNull() and w.creep:IsAlive()
     if alive and dt < WATCH_FOR and #w.hs < WATCH_SAMPLES then
         noteFires(bot, w)
         if dt - w.last < WATCH_EVERY then
@@ -246,17 +246,17 @@ function sampleWatch(bot, verbs)
         end
         w.last = dt
         local r = math.floor(dt * 100) / 100
-        local ____w_hs_17 = w.hs
-        ____w_hs_17[#____w_hs_17 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
-        local ____w_fs_18 = w.fs
-        ____w_fs_18[#____w_fs_18 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        local ____w_hs_24 = w.hs
+        ____w_hs_24[#____w_hs_24 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_25 = w.fs
+        ____w_fs_25[#____w_fs_25 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
         return
     end
     watches[pid] = nil
-    local ____Telemetry_Event_20 = Telemetry.Event
-    local ____array_19 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    local ____Telemetry_Event_27 = Telemetry.Event
+    local ____array_26 = __TS__SparseArrayNew(__TS__Spread(w.fields))
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_26,
         {
             "end",
             math.floor(dt * 100) / 100
@@ -279,9 +279,9 @@ function sampleWatch(bot, verbs)
             table.concat(w.fire, ",")
         }
     )
-    ____Telemetry_Event_20(
+    ____Telemetry_Event_27(
         "prehit_fc",
-        {__TS__SparseArraySpread(____array_19)}
+        {__TS__SparseArraySpread(____array_26)}
     )
 end
 function noteFires(bot, w)
@@ -293,8 +293,8 @@ function noteFires(bot, w)
         local before = w.lat[u]
         w.lat[u] = at
         if at > w.g0 and (before == nil or at > before) and #w.fire < WATCH_FIRES then
-            local ____w_fire_21 = w.fire
-            ____w_fire_21[#____w_fire_21 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
+            local ____w_fire_28 = w.fire
+            ____w_fire_28[#____w_fire_28 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
         end
     end
     note(bot, "S")
@@ -403,6 +403,62 @@ function ____exports.Decide(hpAts, horizon, t0, period, lo, hi)
     end
     return "go"
 end
+--- `hpAt` with the hits of creeps that may join the attack, each at its earliest (prhfc3 04/11/2026: own lane creeps that turned
+-- onto the creep after the decision fired 55 times in 27 pre-hits against 26 creep hits forecast, the largest part of the 30-130
+-- HP the forecast missed).
+function ____exports.WithJoiners(hpAt, joiners)
+    return function(t)
+        local hp = hpAt(t)
+        for ____, j in ipairs(joiners) do
+            if t >= j.first then
+                hp = hp - j.damage * (math.floor((t - j.first) / j.period) + 1)
+            end
+        end
+        return hp
+    end
+end
+--- Own creeps this far past their attack range from the creep count as joiners (about one body step of walking). `judgement`.
+local JOIN_SLACK = 100
+local function joinersOf(bot, target)
+    local out = {}
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(1600, false) or ({})) do
+        do
+            local __continue29
+            repeat
+                if c:GetAttackTarget() == target or not c:IsAlive() then
+                    __continue29 = true
+                    break
+                end
+                local d = GetUnitToUnitDistance(c, target)
+                if d > c:GetAttackRange() + JOIN_SLACK then
+                    __continue29 = true
+                    break
+                end
+                local a = c
+                local ____opt_0 = a.GetSecondsPerAttack
+                local period = ____opt_0 and ____opt_0(a) or 1
+                local ____opt_2 = a.GetAttackProjectileSpeed
+                local speed = ____opt_2 and ____opt_2(a) or 0
+                local flight = c:GetAttackRange() > 300 and speed > 0 and d / speed or 0
+                local ____temp_6 = target:GetActualIncomingDamage(
+                    c:GetAttackDamage(),
+                    DamageType.Physical
+                )
+                local ____opt_4 = a.GetAttackPoint
+                out[#out + 1] = {
+                    damage = ____temp_6,
+                    first = (____opt_4 and ____opt_4(a) or 0.5) * period + flight,
+                    period = math.max(0.1, period)
+                }
+                __continue29 = true
+            until true
+            if not __continue29 then
+                break
+            end
+        end
+    end
+    return out
+end
 function ____exports.Applies(bot)
     return Ours.On("PreHit") and CoreLastHit.Applies(bot)
 end
@@ -436,14 +492,14 @@ local function consider(bot, me, verbs, tower, target)
         return {{verdict = "phase", creep = creep}, nil}
     end
     local t0 = walk + verbs.ownHitTime(me, creep)
-    local ____this_1
-    ____this_1 = me
-    local ____opt_0 = ____this_1.GetSecondsPerAttack
-    local period = ____opt_0 and ____opt_0(____this_1) or 1.7
-    local ____this_3
-    ____this_3 = me
-    local ____opt_2 = ____this_3.GetBaseDamageVariance
-    local variance = ____opt_2 and ____opt_2(____this_3) or 0
+    local ____this_8
+    ____this_8 = me
+    local ____opt_7 = ____this_8.GetSecondsPerAttack
+    local period = ____opt_7 and ____opt_7(____this_8) or 1.7
+    local ____this_10
+    ____this_10 = me
+    local ____opt_9 = ____this_10.GetBaseDamageVariance
+    local variance = ____opt_9 and ____opt_9(____this_10) or 0
     local lo = target:GetActualIncomingDamage(
         bot:GetAttackDamage() - variance,
         DamageType.Physical
@@ -455,11 +511,18 @@ local function consider(bot, me, verbs, tower, target)
     local function hpAt(t)
         return verbs.forecastHp(f, t)
     end
+    local function early(t)
+        return verbs.forecastHp(f, t, "early")
+    end
     local hpAts = {
         hpAt,
-        function(t) return verbs.forecastHp(f, t, "early") end,
+        early,
         function(t) return verbs.forecastHp(f, t, "late") end
     }
+    local joiners = joinersOf(bot, target)
+    if #joiners > 0 then
+        hpAts[#hpAts + 1] = ____exports.WithJoiners(early, joiners)
+    end
     local verdict = ____exports.Decide(
         hpAts,
         ____exports.HORIZON,

@@ -52,6 +52,17 @@ end
 -- lasts about 0.9 s more, so the last-hit verb has it and there is no pre-hit.
 check("decide: creep damage spreads the steps into a window: no pre-hit", decide(290, 40) == "window")
 
+-- An own creep in reach that may turn onto the creep (prhfc3: such creeps dealt most of the damage the forecast missed): 290 HP is
+-- a go on the tower alone, but a joiner's 20 every second from 0.5 s brings it to 50 at 1.5 s and holds it there until the
+-- tower's 2.3 s hit, a window of its own, so the swing is left to the last-hit verb rather than spent to feed the tower.
+do
+	local joined = PreHit.WithJoiners(towerHp(290), { { damage = 20, first = 0.5, period = 1.0 } })
+	check("joiners: alone the tower says go", decide(290) == "go")
+	check("joiners: a joining creep makes the window without our hit: no pre-hit",
+		PreHit.Decide({ towerHp(290), joined }, PreHit.HORIZON, T0, PERIOD, LO, HI) == "window")
+	check("joiners: each hit counted from its first landing", joined(0.49) == 190 and joined(0.5) == 170 and joined(1.5) == 50)
+end
+
 -- Every schedule must agree (Decide gets one HP function per placement of the hits whose time is unknown). A schedule that
 -- alone says go (296 HP) and one that alone says the pre-hit's window closes before our next swing (180 HP) give no-after; one
 -- that shows a window already (230 HP) rules the pre-hit out whatever the others say.

@@ -96,6 +96,48 @@ export function Decide(
     return "go";
 }
 
+/** An own lane creep in reach of the creep that is not attacking it yet: its hit `damage` (after armour) every `period` from `first`. */
+export interface Joiner {
+    damage: number;
+    first: number;
+    period: number;
+}
+
+/**
+ * `hpAt` with the hits of creeps that may join the attack, each at its earliest (prhfc3 04/11/2026: own lane creeps that turned
+ * onto the creep after the decision fired 55 times in 27 pre-hits against 26 creep hits forecast, the largest part of the 30-130
+ * HP the forecast missed).
+ */
+export function WithJoiners(this: void, hpAt: (this: void, t: number) => number, joiners: Joiner[]): (this: void, t: number) => number {
+    return (t: number): number => {
+        let hp = hpAt(t);
+        for (const j of joiners) if (t >= j.first) hp -= j.damage * (math.floor((t - j.first) / j.period) + 1);
+        return hp;
+    };
+}
+
+/** Own creeps this far past their attack range from the creep count as joiners (about one body step of walking). `judgement`. */
+const JOIN_SLACK = 100;
+
+function joinersOf(bot: Unit, target: Unit): Joiner[] {
+    const out: Joiner[] = [];
+    for (const c of bot.GetNearbyLaneCreeps(1600, false) ?? []) {
+        if (c.GetAttackTarget() === target || !c.IsAlive()) continue;
+        const d = GetUnitToUnitDistance(c, target);
+        if (d > c.GetAttackRange() + JOIN_SLACK) continue;
+        const a = c as unknown as Lib.TaskUnit;
+        const period = a.GetSecondsPerAttack?.() ?? 1;
+        const speed = a.GetAttackProjectileSpeed?.() ?? 0;
+        const flight = c.GetAttackRange() > 300 && speed > 0 ? d / speed : 0;
+        out.push({
+            damage: target.GetActualIncomingDamage(c.GetAttackDamage(), DamageType.Physical),
+            first: (a.GetAttackPoint?.() ?? 0.5) * period + flight,
+            period: math.max(0.1, period),
+        });
+    }
+    return out;
+}
+
 export function Applies(bot: Unit): boolean {
     return Ours.On("PreHit") && CoreLastHit.Applies(bot);
 }
@@ -138,7 +180,10 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
     const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
     const hi = target.GetActualIncomingDamage(bot.GetAttackDamage() + variance, DamageType.Physical);
     const hpAt = (t: number): number => verbs.forecastHp(f, t);
-    const hpAts = [hpAt, (t: number): number => verbs.forecastHp(f, t, "early"), (t: number): number => verbs.forecastHp(f, t, "late")];
+    const early = (t: number): number => verbs.forecastHp(f, t, "early");
+    const hpAts = [hpAt, early, (t: number): number => verbs.forecastHp(f, t, "late")];
+    const joiners = joinersOf(bot, target);
+    if (joiners.length > 0) hpAts.push(WithJoiners(early, joiners));
     let verdict = Decide(hpAts, HORIZON, t0, period, lo, hi);
     if (verdict === "go") {
         // Our attack is busy until t0 + period: a last hit on another creep due before then would be lost to it.
@@ -238,7 +283,8 @@ function sampleWatch(bot: Unit, verbs: typeof Lib.Verbs): void {
     const w = watches[pid];
     if (w === undefined) return;
     const dt = DotaTime() - w.t;
-    const alive = w.creep.IsAlive();
+    // A removed creep's handle is invalid; IsAlive on it raises (prhfc3 game B t=117.967, the laning task failed every scan after).
+    const alive = !w.creep.IsNull() && w.creep.IsAlive();
     if (alive && dt < WATCH_FOR && w.hs.length < WATCH_SAMPLES) {
         noteFires(bot, w);
         if (dt - w.last < WATCH_EVERY) return;
