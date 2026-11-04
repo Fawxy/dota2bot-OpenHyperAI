@@ -255,7 +255,6 @@ do
 	check("nothing after CreepDeathUntil", #events("own_creep_death") == 2, #events("own_creep_death"))
 end
 
-finish()
 
 -- Neutral deaths (slice lane-farm-logs): a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths.
 -- The core's rise goes to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR; the neutral
@@ -295,5 +294,17 @@ do
 	tick(H, { core }, 60.3)
 	nd = events("neutral_death")
 	check("neutral: an ancient beyond 1,200 of every camp has no camp, kind ancient, no one's", #nd == 2 and field(nd[2], "camp") == nil and field(nd[2], "kind") == "ancient" and field(nd[2], "by") == "none", nd[2])
+	-- A neutral that left vision at half HP or less was logged dead; seen alive again it is named by ev=creep_revive.
+	local hidden = creep("npc_dota_neutral_kobold", Vector(2600, 0), 30, NEUTRALS)
+	tick(H, { core }, 60.4)
+	table.remove(NEUTRALS, #NEUTRALS)
+	tick(H, { core }, 60.5)
+	check("neutral: one that vanished at 30% is logged", #events("neutral_death") == 3, #events("neutral_death"))
+	table.insert(NEUTRALS, hidden)
+	tick(H, { core }, 60.6)
+	local rv = events("creep_revive")
+	check("neutral: seen again, creep_revive kind neutral", #rv == 1 and field(rv[1], "kind") == "neutral", rv[1])
 	GetNeutralSpawners = realSpawners
 end
+
+finish()

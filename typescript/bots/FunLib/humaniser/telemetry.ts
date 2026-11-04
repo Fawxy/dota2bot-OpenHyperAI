@@ -903,6 +903,8 @@ interface CreepTrack {
     towerOn: LuaTable<Unit, boolean>;
     /** Neutral creeps seen last frame (slice lane-farm-logs): a death near an own hero is ev=neutral_death. */
     neutrals: LuaTable<Unit, CreepSeen>;
+    /** Neutrals logged as deaths: one seen alive again left vision (ev=creep_revive, kind neutral or ancient). */
+    deadNeutrals: LuaTable<Unit, CreepSeen>;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -961,7 +963,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable() };
+        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable() };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -997,25 +999,42 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     }
     // A neutral kill raises GetLastHits too, so neutral deaths share the claim pool: a rise is never given to a lane creep
     // that died beside the neutral the hero killed.
-    const neutralAlive = new LuaTable<Unit, boolean>();
+    // Its own pcall: an error reading neutrals must not drop this frame's creep_death lines or leave their state stale.
     const neutralList: Unit[] = [];
-    for (const u of GetUnitList(UnitType.NeutralCreeps) ?? []) {
-        if (u === null || u === undefined || !u.IsAlive()) continue;
-        neutralList.push(u);
-        neutralAlive.set(u, true);
-    }
     const neutralDeaths: CreepDeath[] = [];
-    for (const [creep, seen] of c.neutrals) {
-        if (neutralAlive.get(creep) === true) continue;
-        c.neutrals.delete(creep);
-        if (seen.hp > DEATH_MAX_HP) continue;
-        const d: CreepDeath = { creep, seen };
-        for (const h of heroes) {
-            if (deathDistance(h, d) <= DEATH_NEAR) {
-                neutralDeaths.push(d);
-                break;
+    const [neutralsOk, neutralsErr] = pcall(() => {
+        const neutralAlive = new LuaTable<Unit, boolean>();
+        for (const u of GetUnitList(UnitType.NeutralCreeps) ?? []) {
+            if (u === null || u === undefined || !u.IsAlive()) continue;
+            neutralList.push(u);
+            neutralAlive.set(u, true);
+            const back = c!.deadNeutrals.get(u);
+            if (back !== undefined) {
+                c!.deadNeutrals.delete(u);
+                Event("creep_revive", [
+                    ["team", team],
+                    ["kind", back.kind],
+                    ["hp", back.hp],
+                ]);
             }
         }
+        for (const [creep, seen] of c!.neutrals) {
+            if (neutralAlive.get(creep) === true) continue;
+            c!.neutrals.delete(creep);
+            if (seen.hp > DEATH_MAX_HP) continue;
+            const d: CreepDeath = { creep, seen };
+            for (const h of heroes) {
+                if (deathDistance(h, d) <= DEATH_NEAR) {
+                    neutralDeaths.push(d);
+                    break;
+                }
+            }
+        }
+    });
+    if (!neutralsOk) {
+        neutralList.length = 0;
+        neutralDeaths.length = 0;
+        HDebug.Log("Telemetry.Neutrals: " + tostring(neutralsErr));
     }
     const pool: CreepDeath[] = [...deaths, ...neutralDeaths];
     for (const h of heroes) {
@@ -1088,6 +1107,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             fields.push(["nd", math.floor(nearD)]);
         }
         Event("neutral_death", fields);
+        c.deadNeutrals.set(d.creep, d.seen);
     }
     for (const u of neutralList) {
         const loc = u.GetLocation();

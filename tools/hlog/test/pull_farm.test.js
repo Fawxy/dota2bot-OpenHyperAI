@@ -37,9 +37,9 @@ test('per ok pull: the camp\'s neutrals by puller, ally and no one inside slot..
     const out = run([...base,
         line(171, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=200'),
         line(180, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=3 camp=13 np=3 nd=150'),
-        line(215, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=none camp=13 np=5 nd=600'),
-        // outside the window, another camp, the other team's log: not counted.
-        line(216, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=100'),
+        line(214, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=none camp=13 np=5 nd=600'),
+        // at slot + 45 (the window's end is exclusive), another camp, the other team's log: not counted.
+        line(215, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=100'),
         line(175, 'neutral_death team=2 kind=neutral x=0 y=0 hp=0.05 by=5 camp=12 np=5 nd=100'),
         line(176, 'neutral_death team=3 kind=neutral x=-2400 y=-8400 hp=0.05 by=6 camp=13 np=6 nd=100'),
         // the pulled wave: two die near the camp in the puller's log, one denied; one 801 away is not the pull's.
@@ -54,6 +54,20 @@ test('per ok pull: the camp\'s neutrals by puller, ally and no one inside slot..
     ]);
     assert.deepStrictEqual(out.map(r => [r.pid, r.camp, r.slot, r.n_ours, r.n_puller, r.n_none, r.own_died, r.own_denied, r.them_took, r.them_core]),
         [[5, 13, 170, 2, 1, 1, 2, 1, 2, 1]]);
+});
+
+test('back-to-back pulls of one camp split their windows at the next slot, so no death counts twice; a slot after 720 s reads null neutrals', () => {
+    const out = run([
+        line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
+        line(165, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=170 res=ok why=ok'),
+        line(195, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=198 res=ok why=ok'),
+        line(180, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=100'),
+        // at the second slot: the second pull's, not both.
+        line(198, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=100'),
+        line(199, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
+        line(725, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=730 res=ok why=ok'),
+    ]);
+    assert.deepStrictEqual(out.map(r => [r.slot, r.n_puller, r.own_died]), [[170, 1, 0], [198, 1, 1], [730, null, 0]]);
 });
 
 test('a build without neutral_death reads null neutrals, not zero, while the wave columns still count', () => {
