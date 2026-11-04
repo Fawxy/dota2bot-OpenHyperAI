@@ -50,6 +50,10 @@ export const DEFAULTS = {
      * step) instead of OHA's PositionThink; false leaves both OHA's and Valve's.
      */
     SupportHarass: true,
+    /** With LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (states/lane_spot Cover): enemy
+     *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
+     *  and off: the open-lane limits. */
+    LaneSpotTower: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
