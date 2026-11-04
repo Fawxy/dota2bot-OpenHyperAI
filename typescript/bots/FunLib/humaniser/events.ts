@@ -1001,7 +1001,7 @@ export const EVENTS = {
     },
     // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), skip (a camp fitted and a
     // gate held it: one line per wave window `win` and why), end. clash: the forecast's next clash second; ret: the planned
-    // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 gold.
+    // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 net worth.
     core_camp: {
         pid: "num",
         pos: "num",

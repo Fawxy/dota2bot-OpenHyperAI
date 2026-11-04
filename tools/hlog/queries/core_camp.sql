@@ -1,7 +1,7 @@
 -- Core camp trips (slice core-next-gold, CoreCamp, Ours.CoreCampTrip): one row per `ev=core_camp phase=start` in games whose
 -- file matches :like, with its end line (the pid's next `phase=end`).
 --   ret/back   planned return and the arrival second (null when the trip did not walk back); back_ok: back <= ret + 5
---   gain       g1 - g0 less passive gold over the trip (:passive a second, default 1.5: the commonest 10 s gold rise in
+--   gain       g1 - g0 (net worth, so a purchase on the way is no loss) less passive gold over the trip (:passive a second, default 1.5: the commonest 10 s gold rise in
 --              sspotchk1 is 15); paid: gain > the start line's forecast `loss`
 --   nk         the hero's ev=neutral_death last hits from start to end; died: a snapshot at 0 HP from start to end + 3 s
 -- ensure: ev_core_camp(pid, phase, camp, type, clash, ret, gold, loss, net, why, back, g0, g1, secs, camps)

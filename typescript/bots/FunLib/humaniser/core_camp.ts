@@ -578,7 +578,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["ret", r1(t.plan.ret)],
         ["back", r1(t.back)],
         ["g0", t.g0],
-        ["g1", bot.GetGold()],
+        ["g1", bot.GetNetWorth()],
         ["secs", r1(DotaTime() - t.left)],
         ["pace", r1(Pace(bot))],
     ]);
@@ -626,7 +626,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         return held("skip");
     }
     tally(bot, now, "trip");
-    const t: Trip = { lane, clash, plan, camps: 1, left: now, g0: bot.GetGold(), host };
+    const t: Trip = { lane, clash, plan, camps: 1, left: now, g0: bot.GetNetWorth(), host };
     const ok = Tasks.Start(bot, { name: "camp", host, preemptAfter: 1, stallAfter: 4, guard: () => guard(bot, t), onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, t, ctx)
     );
