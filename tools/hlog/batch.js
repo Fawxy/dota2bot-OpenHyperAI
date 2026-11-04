@@ -61,6 +61,12 @@ function plan(spec) {
     return games;
 }
 
+/** One line naming the arms and the game count, so a 5+5 spec is seen before it queues. */
+function planSummary(spec, games) {
+    const arms = Object.keys(spec.arms);
+    return `${games.length} games: ${spec.lineups.length} reps x ${arms.length} arm${arms.length === 1 ? '' : 's'} (${arms.join(', ')})`;
+}
+
 /** dotactl run arguments for one game. */
 function runArgs(spec, game, build) {
     // dotactl resolves a bare name under repos/, so pass the worktree as an absolute path (a name means worktrees/<name>).
@@ -192,6 +198,7 @@ async function main(argv) {
     const dotactl = path.resolve(MASTER, spec.dotactl || 'repos/dotactl/dotactl.js');
     const manifest = path.join(BATCHES, `${spec.name}.manifest`);
     const games = plan(spec);
+    console.log(planSummary(spec, games));
     if (argv.includes('--dry-run')) {
         games.forEach((g, i) => console.log(`${g.label.padEnd(14)} ${spec.remote ? `POST /jobs ${JSON.stringify(remoteJob(spec, g))}` : `node dotactl.js ${runArgs(spec, g, i === 0).join(' ')}`}`));
         return;
@@ -267,4 +274,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
-module.exports = { plan, runArgs, seconds, remoteJob, runRemote, judge, decided };
+module.exports = { plan, planSummary, runArgs, seconds, remoteJob, runRemote, judge, decided };
