@@ -1,5 +1,25 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -26,12 +46,40 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local logPlan
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Rune = ____dota.Rune
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function logPlan(team, p)
+    local ____Telemetry_Event_5 = Telemetry.Event
+    local ____array_4 = __TS__SparseArrayNew({"team", team})
+    local ____opt_0 = p.mid
+    __TS__SparseArrayPush(
+        ____array_4,
+        {
+            "mid",
+            ____opt_0 and ____opt_0:GetPlayerID()
+        },
+        {"ms", p.midSpot}
+    )
+    local ____opt_2 = p.sup
+    __TS__SparseArrayPush(
+        ____array_4,
+        {
+            "sup",
+            ____opt_2 and ____opt_2:GetPlayerID()
+        },
+        {"ss", p.supSpot},
+        {"why", p.why}
+    )
+    ____Telemetry_Event_5(
+        "rune_plan",
+        {__TS__SparseArraySpread(____array_4)}
+    )
+end
 ____exports.SETTINGS = {
     Spawn = 360,
     PlanAt = 360 - 40,
@@ -86,6 +134,36 @@ local function nearer(u, a, b)
         ____exports.SpotAt(b)
     ) and a or b
 end
+--- The free support (alive, not `busy`, not in `skip`) with the shorter walk to `spot` (to its nearer spot with none).
+local function freeSupport(spot, busy, skip)
+    local a, b = unpack(____exports.Spots())
+    local best
+    local bestD = math.huge
+    for ____, pos in ipairs({4, 5}) do
+        do
+            local __continue13
+            repeat
+                local s = teamHero(pos)
+                if not FR.Alive(s) or busy(s) or __TS__ArrayIncludes(skip, s) then
+                    __continue13 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(
+                    s,
+                    ____exports.SpotAt(spot or nearer(s, a, b))
+                )
+                if d < bestD then
+                    best, bestD = s, d
+                end
+                __continue13 = true
+            until true
+            if not __continue13 then
+                break
+            end
+        end
+    end
+    return best
+end
 --- The spot plan from plain choices: `mid` takes the spot nearer it; the other spot goes to the free support with the
 -- shorter walk to it (pos4 on a tie). `busy(u)` says a support is not free (a stack that minute). Exported for tests.
 function ____exports.Make(now, busy)
@@ -97,31 +175,7 @@ function ____exports.Make(now, busy)
         plan.midSpot = nearer(mid, a, b)
     end
     local supSpot = plan.midSpot ~= nil and ____exports.Other(plan.midSpot) or nil
-    local best
-    local bestD = math.huge
-    for ____, pos in ipairs({4, 5}) do
-        do
-            local __continue14
-            repeat
-                local s = teamHero(pos)
-                if not FR.Alive(s) or busy(s) then
-                    __continue14 = true
-                    break
-                end
-                local d = GetUnitToLocationDistance(
-                    s,
-                    ____exports.SpotAt(supSpot or nearer(s, a, b))
-                )
-                if d < bestD then
-                    best, bestD = s, d
-                end
-                __continue14 = true
-            until true
-            if not __continue14 then
-                break
-            end
-        end
-    end
+    local best = freeSupport(supSpot, busy, {})
     if best ~= nil then
         plan.sup = best
         plan.supSpot = supSpot or nearer(best, a, b)
@@ -145,33 +199,32 @@ function ____exports.For(team, busy, now)
     if p == nil then
         p = ____exports.Make(now, busy)
         plans[team] = p
-        local ____Telemetry_Event_5 = Telemetry.Event
-        local ____array_4 = __TS__SparseArrayNew({"team", team})
-        local ____opt_0 = p.mid
-        __TS__SparseArrayPush(
-            ____array_4,
-            {
-                "mid",
-                ____opt_0 and ____opt_0:GetPlayerID()
-            },
-            {"ms", p.midSpot}
-        )
-        local ____opt_2 = p.sup
-        __TS__SparseArrayPush(
-            ____array_4,
-            {
-                "sup",
-                ____opt_2 and ____opt_2:GetPlayerID()
-            },
-            {"ss", p.supSpot},
-            {"why", p.why}
-        )
-        ____Telemetry_Event_5(
-            "rune_plan",
-            {__TS__SparseArraySpread(____array_4)}
-        )
+        logPlan(team, p)
     end
     return p
+end
+--- The planned support `bot` will not go (its start gate skipped it, `why`): its spot goes to another free support, once per
+-- support, and the plan logs again (rspchk2: 3 of 10 plans uncovered with the other support free). Returns the replacement.
+function ____exports.Drop(bot, why, busy)
+    local p = plans[bot:GetTeam()]
+    if p == nil or p.sup ~= bot then
+        return nil
+    end
+    local ____array_6 = __TS__SparseArrayNew(unpack(p.dropped or ({})))
+    __TS__SparseArrayPush(____array_6, bot)
+    p.dropped = {__TS__SparseArraySpread(____array_6)}
+    p.sup = freeSupport(p.supSpot, busy, p.dropped)
+    p.why = ((p.sup ~= nil and "swap" or "drop") .. ":") .. why
+    logPlan(
+        bot:GetTeam(),
+        p
+    )
+    return p.sup
+end
+--- True when `bot` holds its spot as a replacement for a dropped support.
+function ____exports.Replaces(bot)
+    local p = plans[bot:GetTeam()]
+    return p ~= nil and p.sup == bot and p.dropped ~= nil
 end
 --- The spot this hero holds in its team's plan, if any.
 function ____exports.SpotOf(bot, busy, now)
@@ -200,19 +253,19 @@ function ____exports.HolderOf(team, spot)
     if p == nil then
         return nil
     end
-    local ____temp_7
+    local ____temp_8
     if p.midSpot == spot then
-        ____temp_7 = p.mid
+        ____temp_8 = p.mid
     else
-        local ____temp_6
+        local ____temp_7
         if p.supSpot == spot then
-            ____temp_6 = p.sup
+            ____temp_7 = p.sup
         else
-            ____temp_6 = nil
+            ____temp_7 = nil
         end
-        ____temp_7 = ____temp_6
+        ____temp_8 = ____temp_7
     end
-    return ____temp_7
+    return ____temp_8
 end
 --- A stand point near `spot` for `bot`: passable points on rings around it, cheapest by the walk there and on to the spot,
 -- with a penalty for one no higher than the spot or on the far side of the river. Falls back to the spot itself.
@@ -228,7 +281,7 @@ function ____exports.StandFor(bot, spot)
             local k = 0
             while k < s.StandAngles do
                 do
-                    local __continue32
+                    local __continue37
                     repeat
                         local a = 2 * math.pi * k / s.StandAngles
                         local c = Vector(
@@ -237,7 +290,7 @@ function ____exports.StandFor(bot, spot)
                             spot.z
                         )
                         if not IsLocationPassable(c) then
-                            __continue32 = true
+                            __continue37 = true
                             break
                         end
                         local h = GetHeightLevel(c)
@@ -245,9 +298,9 @@ function ____exports.StandFor(bot, spot)
                         if cost < bestCost then
                             best, bestCost = {at = c, height = h, spotHeight = spotHeight}, cost
                         end
-                        __continue32 = true
+                        __continue37 = true
                     until true
-                    if not __continue32 then
+                    if not __continue37 then
                         break
                     end
                 end
