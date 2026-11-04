@@ -47,6 +47,7 @@ const STAND_STUCK_S = 1.5;
 const STAND_STUCK_GAIN = 25;
 const LEAD_MAX_AFTER_AGGRO = 15;
 const WATCH_SEC = 8;
+const PACE_FOR = 3;
 const BAIL_FOR = 6;
 /** Seconds early to arrive at a rune (players aim for 3-5 s). */
 const RUNE_EARLY = 4;
@@ -112,8 +113,8 @@ export interface Camp {
     pick?: (this: void) => TaskAttacker | undefined;
     /** Extra proof the aggro landed (e.g. a neutral targets the bot), passed to `attackAndConfirm`. */
     confirmed?: (this: void) => boolean;
-    /** Seconds to pull the hit forward, read every frame until the order (e.g. stacks already in the box block each other).
-     *  CANDIDATE(earlier): one consumer, the double stack. */
+    /** Seconds to pull the hit forward (negative: later), read every frame until the order: stacks already in the box
+     *  block each other (double stack); a pull's wave read live (pull job). */
     earlier?: (this: void) => number;
 }
 
@@ -346,8 +347,8 @@ export interface PullPlan extends AggroOpts {
     first?: { camp: Camp; aggroAt: number };
     /** Watch at the meet point at least this long. Default 8. */
     watchSec?: number;
-    /** And until this time (e.g. a little after the wave arrives). */
-    watchUntil?: number;
+    /** And until this time (e.g. a little after the wave arrives); a function is read every frame of the watch. */
+    watchUntil?: number | ((this: void) => number | undefined);
     /** Absolute time the lead must be done by. Default aggroAt + 15. */
     leadDeadline?: number;
     /** Checked every frame of the lead and watch: a point to step back to while the camp is hitting the bot too hard (the
@@ -356,6 +357,11 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
+    /** Checked every frame after the hit, before the lead: true holds the bot where it is (the neutrals come to it), for
+     *  at most `paceFor` s, so a lead that would bring them to the meet point too early waits first (the host's call). */
+    pace?: (this: void) => boolean;
+    /** Default 3. */
+    paceFor?: number;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -388,6 +394,15 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
 
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;
+    if (p.pace !== undefined) {
+        const until = now() + (p.paceFor ?? PACE_FOR);
+        while (now() < until && p.pace()) {
+            if (!bot.IsAlive()) return fail("dead");
+            if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
+            hold(bot, "job_pace");
+            yield;
+        }
+    }
     if (p.lead.length > 0) {
         const led = yield* E().Verbs.walkPath(bot, p.lead, {
             tolerance: arrive,
@@ -403,10 +418,11 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
 
     h.label?.("watch");
     const spot = p.lead.length > 0 ? p.lead[p.lead.length - 1] : bot.GetLocation();
-    const until = math.max(now() + (p.watchSec ?? WATCH_SEC), p.watchUntil ?? 0);
+    const least = now() + (p.watchSec ?? WATCH_SEC);
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
-        if (now() >= until) return ok();
+        const w = typeof p.watchUntil === "function" ? p.watchUntil() : p.watchUntil;
+        if (now() >= math.max(least, w ?? 0)) return ok();
         if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
         if (dist(bot.GetLocation(), spot) > arrive) bot.Action_MoveToLocation(spot);
         else hold(bot, "job_watch");
@@ -423,6 +439,8 @@ export interface RunePlan {
     rune?: number;
     /** Rune position override for `pickUpRune`. */
     runeAt?: Vec;
+    /** Waypoints walked in order before `at` (a route around enemy towers). */
+    via?: Vec[];
     /** Seconds early to arrive at skill 1. Default 4. */
     early?: number;
     /** Arrival tolerance at `at`. Default 150. */
@@ -469,13 +487,16 @@ export function runeLeaveAt(bot: TaskUnit, p: RunePlan): number {
 export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody {
     const tolerance = p.tolerance ?? 150;
     h.label?.("travel");
-    const walked = yield* E().Verbs.walkTo(bot, p.at, {
-        tolerance,
-        timeout: math.huge,
-        stuckSecs: math.huge,
-        deadline: p.spawnAt + (p.lateBy ?? RUNE_LATE_BY),
-    });
-    if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
+    const legs = [...(p.via ?? []), p.at];
+    for (let i = 0; i < legs.length; i++) {
+        const walked = yield* E().Verbs.walkTo(bot, legs[i], {
+            tolerance: i < legs.length - 1 ? ARRIVE : tolerance,
+            timeout: math.huge,
+            stuckSecs: math.huge,
+            deadline: p.spawnAt + (p.lateBy ?? RUNE_LATE_BY),
+        });
+        if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
+    }
 
     h.label?.("wait");
     const go = math.max(p.spawnAt, now()) + E().Skill.react(bot);
@@ -521,6 +542,99 @@ export function* runeRun(bot: TaskUnit, p: RunePlan, h: JobHooks = {}): TaskBody
         if (r.reason !== "no_target" || now() >= graceUntil) return r;
         yield;
     }
+}
+
+/** What a hero does at the spawn (rune_plan's Act): take its spot's rune, deny it, stay off, cross to the other spot, or none. */
+export type SpawnAct = "take" | "deny" | "off" | "cross" | "none";
+
+export interface SpawnPlan {
+    /** The planned spot's rune id and location, and the other spot's. */
+    rune: number;
+    at: Vec;
+    otherRune: number;
+    otherAt: Vec;
+    /** Where to wait out of sight. */
+    stand: Vec;
+    spawnAt: number;
+    /** Seconds early to reach the spot. */
+    early: number;
+    /** Host decision, asked from one reaction delay after the spawn until it is not "none" or `decideFor` s pass. */
+    decide: (this: void) => SpawnAct;
+    decideFor?: number;
+    /** Seconds the deny attack-moves onto the spot before it gives up. Default 3. */
+    denyFor?: number;
+    /** Host reading of the deny: the rune left the spot with an enemy hero on it (taken) or not (gone). */
+    denyResult?: (this: void) => "gone" | "taken" | undefined;
+    /** Called with each phase's start time: stand, hide, walk, decide. */
+    phase?: (this: void, name: string, act?: SpawnAct) => void;
+}
+
+/**
+ * The 6:00 spawn run (slice rune-spawn): walk to the stand point, hold there out of sight until the walk in arrives
+ * `early` before the spawn, walk to the spot, then one reaction delay after the spawn act on the host's decision: pick the
+ * rune up (take, or cross to the other spot), attack-move onto the spot to deny it, or end (`cancelled` "off", or
+ * `no_target` "rune missing"). Late to the stand, it walks straight in. Labels `stand`, `hide`, `walk`, `decide`, then
+ * `pickup` or `deny`.
+ */
+export function* runeSpawnRun(bot: TaskUnit, p: SpawnPlan, h: JobHooks = {}): TaskBody {
+    const speed = () => math.max(1, bot.GetCurrentMovementSpeed?.() ?? 300);
+    const walkInAt = () => p.spawnAt - p.early - dist(p.stand, p.at) / speed();
+    h.label?.("stand");
+    p.phase?.("stand");
+    const stood = yield* E().Verbs.walkTo(bot, p.stand, { tolerance: 120, timeout: math.huge, stuckSecs: 2, deadline: walkInAt() });
+    if (!stood.success && stood.reason === "dead") return stood;
+    if (stood.success) {
+        h.label?.("hide");
+        p.phase?.("hide");
+        while (now() < walkInAt()) {
+            if (!bot.IsAlive()) return fail("dead");
+            if (dist(bot.GetLocation(), p.stand) > 120) bot.Action_MoveToLocation(p.stand);
+            else hold(bot, "rune_hide");
+            yield;
+        }
+    }
+    h.label?.("walk");
+    p.phase?.("walk");
+    const walked = yield* E().Verbs.walkTo(bot, p.at, { tolerance: 150, timeout: math.huge, stuckSecs: math.huge, deadline: p.spawnAt + RUNE_LATE_BY });
+    if (!walked.success) return walked.reason === "timeout" ? fail("timeout", "late") : walked;
+    const go = math.max(p.spawnAt, now()) + E().Skill.react(bot);
+    while (now() < go) {
+        if (!bot.IsAlive()) return fail("dead");
+        hold(bot, "rune_wait");
+        yield;
+    }
+    h.label?.("decide");
+    let act: SpawnAct = "none";
+    const until = now() + (p.decideFor ?? RUNE_GRACE);
+    while (true) {
+        if (!bot.IsAlive()) return fail("dead");
+        act = p.decide();
+        if (act !== "none" || now() >= until) break;
+        hold(bot, "rune_wait");
+        yield;
+    }
+    p.phase?.("decide", act);
+    if (act === "take" || act === "cross") {
+        h.label?.("pickup");
+        const rune = act === "take" ? p.rune : p.otherRune;
+        return yield* E().Verbs.pickUpRune(bot, rune, { at: act === "take" ? p.at : p.otherAt, timeout: RUNE_PICKUP_FOR });
+    }
+    if (act === "deny") {
+        h.label?.("deny");
+        const end = now() + (p.denyFor ?? 3);
+        while (now() < end) {
+            if (!bot.IsAlive()) return fail("dead");
+            const r = p.denyResult?.();
+            if (r === "gone") return ok();
+            if (r === "taken") return fail("taken_by_other", "deny");
+            // TaskUnit declares no attack-move; the Valve unit has it (the deny: a rune has no handle to attack).
+            (bot as unknown as { Action_AttackMove(loc: Vec): void }).Action_AttackMove(p.at);
+            yield;
+        }
+        return fail("missed", "deny");
+    }
+    if (act === "off") return fail("cancelled", "off");
+    return fail("no_target", "rune missing");
 }
 
 export interface ClearPlan {

@@ -261,6 +261,44 @@ do
 end
 
 do
+    -- Live re-timing (slice pull-live): a hit moved later by the host's `earlier` while waiting; a pace that holds the bot
+    -- after the hit until 8 s (hold posted, lead after); a watch end read live, moved by the host during the watch.
+    local sim, bot = world()
+    local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
+    local at79
+    local waveEnd = 11
+    sim:at(7.9, function() at79 = { x = bot.loc.x, y = bot.loc.y } end)
+    sim:at(9, function() waveEnd = 13 end)
+    local camp = { stand = { x = 600, y = 0 }, box = box(750, 0, 100), earlier = function() return -1.5 end }
+    start(bot, function(ctx)
+        return job.pull(ctx, pullPlan{ camp = camp, watchSec = 0.5, paceFor = 5,
+            pace = function() return sim.t < 8 end, watchUntil = function() return waveEnd end })
+    end)
+    local r, t, _, hit = run(sim, bot, { n })
+    T.eq("pull live: ok", r.reason, "ok")
+    T.check("pull live: hit moved 1.5 s later", hit[1] ~= nil and hit[1] >= 6.5 and hit[1] <= 6.8 + DT, hit[1])
+    T.check("pull live: paced hold posted", holdsOf(sim).job_pace)
+    T.check("pull live: still by the camp while paced (7.9 s)", at79 ~= nil and Sim.dist(at79, { x = 600, y = 0 }) <= 150)
+    T.check("pull live: watch end followed the host (13, not 11): " .. tostring(t), t >= 13 - 1e-9 and t <= 13 + 2 * DT)
+end
+
+do
+    -- The pace hold is capped at paceFor even while the host still says wait: by the stand 0.8 s after the hit (the
+    -- lead's walk would be about 240 away by then), on the lead's walk after the 1 s cap.
+    local sim, bot = world()
+    local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
+    local seen = {}
+    for i = 40, 90 do sim:at(i / 10, function() seen[i] = Sim.dist(bot.loc, { x = 600, y = 0 }) end) end
+    start(bot, function(ctx) return job.pull(ctx, pullPlan{ watchSec = 0.5, paceFor = 1, pace = function() return true end }) end)
+    local r, _, _, hit = run(sim, bot, { n })
+    T.eq("pull pace cap: ok", r.reason, "ok")
+    local h = hit[1] and math.ceil(hit[1] * 10) or 0
+    T.check("pull pace cap: held by the stand 0.8 s after the hit", seen[h + 8] ~= nil and seen[h + 8] <= 150, seen[h + 8])
+    T.check("pull pace cap: walking the lead 2.5 s after the hit", seen[h + 25] ~= nil and seen[h + 25] > 250, seen[h + 25])
+    T.check("pull pace cap: still led to the meet point", Sim.dist(bot.loc, { x = 200, y = 600 }) <= 100)
+end
+
+do
     -- Lead blocked: the camp is chasing a bot that cannot reach the meet point -> fails with message "lead".
     local sim, bot = world()
     sim:addNeutral{ x = 700, y = 0, hp = 500 }
@@ -332,6 +370,22 @@ do
     T.check("rune: arrived before the spawn", arrivedAt ~= nil and arrivedAt < 8)
     T.check("rune: no pick-up order before the spawn", firstPick ~= nil and firstPick >= 8)
     T.check("rune: wait hold posted", holdsOf(sim).rune_wait)
+    sim:removeRuneGlobals()
+end
+
+do
+    -- A shrine run with a waypoint walks through it before the shrine (the contest's route around an enemy tower).
+    local sim, bot = runeWorld()
+    local via = { x = 400, y = 600 }
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 850, y = 0 }, via = { via }, spawnAt = 8, channel = 1, radius = 300 }) end)
+    local passed, passedFirst = false, nil
+    for _ = 1, 400 do
+        if R.Current(bot) == nil then break end
+        frame(sim, bot)
+        if not passed and Sim.dist(bot.loc, via) <= 100 then passed = true passedFirst = Sim.dist(bot.loc, { x = 850, y = 0 }) > 300 end
+    end
+    T.check("rune via: reached the waypoint before the shrine", passed and passedFirst)
+    T.eq("rune via: then channelled at the shrine", R.Last(bot).result.reason, "ok")
     sim:removeRuneGlobals()
 end
 

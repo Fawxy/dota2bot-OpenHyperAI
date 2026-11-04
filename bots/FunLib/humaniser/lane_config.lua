@@ -49,7 +49,8 @@ ____exports.DEFAULTS = {
         PlanMisread = {0.3, 0.05},
         CoverAbsentCore = {0.3, 0.9},
         DoubleDraw = {0.2, 0},
-        Foresight = {0, 1}
+        Foresight = {0, 1},
+        SureCommit = {0.5, 1}
     },
     Eq = {
         Safe = -0.7,
@@ -298,6 +299,7 @@ ____exports.DEFAULTS = {
         LiveWindow = 5,
         LiveMaxOffset = 600,
         LiveMaxShift = 4,
+        LiveEvery = 0.25,
         WatchAfterWave = 3,
         LanePaths = {}
     },
@@ -433,6 +435,11 @@ function ____exports.Gauss()
 end
 function ____exports.Jitter(skill)
     return ____exports.Gauss() * ____exports.Curve("JitterSigma", skill)
+end
+--- One uniform [0, 1) draw from the engine's Skill rng, or undefined without the tasks bundle (no host fallback).
+function ____exports.Draw()
+    local r = rng()
+    return r ~= nil and r.random() or nil
 end
 function ____exports.Roll(chance)
     local r = rng()

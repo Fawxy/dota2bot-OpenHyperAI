@@ -40,6 +40,9 @@ export const DEFAULTS = {
     PreHit: true,
     /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
     RuneRotation: true,
+    /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's
+     *  pickup give-up (rune_pickup). Needs JobChooser and RuneRotation for the supports' side. */
+    RuneSpawn: true,
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,

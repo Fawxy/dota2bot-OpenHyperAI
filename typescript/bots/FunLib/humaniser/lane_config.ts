@@ -36,7 +36,8 @@ export type CurveName =
     | "PlanMisread"
     | "CoverAbsentCore"
     | "DoubleDraw"
-    | "Foresight";
+    | "Foresight"
+    | "SureCommit";
 
 export const DEFAULTS = {
     Enable: true,
@@ -88,6 +89,8 @@ export const DEFAULTS = {
         CoverAbsentCore: [0.3, 0.9],
         DoubleDraw: [0.2, 0.0],
         Foresight: [0, 1],
+        // Slice rune-spawn, Plays' sure tier: the chance a sure play commits (1 at skill 1: no draw). Judgement.
+        SureCommit: [0.5, 1],
     } as Record<string, number[]>,
     Eq: { Safe: -0.7, Off: -0.7, Mid: -0.1, MidPreRune: 0.15, XpDenyWeight: 0.2 },
     Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },
@@ -348,6 +351,8 @@ export const DEFAULTS = {
         LiveWindow: 5,
         LiveMaxOffset: 600,
         LiveMaxShift: 4,
+        // Live re-timing (slice pull-live): the wave is read again this often from the leave time to the meet point.
+        LiveEvery: 0.25,
         WatchAfterWave: 3,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
@@ -486,6 +491,12 @@ export function Gauss(): number {
 
 export function Jitter(skill: number): number {
     return Gauss() * Curve("JitterSigma", skill);
+}
+
+/** One uniform [0, 1) draw from the engine's Skill rng, or undefined without the tasks bundle (no host fallback). */
+export function Draw(): number | undefined {
+    const r = rng();
+    return r !== undefined ? r.random() : undefined;
 }
 
 export function Roll(chance: number): boolean {

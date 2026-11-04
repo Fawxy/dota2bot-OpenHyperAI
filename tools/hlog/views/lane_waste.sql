@@ -7,7 +7,7 @@
 --   `sup_d` the nearest one's distance, `sup_reach` 1 when one is within its `ar` (default 150) + 300.
 -- pulled: the other team pulled this wave: an `ok` ev=pull_job by a hero not of the logging team, its camp's spawn within 800 of
 --   the death, the death 0-30 s after the planned hit second (`slot`; 30 s, one wave, is `judgement`).
--- camp_d: distance to the nearest neutral camp's spawn point (camp_boxes.json `x`, `y`; pinned by test/lane_waste.test.js), and
+-- camp_d: distance to the nearest neutral camp's spawn point (fragment camp_spawns), and
 --   `lane` the death's lane (fragment lane_label).
 -- place: tower (tw = 1: one of our towers hit it the frame before; a creep our creeps finish under the tower reads the same, so
 --   this is "under our tower", not "killed by it"), open (tw = 0), untagged (no tw: a build before the lasthit-refine-logs slice).
@@ -23,13 +23,8 @@
 -- ensure: ev_snap(pid, x, y, alive, ar)
 -- ensure: ev_bot(pid, team, pos)
 -- ensure: ev_pull_job(pid, camp, slot, res)
-WITH camps(idx, x, y) AS (VALUES
-    (1, 3978, -5027), (2, 4649, -3699), (3, -1454, -3357), (4, 186, -5198), (5, -5015, -96), (6, -1983, -4815),
-    (7, -4013, 991), (8, -721, -7696), (9, -8314, -553), (10, 2768, -8336), (11, 1921, -3975), (12, -8023, -1838),
-    (13, -2415, -8402), (14, 4416, -8432), (15, -852, 4940), (16, 3392, -1408), (17, 7928, -120), (18, -4824, 3914),
-    (19, 4352, 48), (20, 1223, 4176), (21, 336, 7696), (22, 1064, 2580), (23, 8429, 1262), (24, -2880, 7376),
-    (25, -2596, 3850), (26, -3911, 4829), (27, 2016, 7896), (28, -4208, 8336)
-),
+WITH
+-- include: camp_spawns
 d AS (
     SELECT c.game_id, c.seq, c.t, c.team, c.kind, c.x, c.y, c.tw,
         min(coalesce(c.p1d, 1e9), coalesce(c.p2d, 1e9), coalesce(c.p3d, 1e9)) AS core_d,

@@ -40,6 +40,8 @@ export interface PullTiming {
     lanePath?: number[][];
     /** Seconds the wave runs ahead of the constant-speed model on this lane (WaveAhead). */
     ahead?: number;
+    /** The team whose wave is pulled (ours or the other team's); LiveRead reads that team's creeps. */
+    team?: number;
 }
 
 /** A live reading of our wave against the plan: the shift from its body (applied) and from its front creep (logged). */
@@ -121,7 +123,7 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const waveAfter = WalkLength(origin, leadPath) / neutralSpeed + cfg.Lead - (half ? t.HalfPullLater : 0);
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
-    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead };
+    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team };
 }
 
 /** WaveAhead for `team`'s `lane`: the safe lane's or the off lane's, 0 for mid. */
@@ -167,7 +169,7 @@ export function ForCamp(data: Camps.CampJobData, half: boolean, meet?: Vector): 
 }
 
 /**
- * Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, our lane creeps
+ * Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, its lane creeps
  * within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
  * WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
  * ahead of the creeps that take the neutrals (camp 1 hit 0.5-1 s early on the front creep, replay pdg3_C), so it is only
@@ -185,7 +187,8 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
     let front: number | undefined;
     let sum = 0;
     let n = 0;
-    for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+    const kind = timing.team === undefined || timing.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
+    for (const c of GetUnitList(kind) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
         if (off > cfg.LiveMaxOffset || math.abs(along - expected) > window) continue;
@@ -200,4 +203,44 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
 
 export function LiveShift(timing: PullTiming, aggroAt: number, now: number): number | undefined {
     return LiveRead(timing, aggroAt, now)?.shift;
+}
+
+/**
+ * A pull's hit second followed live from its slot to the order and on through the lead: the wave is read again every
+ * LiveEvery s until it reaches the meet point, and the last reading stands once it no longer can be read (the wave there,
+ * or not seen). Any puller and either team's wave: it reads only the timing it is given.
+ */
+export interface LiveHit {
+    timing: PullTiming;
+    slot: number;
+    /** The last reading taken (undefined until one is). */
+    read?: LiveReading;
+    /** The first reading's shift: what the hit was at the start. */
+    first?: number;
+    readAt?: number;
+    reads: number;
+}
+
+export function Track(timing: PullTiming, slot: number): LiveHit {
+    return { timing, slot, reads: 0 };
+}
+
+/** Reads the wave if LiveEvery has passed since the last read; returns the hit second (slot + the last shift). */
+export function Update(l: LiveHit, now: number): number {
+    if (l.readAt === undefined || now - l.readAt >= settings().LiveEvery) {
+        l.readAt = now;
+        const r = LiveRead(l.timing, l.slot, now);
+        if (r !== undefined) {
+            l.read = r;
+            l.reads += 1;
+            if (l.first === undefined) l.first = r.shift;
+        }
+    }
+    return l.slot + (l.read?.shift ?? 0);
+}
+
+/** When the wave's body reaches the meet point by the last reading; undefined for a timing with no wave model. */
+export function WaveAt(l: LiveHit, now: number): number | undefined {
+    const after = l.timing.waveAfter;
+    return after !== undefined ? Update(l, now) + after : undefined;
 }

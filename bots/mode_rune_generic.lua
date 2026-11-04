@@ -50,7 +50,9 @@ local function CheckPendingPickup()
 	end
 end
 
+-- Ours.RuneSpawn: the team-wide give-up timed from the first pickup order (rune_pickup), beside the guard above.
 local function IsUnpickable(nRune)
+	if J.Humaniser.RunePickup.On() and J.Humaniser.RunePickup.Unpickable(nRune) then return true end
 	return nUnpickableUntil[nRune] ~= nil and DotaTime() < nUnpickableUntil[nRune]
 end
 
@@ -235,7 +237,7 @@ function GetDesire()
 			else
 				-- Power rune / water rune
 				-- Ours.RuneRotation: this hero's power spawn is the rune job's to decide, taken or skipped.
-				if J.Humaniser.RuneJob.Owns(bot, 'power') then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
+				if J.Humaniser.RuneJob.Owns(bot, 'power') or J.Humaniser.RunePlan.OwnsMid(bot) then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
 				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
 				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end
@@ -249,7 +251,10 @@ end
 local GetDesireRaw = GetDesire
 function GetDesire()
 	sGate = nil
+	-- Ours.RuneSpawn: the mid's side of the 6:00 plan (rune_job MidWants) runs in this mode, ahead of OHA's rune logic.
+	if J.Humaniser.RuneJob.MidWants(bot) then return J.Humaniser.RuneJob.MID_DESIRE end
 	CheckPendingPickup()
+	if J.Humaniser.RunePickup.On() then J.Humaniser.RunePickup.Tick(bot) end
 	local nRaw = GetDesireRaw()
 	-- The mid-rune floor claim (3b) only lifts a frame that scored a power rune, never past a gate above.
 	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
@@ -318,6 +323,7 @@ end
 --------------------------------------------------------------------
 local fNextMovementTime = -math.huge
 function Think()
+	if J.Humaniser.RuneJob.MidStep(bot) then return end
 	if bot:IsInvulnerable() and bot:DistanceFromFountain() < 500 then
 		bot:Action_MoveToLocation(bot:GetLocation() + RandomVector(500))
 		return
@@ -477,6 +483,10 @@ function Think()
 				bot:Action_MoveToLocation(vRuneLocation)
 				return
 			else
+				if J.Humaniser.RunePickup.On() and not J.Humaniser.RunePickup.Try(bot, rune.location) then
+					bot:Action_ClearActions(false)
+					return
+				end
 				if tPendingPickup == nil then
 					tPendingPickup = { rune = rune.location, time = DotaTime() }
 				end

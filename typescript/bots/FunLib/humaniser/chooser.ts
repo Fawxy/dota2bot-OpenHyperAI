@@ -151,6 +151,9 @@ function hostDesire(bot: Unit): number | undefined {
 /** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
 export function Decide(bot: Unit, mode: string): number | undefined {
     if (!Ours.On("JobChooser")) return undefined;
+    // The mid's 6:00 trip runs in the rune mode, not the host: gating that mode to 0 handed the mid to the attack mode
+    // 9 of 10 trips (rspchk1), and the host must hold 0 so OHA's farm desire cannot take it either.
+    if (RuneJob.HostOf(bot) === BotMode.Rune) return mode === "rune" || EXCEPTIONS[mode] !== undefined ? undefined : 0;
     if (mode === HOST) return hostDesire(bot);
     if (!Running(bot) || EXCEPTIONS[mode] !== undefined) return undefined;
     return 0;
