@@ -39,6 +39,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = { CoreCampTrip = o.off ~= true }
+	C.Overrides = { CampForce = o.force == true }
 	T = o.t or 300
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -150,6 +151,44 @@ do
 	local q = CC.Plan(core, FRONT, 300, bloody)
 	check("loss: the same camp is refused when the lane loses more than it pays", q == nil, q and q.net)
 	check("loss: priced at creep gold times the core's share", math.abs(CC.LossBetween(bloody, 300, 310) - 17 * 40 * 0.5) < 1e-6, CC.LossBetween(bloody, 300, 310))
+end
+
+-- The enemy tower: a wave crashing into their T1 is not the next lane gold, and its deaths are priced at the tower share.
+do
+	local H = world({ camps = { { "small", SMALL } } })
+	local CC = H.CoreCamp
+	-- Dire T1 at s = 9,500: fronts meeting at 9,000 are in its reach, at 7,000 they are not.
+	local path = { pts = PATH.pts, s = PATH.s, spawnR = 0, spawnD = 14000, towers = { { team = 2, s = 4500 }, { team = 3, s = 9500 } } }
+	local smp = {}
+	for t = 300, 360 do
+		local meet = (t <= 320 and 9000) or (t >= 335 and 7000) or nil
+		local front = meet and { [2] = meet - 100, [3] = meet + 100 } or { [2] = 6000, [3] = 8000 }
+		smp[#smp + 1] = { t = t, front = front, dead = { [2] = 0, [3] = math.min(t, 320) - 300 } }
+	end
+	local c = CC.ClashOf(smp, path, 2)
+	check("tower: the clash is the next meeting outside their T1, not the crash under it", c ~= nil and c.t == 335, c and c.t)
+	check("tower: deaths under their T1 cost the tower share", c ~= nil and math.abs(CC.LossBetween(c, 300, 320) - 20 * 40 * 0.2) < 1e-6, c and CC.LossBetween(c, 300, 320))
+	path.towers = { { team = 2, s = 4500 }, { team = 3, s = 12000 } }
+	local open = CC.ClashOf(smp, path, 2)
+	check("tower: the same fight outside their reach is the clash now, at the full share", open ~= nil and open.t == 300 and math.abs(CC.LossBetween(open, 300, 320) - 20 * 40 * 0.5) < 1e-6, open and open.t)
+end
+
+-- The wave is better: its fight at the front is now (outside their tower), so the core stays, held by the gap.
+do
+	local H, core = world({ t = 294.5, camps = { { "small", SMALL } }, clash = 0, at = Vector(-1500, -5000) })
+	local out = run(H, core, 301)
+	local g = lines(out, "core_camp", "gates")[1]
+	check("wave now: no trip", #lines(out, "core_camp", "start") == 0)
+	check("wave now: every second held by the gap", g ~= nil and tonumber(field(g, "h_gap")) >= 5 and field(g, "h_trip") == nil, g)
+end
+
+-- The harness (Overrides.CampForce): the same 8 s gap that holds the core sends it, and the trip runs to its end.
+do
+	local H, core, camp = world({ t = 295, camps = { { "small", SMALL } }, clash = 8, force = true })
+	local out = run(H, core, 330)
+	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
+	check("harness: a trip starts despite the gap", start ~= nil, #lines(out, "core_camp"))
+	check("harness: the camp is cleared and the core walks back", camp[1].hp == 0 and ended ~= nil and field(ended, "why") == "back", ended)
 end
 
 -- A trip end to end: started by the chooser, the camp cleared on the verb, the walk back, `back` logged; FarmPattern idle.

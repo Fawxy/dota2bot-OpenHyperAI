@@ -14,4 +14,10 @@ end
 function ____exports.LaneOnly()
     return ____exports.Get("LaneOnly") == true
 end
+--- Overrides.CampForce (slice core-next-gold, harness games only): an owned core's camp trip starts whenever an open camp is
+-- in reach, without the decision's gates (creeps at the core, the gap to the clash, the return deadline, the least net). The
+-- safety gates stay. A harness for the trip's execution (walk, clear, chain, walk back, its ends and deaths), not a behaviour.
+function ____exports.CampForce()
+    return ____exports.Get("CampForce") == true
+end
 return ____exports
