@@ -828,6 +828,7 @@
   },
   "trade": {
    "pid": "num",
+   "role": "str",
    "kind": "str",
    "tgt": "num",
    "result": "str",
@@ -1008,7 +1009,10 @@
    "hm": "num",
    "sx": "num",
    "sy": "num",
-   "hph": "num"
+   "hph": "num",
+   "ne": "num",
+   "nk": "num",
+   "nr": "num"
   }
  },
  "kinds": {
@@ -1314,6 +1318,7 @@
    "msg": "text"
   },
   "ev_trade": {
+   "role": "text",
    "kind": "text",
    "result": "text",
    "why": "text"

@@ -844,9 +844,11 @@ export const EVENTS = {
         ca: "num",
         msg: "str",
     },
-    /** One per core trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
+    /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",
+        /** `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot). */
+        role: "str",
         kind: "str",
         tgt: "num",
         result: "str",
@@ -1070,6 +1072,11 @@ export const EVENTS = {
         sx: "num",
         sy: "num",
         hph: "num",
+        /** The nearest visible enemy hero (slice support-spot): its distance, its ready damaging abilities (trained, not
+         *  passive, off cooldown, mana for it) and the longest cast range among them (0 with none ready). */
+        ne: "num",
+        nk: "num",
+        nr: "num",
     },
 } as const;
 

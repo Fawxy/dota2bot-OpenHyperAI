@@ -40,9 +40,16 @@ export const DEFAULTS = {
     SupportPull: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
-     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget.
+     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
+     * SupportDeny and SupportHarass on, a pos4-5 too, instead of OHA's PositionThink.
      */
     LaneSpot: true,
+    /**
+     * Slice support-spot: with SupportDeny on, a pos4-5's attack mode is ours in lane (harass through states/core_trade, the
+     * aggro-free plan) and OHA's Lua port outside it, and with LaneSpot on the support stands on our lane spot (a support_lane
+     * step) instead of OHA's PositionThink; false leaves both OHA's and Valve's.
+     */
+    SupportHarass: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

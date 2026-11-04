@@ -7,7 +7,7 @@
 --   lane      laning mode at the last snap
 --   <mode>    any other mode at the last snap (out of our context)
 -- Also: hp at the last alive snap, mode, activity, and whether an enemy hero was within attack range + 100 (in_range).
--- Params: like, until.
+-- Params: like, until; pos_lo, pos_hi the lineup positions (default 1-3; 4-5 reads the supports, slice support-spot).
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: core_death
 r AS (SELECT gm.file, cd.team, cd.pos, cd.pid, cd.t, cd.hp, cd.mode, cd.activity, cd.in_range, cd.cause FROM cd JOIN gm ON gm.game_id = cd.game_id)

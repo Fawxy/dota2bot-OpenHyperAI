@@ -69,6 +69,73 @@ local function isRangedCreep(c)
         true
     )) ~= nil
 end
+--- An enemy hero's damaging abilities it could cast now (trained, not passive or hidden, off cooldown, its mana covers them) and
+-- the longest cast range among them: read for telemetry (ev=lane_pos `nk`, `nr`), not a limit yet (lane-positioning Open items).
+function ____exports.ReadyNukes(enemy)
+    local n = 0
+    local range = 0
+    local mana = enemy:GetMana()
+    do
+        local i = 0
+        while i < 6 do
+            do
+                local __continue8
+                repeat
+                    local a = enemy:GetAbilityInSlot(i)
+                    if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:IsPassive() or a:GetLevel() < 1 then
+                        __continue8 = true
+                        break
+                    end
+                    if a:GetAbilityDamage() <= 0 or a:GetCooldownTimeRemaining() > 0 or a:GetManaCost() > mana then
+                        __continue8 = true
+                        break
+                    end
+                    n = n + 1
+                    range = math.max(
+                        range,
+                        a:GetCastRange()
+                    )
+                    __continue8 = true
+                until true
+                if not __continue8 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return {n, range}
+end
+--- The nearest visible enemy hero within 1,600 of `bot`: its distance and ReadyNukes, or undefined with none.
+function ____exports.NearestNuke(bot)
+    local best
+    local bestD = math.huge
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
+        do
+            local __continue12
+            repeat
+                if not alive(h) then
+                    __continue12 = true
+                    break
+                end
+                local dist = GetUnitToUnitDistance(bot, h)
+                if dist < bestD then
+                    bestD = dist
+                    best = h
+                end
+                __continue12 = true
+            until true
+            if not __continue12 then
+                break
+            end
+        end
+    end
+    if best == nil then
+        return nil
+    end
+    local n, range = unpack(____exports.ReadyNukes(best))
+    return {bestD, n, range}
+end
 function ____exports.HpMargin(hpFrac)
     if hpFrac >= HP_SAFE then
         return 0
@@ -102,11 +169,11 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
         local i = 0
         while i < #heroes do
             do
-                local __continue12
+                local __continue22
                 repeat
                     local h = heroes[i + 1]
                     if not alive(h) then
-                        __continue12 = true
+                        __continue22 = true
                         break
                     end
                     local dist = d2(
@@ -119,9 +186,9 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
                     if dist < reach[i + 1] + margin then
                         hp = true
                     end
-                    __continue12 = true
+                    __continue22 = true
                 until true
-                if not __continue12 then
+                if not __continue22 then
                     break
                 end
             end
@@ -130,10 +197,10 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
     end
     for ____, c in ipairs(creeps) do
         do
-            local __continue16
+            local __continue26
             repeat
                 if not alive(c) then
-                    __continue16 = true
+                    __continue26 = true
                     break
                 end
                 local ring = isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING
@@ -147,9 +214,9 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach)
                 if dist < ring + margin then
                     hp = true
                 end
-                __continue16 = true
+                __continue26 = true
             until true
-            if not __continue16 then
+            if not __continue26 then
                 break
             end
         end
@@ -221,8 +288,9 @@ function ____exports.Compute(bot, role)
         py = at.y + dy * (range - RANGE_INSET)
         anchor = "creep"
     else
-        px = front.x + dx * MELEE_BEHIND
-        py = front.y + dy * MELEE_BEHIND
+        local behind = role == "support" and math.max(MELEE_BEHIND, range - RANGE_INSET) or MELEE_BEHIND
+        px = front.x + dx * behind
+        py = front.y + dy * behind
     end
     local nx = -dy
     local ny = dx
@@ -271,11 +339,11 @@ function ____exports.Compute(bot, role)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue44
+                    local __continue54
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue44 = true
+                            __continue54 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -295,9 +363,9 @@ function ____exports.Compute(bot, role)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue44 = true
+                        __continue54 = true
                     until true
-                    if not __continue44 then
+                    if not __continue54 then
                         break
                     end
                 end

@@ -199,6 +199,8 @@ export interface Ability {
     GetCooldown(): number;
     IsUltimate(): boolean;
     GetBehavior(): number;
+    GetAbilityDamage(): number;
+    IsPassive(): boolean;
 }
 
 export interface Talent {}
