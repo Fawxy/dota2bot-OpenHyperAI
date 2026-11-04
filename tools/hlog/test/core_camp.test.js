@@ -66,3 +66,19 @@ test('coverage: a window with a fitted camp and a skip but no start counts misse
         ['enemy-missing', 1, 0, 1],
     ]);
 });
+
+test('gates: per-minute tallies summed by position, a camp fitting counted from skips and starts', () => {
+    const out = run('core_camp_gates.sql', [
+        line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
+        line(0, 'bot pid=2 hero=h2 team=2 pos=2'),
+        line(180, 'core_camp pid=1 pos=1 lane=3 phase=gates min=2 h_wave=40 h_gap=15 h_skip=3 h_trip=1'),
+        line(240, 'core_camp pid=1 pos=1 lane=3 phase=gates min=3 h_wave=60'),
+        line(240.5, 'core_camp pid=2 pos=2 lane=2 phase=gates min=3 h_mode=50 h_plan=10'),
+        line(250, 'core_camp pid=1 pos=1 lane=3 phase=skip clash=270 win=9 why=threat camp=1'),
+    ]);
+    assert.deepStrictEqual(out.map((r) => [r.pos, r.cores, r.secs, r.wave, r.gap, r.mode, r.no_plan, r.fit]), [
+        [1, 1, 119, 100, 15, 0, 0, 4],
+        [2, 1, 60, 0, 0, 50, 10, 0],
+    ]);
+});
+
