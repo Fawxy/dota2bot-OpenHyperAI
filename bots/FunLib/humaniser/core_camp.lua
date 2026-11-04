@@ -309,11 +309,17 @@ ____exports.SETTINGS = {
     StackedClearMul = 0.8,
     Learn = 0.3,
     LearnClamp = {0.4, 2.5},
-    LateGrowth = 1.15
+    LateGrowth = 1.15,
+    ClearHP = {small = 0.12, medium = 0.2, large = 0.35, ancient = 0.6},
+    NeutralsPerStack = 3,
+    HPRefLevel = 6,
+    HPLevelStep = 0.88,
+    ArriveHP = 0.4
 }
 local running = {}
 local nextPlanAt = {}
 local pace = {}
+local hpRate = {}
 --- Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next).
 local cleared = {}
 --- Skip lines written, by pid: one per wave window and reason.
@@ -324,6 +330,7 @@ function ____exports.ResetCache()
         running,
         nextPlanAt,
         pace,
+        hpRate,
         cleared,
         skipped,
         gates
@@ -408,14 +415,37 @@ local function growLate(bot)
     local pid = bot:GetPlayerID()
     pace[pid] = clamp((pace[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
 end
+function ____exports.PriorClearHP(____type, level, stacks)
+    local s = ____exports.SETTINGS
+    local scale = clamp(s.HPLevelStep ^ (level - s.HPRefLevel), s.LevelScale)
+    return (s.ClearHP[____type] or s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks)
+end
+function ____exports.HPRate(bot)
+    return hpRate[bot:GetPlayerID()] or 1
+end
+local function learnHP(bot, measured, prior)
+    if prior <= 0 then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local old = hpRate[pid] or 1
+    hpRate[pid] = clamp(
+        old + ____exports.SETTINGS.Learn * (math.max(measured, 0) / prior - old),
+        ____exports.SETTINGS.LearnClamp
+    )
+end
+local function growHP(bot)
+    local pid = bot:GetPlayerID()
+    hpRate[pid] = clamp((hpRate[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
+end
 --- Whether lane position `s` lies within the enemy T1's reach (Radiant runs along increasing `s`).
 function ____exports.UnderEnemyTower(path, team, s)
     for ____, tw in ipairs(path.towers) do
         do
-            local __continue24
+            local __continue29
             repeat
                 if tw.team == team then
-                    __continue24 = true
+                    __continue29 = true
                     break
                 end
                 local ____temp_0
@@ -426,7 +456,7 @@ function ____exports.UnderEnemyTower(path, team, s)
                 end
                 return ____temp_0
             until true
-            if not __continue24 then
+            if not __continue29 then
                 break
             end
         end
@@ -481,6 +511,22 @@ function ____exports.LossBetween(c, from, to)
 end
 local function currentMinute(t)
     return math.floor(t / 60)
+end
+--- Stacks read from the camp itself (any stacker's, not only our stack job's): floor(live neutrals / NeutralsPerStack) - 1.
+local function seenStacks(center)
+    local n = 0
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        if u ~= nil and u ~= nil and u:IsAlive() and dist(
+            u:GetLocation(),
+            center
+        ) <= ____exports.SETTINGS.CampRadius then
+            n = n + 1
+        end
+    end
+    return math.max(
+        0,
+        math.floor(n / ____exports.SETTINGS.NeutralsPerStack) - 1
+    )
 end
 local function campNeutralsSeen(center)
     for ____, n in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
@@ -568,10 +614,10 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue63
+            local __continue72
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue63 = true
+                    __continue72 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -582,17 +628,26 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue63 = true
+                    __continue72 = true
                     break
                 end
-                local stacks = Stacking.StackCount(spawner.idx)
+                local stacks = math.max(
+                    Stacking.StackCount(spawner.idx),
+                    seenStacks(center)
+                )
                 local prior = ____exports.PriorClearTime(spawner.type, level, stacks)
                 local clr = prior * ____exports.Pace(bot)
+                local hpPrior = ____exports.PriorClearHP(spawner.type, level, stacks)
+                local hpc = hpPrior * ____exports.HPRate(bot)
+                if hpOf(bot) - hpc < s.ArriveHP then
+                    __continue72 = true
+                    break
+                end
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
                 local force = Overrides.CampForce()
                 if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
-                    __continue63 = true
+                    __continue72 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
@@ -606,14 +661,16 @@ function ____exports.Plan(bot, from, now, c)
                         leaveBy = ret - back,
                         clr = clr,
                         prior = prior,
+                        hpc = hpc,
+                        hpPrior = hpPrior,
                         gold = gold,
                         loss = loss,
                         net = net
                     }
                 end
-                __continue63 = true
+                __continue72 = true
             until true
-            if not __continue63 then
+            if not __continue72 then
                 break
             end
         end
@@ -625,10 +682,10 @@ local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue70
+            local __continue80
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue70 = true
+                    __continue80 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -641,9 +698,9 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue70 = true
+                __continue80 = true
             until true
-            if not __continue70 then
+            if not __continue80 then
                 break
             end
         end
@@ -655,10 +712,10 @@ local function threatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue75
+            local __continue85
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue75 = true
+                    __continue85 = true
                     break
                 end
                 if distToSegment(
@@ -668,9 +725,9 @@ local function threatOnWay(bot, at)
                 ) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue75 = true
+                __continue85 = true
             until true
-            if not __continue75 then
+            if not __continue85 then
                 break
             end
         end
@@ -685,18 +742,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue81
+            local __continue91
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue81 = true
+                    __continue91 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue81 = true
+                __continue91 = true
             until true
-            if not __continue81 then
+            if not __continue91 then
                 break
             end
         end
@@ -775,6 +832,9 @@ end
 local function r1(x)
     return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil
 end
+local function r2(x)
+    return math.floor(x * 100 + 0.5) / 100
+end
 local function planFields(p)
     return {
         {"camp", p.camp},
@@ -786,6 +846,10 @@ local function planFields(p)
         {
             "clr",
             r1(p.clr)
+        },
+        {
+            "hpc",
+            r2(p.hpc)
         },
         {
             "gold",
@@ -990,6 +1054,7 @@ local body = __TS__Generator(function(bot, t, ctx)
             break
         end
         t.engagedAt = nil
+        t.hpAtEngage = nil
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
             {
@@ -997,9 +1062,8 @@ local body = __TS__Generator(function(bot, t, ctx)
                 radius = ____exports.SETTINGS.CampRadius,
                 deadline = t.plan.leaveBy,
                 onEngage = function(at)
-                    local ____at_3 = at
-                    t.engagedAt = ____at_3
-                    return ____at_3
+                    t.engagedAt = at
+                    t.hpAtEngage = hpOf(bot)
                 end
             },
             hooks
@@ -1016,6 +1080,13 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         if r.message == "cleared" and t.engagedAt ~= nil then
             learn(bot, now - t.engagedAt, t.plan.prior)
+            if t.hpAtEngage ~= nil then
+                learnHP(
+                    bot,
+                    t.hpAtEngage - hpOf(bot),
+                    t.plan.hpPrior
+                )
+            end
         end
         markCleared(
             bot:GetTeam(),
@@ -1048,6 +1119,9 @@ end)
 local function finish(bot, t, r, label)
     running[bot:GetPlayerID()] = nil
     local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
+    if why == "interrupted:hp" and t.returning ~= true then
+        growHP(bot)
+    end
     jobLine(bot, t, "end", why)
     log(
         bot,
@@ -1079,6 +1153,14 @@ local function finish(bot, t, r, label)
             {
                 "pace",
                 r1(____exports.Pace(bot))
+            },
+            {
+                "hp",
+                r2(hpOf(bot))
+            },
+            {
+                "hpr",
+                r2(____exports.HPRate(bot))
             }
         }
     )
