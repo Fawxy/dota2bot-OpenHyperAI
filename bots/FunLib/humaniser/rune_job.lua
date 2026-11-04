@@ -832,6 +832,16 @@ local function finish(bot, t, r, label)
         {
             "vbad",
             t.kind == "contest" and takeRejected(bot) or nil
+        },
+        {
+            "vpts",
+            t.via ~= nil and t.route ~= nil and table.concat(
+                __TS__ArrayMap(
+                    t.via,
+                    function(____, q) return (tostring(math.floor(q.x)) .. ",") .. tostring(math.floor(q.y)) end
+                ),
+                ";"
+            ) or nil
         }
     )
     local ____opt_21 = t.play or t.fight
@@ -869,7 +879,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue78
+            local __continue79
             repeat
                 local mine
                 local function skip(why)
@@ -886,12 +896,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue78 = true
+                    __continue79 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue78 = true
+                        __continue79 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -951,7 +961,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue78 then
+            if not __continue79 then
                 break
             end
         end
@@ -1095,20 +1105,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue156
+                local __continue157
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue156 = true
+                        __continue157 = true
                         break
                     end
                     local ____opt_32 = running[m:GetPlayerID()]
                     if (____opt_32 and ____opt_32.kind) == "wisdom" then
                         return true
                     end
-                    __continue156 = true
+                    __continue157 = true
                 until true
-                if not __continue156 then
+                if not __continue157 then
                     break
                 end
             end

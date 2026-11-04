@@ -400,6 +400,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["vage", t.pathAge !== undefined ? r1(t.pathAge[0]) : undefined],
         ["voff", t.pathAge !== undefined ? math.floor(t.pathAge[1]) : undefined],
         ["vbad", t.kind === "contest" ? takeRejected(bot) : undefined],
+        ["vpts", t.via !== undefined && t.route !== undefined ? t.via.map((q) => `${math.floor(q.x)},${math.floor(q.y)}`).join(";") : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
     ]);
