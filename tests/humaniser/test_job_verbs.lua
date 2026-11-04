@@ -336,6 +336,22 @@ do
 end
 
 do
+    -- A shrine run with a waypoint walks through it before the shrine (the contest's route around an enemy tower).
+    local sim, bot = runeWorld()
+    local via = { x = 400, y = 600 }
+    start(bot, function(ctx) return job.runeRun(ctx, { at = { x = 850, y = 0 }, via = { via }, spawnAt = 8, channel = 1, radius = 300 }) end)
+    local passed, passedFirst = false, nil
+    for _ = 1, 400 do
+        if R.Current(bot) == nil then break end
+        frame(sim, bot)
+        if not passed and Sim.dist(bot.loc, via) <= 100 then passed = true passedFirst = Sim.dist(bot.loc, { x = 850, y = 0 }) > 300 end
+    end
+    T.check("rune via: reached the waypoint before the shrine", passed and passedFirst)
+    T.eq("rune via: then channelled at the shrine", R.Last(bot).result.reason, "ok")
+    sim:removeRuneGlobals()
+end
+
+do
     -- runeLeaveAt: leaving then arrives `early` s before the spawn at skill 1, and with less margin at low skill.
     local function margins(skill)
         local out = {}

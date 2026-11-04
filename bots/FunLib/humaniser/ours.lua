@@ -49,6 +49,7 @@ ____exports.DEFAULTS = {
     SupportDenyDire = true,
     SupportLastHit = true,
     RuneRotation = true,
+    RuneSpawn = true,
     SupportPull = true,
     LaneSpot = true,
     SupportHarass = true,

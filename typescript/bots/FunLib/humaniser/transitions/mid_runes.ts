@@ -13,6 +13,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRuneStatus(this: void, rune: number): number;
@@ -58,7 +59,8 @@ export function IsMid(bot: Unit): boolean {
 }
 
 export function IsOn(bot: Unit): boolean {
-    return Settings.IsOn("MidRunes") && IsMid(bot);
+    // Ours.RuneSpawn owns the mid at the 6:00 spawn: this nudge is off for it then.
+    return Settings.IsOn("MidRunes") && IsMid(bot) && !RunePlan.OwnsMid(bot);
 }
 
 const POWER_SPOTS: number[] = [Rune.Power1, Rune.Power2];
