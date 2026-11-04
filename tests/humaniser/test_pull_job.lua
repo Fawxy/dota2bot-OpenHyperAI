@@ -171,7 +171,7 @@ do
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	MakeNeutral({ x = SMALL.x + 50, y = SMALL.y })
+	local stays = MakeNeutral({ x = SMALL.x + 50, y = SMALL.y })
 	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
 	MakeNeutral({ x = meet.x + 200, y = meet.y + 200 })
 	local hitAt, ended = nil, nil
@@ -180,6 +180,11 @@ do
 			frame(w)
 			local p = w.H.PullJob.Running(w.sup)
 			if p and hitAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
+			-- A tagged neutral dies and is freed while the watch runs (pdg1/pdg2: Invalid object in taggedState).
+			if hitAt ~= nil and T >= hitAt + 1 and not stays.removed then
+				stays.removed = true
+				for i = #NEUTRALS, 1, -1 do if NEUTRALS[i] == stays then table.remove(NEUTRALS, i) end end
+			end
 			if hitAt ~= nil then
 				kobold.target = nil
 				if T < hitAt + 3 then
@@ -193,9 +198,14 @@ do
 			if hitAt ~= nil and not p then ended = T end
 		end
 	end)
+	local diagErr
+	for _, l in ipairs(out) do if l:find("pull diag error", 1, true) then diagErr = l end end
+	check("diag: a tagged neutral freed mid-watch raises no diagnostics error", diagErr == nil, diagErr)
 	local tagged
-	for _, l in ipairs(lines(out, "pull_watch")) do if field(l, "tn") ~= nil then tagged = l end end
-	check("diag: watch samples count the camp's two neutrals (tn=2), not the other camp's by the meet point", tagged ~= nil
+	for _, l in ipairs(lines(out, "pull_watch")) do
+		if field(l, "tn") ~= nil and (tagged == nil or tonumber(field(l, "tn")) > tonumber(field(tagged, "tn"))) then tagged = l end
+	end
+	check("diag: watch samples count the camp's two neutrals (tn=2 at most), not the other camp's by the meet point", tagged ~= nil
 		and field(tagged, "tn") == "2", tagged)
 	out = run(w, (ended or 0) + 30)
 	local pull = lines(out, "pull_job")[1]
