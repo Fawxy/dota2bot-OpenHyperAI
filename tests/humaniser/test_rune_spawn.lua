@@ -312,7 +312,7 @@ local function lpath(from)
 end
 
 -- PathVia: nothing until Valve answers on a later frame, one request at a time; the answer's legs merged up to RouteStep;
--- asked again once the hero has moved, the old answer kept meanwhile.
+-- asked again once the hero has moved, with no route until the new answer arrives.
 do
 	local H = world({ t = 395 })
 	local asked = {}
@@ -332,9 +332,37 @@ do
 	for _, q in ipairs(via or {}) do if q.y < -2700 then south = true end end
 	check("path: the answer is thinned, no leg over RouteStep, and keeps the path's detour", via ~= nil and #via < #raw and long <= S.RouteStep and south, via and #via, long)
 	p5.loc = Vector(6500, -2100)
-	local kept = H.RuneJob.PathVia(p5, to)
-	check("path: moved past RouteMoved asks again and keeps the old answer meanwhile", #asked == 2 and kept == via, #asked)
+	local moved = H.RuneJob.PathVia(p5, to)
+	check("path: moved past RouteMoved asks again and drops the old answer (its first leg would start elsewhere)", #asked == 2 and moved == nil and H.RuneJob.PathPending(p5), #asked)
+	asked[2].cb(4000, 1, lpath(p5.loc))
+	local fresh = H.RuneJob.PathVia(p5, to)
+	check("path: the new answer is used once it arrives", fresh ~= nil and fresh ~= via and #asked == 2, #asked)
 	GeneratePath = nil
+end
+
+-- Valve answers on a later frame (genpath5): the contest waits for the answer at its leave time and walks the path, not
+-- the straight-leg fallback.
+do
+	local H = world({ t = 380 })
+	draws(H, 0.0)
+	local pending = {}
+	GeneratePath = function(a, b, z, cb) table.insert(pending, function() cb(4000, 3, lpath(a)) end) end
+	local wants = H.RuneJob.Wants
+	H.RuneJob.Wants = function(...)
+		local due = pending
+		pending = {}
+		for _, f in ipairs(due) do f() end
+		return wants(...)
+	end
+	local p5 = hero(4, 5, Vector(6500, -1500))
+	local out = run(H, { p5 }, 450)
+	H.RuneJob.Wants = wants
+	GeneratePath = nil
+	local trip
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
+	local south = false
+	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].y < -2500 then south = true end end
+	check("shrine: with a late answer the contest still runs on Valve's path, its age logged", trip ~= nil and field(trip, "route") == "path" and field(trip, "vage") ~= nil and south, trip)
 end
 
 -- With Valve's path the fired contest walks it: its trip line names route=path and the hero heads south first.

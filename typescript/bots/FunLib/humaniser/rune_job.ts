@@ -96,6 +96,8 @@ interface Trip {
     route?: "path" | "detour";
     /** The route's least distance from an enemy tower. */
     clear?: number;
+    /** Valve's answer behind a `path` route: seconds since it was asked, and its distance from the start. */
+    pathAge?: [number, number];
     /** Plays this trip started: the shrine contest's roll, the rune fight, the gank after the trip. */
     play?: Plays.Play;
     fight?: Plays.Play;
@@ -242,30 +244,45 @@ export function Detour(from: Vector, to: Vector, towers: Vector[]): Vector[] {
 
 declare function GeneratePath(this: void, from: Vector, to: Vector, avoid: unknown[], done: (this: void, ...args: unknown[]) => void): void;
 
-const paths: Record<number, { from: Vector; asked: number; to: Vector; via?: Vector[] }> = {};
+type Path = { from: Vector; asked: number; to: Vector; via?: Vector[] };
+const paths: Record<number, Path> = {};
 
 /**
  * CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
- * until the first answer. Asked again when the hero moved RouteMoved or after RouteFresh s; the last answer is kept meanwhile.
- * The callback's arguments are (distance, request id, waypoints), not the (distance, waypoints) of Valve's docs, and it runs on
- * a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame called back, so one request per hero at a time).
- * Avoidance zones changed no path there; Valve's path from either lane or the top rune to the enemy shrine kept 1,002-1,198
- * from every enemy tower, outside OHA retreat's 898 (`X.ShouldRun`).
+ * until an answer asked within RouteMoved of where the hero is now and at most RouteFresh s ago arrives (an older answer
+ * starts from somewhere else: its first leg is a straight line that can cross the lane by a tower). A request that has not
+ * answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
+ * waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
+ * called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
+ * Valve's path kept 1,108-1,912 from every enemy tower (genpath7), outside OHA retreat's 898 (`X.ShouldRun`).
  */
 export function PathVia(bot: Unit, to: Vector): Vector[] | undefined {
     if (typeof GeneratePath === "undefined") return undefined;
     const pid = bot.GetPlayerID();
     const here = bot.GetLocation();
     const c = paths[pid];
-    const stale = c === undefined || FR.Dist(c.to, to) > 1 || FR.Dist(c.from, here) > SETTINGS.RouteMoved || DotaTime() - c.asked > SETTINGS.RouteFresh;
-    if (stale && (c === undefined || c.via !== undefined || DotaTime() - c.asked > 1)) {
-        const entry: { from: Vector; asked: number; to: Vector; via?: Vector[] } = { from: here, asked: DotaTime(), to, via: c?.via };
+    const fits = c !== undefined && FR.Dist(c.to, to) <= 1 && FR.Dist(c.from, here) <= SETTINGS.RouteMoved && DotaTime() - c.asked <= SETTINGS.RouteFresh;
+    if (!fits || (c.via === undefined && DotaTime() - c.asked > 1)) {
+        const entry: Path = { from: here, asked: DotaTime(), to };
         paths[pid] = entry;
         GeneratePath(here, to, [], (...args: unknown[]) => {
             for (const a of args) if (type(a) === "table") entry.via = Thin(a as Vector[], to);
         });
+        return undefined;
     }
-    return paths[pid].via;
+    return c.via;
+}
+
+/** The hero's path request is out and has not answered yet, within a second of asking. */
+export function PathPending(bot: Unit): boolean {
+    const c = paths[bot.GetPlayerID()];
+    return c !== undefined && c.via === undefined && DotaTime() - c.asked <= 1;
+}
+
+/** The answer behind PathVia's last route: its age and how far from the hero it was asked. */
+function pathAge(bot: Unit): [number, number] | undefined {
+    const c = paths[bot.GetPlayerID()];
+    return c?.via !== undefined ? [DotaTime() - c.asked, FR.Dist(c.from, bot.GetLocation())] : undefined;
 }
 
 /** Valve's waypoints (the first is the start) with a point kept only where skipping it would make a leg longer than RouteStep. */
@@ -308,7 +325,8 @@ function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: numb
         const towers = FR.TowerSpots(enemy);
         const path = PathVia(bot, at);
         const via = path ?? Detour(bot.GetLocation(), at, towers);
-        return { kind, spawn, at, via, route: path !== undefined ? "path" : "detour", clear: Clearance(bot.GetLocation(), [...via, at], towers), left: DotaTime(), host };
+        const age = path !== undefined ? pathAge(bot) : undefined;
+        return { kind, spawn, at, via, route: path !== undefined ? "path" : "detour", clear: Clearance(bot.GetLocation(), [...via, at], towers), pathAge: age, left: DotaTime(), host };
     }
     if (mine !== undefined) {
         const at = RunePlan.SpotAt(mine);
@@ -360,6 +378,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["via", t.via !== undefined ? t.via.length : undefined],
         ["route", t.route],
         ["vclr", t.clear !== undefined ? math.floor(t.clear) : undefined],
+        ["vage", t.pathAge !== undefined ? r1(t.pathAge[0]) : undefined],
+        ["voff", t.pathAge !== undefined ? math.floor(t.pathAge[1]) : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
     ]);
@@ -418,6 +438,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         if (kind === "contest") {
             // The contest is a play: a free pos5 rolls for it at its leave time; no fire, no trip.
             if (Busy(bot)) return skip("busy");
+            // The start waits a frame or so for Valve's path rather than walk the straight-leg fallback.
+            if (t.route === "detour" && PathPending(bot)) return false;
             const play = Plays.Roll({ kind: "shrine", by: bot, at: t.at });
             if (play === undefined) return skip("roll");
             t.play = play;
