@@ -19,6 +19,7 @@ local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_s
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local PathProbe = require(GetScriptDirectory().."/FunLib/humaniser/path_probe")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
@@ -233,6 +234,9 @@ local function tick(bot)
     end
     if not bot:IsHero() or bot:IsIllusion() then
         return
+    end
+    if bot:IsBot() then
+        PathProbe.Run(bot)
     end
     Chat.EnsureInstalled(bot)
     Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
