@@ -395,10 +395,11 @@ export const EVENTS = {
         pid: "num",
         /** `core`, or `support` (its lane core away). */
         role: "str",
-        /** `feed` (enemy wave onto our ranged creep) or `drag` (a dying creep away from an enemy hero). */
+        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower) or `drag` (a dying creep
+         *  away from an enemy hero). */
         kind: "str",
         /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
-         *  `lost`, `alive`; both: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`. */
+         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`. */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -420,6 +421,22 @@ export const EVENTS = {
         /** feed: seconds from the order to the drop order. */
         drop: "num",
         dur: "num",
+        /** feed: the clash's distance from our T1 along the lane now, and forecast (own + move), against the lane's target point. */
+        own: "num",
+        fc: "num",
+        /** Distance to the order's hero at the order (any visible enemy hero may be named). */
+        td: "num",
+        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result. */
+        out: "num",
+        /** feed: decisions the bot walked back into reach of the fed creep while it went down. */
+        sty: "num",
+    },
+    /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
+    aggro_skip: {
+        pid: "num",
+        role: "str",
+        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`. */
+        why: "str",
     },
     lane_tech: {
         pid: "num",

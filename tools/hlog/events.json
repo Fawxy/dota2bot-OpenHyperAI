@@ -396,7 +396,17 @@
    "st": "str",
    "hd": "num",
    "drop": "num",
-   "dur": "num"
+   "dur": "num",
+   "own": "num",
+   "fc": "num",
+   "td": "num",
+   "out": "num",
+   "sty": "num"
+  },
+  "aggro_skip": {
+   "pid": "num",
+   "role": "str",
+   "why": "str"
   },
   "lane_tech": {
    "pid": "num",
@@ -1238,6 +1248,10 @@
    "kind": "text",
    "result": "text",
    "st": "text"
+  },
+  "ev_aggro_skip": {
+   "role": "text",
+   "why": "text"
   },
   "ev_lane_tech": {
    "tech": "text",

@@ -337,8 +337,14 @@ ____exports.EVENTS = {
         st = "str",
         hd = "num",
         drop = "num",
-        dur = "num"
+        dur = "num",
+        own = "num",
+        fc = "num",
+        td = "num",
+        out = "num",
+        sty = "num"
     },
+    aggro_skip = {pid = "num", role = "str", why = "str"},
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {
         pid = "num",

@@ -323,6 +323,8 @@ export interface Reading {
     move: number;
     /** Where the clash sits between the T1s, 0 at ours, 1 at theirs. */
     q: number;
+    /** The clash's distance along the path from our T1 (positive towards theirs). */
+    own: number;
     /** The tower rule decided. */
     tower: boolean;
     /** Counterfactual move with `team`'s creeps short of `dropBefore` removed (the wave a pull takes), when asked. */
@@ -356,6 +358,7 @@ export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCr
         clash: c0,
         move,
         q: (c0 - ours.s) / (theirs.s - ours.s),
+        own: dir * (c0 - ours.s),
         tower: tower !== undefined,
     };
     if (dropBefore !== undefined) {

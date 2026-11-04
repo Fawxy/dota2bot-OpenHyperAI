@@ -1,17 +1,21 @@
 /**
  * Lane creep aggro (slice lane-aggro, `Ours.LaneAggro`): a laner draws enemy lane creeps on purpose with an attack order on an
- * enemy hero (EC-053: creeps within 500 of the ordering hero chase it for up to 2.3 s; one draw per 3 s per hero), then walks
- * them where it wants them. Two moves, one module for both roles (a lane technique, so bot code, not an engine verb):
- * - `feed`: the enemy wave is walked back onto our ranged creep (any HP, user 05/11/2026). Their melee creeps kill it quickly,
- *   we deny it (the deny itself is the laning body's), and losing our wave's biggest hitter early tilts the clash toward our
- *   tower. Read on the lane push: not when the clash already sits near our tower or is coming in.
+ * enemy hero (EC-053: creeps within 500 of the ordering hero chase it for up to 2.3 s; one draw per 3 s per hero; the target
+ * may be any visible enemy hero, in any lane), then walks them where it wants them. Each lane has a target meeting point on
+ * our side (user 05/11/2026: just outside our T1's range for the side lanes, the edge of our high ground in mid), and the lane
+ * forecast (lane_push) says where the clash is heading. Three moves, one module for both roles (a lane technique, bot code):
+ * - `feed`: the enemy wave is walked back onto our ranged creep (any HP) whenever the clash sits or is heading beyond the target
+ *   point (the first wave, a bigger wave of ours, a clash in the middle). Their melee creeps kill it quickly, we deny it (the
+ *   deny is the laning body's; the bot stays in reach of the fed creep until it dies), and the clash tilts toward us.
+ * - `tower`: our wave pushed into their tower: drawn from just outside the tower's range and walked back, so their creeps
+ *   follow us out and can be farmed there (user 05/11/2026; also an initiation point, for the fight work later).
  * - `drag`: one or two enemy creeps about to die beside an enemy hero are walked away from that hero, so the last hit is ours
  *   and a deny means the enemy walks up.
  * Cores do both. A support inherits them only while its lane's core is away (user 05/11/2026). One draw per lane at a time,
  * and none while our pull is out on that lane (the pull drags our wave away; feeding it then gives the wave away twice).
  * Stepped from mode_laning_generic's Think (cores, after the body's running swing) and from support_lane's step list.
  */
-import { BotMode, Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import type * as Lib from "bots/FunLib/engine/tasks";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -24,7 +28,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 
-export type Kind = "feed" | "drag";
+export type Kind = "feed" | "drag" | "tower";
 type PhaseName = "approach" | "walk" | "watch";
 
 // Mechanics are EC-053's; every other number is `judgement` until the probe (slice file) reads it.
@@ -38,10 +42,34 @@ export const SETTINGS = {
     MinHp: 0.45,
     /** Enemy heroes' attack range plus this around the bot (and the approach point) closes the move: very little damage. */
     HeroMargin: 250,
-    /** No draw this close to an enemy tower (an attack order near it can turn the tower). */
+    /** No feed or drag approach this close to an enemy tower (an attack order near it can turn the tower). */
     TowerR: 1000,
+    /** The bot never orders this close to an enemy tower (its 700 range plus a margin); the tower move orders from here out. */
+    TowerOrderR: 900,
     /** Feed: our ranged creep at this HP fraction or more (below it the body's deny already wants it). */
-    FeedCreepHp: 0.5,
+    FeedCreepHp: 0.25,
+    /** The target meeting point: this far along the lane from our T1 (side lanes: out of its range; mid: our high-ground edge). */
+    TargetSide: 900,
+    TargetMid: 1300,
+    /** Feed when the clash sits, or is forecast, more than this beyond the target point. */
+    FeedMargin: 150,
+    /** No feed with our ranged creep this close to one of our towers (their wave would die to it). */
+    OwnTowerR: 800,
+    /** Tower: our wave within this of their tower, their creeps within TowerSeek of it; the order point sits TowerPast beyond
+     *  their creeps (from the tower), at least TowerOrderR out; walk TowerBack back for TowerWalk; read TowerWatch later. */
+    TowerHit: 850,
+    TowerSeek: 1000,
+    TowerPast: 250,
+    TowerApproachMax: 900,
+    TowerApproachTime: 2.5,
+    TowerBack: 450,
+    TowerWalk: 1.8,
+    TowerWatch: 1.5,
+    /** Feed watch: the bot keeps within its attack reach + StayMargin of the fed creep once it is below StayHp. */
+    StayHp: 0.75,
+    StayMargin: 100,
+    /** ev=aggro_skip: a bot's skip reason is logged when it changes, at most this often. */
+    SkipEvery: 3,
     /** Feed: enemy melee creeps on our wave within this of our ranged creep, and at least FeedMinCreeps of them. */
     FightR: 700,
     FeedMinCreeps: 2,
@@ -62,8 +90,6 @@ export const SETTINGS = {
      */
     DrawCheck: 1.0,
     MovedR: 120,
-    /** Feed: the clash where it sits between the T1s (0 ours, 1 theirs) at least this far out. */
-    FeedMinQ: 0.3,
     /** Drag: a last hit due in this window (s): sooner the body just takes it, later it is not worth a draw yet. */
     DragDueMin: 0.8,
     DragDueMax: 3,
@@ -96,7 +122,16 @@ interface Attempt {
     droppedAt?: number;
     hero: Unit;
     tpid: number;
+    /** Distance to the order's hero at the order. */
+    td?: number;
     creep: Unit;
+    tower?: Unit;
+    out?: number;
+    /** Feed watch: decisions the bot walked back into reach of the fed creep. */
+    sty: number;
+    own?: number;
+    fc?: number;
+    approachTime: number;
     /** Enemy lane creeps within 500 at the order and where they stood. */
     start?: { unit: Unit; x: number; y: number }[];
     mv: number;
@@ -124,6 +159,7 @@ const fed: LuaTable<Unit, boolean> = new LuaTable();
 /** Last draw per team and lane: one draw per lane at a time. */
 const laneDraw: Record<string, { pid: number; at: number } | undefined> = {};
 const pushCache: Record<string, { t: number; r: LanePush.Reading | undefined } | undefined> = {};
+const lastSkip: Record<number, { why: string; at: number } | undefined> = {};
 
 function laneKey(team: number, lane: Lane): string {
     return `${team}:${lane}`;
@@ -181,10 +217,30 @@ export function LaneHeld(now: number, pid: number, held: { pid: number; at: numb
     return held !== undefined && held.pid !== pid && now - held.at < SETTINGS.Cooldown;
 }
 
-/** Pure: whether the lane push reading wants the wave tilted toward us (the clash not near our tower, not coming in). */
-export function FeedWanted(r: { state: string; q: number } | undefined): boolean {
+/** The lane's target meeting point, as a distance along the lane from our T1. */
+export function TargetOf(lane: Lane): number {
+    return lane === Lane.Mid ? SETTINGS.TargetMid : SETTINGS.TargetSide;
+}
+
+/**
+ * Pure: whether the clash sits, or is forecast to sit, beyond the target point (`own` the clash's distance from our T1 now,
+ * `move` its forecast move toward their T1). A clash coming in from beyond it still wants the feed: it is not ours yet.
+ */
+export function FeedWanted(r: { own: number; move: number } | undefined, target: number): boolean {
     if (r === undefined) return false;
-    return r.state !== "IN" && r.q >= SETTINGS.FeedMinQ;
+    return math.max(r.own, r.own + r.move) > target + SETTINGS.FeedMargin;
+}
+
+/**
+ * Pure: the tower move's order point, on the line from their tower `(tx, ty)` through their creeps' centre `(cx, cy)`:
+ * TowerPast beyond the creeps, never inside TowerOrderR of the tower.
+ */
+export function TowerPoint(tx: number, ty: number, cx: number, cy: number): LuaMultiReturn<[number, number]> {
+    const dx = cx - tx;
+    const dy = cy - ty;
+    const len = math.max(1, math.sqrt(dx * dx + dy * dy));
+    const r = math.max(len + SETTINGS.TowerPast, SETTINGS.TowerOrderR);
+    return $multi(tx + (dx / len) * r, ty + (dy / len) * r);
 }
 
 /** Pure: the feed's drop now? `t` seconds since the order, `nearest` the closest drawn creep to our ranged creep. */
@@ -249,21 +305,38 @@ function heroSafe(at: Vector, heroes: Unit[]): boolean {
     return true;
 }
 
-function nearTower(at: Vector, team: number): boolean {
-    const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    for (const id of [Tower.Top1, Tower.Mid1, Tower.Bot1, Tower.Top2, Tower.Mid2, Tower.Bot2]) {
-        const t = GetTower(enemy, id);
-        if (t !== undefined && t !== null && t.IsAlive() && d2(t.GetLocation(), at) <= SETTINGS.TowerR) return true;
-    }
-    return false;
+const TOWERS = [Tower.Top1, Tower.Mid1, Tower.Bot1, Tower.Top2, Tower.Mid2, Tower.Bot2];
+
+function enemyOf(team: number): number {
+    return team === Team.Radiant ? Team.Dire : Team.Radiant;
 }
 
-/** The enemy hero the order names: the nearest visible one, not by its own tower. */
-function orderTarget(bot: Unit, heroes: Unit[]): Unit | undefined {
+/** The nearest alive tier-1 or tier-2 tower of `team` within `r` of `at`. */
+function towerNear(at: Vector, team: number, r: number): Unit | undefined {
+    let best: Unit | undefined;
+    let bestD = r;
+    for (const id of TOWERS) {
+        const t = GetTower(team, id);
+        if (t === undefined || t === null || !t.IsAlive()) continue;
+        const d = d2(t.GetLocation(), at);
+        if (d <= bestD) {
+            best = t;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+function nearTower(at: Vector, team: number, r: number = SETTINGS.TowerR): boolean {
+    return towerNear(at, enemyOf(team), r) !== undefined;
+}
+
+/** The enemy hero the order names: the nearest visible one anywhere (the draw comes from where the bot stands). */
+function orderTarget(bot: Unit): Unit | undefined {
     let best: Unit | undefined;
     let bestD = math.huge;
-    for (const h of heroes) {
-        if (nearTower(h.GetLocation(), bot.GetTeam())) continue;
+    for (const h of GetUnitList(UnitType.EnemyHeroes)) {
+        if (!valid(h) || h.IsIllusion()) continue;
         const d = GetUnitToUnitDistance(bot, h);
         if (d < bestD) {
             best = h;
@@ -305,7 +378,7 @@ function gate(bot: Unit, now: number): string | undefined {
     if (frac(bot) < SETTINGS.MinHp) return "hp";
     const t = bot.GetAttackTarget();
     if (t !== undefined && t !== null && !t.IsNull() && t.IsHero()) return "trading";
-    if (nearTower(bot.GetLocation(), bot.GetTeam())) return "tower";
+    if (nearTower(bot.GetLocation(), bot.GetTeam(), SETTINGS.TowerOrderR)) return "tower";
     if (allyPullOut(bot)) return "pull";
     return undefined;
 }
@@ -313,6 +386,8 @@ function gate(bot: Unit, now: number): string | undefined {
 function start(bot: Unit, a: Attempt): void {
     attempts[bot.GetPlayerID()] = a;
 }
+
+type Try = LuaMultiReturn<[Attempt | undefined, string]>;
 
 function tryDrag(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
     const here = bot.GetLocation();
@@ -325,7 +400,7 @@ function tryDrag(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
             if (GetUnitToUnitDistance(h, creep) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.DragContest) contester = h;
         }
         if (contester === undefined) continue;
-        const hero = orderTarget(bot, heroes);
+        const hero = orderTarget(bot);
         if (hero === undefined) return undefined;
         const back = along(here, backDir(bot.GetTeam(), bot.GetAssignedLane(), here), SETTINGS.DragBack);
         if (!heroSafe(back, heroes)) return undefined;
@@ -334,18 +409,56 @@ function tryDrag(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
     return undefined;
 }
 
-function tryFeed(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
+function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
+    const team = bot.GetTeam();
+    const tw = towerNear(bot.GetLocation(), enemyOf(team), SETTINGS.TowerSeek + SETTINGS.TowerApproachMax);
+    if (tw === undefined) return $multi(undefined, "none");
+    const tl = tw.GetLocation();
+    let ours = 0;
+    for (const c of bot.GetNearbyLaneCreeps(1600, false)) if (valid(c) && isLaneCreep(c) && d2(c.GetLocation(), tl) <= SETTINGS.TowerHit) ours++;
+    const theirs = enemyCreepsNear(bot, tl, SETTINGS.TowerSeek);
+    if (ours === 0 || theirs.length === 0) return $multi(undefined, "none");
+    let cx = 0;
+    let cy = 0;
+    for (const c of theirs) {
+        cx += c.GetLocation().x;
+        cy += c.GetLocation().y;
+    }
+    const [px, py] = TowerPoint(tl.x, tl.y, cx / theirs.length, cy / theirs.length);
+    const at = Vector(px, py, bot.GetLocation().z);
+    const drawable = enemyCreepsNear(bot, at, SETTINGS.DrawR);
+    if (drawable.length === 0) return $multi(undefined, "draw_far");
+    if (GetUnitToLocationDistance(bot, at) > SETTINGS.TowerApproachMax) return $multi(undefined, "approach_far");
+    if (!heroSafe(at, heroes)) return $multi(undefined, "unsafe");
+    if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return $multi(undefined, "busy");
+    const hero = orderTarget(bot);
+    if (hero === undefined) return $multi(undefined, "no_target");
+    const back = along(at, backDir(team, bot.GetAssignedLane(), at), SETTINGS.TowerBack);
+    const a = newAttempt(bot, "tower", "approach", hero, drawable[0], back, at, now);
+    a.tower = tw;
+    a.approachTime = SETTINGS.TowerApproachTime;
+    return $multi(a, "go");
+}
+
+function nearOwnTower(at: Vector, team: number): boolean {
+    return towerNear(at, team, SETTINGS.OwnTowerR) !== undefined;
+}
+
+function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
     let ranged: Unit | undefined;
     for (const c of bot.GetNearbyLaneCreeps(1200, false)) {
         if (valid(c) && isLaneCreep(c) && isRanged(c) && fed.get(c) !== true && frac(c) >= SETTINGS.FeedCreepHp) ranged = c;
     }
-    if (ranged === undefined) return undefined;
+    if (ranged === undefined) return $multi(undefined, "no_ranged");
+    const r = pushRead(team, lane);
+    if (!FeedWanted(r, TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
+    if (nearOwnTower(ranged.GetLocation(), team)) return $multi(undefined, "own_tower");
     const fighting = enemyCreepsNear(bot, ranged.GetLocation(), SETTINGS.FightR);
-    if (fighting.length < SETTINGS.FeedMinCreeps) return undefined;
+    if (fighting.length < SETTINGS.FeedMinCreeps) return $multi(undefined, "few_creeps");
     for (const h of heroes) {
-        if (GetUnitToUnitDistance(h, ranged) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.FeedHeroClear) return undefined;
+        if (GetUnitToUnitDistance(h, ranged) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.FeedHeroClear) return $multi(undefined, "hero_on_ranged");
     }
     let cx = 0;
     let cy = 0;
@@ -356,19 +469,20 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
     const centre = Vector(cx / fighting.length, cy / fighting.length, ranged.GetLocation().z);
     const dir = backDir(team, lane, centre);
     const approach = along(centre, dir, SETTINGS.ApproachBack);
-    if (GetUnitToLocationDistance(bot, approach) > SETTINGS.ApproachMax) return undefined;
-    if (enemyCreepsNear(bot, approach, SETTINGS.DrawR).length < SETTINGS.FeedMinCreeps) return undefined;
+    if (GetUnitToLocationDistance(bot, approach) > SETTINGS.ApproachMax) return $multi(undefined, "approach_far");
+    if (enemyCreepsNear(bot, approach, SETTINGS.DrawR).length < SETTINGS.FeedMinCreeps) return $multi(undefined, "approach_creeps");
     const back = along(ranged.GetLocation(), dir, SETTINGS.FeedBack);
-    if (!heroSafe(approach, heroes) || !heroSafe(back, heroes) || nearTower(approach, team)) return undefined;
-    if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return undefined;
-    const r = pushRead(team, lane);
-    if (!FeedWanted(r)) return undefined;
-    const hero = orderTarget(bot, heroes);
-    if (hero === undefined) return undefined;
+    if (!heroSafe(approach, heroes) || !heroSafe(back, heroes)) return $multi(undefined, "unsafe");
+    if (nearTower(approach, team)) return $multi(undefined, "tower");
+    if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return $multi(undefined, "busy");
+    const hero = orderTarget(bot);
+    if (hero === undefined) return $multi(undefined, "no_target");
     const a = newAttempt(bot, "feed", "approach", hero, ranged, back, approach, now);
-    a.q = r !== undefined ? math.floor(r.q * 100) / 100 : undefined;
-    a.st = r?.state;
-    return a;
+    a.q = math.floor(r!.q * 100) / 100;
+    a.st = r!.state;
+    a.own = math.floor(r!.own);
+    a.fc = math.floor(r!.own + r!.move);
+    return $multi(a, "go");
 }
 
 function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: Unit, back: Vector, approach: Vector | undefined, now: number): Attempt {
@@ -380,6 +494,8 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
         tpid: hero.GetPlayerID(),
         creep,
         mv: 0,
+        sty: 0,
+        approachTime: SETTINGS.ApproachTime,
         approach,
         back,
         hp0: bot.GetHealth(),
@@ -411,6 +527,11 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["q", a.q],
         ["st", a.st],
         ["hd", a.hd],
+        ["own", a.own],
+        ["fc", a.fc],
+        ["td", a.td],
+        ["out", a.out],
+        ["sty", a.kind === "feed" ? a.sty : undefined],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
     ]);
@@ -446,6 +567,16 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         if (!dead) a.onr = math.max(a.onr, drawnOn(bot, a.creep).length);
         if (dead) return finish(bot, a, counter(bot, "GetDenies") > a.dn0 ? "denied" : "lost", now);
         if (now - (a.droppedAt ?? a.startedAt) > SETTINGS.FeedWatch) return finish(bot, a, "alive", now);
+    } else if (a.kind === "tower") {
+        if (now - (a.walkedAt ?? a.startedAt) < SETTINGS.TowerWatch) return;
+        let out = 0;
+        const tl = a.tower!.GetLocation();
+        for (const s0 of a.start ?? []) {
+            const u = s0.unit;
+            if (!u.IsNull() && u.IsAlive() && d2(u.GetLocation(), tl) >= SETTINGS.TowerOrderR) out++;
+        }
+        a.out = out;
+        return finish(bot, a, out > 0 ? "ok" : "stayed", now);
     } else {
         if (dead) return finish(bot, a, counter(bot, "GetLastHits") > a.lh0 ? "ok" : "lost", now);
         if (now - (a.walkedAt ?? a.startedAt) > SETTINGS.DragWatch) return finish(bot, a, "alive", now);
@@ -472,7 +603,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.phase === "approach") {
         const at = a.approach!;
-        if (GetUnitToLocationDistance(bot, at) > 60 && now - a.startedAt < SETTINGS.ApproachTime) {
+        if (GetUnitToLocationDistance(bot, at) > 60 && now - a.startedAt < a.approachTime) {
             bot.Action_MoveToLocation(at);
             return true;
         }
@@ -486,6 +617,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         const near = enemyCreepsNear(bot, bot.GetLocation(), 500);
         a.near = near.length;
         a.start = near.map((c) => ({ unit: c, x: c.GetLocation().x, y: c.GetLocation().y }));
+        a.td = math.floor(GetUnitToUnitDistance(bot, a.hero));
         bot.Action_AttackUnit(a.hero, true);
         a.orderedAt = now;
         orderedAt[pid] = now;
@@ -529,6 +661,15 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         bot.Action_MoveToLocation(a.back);
         return true;
     }
+    if (a.kind === "tower") {
+        if (t < SETTINGS.TowerWalk) {
+            bot.Action_MoveToLocation(a.back);
+            return true;
+        }
+        a.walkedAt = now;
+        a.phase = "watch";
+        return false;
+    }
     // drag: walk the drawn creeps back, then the body takes the last hit as it comes due.
     if (t < SETTINGS.DragWalk && a.creep.IsAlive()) {
         bot.Action_MoveToLocation(a.back);
@@ -538,6 +679,36 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     if (a.creep.IsAlive() && valid(a.hero)) a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep));
     a.phase = "watch";
     return false;
+}
+
+/**
+ * Feed watch: once the fed creep is going down, the bot keeps within its attack reach of it, so the body's deny scan has it
+ * (lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee bot held 550-640 from it).
+ * A lane hit due soon keeps the body's frame.
+ */
+function stay(bot: Unit, a: Attempt): boolean {
+    const c = a.creep;
+    if (c.IsNull() || !c.IsAlive() || frac(c) > SETTINGS.StayHp) return false;
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + c.GetBoundingRadius();
+    if (GetUnitToUnitDistance(bot, c) <= reach + SETTINGS.StayMargin) return false;
+    if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return false;
+    const at = along(c.GetLocation(), backDir(bot.GetTeam(), bot.GetAssignedLane(), c.GetLocation()), math.min(reach, 300) * 0.8);
+    if (!heroSafe(at, enemyHeroes(bot, 1600))) return false;
+    bot.Action_MoveToLocation(at);
+    a.sty++;
+    return true;
+}
+
+function skip(bot: Unit, why: string, now: number): void {
+    const pid = bot.GetPlayerID();
+    const last = lastSkip[pid];
+    if (last !== undefined && (last.why === why || now - last.at < SETTINGS.SkipEvery)) return;
+    lastSkip[pid] = { why, at: now };
+    Telemetry.Event("aggro_skip", [
+        ["pid", pid],
+        ["role", roleOf(bot) ?? "?"],
+        ["why", why],
+    ]);
 }
 
 /**
@@ -551,6 +722,7 @@ export function Step(bot: Unit): boolean {
     if (a !== undefined) {
         if (a.phase === "watch") {
             watch(bot, a, now);
+            if (attempts[pid] === a && a.kind === "feed" && stay(bot, a)) return true;
         } else {
             return act(bot, a, now);
         }
@@ -559,11 +731,33 @@ export function Step(bot: Unit): boolean {
     const last = decidedAt[pid];
     if (last !== undefined && now - last < SETTINGS.Every) return false;
     decidedAt[pid] = now;
-    if (gate(bot, now) !== undefined) return false;
+    const g = gate(bot, now);
+    if (g !== undefined) {
+        skip(bot, g, now);
+        return false;
+    }
     const heroes = enemyHeroes(bot, 1600);
-    if (heroes.length === 0 || !heroSafe(bot.GetLocation(), heroes)) return false;
-    const next = tryDrag(bot, heroes, now) ?? tryFeed(bot, heroes, now);
-    if (next === undefined) return false;
+    if (!heroSafe(bot.GetLocation(), heroes)) {
+        skip(bot, "reach", now);
+        return false;
+    }
+    let next = tryDrag(bot, heroes, now);
+    let why = "drag";
+    if (next === undefined) {
+        const [tw, twWhy] = tryTower(bot, heroes, now);
+        next = tw;
+        why = "tower:" + twWhy;
+        if (next === undefined && twWhy === "none") {
+            const [fd, fdWhy] = tryFeed(bot, heroes, now);
+            next = fd;
+            why = "feed:" + fdWhy;
+        }
+    }
+    if (next === undefined) {
+        skip(bot, why, now);
+        return false;
+    }
+    lastSkip[pid] = undefined;
     start(bot, next);
     return act(bot, next, now);
 }
@@ -580,4 +774,5 @@ export function Reset(): void {
     for (const k in decidedAt) decidedAt[k as unknown as number] = undefined;
     for (const k in laneDraw) laneDraw[k] = undefined;
     for (const k in pushCache) pushCache[k] = undefined;
+    for (const k in lastSkip) lastSkip[k as unknown as number] = undefined;
 }
