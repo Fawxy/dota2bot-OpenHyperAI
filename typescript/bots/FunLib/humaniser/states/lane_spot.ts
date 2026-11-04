@@ -14,7 +14,7 @@
  * Our own tower covers the ground in its range (Ours.LaneSpotTower): an enemy creep in its range that is attacking something
  * other than us keeps only HELD_RING, and an enemy hero our tower is attacking, or one that would have to stand inside our
  * tower's range to hit the point, keeps only its attack reach plus TOWER_REACT_SECS of movement, with no MIN_REACH floor.
- * None of this at HP_LOW or below.
+ * Cores only, and none of this at HP_LOW or below.
  * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
  * core's spot for 54 of 79, the hero reach for 15.
  */
@@ -321,7 +321,8 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     const margin = HpMargin(hpFrac);
     // tspchk1: a core laning took back from retreat at 1% HP stood on a relaxed spot by the enemy wave and died; at HP_LOW one
     // creep that turns on it kills, so our tower's cover counts only above it.
-    const cover = hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
+    // Cores only: tspchk2 checked the core spot; a support's spot under our tower keeps the open-lane limits until a check reads it.
+    const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
     const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach) !== undefined ? 1 : 0);
     const pref = Vector(px, py, front.z);
     const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover);

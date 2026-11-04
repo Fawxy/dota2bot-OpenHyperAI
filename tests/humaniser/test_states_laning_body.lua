@@ -296,6 +296,10 @@ do
 	check("held creep at 20% HP: the 820 ring", sl ~= nil and dist(sl, c.loc) >= 820, sl and dist(sl, c.loc))
 	local sm = spotFor(SDK, { hp = 40 }, held("ours"))
 	check("held creep at 40% HP: 200 plus the 120 margin", sm ~= nil and dist(sm, c.loc) >= 320 and dist(sm, c.loc) < 520, sm and dist(sm, c.loc))
+	-- A support (pos 5, with SupportHarass on our spot) under the same tower keeps the open-lane ring: step 1d checked cores
+	-- only (review tower-spot H1).
+	local ss = spotFor(SDK, { pos = 5, supportDeny = true, supportHarass = true }, held("ours"))
+	check("support under our tower: the 520 ring", ss ~= nil and dist(ss, c.loc) >= 520, ss and dist(ss, c.loc))
 	local sf = spotFor(SDK, nil, function(bot) held("ours")(bot) TOWERS = { ownTower(-1500, 0) } end)
 	check("creep outside our tower's range: the 520 ring", sf ~= nil and dist(sf, c.loc) >= 520, sf and dist(sf, c.loc))
 end

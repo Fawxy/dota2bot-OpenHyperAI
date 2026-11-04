@@ -409,7 +409,7 @@ function ____exports.Compute(bot, role)
     )
     local margin = ____exports.HpMargin(hpFrac)
     local ____temp_0
-    if hpFrac > HP_LOW then
+    if role == "core" and hpFrac > HP_LOW then
         ____temp_0 = coverFor(bot, creeps, heroes)
     else
         ____temp_0 = nil
