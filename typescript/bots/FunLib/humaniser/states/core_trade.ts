@@ -11,11 +11,14 @@
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
-export type Kind = "trade" | "kill";
+/** `fight`: a lane fight from the play roll, rolled here or joined from an ally's play (slice lane-fight). */
+export type Kind = "trade" | "kill" | "fight";
 export type Respect = "low_hp" | "behind" | "outnumbered" | "tower" | "creeps" | "wave";
 
 export interface Inputs {
@@ -42,6 +45,23 @@ const KILL_HP = 0.25;
  * and no deaths per 100 encounters, 26 and 0 when we were more; 41-70% gave 1.8 and 1.8. The cut is `judgement` from that.
  */
 const COMMIT_HP = 0.4;
+/**
+ * The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll).
+ * Before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at even numbers with the enemy
+ * over 40%, about 110 such core encounters a game, so the base is low: about 5 fights a game at the usual factors
+ * (`judgement`). A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
+ */
+export const LANE_FIGHT = "lane_fight";
+const FIGHT_BASE = 0.05;
+const FIGHT_ROLL_EVERY = 15;
+/** A fight commits like a kill and keeps a limit; it also stops when the hero falls under the play roll's HP floor. */
+const FIGHT_TIME = 8;
+/**
+ * Joining a running play (any kind with a target: a rune gank or rune fight, another hero's lane fight): its place within
+ * JOIN_NEAR of the hero and its target within the hero's reach plus JOIN_WALK, about 2 s of walking (`judgement`).
+ */
+const JOIN_NEAR = 1600;
+const JOIN_WALK = 600;
 const MAX_WAVE = 3;
 const MAX_CREEPS_ON_ME = 2;
 /**
@@ -131,6 +151,9 @@ interface Episode {
     stepOuts: number;
     /** Most enemy lane creeps attacking the core at once during the trade. */
     aggro: number;
+    /** The play a `fight` runs in, and whether the hero joined it (another hero's play) rather than rolled it. */
+    play?: Plays.Play;
+    joined?: boolean;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
 }
@@ -157,6 +180,20 @@ const recoverTo: Record<number, number | undefined> = {};
 const ownsFrame: Record<number, boolean | undefined> = {};
 /** When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there). */
 const primedAt: Record<number, number | undefined> = {};
+/** When this bot last had a lane-fight chance, per target pid. */
+const rolledAt: Record<number, Record<number, number> | undefined> = {};
+
+/**
+ * The lane fight's own hard zeros on top of the library's (HP floor, two down, a target by its tower): the decline rule (the
+ * other side more near the place) and the trade's `behind` (the hero well under the target's HP).
+ */
+export function FightZero(i: Plays.Inputs): string | undefined {
+    if (i.theirs > i.ours) return "outnumbered";
+    if (i.targetHp !== undefined && i.hp < i.targetHp - BEHIND_BY) return "behind";
+    return undefined;
+}
+
+Plays.Define(LANE_FIGHT, { base: FIGHT_BASE, timeout: FIGHT_TIME + 2, chases: true, zero: FightZero });
 
 /** Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it). */
 export function Owns(bot: Unit): boolean {
@@ -166,7 +203,8 @@ export function Owns(bot: Unit): boolean {
 /**
  * Slice lane-fight (`Ours.CoreLaneFight`, OWNERSHIP H9): every fight of this in-lane core beyond a trade is this module's. Team
  * roam keeps only its non-fight branches for it and LaneFight makes no claim (its gates close), so a commit is `kill` here.
- * Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
+ * Beyond the commit, in Desire's order: join a running play near it (`fight`, joined), else roll a `lane_fight` play when no
+ * clear window decides (`fight`, rolled), else the trade rule. Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
  */
 export function OwnsLaneFights(bot: Unit): boolean {
     return Ours.On("CoreLaneFight") && Ours.On("CoreTrade") && CoreLastHit.Applies(bot) && bot.IsAlive() && inLane(bot);
@@ -255,6 +293,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const pid = bot.GetPlayerID();
     episodes[pid] = undefined;
     const started = ep.startedAt !== undefined;
+    if (ep.play !== undefined && !ep.joined) Plays.End(ep.play, why);
     if (started && why === "losing") recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp;
     const killed = started && !IsHeroAlive(ep.tpid);
     const thp = killed ? 0 : valid(ep.target) ? ep.target.GetHealth() : ep.thpSeen;
@@ -265,6 +304,8 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["lf", ep.lf ? 1 : 0],
         ["kind", ep.kind],
         ["tgt", ep.tpid],
+        ["play", ep.play?.id],
+        ["join", ep.play !== undefined ? (ep.joined ? 1 : 0) : undefined],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
         ["why", why],
         ["dur", started ? math.floor((now - ep.startedAt!) * 10) / 10 : 0],
@@ -297,28 +338,91 @@ export function Desire(bot: Unit): number | undefined {
         return bot.IsAlive() ? undefined : 0;
     }
     ownsFrame[pid] = true;
+    Plays.Tick(now);
     if (ep !== undefined && ep.ended) {
         close(bot, ep, `mode_${bot.GetActiveMode()}`, now);
         ep = undefined;
     }
     if (ep !== undefined) {
         const why = keepWhy(bot, ep, now);
-        if (why === undefined) return ep.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
+        if (why === undefined) return ep.kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
         close(bot, ep, why, now);
         ep = undefined;
     }
+    // A hero that started a play of another context (the rune spawn's) is driven by it (OWNERSHIP H24).
+    const mine = Plays.Of(bot);
+    if (mine !== undefined && mine.by === bot) return 0;
+    const owns = OwnsLaneFights(bot);
     const target = nearestTarget(bot);
-    if (target === undefined) return 0;
-    const inputs = Gather(bot, target);
-    const d = Decide(inputs, false, killHpFor(bot));
+    const inputs = target !== undefined ? Gather(bot, target) : undefined;
+    const d = inputs !== undefined ? Decide(inputs, false, killHpFor(bot)) : {};
+    if (d.kind !== "kill" && owns) {
+        const join = joinable(bot);
+        if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
+    }
+    if (target === undefined || inputs === undefined) return 0;
+    if (owns && d.kind !== "kill" && d.respect !== "tower" && d.respect !== "outnumbered") {
+        const play = rollFight(bot, target, now);
+        if (play !== undefined) return open(bot, "fight", target, now, play, false);
+    }
     if (d.kind === undefined) return 0;
     const gap = recoverTo[pid];
     if (d.kind === "trade" && gap !== undefined) {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
         recoverTo[pid] = undefined;
     }
-    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, lf: OwnsLaneFights(bot), hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
-    return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
+    return open(bot, d.kind, target, now);
+}
+
+function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean): number {
+    if (joined) Plays.Join(play!, bot);
+    episodes[bot.GetPlayerID()] = {
+        kind,
+        target,
+        tpid: target.GetPlayerID(),
+        offeredAt: now,
+        lf: OwnsLaneFights(bot),
+        hp0: bot.GetHealth(),
+        thp0: target.GetHealth(),
+        thpSeen: target.GetHealth(),
+        inputs: Gather(bot, target),
+        primes: 0,
+        stepOuts: 0,
+        aggro: 0,
+        play,
+        joined,
+    };
+    return kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
+}
+
+/**
+ * A running play this hero may join: its place near, its target visible and within reach + JOIN_WALK, and the library's hard
+ * zeros clear for this hero against that target (HP floor, two down, the target by its tower for a chasing kind) as well as
+ * the trade's tower and decline respects. Deterministic: joining is the hero's judgement, the roll was the initiator's.
+ */
+function joinable(bot: Unit): Plays.Play | undefined {
+    if (Plays.Of(bot) !== undefined) return undefined;
+    const reach = reachOf(bot) + JOIN_WALK;
+    for (const p of Plays.Near(bot.GetLocation(), JOIN_NEAR)) {
+        const t = p.target;
+        if (p.by === bot || !valid(t) || GetUnitToUnitDistance(bot, t) > reach) continue;
+        const r = Decide(Gather(bot, t), false, killHpFor(bot)).respect;
+        if (r === "tower" || r === "outnumbered") continue;
+        if (Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero !== undefined) continue;
+        return p;
+    }
+    return undefined;
+}
+
+/** One lane-fight chance on this target, at most every FIGHT_ROLL_EVERY seconds; the fired play, if any. */
+function rollFight(bot: Unit, target: Unit, now: number): Plays.Play | undefined {
+    const pid = bot.GetPlayerID();
+    const seen = (rolledAt[pid] = rolledAt[pid] ?? {});
+    const tpid = target.GetPlayerID();
+    const last = seen[tpid];
+    if (last !== undefined && now - last < FIGHT_ROLL_EVERY) return undefined;
+    seen[tpid] = now;
+    return Plays.Roll({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }, now);
 }
 
 /** Why a running episode ends now, or undefined to keep it. */
@@ -330,6 +434,12 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
     if (ep.kind === "kill") {
         if (now - ep.startedAt > KILL_TIME) return "time";
+    } else if (ep.kind === "fight") {
+        if (now - ep.startedAt > FIGHT_TIME) return "time";
+        if (ep.play !== undefined && !Plays.Active().includes(ep.play)) return "play_end";
+        if (FR.HpFraction(bot) < Plays.SETTINGS.HpFloor) return "hp";
+        const r = Decide(Gather(bot, ep.target), true, killHpFor(bot)).respect;
+        return r === "tower" || r === "outnumbered" ? r : undefined;
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = reachOf(bot);
@@ -364,8 +474,9 @@ export function Think(bot: Unit): void {
         if (c.GetAttackTarget() === bot) onMe++;
     }
     ep.aggro = math.max(ep.aggro, onMe);
-    // A kill window commits: it attacks whatever the creeps do.
-    const plan = ep.kind === "kill" ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
+    // A kill window or a fight commits: it attacks whatever the creeps do.
+    const commits = ep.kind !== "trade";
+    const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
     if (plan === "step_out") {
         if (ep.stepSince === undefined) {
             ep.stepSince = now;
@@ -383,7 +494,7 @@ export function Think(bot: Unit): void {
     }
     if (bot.GetAttackTarget() !== ep.target) {
         // An order inside the cooldown draws nothing and does not restart it.
-        if (ep.kind === "kill") primedAt[pid] = now;
+        if (commits) primedAt[pid] = now;
         bot.Action_AttackUnit(ep.target, false);
     }
 }
@@ -446,4 +557,5 @@ export function Reset(): void {
     for (const k in recoverTo) recoverTo[k as unknown as number] = undefined;
     for (const k in primedAt) primedAt[k as unknown as number] = undefined;
     for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
+    for (const k in rolledAt) rolledAt[k as unknown as number] = undefined;
 }
