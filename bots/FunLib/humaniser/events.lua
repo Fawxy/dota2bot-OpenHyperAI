@@ -771,6 +771,16 @@ ____exports.EVENTS = {
         taken = "num",
         away = "num"
     },
+    rune_try = {
+        pid = "num",
+        rune = "num",
+        res = "str",
+        d = "num",
+        act0 = "num",
+        act = "num",
+        st = "num",
+        dt = "num"
+    },
     rune_job = {
         pid = "num",
         pos = "num",

@@ -50,7 +50,9 @@ local function CheckPendingPickup()
 	end
 end
 
+-- Ours.RuneSpawn: the team-wide give-up timed from the first pickup order (rune_pickup), beside the guard above.
 local function IsUnpickable(nRune)
+	if J.Humaniser.RunePickup.On() and J.Humaniser.RunePickup.Unpickable(nRune) then return true end
 	return nUnpickableUntil[nRune] ~= nil and DotaTime() < nUnpickableUntil[nRune]
 end
 
@@ -250,6 +252,7 @@ local GetDesireRaw = GetDesire
 function GetDesire()
 	sGate = nil
 	CheckPendingPickup()
+	if J.Humaniser.RunePickup.On() then J.Humaniser.RunePickup.Tick(bot) end
 	local nRaw = GetDesireRaw()
 	-- The mid-rune floor claim (3b) only lifts a frame that scored a power rune, never past a gate above.
 	if sGate ~= 'power' and J.Humaniser.Transitions.MidRunesOn(bot) then
@@ -477,6 +480,10 @@ function Think()
 				bot:Action_MoveToLocation(vRuneLocation)
 				return
 			else
+				if J.Humaniser.RunePickup.On() and not J.Humaniser.RunePickup.Try(bot, rune.location) then
+					bot:Action_ClearActions(false)
+					return
+				end
 				if tPendingPickup == nil then
 					tPendingPickup = { rune = rune.location, time = DotaTime() }
 				end

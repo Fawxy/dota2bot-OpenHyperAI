@@ -913,6 +913,20 @@ export const EVENTS = {
     },
     // Slice rune-rotation: one line per rune trip or skip (RuneJob). res ok|fail|skip; why: the verb's end reason or the
     // skip's gate; arr: when the bot reached the spot (wait or channel label); died: dead at the trip's end.
+    // Slice rune-spawn: one line when a hero starts ordering a rune pickup (res try) and one when that try ends: gone (the rune
+    // left the spot), left (the hero walked off, or ordered another rune), gave_up (RunePickup GiveUpAfter s of orders within
+    // Near with the rune still available: unpickable for the team until the next river spawn). d distance to the spot; act0 and
+    // act the hero's current action type at the first order and now; st GetRuneStatus; dt seconds since the first order.
+    rune_try: {
+        pid: "num",
+        rune: "num",
+        res: "str",
+        d: "num",
+        act0: "num",
+        act: "num",
+        st: "num",
+        dt: "num",
+    },
     rune_job: {
         pid: "num",
         pos: "num",

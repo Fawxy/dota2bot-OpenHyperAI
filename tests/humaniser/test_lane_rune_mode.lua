@@ -77,6 +77,7 @@ local function load(contest, opts)
 		},
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
 		RuneJob = { Owns = function() return opts.runeJobOwns == true end },
+		RunePickup = { On = function() return false end },
 	}
 	local J = setmetatable({
 		GetHP = function() return 1 end,
