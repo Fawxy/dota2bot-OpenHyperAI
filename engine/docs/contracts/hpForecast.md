@@ -1,8 +1,10 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 3 (slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
-                `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2) / engine (main loop)
+name / version / owner:  hpForecast / 4 (slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
+                `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2; v4, 05/11/2026: a projectile landing
+                past the horizon phases its attacker, through the `flightsAt` helper shared with the last-hit belief, review
+                2026-11-05-sdk-slice-prehit-c12af23 F1) / engine (main loop)
 layer:          game fact (no choice, no action)
 intent:         A creep's HP over the next seconds from the hits the attacker index already sees, for a caller that plans
                 beyond the one swing lastHit makes.
