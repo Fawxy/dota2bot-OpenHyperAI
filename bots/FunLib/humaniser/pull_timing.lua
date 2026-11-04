@@ -214,7 +214,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
         waveTravel = waveTravel,
         meetAlong = meetAlong,
         lanePath = path,
-        ahead = ahead
+        ahead = ahead,
+        team = team
     }
 end
 --- The camp's lead waypoints with its own meet point replaced by `meet`.
@@ -281,7 +282,7 @@ function ____exports.ForCamp(data, half, meet)
         seed
     )
 end
---- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, our lane creeps
+--- Live correction for a wave-timed pull at `aggroAt` (no jitter): once its wave has left the barracks, its lane creeps
 -- within LiveWindow of where the wave should be say how early or late it really is. The plan already carries the lane's
 -- WaveAhead; this is what is left. The shift applied is the wave's body (the mean of those creeps): the front creep runs
 -- ahead of the creeps that take the neutrals (camp 1 hit 0.5-1 s early on the front creep, replay pdg3_C), so it is only
@@ -303,7 +304,8 @@ function ____exports.LiveRead(timing, aggroAt, now)
     local front
     local sum = 0
     local n = 0
-    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
+    local kind = (timing.team == nil or timing.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
+    for ____, c in ipairs(GetUnitList(kind) or ({})) do
         do
             local __continue35
             repeat
@@ -348,5 +350,30 @@ end
 function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_0 and ____opt_0.shift
+end
+function ____exports.Track(timing, slot)
+    return {timing = timing, slot = slot, reads = 0}
+end
+--- Reads the wave if LiveEvery has passed since the last read; returns the hit second (slot + the last shift).
+function ____exports.Update(l, now)
+    if l.readAt == nil or now - l.readAt >= settings().LiveEvery then
+        l.readAt = now
+        local r = ____exports.LiveRead(l.timing, l.slot, now)
+        if r ~= nil then
+            l.read = r
+            l.reads = l.reads + 1
+            if l.first == nil then
+                l.first = r.shift
+            end
+        end
+    end
+    local ____l_slot_4 = l.slot
+    local ____opt_2 = l.read
+    return ____l_slot_4 + (____opt_2 and ____opt_2.shift or 0)
+end
+--- When the wave's body reaches the meet point by the last reading; undefined for a timing with no wave model.
+function ____exports.WaveAt(l, now)
+    local after = l.timing.waveAfter
+    return after ~= nil and ____exports.Update(l, now) + after or nil
 end
 return ____exports

@@ -1033,12 +1033,13 @@ export const EVENTS = {
     // dt: div's share kept sampling for PullJob TrailSec after the job (the wave goes on fighting once the puller has left;
     // the line is written when that trail ends, so `t` is up to TrailSec after the job end); absent on a failed job.
     // cn, cs, chp, cv, cdmg, php: the camp and the puller at the start, as on ev=choice (on a
-    // cancelled:empty / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
-    // cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
+    // cancelled:empty / cancelled:one / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
+    // cancelled:one / cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
-    // Slice pull-diag: sh the live shift the start applied (planned hit second = slot + sh; slice pull-timing: the
-    // wave's body against the plan, which already holds the lane's WaveAhead), lv 1 when the wave was read live (0: sh is 0
-    // because nothing was seen), sf the shift its front creep alone would have given; ht the game time the verb's hit
+    // Slice pull-diag: sh the live shift the hit took (hit second = slot + sh; slice pull-timing: the wave's body against
+    // the plan, which already holds the lane's WaveAhead; slice pull-live: read again every LiveEvery s up to the order, so
+    // sh is the last before it), lv the live readings taken (0: sh is 0 because nothing was seen; before slice pull-live
+    // 1 or 0), sf the shift the last reading's front creep alone would have given; ht the game time the verb's hit
     // was confirmed (label lead began; absent when it never got there). The camp's own neutrals are tagged at ht (in its
     // box, or attacking the puller within PullJob TagRadius); on them, sampled every PullJob WatchEvery to the trail's end:
     // g4 the first time one was past PullJob Left (400, EC-084: the give-up timer starts there), gh the farthest any came
@@ -1076,6 +1077,9 @@ export const EVENTS = {
         sh: "num",
         lv: "num",
         sf: "num",
+        // Slice pull-live: s0 the shift at the start (sh is the one at the order), pz seconds held after the hit for a late wave.
+        s0: "num",
+        pz: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1122,7 +1126,7 @@ export const EVENTS = {
     // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
-    // wants the pull), php the puller's HP. why empty (PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
+    // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
     // hero to the stand or meet point, within PullJob SiteEnemy).
     choice: {
         pid: "num",
