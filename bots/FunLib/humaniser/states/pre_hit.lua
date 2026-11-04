@@ -167,13 +167,13 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         tower:GetAttackDamage(),
         DamageType.Physical
     )
-    local ____creep_9 = creep
-    local ____f_10 = f
-    local ____DotaTime_result_11 = DotaTime()
-    local ____temp_12 = -1
+    local ____creep_8 = creep
+    local ____f_9 = f
+    local ____DotaTime_result_10 = DotaTime()
+    local ____temp_11 = -1
+    local ____temp_12 = {}
     local ____temp_13 = {}
-    local ____temp_14 = {}
-    local ____array_8 = __TS__SparseArrayNew(
+    local ____array_7 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "hp",
@@ -192,20 +192,15 @@ function startWatch(bot, verbs, tower, creep, f, lo)
             math.floor(td)
         }
     )
-    local ____math_floor_7 = math.floor
-    local ____opt_4 = tower.GetSecondsPerAttack
-    if ____opt_4 ~= nil then
-        ____opt_4 = ____opt_4()
-    end
-    local ____opt_4_6 = ____opt_4
-    if ____opt_4_6 == nil then
-        ____opt_4_6 = -1
-    end
+    local ____math_floor_6 = math.floor
+    local ____this_5
+    ____this_5 = tower
+    local ____opt_4 = ____this_5.GetSecondsPerAttack
     __TS__SparseArrayPush(
-        ____array_8,
+        ____array_7,
         {
             "twp",
-            ____math_floor_7(____opt_4_6 * 100) / 100
+            ____math_floor_6((____opt_4 and ____opt_4(____this_5) or -1) * 100) / 100
         },
         {"kt", kt},
         {"kc", kc},
@@ -220,13 +215,13 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         {"ah", ah}
     )
     watches[pid] = {
-        creep = ____creep_9,
-        f = ____f_10,
-        t = ____DotaTime_result_11,
-        last = ____temp_12,
-        hs = ____temp_13,
-        fs = ____temp_14,
-        fields = {__TS__SparseArraySpread(____array_8)}
+        creep = ____creep_8,
+        f = ____f_9,
+        t = ____DotaTime_result_10,
+        last = ____temp_11,
+        hs = ____temp_12,
+        fs = ____temp_13,
+        fields = {__TS__SparseArraySpread(____array_7)}
     }
     sampleWatch(bot, verbs)
 end
@@ -244,17 +239,17 @@ function sampleWatch(bot, verbs)
         end
         w.last = dt
         local r = math.floor(dt * 100) / 100
-        local ____w_hs_15 = w.hs
-        ____w_hs_15[#____w_hs_15 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
-        local ____w_fs_16 = w.fs
-        ____w_fs_16[#____w_fs_16 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        local ____w_hs_14 = w.hs
+        ____w_hs_14[#____w_hs_14 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_15 = w.fs
+        ____w_fs_15[#____w_fs_15 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
         return
     end
     watches[pid] = nil
-    local ____Telemetry_Event_18 = Telemetry.Event
-    local ____array_17 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    local ____Telemetry_Event_17 = Telemetry.Event
+    local ____array_16 = __TS__SparseArrayNew(__TS__Spread(w.fields))
     __TS__SparseArrayPush(
-        ____array_17,
+        ____array_16,
         {
             "end",
             math.floor(dt * 100) / 100
@@ -273,9 +268,9 @@ function sampleWatch(bot, verbs)
             table.concat(w.fs, ",")
         }
     )
-    ____Telemetry_Event_18(
+    ____Telemetry_Event_17(
         "prehit_fc",
-        {__TS__SparseArraySpread(____array_17)}
+        {__TS__SparseArraySpread(____array_16)}
     )
 end
 function forecastDeath(verbs, f)

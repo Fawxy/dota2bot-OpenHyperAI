@@ -217,7 +217,7 @@ function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit
             ["lo", math.floor(lo)],
             ["tw", math.floor(tw)],
             ["td", math.floor(td)],
-            ["twp", math.floor(((tower as any).GetSecondsPerAttack?.() ?? -1) * 100) / 100],
+            ["twp", math.floor(((tower as unknown as Lib.TaskUnit).GetSecondsPerAttack?.() ?? -1) * 100) / 100],
             ["kt", kt], ["kc", kc], ["kh", kh], ["ks", ks],
             ["nu", f.unphasedHits.length],
             ["ud", math.floor(f.unphased)],
