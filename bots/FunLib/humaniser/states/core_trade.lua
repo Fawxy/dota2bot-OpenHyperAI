@@ -333,10 +333,7 @@ local function close(bot, ep, why, now)
                 "role",
                 isSupport(bot) and "support" or "core"
             },
-            {
-                "lf",
-                ____exports.OwnsLaneFights(bot) and 1 or 0
-            },
+            {"lf", ep.lf and 1 or 0},
             {"kind", ep.kind},
             {"tgt", ep.tpid},
             {"result", started and (killed and "kill" or "done") or "lost"},
@@ -442,6 +439,7 @@ function ____exports.Desire(bot)
         target = target,
         tpid = target:GetPlayerID(),
         offeredAt = now,
+        lf = ____exports.OwnsLaneFights(bot),
         hp0 = bot:GetHealth(),
         thp0 = target:GetHealth(),
         thpSeen = target:GetHealth(),

@@ -117,6 +117,8 @@ interface Episode {
     target: Unit;
     tpid: number;
     offeredAt: number;
+    /** Whether the core's lane fights were ours at the offer: at the close a dead or out-of-lane core no longer reads as owned. */
+    lf: boolean;
     startedAt?: number;
     hp0: number;
     thp0: number;
@@ -260,7 +262,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     Telemetry.Event("trade", [
         ["pid", pid],
         ["role", isSupport(bot) ? "support" : "core"],
-        ["lf", OwnsLaneFights(bot) ? 1 : 0],
+        ["lf", ep.lf ? 1 : 0],
         ["kind", ep.kind],
         ["tgt", ep.tpid],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
@@ -315,7 +317,7 @@ export function Desire(bot: Unit): number | undefined {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
         recoverTo[pid] = undefined;
     }
-    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
+    episodes[pid] = { kind: d.kind, target, tpid: target.GetPlayerID(), offeredAt: now, lf: OwnsLaneFights(bot), hp0: bot.GetHealth(), thp0: target.GetHealth(), thpSeen: target.GetHealth(), inputs, primes: 0, stepOuts: 0, aggro: 0 };
     return d.kind === "kill" ? DESIRE_KILL : DESIRE_TRADE;
 }
 

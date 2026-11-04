@@ -122,6 +122,14 @@ do
 	enemy.dead = true
 	CoreTrade.Desire(bot)
 	check("the commit's line carries lf=1 and the kill", last():find("kind=kill") and last():find("lf=1") and last():find("result=kill"))
+	-- A commit that ends in the core's death keeps the offer's lf=1, so @lane_commits counts the death.
+	open(true)
+	CoreTrade.Think(bot)
+	T = T + 0.5
+	bot.alive = false
+	CoreTrade.Desire(bot)
+	check("a commit ended by the core's death still carries lf=1", last():find("why=dead") and last():find("lf=1"), last())
+	bot.alive = true
 	check("switch off: the same target is a trade", open(false) == CoreTrade.DESIRE_TRADE and not CoreTrade.OwnsLaneFights(bot))
 	Ours.CoreLaneFight = true
 	world.laning = false
