@@ -949,7 +949,8 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
                           offs.push(Vector(l.x - here.x, l.y - here.y, 0));
                           if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
                       }
-                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, offs, ranged);
+                      const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
+                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
                       if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());
                       return at as unknown as Lib.Vec;
                   }

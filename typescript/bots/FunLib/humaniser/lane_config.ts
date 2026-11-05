@@ -400,6 +400,10 @@ export const DEFAULTS = {
         // A tagged neutral with at least this attack range is ranged: only then does the step-in run HalfStepOver past the
         // meet point (melee neutrals 100-150, ranged 400-600 in the game data). `judgement`.
         HalfRangedFrom: 250,
+        // Off: the step-in holds HalfHeroAggro from the kept creeps (phhar5: split 7 of 16, whole 1). On: it places the
+        // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
+        // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
+        HalfStepNeutrals: false,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

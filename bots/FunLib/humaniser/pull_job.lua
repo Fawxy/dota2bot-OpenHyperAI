@@ -1753,6 +1753,7 @@ local function verbPlan(bot, pull, aggroAt)
                     end
                 end
             end
+            local byNeutrals = s.PullTiming.HalfStepNeutrals == true
             local at = PullTiming.StepIn(
                 pull.timer,
                 p.spawner.location,
@@ -1761,8 +1762,8 @@ local function verbPlan(bot, pull, aggroAt)
                 DotaTime(),
                 engaged,
                 here,
-                offs,
-                ranged
+                byNeutrals and offs or nil,
+                byNeutrals and ranged
             )
             if engaged and pull.stepIn == nil then
                 pull.stepIn = stepped(
