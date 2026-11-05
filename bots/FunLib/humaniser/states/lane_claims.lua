@@ -12,38 +12,42 @@ function ____exports.DenyYield(core, t)
     if t.kind ~= "deny" or not Ours.On("CoreDenyYield") then
         return nil
     end
+    local own = LaneConfig.PositionOf(core)
+    if own ~= nil and own >= 4 then
+        return nil
+    end
     local creep = t.creep
     do
         local i = 1
         while i <= 5 do
             do
-                local __continue15
+                local __continue16
                 repeat
                     local member = GetTeamMember(i)
                     if member == nil or member == nil or member == core then
-                        __continue15 = true
+                        __continue16 = true
                         break
                     end
                     if not member:IsAlive() or member:IsIllusion() then
-                        __continue15 = true
+                        __continue16 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(member)
                     if pos == nil or pos < 4 then
-                        __continue15 = true
+                        __continue16 = true
                         break
                     end
                     if LanePick.Attempting(member:GetPlayerID()) ~= t.creep then
-                        __continue15 = true
+                        __continue16 = true
                         break
                     end
                     if GetUnitToUnitDistance(member, creep) > Etiquette.SETTINGS.ApproachRange then
-                        __continue15 = true
+                        __continue16 = true
                         break
                     end
                     return member:GetPlayerID()
                 until true
-                if not __continue15 then
+                if not __continue16 then
                     break
                 end
             end
@@ -124,20 +128,20 @@ function ____exports.SupportClaim(bot, t, within)
         local i = 1
         while i <= 5 do
             do
-                local __continue26
+                local __continue27
                 repeat
                     local member = GetTeamMember(i)
                     if member == nil or member == nil or member == bot then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     if not member:IsAlive() or member:IsIllusion() then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(member)
                     if pos == nil or pos > 3 then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     if coreTakes(member, t, within) then
@@ -146,9 +150,9 @@ function ____exports.SupportClaim(bot, t, within)
                     if LanePick.Attempting(member:GetPlayerID()) ~= nil and GetUnitToUnitDistance(member, creep) <= Etiquette.SETTINGS.ApproachRange then
                         busy = true
                     end
-                    __continue26 = true
+                    __continue27 = true
                 until true
-                if not __continue26 then
+                if not __continue27 then
                     break
                 end
             end

@@ -156,6 +156,8 @@ export function OwnsSupportHits(bot: Unit): boolean {
  * The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
  * Ours.CoreDenyYield off), the support's claims otherwise.
  */
+// OwnsLastHit is checked first: a bot listed in Laning.LastHit takes a core's mine (CoreMine) even at pos 4-5; DenyYield
+// never yields for a pos 4-5, so two of them cannot yield to each other (review 2026-11-06-deny-yield-0ee970a F4).
 function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
     if (OwnsLastHit(bot)) return LaneClaims.CoreMine(bot);
     if (!OwnsSupportHits(bot)) return undefined;
@@ -215,11 +217,13 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
 }
 
 /**
- * A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to. The next
- * attempt reported carries it; in smoke game deny-yield_fn1 most yields came with nothing else on offer, so the yield and the
- * next attempt are often seconds apart (ev=snap's `yc` counts every yield).
+ * A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to, and when. The
+ * next attempt reported carries it if it ends within YIELD_REPORT_SECS of the yield; in smoke game deny-yield_fn1 most yields
+ * came with nothing else on offer, so the yield and the next attempt are often seconds apart (ev=snap's `yc` counts every
+ * yield). An older yield is dropped unreported (review 2026-11-06-deny-yield-0ee970a F2: a stale yd on a later last hit).
  */
-const yields: Record<number, number | undefined> = {};
+const yields: Record<number, { sup: number; t: number } | undefined> = {};
+const YIELD_REPORT_SECS = 6;
 
 /** After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it. */
 function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verbs.LaneTarget | undefined, pre: Lib.Verbs.LaneTarget | undefined, chosen: Lib.Verbs.LaneTarget | undefined): void {
@@ -230,13 +234,13 @@ function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verb
     if (sup === undefined) return;
     const pid = bot.GetPlayerID();
     LanePick.NoteYield(pid, plain.creep);
-    yields[pid] = sup;
+    yields[pid] = { sup, t: DotaTime() };
 }
 
 function yieldOf(pid: number): number | undefined {
     const y = yields[pid];
     yields[pid] = undefined;
-    return y;
+    return y !== undefined && DotaTime() - y.t <= YIELD_REPORT_SECS ? y.sup : undefined;
 }
 
 /**

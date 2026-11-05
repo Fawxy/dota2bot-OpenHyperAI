@@ -751,6 +751,7 @@ do
 		end)
 		return core, d1, d2, e1
 	end
+	local H4
 	local core, d1, d2, e1 = world({})
 	local mine = Claims.CoreMine(core)
 	check("deny yield: the deny its support is attempting is not the core's", mine ~= nil and mine(lt(d1, "deny", 0.2)) == false)
@@ -767,37 +768,62 @@ do
 	core, d1 = world({ off = true })
 	check("deny yield off: the core takes every creep", Claims.CoreMine(core) == nil and Claims.DenyYield(core, lt(d1, "deny", 0.2)) == nil)
 
-	-- Through the core's body: it swings at the other deny, and that attempt's ev=lh says yd=2; ev=snap's lf counts yc=1.
-	local H, events, body
+	-- A pos 4-5 taking a core's mine (listed in Laning.LastHit) never yields (review 2026-11-06-deny-yield-0ee970a F4).
 	silenced(function()
 		local positions
-		H, body, positions = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }, { pos = 1, coreLastHit = true })
+		H4, core, positions = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } },
+			{ pos = 4, coreLastHit = true })
 		package.loaded["bots/FunLib/custom_loader"].Ours.CoreDenyYield = true
-		events = {}
-		require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
-		H.States.SetLaneSpot(body, function() return Vector(-300, 0) end)
 		MakeUnit({ pid = 2, mode = LANING, loc = Vector(-250, 40), level = 3 })
 		positions[2] = 5
-		for _ = 1, 4 do frame(H, body) end
-		d1 = creep({ loc = Vector(-200, 0), hp = 30, regen = -60, team = 2 })
-		d2 = creep({ loc = Vector(-220, 30), hp = 45, regen = -40, team = 2 })
+		d1 = creep({ loc = Vector(-200, 0), hp = 45, regen = -40, team = 2 })
 		Pick = require("bots/FunLib/humaniser/states/lane_pick")
-		Pick.NotePick(2, T, { lt(d1, "deny", 0.1) }, lt(d1, "deny", 0.1))
+		Claims = require("bots/FunLib/humaniser/states/lane_claims")
+		Pick.NotePick(2, T, { lt(d1, "deny", 0.2) }, lt(d1, "deny", 0.2))
 		Pick.NotePhase(2, "deny")
-		for _ = 1, 3 do frame(H, body) end
 	end)
-	check("deny yield body: the core swung at the other deny, not the support's", body.attacks ~= nil and body.attacks[#body.attacks] == d2)
-	silenced(function()
-		d2.alive, d2.hp = false, 0
-		body.denies = 1
-		for _ = 1, 3 do frame(H, body) end
-	end)
-	local lh
-	for _, l in ipairs(events) do if l:find("ev=lh ", 1, true) and l:find(" pid=1 ", 1, true) then lh = l end end
+	check("deny yield: a pos 4 on a core's mine does not yield", Claims.DenyYield(core, lt(d1, "deny", 0.2)) == nil)
+
+	-- Through the core's body: it swings at the other deny, and that attempt's ev=lh says yd=2; ev=snap's lf counts yc=1. With
+	-- the attempt ending more than 6 s after the yield, yd is dropped (review 2026-11-06-deny-yield-0ee970a F2).
+	local function bodyRun(gap)
+		local H, events, body
+		silenced(function()
+			local positions
+			H, body, positions = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = {} } }, { pos = 1, coreLastHit = true })
+			package.loaded["bots/FunLib/custom_loader"].Ours.CoreDenyYield = true
+			events = {}
+			require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+			H.States.SetLaneSpot(body, function() return Vector(-300, 0) end)
+			MakeUnit({ pid = 2, mode = LANING, loc = Vector(-250, 40), level = 3 })
+			positions[2] = 5
+			for _ = 1, 4 do frame(H, body) end
+			d1 = creep({ loc = Vector(-200, 0), hp = 30, regen = -60, team = 2 })
+			d2 = creep({ loc = Vector(-220, 30), hp = 45, regen = -40, team = 2 })
+			Pick = require("bots/FunLib/humaniser/states/lane_pick")
+			Pick.NotePick(2, T, { lt(d1, "deny", 0.1) }, lt(d1, "deny", 0.1))
+			Pick.NotePhase(2, "deny")
+			for _ = 1, 3 do frame(H, body) end
+		end)
+		local swung = body.attacks ~= nil and body.attacks[#body.attacks] == d2
+		silenced(function()
+			T = T + gap
+			d2.alive, d2.hp = false, 0
+			body.denies = 1
+			for _ = 1, 3 do frame(H, body) end
+		end)
+		local lh
+		for _, l in ipairs(events) do if l:find("ev=lh ", 1, true) and l:find(" pid=1 ", 1, true) then lh = l end end
+		require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+		return swung, lh
+	end
+	local swung, lh = bodyRun(0)
+	check("deny yield body: the core swung at the other deny, not the support's", swung)
 	check("deny yield body: the attempt's ev=lh names the support (yd=2)", lh ~= nil and lh:find(" yd=2", 1, true) ~= nil, lh)
 	check("deny yield body: lf counts the yield", (require("bots/FunLib/humaniser/states/lane_pick").Describe(1, T) or ""):find(" yc=1", 1, true) ~= nil,
 		require("bots/FunLib/humaniser/states/lane_pick").Describe(1, T))
-	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+	swung, lh = bodyRun(10)
+	check("deny yield body: an attempt ending 10 s after the yield carries no yd", lh ~= nil and lh:find(" yd=", 1, true) == nil, lh)
 end
 
 -- wave_hold's hold point (lane_spot input `hold`, slice core-in-lane): our wave gone, their melee creep walking in at (-200, 0)

@@ -364,10 +364,12 @@ local function choose(bot, targets, current, pre)
         pre
     )
 end
---- A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to. The next
--- attempt reported carries it; in smoke game deny-yield_fn1 most yields came with nothing else on offer, so the yield and the
--- next attempt are often seconds apart (ev=snap's `yc` counts every yield).
+--- A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to, and when. The
+-- next attempt reported carries it if it ends within YIELD_REPORT_SECS of the yield; in smoke game deny-yield_fn1 most yields
+-- came with nothing else on offer, so the yield and the next attempt are often seconds apart (ev=snap's `yc` counts every
+-- yield). An older yield is dropped unreported (review 2026-11-06-deny-yield-0ee970a F2: a stale yd on a later last hit).
 local yields = {}
+local YIELD_REPORT_SECS = 6
 --- After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it.
 local function noteYield(bot, targets, current, pre, chosen)
     if not ____exports.OwnsLastHit(bot) or LaneClaims.CoreMine(bot) == nil then
@@ -383,12 +385,15 @@ local function noteYield(bot, targets, current, pre, chosen)
     end
     local pid = bot:GetPlayerID()
     LanePick.NoteYield(pid, plain.creep)
-    yields[pid] = sup
+    yields[pid] = {
+        sup = sup,
+        t = DotaTime()
+    }
 end
 local function yieldOf(pid)
     local y = yields[pid]
     yields[pid] = nil
-    return y
+    return y ~= nil and DotaTime() - y.t <= YIELD_REPORT_SECS and y.sup or nil
 end
 --- The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
 -- pre-hit). A creep handle stays the same unit until it dies.

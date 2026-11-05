@@ -71,6 +71,10 @@ function coreTakes(core: Attacker, t: Lib.Verbs.LaneTarget, within: number): boo
  */
 export function DenyYield(core: Unit, t: Lib.Verbs.LaneTarget): number | undefined {
     if (t.kind !== "deny" || !Ours.On("CoreDenyYield")) return undefined;
+    // Only a pos 1-3 yields: a pos 4-5 listed in Laning.LastHit takes a core's mine, and two of them must not yield a deny
+    // to each other (review 2026-11-06-deny-yield-0ee970a F4).
+    const own = LaneConfig.PositionOf(core);
+    if (own !== undefined && own >= 4) return undefined;
     const creep = t.creep as unknown as Unit;
     for (let i = 1; i <= 5; i++) {
         const member = GetTeamMember(i);
