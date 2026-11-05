@@ -629,16 +629,33 @@ local function Clearance(t, alongs, keep, now, centre, heroSpeed)
     end
     return best
 end
---- HalfStepBack behind `stand`, away from the lane towards `origin`: where a stepping-in half pull's lead ends.
-function ____exports.StepBackPoint(origin, stand)
+--- Where a stepping-in half pull's lead ends: back from `stand` towards `origin` (at least HalfStepBack) until HalfHoldOff
+-- from the lane path, so the wave walks past out of reach of the puller and the neutrals hitting it (phhar4: 300 behind a
+-- meet point on the lane, camp 1 took the whole wave 5 of 5 while the puller waited). At most the origin.
+function ____exports.StepBackPoint(origin, stand, path)
+    local cfg = settings()
     local ox = stand.x - origin.x
     local oy = stand.y - origin.y
     local ol = math.max(
         1,
         math.sqrt(ox * ox + oy * oy)
     )
-    local b = settings().HalfStepBack
-    return Vector(stand.x - ox / ol * b, stand.y - oy / ol * b, stand.z)
+    local b = math.min(cfg.HalfStepBack, ol)
+    local function at(d)
+        return Vector(stand.x - ox / ol * d, stand.y - oy / ol * d, stand.z)
+    end
+    if path ~= nil then
+        while b < ol and select(
+            2,
+            ____exports.Along(
+                path,
+                at(b)
+            )
+        ) < cfg.HalfHoldOff do
+            b = math.min(ol, b + 50)
+        end
+    end
+    return at(b)
 end
 --- A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): the lead ends HalfStepBack behind
 -- `stand` (StepBackPoint), and during the watch the puller, its neutrals following, stands at the point on the line from
@@ -674,7 +691,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
             k = k + 1
         end
     end
-    local back = ____exports.StepBackPoint(origin, stand)
+    local back = ____exports.StepBackPoint(origin, stand, path)
     local len = hypot(back.x, back.y, meet.x, meet.y)
     local n = math.max(
         1,

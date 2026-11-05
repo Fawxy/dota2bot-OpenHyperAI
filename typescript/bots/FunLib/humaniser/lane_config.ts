@@ -388,8 +388,11 @@ export const DEFAULTS = {
         HalfStepAhead: 0.5,
         HalfStepBuffer: 50,
         // With the step-in, the hit goes out HalfNeutralDelay + HalfStepEarly before the HalfClear aim (the clearance search
-        // runs only without it). `judgement`: the neutrals' start spread 0.4-2.1 s.
-        HalfStepEarly: 1,
+        // runs only without it). `judgement`: the neutrals' start spread 0.4-2.1 s; phhar4 at 1 s had the puller wait under
+        // the camp's hits until retreat took it (6 of 12 on camp 26).
+        HalfStepEarly: 0.5,
+        // A stepping-in half pull waits at least this far off the lane path (HalfHeroAggro + HalfStepBuffer). `judgement`.
+        HalfHoldOff: 550,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.

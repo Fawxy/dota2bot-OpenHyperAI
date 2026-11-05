@@ -306,7 +306,8 @@ do
 	CREEPS[2] = {}
 	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
 	-- With the step-in (the default) the hit is the HalfClear aim brought forward by HalfNeutralDelay + HalfStepEarly
-	-- (2 s), so the neutrals wait off the lane rather than arrive late; no search runs.
+	-- (1.5 s), so the neutrals wait off the lane rather than arrive late; no search runs. The lead ends at least 550 off
+	-- the lane (HalfHoldOff), where the passing wave cannot reach the puller or the neutrals.
 	local T0 = T
 	local SP = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
 	T, CURRENT_TEAM = T0, 2
@@ -316,7 +317,10 @@ do
 	local early = SP.Timer(st, slot, 1, 500, 2, 330)
 	local eh = SP.Read(early, T)
 	local aim2 = T + (st.meetAlong + 500 - alongs[2]) / 325 - st.walk
-	check("step-in aim: 2 s before the HalfClear aim, no search", math.abs(eh - (aim2 - 2)) < 1e-6 and early.margin == nil, eh - aim2)
+	check("step-in aim: 1.5 s before the HalfClear aim, no search", math.abs(eh - (aim2 - 1.5)) < 1e-6 and early.margin == nil, eh - aim2)
+	local hold = SP.StepBackPoint(origin, meet, PATH)
+	check("step-in hold: 550 off the lane, on the way back to the camp", math.abs(hold.y - (-5000)) >= 550 and dist(hold, origin) < dist(meet, origin),
+		tostring(hold.x) .. "," .. tostring(hold.y))
 	local full = PT.Timer(timing, slot, 0, 100)
 	PT.Read(full, T)
 	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)

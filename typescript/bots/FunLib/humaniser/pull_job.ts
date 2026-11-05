@@ -782,12 +782,12 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     // step-in, HalfStepBack behind it, stepping in during the watch).
     const lead = [...p.lead];
     const stepIn = pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true;
-    if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet);
+    if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet, p.timing.lanePath);
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
         pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
         if (pull.timer.stand !== undefined && lead.length > 0)
-            lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand) : pull.timer.stand;
+            lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
     return {

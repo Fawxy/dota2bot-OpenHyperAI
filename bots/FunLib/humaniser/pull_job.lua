@@ -1497,7 +1497,7 @@ local function verbPlan(bot, pull, aggroAt)
     local lead = {unpack(p.lead)}
     local stepIn = pull.timer.keep > 0 and s.PullTiming.HalfStepIn == true
     if stepIn and #lead > 0 then
-        lead[#lead] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand or p.meet)
+        lead[#lead] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand or p.meet, p.timing.lanePath)
     end
     camp.earlier = function()
         pull.hitAt = PullTiming.Read(
@@ -1505,7 +1505,7 @@ local function verbPlan(bot, pull, aggroAt)
             DotaTime()
         )
         if pull.timer.stand ~= nil and #lead > 0 then
-            lead[#lead] = stepIn and PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand) or pull.timer.stand
+            lead[#lead] = stepIn and PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) or pull.timer.stand
         end
         return aggroAt - pull.hitAt
     end

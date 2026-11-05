@@ -424,13 +424,20 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
     return best;
 }
 
-/** HalfStepBack behind `stand`, away from the lane towards `origin`: where a stepping-in half pull's lead ends. */
-export function StepBackPoint(origin: Vector, stand: Vector): Vector {
+/**
+ * Where a stepping-in half pull's lead ends: back from `stand` towards `origin` (at least HalfStepBack) until HalfHoldOff
+ * from the lane path, so the wave walks past out of reach of the puller and the neutrals hitting it (phhar4: 300 behind a
+ * meet point on the lane, camp 1 took the whole wave 5 of 5 while the puller waited). At most the origin.
+ */
+export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | undefined): Vector {
+    const cfg = settings();
     const ox = stand.x - origin.x;
     const oy = stand.y - origin.y;
     const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
-    const b = settings().HalfStepBack;
-    return Vector(stand.x - (ox / ol) * b, stand.y - (oy / ol) * b, stand.z);
+    let b = math.min(cfg.HalfStepBack, ol);
+    const at = (d: number) => Vector(stand.x - (ox / ol) * d, stand.y - (oy / ol) * d, stand.z);
+    if (path !== undefined) while (b < ol && Along(path, at(b))[1] < cfg.HalfHoldOff) b = math.min(ol, b + 50);
+    return at(b);
 }
 
 /**
@@ -459,7 +466,7 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
         fronts.push(PathPoint(path, alongs[k]));
         fronts.push(PathPoint(path, alongs[k] + cfg.CreepSpeed * cfg.HalfStepAhead));
     }
-    const back = StepBackPoint(origin, stand);
+    const back = StepBackPoint(origin, stand, path);
     const len = hypot(back.x, back.y, meet.x, meet.y);
     const n = math.max(1, math.ceil(len / 50));
     const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
