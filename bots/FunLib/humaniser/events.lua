@@ -1190,7 +1190,9 @@ ____exports.EVENTS = {
         hph = "num",
         ne = "num",
         nk = "num",
-        nr = "num"
+        nr = "num",
+        cl = "num",
+        fo = "num"
     }
 }
 return ____exports
