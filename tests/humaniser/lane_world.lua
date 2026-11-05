@@ -30,6 +30,9 @@ function GetTower(team, id) return TOWERS_W[team][id] end
 
 CREEPS = { [2] = {}, [3] = {} }
 NEUTRALS = {}
+-- GetDroppedItemList entries: { item = { GetName = fn }, location = Vector }.
+DROPPED = {}
+function GetDroppedItemList() return DROPPED end
 SPAWNERS = {}
 LAST_SEEN = {}
 ACTIONS = {}
@@ -238,7 +241,7 @@ function UnitMeta:GetNearbyTrees(r)
 	return ids
 end
 function GetTreeLocation(id) return TREES[id] end
-for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation", "UseAbilityOnTree", "UseAbilityOnEntity" }) do
+for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation", "UseAbilityOnTree", "UseAbilityOnEntity", "PickUpItem" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
 		table.insert(ACTIONS, { pid = self.pid, kind = kind, args = { ... } })
 	end

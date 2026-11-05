@@ -2,7 +2,7 @@
  * Dota 2 scripting API globals functions and constants. https://developer.valvesoftware.com/wiki/Dota_Bot_Scripting
  */
 
-import { Unit, Vector, AvoidanceZone } from "./interfaces";
+import { Unit, Vector, AvoidanceZone, DroppedItem } from "./interfaces";
 import { Lane, Team, UnitType } from ".";
 
 declare global {
@@ -25,6 +25,9 @@ declare global {
     function GetTeamMember(playerNumberOnTeam: number): Unit | null;
 
     function GetUnitList(unitType: UnitType): Unit[];
+
+    /** Items lying on the ground (Valve wiki: item handle, location, owner, playerid). */
+    function GetDroppedItemList(): DroppedItem[];
 
     function GameTime(): number;
 

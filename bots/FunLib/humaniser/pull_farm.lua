@@ -253,6 +253,225 @@ local function __TS__DelegatedYield(iterable)
     end
 end
 
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local Map
+do
+    Map = __TS__Class()
+    Map.name = "Map"
+    function Map.prototype.____constructor(self, entries)
+        self[Symbol.toStringTag] = "Map"
+        self.items = {}
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if entries == nil then
+            return
+        end
+        local iterable = entries
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                local value = result.value
+                self:set(value[1], value[2])
+            end
+        else
+            local array = entries
+            for ____, kvp in ipairs(array) do
+                self:set(kvp[1], kvp[2])
+            end
+        end
+    end
+    function Map.prototype.clear(self)
+        self.items = {}
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Map.prototype.delete(self, key)
+        local contains = self:has(key)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[key]
+            local previous = self.previousKey[key]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[key] = nil
+            self.previousKey[key] = nil
+        end
+        self.items[key] = nil
+        return contains
+    end
+    function Map.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, self.items[key], key, self)
+        end
+    end
+    function Map.prototype.get(self, key)
+        return self.items[key]
+    end
+    function Map.prototype.has(self, key)
+        return self.nextKey[key] ~= nil or self.lastKey == key
+    end
+    function Map.prototype.set(self, key, value)
+        local isNewValue = not self:has(key)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        self.items[key] = value
+        if self.firstKey == nil then
+            self.firstKey = key
+            self.lastKey = key
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = key
+            self.previousKey[key] = self.lastKey
+            self.lastKey = key
+        end
+        return self
+    end
+    Map.prototype[Symbol.iterator] = function(self)
+        return self:entries()
+    end
+    function Map.prototype.entries(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, items[key]}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.values(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = items[key]}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    Map[Symbol.species] = Map
+end
+
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
+end
+
 local function __TS__SparseArrayNew(...)
     local sparseArray = {...}
     sparseArray.sparseLength = __TS__CountVarargs(...)
@@ -275,8 +494,9 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local locOf, dist, campLeft, running
+local locOf, dist, madstones, campLeft, running, pickUp
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -302,23 +522,109 @@ end
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
+function madstones(center)
+    local out = __TS__New(Map)
+    for ____, d in ipairs(GetDroppedItemList() or ({})) do
+        do
+            local __continue61
+            repeat
+                if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
+                    __continue61 = true
+                    break
+                end
+                if (string.find(
+                    d.item:GetName(),
+                    ____exports.SETTINGS.PickName,
+                    1,
+                    true
+                )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
+                    __continue61 = true
+                    break
+                end
+                out:set(
+                    (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
+                    d
+                )
+                __continue61 = true
+            until true
+            if not __continue61 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- Picks up the madstone drops by the cleared camp (SETTINGS PickName), nearest first, for at most PickMax seconds.
+pickUp = __TS__Generator(function(bot, f, ctx)
+    local left = madstones(f.center)
+    f.ms = left.size
+    f.mp = 0
+    local done = {success = true, reason = "ok"}
+    if f.ms == 0 then
+        return done
+    end
+    ctx.label("pickup")
+    local from = DotaTime()
+    local ordered = {}
+    local orderedAt = -math.huge
+    while bot:IsAlive() and DotaTime() - from <= ____exports.SETTINGS.PickMax do
+        local best
+        local bestKey
+        for ____, ____value in __TS__Iterator(left) do
+            local k = ____value[1]
+            local d = ____value[2]
+            if best == nil or dist(
+                bot:GetLocation(),
+                d.location
+            ) < dist(
+                bot:GetLocation(),
+                best.location
+            ) then
+                best = d
+                bestKey = k
+            end
+        end
+        if best == nil or bestKey == nil then
+            break
+        end
+        if DotaTime() - orderedAt >= ____exports.SETTINGS.ReturnReorder then
+            bot:Action_PickUpItem(best.item)
+            if __TS__ArrayIndexOf(ordered, bestKey) < 0 then
+                ordered[#ordered + 1] = bestKey
+            end
+            orderedAt = DotaTime()
+        end
+        coroutine.yield()
+        local now = madstones(f.center)
+        f.mp = f.mp + #__TS__ArrayFilter(
+            ordered,
+            function(____, k) return not now:has(k) end
+        )
+        ordered = __TS__ArrayFilter(
+            ordered,
+            function(____, k) return now:has(k) end
+        )
+        left = now
+    end
+    return done
+end)
 function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue44
+            local __continue77
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue44 = true
+                    __continue77 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue44 = true
+                __continue77 = true
             until true
-            if not __continue44 then
+            if not __continue77 then
                 break
             end
         end
@@ -337,7 +643,13 @@ ____exports.SETTINGS = {
     CoreThere = 600,
     ReturnArrive = 900,
     ReturnMax = 25,
-    ReturnReorder = 0.5
+    ReturnReorder = 0.5,
+    PickName = "madstone",
+    PickRadius = 900,
+    PickMax = 6,
+    LastHit = true,
+    LastHitAll = true,
+    LastHitHits = 2
 }
 running = {}
 --- The pull end (`at`) each hero's window was last settled for: one start or one skip line per pull.
@@ -519,16 +831,107 @@ local walkBack = __TS__Generator(function(bot, f, ctx)
         coroutine.yield()
     end
 end)
+--- Madstone charges in `bot`'s item slots (inventory, backpack, stash and neutral slot).
+local function madstoneCharges(bot)
+    local n = 0
+    do
+        local slot = 0
+        while slot <= 16 do
+            do
+                local __continue41
+                repeat
+                    local it = bot:GetItemInSlot(slot)
+                    if it == nil or it == nil or (string.find(
+                        it:GetName(),
+                        ____exports.SETTINGS.PickName,
+                        1,
+                        true
+                    )) == nil then
+                        __continue41 = true
+                        break
+                    end
+                    local ____math_max_9 = math.max
+                    local ____opt_7 = it.GetCurrentCharges
+                    n = n + ____math_max_9(
+                        1,
+                        ____opt_7 and ____opt_7(it) or 1
+                    )
+                    __continue41 = true
+                until true
+                if not __continue41 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    return n
+end
+--- A unit of ours other than `bot` (the pulled wave's creeps, an ally hero) attacking `n`.
+local function othersOn(bot, n)
+    for ____, kind in ipairs({UnitType.AlliedCreeps, UnitType.AlliedHeroes}) do
+        for ____, u in ipairs(GetUnitList(kind) or ({})) do
+            if u ~= nil and u ~= nil and u ~= bot and u:IsAlive() and u:GetAttackTarget() == n then
+                return true
+            end
+        end
+    end
+    return false
+end
+--- The clear waits for the killing hit on `n` (SETTINGS LastHit).
+local function takeLastHit(bot, n, camp)
+    if not ____exports.SETTINGS.LastHit or not ____exports.SETTINGS.LastHitAll and #camp > 1 or not othersOn(bot, n) then
+        return false
+    end
+    local hit = n:GetActualIncomingDamage(
+        bot:GetAttackDamage(),
+        DamageType.Physical
+    )
+    return n:GetHealth() <= ____exports.SETTINGS.LastHitHits * math.max(1, hit)
+end
 local body = __TS__Generator(function(bot, f, ctx)
     local hooks = {
         label = function(l) return ctx.label(l) end,
         urgent = ctx.urgent
     }
-    local r = __TS__DelegatedYield(Tasks.Jobs().clearCamp(bot, {at = f.center, radius = ____exports.SETTINGS.CampRadius, deadline = f.left + ____exports.SETTINGS.MaxFarm}, hooks))
+    local lh = bot:GetLastHits()
+    local r = __TS__DelegatedYield(Tasks.Jobs().clearCamp(
+        bot,
+        {
+            at = f.center,
+            radius = ____exports.SETTINGS.CampRadius,
+            deadline = f.left + ____exports.SETTINGS.MaxFarm,
+            lastHit = function(n, camp) return takeLastHit(bot, n, camp) end,
+            onLastHit = function(_n, res)
+                f.lt = (f.lt or 0) + 1
+                if res.success then
+                    f.lk = (f.lk or 0) + 1
+                end
+            end,
+            onGone = function(_n, at, left)
+                local now = bot:GetLastHits()
+                local mine = now > lh
+                lh = now
+                if left > 0 then
+                    return
+                end
+                f.fl = mine and 1 or 0
+                f.fd = math.floor(dist(
+                    bot:GetLocation(),
+                    at
+                ) + 0.5)
+            end
+        },
+        hooks
+    ))
+    if r.success and r.message == "cleared" and f.fl == nil then
+        f.fl = 0
+    end
     f.nl = campLeft(f.center)
     if not r.success then
         return r
     end
+    __TS__DelegatedYield(pickUp(bot, f, ctx))
     return __TS__DelegatedYield(walkBack(bot, f, ctx))
 end)
 local function finish(bot, f, r, label)
@@ -543,13 +946,13 @@ local function finish(bot, f, r, label)
     local function r1(x)
         return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil
     end
-    local ____Telemetry_Event_8 = Telemetry.Event
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_11 = Telemetry.Event
+    local ____array_10 = __TS__SparseArrayNew(
         {"phase", "end"},
         unpack(fields(bot, f, f.camp))
     )
     __TS__SparseArrayPush(
-        ____array_7,
+        ____array_10,
         {"res", r.success and "ok" or "fail"},
         {"why", why},
         {"label", label},
@@ -581,11 +984,25 @@ local function finish(bot, f, r, label)
         {
             "died",
             bot:IsAlive() and 0 or 1
+        },
+        {"ms", f.ms},
+        {"mp", f.mp},
+        {
+            "lh",
+            bot:GetLastHits() - f.lh0
+        },
+        {"lt", f.lt},
+        {"lk", f.lk},
+        {"fl", f.fl},
+        {"fd", f.fd},
+        {
+            "mi",
+            madstoneCharges(bot) - f.mi0
         }
     )
-    ____Telemetry_Event_8(
+    ____Telemetry_Event_11(
         "pull_clear",
-        {__TS__SparseArraySpread(____array_7)}
+        {__TS__SparseArraySpread(____array_10)}
     )
 end
 --- Every frame while the chooser asks: true while a farm runs or as one starts. A farm may start only in the StartWithin
@@ -623,7 +1040,9 @@ function ____exports.Wants(bot, blocked, host)
         div = pull.div,
         n0 = PullJob.CampStateOf(camp).n,
         g0 = bot:GetNetWorth(),
-        hp0 = hpShare(bot)
+        hp0 = hpShare(bot),
+        lh0 = bot:GetLastHits(),
+        mi0 = madstoneCharges(bot)
     }
     local why = ago > ____exports.SETTINGS.StartWithin and (lastWhy[pid] or "late") or startGate(bot, camp, center, blocked)
     if why ~= nil then
@@ -631,15 +1050,15 @@ function ____exports.Wants(bot, blocked, host)
         if ago > ____exports.SETTINGS.StartWithin or why == "no-neutrals" or why == "core-coming" or why == "core-there" then
             handled[pid] = pull.at
             lastWhy[pid] = nil
-            local ____Telemetry_Event_10 = Telemetry.Event
-            local ____array_9 = __TS__SparseArrayNew(
+            local ____Telemetry_Event_13 = Telemetry.Event
+            local ____array_12 = __TS__SparseArrayNew(
                 {"phase", "skip"},
                 unpack(fields(bot, f, pull.camp))
             )
-            __TS__SparseArrayPush(____array_9, {"why", why})
-            ____Telemetry_Event_10(
+            __TS__SparseArrayPush(____array_12, {"why", why})
+            ____Telemetry_Event_13(
                 "pull_clear",
-                {__TS__SparseArraySpread(____array_9)}
+                {__TS__SparseArraySpread(____array_12)}
             )
         end
         return false
@@ -659,36 +1078,36 @@ function ____exports.Wants(bot, blocked, host)
         function(ctx) return body(bot, f, ctx) end
     )
     if not ok then
-        local ____Telemetry_Event_12 = Telemetry.Event
-        local ____array_11 = __TS__SparseArrayNew(
+        local ____Telemetry_Event_15 = Telemetry.Event
+        local ____array_14 = __TS__SparseArrayNew(
             {"phase", "skip"},
             unpack(fields(bot, f, pull.camp))
         )
-        __TS__SparseArrayPush(____array_11, {"why", "refused"})
-        ____Telemetry_Event_12(
+        __TS__SparseArrayPush(____array_14, {"why", "refused"})
+        ____Telemetry_Event_15(
             "pull_clear",
-            {__TS__SparseArraySpread(____array_11)}
+            {__TS__SparseArraySpread(____array_14)}
         )
         return false
     end
     running[pid] = f
     CampClaims.Set("pullfarm", pid, f.camp)
     jobLine(bot, f, "start", "trigger")
-    local ____Telemetry_Event_14 = Telemetry.Event
-    local ____array_13 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_17 = Telemetry.Event
+    local ____array_16 = __TS__SparseArrayNew(
         {"phase", "start"},
         unpack(fields(bot, f, f.camp))
     )
     __TS__SparseArrayPush(
-        ____array_13,
+        ____array_16,
         {
             "hp0",
             math.floor(f.hp0 * 100 + 0.5) / 100
         }
     )
-    ____Telemetry_Event_14(
+    ____Telemetry_Event_17(
         "pull_clear",
-        {__TS__SparseArraySpread(____array_13)}
+        {__TS__SparseArraySpread(____array_16)}
     )
     return true
 end

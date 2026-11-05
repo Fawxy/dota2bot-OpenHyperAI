@@ -95,6 +95,7 @@ local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, own = 3160, towe
 local function afterPull(o)
 	o = o or {}
 	local w = world({ reading = OUT, farm = o.farm, visible = true })
+	if o.pos ~= nil then w.sup.pos = o.pos end
 	local neutrals = {}
 	for i = 1, o.left or 2 do neutrals[i] = MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y, hp = 300, maxhp = 300 }) end
 	neutrals[1].target = w.sup
@@ -199,6 +200,107 @@ do
 	end)) do table.insert(all, l) end
 	local pc = lines(all, "pull_clear")
 	check("enemy by the camp: no farm, one skip naming why", #pc == 1 and field(pc[1], "phase") == "skip" and (field(pc[1], "why") == "threat" or field(pc[1], "why") == "enemy-near"), pc[1])
+end
+
+-- Madstone (user 06/11/2026: "they should pick up the madstone after if they do the support-pull-farm routine"): a drop by
+-- the cleared camp is picked up before the walk back; an item of another name or one far from the camp is left.
+do
+	local w, all, neutrals, ended, take = afterPull()
+	local stone = { item = { GetName = function() return "item_madstone_bundle" end }, location = Vector(SMALL.x + 100, SMALL.y) }
+	local other = { item = { GetName = function() return "item_branches" end }, location = Vector(SMALL.x - 100, SMALL.y) }
+	local far = { item = { GetName = function() return "item_madstone_bundle" end }, location = Vector(SMALL.x + 3000, SMALL.y) }
+	DROPPED = { stone, other, far }
+	local picked = {}
+	take(capture(function()
+		while T < ended + 40 do
+			local n0 = #ACTIONS
+			frame(w)
+			for i = n0 + 1, #ACTIONS do
+				local a = ACTIONS[i]
+				if a.pid == w.sup.pid and a.kind == "PickUpItem" then
+					table.insert(picked, a.args[1])
+					for j = #DROPPED, 1, -1 do if DROPPED[j].item == a.args[1] then table.remove(DROPPED, j) end end
+				end
+			end
+		end
+	end))
+	DROPPED = {}
+	local fin
+	for _, l in ipairs(lines(all, "pull_clear")) do if field(l, "phase") == "end" then fin = l end end
+	check("madstone: the drop by the camp picked up, nothing else", #picked >= 1 and picked[1] == stone.item and #lines({}, "x") == 0
+		and (function() for _, it in ipairs(picked) do if it ~= stone.item then return false end end return true end)(), #picked)
+	check("madstone: the end line counts one seen, one picked, and the walk back still ends it", fin ~= nil and field(fin, "ms") == "1"
+		and field(fin, "mp") == "1" and field(fin, "why") == "back", fin)
+end
+
+-- The kills (user 06/11/2026: the hero that finishes a camp gets its madstone when close enough, else it drops and is often
+-- contested; the support takes the last hits, at least the camp's last neutral). The pulled wave drains each neutral at
+-- 100 HP/s; the support's hit (200) would leave it to the wave if it attacked at once, so the clear waits in range for the
+-- hit that kills (the engine's lastHit) and the kill is credited to it. A user ask, not a log fault (the branch's log faults
+-- are bug-hunt marks 13 and 16, ~/.dotactl/logs/2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log, in test_pull_job).
+local function lastHits(o)
+	o = o or {}
+	local w, all, neutrals, ended, take = afterPull({ pos = o.pos })
+	w.sup.dmg = 200
+	w.sup.GetAttackPoint = function() return 0.3 end
+	if o.lastHit == false then w.H.PullFarm.SETTINGS.LastHit = false end
+	local wave = {}
+	for i = 1, 3 do wave[i] = MakeCreep({ team = 2, x = SMALL.x, y = SMALL.y }) end
+	local function alive(n) return n.hp > 0 end
+	local pending = {}
+	take(capture(function()
+		while T < ended + 40 do
+			-- The wave turns onto the first neutral alive.
+			local on
+			for _, n in ipairs(neutrals) do if alive(n) then on = n break end end
+			for _, c in ipairs(wave) do c.target = on end
+			if on ~= nil and alive(on) then on.hp = math.max(0, on.hp - 100 * 0.1) end
+			-- The support's attacks as hits: each attack order on a neutral lands its 200 0.3 s later (frame's own drain on
+			-- the neutral is undone); a hit that takes it to 0 is the support's last hit.
+			local before = {}
+			for i, n in ipairs(neutrals) do before[i] = n.hp end
+			local n0 = #ACTIONS
+			frame(w)
+			w.sup.hitting = nil
+			for i, n in ipairs(neutrals) do n.hp = before[i] end
+			for i = n0 + 1, #ACTIONS do
+				local a = ACTIONS[i]
+				if a.pid == w.sup.pid and a.kind == "AttackUnit" then table.insert(pending, { n = a.args[1], at = T + 0.3 }) end
+			end
+			for i = #pending, 1, -1 do
+				local h = pending[i]
+				if T >= h.at then
+					table.remove(pending, i)
+					if h.n.hp > 0 then
+						h.n.hp = math.max(0, h.n.hp - w.sup.dmg)
+						if h.n.hp == 0 then w.sup.lh = (w.sup.lh or 0) + 1 end
+					end
+				end
+			end
+		end
+	end))
+	w.H.PullFarm.SETTINGS.LastHit = true
+	local fin
+	for _, l in ipairs(lines(all, "pull_clear")) do if field(l, "phase") == "end" then fin = l end end
+	return fin, neutrals
+end
+do
+	local fin, neutrals = lastHits()
+	check("last hit: both neutrals dead and the clear ended back in lane", neutrals[1].hp == 0 and neutrals[2].hp == 0 and fin ~= nil
+		and field(fin, "why") == "back", fin)
+	check("last hit: the clear waited for the killing hit and took both kills, the final neutral's included", fin ~= nil
+		and tonumber(field(fin, "lt") or "0") >= 2 and field(fin, "lk") == "2" and field(fin, "lh") == "2" and field(fin, "fl") == "1"
+		and tonumber(field(fin, "fd")) <= 650, fin)
+	check("last hit: the end line counts madstone charges gained (none here)", fin ~= nil and field(fin, "mi") == "0", fin)
+	local off = lastHits({ lastHit = false })
+	check("last hit off: no wait for the killing hit (lt absent)", off ~= nil and field(off, "lt") == nil, off)
+end
+
+-- A lone pos4 is its lane's puller (PullJob pullerOfLane; the off-lane's large camp is its pull camp, camps_data
+-- *_off_large): the clear and its kills apply to it as to a pos5.
+do
+	local fin = lastHits({ pos = 4 })
+	check("pos4 puller: the clear ran and took the final kill", fin ~= nil and field(fin, "pos") == "4" and field(fin, "fl") == "1", fin)
 end
 
 finish()

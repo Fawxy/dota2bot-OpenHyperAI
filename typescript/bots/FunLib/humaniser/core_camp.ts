@@ -6,7 +6,7 @@
  * the cores it owns, keeping its clear-time estimate and per-bot pace learning.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, DamageType, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
@@ -55,6 +55,15 @@ export const SETTINGS = {
     MinNet: 30,
     CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     MaxCampDist: 3800,
+    /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's small and large camps within OffCampDist of its
+     *  outermost lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1) and
+     *  the small one beside it (about 3,700-4,100 from the usual T1 spots on the 7.41 spawners of bug-hunt 05/11/2026 ev=camp;
+     *  no other enemy small or large camp is within 6,000). Its own camps lie
+     *  behind its T2, past MaxCampDist of the clash, so with its own team's spawners only it never fitted a camp (cngchk6,
+     *  cngchk9; bug-hunt 05/11/2026: pid 1 and 9 gate no-camp 35 and 72, no plan). User 06/11/2026: "the offlaner needs to
+     *  farm that camp as part of their lane farm routine, same way pos 1 considers camps". `judgement`. */
+    OffCampDist: 4300,
+    OffCampTypes: { small: true, large: true } as Record<string, boolean>,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
     PathFactor: 1.2,
     /** An enemy hero's reach (lane_spot HeroReach) plus this, touching the walk or the camp, holds the start. */
@@ -509,7 +518,7 @@ function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number
 }
 
 /**
- * The best camp of the core's own jungle from `from` against the forecast `c`, or undefined: open, of a type its level
+ * The best camp of the core's own jungle (the offlaner's also the enemy's by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
  * allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
  */
 export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan | undefined {
@@ -519,8 +528,8 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
     const pullCamps: Record<number, boolean> = {};
     if (matePulling(bot)) for (const p of Camps.PullCampsFor(bot.GetTeam(), bot.GetAssignedLane())) pullCamps[p.campIdx] = true;
     let best: CampPlan | undefined;
-    for (const spawner of Camps.Spawners()) {
-        if (spawner.team !== bot.GetTeam() || level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
+    for (const spawner of tripSpawners(bot)) {
+        if (level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
         const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
@@ -543,6 +552,30 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
     return best;
 }
 
+/** The outermost standing tower of ours on `bot`'s top or bottom lane. */
+function laneTower(bot: Unit): Vector | undefined {
+    const lane = bot.GetAssignedLane();
+    if (lane !== Lane.Top && lane !== Lane.Bot) return undefined;
+    const ids = lane === Lane.Top ? [Tower.Top1, Tower.Top2, Tower.Top3] : [Tower.Bot1, Tower.Bot2, Tower.Bot3];
+    for (const id of ids) {
+        const t = GetTower(bot.GetTeam(), id);
+        if (t !== null && t !== undefined && t.IsAlive()) return t.GetLocation();
+    }
+    return undefined;
+}
+
+/** The camps a trip may take: the core's own team's, and for the offlaner the enemy's by its lane (SETTINGS OffCampDist). */
+function tripSpawners(bot: Unit): Camps.Spawner[] {
+    const team = bot.GetTeam();
+    const out: Camps.Spawner[] = [];
+    const tower = LaneConfig.PositionOf(bot) === 3 ? laneTower(bot) : undefined;
+    for (const spawner of Camps.Spawners()) {
+        if (spawner.team === team) out.push(spawner);
+        else if (tower !== undefined && SETTINGS.OffCampTypes[spawner.type] === true && dist(Camps.BoxCenter(spawner), tower) <= SETTINGS.OffCampDist) out.push(spawner);
+    }
+    return out;
+}
+
 /** Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
  *  HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate. */
 export function CanClear(core: Unit, idx: number, stacks: number): boolean {
@@ -556,8 +589,8 @@ StackJob.SetCarryClear(CanClear);
 /** Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
 function anyCamp(bot: Unit, front: Vector, now: number): boolean {
     const level = bot.GetLevel();
-    for (const spawner of Camps.Spawners()) {
-        if (spawner.team !== bot.GetTeam() || level < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) continue;
+    for (const spawner of tripSpawners(bot)) {
+        if (level < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, front) <= SETTINGS.MaxCampDist && campOpen(bot, spawner, center, now, {})) return true;
     }

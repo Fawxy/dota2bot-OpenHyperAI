@@ -84,6 +84,15 @@ export const SETTINGS = {
     BailScan: 1200,
     /** With no tower of ours on the lane, step this far straight away from the neutrals. */
     BailStep: 700,
+    /** The shed (user 06/11/2026: "get the neutrals onto your allied creeps and not tank asap after pull succeeds"): in the
+     *  watch, once a lane creep of ours near the watch attacks a neutral while a neutral still attacks the puller, the
+     *  puller walks to ShedMargin past the attacking neutrals' longest attack range from their centre, away from them and
+     *  towards our tower's side, so their aggro passes to the creeps. It walks at most ShedFor seconds and then stays where
+     *  the shed left it for the rest of the watch (no walk back into the neutrals). Not a bail: the job still ends `ok`.
+     *  Bug-hunt 05/11/2026 mark 13 (WD pid 7, camp 26): held the watch point 322-330 s at 67% -> 44% HP while 1-4 creeps
+     *  were on the neutrals from 324 and the neutrals stayed on it until 327. `judgement`. */
+    ShedMargin: 300,
+    ShedFor: 5,
 };
 
 /** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the camp's
@@ -159,6 +168,10 @@ interface Pull {
     creepN?: number;
     pAt?: Vector;
     pT?: number;
+    /** The shed (SETTINGS ShedMargin): when it began, the puller's HP share then, and the point it last walked to. */
+    shs?: number;
+    shh?: number;
+    shedTo?: Vector;
 }
 
 /** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
@@ -377,6 +390,54 @@ function bailPoint(bot: Unit): Vector | undefined {
     return Vector(at.x + (dx * SETTINGS.BailStep) / d, at.y + (dy * SETTINGS.BailStep) / d, at.z);
 }
 
+/**
+ * In the watch: where the puller walks to hand the neutrals to our creeps (SETTINGS ShedMargin), else undefined. Starts once
+ * a lane creep of ours near the watch attacks a neutral while a neutral attacks the puller; once started it follows the
+ * neutrals that still attack the puller for ShedFor seconds, and otherwise returns where it last walked to, so the watch
+ * stays out of the fight.
+ */
+function shedPoint(bot: Unit, pull: Pull): Vector | undefined {
+    if (!bot.IsAlive()) return undefined;
+    const now = DotaTime();
+    if (pull.shs !== undefined && now - pull.shs > SETTINGS.ShedFor) return pull.shedTo;
+    const at = bot.GetLocation();
+    let cx = 0;
+    let cy = 0;
+    let k = 0;
+    let range = 0;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive() || u.GetAttackTarget() !== bot || GetUnitToUnitDistance(u, bot) > SETTINGS.BailScan) continue;
+        const l = u.GetLocation();
+        if (l === undefined || l === null) continue;
+        cx += l.x;
+        cy += l.y;
+        k++;
+        range = math.max(range, u.GetAttackRange());
+    }
+    if (k === 0) return pull.shedTo;
+    if (pull.shs === undefined && !laneCreepsNear(pull.plan, LaneConfig.Settings().Radii.MeetWatch).some((c) => onNeutral(c))) return undefined;
+    cx /= k;
+    cy /= k;
+    const unit = (x: number, y: number): [number, number, number] => {
+        const l = math.sqrt(x * x + y * y);
+        return l < 1 ? [0, 0, 0] : [x / l, y / l, l];
+    };
+    const [ax, ay, al] = unit(at.x - cx, at.y - cy);
+    const tower = ourTower(bot);
+    const [tx, ty, tl] = tower !== undefined ? unit(tower.x - at.x, tower.y - at.y) : [0, 0, 0];
+    // Away from the neutrals, bent towards our tower; straight away when the tower lies behind them.
+    let [dx, dy, dl] = unit(ax + tx, ay + ty);
+    if (dl < 0.5) [dx, dy, dl] = al > 0 ? [ax, ay, 1] : [tx, ty, tl];
+    if (dl === 0) return pull.shedTo;
+    if (pull.shs === undefined) {
+        pull.shs = now;
+        pull.shh = bot.GetHealth() / math.max(1, bot.GetMaxHealth());
+    }
+    const r = range + SETTINGS.ShedMargin;
+    pull.shedTo = Vector(cx + dx * r, cy + dy * r, at.z);
+    return pull.shedTo;
+}
+
 /** Our first standing tower on the bot's lane, outermost first. */
 function ourTower(bot: Unit): Vector | undefined {
     const ids = bot.GetAssignedLane() === Lane.Top ? [Tower.Top1, Tower.Top2, Tower.Top3] : [Tower.Bot1, Tower.Bot2, Tower.Bot3];
@@ -528,6 +589,8 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["gd", p.gd !== undefined ? math.floor(p.gd + 0.5) : undefined],
         ["wa", p.wa],
         ["nm", p.nm],
+        ["shs", p.shs !== undefined ? math.floor(p.shs * 10 + 0.5) / 10 : undefined],
+        ["shh", p.shh !== undefined ? math.floor(p.shh * 100 + 0.5) / 100 : undefined],
     ];
     if (!r.success) {
         creepLines(bot, p);
@@ -891,6 +954,7 @@ function watchLine(bot: Unit, p: Pull, ph: string): void {
         ["nh", best !== undefined ? r0(GetUnitToLocationDistance(best, p.plan.spawner.location)) : undefined],
         ["nt", best !== undefined ? targetKind(bot, best.GetAttackTarget()) : undefined],
         ["pd", bot.IsAlive() ? r0(GetUnitToLocationDistance(bot, meet)) : undefined],
+        ["shd", p.shs !== undefined ? 1 : undefined],
         ...taggedFields(bot, p, ours),
     ]);
 }
@@ -941,39 +1005,44 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
             lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
+    const stepAt = stepIn
+        ? () => {
+              const end = pull.timer.stand ?? p.meet;
+              const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
+              const here = bot.GetLocation();
+              // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
+              const offs: Vector[] = [];
+              let ranged = false;
+              for (const u of pull.tagged ?? []) {
+                  if (stale(u)) continue;
+                  // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
+                  const l = u.GetLocation();
+                  if (l === undefined || l === null) continue;
+                  offs.push(Vector(l.x - here.x, l.y - here.y, 0));
+                  if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
+              }
+              const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
+              const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
+              // hi: the puller's offset off the lane path when the creeps engage (with the step-in `end` is the meet point,
+              // so a measure along end-to-meet would be 0: review 2026-11-05-pull-half M1).
+              if (engaged && pull.stepIn === undefined) {
+                  const path = p.timing.lanePath;
+                  pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
+              }
+              return at as unknown as Lib.Vec;
+              }
+        : undefined;
     return {
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
         camp,
         aggroAt,
         lead: lead as unknown as Lib.Vec[],
-        watchAt: stepIn
-            ? () => {
-                      const end = pull.timer.stand ?? p.meet;
-                      const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
-                      const here = bot.GetLocation();
-                      // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
-                      const offs: Vector[] = [];
-                      let ranged = false;
-                      for (const u of pull.tagged ?? []) {
-                          if (stale(u)) continue;
-                          // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
-                          const l = u.GetLocation();
-                          if (l === undefined || l === null) continue;
-                          offs.push(Vector(l.x - here.x, l.y - here.y, 0));
-                          if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
-                      }
-                      const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
-                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
-                      // hi: the puller's offset off the lane path when the creeps engage (with the step-in `end` is the meet point,
-                      // so a measure along end-to-meet would be 0: review 2026-11-05-pull-half M1).
-                      if (engaged && pull.stepIn === undefined) {
-                          const path = p.timing.lanePath;
-                          pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
-                      }
-                      return at as unknown as Lib.Vec;
-                  }
-                : undefined,
+        watchAt: () => {
+            const step = stepAt?.();
+            const shed = shedPoint(bot, pull);
+            return (shed ?? step) as unknown as Lib.Vec | undefined;
+        },
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
             const w = PullTiming.WaveAt(pull.timer);

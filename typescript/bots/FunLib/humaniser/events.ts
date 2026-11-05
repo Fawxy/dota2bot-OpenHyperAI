@@ -1259,7 +1259,11 @@ export const EVENTS = {
     // Slice support-pull-farm (PullFarm): the support clearing its own pull's camp. phase start, skip (the window after an ok pull
     // closed with `why` the gate that held it) and end. ago: seconds from the pull's end to this line's decision, div: the pull's
     // diverted share then, n0 neutrals on the camp at the decision; end: nl neutrals left, back (arrival at the lane front),
-    // g0/g1 net worth, secs on the job, hp0/hp share of max HP at start and end, died.
+    // g0/g1 net worth, secs on the job, hp0/hp share of max HP at start and end, died; ms madstone drops (dropped items named
+    // *madstone*, PullFarm PickName) seen by the camp after the clear, mp of them gone from the ground after our pickup order.
+    // The kills (PullFarm LastHit, user 06/11/2026): lh the support's last hits over the farm, lt the clear's waits for a killing
+    // hit and lk those that got it; fl 1 when the camp's final neutral was the support's kill (0 not; none when the clear did
+    // not end cleared), fd the support's distance to it then; mi madstone charges gained in its item slots over the farm.
     pull_clear: {
         pid: "num",
         pos: "num",
@@ -1280,6 +1284,14 @@ export const EVENTS = {
         hp0: "num",
         hp: "num",
         died: "num",
+        ms: "num",
+        mp: "num",
+        lh: "num",
+        lt: "num",
+        lk: "num",
+        fl: "num",
+        fd: "num",
+        mi: "num",
     },
     pull_job: {
         pid: "num",
@@ -1340,6 +1352,10 @@ export const EVENTS = {
         // nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after
         // the order).
         nm: "num",
+        // The shed (PullJob ShedMargin, user 06/11/2026): shs the time the puller began walking out of the neutrals' range
+        // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
+        shs: "num",
+        shh: "num",
     },
     // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
     // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
@@ -1400,6 +1416,8 @@ export const EVENTS = {
         tc: "num",
         td: "num",
         th: "num",
+        // shd 1 once the puller has begun its shed (pull_job shs), unset before.
+        shd: "num",
     },
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
