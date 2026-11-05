@@ -615,5 +615,73 @@ do
     T.check("wind-up once: waited for the seen hit (t=" .. tostring(swing and swing.t) .. ")", swing ~= nil and swing.t >= 0.55)
 end
 
+-- Kill window telemetry (bug-hunt mark 27): every message carries wo (s to the first frame a swing ordered then would be due,
+-- -1 never), wb (what held the swing on that frame), wn (open frames) and wg (longest gap between the frames the verb was stepped).
+local function field(msg, key)
+    return msg and string.match(msg, "%f[%w]" .. key .. "=(%S+)")
+end
+
+-- Steps the verb, except from `from` to `to` (s) when the sim runs on without it (the host stopped stepping the body).
+local function runPaused(sim, g, from, to)
+    for _ = 1, 3000 do
+        if not (sim.t >= from and sim.t < to) then
+            local r = g:next()
+            if r.done then return r.value end
+        end
+        sim:step(DT)
+    end
+    error("generator did not finish", 0)
+end
+
+-- Never opens: a full-HP creep no one hits.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.3 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 300, team = 3, passive = true }
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 0.5 }))
+    T.eq("window never: timeout", r.reason, "timeout")
+    T.eq("window never: wo", field(r.message, "wo"), "-1.00")
+    T.eq("window never: wb", field(r.message, "wb"), "none")
+    T.eq("window never: wn", field(r.message, "wn"), "0")
+    T.check("window never: wg one frame (" .. r.message .. ")", tonumber(field(r.message, "wg")) < 0.05, r.message)
+end
+
+-- Swung: in range on a draining creep, the first open frame is the swing.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.3 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 200, drain = 100, team = 3, passive = true }
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("window swung: ok", r.reason, "ok")
+    T.eq("window swung: wb", field(r.message, "wb"), "swing")
+    T.eq("window swung: wn", field(r.message, "wn"), "1")
+    T.check("window swung: wo near the swing (" .. tostring(r.message) .. ")", math.abs(tonumber(field(r.message, "wo")) - tonumber(field(r.message, "w"))) < 0.01)
+end
+
+-- Opens while walking, then the host stops stepping the verb (1.6-3.0 s) and the creep drains away: wb range, wg the pause.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.3, speed = 100 }
+    local creep = sim:addCreep{ x = 600, y = 0, hp = 120, drain = 50, team = 3, passive = true }
+    local r = runPaused(sim, V.lastHit(bot, { target = creep, maxWait = 5 }), 1.6, 3.0)
+    T.eq("window then pause: lost", r.reason, "taken_by_other")
+    T.eq("window then pause: no swing", bot:actionsOf("attack"), 0)
+    T.eq("window then pause: wb", field(r.message, "wb"), "range")
+    local wo = tonumber(field(r.message, "wo"))
+    T.check("window then pause: opened before the pause (" .. r.message .. ")", wo > 0.5 and wo < 1.6)
+    T.check("window then pause: wn > 1", tonumber(field(r.message, "wn")) > 1)
+    T.check("window then pause: wg the pause (" .. r.message .. ")", math.abs(tonumber(field(r.message, "wg")) - 1.45) < 0.05, r.message)
+end
+
+-- Opens during the pause (0.3-1.6 s): the first open frame is the one after the gap, wb paused.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.3, speed = 100 }
+    local creep = sim:addCreep{ x = 600, y = 0, hp = 120, drain = 50, team = 3, passive = true }
+    local r = runPaused(sim, V.lastHit(bot, { target = creep, maxWait = 5 }), 0.3, 1.6)
+    T.eq("window in pause: wb", field(r.message, "wb"), "paused")
+    T.check("window in pause: wo at the resume (" .. r.message .. ")", math.abs(tonumber(field(r.message, "wo")) - 1.6) < 0.05)
+end
+
 print("lasthit [" .. T.runtime() .. "]")
 T.finish()

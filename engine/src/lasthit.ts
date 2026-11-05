@@ -39,6 +39,11 @@ const SEEN_AHEAD = 0.45;
 const COOLDOWN_QUEUE = 0.25;
 /** Seconds after the predicted hit time before an unresolved swing counts as `missed`. */
 const CONFIRM_SLACK = 0.5;
+/**
+ * A gap between the frames the verb is stepped at longer than this is a pause (the host stopped stepping the body, e.g.
+ * its mode changed), not a slow frame: frame gaps run under MAX_MARGIN / 1.2. Message attribution only (`wb=paused`).
+ */
+const PAUSE_GAP = 0.5;
 
 function ok(): Result {
     return { success: true, reason: "ok" };
@@ -517,6 +522,11 @@ function rollFor(bot: TaskUnit, creep: TaskCreep): Roll {
     return r;
 }
 
+/** True once the bot's error for this creep has been rolled (a peek: never rolls one, so it draws no random number). */
+function hasRoll(bot: TaskUnit, creep: TaskCreep): boolean {
+    return rolls[bot.GetPlayerID()]?.get(creep) !== undefined;
+}
+
 interface Belief {
     /** Seconds until our hit would land if ordered now. */
     tHit: number;
@@ -588,6 +598,24 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
 /** Swing now: the creep survives everyone else until our hit lands, and (as believed) our hit then kills it. */
 function due(b: Belief): boolean {
     return b.survives && b.hpAtHit <= b.mine;
+}
+
+/**
+ * The kill window over an attempt's frames before its swing (message attribution only; it changes no decision): the window is
+ * open on a frame when `due` holds for a swing ordered then, from wherever the bot stands. `at` seconds from the attempt's
+ * start to the first open frame (-1 never), `by` what held the swing back on that frame (`swing` none: it swung; `paused` the
+ * frame came after a gap longer than PAUSE_GAP; `range`, `cd`, `hp50` as `why`; `none` never open), `frames` the open frames,
+ * `gap` the longest gap between the frames the verb was stepped at (s), swing and confirmation included.
+ */
+interface Window {
+    at: number;
+    by: string;
+    frames: number;
+    gap: number;
+}
+
+function windowText(w: Window): string {
+    return string.format(" wo=%.2f wb=%s wn=%d wg=%.2f", w.at, w.by, w.frames, w.gap);
 }
 
 function isRangedCreep(c: TaskCreep): boolean {
@@ -764,8 +792,19 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // Before a swing, what held it back on the last frame (in-game attribution of a lost creep that was never swung at):
     // `range` walking in, `cd` attack cooldown, `hp50` a deny above half HP, `wait` the kill belief not yet due.
     let held = "start";
+    const win: Window = { at: -1, by: "none", frames: 0, gap: 0 };
+    // On a frame that does not judge the swing (walking, cooldown, deny above half HP), whether it would be due: the belief
+    // with the bot's error once rolled, exact before (rolling here would draw a random number the decision would not have).
+    const openNow = (): boolean => due(believe(bot, creep!, hasRoll(bot, creep!), observedDps));
+    const opened = (t: number, gap: number, by: string): void => {
+        if (win.frames === 0) {
+            win.at = t - start;
+            win.by = by !== "swing" && gap > PAUSE_GAP ? "paused" : by;
+        }
+        win.frames++;
+    };
     const early = (r: Result): Result => {
-        r.message = string.format("w=%.2f why=%s", now() - start, held) + heroWatchText(heroes);
+        r.message = string.format("w=%.2f why=%s", now() - start, held) + windowText(win) + heroWatchText(heroes);
         return r;
     };
     let lastFrame: number | undefined;
@@ -782,10 +821,13 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     let observedDps = 0;
     while (true) {
         const t = now();
+        let gap = 0;
         if (lastFrame !== undefined && t > lastFrame) {
-            margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * (t - lastFrame)));
-            gapSum += t - lastFrame;
+            gap = t - lastFrame;
+            margin = math.min(MAX_MARGIN, math.max(MIN_MARGIN, 1.2 * gap));
+            gapSum += gap;
             gapN++;
+            win.gap = math.max(win.gap, gap);
         }
         lastFrame = t;
         if (!gone(creep)) {
@@ -805,6 +847,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         watchHeroes(bot, creep, heroes);
         if (dist(bot.GetLocation(), creep.GetLocation()) > bot.GetAttackRange()) {
             held = string.format("range d=%d", math.floor(dist(bot.GetLocation(), creep.GetLocation()) - bot.GetAttackRange()));
+            if (openNow()) opened(t, gap, "range");
             bot.Action_MoveToLocation(creep.GetLocation());
         } else {
             const cd = cooldownLeft(bot);
@@ -815,6 +858,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                 const b = believe(bot, creep, true, observedDps);
                 held = string.format("wait hp=%d pred=%d mine=%d", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine));
                 if (due(b)) {
+                    opened(t, gap, "swing");
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
                     diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
@@ -828,6 +872,8 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                     bot.Action_AttackUnit(creep, true);
                     break;
                 }
+            } else if (openNow()) {
+                opened(t, gap, mode === "deny" && !deniable(creep) ? "hp50" : "cd");
             }
             if (opts.hold !== undefined && adapter.hold !== undefined) adapter.hold(bot, opts.hold);
         }
@@ -847,11 +893,14 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     let landHp: number | undefined;
     const out = (r: Result): Result => {
         const hp = gone(creep) ? 0 : math.floor(creep.GetHealth());
-        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0) + heroWatchText(heroes);
+        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0) + windowText(win) + heroWatchText(heroes);
         return r;
     };
     while (true) {
         yield;
+        const t = now();
+        if (t > lastFrame!) win.gap = math.max(win.gap, t - lastFrame!);
+        lastFrame = t;
         if (fireAt === undefined && atk0 !== undefined && bot.GetLastAttackTime!() > atk0) fireAt = now() - swingAt;
         if (landHp === undefined && landBy()) landHp = gone(creep) ? 0 : math.floor(creep.GetHealth());
         if (counter() > baseline) return out(ok());
@@ -861,7 +910,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         // Gone after our landing with the attack fired, or still alive at the landing: our hit did not kill it (missed).
         // Gone before, or at the landing with no attack fired (killed in our wind-up): someone else took it.
         if (gone(creep)) return out(fail(landBy() && (fireAt !== undefined || (landHp ?? 0) > 0) ? "missed" : lostReason(enemyOnIt)));
-        if (!bot.IsAlive()) return fail("dead");
+        if (!bot.IsAlive()) return out(fail("dead"));
         if (now() - swingAt > tHit + CONFIRM_SLACK) return out(fail("missed"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
         if (!gone(creep)) watchHeroes(bot, creep, heroes);

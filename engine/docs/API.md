@@ -189,7 +189,16 @@ heroes in the attacker index, wind-ups inside the horizon the belief used (a neg
 wind-up left as `windupLanding` does (attack point as a fraction of the attack cycle, UNVERIFIED in-game), `oc` as `GetAttackPoint()
 / GetAttackSpeed()` seconds, so `oc - ec` carries that reading's error until it is verified. Every message, swung or not, ends with the enemy-hero watch over each frame the verb watched the creep: `hf=<frames an enemy hero's attack target was the creep> hwf=<of those, frames windupLeft read it winding up>` and, when `hf > 0`, `ha=<GetAnimActivity> hc=<GetAnimCycle> hpt=<GetAttackPoint>` of the last such hero (of the last wind-up frame once one was seen). It checks the UNVERIFIED wind-up reading on heroes in game: `hf > 0` with `hwf = 0` across many attempts says the reader never sees a hero's wind-up; `hwf > 0` on `denied`/`taken_by_other` attempts with no swing are the enemy wind-ups a creep was lost to (no `ew`, which only a fired swing carries). Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
-(the kill belief not due yet), `start` (ended on the first frame). `dead` after a swing carries no message.
+(the kill belief not due yet), `start` (ended on the first frame). Every message, swung or not (`dead` after a swing included),
+also carries the kill window over the frames before the swing, placed before `hf=` (bug-hunt mark 27, 06/11/2026; attribution only, no
+decision reads it): `wo=<s from the attempt's start to the first frame the window was open, -1 never>` (open: a swing ordered on
+that frame would be due, `survives` and `hpAtHit <= mine`, judged from wherever the bot stands with its skill error once rolled and
+exact before, since rolling early would draw a random number), `wb=<what held the swing on that first open frame>` (`swing` it swung
+then; `paused` the frame came after a gap of more than 0.5 s between the frames the verb was stepped at, i.e. the host stopped
+stepping the body, such as a mode change, and the window may have opened during the gap; `range` walking in; `cd` the attack
+cooldown; `hp50` a deny above half HP; `none` never open), `wn=<open frames>` and `wg=<longest gap in s between the frames the verb
+was stepped at, swing and confirmation included>`. A lost creep with `wo >= 0` had a winning window the verb did not take; with
+`wo = -1` and a large `wg` the window may have passed during a pause.
 
 Offline (sim, 30 fps, a creep contested by three allied melee creeps, 120 trials): skill 1 lands 100%, 0.6 65%,
 0.2 50% with both early and late misses. In game the prediction sees less than the sim, so skill 1 should land
