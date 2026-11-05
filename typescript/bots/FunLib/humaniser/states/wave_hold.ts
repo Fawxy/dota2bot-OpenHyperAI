@@ -53,7 +53,9 @@ export const SETTINGS = {
     /** Ends: HurtShare of max HP lost since the start, or under HurtFloor; not stepped for LeftAfter; MaxSecs. */
     HurtShare: 0.25,
     HurtFloor: 0.35,
-    LeftAfter: 1,
+    LeftAfter: 3,
+    /** No new attempt this long after one ended other than `left` (a hurt or lost hold does not restart on the same wave). */
+    RestAfter: 15,
     MaxSecs: 45,
     /** A drag that reached its point behind our T1 waits there. */
     Arrived: 300,
@@ -120,6 +122,7 @@ interface Attempt {
 
 const attempts: Record<number, Attempt | undefined> = {};
 const decidedAt: Record<number, number | undefined> = {};
+const endedAt: Record<number, number | undefined> = {};
 
 function counter(bot: Unit, name: "GetLastHits" | "GetDenies"): number {
     const f = (bot as any)[name];
@@ -199,6 +202,7 @@ function threatOf(bot: Unit, hold: Vector): Unit | undefined {
 function finish(bot: Unit, a: Attempt, res: string, now: number): void {
     const pid = bot.GetPlayerID();
     attempts[pid] = undefined;
+    if (res !== "left") endedAt[pid] = now;
     Laning.SetHold(bot, undefined);
     Telemetry.Event("wave_hold", [
         ["pid", pid],
@@ -280,6 +284,8 @@ export function Step(bot: Unit): void {
         const last = decidedAt[pid];
         if (last !== undefined && now - last < SETTINGS.Every) return;
         decidedAt[pid] = now;
+        const ended = endedAt[pid];
+        if (ended !== undefined && now - ended < SETTINGS.RestAfter) return;
         const v = viewOf(bot.GetTeam(), bot.GetAssignedLane());
         if (v === undefined) return;
         const r = Read(v.theirs, v.ours, LaneAggro.TargetOf(bot.GetAssignedLane()));
@@ -342,4 +348,5 @@ export function Step(bot: Unit): void {
 export function Reset(): void {
     for (const k in attempts) attempts[k as unknown as number] = undefined;
     for (const k in decidedAt) decidedAt[k as unknown as number] = undefined;
+    for (const k in endedAt) endedAt[k as unknown as number] = undefined;
 }

@@ -31,7 +31,8 @@ ____exports.SETTINGS = {
     DragMargin = 2,
     HurtShare = 0.25,
     HurtFloor = 0.35,
-    LeftAfter = 1,
+    LeftAfter = 3,
+    RestAfter = 15,
     MaxSecs = 45,
     Arrived = 300,
     AggroRecent = 20
@@ -84,6 +85,7 @@ function ____exports.DragSecs(front)
 end
 local attempts = {}
 local decidedAt = {}
+local endedAt = {}
 local function counter(bot, name)
     local f = bot[name]
     return f ~= nil and f(bot) or 0
@@ -215,6 +217,9 @@ end
 local function finish(bot, a, res, now)
     local pid = bot:GetPlayerID()
     attempts[pid] = nil
+    if res ~= "left" then
+        endedAt[pid] = now
+    end
     Laning.SetHold(bot, nil)
     Telemetry.Event(
         "wave_hold",
@@ -349,6 +354,10 @@ function ____exports.Step(bot)
             return
         end
         decidedAt[pid] = now
+        local ended = endedAt[pid]
+        if ended ~= nil and now - ended < ____exports.SETTINGS.RestAfter then
+            return
+        end
         local v = viewOf(
             bot:GetTeam(),
             bot:GetAssignedLane()
@@ -408,19 +417,19 @@ function ____exports.Step(bot)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue56
+            local __continue58
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - ____exports.SETTINGS.Behind or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue56 = true
+                    __continue58 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue56 = true
+                __continue58 = true
             until true
-            if not __continue56 then
+            if not __continue58 then
                 break
             end
         end
@@ -434,19 +443,19 @@ function ____exports.Step(bot)
     end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue62
+            local __continue64
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue62 = true
+                    __continue64 = true
                     break
                 end
                 if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
                     a.mo = front
                     return finish(bot, a, "met", now)
                 end
-                __continue62 = true
+                __continue64 = true
             until true
-            if not __continue62 then
+            if not __continue64 then
                 break
             end
         end
@@ -490,6 +499,9 @@ function ____exports.Reset()
     end
     for k in pairs(decidedAt) do
         decidedAt[k] = nil
+    end
+    for k in pairs(endedAt) do
+        endedAt[k] = nil
     end
 end
 return ____exports
