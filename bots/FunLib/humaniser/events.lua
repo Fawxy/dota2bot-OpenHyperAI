@@ -363,6 +363,7 @@ ____exports.EVENTS = {
         ds = "num",
         nb = "num",
         nl = "num",
+        lv = "num",
         thr = "num",
         sw = "num",
         hp = "num",

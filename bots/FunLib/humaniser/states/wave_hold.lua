@@ -310,6 +310,7 @@ local function finish(bot, a, res, now)
                 "nl",
                 a.nl ~= nil and math.floor(a.nl * 10) / 10 or nil
             },
+            {"lv", a.lv},
             {"thr", a.thr},
             {"sw", a.sw},
             {
@@ -515,15 +516,13 @@ function ____exports.Step(bot)
     end
     local live = walkingTo(a.hold)
     a.nl = #live > 0 and ____exports.Near(math.huge, live) or nil
-    local near = ____exports.Near(
-        LanePush.NextArrival(
-            v.path,
-            bot:GetTeam(),
-            v.t1 + v.dir * a.tgt,
-            now
-        ) - now,
-        live
-    )
+    local sched = LanePush.NextArrival(
+        v.path,
+        bot:GetTeam(),
+        v.t1 + v.dir * a.tgt,
+        now
+    ) - now
+    local near = ____exports.Near(sched, live)
     a.ds = ____exports.DragSecs(math.max(0, front))
     a.nb = LanePush.NextArrival(
         v.path,
@@ -533,6 +532,9 @@ function ____exports.Step(bot)
     ) - now
     local dragging = a.br == "drag" and (LaneAggro.Acting(bot) or GetUnitToLocationDistance(bot, a.behind) <= ____exports.SETTINGS.Arrived)
     local br = dragging and "drag" or ____exports.Choose(threat ~= nil, near, a.ds, a.nb)
+    if br == "hold" and not dragging and ____exports.Choose(threat ~= nil, sched, a.ds, a.nb) == "drag" then
+        a.lv = 1
+    end
     if br == "drag" and not dragging and not LaneAggro.StartBack(bot, a.behind) then
         if a.br ~= "hold" then
             a.sw = a.sw + 1

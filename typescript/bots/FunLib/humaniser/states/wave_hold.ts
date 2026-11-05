@@ -136,6 +136,7 @@ interface Attempt {
     ds?: number;
     nb?: number;
     nl?: number;
+    lv?: number;
     thr?: number;
     hp0: number;
     hpMin: number;
@@ -258,6 +259,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["ds", a.ds !== undefined ? math.floor(a.ds * 10) / 10 : undefined],
         ["nb", a.nb !== undefined ? math.floor(a.nb * 10) / 10 : undefined],
         ["nl", a.nl !== undefined ? math.floor(a.nl * 10) / 10 : undefined],
+        ["lv", a.lv],
         ["thr", a.thr],
         ["sw", a.sw],
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -367,13 +369,15 @@ export function Step(bot: Unit): void {
     if (threat !== undefined) a.thr = threat.GetPlayerID();
     const live = walkingTo(a.hold);
     a.nl = live.length > 0 ? Near(math.huge, live) : undefined;
-    const near = Near(LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now, live);
+    const sched = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now;
+    const near = Near(sched, live);
     a.ds = DragSecs(math.max(0, front));
     a.nb = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 - v.dir * SETTINGS.Behind, now) - now;
     // A drag under way is lane_aggro's until its walk ends, and once behind our T1 the core waits there for our wave: the
     // branch is not read again meanwhile.
     const dragging = a.br === "drag" && (LaneAggro.Acting(bot) || GetUnitToLocationDistance(bot, a.behind) <= SETTINGS.Arrived);
     const br = dragging ? "drag" : Choose(threat !== undefined, near, a.ds, a.nb);
+    if (br === "hold" && !dragging && Choose(threat !== undefined, sched, a.ds, a.nb) === "drag") a.lv = 1;
     if (br === "drag" && !dragging && !LaneAggro.StartBack(bot, a.behind)) {
         if (a.br !== "hold") a.sw++;
         a.br = "hold";

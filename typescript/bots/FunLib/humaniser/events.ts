@@ -468,6 +468,8 @@ export const EVENTS = {
         /** At the last branch read: seconds until our nearest lane creep already on the map and not fighting reaches the hold
          *  point (absent when none is within NearSecs' walk). */
         nl: "num",
+        /** 1 when our creeps already walking (`nl`) turned a drag the spawn schedule allowed into a hold, at any read. */
+        lv: "num",
         /** The enemy hero whose reach made the threat, at the last read that saw one. */
         thr: "num",
         /** Branch changes during the attempt. */
