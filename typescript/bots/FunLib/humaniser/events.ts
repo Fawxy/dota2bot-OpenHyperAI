@@ -395,11 +395,12 @@ export const EVENTS = {
         pid: "num",
         /** `core`, or `support` (its lane core away). */
         role: "str",
-        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower) or `drag` (a dying creep
-         *  away from an enemy hero). */
+        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower), `drag` (a dying creep
+         *  away from an enemy hero) or `back` (wave_hold's drag: their wave behind our T1 to our next wave). */
         kind: "str",
         /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
-         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
+         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -426,10 +427,53 @@ export const EVENTS = {
         fc: "num",
         /** Distance to the order's hero at the order (any visible enemy hero may be named). */
         td: "num",
-        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result. */
+        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result; back: those
+         *  within BackOut of the point behind our T1. */
         out: "num",
         /** feed: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`, `ev=lane_pos spot=fed`), else 0. */
         sty: "num",
+        /** back: draw orders given (the first and each re-draw). */
+        nd: "num",
+    },
+    /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
+    wave_hold: {
+        pid: "num",
+        lane: "num",
+        /** The last branch: `hold` (at the lane target, lane_spot input `hold`), `drag` (lane_aggro `back` behind our T1),
+         *  `retreat` (OHA's retreat took the core). */
+        br: "str",
+        /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
+         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`. */
+        res: "str",
+        /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
+         *  the last 20 s), `other`. */
+        why: "str",
+        /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
+        n: "num",
+        lh: "num",
+        dn: "num",
+        /** Their front's distance from our T1 along the lane at the start, its least during the attempt, and when the waves met. */
+        own0: "num",
+        omin: "num",
+        mo: "num",
+        /** 1 when one of their creeps came within our T1's range (700) during the attempt. */
+        tw: "num",
+        /** The lane's target point (lane_aggro TargetOf). */
+        tgt: "num",
+        /** Seconds to our next wave at the hold point at the start; at the last branch read: seconds the drag needs and to our
+         *  next wave behind the T1. */
+        nw: "num",
+        ds: "num",
+        nb: "num",
+        /** The enemy hero whose reach made the threat, at the last read that saw one. */
+        thr: "num",
+        /** Branch changes during the attempt. */
+        sw: "num",
+        hp: "num",
+        dhp: "num",
+        dur: "num",
+        /** The bot's active mode when the attempt was left. */
+        md: "num",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {
@@ -1263,12 +1307,29 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads (slice pull-half;
+        // before it, the wave body's shift and LiveRead's readings).
         sh: "num",
         lv: "num",
-        sf: "num",
-        // Slice pull-live: s0 the shift at the start (sh is the one at the order), pz seconds held after the hit for a late wave.
         s0: "num",
-        pz: "num",
+        // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
+        // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
+        // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
+        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
+        // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
+        // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
+        // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
+        // engaged (negative: back towards the camp).
+        pk: "str",
+        hr: "str",
+        hc: "num",
+        hn: "num",
+        hb: "num",
+        hf: "num",
+        hu: "num",
+        hm: "num",
+        hs: "num",
+        hi: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1276,6 +1337,37 @@ export const EVENTS = {
         gu: "num",
         gd: "num",
         wa: "num",
+        // nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after
+        // the order).
+        nm: "num",
+    },
+    // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
+    // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
+    // attack target became one of the camp's neutrals before the line was written, else 0. The rest are read at the turn
+    // (tr 1) or at its nearest approach to the puller (tr 0): tt seconds after the hit (ht), dp its distance to the puller,
+    // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
+    // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
+    // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
+    // The creep's decision frame, before its target shows: lt seconds after the hit its distance off the lane path first
+    // rose PullJob Leave above its own least so far (it left the lane), ld its distance to the puller and ln to the nearest
+    // tagged neutral then; unset when it never left.
+    pull_creep: {
+        pid: "num",
+        slot: "num",
+        camp: "num",
+        ci: "num",
+        rg: "num",
+        tr: "num",
+        tt: "num",
+        dp: "num",
+        dn: "num",
+        ph: "num",
+        pv: "num",
+        po: "num",
+        ca: "num",
+        lt: "num",
+        ld: "num",
+        ln: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -1339,6 +1431,10 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // Slice pull-half: the pull's kind for kind=pull (full or half); hm a half pull's clearance margin when it stayed for
+        // want of one (why=half-geo; pull_job hm).
+        pk: "str",
+        hm: "num",
     },
     gank: {
         pid: "num",

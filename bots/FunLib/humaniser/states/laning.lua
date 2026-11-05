@@ -119,7 +119,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local DEFAULTS, settings
+local DEFAULTS, settings, holdPoint
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -209,6 +209,15 @@ function ____exports.ClearFed()
     for k in pairs(fedCreep) do
         fedCreep[k] = nil
     end
+    for k in pairs(holdPoint) do
+        holdPoint[k] = nil
+    end
+end
+--- wave_hold's hold point per bot (the lane_spot input `hold`), set while a hold runs.
+holdPoint = {}
+--- wave_hold: the point this bot holds their wave at, or undefined when the hold ends.
+function ____exports.SetHold(bot, at)
+    holdPoint[bot:GetPlayerID()] = at
 end
 --- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
 -- support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
@@ -235,7 +244,8 @@ function ____exports.Spot(bot)
             LaneSpot.Compute,
             bot,
             ____exports.RoleOf(bot),
-            fedCreep[pid]
+            fedCreep[pid],
+            holdPoint[pid]
         )
         if ok and res ~= nil then
             info = res

@@ -46,6 +46,10 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,
+    /** Slice pull-half: with SupportPull on, the safe-lane pos5 half-pulls (the neutrals reach the meet point after the wave's
+     *  body, so only its back creeps turn) when the lane holds on their half, and full-pulls when it pushes out; false: full
+     *  pulls only. */
+    SupportHalfPull: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
@@ -74,6 +78,12 @@ export const DEFAULTS = {
      * from an enemy hero for a safe last hit. Off: no draws, and OHA-era lane_tech keeps its aggro pull.
      */
     LaneAggro: true,
+    /**
+     * Slice core-in-lane: with CoreLastHit and LaneSpot on, an in-lane core whose wave is gone holds their incoming wave at the
+     * lane's target point (states/wave_hold, lane_spot input `hold`), or under an enemy hero's threat with time to spare drags
+     * it behind our T1 to our next wave (lane_aggro `back`, needs LaneAggro). Off: the spot ignores their walking wave.
+     */
+    CoreHold: true,
     /** Slice core-next-gold: with CoreLastHit and JobChooser on, an in-lane pos1-3 leaves for a camp of its own jungle when the
      *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
      *  for it in the laning phase. */

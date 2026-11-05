@@ -401,7 +401,32 @@
    "fc": "num",
    "td": "num",
    "out": "num",
-   "sty": "num"
+   "sty": "num",
+   "nd": "num"
+  },
+  "wave_hold": {
+   "pid": "num",
+   "lane": "num",
+   "br": "str",
+   "res": "str",
+   "why": "str",
+   "n": "num",
+   "lh": "num",
+   "dn": "num",
+   "own0": "num",
+   "omin": "num",
+   "mo": "num",
+   "tw": "num",
+   "tgt": "num",
+   "nw": "num",
+   "ds": "num",
+   "nb": "num",
+   "thr": "num",
+   "sw": "num",
+   "hp": "num",
+   "dhp": "num",
+   "dur": "num",
+   "md": "num"
   },
   "aggro_skip": {
    "pid": "num",
@@ -1148,16 +1173,43 @@
    "se": "num",
    "sh": "num",
    "lv": "num",
-   "sf": "num",
    "s0": "num",
-   "pz": "num",
+   "pk": "str",
+   "hr": "str",
+   "hc": "num",
+   "hn": "num",
+   "hb": "num",
+   "hf": "num",
+   "hu": "num",
+   "hm": "num",
+   "hs": "num",
+   "hi": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
    "na": "num",
    "gu": "num",
    "gd": "num",
-   "wa": "num"
+   "wa": "num",
+   "nm": "num"
+  },
+  "pull_creep": {
+   "pid": "num",
+   "slot": "num",
+   "camp": "num",
+   "ci": "num",
+   "rg": "num",
+   "tr": "num",
+   "tt": "num",
+   "dp": "num",
+   "dn": "num",
+   "ph": "num",
+   "pv": "num",
+   "po": "num",
+   "ca": "num",
+   "lt": "num",
+   "ld": "num",
+   "ln": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -1204,7 +1256,9 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
-   "se": "num"
+   "se": "num",
+   "pk": "str",
+   "hm": "num"
   },
   "gank": {
    "pid": "num",
@@ -1364,6 +1418,11 @@
    "kind": "text",
    "result": "text",
    "st": "text"
+  },
+  "ev_wave_hold": {
+   "br": "text",
+   "res": "text",
+   "why": "text"
   },
   "ev_aggro_skip": {
    "role": "text",
@@ -1635,7 +1694,9 @@
   "ev_pull_job": {
    "res": "text",
    "why": "text",
-   "label": "text"
+   "label": "text",
+   "pk": "text",
+   "hr": "text"
   },
   "ev_pull_watch": {
    "ph": "text",
@@ -1645,7 +1706,8 @@
    "kind": "text",
    "why": "text",
    "src": "text",
-   "st": "text"
+   "st": "text",
+   "pk": "text"
   },
   "ev_gank": {
    "score": "text",

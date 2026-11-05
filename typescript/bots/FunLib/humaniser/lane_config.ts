@@ -354,6 +354,62 @@ export const DEFAULTS = {
         // Live re-timing (slice pull-live): the wave is read again this often from the leave time to the meet point.
         LiveEvery: 0.25,
         WatchAfterWave: 3,
+        // The hit is timed on the wave's creeps (pull_timing CreepTimer, slice pull-half): the neutrals reach the meet point as
+        // a full pull's front creep is FullPast beyond it (plv2's pace aimed them 0.5 s before the wave's body, the front creep
+        // running 0.5-1 s ahead of the body: about 100 past) and a half pull's second creep HalfClear beyond it (lane creep
+        // acquisition about 500, EC-053), so the front two walk on and the back ones turn. Both `judgement`.
+        FullPast: 100,
+        HalfClear: 500,
+        // A half pull's clearance search (CreepTimer): candidate hits every HalfStep s over HalfSearch s around the HalfClear
+        // aim; the neutrals stand at the meet point to HalfHold s past their arrival; HalfAcquire is lane creep acquisition
+        // (EC-053). `judgement` but the 500.
+        HalfAcquire: 500,
+        HalfSearch: [-3, 6] as number[],
+        HalfStep: 0.2,
+        HalfHold: 2,
+        // Lane creeps within this of their hero while neutrals hit it turn onto the neutrals (EC-090: no written rule). The
+        // phchk2 replays (11 half pulls, 0.2 s samples): creeps that turned with the neutrals out of range had the hit puller
+        // 138-418 off; three passed 462-490 off and walked on.
+        HalfHeroAggro: 450,
+        // The search's puller and neutrals (phchk2 replays, 11 half pulls): the puller hits from 360-440 off the camp and the
+        // neutrals start 0.4-2.3 s after the hit (camp 1 0.6-1.4); the puller may stand short of the meet point by any of
+        // HalfStandBack on the lead's last leg. `judgement`.
+        HalfHeroStart: 400,
+        // The neutrals hit the puller within this of it (the search's turn on the puller; `judgement`: melee neutrals reach
+        // about 100-150, the camps' ranged ones 300-500).
+        HalfHitReach: 350,
+        HalfNeutralDelay: 1,
+        HalfStandBack: [0, 150, 300, 450] as number[],
+        // The live step-in (PullTiming.StepIn): the puller may stand up to HalfStepBack behind the search's stand point, and
+        // steps towards the meet point only while the front creeps, now and HalfStepAhead s on, stay HalfStepBuffer outside
+        // HalfHeroAggro of it. `judgement`.
+        HalfStepIn: true,
+        HalfStepBack: 300,
+        HalfStepAhead: 0.5,
+        HalfStepBuffer: 50,
+        // With the step-in, the hit goes out HalfNeutralDelay + HalfStepEarly before the HalfClear aim (the clearance search
+        // runs only without it). `judgement`: the neutrals' start spread 0.4-2.1 s; phhar4 at 1 s had the puller wait under
+        // the camp's hits until retreat took it (6 of 12 on camp 26).
+        HalfStepEarly: 0.5,
+        // A stepping-in half pull waits at least this far off the lane path (HalfHeroAggro + HalfStepBuffer). `judgement`.
+        HalfHoldOff: 550,
+        // The step-in's line runs this far past the meet point across the lane, so neutrals trailing the puller (camp 26's
+        // ranged ones hit from 400-500 behind it, phhar7) can still be brought within HalfAcquire of the back creeps.
+        // `judgement`.
+        HalfStepOver: 400,
+        // A tagged neutral with at least this attack range is ranged: only then does the step-in run HalfStepOver past the
+        // meet point (melee neutrals 100-150, ranged 400-600 in the game data). `judgement`.
+        HalfRangedFrom: 250,
+        // Off: the step-in holds HalfHeroAggro from the kept creeps (phhar5: split 7 of 16, whole 1). On: it places the
+        // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
+        // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
+        HalfStepNeutrals: false,
+        // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
+        HalfAll: false,
+        // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,
+        // the offsets taken in turn by slot (floor(slot / 30)), so one game passes the wave by a standing, hit puller at each
+        // offset and ev=pull_creep measures what turns (EC-090's radius).
+        HalfStand: [] as number[],
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
     },

@@ -19,6 +19,9 @@
  * A fed creep (lane_aggro's feed, the named input `fed`, slice lane-aggro): once our ranged creep that lane_aggro drew their wave
  * onto is at FED_HP or below, the preferred point is FED_BEHIND behind it, inside the bot's attack reach, so the body's deny
  * scan has it; the enemy creeps attacking it keep only HELD_RING (they are busy with it). The other limits stand.
+ * A held wave (wave_hold's hold, the named input `hold`, slice core-in-lane): with our wave gone and theirs walking in, the
+ * preferred point is the hold point (the lane's target point) and every enemy creep keeps only HELD_RING: the core means to
+ * be their target there. The hero, tower and HP limits stand, so a threatening hero still pushes the spot back. `fed` wins.
  * lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee core held 550-640 from it.
  * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
  * core's spot for 54 of 79, the hero reach for 15.
@@ -87,7 +90,7 @@ export interface SpotInfo {
     spot: Vector;
     /** How far back along the lane the chosen candidate is, in 50-unit steps (telemetry). */
     pushed: number;
-    anchor: "creep" | "front" | "wave" | "fed";
+    anchor: "creep" | "front" | "wave" | "fed" | "hold";
     why: Why;
     /** The HP margin on the creep rings this frame. */
     margin: number;
@@ -265,9 +268,10 @@ export function FedAnchor(fed: Unit | undefined): Unit | undefined {
 
 /**
  * The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
- * lane_aggro's fed creep (see FedAnchor). Undefined only when the lane has no direction (front and its back point coincide).
+ * lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
+ * and its back point coincide).
  */
-export function Compute(bot: Unit, role: Role, fed?: Unit): SpotInfo | undefined {
+export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotInfo | undefined {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
     const front = GetLaneFrontLocation(team, lane, 0);
@@ -315,6 +319,12 @@ export function Compute(bot: Unit, role: Role, fed?: Unit): SpotInfo | undefined
         anchor = "fed";
         busy = [];
         for (const c of creeps) busy.push(c.GetAttackTarget() === anchorFed);
+    } else if (hold !== undefined) {
+        px = hold.x;
+        py = hold.y;
+        anchor = "hold";
+        busy = [];
+        for (const _ of creeps) busy.push(true);
     } else if (creeps.length === 0) {
         anchor = "wave";
         px = front.x + dx * MELEE_BEHIND;
@@ -337,7 +347,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit): SpotInfo | undefined
     // Perpendicular to the lane; shift away from the enemy hero (core) or towards its approach (support).
     const nx = -dy;
     const ny = dx;
-    if (enemyHero !== undefined && anchorFed === undefined) {
+    if (enemyHero !== undefined && anchorFed === undefined && anchor !== "hold") {
         const [hx, hy] = sub(enemyHero.GetLocation(), front);
         const side = hx * nx + hy * ny >= 0 ? 1 : -1;
         const shift = role === "support" ? SIDE_SHIFT * 2 : -SIDE_SHIFT;
