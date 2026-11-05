@@ -469,12 +469,27 @@ function allyInBox(bot: Unit, idx: number): boolean {
     return false;
 }
 
+/**
+ * A lane creep in the camp: a pulled wave is fighting it, and its neutrals die to the wave, not to the core (cngchk5-9: 6
+ * trips to camp 26 at about 3:36 found its neutrals damaged, saw them die to no hero and came back with 0 kills).
+ */
+function pulledInto(center: Vector): boolean {
+    for (const kind of [UnitType.AlliedCreeps, UnitType.EnemyCreeps]) {
+        for (const u of GetUnitList(kind) ?? []) {
+            if (u === null || u === undefined || !u.IsAlive()) continue;
+            const at = u.GetLocation();
+            if (at !== null && at !== undefined && dist(at, center) <= SETTINGS.CampRadius) return true;
+        }
+    }
+    return false;
+}
+
 function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number, pullCamps: Record<number, boolean>): boolean {
     const team = bot.GetTeam();
     if (cleared[team]?.[spawner.idx] === currentMinute(now)) return false;
     // The API returns no neutrals in fog: a camp is known empty only where we see.
     if (IsLocationVisible(center) && campNeutralCount(center) === 0) return false;
-    if (pullCamps[spawner.idx] === true) return false;
+    if (pullCamps[spawner.idx] === true || pulledInto(center)) return false;
     return !allyInBox(bot, spawner.idx) && !otherTripOn(bot, spawner.idx) && !Stacking.ReservedByAlly(spawner.idx, bot.GetPlayerID());
 }
 

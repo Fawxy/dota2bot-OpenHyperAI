@@ -181,6 +181,17 @@ do
 	FOGGED = nil
 end
 
+-- A pulled wave in the camp: its neutrals are the wave's, so the camp is not offered (cngchk9 camp 26 at 3:36).
+do
+	local H, core = world({ camps = { { "small", SMALL }, { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	check("pulled: without a wave in it the large camp is the pick", (CC.Plan(core, FRONT, 300, c) or {}).camp == 2)
+	MakeCreep({ team = 2, x = LARGE.x + 100, y = LARGE.y })
+	local p = CC.Plan(core, FRONT, 300, c)
+	check("pulled: our wave in the large camp leaves the small one", p ~= nil and p.camp == 1, p and p.camp)
+end
+
 -- A half-cleared camp is not its make-up: the respawn is priced as the camp was seen untouched (cngchk8 game 1049 camp 1).
 do
 	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
