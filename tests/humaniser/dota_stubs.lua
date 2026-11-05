@@ -85,7 +85,7 @@ function MakeUnit(o)
 	local u = setmetatable({
 		pid = o.pid, team = o.team or 2, bot = o.bot ~= false, alive = o.alive ~= false,
 		loc = o.loc or Vector(0, 0), difficulty = o.difficulty or DIFFICULTY_MEDIUM,
-		level = o.level or 1, modifiers = o.modifiers or {}, mode = o.mode or 0, hp = o.hp or 100,
+		level = o.level or 1, modifiers = o.modifiers or {}, mode = o.mode or 0, hp = o.hp or 100, maxhp = o.maxhp,
 	}, Unit)
 	table.insert(UNITS[u.team], u)
 	return u

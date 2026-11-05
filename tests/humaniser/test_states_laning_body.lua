@@ -328,6 +328,20 @@ do
 	check("fed creep, enemy creep on us: its 520 ring stands", sb ~= nil and dist(sb, e.loc) >= 520, sb and dist(sb, e.loc))
 end
 
+-- wave_hold's hold point overrides lane_aggro's fed creep (decided 06/11/2026, hschk3: other anchors took holding cores off
+-- their point): with both set, the spot anchors on the hold point.
+do
+	local s, bot = spotFor(SDK, nil, function(bot)
+		local fed = creep({ loc = Vector(0, 0), team = 2, hp = 150, name = "npc_dota_creep_goodguys_ranged" })
+		fed.maxhp = 300
+		local L = require("bots/FunLib/humaniser/states/laning")
+		L.SetFed(bot, fed)
+		L.SetHold(bot, Vector(-500, 0))
+	end)
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("hold and fed both set: the hold point anchors the spot", info ~= nil and info.anchor == "hold" and s ~= nil and dist(s, Vector(-500, 0)) < 1, info and info.anchor)
+end
+
 -- A melee enemy hero 400 from the preferred point: in the open lane the 800 floor; with our tower 200 behind the point it would
 -- have to stand inside the tower's range to hit the core there, so the point holds (reach 198 + 150).
 do

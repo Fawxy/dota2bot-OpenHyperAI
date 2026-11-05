@@ -27,6 +27,11 @@ export const SETTINGS = {
     StartWithin: 12,
     /** The job ends after this many seconds on the camp (a clear is 7-26 s). */
     MaxFarm: 35,
+    /** The start check (`camp-dmg`): the camp's damage on the support over ClearSeconds of its hits must leave it
+     *  ClearReserve of its max HP. The clear stands in the camp, so its window is not the pull's HitSeconds (the puller
+     *  walks away): these are the values the gate had while it shared the pull's (8 s of lead at a 0.5 hit share, 0.3). */
+    ClearSeconds: 4,
+    ClearReserve: 0.3,
     /** Ends below this share of max HP (the pull's own bail is 0.25; the camp's neutrals are already half dead). */
     AbortHP: 0.35,
     /** Neutrals this far from the camp's box centre are the camp's (core_camp's CampRadius). */
@@ -136,8 +141,8 @@ function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot
     if (state.n === 0) return "no-neutrals";
     if (CampClaims.On("core", camp.idx) !== undefined) return "core-coming";
     if (coreThere(bot, center)) return "core-there";
-    const dmg = PullJob.CampDamage(bot, state, camp.type, undefined);
-    if (bot.GetHealth() - dmg < bot.GetMaxHealth() * PullJob.SETTINGS.StartReserve) return "camp-dmg";
+    const dmg = PullJob.CampDamage(bot, state, camp.type, SETTINGS.ClearSeconds);
+    if (bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.ClearReserve) return "camp-dmg";
     if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
     return blocked(bot) ?? PullJob.PartnerThreat(bot);
 }
