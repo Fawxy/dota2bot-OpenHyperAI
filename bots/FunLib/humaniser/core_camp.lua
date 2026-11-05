@@ -304,19 +304,19 @@ function campNeutralCount(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue66
+            local __continue67
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue66 = true
+                    __continue67 = true
                     break
                 end
                 local at = u:GetLocation()
                 if at ~= nil and at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue66 = true
+                __continue67 = true
             until true
-            if not __continue66 then
+            if not __continue67 then
                 break
             end
         end
@@ -325,14 +325,14 @@ function campNeutralCount(center)
 end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
-    local ____t_14 = t
-    local ____temp_13
+    local ____t_17 = t
+    local ____temp_16
     if t.engagedAt ~= nil then
-        ____temp_13 = r1(now - t.engagedAt)
+        ____temp_16 = r1(now - t.engagedAt)
     else
-        ____temp_13 = nil
+        ____temp_16 = nil
     end
-    ____t_14.clrm = ____temp_13
+    ____t_17.clrm = ____temp_16
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
@@ -409,6 +409,17 @@ local function clamp(v, r)
         r[1],
         math.min(r[2], v)
     )
+end
+--- A unit's location, or undefined for a handle the API gives none (fogged, or removed this frame).
+local function locOf(u)
+    local at = u:GetLocation()
+    local ____temp_0
+    if at == nil then
+        ____temp_0 = nil
+    else
+        ____temp_0 = at
+    end
+    return ____temp_0
 end
 local function distToSegment(p, a, b)
     local vx = b.x - a.x
@@ -496,10 +507,10 @@ local function growHP(bot)
     hpRate[pid] = clamp((hpRate[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
 end
 local function spaOf(u)
-    local ____this_1
-    ____this_1 = u
-    local ____opt_0 = ____this_1.GetSecondsPerAttack
-    local spa = ____opt_0 and ____opt_0(____this_1)
+    local ____this_2
+    ____this_2 = u
+    local ____opt_1 = ____this_2.GetSecondsPerAttack
+    local spa = ____opt_1 and ____opt_1(____this_2)
     return spa ~= nil and spa > 0 and spa or ____exports.SETTINGS.DefaultSPA
 end
 local function readNeutral(u, hp)
@@ -551,15 +562,15 @@ local function liveNeutrals(team, idx, center, now)
     local untouched = true
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue37
+            local __continue38
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 local at = u:GetLocation()
                 if at == nil or at == nil or dist(at, center) > ____exports.SETTINGS.CampRadius then
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 live[#live + 1] = readNeutral(
@@ -569,16 +580,16 @@ local function liveNeutrals(team, idx, center, now)
                 if u:GetHealth() < u:GetMaxHealth() then
                     untouched = false
                 end
-                __continue37 = true
+                __continue38 = true
             until true
-            if not __continue37 then
+            if not __continue38 then
                 break
             end
         end
     end
     local min = currentMinute(now)
-    local ____opt_2 = lastSeen[team]
-    local old = ____opt_2 and ____opt_2[idx]
+    local ____opt_3 = lastSeen[team]
+    local old = ____opt_3 and ____opt_3[idx]
     if #live > 0 and untouched and (old == nil or old.min ~= min or #live >= #old.ns) then
         lastSeen[team] = lastSeen[team] or ({})
         lastSeen[team][idx] = {min = min, ns = live}
@@ -597,9 +608,9 @@ local function estimate(bot, spawner, center, stacks, now)
         local secs, hp = ____exports.ClearOf(bot, live)
         return secs, hp, "live", live
     end
-    local ____opt_6 = lastSeen[bot:GetTeam()]
-    local ____opt_4 = ____opt_6 and ____opt_6[spawner.idx]
-    local seen = ____opt_4 and ____opt_4.ns
+    local ____opt_7 = lastSeen[bot:GetTeam()]
+    local ____opt_5 = ____opt_7 and ____opt_7[spawner.idx]
+    local seen = ____opt_5 and ____opt_5.ns
     if seen ~= nil then
         local secs, hp = ____exports.ClearOf(bot, seen)
         local k = 1 + ____exports.SETTINGS.StackedClearMul * stacks
@@ -624,21 +635,21 @@ end
 function ____exports.UnderEnemyTower(path, team, s)
     for ____, tw in ipairs(path.towers) do
         do
-            local __continue51
+            local __continue52
             repeat
                 if tw.team == team then
-                    __continue51 = true
+                    __continue52 = true
                     break
                 end
-                local ____temp_8
+                local ____temp_9
                 if team == Team.Radiant then
-                    ____temp_8 = s >= tw.s - ____exports.SETTINGS.TowerReach
+                    ____temp_9 = s >= tw.s - ____exports.SETTINGS.TowerReach
                 else
-                    ____temp_8 = s <= tw.s + ____exports.SETTINGS.TowerReach
+                    ____temp_9 = s <= tw.s + ____exports.SETTINGS.TowerReach
                 end
-                return ____temp_8
+                return ____temp_9
             until true
-            if not __continue51 then
+            if not __continue52 then
                 break
             end
         end
@@ -727,12 +738,22 @@ end
 local function allyInBox(bot, idx)
     local pid = bot:GetPlayerID()
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
-        if a ~= nil and a ~= nil and a:IsAlive() and a:GetPlayerID() ~= pid and Camps.InBox(
-            idx,
-            a:GetLocation(),
-            300
-        ) then
-            return true
+        do
+            local __continue82
+            repeat
+                if a == nil or a == nil or not a:IsAlive() or a:GetPlayerID() == pid then
+                    __continue82 = true
+                    break
+                end
+                local at = locOf(a)
+                if at ~= nil and Camps.InBox(idx, at, 300) then
+                    return true
+                end
+                __continue82 = true
+            until true
+            if not __continue82 then
+                break
+            end
         end
     end
     return false
@@ -743,19 +764,19 @@ local function pulledInto(center)
     for ____, kind in ipairs({UnitType.AlliedCreeps, UnitType.EnemyCreeps}) do
         for ____, u in ipairs(GetUnitList(kind) or ({})) do
             do
-                local __continue86
+                local __continue88
                 repeat
-                    if u == nil or u == nil or not u:IsAlive() then
-                        __continue86 = true
+                    if u == nil or u == nil or not u:IsAlive() or not LanePush.IsLaneCreep(u:GetUnitName()) then
+                        __continue88 = true
                         break
                     end
-                    local at = u:GetLocation()
-                    if at ~= nil and at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
+                    local at = locOf(u)
+                    if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                         return true
                     end
-                    __continue86 = true
+                    __continue88 = true
                 until true
-                if not __continue86 then
+                if not __continue88 then
                     break
                 end
             end
@@ -765,8 +786,8 @@ local function pulledInto(center)
 end
 local function campOpen(bot, spawner, center, now, pullCamps)
     local team = bot:GetTeam()
-    local ____opt_9 = cleared[team]
-    if (____opt_9 and ____opt_9[spawner.idx]) == currentMinute(now) then
+    local ____opt_10 = cleared[team]
+    if (____opt_10 and ____opt_10[spawner.idx]) == currentMinute(now) then
         return false
     end
     if IsLocationVisible(center) and campNeutralCount(center) == 0 then
@@ -798,10 +819,10 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue99
+            local __continue101
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue99 = true
+                    __continue101 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -812,7 +833,7 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue99 = true
+                    __continue101 = true
                     break
                 end
                 local stacks = math.max(
@@ -831,14 +852,14 @@ function ____exports.Plan(bot, from, now, c)
                 local clr = prior * ____exports.Pace(bot)
                 local hpc = hpPrior * ____exports.HPRate(bot)
                 if hpOf(bot) - hpc < s.ArriveHP then
-                    __continue99 = true
+                    __continue101 = true
                     break
                 end
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
                 local force = Overrides.CampForce()
                 if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
-                    __continue99 = true
+                    __continue101 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
@@ -864,9 +885,9 @@ function ____exports.Plan(bot, from, now, c)
                         net = net
                     }
                 end
-                __continue99 = true
+                __continue101 = true
             until true
-            if not __continue99 then
+            if not __continue101 then
                 break
             end
         end
@@ -878,10 +899,10 @@ local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue107
+            local __continue109
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue107 = true
+                    __continue109 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -894,9 +915,9 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue107 = true
+                __continue109 = true
             until true
-            if not __continue107 then
+            if not __continue109 then
                 break
             end
         end
@@ -908,22 +929,19 @@ local function threatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue112
+            local __continue114
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue112 = true
+                    __continue114 = true
                     break
                 end
-                if distToSegment(
-                    e:GetLocation(),
-                    here,
-                    at
-                ) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
+                local loc = locOf(e)
+                if loc ~= nil and distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue112 = true
+                __continue114 = true
             until true
-            if not __continue112 then
+            if not __continue114 then
                 break
             end
         end
@@ -938,18 +956,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue118
+            local __continue120
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue118 = true
+                    __continue120 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue118 = true
+                __continue120 = true
             until true
-            if not __continue118 then
+            if not __continue120 then
                 break
             end
         end
@@ -958,11 +976,22 @@ local function mateOnJob(bot)
 end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
-        if c ~= nil and c ~= nil and c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and dist(
-            c:GetLocation(),
-            at
-        ) <= radius then
-            return true
+        do
+            local __continue125
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue125 = true
+                    break
+                end
+                local loc = locOf(c)
+                if loc ~= nil and dist(loc, at) <= radius then
+                    return true
+                end
+                __continue125 = true
+            until true
+            if not __continue125 then
+                break
+            end
         end
     end
     return false
@@ -1188,11 +1217,25 @@ local function guard(bot, t)
     end
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if e ~= nil and e ~= nil and e:IsAlive() and not e:IsIllusion() and dist(
-            e:GetLocation(),
-            bot:GetLocation()
-        ) <= LaneSpot.HeroReach(bot, e) then
-            near = true
+        do
+            local __continue155
+            repeat
+                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                    __continue155 = true
+                    break
+                end
+                local loc = locOf(e)
+                if loc ~= nil and dist(
+                    loc,
+                    bot:GetLocation()
+                ) <= LaneSpot.HeroReach(bot, e) then
+                    near = true
+                end
+                __continue155 = true
+            until true
+            if not __continue155 then
+                break
+            end
         end
     end
     if not near then
@@ -1258,6 +1301,12 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         t.engagedAt = nil
         t.hpAtEngage = nil
+        local ____t_15 = t
+        local ____t_14 = t
+        t.nl = nil
+        ____t_14.hpm = nil
+        ____t_15.clrm = nil
+        t.center = Camps.BoxCenter(spawner)
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
             {
@@ -1341,6 +1390,14 @@ local function finish(bot, t, r, label)
     local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
     if why == "interrupted:hp" and t.returning ~= true then
         growHP(bot)
+    end
+    if t.returning ~= true and t.engagedAt ~= nil and t.clrm == nil and t.center ~= nil then
+        measured(
+            bot,
+            t,
+            DotaTime(),
+            t.center
+        )
     end
     jobLine(bot, t, "end", why)
     log(

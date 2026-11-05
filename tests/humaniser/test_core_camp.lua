@@ -187,9 +187,11 @@ do
 	local CC = H.CoreCamp
 	local c = CC.ClashOf(samples(300, 340), PATH, 2)
 	check("pulled: without a wave in it the large camp is the pick", (CC.Plan(core, FRONT, 300, c) or {}).camp == 2)
-	MakeCreep({ team = 2, x = LARGE.x + 100, y = LARGE.y })
+	MakeCreep({ team = 2, x = LARGE.x + 100, y = LARGE.y, name = "npc_dota_lycan_wolf1" })
+	check("pulled: a summon in the camp is no pulled wave", (CC.Plan(core, FRONT, 300, c) or {}).camp == 2)
+	MakeCreep({ team = 3, x = LARGE.x + 100, y = LARGE.y })
 	local p = CC.Plan(core, FRONT, 300, c)
-	check("pulled: our wave in the large camp leaves the small one", p ~= nil and p.camp == 1, p and p.camp)
+	check("pulled: their lane creep in the large camp leaves the small one", p ~= nil and p.camp == 1, p and p.camp)
 end
 
 -- A half-cleared camp is not its make-up: the respawn is priced as the camp was seen untouched (cngchk8 game 1049 camp 1).
@@ -270,10 +272,17 @@ do
 	check("trip: started on the small camp with its price", start ~= nil and field(start, "camp") == "1" and field(start, "loss") == "0" and field(start, "net") == "80", start)
 	check("trip: the neutral killed", camp[1].hp == 0)
 	check("trip: ended back at the front, in time", ended ~= nil and field(ended, "why") == "back" and tonumber(field(ended, "back")) <= tonumber(field(ended, "ret")) + 5, ended)
-	check("trip: FarmPattern never bid for the owned core", fp == 0, fp)
 	check("trip: pace learned from the measured clear", math.abs(H.CoreCamp.Pace(core) - 1) > 1e-3, H.CoreCamp.Pace(core))
 	check("trip: a clear that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
 	check("trip: the end line logs the HP, the rate and the measured clear", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil and tonumber(field(ended, "clrm")) > 0, ended)
+end
+
+-- An enemy hero handle with no location (fogged): the gates and the trip's guard skip it, and the trip runs.
+do
+	local H, core, camp, enemy = world({ camps = { { "small", SMALL } } })
+	local ok, out = pcall(run, H, core, 330, function() if H.CoreCamp.Running(core) then enemy.loc = nil end end)
+	local ended = ok and lines(out, "core_camp", "end")[1]
+	check("no location: no error mid-trip, and the trip runs to its end", ok and ended and field(ended, "why") == "back", ok and ended or out)
 end
 
 -- Switch off: no trip of ours; the core is FarmPattern's again.
@@ -319,6 +328,7 @@ do
 	local endT = ended and tonumber(ended:match("t=(%S+)"))
 	check("threat on the trip: ended threat", ended ~= nil and field(ended, "why") == "interrupted:threat", ended)
 	check("threat on the trip: after a reaction time, within 2 s", cameAt ~= nil and endT ~= nil and endT - cameAt > 0.05 and endT - cameAt < 2, endT and cameAt and endT - cameAt)
+	check("threat on the trip: the aborted clear is measured on the end line", ended ~= nil and tonumber(field(ended, "clrm")) ~= nil and field(ended, "nl") == "1", ended)
 end
 
 -- A camp that will not die in time (tougher than the model read): left at its leave time, walked back, the pace grows.

@@ -144,6 +144,8 @@ interface Trip {
     hpm?: number;
     /** Neutrals the team still sees alive at the camp when the core leaves it. */
     nl?: number;
+    /** The box centre of the camp being cleared, so an abort is measured there too. */
+    center?: Vector;
     returning?: boolean;
     threatSince?: number;
     back?: number;
@@ -168,6 +170,12 @@ export function ResetCache(): void {
 
 function clamp(v: number, r: number[]): number {
     return math.max(r[0], math.min(r[1], v));
+}
+
+/** A unit's location, or undefined for a handle the API gives none (fogged, or removed this frame). */
+function locOf(u: Unit): Vector | undefined {
+    const at = u.GetLocation();
+    return at === null ? undefined : at;
 }
 
 function dist(a: Vector, b: Vector): number {
@@ -464,7 +472,9 @@ function otherTripOn(bot: Unit, idx: number): boolean {
 function allyInBox(bot: Unit, idx: number): boolean {
     const pid = bot.GetPlayerID();
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (a !== null && a !== undefined && a.IsAlive() && a.GetPlayerID() !== pid && Camps.InBox(idx, a.GetLocation(), 300)) return true;
+        if (a === null || a === undefined || !a.IsAlive() || a.GetPlayerID() === pid) continue;
+        const at = locOf(a);
+        if (at !== undefined && Camps.InBox(idx, at, 300)) return true;
     }
     return false;
 }
@@ -476,9 +486,9 @@ function allyInBox(bot: Unit, idx: number): boolean {
 function pulledInto(center: Vector): boolean {
     for (const kind of [UnitType.AlliedCreeps, UnitType.EnemyCreeps]) {
         for (const u of GetUnitList(kind) ?? []) {
-            if (u === null || u === undefined || !u.IsAlive()) continue;
-            const at = u.GetLocation();
-            if (at !== null && at !== undefined && dist(at, center) <= SETTINGS.CampRadius) return true;
+            if (u === null || u === undefined || !u.IsAlive() || !LanePush.IsLaneCreep(u.GetUnitName())) continue;
+            const at = locOf(u);
+            if (at !== undefined && dist(at, center) <= SETTINGS.CampRadius) return true;
         }
     }
     return false;
@@ -546,7 +556,8 @@ function threatOnWay(bot: Unit, at: Vector): boolean {
     const here = bot.GetLocation();
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
-        if (distToSegment(e.GetLocation(), here, at) <= LaneSpot.HeroReach(bot, e) + SETTINGS.ThreatMargin) return true;
+        const loc = locOf(e);
+        if (loc !== undefined && distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + SETTINGS.ThreatMargin) return true;
     }
     return false;
 }
@@ -564,7 +575,9 @@ function mateOnJob(bot: Unit): boolean {
 
 function enemyLaneCreepNear(at: Vector, radius: number): boolean {
     for (const c of GetUnitList(UnitType.EnemyCreeps) ?? []) {
-        if (c !== null && c !== undefined && c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && dist(c.GetLocation(), at) <= radius) return true;
+        if (c === null || c === undefined || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
+        const loc = locOf(c);
+        if (loc !== undefined && dist(loc, at) <= radius) return true;
     }
     return false;
 }
@@ -696,7 +709,9 @@ function guard(bot: Unit, t: Trip): string | undefined {
     if (t.returning === true) return undefined;
     let near = false;
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (e !== null && e !== undefined && e.IsAlive() && !e.IsIllusion() && dist(e.GetLocation(), bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
+        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
+        const loc = locOf(e);
+        if (loc !== undefined && dist(loc, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
     }
     if (!near) {
         t.threatSince = undefined;
@@ -737,6 +752,8 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (spawner === undefined) break;
         t.engagedAt = undefined;
         t.hpAtEngage = undefined;
+        t.clrm = t.hpm = t.nl = undefined;
+        t.center = Camps.BoxCenter(spawner);
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
             { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => {
@@ -780,6 +797,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
     running[bot.GetPlayerID()] = undefined;
     const why = r.success ? (r.message ?? "ok") : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
     if (why === "interrupted:hp" && t.returning !== true) growHP(bot);
+    if (t.returning !== true && t.engagedAt !== undefined && t.clrm === undefined && t.center !== undefined) measured(bot, t, DotaTime(), t.center);
     jobLine(bot, t, "end", why);
     log(bot, "end", t.clash, [
         ["res", r.success ? "ok" : "fail"],
