@@ -897,15 +897,32 @@ function ____exports.Plan(bot, from, now, c)
     end
     return best
 end
+--- Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
+-- HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate.
+function ____exports.CanClear(core, idx, stacks)
+    local spawner = Camps.SpawnerByIdx(idx)
+    if spawner == nil or core:GetLevel() < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
+        return false
+    end
+    local ____, hpPrior = estimate(
+        core,
+        spawner,
+        Camps.BoxCenter(spawner),
+        stacks,
+        DotaTime()
+    )
+    return 1 - hpPrior * ____exports.HPRate(core) >= ____exports.SETTINGS.ArriveHP
+end
+StackJob.SetCarryClear(____exports.CanClear)
 --- Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then.
 local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue109
+            local __continue111
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue109 = true
+                    __continue111 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -918,9 +935,9 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue109 = true
+                __continue111 = true
             until true
-            if not __continue109 then
+            if not __continue111 then
                 break
             end
         end
@@ -932,19 +949,19 @@ function ____exports.ThreatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue114
+            local __continue116
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue114 = true
+                    __continue116 = true
                     break
                 end
                 local loc = locOf(e)
                 if loc ~= nil and distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue114 = true
+                __continue116 = true
             until true
-            if not __continue114 then
+            if not __continue116 then
                 break
             end
         end
@@ -959,18 +976,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue120
+            local __continue122
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue120 = true
+                    __continue122 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue120 = true
+                __continue122 = true
             until true
-            if not __continue120 then
+            if not __continue122 then
                 break
             end
         end
@@ -980,19 +997,19 @@ end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue125
+            local __continue127
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue125 = true
+                    __continue127 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue125 = true
+                __continue127 = true
             until true
-            if not __continue125 then
+            if not __continue127 then
                 break
             end
         end
@@ -1221,10 +1238,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue155
+            local __continue157
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue155 = true
+                    __continue157 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1234,9 +1251,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue155 = true
+                __continue157 = true
             until true
-            if not __continue155 then
+            if not __continue157 then
                 break
             end
         end
