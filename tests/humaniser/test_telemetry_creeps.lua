@@ -256,6 +256,18 @@ do
 end
 
 
+-- A neutral listed with no location (the engine gives a fogged or dying handle none): the creep read skips it, no error
+-- (cnghar2_B_harness_5 t=624.0: `lua_error` in Telemetry.Creeps).
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(900, 0) })
+	core.pos = 1
+	local blind = creep("npc_dota_neutral_kobold", nil, 10, NEUTRALS)
+	local ok, err = pcall(tick, H, { core }, 60)
+	check("neutral: one with no location is skipped without an error", ok, err)
+	kill(blind)
+end
+
 -- Neutral deaths (slice lane-farm-logs): a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths.
 -- The core's rise goes to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR; the neutral
 -- names its camp (the nearest spawner box within 1,200) and the nearest own hero. A neutral with no own hero within 1,500, or

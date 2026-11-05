@@ -38,6 +38,19 @@ test('per branch: attempts, the mean last-hit share per attempt and the ends; co
         // started 210 (t - dur), inside the first pull's 30 s: covers it. 3 of 4 then 1 of 4: mean 0.5.
         line(240, 'wave_hold pid=1 lane=3 br=hold res=met why=pull n=4 lh=3 tw=0 sw=0 dur=30'),
         line(400, 'wave_hold pid=1 lane=3 br=hold res=tower why=other n=4 lh=1 tw=1 sw=0 dur=20'),
+        // The farm in the 45 s from each start: the first hold (210) gets 3 core last hits (one at 256, outside), the second
+        // (380) 5, capped at its 4 creeps; an ally's last hit and our core's deny do not count.
+        line(215, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(240, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(250, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(256, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(251, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=5 tw=0'),
+        line(252, 'own_creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1'),
+        line(381, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(382, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(383, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(384, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
+        line(385, 'creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1 tw=0'),
         line(420, 'wave_hold pid=1 lane=3 br=drag res=died why=aggro n=3 lh=0 tw=1 sw=1 dur=10'),
         // a tower move followed by a hold starting 20 s later (the drag above starts 410), one with none.
         line(390, 'aggro pid=1 role=core kind=tower result=ok'),
@@ -45,6 +58,8 @@ test('per branch: attempts, the mean last-hit share per attempt and the ends; co
         line(505, 'aggro pid=1 role=core kind=tower result=stayed'),
     ]);
     assert.deepStrictEqual([out.hold.n, out.hold.lh_share, out.hold.met, out.hold.tower, out.hold.tw], [2, 0.5, 1, 1, 1]);
+    // lh45 (3 + 5) / 2; share45 (3/4 + 4/4) / 2.
+    assert.deepStrictEqual([out.hold.lh45, out.hold.share45], [4, 0.88]);
     assert.deepStrictEqual([out.drag.n, out.drag.died, out.drag.sw], [1, 1, 1]);
     assert.deepStrictEqual([out.cover_pull.n, out.cover_pull.missed], [2, 1]);
     assert.deepStrictEqual([out.cover_tower.n, out.cover_tower.missed], [2, 1]);

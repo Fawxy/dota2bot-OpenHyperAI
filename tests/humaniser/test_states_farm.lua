@@ -29,6 +29,10 @@ local function world(o)
 	local states = o.states or { Enable = true, Shadow = true, Teams = "all", Own = { farm = { 1 } } }
 	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { dire_bot = { { 325 * o.travel, -5000 }, { -7000, -5000 } } } } },
 		{ skill = 0.9, telemetry = { Enable = true }, states = states })
+	-- FarmPattern's own trips: CoreCamp (slice core-next-gold) owns our cores' lane-stage trips when its switch is on.
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	C.Ours.CoreCampTrip = false
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1

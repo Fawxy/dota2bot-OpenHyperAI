@@ -80,6 +80,10 @@ export const DEFAULTS = {
      * it behind our T1 to our next wave (lane_aggro `back`, needs LaneAggro). Off: the spot ignores their walking wave.
      */
     CoreHold: true,
+    /** Slice core-next-gold: with CoreLastHit and JobChooser on, an in-lane pos1-3 leaves for a camp of its own jungle when the
+     *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
+     *  for it in the laning phase. */
+    CoreCampTrip: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

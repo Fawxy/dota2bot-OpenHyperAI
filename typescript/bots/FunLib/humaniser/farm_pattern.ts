@@ -27,6 +27,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 
 export const DEFAULTS = {
     Enable: true,
@@ -631,7 +632,8 @@ function postClaims(bot: Unit, trip: Trip): void {
 
 /** mode_farm_generic GetDesire: the trip's desire, 0 when the bot is not on (and does not start) a trip. */
 export function Desire(bot: Unit): number {
-    if (!IsActive()) return 0;
+    // Slice core-next-gold: an owned core's lane-stage trips are CoreCamp's.
+    if (!IsActive() || CoreCamp.Owns(bot)) return 0;
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const trip = trips[pid];
@@ -742,7 +744,7 @@ function overlay(bot: Unit, trip: Trip, now: number): void {
 
 /** mode_farm_generic Think: true when the trip owns this frame. */
 export function Think(bot: Unit): boolean {
-    if (!IsActive()) return false;
+    if (!IsActive() || (CoreCamp.Owns(bot) && trips[bot.GetPlayerID()] === undefined)) return false;
     const trip = trips[bot.GetPlayerID()];
     if (trip === undefined) return false;
     const now = DotaTime();

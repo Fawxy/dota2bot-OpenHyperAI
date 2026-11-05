@@ -36,7 +36,8 @@ local tR = (8057 + 325) / 325
 check("Radiant at 0:10: the first wave reaches its T1 at 25.8 s", near(P.NextArrival(bot, 2, 8057, 10), tR), P.NextArrival(bot, 2, 8057, 10))
 check("Radiant at 0:30: that wave has passed, the next arrives 30 s later", near(P.NextArrival(bot, 2, 8057, 30), 30 + tR), P.NextArrival(bot, 2, 8057, 30))
 check("Dire at 0:20: its second wave reaches its T1 at 48.7 s", near(P.NextArrival(bot, 3, 12574, 20), 30 + (18662 - 12574) / 325), P.NextArrival(bot, 3, 12574, 20))
-local x, y = P.PointAt(bot, 8957)
+local pt = P.PointAt(bot, 8957)
+local x, y = pt[1], pt[2]
 local s, d = P.Project(bot, x, y)
 check("PointAt lies on the path at its distance (900 past Radiant's bot T1)", math.abs(s - 8957) < 1 and d < 1, s .. " " .. d)
 local t1, dir = P.OwnT1(bot, 3)

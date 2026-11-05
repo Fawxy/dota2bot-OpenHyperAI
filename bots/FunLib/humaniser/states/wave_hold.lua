@@ -160,7 +160,7 @@ local function viewOf(team, lane)
     }
 end
 local function pointAt(v, own, z)
-    local x, y = LanePush.PointAt(v.path, v.t1 + v.dir * own)
+    local x, y = unpack(LanePush.PointAt(v.path, v.t1 + v.dir * own))
     return Vector(x, y, z)
 end
 local function whyGone(bot, now)

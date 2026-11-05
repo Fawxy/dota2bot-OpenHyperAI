@@ -156,11 +156,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue129
+            local __continue126
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue129 = true
+                    __continue126 = true
                     break
                 end
                 if select(
@@ -169,9 +169,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue129 = true
+                __continue126 = true
             until true
-            if not __continue129 then
+            if not __continue126 then
                 break
             end
         end
@@ -360,10 +360,15 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
     end
     local projectiles = {}
     local samples = {}
+    local dead = {[R] = 0, [D] = 0}
     local function hit(v, dmg)
         v.hp = v.hp - dmg
         if v.hp <= 0 and v.alive then
             v.alive = false
+            if v.building ~= true then
+                local ____dead_0, ____v_team_1 = dead, v.team
+                ____dead_0[____v_team_1] = ____dead_0[____v_team_1] + 1
+            end
         end
     end
     local function inReach(u, v, r)
@@ -375,10 +380,10 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
         local key = math.huge
         for ____, v in ipairs(live) do
             do
-                local __continue29
+                local __continue30
                 repeat
                     if v.team == u.team or not v.alive or not inReach(u, v, r) then
-                        __continue29 = true
+                        __continue30 = true
                         break
                     end
                     local k = rank(u, v) * 1000000 + math.abs(v.s - u.s)
@@ -386,9 +391,9 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
                         key = k
                         pick = v
                     end
-                    __continue29 = true
+                    __continue30 = true
                 until true
-                if not __continue29 then
+                if not __continue30 then
                     break
                 end
             end
@@ -428,14 +433,14 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
             end
             for ____, u in ipairs(live) do
                 do
-                    local __continue48
+                    local __continue49
                     repeat
                         if u.target ~= nil and not u.target.alive then
                             u.target = nil
                             u.swingAt = nil
                         end
                         if u.swingAt ~= nil then
-                            __continue48 = true
+                            __continue49 = true
                             break
                         end
                         if u.target ~= nil then
@@ -449,9 +454,9 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
                         if u.target == nil then
                             u.target = best(u, u.acq)
                         end
-                        __continue48 = true
+                        __continue49 = true
                     until true
-                    if not __continue48 then
+                    if not __continue49 then
                         break
                     end
                 end
@@ -499,22 +504,22 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
                 local front = {}
                 for ____, u in ipairs(units) do
                     do
-                        local __continue68
+                        local __continue69
                         repeat
                             if not u.alive or u.building == true then
-                                __continue68 = true
+                                __continue69 = true
                                 break
                             end
                             local f = front[u.team]
                             front[u.team] = f == nil and u.s or (u.team == R and math.max(f, u.s) or math.min(f, u.s))
-                            __continue68 = true
+                            __continue69 = true
                         until true
-                        if not __continue68 then
+                        if not __continue69 then
                             break
                         end
                     end
                 end
-                samples[#samples + 1] = {t = nextSample, front = front}
+                samples[#samples + 1] = {t = nextSample, front = front, dead = {[R] = dead[R], [D] = dead[D]}}
                 nextSample = nextSample + 1
             end
             t = round3(t + dt)
@@ -601,7 +606,7 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
         local ts = math.floor(t0 / 30) * 30
         while ts >= t0 - 90 and ts >= 0 do
             do
-                local __continue89
+                local __continue90
                 repeat
                     local pos = spawnE + de * SPEED * (t0 - ts)
                     local seen = false
@@ -611,11 +616,11 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                         end
                     end
                     if seen then
-                        __continue89 = true
+                        __continue90 = true
                         break
                     end
                     if lead ~= nil and de * (pos - lead) >= -____exports.SETTINGS.OurVision then
-                        __continue89 = true
+                        __continue90 = true
                         break
                     end
                     for ____, u in ipairs(____exports.WaveAt(e, ts, spawnE)) do
@@ -627,9 +632,9 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                             maxhp = u.maxhp
                         }
                     end
-                    __continue89 = true
+                    __continue90 = true
                 until true
-                if not __continue89 then
+                if not __continue90 then
                     break
                 end
             end
@@ -693,26 +698,6 @@ end
 function ____exports.PathOf(lane)
     return LANE_PATHS[lane]
 end
---- The map point at distance `s` along the path (clamped to its ends).
-function ____exports.PointAt(lane, s)
-    local n = #lane.pts
-    if s <= lane.s[1] then
-        return lane.pts[1][1], lane.pts[1][2]
-    end
-    do
-        local i = 1
-        while i < n do
-            if s <= lane.s[i + 1] then
-                local seg = lane.s[i + 1] - lane.s[i]
-                local u = seg > 0 and (s - lane.s[i]) / seg or 0
-                local ax, ay = lane.pts[i][1], lane.pts[i][2]
-                return ax + u * (lane.pts[i + 1][1] - ax), ay + u * (lane.pts[i + 1][2] - ay)
-            end
-            i = i + 1
-        end
-    end
-    return lane.pts[n][1], lane.pts[n][2]
-end
 --- `team`'s T1 on the path, and the sign that turns a path distance into "towards their T1".
 function ____exports.OwnT1(lane, team)
     return __TS__ArrayFind(
@@ -754,21 +739,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue123
+            local __continue120
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue123 = true
+                    __continue120 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue123 = true
+                    __continue120 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue123 = true
+                    __continue120 = true
                     break
                 end
                 out[#out + 1] = {
@@ -777,9 +762,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue123 = true
+                __continue120 = true
             until true
-            if not __continue123 then
+            if not __continue120 then
                 break
             end
         end
@@ -789,22 +774,21 @@ end
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local function t1Hp(team, lane)
     local t = GetTower(team, T1[lane])
-    local ____temp_6
+    local ____temp_8
     if t == nil or t == nil or not t:IsAlive() then
-        ____temp_6 = false
+        ____temp_8 = false
     else
-        ____temp_6 = t:GetHealth()
+        ____temp_8 = t:GetHealth()
     end
-    return ____temp_6
+    return ____temp_8
 end
---- The reading for `team`'s side of `lane` now (the calling script must be `team`'s). `dropBefore`: a point along the path,
--- see ReadFrom.
-function ____exports.Read(team, lane, dropBefore)
+--- `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from.
+local function viewNow(team, lane)
     local path = LANE_PATHS[lane]
-    if path == nil then
-        return nil
-    end
     local t0 = math.floor(DotaTime())
+    if path == nil then
+        return nil, t0, {}, {}
+    end
     local enemy = team == R and D or R
     local init = ____exports.ViewStart(
         path,
@@ -823,16 +807,57 @@ function ____exports.Read(team, lane, dropBefore)
             true
         )
     )
+    return path, t0, init, {
+        [team] = t1Hp(team, lane),
+        [enemy] = t1Hp(enemy, lane)
+    }
+end
+--- The reading for `team`'s side of `lane` now (the calling script must be `team`'s). `dropBefore`: a point along the path,
+-- see ReadFrom.
+function ____exports.Read(team, lane, dropBefore)
+    local path, t0, init, towerHp = viewNow(team, lane)
+    if path == nil then
+        return nil
+    end
     return ____exports.ReadFrom(
         path,
         team,
         t0,
         init,
-        {
-            [team] = t1Hp(team, lane),
-            [enemy] = t1Hp(enemy, lane)
-        },
+        towerHp,
         dropBefore
     )
+end
+--- One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined.
+function ____exports.Forecast(team, lane, horizon)
+    local path, t0, init, towerHp = viewNow(team, lane)
+    if path == nil then
+        return nil, nil
+    end
+    return ____exports.Run(
+        path,
+        t0,
+        t0 + horizon,
+        init,
+        towerHp
+    ), path
+end
+--- The map point at distance `s` along the lane path.
+function ____exports.PointAt(lane, s)
+    local n = #lane.pts
+    if s <= lane.s[1] then
+        return {lane.pts[1][1], lane.pts[1][2]}
+    end
+    do
+        local i = 1
+        while i < n do
+            if s <= lane.s[i + 1] then
+                local u = (s - lane.s[i]) / math.max(1e-9, lane.s[i + 1] - lane.s[i])
+                return {lane.pts[i][1] + u * (lane.pts[i + 1][1] - lane.pts[i][1]), lane.pts[i][2] + u * (lane.pts[i + 1][2] - lane.pts[i][2])}
+            end
+            i = i + 1
+        end
+    end
+    return {lane.pts[n][1], lane.pts[n][2]}
 end
 return ____exports
