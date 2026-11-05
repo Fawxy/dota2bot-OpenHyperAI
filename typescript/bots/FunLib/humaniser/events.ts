@@ -1468,6 +1468,10 @@ export const EVENTS = {
         pa: "num",
         ap: "num",
         ep: "num",
+        // hold 1 when our lane core could hold their wave (PullJob CoreToHold); rule which trigger wanted the pull: new (the
+        // above), old (own + mv past tgt + WantPast and st not IN, counted only with hold 1) or both; absent when neither.
+        hold: "num",
+        rule: "str",
     },
     gank: {
         pid: "num",

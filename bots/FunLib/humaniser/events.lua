@@ -1156,7 +1156,9 @@ ____exports.EVENTS = {
         hm = "num",
         pa = "num",
         ap = "num",
-        ep = "num"
+        ep = "num",
+        hold = "num",
+        rule = "str"
     },
     gank = {
         pid = "num",

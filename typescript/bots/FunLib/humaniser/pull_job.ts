@@ -28,7 +28,9 @@ export const SETTINGS = {
      *  resolved) is forecast more than WantPast beyond the lane's target point (LanePush TargetOf), and their creeps in lane
      *  have at most PowerRatio times our HP (slice support-lane, Decision 06/11/2026; ArriveAfter and PowerRatio
      *  `judgement`, scored offline on the banked slots before the change: the slice file). A lane coming in (IN) is no
-     *  refusal: the pull keeps our next wave from dying under their tower. */
+     *  refusal: the pull keeps our next wave from dying under their tower. With our lane core there to hold their wave
+     *  (CoreToHold) the earlier rule also wants it (OldWanted; user 06/11/2026: the pull and the hold work in tandem, the
+     *  hold catching the overshoot the forecast shows with no hero in it). */
     WantPast: 150,
     ArriveAfter: 12,
     PowerRatio: 1.2,
@@ -206,6 +208,9 @@ interface Decision {
     reading?: LanePush.Reading;
     /** The lane with the pulled wave gone (Wanted's input). */
     gone?: LanePush.WaveGone;
+    /** A core could hold their wave (CoreToHold), and which rule wanted the pull: new, old or both. */
+    hold?: boolean;
+    rule?: string;
     /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
     hm?: number;
 }
@@ -464,6 +469,35 @@ export function Wanted(g: LanePush.WaveGone | undefined, target: number): boolea
     return g.own > target + SETTINGS.WantPast && g.ep <= SETTINGS.PowerRatio * g.ap;
 }
 
+/** The earlier trigger: the 30 s forecast past the target and the lane not coming in. */
+export function OldWanted(r: LanePush.Reading | undefined, target: number): boolean {
+    return r !== undefined && r.state !== "IN" && r.own + r.move > target + SETTINGS.WantPast;
+}
+
+type WaveHoldModule = typeof import("bots/FunLib/humaniser/states/wave_hold");
+type ChooserModule = typeof import("bots/FunLib/humaniser/chooser");
+
+/**
+ * Our lane core who could hold their wave at the lane's target point: the wave hold owns it (alive, laning, our spot), it is
+ * on this lane, on none of our jobs and within the hold's Reach of the point. Required at the call, not imported: wave_hold
+ * and the chooser import this module.
+ */
+export function CoreToHold(bot: Unit): Unit | undefined {
+    const WaveHold = require("bots/FunLib/humaniser/states/wave_hold") as WaveHoldModule;
+    const Chooser = require("bots/FunLib/humaniser/chooser") as ChooserModule;
+    const lane = bot.GetAssignedLane();
+    const path = LanePush.PathOf(lane);
+    if (path === undefined) return undefined;
+    const [t1, dir] = LanePush.OwnT1(path, bot.GetTeam());
+    const [x, y] = LanePush.PointAt(path, t1 + dir * LanePush.TargetOf(lane));
+    for (let i = 1; i <= 5; i++) {
+        const m = GetTeamMember(i);
+        if (m === undefined || m === null || m === bot || m.GetAssignedLane() !== lane || !WaveHold.Owns(m) || Chooser.Running(m)) continue;
+        if (GetUnitToLocationDistance(m, Vector(x, y, m.GetLocation().z)) <= WaveHold.SETTINGS.Reach) return m;
+    }
+    return undefined;
+}
+
 /** The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn). */
 export function PulledSpawn(slot: number): number {
     return math.floor((slot - 1) / 30) * 30;
@@ -541,6 +575,8 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["pa", r1(d.gone?.own)],
         ["ap", r1(d.gone?.ap)],
         ["ep", r1(d.gone?.ep)],
+        ["hold", d.hold === undefined ? undefined : d.hold ? 1 : 0],
+        ["rule", d.rule],
         ["ms", r?.ms],
         ["pk", d.want ? d.kind : undefined],
         ["hm", d.hm],
@@ -1127,8 +1163,13 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // many times a game; the lane reading's trigger is checked in normal games.
         const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
         const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key), p.key + SETTINGS.ArriveAfter);
-        const want = Wanted(gone, LanePush.TargetOf(bot.GetAssignedLane())) || harness;
-        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone };
+        const tgt = LanePush.TargetOf(bot.GetAssignedLane());
+        const hold = CoreToHold(bot) !== undefined;
+        const byNew = Wanted(gone, tgt);
+        const byOld = hold && OldWanted(reading, tgt);
+        const rule = byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
+        const want = rule !== undefined || harness;
+        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone, hold, rule };
         decided[pid] = d;
         gateWhy[pid] = undefined;
         if (d.kind === "half") return false;

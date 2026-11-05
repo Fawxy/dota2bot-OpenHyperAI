@@ -364,6 +364,34 @@ do
 	check("IN at their T1, their wave much bigger: stays (why=lane)", field(stay, "go") == "0" and field(stay, "why") == "lane", stay)
 end
 
+-- With our lane core there to hold their wave, the earlier trigger also wants the pull (user 06/11/2026: the hold catches
+-- the overshoot); with none, only the new one. Here the 30 s forecast is past the target but the clash with the pulled wave
+-- gone is not.
+do
+	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
+	local function first(withCore, coreAway)
+		local w = world({ reading = OUT, gone = { own = 900, ap = 1000, ep = 1000 } })
+		local path = P.PathOf(Lane.Bot)
+		local t1, dir = P.OwnT1(path, 2)
+		local pt = P.PointAt(path, t1 + dir * 900)
+		w.core.loc = coreAway and Vector(pt[1] + 2500, pt[2]) or Vector(pt[1], pt[2])
+		local WH = require("bots/FunLib/humaniser/states/wave_hold")
+		local owns = WH.Owns
+		WH.Owns = function(u) return withCore and u == w.core end
+		local out = run(w, 75)
+		WH.Owns = owns
+		return lines(out, "choice")[1]
+	end
+	local held = first(true)
+	check("core to hold: the earlier rule's pull goes, hold=1 rule=old", field(held, "go") == "1" and field(held, "hold") == "1"
+		and field(held, "rule") == "old", held)
+	local alone = first(false)
+	check("no core to hold: the new rule only, stays (why=lane, hold=0)", field(alone, "go") == "0" and field(alone, "why") == "lane"
+		and field(alone, "hold") == "0" and field(alone, "rule") == nil, alone)
+	local far = first(true, true)
+	check("core out of the hold's reach of the target point: no core to hold", field(far, "go") == "0" and field(far, "hold") == "0", far)
+end
+
 -- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full
 -- pull's leave time, hit HalfPullLater (2 s) later; with the switch off it full-pulls. A pushing lane is still a full pull.
 local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
