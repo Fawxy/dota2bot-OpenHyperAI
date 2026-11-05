@@ -291,6 +291,10 @@ local function findPreDeny(bot, me, verbs)
                     bot:GetAttackDamage(),
                     DamageType.Physical
                 )
+                if verbs.forecastHp(f, first) <= mean then
+                    __continue48 = true
+                    break
+                end
                 local kill = ____exports.KillTime(
                     function(t) return verbs.forecastHp(f, t) end,
                     first,
@@ -345,10 +349,10 @@ local function findShove(bot)
     )
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_RADIUS, true) or ({})) do
         do
-            local __continue57
+            local __continue58
             repeat
                 if not usable(c) then
-                    __continue57 = true
+                    __continue58 = true
                     break
                 end
                 if math.max(
@@ -357,9 +361,9 @@ local function findShove(bot)
                 ) / speed <= LanePick.MAX_WALK then
                     near[#near + 1] = c
                 end
-                __continue57 = true
+                __continue58 = true
             until true
-            if not __continue57 then
+            if not __continue58 then
                 break
             end
         end

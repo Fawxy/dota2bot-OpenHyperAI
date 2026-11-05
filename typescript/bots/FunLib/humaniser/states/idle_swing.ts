@@ -225,6 +225,8 @@ function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Not
         const f = verbs.hpForecast(me, tc, HORIZON);
         const first = walk + verbs.ownHitTime(me, tc);
         const mean = c.GetActualIncomingDamage(bot.GetAttackDamage(), DamageType.Physical);
+        // In one-hit range at our hit it is a deny, the deny pick's with its timing and claim (user 06/11/2026), not a pre-deny.
+        if (verbs.forecastHp(f, first) <= mean) continue;
         const kill = KillTime((t) => verbs.forecastHp(f, t), first, period, mean, HORIZON);
         const reach = enemyReach(bot, c);
         if (!SafeFromEnemy(kill, reach)) continue;

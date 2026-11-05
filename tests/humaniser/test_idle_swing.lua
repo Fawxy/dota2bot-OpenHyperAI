@@ -130,6 +130,16 @@ do
 end
 
 do
+	-- 40 HP, our hit 40: one hit kills it, so it is a deny (the deny pick's, with its claim), not a pre-deny. Log
+	-- isw1_A_on_1 (2026-11-05T23-31-10, t=35.4 pid=5 hp=25): pre-deny swings at deny-range creeps lost them to the deny's timing.
+	local c = unit({ team = TEAM_RADIANT, loc = Vector(300, 0), hp = 40 })
+	local bot = world({ creeps = { c } })
+	check("find: in one-hit range it is a deny, no pre-deny", Idle.Find(bot, verbs()) == nil)
+	c.hp = 41
+	check("find: one HP above one hit, pre-deny", Idle.Find(bot, verbs()) ~= nil)
+end
+
+do
 	-- 70 HP: two of our hits (0.4 s: 30 left, 1.9 s: dead). An enemy hero 200 from it, range 150, reaches in 0.17+0.4 s: unsafe.
 	local c = unit({ team = TEAM_RADIANT, loc = Vector(300, 0), hp = 70 })
 	local e = unit({ team = TEAM_DIRE, loc = Vector(500, 0), range = 150 })
