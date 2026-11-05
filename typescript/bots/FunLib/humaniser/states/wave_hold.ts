@@ -71,8 +71,14 @@ export const SETTINGS = {
      * while the schedule said 24 s; the drag took their wave from 1,195 to 790 from our T1 just as ours met it.
      */
     NearSecs: 10,
-    /** The drag's point: this far behind our T1 along the lane; its time: their front's walk there at creep speed plus
-     *  DrawSecs, done DragMargin before our next wave reaches that point. */
+    /**
+     * The drag's point: at least this far behind our T1 along the lane, and out of its fire (the reach plus LateMargin); its
+     * time: their front's walk there at creep speed plus DrawSecs, done DragMargin before our creeps reach that point. The
+     * user's rule (06/11/2026, hschk3 1:45, Luna dragged their wave under our T1 onto our creeps back from a pull): the drag
+     * walks them through tower fire only when they meet our creeps behind the T1 out of its reach; a creep of ours already
+     * between the drag point and their front would meet them in its fire, so the core holds at the hold point instead. No
+     * route around the T1: its lane is walled by trees and cliffs, and the hold point is the simpler fallback.
+     */
     Behind: 500,
     CreepSpeed: 325,
     DrawSecs: 1,
@@ -178,9 +184,27 @@ export function Near(schedule: number, live: number[]): number {
     return math.min(schedule, d / SETTINGS.CreepSpeed);
 }
 
-/** Pure: the seconds the drag needs from their front's distance from our T1. */
-export function DragSecs(front: number): number {
-    return (front + SETTINGS.Behind) / SETTINGS.CreepSpeed + SETTINGS.DrawSecs;
+/** Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin). */
+export function BehindAt(reach = EffReach()): number {
+    return math.max(SETTINGS.Behind, reach + SETTINGS.LateMargin);
+}
+
+/** Pure: the seconds the drag needs from their front's distance from our T1, to the drag point `bd` behind it. */
+export function DragSecs(front: number, bd = SETTINGS.Behind): number {
+    return (front + bd) / SETTINGS.CreepSpeed + SETTINGS.DrawSecs;
+}
+
+/**
+ * Pure: seconds until a creep of ours on the lane (our T1 distances) reaches the drag point `bd` behind our T1; 0 when one
+ * already stands between it and their front, where it would meet their dragged wave inside our T1's fire.
+ */
+export function OursAtBehind(ours: number[], bd: number, front: number): number {
+    let s = math.huge;
+    for (const o of ours) {
+        if (o > front) continue;
+        s = math.min(s, o >= -bd ? 0 : (-bd - o) / SETTINGS.CreepSpeed);
+    }
+    return s;
 }
 
 interface Attempt {
@@ -196,6 +220,8 @@ interface Attempt {
     fc?: number;
     hd: number;
     rch: number;
+    /** The drag point's distance behind our T1. */
+    bd: number;
     /** Our creeps already fighting at the start that do not end it as `met` (the losing wave, a lone creep under the T1). */
     old: Unit[];
     n: number;
@@ -399,7 +425,8 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, r
         startedAt: now,
         steppedAt: now,
         hold,
-        behind: pointAt(v, -SETTINGS.Behind, z),
+        behind: pointAt(v, -BehindAt(reach), z),
+        bd: BehindAt(reach),
         why: trig === "forecast" ? "losing" : whyGone(bot, now),
         trig,
         fc,
@@ -549,7 +576,7 @@ export function Step(bot: Unit): void {
     let front = math.huge;
     let nearest: Unit | undefined;
     for (const x of v.units) {
-        if (x.own < -SETTINGS.OursBehind - SETTINGS.Behind || x.own > a.tgt + SETTINGS.StartAhead) continue;
+        if (x.own < -SETTINGS.OursBehind - a.bd || x.own > a.tgt + SETTINGS.StartAhead) continue;
         if (x.own < front) {
             front = x.own;
             nearest = x.u;
@@ -574,8 +601,8 @@ export function Step(bot: Unit): void {
     a.nl = live.length > 0 ? Near(math.huge, live) : undefined;
     const sched = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now;
     const near = Near(sched, live);
-    a.ds = DragSecs(math.max(0, front));
-    a.nb = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 - v.dir * SETTINGS.Behind, now) - now;
+    a.ds = DragSecs(math.max(0, front), a.bd);
+    a.nb = math.min(LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 - v.dir * a.bd, now) - now, OursAtBehind(v.ours, a.bd, front));
     // A drag under way is lane_aggro's until its walk ends, and once behind our T1 the core waits there for our wave: the
     // branch is not read again meanwhile.
     const dragging = a.br === "drag" && (LaneAggro.Acting(bot) || GetUnitToLocationDistance(bot, a.behind) <= SETTINGS.Arrived);
