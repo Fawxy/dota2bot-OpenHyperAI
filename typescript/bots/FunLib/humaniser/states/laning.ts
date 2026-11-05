@@ -215,10 +215,11 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
 }
 
 /**
- * A core's yields (Ours.CoreDenyYield), for its ev=lh `yd`: the support it left a deny to, and the creep it picked instead
- * (undefined: nothing else to pick, so no attempt carries it; ev=snap's `yc` counts every yield).
+ * A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to. The next
+ * attempt reported carries it; in smoke game deny-yield_fn1 most yields came with nothing else on offer, so the yield and the
+ * next attempt are often seconds apart (ev=snap's `yc` counts every yield).
  */
-const yields: Record<number, { sup: number; creep: Lib.TaskCreep | undefined } | undefined> = {};
+const yields: Record<number, number | undefined> = {};
 
 /** After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it. */
 function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verbs.LaneTarget | undefined, pre: Lib.Verbs.LaneTarget | undefined, chosen: Lib.Verbs.LaneTarget | undefined): void {
@@ -229,14 +230,13 @@ function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verb
     if (sup === undefined) return;
     const pid = bot.GetPlayerID();
     LanePick.NoteYield(pid, plain.creep);
-    yields[pid] = { sup, creep: chosen?.creep };
+    yields[pid] = sup;
 }
 
-function yieldOf(pid: number, creep: Lib.TaskCreep): number | undefined {
+function yieldOf(pid: number): number | undefined {
     const y = yields[pid];
-    if (y === undefined || y.creep !== creep) return undefined;
     yields[pid] = undefined;
-    return y.sup;
+    return y;
 }
 
 /**
@@ -366,7 +366,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["cy", cy],
                 ["ca", ca],
                 ["ph", t.kind === "lasthit" && wasPreHit(bot.GetPlayerID(), t.creep) ? true : undefined],
-                ["yd", yieldOf(bot.GetPlayerID(), t.creep)],
+                ["yd", yieldOf(bot.GetPlayerID())],
                 ["msg", res.message],
             ]);
         },

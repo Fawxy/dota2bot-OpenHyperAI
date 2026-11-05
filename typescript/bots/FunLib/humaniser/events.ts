@@ -949,7 +949,7 @@ export const EVENTS = {
         ca: "num",
         /** 1 when this bot pre-hit the creep earlier (states/pre_hit): last hits per pre-hit. */
         ph: "bool",
-        /** A core's attempt picked in place of a deny it left to the allied support (this pid) whose laning body was in an attempt on it (Ours.CoreDenyYield). */
+        /** A core's first attempt reported after it left a deny to the allied support (this pid) whose laning body was in an attempt on it (Ours.CoreDenyYield). */
         yd: "num",
         msg: "str",
     },
