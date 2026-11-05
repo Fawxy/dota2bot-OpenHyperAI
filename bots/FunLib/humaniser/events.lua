@@ -774,6 +774,7 @@ ____exports.EVENTS = {
         cy = "num",
         ca = "num",
         ph = "bool",
+        yd = "num",
         msg = "str"
     },
     prehit = {

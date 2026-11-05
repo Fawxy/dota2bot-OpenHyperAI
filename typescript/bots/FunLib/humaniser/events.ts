@@ -949,6 +949,8 @@ export const EVENTS = {
         ca: "num",
         /** 1 when this bot pre-hit the creep earlier (states/pre_hit): last hits per pre-hit. */
         ph: "bool",
+        /** A core's attempt picked in place of a deny it left to the allied support (this pid) whose laning body was in an attempt on it (Ours.CoreDenyYield). */
+        yd: "num",
         msg: "str",
     },
     /** A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one per attempt. */

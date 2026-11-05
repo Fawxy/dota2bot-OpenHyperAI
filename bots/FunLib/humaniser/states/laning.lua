@@ -263,8 +263,12 @@ function ____exports.SpotInfo(bot)
     local ____opt_9 = spotCache[bot:GetPlayerID()]
     return ____opt_9 and ____opt_9.info
 end
---- The creeps this laner may take: undefined for a core (all), the support's claims otherwise.
+--- The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
+-- Ours.CoreDenyYield off), the support's claims otherwise.
 local function claimsFor(bot)
+    if ____exports.OwnsLastHit(bot) then
+        return LaneClaims.CoreMine(bot)
+    end
     if not ____exports.OwnsSupportHits(bot) then
         return nil
     end
@@ -360,6 +364,34 @@ local function choose(bot, targets, current, pre)
         pre
     )
 end
+--- A core's yields (Ours.CoreDenyYield), for its ev=lh `yd`: the support it left a deny to, and the creep it picked instead
+-- (undefined: nothing else to pick, so no attempt carries it; ev=snap's `yc` counts every yield).
+local yields = {}
+--- After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it.
+local function noteYield(bot, targets, current, pre, chosen)
+    if not ____exports.OwnsLastHit(bot) or LaneClaims.CoreMine(bot) == nil then
+        return
+    end
+    local plain = LanePick.Choose(targets, current, nil, pre)
+    if plain == nil or plain.kind ~= "deny" or chosen ~= nil and chosen.creep == plain.creep then
+        return
+    end
+    local sup = LaneClaims.DenyYield(bot, plain)
+    if sup == nil then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    LanePick.NoteYield(pid, plain.creep)
+    yields[pid] = {sup = sup, creep = chosen and chosen.creep}
+end
+local function yieldOf(pid, creep)
+    local y = yields[pid]
+    if y == nil or y.creep ~= creep then
+        return nil
+    end
+    yields[pid] = nil
+    return y.sup
+end
 --- The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
 -- pre-hit). A creep handle stays the same unit until it dies.
 local preHits = {}
@@ -443,14 +475,21 @@ local body = __TS__Generator(function(bot, ctx)
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets, current)
                 local verbs = Tasks.Verbs()
-                local ____temp_15
+                local ____temp_17
                 if verbs ~= nil then
-                    ____temp_15 = PreHit.Find(bot, verbs)
+                    ____temp_17 = PreHit.Find(bot, verbs)
                 else
-                    ____temp_15 = nil
+                    ____temp_17 = nil
                 end
-                local pre = ____temp_15
+                local pre = ____temp_17
                 local chosen = choose(bot, targets, current, pre)
+                noteYield(
+                    bot,
+                    targets,
+                    current,
+                    pre,
+                    chosen
+                )
                 if chosen ~= nil then
                     noteSeen(
                         bot:GetPlayerID(),
@@ -555,22 +594,22 @@ local body = __TS__Generator(function(bot, ctx)
                     )
                     return
                 end
-                local ____OwnsSupportHits_result_30
+                local ____OwnsSupportHits_result_32
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_30 = claimOf(
+                    ____OwnsSupportHits_result_32 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_30 = nil
+                    ____OwnsSupportHits_result_32 = nil
                 end
-                local claim = ____OwnsSupportHits_result_30
+                local claim = ____OwnsSupportHits_result_32
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
                 ))
-                local ____Telemetry_Event_33 = Telemetry.Event
-                local ____array_32 = __TS__SparseArrayNew(
+                local ____Telemetry_Event_35 = Telemetry.Event
+                local ____array_34 = __TS__SparseArrayNew(
                     {
                         "pid",
                         bot:GetPlayerID()
@@ -600,19 +639,30 @@ local body = __TS__Generator(function(bot, ctx)
                     {"cy", cy},
                     {"ca", ca}
                 )
-                local ____temp_31
+                local ____temp_33
                 if t.kind == "lasthit" and wasPreHit(
                     bot:GetPlayerID(),
                     t.creep
                 ) then
-                    ____temp_31 = true
+                    ____temp_33 = true
                 else
-                    ____temp_31 = nil
+                    ____temp_33 = nil
                 end
-                __TS__SparseArrayPush(____array_32, {"ph", ____temp_31}, {"msg", res.message})
-                ____Telemetry_Event_33(
+                __TS__SparseArrayPush(
+                    ____array_34,
+                    {"ph", ____temp_33},
+                    {
+                        "yd",
+                        yieldOf(
+                            bot:GetPlayerID(),
+                            t.creep
+                        )
+                    },
+                    {"msg", res.message}
+                )
+                ____Telemetry_Event_35(
                     "lh",
-                    {__TS__SparseArraySpread(____array_32)}
+                    {__TS__SparseArraySpread(____array_34)}
                 )
             end
         }

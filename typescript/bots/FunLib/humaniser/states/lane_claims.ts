@@ -8,12 +8,15 @@
  *   unattempted died during an attempt on another creep);
  * - any other core (a human, a bot core between attempts, OHA's) takes what Etiquette.CanTake says it can (slice 3).
  * The facts are the engine's laneTargets seen from the core; the rule is ours (rule 3).
+ * The other way (Ours.CoreDenyYield, user 06/11/2026 bug-hunt mark 11): a core leaves a deny an allied support's laning body
+ * is in an attempt on (DenyYield), so it goes for the next last hit or another deny instead. Last hits are unaffected.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { Unit } from "bots/ts_libs/dota";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 /** Why a creep is a support's: a deny, a last hit no core is near enough for, or one its core is too busy for. */
@@ -54,11 +57,38 @@ function coreTakes(core: Attacker, t: Lib.Verbs.LaneTarget, within: number): boo
     // The core's body retargets through the same picker, so the creep it is on next is Choose's answer, not the one it
     // waits on now: a deny wait is dropped for any reachable last hit (slhchk2 A game 1 t=210.87, review
     // 2026-11-04-support-lane-hits-e93e444 F1).
-    const next = LanePick.Choose(offers, other) ?? other;
+    const next = LanePick.Choose(offers, other, CoreMine(core)) ?? other;
     if (next.creep === t.creep) return true;
     if (mine === undefined) return false;
     const free = next.due + (core.GetSecondsPerAttack?.() ?? 1);
     return math.max(free + mine.walk, mine.eta) < t.dies;
+}
+
+/**
+ * The allied support (pos 4-5) whose laning body is in an attempt on deny `t` (LanePick.Attempting, as coreTakes reads the
+ * core's), within Etiquette's approach range of the creep (a body that left lane mid-attempt keeps its last phase), or
+ * undefined. Only denies: a core's last hits are never yielded. With Ours.CoreDenyYield off, always undefined.
+ */
+export function DenyYield(core: Unit, t: Lib.Verbs.LaneTarget): number | undefined {
+    if (t.kind !== "deny" || !Ours.On("CoreDenyYield")) return undefined;
+    const creep = t.creep as unknown as Unit;
+    for (let i = 1; i <= 5; i++) {
+        const member = GetTeamMember(i);
+        if (member === null || member === undefined || member === core) continue;
+        if (!member.IsAlive() || member.IsIllusion()) continue;
+        const pos = LaneConfig.PositionOf(member);
+        if (pos === undefined || pos < 4) continue;
+        if (LanePick.Attempting(member.GetPlayerID()) !== t.creep) continue;
+        if (GetUnitToUnitDistance(member, creep) > Etiquette.SETTINGS.ApproachRange) continue;
+        return member.GetPlayerID();
+    }
+    return undefined;
+}
+
+/** A core's `mine` for LanePick.Choose: every creep but a deny an allied support is attempting (DenyYield); undefined (all) with the switch off. */
+export function CoreMine(core: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
+    if (!Ours.On("CoreDenyYield")) return undefined;
+    return (t) => DenyYield(core, t) === undefined;
 }
 
 /** The claim `bot` (a support) has on `t`, or undefined when an allied core will take it. */

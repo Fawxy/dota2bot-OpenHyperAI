@@ -152,8 +152,12 @@ export function OwnsSupportHits(bot: Unit): boolean {
     return !OwnsLastHit(bot) && SupportDeny.Applies(bot);
 }
 
-/** The creeps this laner may take: undefined for a core (all), the support's claims otherwise. */
+/**
+ * The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
+ * Ours.CoreDenyYield off), the support's claims otherwise.
+ */
 function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
+    if (OwnsLastHit(bot)) return LaneClaims.CoreMine(bot);
     if (!OwnsSupportHits(bot)) return undefined;
     const lastHits = SupportDeny.LastHits(bot);
     const within = Settings().LastHitWithin;
@@ -208,6 +212,31 @@ function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number
 
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
     return LanePick.Choose(targets, current, claimsFor(bot), pre);
+}
+
+/**
+ * A core's yields (Ours.CoreDenyYield), for its ev=lh `yd`: the support it left a deny to, and the creep it picked instead
+ * (undefined: nothing else to pick, so no attempt carries it; ev=snap's `yc` counts every yield).
+ */
+const yields: Record<number, { sup: number; creep: Lib.TaskCreep | undefined } | undefined> = {};
+
+/** After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it. */
+function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verbs.LaneTarget | undefined, pre: Lib.Verbs.LaneTarget | undefined, chosen: Lib.Verbs.LaneTarget | undefined): void {
+    if (!OwnsLastHit(bot) || LaneClaims.CoreMine(bot) === undefined) return;
+    const plain = LanePick.Choose(targets, current, undefined, pre);
+    if (plain === undefined || plain.kind !== "deny" || (chosen !== undefined && chosen.creep === plain.creep)) return;
+    const sup = LaneClaims.DenyYield(bot, plain);
+    if (sup === undefined) return;
+    const pid = bot.GetPlayerID();
+    LanePick.NoteYield(pid, plain.creep);
+    yields[pid] = { sup, creep: chosen?.creep };
+}
+
+function yieldOf(pid: number, creep: Lib.TaskCreep): number | undefined {
+    const y = yields[pid];
+    if (y === undefined || y.creep !== creep) return undefined;
+    yields[pid] = undefined;
+    return y.sup;
 }
 
 /**
@@ -269,6 +298,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             const verbs = Tasks.Verbs();
             const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;
             const chosen = choose(bot, targets, current, pre);
+            noteYield(bot, targets, current, pre, chosen);
             if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
             // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
             if (chosen === undefined && targets.length === 0) return undefined;
@@ -336,6 +366,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["cy", cy],
                 ["ca", ca],
                 ["ph", t.kind === "lasthit" && wasPreHit(bot.GetPlayerID(), t.creep) ? true : undefined],
+                ["yd", yieldOf(bot.GetPlayerID(), t.creep)],
                 ["msg", res.message],
             ]);
         },
