@@ -402,7 +402,13 @@
    "td": "num",
    "out": "num",
    "sty": "num",
-   "nd": "num"
+   "nd": "num",
+   "src": "str",
+   "ad": "num",
+   "apt": "num",
+   "md": "num",
+   "lbl": "str",
+   "gap": "num"
   },
   "wave_hold": {
    "pid": "num",
@@ -410,6 +416,11 @@
    "br": "str",
    "res": "str",
    "why": "str",
+   "trig": "str",
+   "fc": "num",
+   "hd": "num",
+   "rch": "num",
+   "hdr": "num",
    "n": "num",
    "lh": "num",
    "dn": "num",
@@ -421,6 +432,8 @@
    "nw": "num",
    "ds": "num",
    "nb": "num",
+   "nl": "num",
+   "lv": "num",
    "thr": "num",
    "sw": "num",
    "hp": "num",
@@ -428,10 +441,22 @@
    "dur": "num",
    "md": "num"
   },
+  "wave_hold_skip": {
+   "pid": "num",
+   "lane": "num",
+   "why": "str",
+   "front": "num",
+   "n": "num",
+   "on": "num",
+   "oin": "num",
+   "rch": "num",
+   "fc": "num"
+  },
   "aggro_skip": {
    "pid": "num",
    "role": "str",
-   "why": "str"
+   "why": "str",
+   "ad": "num"
   },
   "lane_tech": {
    "pid": "num",
@@ -1313,7 +1338,9 @@
    "hph": "num",
    "ne": "num",
    "nk": "num",
-   "nr": "num"
+   "nr": "num",
+   "cl": "num",
+   "fo": "num"
   }
  },
  "kinds": {
@@ -1440,11 +1467,17 @@
    "role": "text",
    "kind": "text",
    "result": "text",
-   "st": "text"
+   "st": "text",
+   "src": "text",
+   "lbl": "text"
   },
   "ev_wave_hold": {
    "br": "text",
    "res": "text",
+   "why": "text",
+   "trig": "text"
+  },
+  "ev_wave_hold_skip": {
    "why": "text"
   },
   "ev_aggro_skip": {
