@@ -182,7 +182,8 @@ do
 			local p = w.H.PullJob.Running(w.sup)
 			if p and hitAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
 			-- A tagged neutral dies and is freed while the watch runs (pdg1/pdg2: Invalid object in taggedState).
-			if hitAt ~= nil and T >= hitAt + 1 and not stays.removed then
+			if hitAt ~= nil and T >= hitAt + 0.5 then stays.unseen = true end -- out of vision first: alive, GetLocation nil (phhar8)
+				if hitAt ~= nil and T >= hitAt + 1 and not stays.removed then
 				stays.removed = true
 				for i = #NEUTRALS, 1, -1 do if NEUTRALS[i] == stays then table.remove(NEUTRALS, i) end end
 			end
@@ -394,6 +395,15 @@ do
 		and field(near, "hc") == "4" and field(near, "hm") ~= nil and field(near, "hf") ~= nil and field(near, "hu") ~= nil, near)
 	check("half hit: the creep hit moves off the plan's", math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht"))) >= 0.2, near)
 	check("half hit: no creeps read, the plan's second (hr=plan, no search)", field(plan, "hr") == "plan" and field(plan, "hm") == nil, plan)
+	-- With the step-in on, the tagged neutral drops out of vision after the hit: alive with no location (phhar8 05/11/2026,
+	-- every watch errored in watchAt reading it). The watch goes on without it.
+	local hitAt
+	local fogged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
+		if hitAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
+		if hitAt ~= nil and T >= hitAt + 0.5 then for _, u in ipairs(NEUTRALS) do u.unseen = true end end
+	end })
+	check("half step-in: a tagged neutral out of vision mid-watch raises no error", hitAt ~= nil and fogged ~= nil
+		and field(fogged, "why") ~= nil and not field(fogged, "why"):find("error", 1, true), fogged)
 end
 
 -- A wave bunched on one point has no hit that keeps the front two out and turns the third: the half stays (why=half-geo,

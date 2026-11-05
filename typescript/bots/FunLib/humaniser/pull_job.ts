@@ -351,8 +351,9 @@ function bailPoint(bot: Unit): Vector | undefined {
     let k = 0;
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive() || u.GetAttackTarget() !== bot || GetUnitToUnitDistance(u, bot) > SETTINGS.BailScan) continue;
-        dps += u.GetEstimatedDamageToTarget(true, bot, 1, DamageType.All);
         const l = u.GetLocation();
+        if (l === undefined || l === null) continue;
+        dps += u.GetEstimatedDamageToTarget(true, bot, 1, DamageType.All);
         cx += l.x;
         cy += l.y;
         k++;
@@ -710,7 +711,10 @@ function tagCamp(bot: Unit, p: Pull): void {
     p.tagged = tagged;
     p.peaks = new Map();
     p.starts = new Map();
-    for (const u of tagged) p.starts.set(u, u.GetLocation());
+    for (const u of tagged) {
+        const l = u.GetLocation();
+        if (l !== undefined && l !== null) p.starts.set(u, l);
+    }
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
@@ -938,7 +942,9 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
                       const offs: Vector[] = [];
                       for (const u of pull.tagged ?? []) {
                           if (stale(u)) continue;
+                          // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
                           const l = u.GetLocation();
+                          if (l === undefined || l === null) continue;
                           offs.push(Vector(l.x - here.x, l.y - here.y, 0));
                       }
                       const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, offs);

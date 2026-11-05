@@ -192,8 +192,10 @@ function UnitMeta:GetNearbyHeroes(r, enemy)
 	end
 	return out
 end
+-- Like GetUnitToLocationDistance, on the raw position: the game answers for a unit out of vision whose GetLocation is nil
+-- (phhar8: pull_creep dn to a tagged neutral on every frame the watch's GetLocation read errored).
 function GetUnitToUnitDistance(a, b)
-	local dx, dy = a:GetLocation().x - b:GetLocation().x, a:GetLocation().y - b:GetLocation().y
+	local dx, dy = a.loc.x - b.loc.x, a.loc.y - b.loc.y
 	return math.sqrt(dx * dx + dy * dy)
 end
 -- `listedUnseen`: a creep out of sight the engine still lists, with no location.
