@@ -400,7 +400,7 @@ export const EVENTS = {
         kind: "str",
         /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
          *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
-         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled` (before the order: no visible enemy hero to order on, the dragged creep died, or the feed's ranged creep or the tower move's creep died during the approach), `unsafe` (feed, tower: an enemy hero came into reach of the approach point, or the feed's walk-back point, during the approach), `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -434,6 +434,18 @@ export const EVENTS = {
         sty: "num",
         /** back: draw orders given (the first and each re-draw). */
         nd: "num",
+        /** back: who asked, `drag` (wave_hold's drag behind our T1) or `hold` (wave_hold's hold draw, a point 150 past the
+         *  hold point: its `result` is nearly free, read `drawn` for the aggro taken). */
+        src: "str",
+        /** feed, tower: the bot's distance to the approach point at the start, and the seconds it got to walk there (feed: the
+         *  walk at its move speed + 0.4 s, at most 3.5 s). */
+        ad: "num",
+        apt: "num",
+        /** stale: the first other mode seen holding the bot during the gap (else the active mode), the task label (`-` none) when the
+         *  frame came back, and the seconds it was away. */
+        md: "num",
+        lbl: "str",
+        gap: "num",
     },
     /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
     wave_hold: {
@@ -443,11 +455,24 @@ export const EVENTS = {
          *  `retreat` (OHA's retreat took the core). */
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
-         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`. */
+         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
+         *  the hold point's floor). */
         res: "str",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
+        /** The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within
+         *  200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is
+         *  `losing`). */
+        trig: "str",
+        fc: "num",
+        /** The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50. */
+        hd: "num",
+        /** Our T1's fire reach to a creep's centre (attack range plus both hull radii, from the API; fallback 860): the
+         *  start's late floor and the hold point's floor are this plus 50. */
+        rch: "num",
+        /** Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point. */
+        hdr: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         lh: "num",
@@ -480,12 +505,35 @@ export const EVENTS = {
         /** The bot's active mode when the attempt was left. */
         md: "num",
     },
+    /**
+     * Slice core-in-lane: why the wave hold did not start for a core that owns it while their wave (2+ creeps) is at or inside
+     * the lane target, at most every 5 s per bot and reason. `why`: `ours` (our wave there and no forecast start), `late` (their
+     * front inside our T1's range + 50), `rest`, `reach`, `hp`.
+     */
+    wave_hold_skip: {
+        pid: "num",
+        lane: "num",
+        why: "str",
+        /** Their front's distance from our T1 and their creeps in the stretch. */
+        front: "num",
+        n: "num",
+        /** Our lane creeps from our T1's range out (`on`) and inside it (`oin`, from 400 behind the T1). */
+        on: "num",
+        oin: "num",
+        /** Our T1's fire reach (as ev=wave_hold `rch`). */
+        rch: "num",
+        /** Forecast seconds until their front is inside our T1's range (on `rest`, `reach`, `hp` after a forecast start). */
+        fc: "num",
+    },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {
         pid: "num",
         role: "str",
-        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`. */
+        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`
+         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point). */
         why: "str",
+        /** feed:approach_far: the bot's distance to the approach point. */
+        ad: "num",
     },
     lane_tech: {
         pid: "num",
@@ -1510,6 +1558,10 @@ export const EVENTS = {
         ne: "num",
         nk: "num",
         nr: "num",
+        /** A core's spot on the rearmost clash (their creeps between our T1 and our front, the waves crossed): the clash's
+         *  distance from our T1 along the lane and our front's; absent when the spot anchored on our front as usual. */
+        cl: "num",
+        fo: "num",
     },
 } as const;
 
