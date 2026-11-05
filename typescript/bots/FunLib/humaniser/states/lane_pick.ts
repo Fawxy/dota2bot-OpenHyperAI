@@ -155,6 +155,9 @@ interface Scan {
     /** The pre-hit's last verdict on a tower creep (states/pre_hit Verdict), and when. */
     pr?: string;
     prAt?: number;
+    /** A core's yields (Ours.CoreDenyYield): distinct denies left to an allied support's attempt, and the last one. */
+    yc?: number;
+    yCreep?: Lib.TaskCreep;
 }
 const scans: Record<number, Scan> = {};
 
@@ -178,6 +181,14 @@ export function NoteVerdict(pid: number, now: number, verdict: string): void {
     const s = scanOf(pid);
     s.pr = verdict;
     s.prAt = now;
+}
+
+/** A core left deny `creep` to an allied support's attempt (states/lane_claims DenyYield); counted once per creep. */
+export function NoteYield(pid: number, creep: Lib.TaskCreep): void {
+    const s = scanOf(pid);
+    if (s.yCreep === creep) return;
+    s.yCreep = creep;
+    s.yc = (s.yc ?? 0) + 1;
 }
 
 export function NotePhase(pid: number, ph: string): void {
@@ -244,13 +255,14 @@ export function AttemptOffers(pid: number): LuaMultiReturn<[number | undefined, 
 
 /**
  * `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. With a
- * pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict).
+ * pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict); after a core's first deny yield, ` yc=<n>`
+ * (the denies it has left to an allied support's attempt so far).
  */
 export function Describe(pid: number, now: number): string | undefined {
     const s = scans[pid];
     if (s === undefined) return undefined;
     const age = (t: number | undefined): string => (t === undefined ? "-" : string.format("%.1f", now - t));
-    const pr = s.pr !== undefined && s.prAt !== undefined && now - s.prAt <= 2 ? ` pr=${s.pr}` : "";
+    const pr = (s.pr !== undefined && s.prAt !== undefined && now - s.prAt <= 2 ? ` pr=${s.pr}` : "") + (s.yc !== undefined ? ` yc=${s.yc}` : "");
     return string.format(
         "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s%s",
         s.ph ?? "-",

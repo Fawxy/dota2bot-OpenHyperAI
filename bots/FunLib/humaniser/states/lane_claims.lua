@@ -3,7 +3,66 @@ local ____exports = {}
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+--- The allied support (pos 4-5) whose laning body is in an attempt on deny `t` (LanePick.Attempting, as coreTakes reads the
+-- core's), within Etiquette's approach range of the creep (a body that left lane mid-attempt keeps its last phase), or
+-- undefined. Only denies: a core's last hits are never yielded. With Ours.CoreDenyYield off, always undefined.
+function ____exports.DenyYield(core, t)
+    if t.kind ~= "deny" or not Ours.On("CoreDenyYield") then
+        return nil
+    end
+    local own = LaneConfig.PositionOf(core)
+    if own ~= nil and own >= 4 then
+        return nil
+    end
+    local creep = t.creep
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue16
+                repeat
+                    local member = GetTeamMember(i)
+                    if member == nil or member == nil or member == core then
+                        __continue16 = true
+                        break
+                    end
+                    if not member:IsAlive() or member:IsIllusion() then
+                        __continue16 = true
+                        break
+                    end
+                    local pos = LaneConfig.PositionOf(member)
+                    if pos == nil or pos < 4 then
+                        __continue16 = true
+                        break
+                    end
+                    if LanePick.Attempting(member:GetPlayerID()) ~= t.creep then
+                        __continue16 = true
+                        break
+                    end
+                    if GetUnitToUnitDistance(member, creep) > Etiquette.SETTINGS.ApproachRange then
+                        __continue16 = true
+                        break
+                    end
+                    return member:GetPlayerID()
+                until true
+                if not __continue16 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return nil
+end
+--- A core's `mine` for LanePick.Choose: every creep but a deny an allied support is attempting (DenyYield); undefined (all) with the switch off.
+function ____exports.CoreMine(core)
+    if not Ours.On("CoreDenyYield") then
+        return nil
+    end
+    return function(t) return ____exports.DenyYield(core, t) == nil end
+end
 --- The core's own laneTargets, once per frame (the support's scan asks for each creep it is offered).
 local offerCache = {}
 local function offersOf(core, within)
@@ -40,7 +99,11 @@ local function coreTakes(core, t, within)
     if other == nil then
         return Etiquette.CanTake(core, creep)
     end
-    local next = LanePick.Choose(offers, other) or other
+    local next = LanePick.Choose(
+        offers,
+        other,
+        ____exports.CoreMine(core)
+    ) or other
     if next.creep == t.creep then
         return true
     end
@@ -65,20 +128,20 @@ function ____exports.SupportClaim(bot, t, within)
         local i = 1
         while i <= 5 do
             do
-                local __continue15
+                local __continue27
                 repeat
                     local member = GetTeamMember(i)
                     if member == nil or member == nil or member == bot then
-                        __continue15 = true
+                        __continue27 = true
                         break
                     end
                     if not member:IsAlive() or member:IsIllusion() then
-                        __continue15 = true
+                        __continue27 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(member)
                     if pos == nil or pos > 3 then
-                        __continue15 = true
+                        __continue27 = true
                         break
                     end
                     if coreTakes(member, t, within) then
@@ -87,9 +150,9 @@ function ____exports.SupportClaim(bot, t, within)
                     if LanePick.Attempting(member:GetPlayerID()) ~= nil and GetUnitToUnitDistance(member, creep) <= Etiquette.SETTINGS.ApproachRange then
                         busy = true
                     end
-                    __continue15 = true
+                    __continue27 = true
                 until true
-                if not __continue15 then
+                if not __continue27 then
                     break
                 end
             end
