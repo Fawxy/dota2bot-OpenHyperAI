@@ -107,6 +107,9 @@ export interface CampPlan {
     /** The type tables' clear seconds and HP fraction for the same camp (logged beside the model's, to compare). */
     clrt: number;
     hpt: number;
+    /** The priced neutrals (check telemetry) and their count. */
+    nu?: string;
+    n0?: number;
     /** The clear's HP cost (fraction of max HP) and its estimate before the learned rate. */
     hpc: number;
     hpPrior: number;
@@ -139,6 +142,8 @@ interface Trip {
     /** The last clear's measured seconds from engage and HP lost (to the camp's end: cleared or left). */
     clrm?: number;
     hpm?: number;
+    /** Neutrals the team still sees alive at the camp when the core leaves it. */
+    nl?: number;
     returning?: boolean;
     threatSince?: number;
     back?: number;
@@ -269,6 +274,7 @@ export interface Neutral {
     take: number;
     dmg: number;
     spa: number;
+    name?: string;
 }
 
 function spaOf(u: Unit): number {
@@ -277,7 +283,7 @@ function spaOf(u: Unit): number {
 }
 
 function readNeutral(u: Unit, hp: number): Neutral {
-    return { hp, take: u.GetActualIncomingDamage(100, DamageType.Physical) / 100, dmg: u.GetAttackDamage(), spa: spaOf(u) };
+    return { hp, take: u.GetActualIncomingDamage(100, DamageType.Physical) / 100, dmg: u.GetAttackDamage(), spa: spaOf(u), name: u.GetUnitName() };
 }
 
 /**
@@ -325,20 +331,31 @@ function liveNeutrals(team: number, idx: number, center: Vector): Neutral[] {
 }
 
 /** Clear seconds and HP fraction before the learned factors, and their source; `stacks` scales only the unseen ones. */
-function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number): LuaMultiReturn<[number, number, string]> {
+function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number): LuaMultiReturn<[number, number, string, Neutral[] | undefined]> {
     const live = liveNeutrals(bot.GetTeam(), spawner.idx, center);
     if (live.length > 0) {
         const [secs, hp] = ClearOf(bot, live);
-        return $multi(secs, hp, "live");
+        return $multi(secs, hp, "live", live);
     }
     const seen = lastSeen[bot.GetTeam()]?.[spawner.idx];
     if (seen !== undefined) {
         const [secs, hp] = ClearOf(bot, seen);
         const k = 1 + SETTINGS.StackedClearMul * stacks;
-        return $multi(secs * k, hp * k, "seen");
+        return $multi(secs * k, hp * k, "seen", seen);
     }
     const level = bot.GetLevel();
-    return $multi(PriorClearTime(spawner.type, level, stacks), PriorClearHP(spawner.type, level, stacks), "table");
+    return $multi(PriorClearTime(spawner.type, level, stacks), PriorClearHP(spawner.type, level, stacks), "table", undefined);
+}
+
+/** The neutrals the model priced, for the check: short name, HP, damage, seconds per attack, share taken. */
+function neutralsField(ns: Neutral[] | undefined): string | undefined {
+    if (ns === undefined) return undefined;
+    const parts: string[] = [];
+    for (const n of ns) {
+        const [short] = string.gsub(n.name ?? "?", "npc_dota_neutral_", "");
+        parts.push(`${short}/${math.floor(n.hp)}/${math.floor(n.dmg)}/${r2(n.spa)}/${r2(n.take)}`);
+    }
+    return parts.join(",");
 }
 
 // ------------------------------------------------------------------------------------------------ the forecast
@@ -471,7 +488,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
         const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
-        const [prior, hpPrior, src] = estimate(bot, spawner, center, stacks);
+        const [prior, hpPrior, src, priced] = estimate(bot, spawner, center, stacks);
         const clrt = PriorClearTime(spawner.type, level, stacks);
         const hpt = PriorClearHP(spawner.type, level, stacks);
         const clr = prior * Pace(bot);
@@ -485,7 +502,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
         if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
-            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, clrt, hpt, hpc, hpPrior, gold, loss, net };
+            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, gold, loss, net };
     }
     return best;
 }
@@ -571,6 +588,8 @@ function planFields(p: CampPlan): Telemetry.Fields<"core_camp"> {
         ["src", p.src],
         ["clrt", r1(p.clrt)],
         ["hpt", r2(p.hpt)],
+        ["n0", p.n0],
+        ["nu", p.nu],
         ["hpc", r2(p.hpc)],
         ["gold", math.floor(p.gold)],
         ["loss", math.floor(p.loss)],
@@ -710,12 +729,12 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (!r.success) {
             if (r.reason !== "timeout") return r;
             if (t.engagedAt !== undefined) {
-                measured(bot, t, now);
+                measured(bot, t, now, Camps.BoxCenter(spawner));
                 growLate(bot);
             }
             break;
         }
-        if (t.engagedAt !== undefined) measured(bot, t, now);
+        if (t.engagedAt !== undefined) measured(bot, t, now, Camps.BoxCenter(spawner));
         if (r.message === "cleared" && t.engagedAt !== undefined) {
             learn(bot, now - t.engagedAt, t.plan.prior);
             if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.plan.hpPrior);
@@ -725,12 +744,13 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (next === undefined) break;
         t.plan = next;
         t.camps++;
-        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ...planFields(next)]);
+        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...planFields(next)]);
     }
     return yield* walkBack(bot, t, ctx);
 }
 
-function measured(bot: Unit, t: Trip, now: number): void {
+function measured(bot: Unit, t: Trip, now: number, center: Vector): void {
+    t.nl = campNeutralCount(center);
     t.clrm = t.engagedAt !== undefined ? r1(now - t.engagedAt) : undefined;
     t.hpm = t.hpAtEngage !== undefined ? r2(t.hpAtEngage - hpOf(bot)) : undefined;
 }
@@ -756,6 +776,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["hpr", r2(HPRate(bot))],
         ["clrm", t.clrm],
         ["hpm", t.hpm],
+        ["nl", t.nl],
     ]);
 }
 
