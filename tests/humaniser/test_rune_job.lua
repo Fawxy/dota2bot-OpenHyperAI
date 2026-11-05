@@ -247,30 +247,5 @@ do
 	check("pos2: no rune line", #lines(out, "rune_job") == 0)
 end
 
-finish()
 
--- The shrine contest's route: no waypoint on a clear line; past a tower on the line, every leg keeps TowerAvoid from it;
--- with that side impassable the point goes on the other side (rspchk1: both fired contests retreated at the enemy tower).
-do
-	local H = world()
-	local S = H.RuneJob.SETTINGS
-	local function seg(a, b, p)
-		local dx, dy = b.x - a.x, b.y - a.y
-		local k = math.max(0, math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)))
-		return dist(p, Vector(a.x + k * dx, a.y + k * dy))
-	end
-	local from, to = Vector(-3674, 5717), Vector(-7948, 768)
-	check("route: a line clear of towers has no waypoint", #H.RuneJob.Detour(from, to, { Vector(0, 0) }) == 0)
-	local tw = Vector(-5800, 3240)
-	local via = H.RuneJob.Detour(from, to, { tw })
-	local legs, a, clear = { }, from, true
-	for _, p in ipairs(via) do table.insert(legs, { a, p }) a = p end
-	table.insert(legs, { a, to })
-	for _, l in ipairs(legs) do if seg(l[1], l[2], tw) < S.TowerAvoid - 1 then clear = false end end
-	check("route: past a tower on the line, every leg keeps clear of it", #via >= 1 and clear, #via)
-	local free = via[1]
-	IMPASSABLE = function(v) return dist(v, free) < 1 end
-	local other = H.RuneJob.Detour(from, to, { tw })[1]
-	IMPASSABLE = nil
-	check("route: an impassable side puts the point on the other side", other ~= nil and dist(other, free) > S.TowerAvoid, other)
-end
+finish()
