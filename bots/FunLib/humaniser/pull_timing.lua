@@ -698,7 +698,8 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
         math.ceil(len / 50)
     )
     local reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer
-    local pin = cfg.HalfStand
+    local pins = cfg.HalfStand
+    local pin = #pins > 0 and pins[math.floor(c.slot / 30) % #pins + 1] or 0
     do
         local i = n
         while i >= 0 do

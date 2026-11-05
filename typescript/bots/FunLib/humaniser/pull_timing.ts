@@ -470,7 +470,8 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     const len = hypot(back.x, back.y, meet.x, meet.y);
     const n = math.max(1, math.ceil(len / 50));
     const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
-    const pin = cfg.HalfStand;
+    const pins = cfg.HalfStand;
+    const pin = pins.length > 0 ? pins[math.floor(c.slot / 30) % pins.length] : 0;
     for (let i = n; i >= 0; i--) {
         const x = back.x + ((meet.x - back.x) * i) / n;
         const y = back.y + ((meet.y - back.y) * i) / n;
