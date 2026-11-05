@@ -739,11 +739,12 @@ local function otherTripOn(bot, idx)
 end
 local function allyInBox(bot, idx)
     local pid = bot:GetPlayerID()
+    local farmer = CampClaims.On("pullfarm", idx)
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
             local __continue82
             repeat
-                if a == nil or a == nil or not a:IsAlive() or a:GetPlayerID() == pid then
+                if a == nil or a == nil or not a:IsAlive() or a:GetPlayerID() == pid or a:GetPlayerID() == farmer then
                     __continue82 = true
                     break
                 end

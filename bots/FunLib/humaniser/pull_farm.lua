@@ -659,26 +659,36 @@ function ____exports.Wants(bot, blocked, host)
         function(ctx) return body(bot, f, ctx) end
     )
     if not ok then
+        local ____Telemetry_Event_12 = Telemetry.Event
+        local ____array_11 = __TS__SparseArrayNew(
+            {"phase", "skip"},
+            unpack(fields(bot, f, pull.camp))
+        )
+        __TS__SparseArrayPush(____array_11, {"why", "refused"})
+        ____Telemetry_Event_12(
+            "pull_clear",
+            {__TS__SparseArraySpread(____array_11)}
+        )
         return false
     end
     running[pid] = f
     CampClaims.Set("pullfarm", pid, f.camp)
     jobLine(bot, f, "start", "trigger")
-    local ____Telemetry_Event_12 = Telemetry.Event
-    local ____array_11 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_14 = Telemetry.Event
+    local ____array_13 = __TS__SparseArrayNew(
         {"phase", "start"},
         unpack(fields(bot, f, f.camp))
     )
     __TS__SparseArrayPush(
-        ____array_11,
+        ____array_13,
         {
             "hp0",
             math.floor(f.hp0 * 100 + 0.5) / 100
         }
     )
-    ____Telemetry_Event_12(
+    ____Telemetry_Event_14(
         "pull_clear",
-        {__TS__SparseArraySpread(____array_11)}
+        {__TS__SparseArraySpread(____array_13)}
     )
     return true
 end

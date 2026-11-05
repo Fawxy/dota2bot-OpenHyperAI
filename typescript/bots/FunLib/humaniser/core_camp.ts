@@ -473,8 +473,10 @@ function otherTripOn(bot: Unit, idx: number): boolean {
 
 function allyInBox(bot: Unit, idx: number): boolean {
     const pid = bot.GetPlayerID();
+    // The support clearing its own pull there is the one this trip takes the camp from (PullFarm yields to it).
+    const farmer = CampClaims.On("pullfarm", idx);
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (a === null || a === undefined || !a.IsAlive() || a.GetPlayerID() === pid) continue;
+        if (a === null || a === undefined || !a.IsAlive() || a.GetPlayerID() === pid || a.GetPlayerID() === farmer) continue;
         const at = locOf(a);
         if (at !== undefined && Camps.InBox(idx, at, 300)) return true;
     }

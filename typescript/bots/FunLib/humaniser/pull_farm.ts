@@ -266,7 +266,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const ok = Tasks.Start(bot, { name: "pullfarm", host, preemptAfter: 1, stallAfter: 4, guard: () => guard(bot, f), onEnd: (r, info) => finish(bot, f, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, f, ctx)
     );
-    if (!ok) return false;
+    if (!ok) {
+        Telemetry.Event("pull_clear", [["phase", "skip"], ...fields(bot, f, pull.camp), ["why", "refused"]]);
+        return false;
+    }
     running[pid] = f;
     CampClaims.Set("pullfarm", pid, f.camp);
     jobLine(bot, f, "start", "trigger");

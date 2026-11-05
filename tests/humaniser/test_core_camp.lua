@@ -194,10 +194,15 @@ do
 	check("pulled: their lane creep in the large camp leaves the small one", p ~= nil and p.camp == 1, p and p.camp)
 	-- Slice support-pull-farm: while the support is clearing that camp (and will give it up) the core may price it.
 	H.CampClaims.Set("pullfarm", 5, 2)
+	-- The support stands in the camp's box, as it does while farming: its own claim must not close the camp to the core.
+	local sup = MakeUnit({ pid = 5, team = 2, loc = Vector(LARGE.x + 50, LARGE.y), level = 6 })
+	sup.lane, sup.pos = Lane.Bot, 5
 	local q = CC.Plan(core, FRONT, 300, c)
 	check("pulled: the support clearing the camp leaves it open to the core", q ~= nil and q.camp == 2, q and q.camp)
 	H.CampClaims.Set("pullfarm", 5, nil)
 	check("pulled: the claim released, the camp is closed again", (CC.Plan(core, FRONT, 300, c) or {}).camp == 1)
+	H.CampClaims.Set("pullfarm", 7, 2)
+	check("pulled: an ally in the box that is not the claim holder still closes it", (CC.Plan(core, FRONT, 300, c) or {}).camp == 1)
 end
 
 -- A half-cleared camp is not its make-up: the respawn is priced as the camp was seen untouched (cngchk8 game 1049 camp 1).
