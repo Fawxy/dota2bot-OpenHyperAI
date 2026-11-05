@@ -854,10 +854,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue158
+            local __continue164
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue158 = true
+                    __continue164 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -871,9 +871,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue158 = true
+                __continue164 = true
             until true
-            if not __continue158 then
+            if not __continue164 then
                 break
             end
         end
@@ -983,11 +983,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue188
+            local __continue194
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue188 = true
+                    __continue194 = true
                     break
                 end
                 local name = (string.gsub(
@@ -997,7 +997,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue188 = true
+                    __continue194 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -1007,9 +1007,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue188 = true
+                __continue194 = true
             until true
-            if not __continue188 then
+            if not __continue194 then
                 break
             end
         end
@@ -1161,6 +1161,7 @@ ____exports.SETTINGS = {
     AwayMax = math.huge,
     FarEnd = 3,
     DoubleSlack = 0.5,
+    DoubleNeedsCarry = true,
     NeutralSpread = 150,
     DoubleLead = 5,
     DoubleWatchUntil = 12,
@@ -1358,6 +1359,43 @@ local function resolvePair(p, team)
         stand = stand
     }
 end
+--- CoreCamp's clear test (core, spawner idx, stacks) -> the core could clear it; set by core_camp, which imports this
+-- module. Unset, the double runs as before.
+local carryClear
+function ____exports.SetCarryClear(f)
+    carryClear = f
+end
+--- Whether `team`'s pos1 could clear camp A of `d` with one more stack in it; true when there is no pos1 or no model.
+local function carryClears(team, d)
+    if not ____exports.SETTINGS.DoubleNeedsCarry or carryClear == nil then
+        return true
+    end
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue40
+                repeat
+                    local u = GetTeamMember(i)
+                    if u == nil or u == nil or u:GetTeam() ~= team or LaneConfig.PositionOf(u) ~= 1 then
+                        __continue40 = true
+                        break
+                    end
+                    return carryClear(
+                        u,
+                        d.a.campIdx,
+                        Stacking.StackCount(d.a.campIdx) + 1
+                    )
+                until true
+                if not __continue40 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return true
+end
 --- The pos5's pair for its nearest camp, which may be either camp of it: the pos5 stood nearer camp A (the large one) in
 -- 14 of 20 started attempts (probe ds1), and the pair then never ran.
 function ____exports.Partner(data)
@@ -1372,8 +1410,10 @@ function ____exports.Partner(data)
     end
     return nil
 end
---- The pos4's camp in `minute`, and its pair when that camp is a pair's camp B: its team's pairs, then its single camps,
--- in turn, so each gets tried (a placeholder like the trigger: S.2b).
+--- The pos4's camp in `minute`, and its pair when that camp is a pair's camp B: its team's ancient pair, or its single
+-- camps in turn when no pair resolves (a placeholder like the trigger: S.2b). The pairs and singles alternated by minute
+-- until 06/11/2026; user mark review: the pos4 took the shrine's hard camp at 3:5x and 7:5x when the ancient double was
+-- the stack to make.
 function ____exports.Pos4For(team, minute)
     local list = {}
     for ____, p in ipairs(PAIRS) do
@@ -1393,6 +1433,9 @@ function ____exports.Pos4For(team, minute)
         if b ~= nil then
             list[#list + 1] = {b, nil}
         end
+    end
+    if #list > 0 and list[1][2] ~= nil then
+        return list[1]
     end
     return #list > 0 and list[math.floor(minute / 2) % #list + 1] or nil
 end
@@ -1493,15 +1536,15 @@ local function SweepNext(bot)
     local stand
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue60
+            local __continue66
             repeat
                 if s.team ~= bot:GetTeam() or done[s.idx] or list ~= nil and not list[s.idx] or (Stacking.Window(s.idx)) == nil then
-                    __continue60 = true
+                    __continue66 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, s.team)
                 if data == nil or data.stack == nil then
-                    __continue60 = true
+                    __continue66 = true
                     break
                 end
                 local p = ____exports.Stand(s, data)
@@ -1514,9 +1557,9 @@ local function SweepNext(bot)
                 ) then
                     best, stand = data, p
                 end
-                __continue60 = true
+                __continue66 = true
             until true
-            if not __continue60 then
+            if not __continue66 then
                 break
             end
         end
@@ -1560,19 +1603,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue84
+            local __continue90
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue84 = true
+                    __continue90 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue84 = true
+                __continue90 = true
             until true
-            if not __continue84 then
+            if not __continue90 then
                 break
             end
         end
@@ -1643,22 +1686,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue102
+                local __continue108
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue102 = true
+                        __continue108 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue102 = true
+                    __continue108 = true
                 until true
-                if not __continue102 then
+                if not __continue108 then
                     break
                 end
             end
@@ -2182,10 +2225,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue226
+            local __continue232
             repeat
                 if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue226 = true
+                    __continue232 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2237,6 +2280,17 @@ function ____exports.Wants(bot, blocked, host)
                 local fd = ____pos4_35
                 local double = fd ~= nil and ____exports.Fits(bot, fd)
                 local dwhy = fd ~= nil and not double and "walk" or nil
+                if not pos4 and double and not carryClears(
+                    bot:GetTeam(),
+                    fd
+                ) then
+                    double = false
+                    dwhy = "carry"
+                    data, stand = fd.b, ____exports.Stand(
+                        Camps.SpawnerByIdx(fd.b.campIdx),
+                        fd.b
+                    )
+                end
                 local aggroAt = minute * 60 + ____exports.SingleSec(data)
                 local walk = travel(bot, stand)
                 local lead = ____exports.SETTINGS.Lead
@@ -2326,7 +2380,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue226 then
+            if not __continue232 then
                 break
             end
         end

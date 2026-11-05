@@ -106,18 +106,6 @@ local function __TS__ArrayFind(self, predicate, thisArg)
     end
     return nil
 end
-
-local function __TS__ArrayFilter(self, callbackfn, thisArg)
-    local result = {}
-    local len = 0
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            len = len + 1
-            result[len] = self[i]
-        end
-    end
-    return result
-end
 -- End of Lua Library inline imports
 local ____exports = {}
 local nearerLane
@@ -156,11 +144,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue126
+            local __continue124
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue126 = true
+                    __continue124 = true
                     break
                 end
                 if select(
@@ -169,9 +157,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue126 = true
+                __continue124 = true
             until true
-            if not __continue126 then
+            if not __continue124 then
                 break
             end
         end
@@ -185,7 +173,9 @@ ____exports.SETTINGS = {
     Dt = 0.05,
     SeenR = 500,
     OurVision = 300,
-    Assign = 1100
+    Assign = 1100,
+    TargetSide = 900,
+    TargetMid = 1300
 }
 local R = Team.Radiant
 local D = Team.Dire
@@ -643,9 +633,8 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
     end
     return init
 end
---- The reading for a start state. `dropBefore`: also run the counterfactual without our creeps short of that point along
--- the path (behind it from our side). Undefined when the run leaves no clash (a lane with no creeps of one team).
-function ____exports.ReadFrom(lane, team, t0, init, towerHp, dropBefore)
+--- The reading for a start state. Undefined when the run leaves no clash (a lane with no creeps of one team).
+function ____exports.ReadFrom(lane, team, t0, init, towerHp)
     local clock = RealTime ~= nil and RealTime or nil
     local started = clock and clock()
     local h = ____exports.SETTINGS.Horizon
@@ -683,13 +672,6 @@ function ____exports.ReadFrom(lane, team, t0, init, towerHp, dropBefore)
         own = dir * (c0 - ours.s),
         tower = tower ~= nil
     }
-    if dropBefore ~= nil then
-        local kept = __TS__ArrayFilter(
-            init,
-            function(____, c) return c.team ~= team or dir * (c.s - dropBefore) >= 0 end
-        )
-        reading.cf = moveOf(kept)[2]
-    end
     if started ~= nil then
         reading.ms = math.floor((clock() - started) * 10000 + 0.5) / 10
     end
@@ -739,21 +721,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue120
+            local __continue118
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue120 = true
+                    __continue118 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue120 = true
+                    __continue118 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue120 = true
+                    __continue118 = true
                     break
                 end
                 out[#out + 1] = {
@@ -762,9 +744,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue120 = true
+                __continue118 = true
             until true
-            if not __continue120 then
+            if not __continue118 then
                 break
             end
         end
@@ -812,9 +794,8 @@ local function viewNow(team, lane)
         [enemy] = t1Hp(enemy, lane)
     }
 end
---- The reading for `team`'s side of `lane` now (the calling script must be `team`'s). `dropBefore`: a point along the path,
--- see ReadFrom.
-function ____exports.Read(team, lane, dropBefore)
+--- The reading for `team`'s side of `lane` now (the calling script must be `team`'s).
+function ____exports.Read(team, lane)
     local path, t0, init, towerHp = viewNow(team, lane)
     if path == nil then
         return nil
@@ -824,9 +805,12 @@ function ____exports.Read(team, lane, dropBefore)
         team,
         t0,
         init,
-        towerHp,
-        dropBefore
+        towerHp
     )
+end
+--- The lane's target meeting point, as a distance along the lane from our T1.
+function ____exports.TargetOf(lane)
+    return lane == Lane.Mid and ____exports.SETTINGS.TargetMid or ____exports.SETTINGS.TargetSide
 end
 --- One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined.
 function ____exports.Forecast(team, lane, horizon)

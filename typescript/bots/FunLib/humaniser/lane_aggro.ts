@@ -50,9 +50,6 @@ export const SETTINGS = {
     TowerOrderR: 900,
     /** Feed: our ranged creep at this HP fraction or more (below it the body's deny already wants it). */
     FeedCreepHp: 0.25,
-    /** The target meeting point: this far along the lane from our T1 (side lanes: out of its range; mid: our high-ground edge). */
-    TargetSide: 900,
-    TargetMid: 1300,
     /** Feed when the clash sits, or is forecast, more than this beyond the target point. */
     FeedMargin: 150,
     /** No feed with our ranged creep this close to one of our towers (their wave would die to it). */
@@ -238,14 +235,9 @@ export function LaneHeld(now: number, pid: number, held: { pid: number; at: numb
     return held !== undefined && held.pid !== pid && now - held.at < SETTINGS.Cooldown;
 }
 
-/** The lane's target meeting point, as a distance along the lane from our T1. */
 /** Whether an attempt last stepped `gap` seconds ago is stale: the watch tolerates a short loss of the frame, acting does not. */
 export function Stale(phase: PhaseName, gap: number): boolean {
     return gap > (phase === "watch" ? SETTINGS.StaleWatch : SETTINGS.StaleActing);
-}
-
-export function TargetOf(lane: Lane): number {
-    return lane === Lane.Mid ? SETTINGS.TargetMid : SETTINGS.TargetSide;
 }
 
 /**
@@ -479,7 +471,7 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     }
     if (ranged === undefined) return $multi(undefined, "no_ranged");
     const r = pushRead(team, lane);
-    if (!FeedWanted(r, TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
+    if (!FeedWanted(r, LanePush.TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
     if (nearOwnTower(ranged.GetLocation(), team)) return $multi(undefined, "own_tower");
     const fighting = enemyCreepsNear(bot, ranged.GetLocation(), SETTINGS.FightR);
     if (fighting.length < SETTINGS.FeedMinCreeps) return $multi(undefined, "few_creeps");

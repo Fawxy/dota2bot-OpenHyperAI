@@ -58,6 +58,10 @@ export const SETTINGS = {
     FarEnd: 3,
     /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
     DoubleSlack: 0.5,
+    /** The pos5's safe-lane double waits until its team's pos1 can clear camp A (the hard camp) once it holds one more stack
+     *  (CoreCamp's clear model, `SetCarryClear`); until then the pos5 stacks camp B (the pull camp) alone, which feeds its
+     *  pulls (user mark review, 06/11/2026: a pos5 stacking the hard camp at 3:5x before the carry can farm it). */
+    DoubleNeedsCarry: true,
     /** `Fits` counts the walk to B from where camp A is hit: within attack range plus this of A's origin, not the stand.
      *  Earthshaker (150 range) walked 430 in from good_8's stand to 214 from its origin and timed out on good_7 in 5 of 8
      *  doubles (dsvA, 02/11/2026) that the walk from the stand said fit. Judgement. */
@@ -457,6 +461,24 @@ function resolvePair(p: Pair, team: number): Double | undefined {
     return { b, a, fsec: p.fsec + late, sec: p.sec, stand };
 }
 
+/** CoreCamp's clear test (core, spawner idx, stacks) -> the core could clear it; set by core_camp, which imports this
+ *  module. Unset, the double runs as before. */
+let carryClear: ((core: Unit, idx: number, stacks: number) => boolean) | undefined;
+export function SetCarryClear(f: (core: Unit, idx: number, stacks: number) => boolean): void {
+    carryClear = f;
+}
+
+/** Whether `team`'s pos1 could clear camp A of `d` with one more stack in it; true when there is no pos1 or no model. */
+function carryClears(team: number, d: Double): boolean {
+    if (!SETTINGS.DoubleNeedsCarry || carryClear === undefined) return true;
+    for (let i = 1; i <= 5; i++) {
+        const u = GetTeamMember(i);
+        if (u === undefined || u === null || u.GetTeam() !== team || LaneConfig.PositionOf(u) !== 1) continue;
+        return carryClear(u, d.a.campIdx, Stacking.StackCount(d.a.campIdx) + 1);
+    }
+    return true;
+}
+
 /** The pos5's pair for its nearest camp, which may be either camp of it: the pos5 stood nearer camp A (the large one) in
  *  14 of 20 started attempts (probe ds1), and the pair then never ran. */
 export function Partner(data: Camps.CampJobData): Double | undefined {
@@ -468,8 +490,10 @@ export function Partner(data: Camps.CampJobData): Double | undefined {
     return undefined;
 }
 
-/** The pos4's camp in `minute`, and its pair when that camp is a pair's camp B: its team's pairs, then its single camps,
- *  in turn, so each gets tried (a placeholder like the trigger: S.2b). */
+/** The pos4's camp in `minute`, and its pair when that camp is a pair's camp B: its team's ancient pair, or its single
+ *  camps in turn when no pair resolves (a placeholder like the trigger: S.2b). The pairs and singles alternated by minute
+ *  until 06/11/2026; user mark review: the pos4 took the shrine's hard camp at 3:5x and 7:5x when the ancient double was
+ *  the stack to make. */
 export function Pos4For(team: number, minute: number): [Camps.CampJobData, Double | undefined] | undefined {
     const list: [Camps.CampJobData, Double | undefined][] = [];
     for (const p of PAIRS) {
@@ -480,6 +504,7 @@ export function Pos4For(team: number, minute: number): [Camps.CampJobData, Doubl
         const b = campAt(team, c.x, c.y);
         if (b !== undefined) list.push([b, undefined]);
     }
+    if (list.length > 0 && list[0][1] !== undefined) return list[0];
     return list.length > 0 ? list[math.floor(minute / 2) % list.length] : undefined;
 }
 
@@ -1180,6 +1205,12 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const fd = pos4 ? pair : Ours.On("DoubleStack") ? Partner(data) : undefined;
         let double = fd !== undefined && Fits(bot, fd);
         let dwhy = fd !== undefined && !double ? "walk" : undefined;
+        // The pos5's double waits for a carry who can farm the hard camp; until then it stacks the pull camp (B) alone.
+        if (!pos4 && double && !carryClears(bot.GetTeam(), fd!)) {
+            double = false;
+            dwhy = "carry";
+            [data, stand] = [fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
+        }
         let aggroAt = minute * 60 + SingleSec(data);
         let walk = travel(bot, stand);
         let lead = SETTINGS.Lead;

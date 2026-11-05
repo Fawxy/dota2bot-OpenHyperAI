@@ -2,10 +2,12 @@
  * Support pull farm (slice support-pull-farm, switch Ours.SupportPullFarm; plan docs/proposals/2026-11-05-pull-effect.md piece 3):
  * after an `ok` pull the support stays on the camp it pulled into and clears the neutrals that are left, with the pulled wave
  * fighting them, when the site is safe. A core whose camp trip (CoreCamp) comes to the camp takes it over: the support gives
- * it up and goes back to lane. The job chooser hosts it, after PullJob in rank.
+ * it up and goes back to lane. The job chooser hosts it, after PullJob in rank. It applies to every puller PullJob takes
+ * (the pos5, or a lone pos4 on its lane's pull camp: the off-lane's large camp) and takes the neutrals' last hits so the
+ * camp's madstone goes to it (SETTINGS LastHit, user 06/11/2026).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { DroppedItem, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { DamageType, DroppedItem, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
@@ -42,6 +44,17 @@ export const SETTINGS = {
     PickName: "madstone",
     PickRadius: 900,
     PickMax: 6,
+    /** The kills are the support's (user 06/11/2026: when a camp is finished by a hero close enough, maybe the one with the
+     *  last hit, the madstone goes straight into its inventory, otherwise it drops on the floor and is often contested; the
+     *  support should take the last hits, at least the camp's last neutral, and stay close at the kill). While a unit of ours
+     *  other than the support attacks a camp neutral (the pulled wave) and the neutral holds at most LastHitHits of the
+     *  support's hits, the clear waits in range for the hit that kills it (the engine's lastHit) instead of attacking; above
+     *  that, or with no one else on it, it attacks. LastHitAll: every neutral (the gold too), else only the camp's last.
+     *  Whether the last hit decides the madstone, and how close "close enough" is, is UNVERIFIED (pull_clear fl, fd, mi).
+     *  `judgement`. */
+    LastHit: true,
+    LastHitAll: true,
+    LastHitHits: 2,
 };
 
 interface Farm {
@@ -63,6 +76,14 @@ interface Farm {
     /** Madstone drops seen by the camp after the clear, and those gone from the ground after our pickup order. */
     ms?: number;
     mp?: number;
+    /** Last hits over the farm (GetLastHits), lastHit tries and kills; the camp's final neutral: 1 when its kill was the
+     *  support's, the support's distance to it then; madstone charges gained in the inventory over the farm. */
+    lh0: number;
+    lt?: number;
+    lk?: number;
+    fl?: number;
+    fd?: number;
+    mi0: number;
 }
 
 const running: Record<number, Farm | undefined> = {};
@@ -187,13 +208,61 @@ function* walkBack(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {
     }
 }
 
+/** Madstone charges in `bot`'s item slots (inventory, backpack, stash and neutral slot). */
+function madstoneCharges(bot: Unit): number {
+    let n = 0;
+    for (let slot = 0; slot <= 16; slot++) {
+        const it = bot.GetItemInSlot(slot);
+        if (it === null || it === undefined || string.find(it.GetName(), SETTINGS.PickName, 1, true)[0] === undefined) continue;
+        n += math.max(1, it.GetCurrentCharges?.() ?? 1);
+    }
+    return n;
+}
+
+/** A unit of ours other than `bot` (the pulled wave's creeps, an ally hero) attacking `n`. */
+function othersOn(bot: Unit, n: Unit): boolean {
+    for (const kind of [UnitType.AlliedCreeps, UnitType.AlliedHeroes]) {
+        for (const u of GetUnitList(kind) ?? []) {
+            if (u !== null && u !== undefined && u !== bot && u.IsAlive() && u.GetAttackTarget() === n) return true;
+        }
+    }
+    return false;
+}
+
+/** The clear waits for the killing hit on `n` (SETTINGS LastHit). */
+function takeLastHit(bot: Unit, n: Unit, camp: Unit[]): boolean {
+    if (!SETTINGS.LastHit || (!SETTINGS.LastHitAll && camp.length > 1) || !othersOn(bot, n)) return false;
+    const hit = n.GetActualIncomingDamage(bot.GetAttackDamage(), DamageType.Physical);
+    return n.GetHealth() <= SETTINGS.LastHitHits * math.max(1, hit);
+}
+
 function* body(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {
     const hooks = { label: (l: string) => ctx.label(l), urgent: ctx.urgent };
+    let lh = bot.GetLastHits();
     const r = yield* Tasks.Jobs()!.clearCamp(
         bot as unknown as Lib.TaskUnit,
-        { at: f.center as unknown as Lib.Vec, radius: SETTINGS.CampRadius, deadline: f.left + SETTINGS.MaxFarm },
+        {
+            at: f.center as unknown as Lib.Vec,
+            radius: SETTINGS.CampRadius,
+            deadline: f.left + SETTINGS.MaxFarm,
+            lastHit: (n, camp) => takeLastHit(bot, n as unknown as Unit, camp as unknown as Unit[]),
+            onLastHit: (_n, res) => {
+                f.lt = (f.lt ?? 0) + 1;
+                if (res.success) f.lk = (f.lk ?? 0) + 1;
+            },
+            onGone: (_n, at, left) => {
+                const now = bot.GetLastHits();
+                const mine = now > lh;
+                lh = now;
+                if (left > 0) return;
+                f.fl = mine ? 1 : 0;
+                f.fd = math.floor(dist(bot.GetLocation(), at as unknown as Vector) + 0.5);
+            },
+        },
         hooks
     );
+    // A clear that ended with the final neutral not the support's target when it died: not its kill.
+    if (r.success && r.message === "cleared" && f.fl === undefined) f.fl = 0;
     f.nl = campLeft(f.center);
     if (!r.success) return r;
     yield* pickUp(bot, f, ctx);
@@ -279,6 +348,12 @@ function finish(bot: Unit, f: Farm, r: Lib.Result, label: string | undefined): v
         ["died", bot.IsAlive() ? 0 : 1],
         ["ms", f.ms],
         ["mp", f.mp],
+        ["lh", bot.GetLastHits() - f.lh0],
+        ["lt", f.lt],
+        ["lk", f.lk],
+        ["fl", f.fl],
+        ["fd", f.fd],
+        ["mi", madstoneCharges(bot) - f.mi0],
     ]);
 }
 
@@ -310,6 +385,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         n0: PullJob.CampStateOf(camp).n,
         g0: bot.GetNetWorth(),
         hp0: hpShare(bot),
+        lh0: bot.GetLastHits(),
+        mi0: madstoneCharges(bot),
     };
     const why = ago > SETTINGS.StartWithin ? lastWhy[pid] ?? "late" : startGate(bot, camp, center, blocked);
     if (why !== undefined) {

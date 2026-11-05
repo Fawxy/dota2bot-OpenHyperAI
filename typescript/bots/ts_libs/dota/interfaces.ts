@@ -32,6 +32,7 @@ export interface DroppedItem {
 
 export interface Item {
     GetName(): string;
+    GetCurrentCharges(): number;
     GetCooldownTimeRemaining(): number;
     IsFullyCastable(): boolean;
 }
@@ -171,6 +172,7 @@ export interface Unit {
     GetBoundingRadius(): number;
     GetCurrentVisionRange(): number;
     GetNetWorth(): number;
+    GetLastHits(): number;
     FindItemSlot(itemName: string): number;
     GetNearbyLaneCreeps(radius: number, enemyTeam: boolean): Unit[];
     GetNearbyTowers(radius: number, enemyTeam: boolean): Unit[];

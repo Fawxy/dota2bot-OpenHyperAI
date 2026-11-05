@@ -1145,7 +1145,13 @@
    "hp": "num",
    "died": "num",
    "ms": "num",
-   "mp": "num"
+   "mp": "num",
+   "lh": "num",
+   "lt": "num",
+   "lk": "num",
+   "fl": "num",
+   "fd": "num",
+   "mi": "num"
   },
   "pull_job": {
    "pid": "num",
@@ -1253,6 +1259,8 @@
    "q": "num",
    "mv": "num",
    "cf": "num",
+   "own": "num",
+   "tgt": "num",
    "tw": "num",
    "ms": "num",
    "cn": "num",
@@ -1263,8 +1271,7 @@
    "php": "num",
    "se": "num",
    "pk": "str",
-   "hm": "num",
-   "wr": "str"
+   "hm": "num"
   },
   "gank": {
    "pid": "num",
@@ -1713,8 +1720,7 @@
    "why": "text",
    "src": "text",
    "st": "text",
-   "pk": "text",
-   "wr": "text"
+   "pk": "text"
   },
   "ev_gank": {
    "score": "text",

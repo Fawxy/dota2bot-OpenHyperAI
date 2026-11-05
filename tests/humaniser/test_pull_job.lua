@@ -77,14 +77,14 @@ end
 
 local function run(w, untilT) return capture(function() while T < untilT do frame(w) end end) end
 
-local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, tower = false, cf = -420, ms = 3.1 }
+local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, own = 3160, tower = false, ms = 3.1 }
 -- The lane pushes out: at the leave time the support reads the lane once, starts, walks to the camp under the farm host.
 do
 	local w = world({ reading = OUT })
 	local out = run(w, 75)
 	local choice = lines(out, "choice")
 	check("OUT: one choice line, go=1 want=1, the reading's fields", #choice == 1 and field(choice[1], "go") == "1" and field(choice[1], "want") == "1"
-		and field(choice[1], "st") == "OUT" and field(choice[1], "cf") == "-420" and field(choice[1], "kind") == "pull", choice[1])
+		and field(choice[1], "st") == "OUT" and field(choice[1], "own") == "3160" and field(choice[1], "tgt") == "900" and field(choice[1], "kind") == "pull", choice[1])
 	local starts = lines(out, "job")
 	check("OUT: the chooser started a pull job", #starts == 1 and field(starts[1], "job") == "pull" and field(starts[1], "phase") == "start", starts[1])
 	check("OUT: running under the farm host", w.H.PullJob.Running(w.sup) and w.sup.mode == FARM)
@@ -310,10 +310,10 @@ do
 	check("creep hit: no creeps read, the plan's slot (hr=plan)", field(plan, "hr") == "plan" and field(plan, "sh") == "0", plan)
 end
 
--- The lane comes in (or holds on our half): no pull; the slot is decided once, not re-read every frame.
+-- The lane comes in (or holds short of the target): no pull; the slot is decided once, not re-read every frame.
 for _, case in ipairs({
-	{ "IN", { state = "IN", clash = 7000, move = -500, q = 0.3, tower = false } },
-	{ "HOLD on our half", { state = "HOLD", clash = 8000, move = 100, q = 0.4, tower = false } },
+	{ "IN", { state = "IN", clash = 7000, move = -500, q = 0.3, own = 1300, tower = false } },
+	{ "HOLD short of the target", { state = "HOLD", clash = 8000, move = 100, q = 0.15, own = 700, tower = false } },
 }) do
 	local w = world({ reading = case[2] })
 	local out = run(w, 75)
@@ -322,16 +322,31 @@ for _, case in ipairs({
 	check(case[1] .. ": no job, read once", #lines(out, "job") == 0 and w.reads == 1, w.reads)
 end
 
--- HOLD past the middle on their side counts as pushing out.
+-- HOLD beyond the target wants the pull.
 do
-	local w = world({ reading = { state = "HOLD", clash = 9500, move = 50, q = 0.62, tower = false } })
+	local w = world({ reading = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false } })
 	local out = run(w, 75)
-	check("HOLD on their half: pull started", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "go") == "1")
+	check("HOLD beyond the target: pull started", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "go") == "1")
+end
+
+-- The trigger (plan docs/proposals/2026-11-05-pull-effect.md s4 step 3): the clash forecast beyond the lane's target point
+-- and not coming in. Unlike the old OUT / HOLD-past-the-middle rule, a clash bouncing out from under our T1 (the tower rule's
+-- OUT) wants no pull while its forecast stays short of the target: pulling then sends their wave into our tower.
+do
+	local W = world({}).H.PullJob.Wanted
+	local function r(state, own, move) return { state = state, own = own, move = move, q = 0, clash = 0, tower = false } end
+	check("trigger: tower-rule OUT from under our T1, forecast short of the target: no pull", not W(r("OUT", 200, 500), 900))
+	check("trigger: OUT whose forecast passes the side target: pull", W(r("OUT", 600, 500), 900))
+	check("trigger: holding on our half but past the target: pull", W(r("HOLD", 1300, 0), 900))
+	check("trigger: holding inside the target's margin: no pull", not W(r("HOLD", 1000, 0), 900))
+	check("trigger: mid's target sits further out, the same clash wants no pull there", not W(r("HOLD", 1300, 0), 1300))
+	check("trigger: far out but coming in: no pull", not W(r("IN", 2500, -400), 900))
+	check("trigger: no reading: no pull", not W(nil, 900))
 end
 
 -- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full
 -- pull's leave time, hit HalfPullLater (2 s) later; with the switch off it full-pulls. A pushing lane is still a full pull.
-local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, tower = false }
+local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
 do
 	local function pull(o)
 		local w = world(o)
@@ -352,7 +367,7 @@ end
 -- The half-pull harness (HalfAll): a lane that wants no pull (IN on our half) still gets a half pull from the safe-lane
 -- pos5, so the hit and the step-in are read every slot; without it the slot stays (why=lane).
 do
-	local IN = { state = "IN", clash = 7000, move = -50, q = 0.3, tower = false }
+	local IN = { state = "IN", clash = 7000, move = -350, q = 0.3, own = 1350, tower = false }
 	local function first(o)
 		local out = run(world(o), 80)
 		return lines(out, "choice")[1], lines(out, "job")[1]
@@ -614,28 +629,6 @@ do
 		and field(pull, "shs") ~= nil and field(pull, "shh") ~= nil, pull)
 	local plain = shedPull(false)
 	check("shed: no creep on the neutral, no shed", plain ~= nil and field(plain, "shs") == nil, plain)
-end
-
--- The off-lane pos4 wants every slot whatever the reading (user 06/11/2026; bug-hunt mark 16, same log, Lion pid 8 lane 3:
--- why=lane st=IN 14 of 26 slots); the safe-lane supports keep the reading's rule.
-do
-	local w = world({ reading = OUT })
-	local IN = { state = "IN", clash = 7000, move = -500, q = 0.3, tower = false }
-	local PJ = w.H.PullJob
-	check("want: a reading that wants it says lane", PJ.WantWhy(w.sup, OUT) == "lane")
-	check("want: safe-lane pos5, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
-	w.sup.pos = 4
-	check("want: safe-lane pos4, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
-	w.sup.lane = Lane.Top
-	check("want: off-lane pos4, IN or no reading: off", PJ.WantWhy(w.sup, IN) == "off" and PJ.WantWhy(w.sup, nil) == "off")
-	w.sup.pos = 5
-	check("want: off-lane pos5, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
-	PJ.SETTINGS.OffPos4Always = false
-	w.sup.pos = 4
-	check("want: OffPos4Always off, off-lane pos4 IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
-	PJ.SETTINGS.OffPos4Always = true
-	local out = run(world({ reading = OUT }), 75)
-	check("want: the choice line names wr=lane", field(lines(out, "choice")[1], "wr") == "lane", lines(out, "choice")[1])
 end
 
 finish()

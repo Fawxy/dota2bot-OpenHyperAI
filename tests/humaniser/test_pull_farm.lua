@@ -89,12 +89,13 @@ end
 
 local function run(w, untilT) return capture(function() while T < untilT do frame(w) end end) end
 
-local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, tower = false, cf = -420, ms = 3.1 }
+local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, own = 3160, tower = false, ms = 3.1 }
 
 -- A pull that ends ok with `left` neutrals still on the camp. Returns the world, the output so far and the neutrals.
 local function afterPull(o)
 	o = o or {}
 	local w = world({ reading = OUT, farm = o.farm, visible = true })
+	if o.pos ~= nil then w.sup.pos = o.pos end
 	local neutrals = {}
 	for i = 1, o.left or 2 do neutrals[i] = MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y, hp = 300, maxhp = 300 }) end
 	neutrals[1].target = w.sup
@@ -230,6 +231,76 @@ do
 		and (function() for _, it in ipairs(picked) do if it ~= stone.item then return false end end return true end)(), #picked)
 	check("madstone: the end line counts one seen, one picked, and the walk back still ends it", fin ~= nil and field(fin, "ms") == "1"
 		and field(fin, "mp") == "1" and field(fin, "why") == "back", fin)
+end
+
+-- The kills (user 06/11/2026: the hero that finishes a camp gets its madstone when close enough, else it drops and is often
+-- contested; the support takes the last hits, at least the camp's last neutral). The pulled wave drains each neutral at
+-- 100 HP/s; the support's hit (200) would leave it to the wave if it attacked at once, so the clear waits in range for the
+-- hit that kills (the engine's lastHit) and the kill is credited to it. The pull tweaks come from the bug-hunt log
+-- C:\Users\Chris\.dotactl\logs\2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log (marks 13 and 16).
+local function lastHits(o)
+	o = o or {}
+	local w, all, neutrals, ended, take = afterPull({ pos = o.pos })
+	w.sup.dmg = 200
+	w.sup.GetAttackPoint = function() return 0.3 end
+	if o.lastHit == false then w.H.PullFarm.SETTINGS.LastHit = false end
+	local wave = {}
+	for i = 1, 3 do wave[i] = MakeCreep({ team = 2, x = SMALL.x, y = SMALL.y }) end
+	local function alive(n) return n.hp > 0 end
+	local pending = {}
+	take(capture(function()
+		while T < ended + 40 do
+			-- The wave turns onto the first neutral alive.
+			local on
+			for _, n in ipairs(neutrals) do if alive(n) then on = n break end end
+			for _, c in ipairs(wave) do c.target = on end
+			if on ~= nil and alive(on) then on.hp = math.max(0, on.hp - 100 * 0.1) end
+			-- The support's attacks as hits: each attack order on a neutral lands its 200 0.3 s later (frame's own drain on
+			-- the neutral is undone); a hit that takes it to 0 is the support's last hit.
+			local before = {}
+			for i, n in ipairs(neutrals) do before[i] = n.hp end
+			local n0 = #ACTIONS
+			frame(w)
+			w.sup.hitting = nil
+			for i, n in ipairs(neutrals) do n.hp = before[i] end
+			for i = n0 + 1, #ACTIONS do
+				local a = ACTIONS[i]
+				if a.pid == w.sup.pid and a.kind == "AttackUnit" then table.insert(pending, { n = a.args[1], at = T + 0.3 }) end
+			end
+			for i = #pending, 1, -1 do
+				local h = pending[i]
+				if T >= h.at then
+					table.remove(pending, i)
+					if h.n.hp > 0 then
+						h.n.hp = math.max(0, h.n.hp - w.sup.dmg)
+						if h.n.hp == 0 then w.sup.lh = (w.sup.lh or 0) + 1 end
+					end
+				end
+			end
+		end
+	end))
+	w.H.PullFarm.SETTINGS.LastHit = true
+	local fin
+	for _, l in ipairs(lines(all, "pull_clear")) do if field(l, "phase") == "end" then fin = l end end
+	return fin, neutrals
+end
+do
+	local fin, neutrals = lastHits()
+	check("last hit: both neutrals dead and the clear ended back in lane", neutrals[1].hp == 0 and neutrals[2].hp == 0 and fin ~= nil
+		and field(fin, "why") == "back", fin)
+	check("last hit: the clear waited for the killing hit and took both kills, the final neutral's included", fin ~= nil
+		and tonumber(field(fin, "lt") or "0") >= 2 and field(fin, "lk") == "2" and field(fin, "lh") == "2" and field(fin, "fl") == "1"
+		and tonumber(field(fin, "fd")) <= 650, fin)
+	check("last hit: the end line counts madstone charges gained (none here)", fin ~= nil and field(fin, "mi") == "0", fin)
+	local off = lastHits({ lastHit = false })
+	check("last hit off: no wait for the killing hit (lt absent)", off ~= nil and field(off, "lt") == nil, off)
+end
+
+-- A lone pos4 is its lane's puller (PullJob pullerOfLane; the off-lane's large camp is its pull camp, camps_data
+-- *_off_large): the clear and its kills apply to it as to a pos5.
+do
+	local fin = lastHits({ pos = 4 })
+	check("pos4 puller: the clear ran and took the final kill", fin ~= nil and field(fin, "pos") == "4" and field(fin, "fl") == "1", fin)
 end
 
 finish()

@@ -496,6 +496,7 @@ end
 local ____exports = {}
 local locOf, dist, madstones, campLeft, running, pickUp
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -525,10 +526,10 @@ function madstones(center)
     local out = __TS__New(Map)
     for ____, d in ipairs(GetDroppedItemList() or ({})) do
         do
-            local __continue44
+            local __continue61
             repeat
                 if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
-                    __continue44 = true
+                    __continue61 = true
                     break
                 end
                 if (string.find(
@@ -537,16 +538,16 @@ function madstones(center)
                     1,
                     true
                 )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
-                    __continue44 = true
+                    __continue61 = true
                     break
                 end
                 out:set(
                     (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
                     d
                 )
-                __continue44 = true
+                __continue61 = true
             until true
-            if not __continue44 then
+            if not __continue61 then
                 break
             end
         end
@@ -611,19 +612,19 @@ function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue60
+            local __continue77
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue60 = true
+                    __continue77 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue60 = true
+                __continue77 = true
             until true
-            if not __continue60 then
+            if not __continue77 then
                 break
             end
         end
@@ -645,7 +646,10 @@ ____exports.SETTINGS = {
     ReturnReorder = 0.5,
     PickName = "madstone",
     PickRadius = 900,
-    PickMax = 6
+    PickMax = 6,
+    LastHit = true,
+    LastHitAll = true,
+    LastHitHits = 2
 }
 running = {}
 --- The pull end (`at`) each hero's window was last settled for: one start or one skip line per pull.
@@ -827,12 +831,102 @@ local walkBack = __TS__Generator(function(bot, f, ctx)
         coroutine.yield()
     end
 end)
+--- Madstone charges in `bot`'s item slots (inventory, backpack, stash and neutral slot).
+local function madstoneCharges(bot)
+    local n = 0
+    do
+        local slot = 0
+        while slot <= 16 do
+            do
+                local __continue41
+                repeat
+                    local it = bot:GetItemInSlot(slot)
+                    if it == nil or it == nil or (string.find(
+                        it:GetName(),
+                        ____exports.SETTINGS.PickName,
+                        1,
+                        true
+                    )) == nil then
+                        __continue41 = true
+                        break
+                    end
+                    local ____math_max_9 = math.max
+                    local ____opt_7 = it.GetCurrentCharges
+                    n = n + ____math_max_9(
+                        1,
+                        ____opt_7 and ____opt_7(it) or 1
+                    )
+                    __continue41 = true
+                until true
+                if not __continue41 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    return n
+end
+--- A unit of ours other than `bot` (the pulled wave's creeps, an ally hero) attacking `n`.
+local function othersOn(bot, n)
+    for ____, kind in ipairs({UnitType.AlliedCreeps, UnitType.AlliedHeroes}) do
+        for ____, u in ipairs(GetUnitList(kind) or ({})) do
+            if u ~= nil and u ~= nil and u ~= bot and u:IsAlive() and u:GetAttackTarget() == n then
+                return true
+            end
+        end
+    end
+    return false
+end
+--- The clear waits for the killing hit on `n` (SETTINGS LastHit).
+local function takeLastHit(bot, n, camp)
+    if not ____exports.SETTINGS.LastHit or not ____exports.SETTINGS.LastHitAll and #camp > 1 or not othersOn(bot, n) then
+        return false
+    end
+    local hit = n:GetActualIncomingDamage(
+        bot:GetAttackDamage(),
+        DamageType.Physical
+    )
+    return n:GetHealth() <= ____exports.SETTINGS.LastHitHits * math.max(1, hit)
+end
 local body = __TS__Generator(function(bot, f, ctx)
     local hooks = {
         label = function(l) return ctx.label(l) end,
         urgent = ctx.urgent
     }
-    local r = __TS__DelegatedYield(Tasks.Jobs().clearCamp(bot, {at = f.center, radius = ____exports.SETTINGS.CampRadius, deadline = f.left + ____exports.SETTINGS.MaxFarm}, hooks))
+    local lh = bot:GetLastHits()
+    local r = __TS__DelegatedYield(Tasks.Jobs().clearCamp(
+        bot,
+        {
+            at = f.center,
+            radius = ____exports.SETTINGS.CampRadius,
+            deadline = f.left + ____exports.SETTINGS.MaxFarm,
+            lastHit = function(n, camp) return takeLastHit(bot, n, camp) end,
+            onLastHit = function(_n, res)
+                f.lt = (f.lt or 0) + 1
+                if res.success then
+                    f.lk = (f.lk or 0) + 1
+                end
+            end,
+            onGone = function(_n, at, left)
+                local now = bot:GetLastHits()
+                local mine = now > lh
+                lh = now
+                if left > 0 then
+                    return
+                end
+                f.fl = mine and 1 or 0
+                f.fd = math.floor(dist(
+                    bot:GetLocation(),
+                    at
+                ) + 0.5)
+            end
+        },
+        hooks
+    ))
+    if r.success and r.message == "cleared" and f.fl == nil then
+        f.fl = 0
+    end
     f.nl = campLeft(f.center)
     if not r.success then
         return r
@@ -852,13 +946,13 @@ local function finish(bot, f, r, label)
     local function r1(x)
         return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil
     end
-    local ____Telemetry_Event_8 = Telemetry.Event
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_11 = Telemetry.Event
+    local ____array_10 = __TS__SparseArrayNew(
         {"phase", "end"},
         unpack(fields(bot, f, f.camp))
     )
     __TS__SparseArrayPush(
-        ____array_7,
+        ____array_10,
         {"res", r.success and "ok" or "fail"},
         {"why", why},
         {"label", label},
@@ -892,11 +986,23 @@ local function finish(bot, f, r, label)
             bot:IsAlive() and 0 or 1
         },
         {"ms", f.ms},
-        {"mp", f.mp}
+        {"mp", f.mp},
+        {
+            "lh",
+            bot:GetLastHits() - f.lh0
+        },
+        {"lt", f.lt},
+        {"lk", f.lk},
+        {"fl", f.fl},
+        {"fd", f.fd},
+        {
+            "mi",
+            madstoneCharges(bot) - f.mi0
+        }
     )
-    ____Telemetry_Event_8(
+    ____Telemetry_Event_11(
         "pull_clear",
-        {__TS__SparseArraySpread(____array_7)}
+        {__TS__SparseArraySpread(____array_10)}
     )
 end
 --- Every frame while the chooser asks: true while a farm runs or as one starts. A farm may start only in the StartWithin
@@ -934,7 +1040,9 @@ function ____exports.Wants(bot, blocked, host)
         div = pull.div,
         n0 = PullJob.CampStateOf(camp).n,
         g0 = bot:GetNetWorth(),
-        hp0 = hpShare(bot)
+        hp0 = hpShare(bot),
+        lh0 = bot:GetLastHits(),
+        mi0 = madstoneCharges(bot)
     }
     local why = ago > ____exports.SETTINGS.StartWithin and (lastWhy[pid] or "late") or startGate(bot, camp, center, blocked)
     if why ~= nil then
@@ -942,15 +1050,15 @@ function ____exports.Wants(bot, blocked, host)
         if ago > ____exports.SETTINGS.StartWithin or why == "no-neutrals" or why == "core-coming" or why == "core-there" then
             handled[pid] = pull.at
             lastWhy[pid] = nil
-            local ____Telemetry_Event_10 = Telemetry.Event
-            local ____array_9 = __TS__SparseArrayNew(
+            local ____Telemetry_Event_13 = Telemetry.Event
+            local ____array_12 = __TS__SparseArrayNew(
                 {"phase", "skip"},
                 unpack(fields(bot, f, pull.camp))
             )
-            __TS__SparseArrayPush(____array_9, {"why", why})
-            ____Telemetry_Event_10(
+            __TS__SparseArrayPush(____array_12, {"why", why})
+            ____Telemetry_Event_13(
                 "pull_clear",
-                {__TS__SparseArraySpread(____array_9)}
+                {__TS__SparseArraySpread(____array_12)}
             )
         end
         return false
@@ -970,36 +1078,36 @@ function ____exports.Wants(bot, blocked, host)
         function(ctx) return body(bot, f, ctx) end
     )
     if not ok then
-        local ____Telemetry_Event_12 = Telemetry.Event
-        local ____array_11 = __TS__SparseArrayNew(
+        local ____Telemetry_Event_15 = Telemetry.Event
+        local ____array_14 = __TS__SparseArrayNew(
             {"phase", "skip"},
             unpack(fields(bot, f, pull.camp))
         )
-        __TS__SparseArrayPush(____array_11, {"why", "refused"})
-        ____Telemetry_Event_12(
+        __TS__SparseArrayPush(____array_14, {"why", "refused"})
+        ____Telemetry_Event_15(
             "pull_clear",
-            {__TS__SparseArraySpread(____array_11)}
+            {__TS__SparseArraySpread(____array_14)}
         )
         return false
     end
     running[pid] = f
     CampClaims.Set("pullfarm", pid, f.camp)
     jobLine(bot, f, "start", "trigger")
-    local ____Telemetry_Event_14 = Telemetry.Event
-    local ____array_13 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_17 = Telemetry.Event
+    local ____array_16 = __TS__SparseArrayNew(
         {"phase", "start"},
         unpack(fields(bot, f, f.camp))
     )
     __TS__SparseArrayPush(
-        ____array_13,
+        ____array_16,
         {
             "hp0",
             math.floor(f.hp0 * 100 + 0.5) / 100
         }
     )
-    ____Telemetry_Event_14(
+    ____Telemetry_Event_17(
         "pull_clear",
-        {__TS__SparseArraySpread(____array_13)}
+        {__TS__SparseArraySpread(____array_16)}
     )
     return true
 end

@@ -645,6 +645,14 @@ export interface ClearPlan {
     pick?: (this: void, neutrals: TaskAttacker[]) => TaskAttacker | undefined;
     /** Called once, the first frame a neutral is within attack range + 100 (hosts time the clear from here). */
     onEngage?: (this: void, t: number) => void;
+    /** Host: take `n`'s kill with the engine's `lastHit` (wait in range for the hit that kills it) instead of ordering the
+     *  attack now; asked each time the verb would order an attack. A `lastHit` that ends `etiquette` or `unsupported` leaves
+     *  `n` to plain attacks. Slice support-pull-farm (user 06/11/2026: the hero that finishes a camp gets its madstone). */
+    lastHit?: (this: void, n: TaskAttacker, camp: TaskAttacker[]) => boolean;
+    /** After each `lastHit` on a camp neutral: its result and how many of the camp were alive when it began. */
+    onLastHit?: (this: void, n: TaskAttacker, r: Result, campN: number) => void;
+    /** The current target left the camp (killed or lost): where it was last seen and how many of the camp are left. */
+    onGone?: (this: void, n: TaskAttacker, at: Vec, left: number) => void;
 }
 
 const CLEAR_RADIUS = 700;
@@ -652,6 +660,8 @@ const CLEAR_ARRIVE = 300;
 const CLEAR_SEARCH = 1600;
 const CLEAR_EMPTY_AFTER = 0.5;
 const CLEAR_REORDER = 1;
+/** `lastHit`'s wait for the kill to be due (its own default, 1.5 s): past it the verb asks the host again. */
+const CLEAR_LH_WAIT = 1.5;
 const ENGAGE_SLACK = 100;
 /** Seconds a fought neutral may be out of sight before it no longer holds the camp open. */
 const CLEAR_LOST = 2;
@@ -683,6 +693,7 @@ function lowestHp(list: TaskAttacker[]): TaskAttacker | undefined {
  * lowest HP one), one order per target (re-given every `reorder` s), and after each kill waits one reaction delay
  * (`Skill.react`, skill-scaled) before the next order. Ends ok with message "cleared" once a camp it fought is
  * empty, or "empty" when nothing was there; `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a neutral is in attack range (+100).
+ * With `p.lastHit` the host may have a neutral's kill taken with the engine's `lastHit` instead of a plain attack.
  */
 export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskBody {
     const arrive = p.arrive ?? CLEAR_ARRIVE;
@@ -693,6 +704,9 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
     let nextOrderAt = -math.huge;
     let emptySince: number | undefined;
     let seen: { n: TaskAttacker; at: number }[] = [];
+    let targetAt: Vec | undefined;
+    // Neutrals whose lastHit could not run (etiquette, unsupported): plain attacks from then on.
+    const plain: TaskAttacker[] = [];
     h.label?.("go");
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
@@ -716,7 +730,9 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
         seen = kept;
         if (target !== undefined && camp.indexOf(target) < 0) {
             // Killed (or lost): a human takes a moment to pick the next one.
+            if (targetAt !== undefined) p.onGone?.(target, targetAt, camp.length);
             target = undefined;
+            targetAt = undefined;
             nextOrderAt = t + E().Skill.react(bot);
         }
         if (camp.length === 0) {
@@ -741,15 +757,27 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
             continue;
         }
         const next = target ?? (p.pick !== undefined ? p.pick(camp) : undefined) ?? lowestHp(camp)!;
-        if (next !== target || t - orderedAt >= (p.reorder ?? CLEAR_REORDER)) {
-            bot.Action_AttackUnit(next, false);
-            orderedAt = t;
-        }
+        const fresh = next !== target;
         target = next;
+        targetAt = next.GetLocation();
         if (!engaged && dist(bot.GetLocation(), next.GetLocation()) <= bot.GetAttackRange() + ENGAGE_SLACK) {
             engaged = true;
             h.label?.("farm");
             p.onEngage?.(t);
+        }
+        if (p.lastHit !== undefined && plain.indexOf(next) < 0 && p.lastHit(next, camp)) {
+            const campN = camp.length;
+            const r = yield* E().Verbs.lastHit(bot, { target: next as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
+            p.onLastHit?.(next, r, campN);
+            if (!r.success && (r.reason === "etiquette" || r.reason === "unsupported")) plain.push(next);
+            // The order on the target is the verb's own now: a plain attack on it is re-given at once.
+            orderedAt = -math.huge;
+            if (r.reason === "unsupported" || r.reason === "etiquette") yield;
+            continue;
+        }
+        if (fresh || t - orderedAt >= (p.reorder ?? CLEAR_REORDER)) {
+            bot.Action_AttackUnit(next, false);
+            orderedAt = t;
         }
         yield;
     }

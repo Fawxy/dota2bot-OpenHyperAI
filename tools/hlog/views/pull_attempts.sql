@@ -3,7 +3,8 @@
 -- or the trail after it; dt: PullJob TrailSec). eq0, eq30, eq60: the
 -- puller's team's lane `eq` from ev=lane_read (-1 at our T1, +1 at theirs; read from the two fronts) at the planned hit second
 -- and 30 and 60 s later; d30, d60 its move (negative: towards our tower, what a pull is for). st, q, mv, cf: the choice's
--- push reading (cf: the model's move with our walking wave removed, to compare with d30).
+-- push reading (cf: the model's move with our walking wave removed, on logs before slice pull-trigger only; since it the
+-- trigger's own and tgt are in ev_choice, not in this view).
 -- sh, ht, gh, na, gu, gd, wa: slice pull-diag's hit and camp fields (EVENTS.md pull_job; null on logs before it).
 -- pk: the pull's kind (full, half; slice pull-half; null before it, all full). split: some of the wave on a neutral but
 -- not all of it (0 < dt < 1), what a half pull aims for (3 of 4 counts: one creep left still slows the wave; user

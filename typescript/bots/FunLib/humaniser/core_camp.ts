@@ -576,6 +576,16 @@ function tripSpawners(bot: Unit): Camps.Spawner[] {
     return out;
 }
 
+/** Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
+ *  HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate. */
+export function CanClear(core: Unit, idx: number, stacks: number): boolean {
+    const spawner = Camps.SpawnerByIdx(idx);
+    if (spawner === undefined || core.GetLevel() < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) return false;
+    const [, hpPrior] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
+    return 1 - hpPrior * HPRate(core) >= SETTINGS.ArriveHP;
+}
+StackJob.SetCarryClear(CanClear);
+
 /** Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
 function anyCamp(bot: Unit, front: Vector, now: number): boolean {
     const level = bot.GetLevel();

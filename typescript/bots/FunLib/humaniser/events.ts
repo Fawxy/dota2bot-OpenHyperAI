@@ -458,7 +458,7 @@ export const EVENTS = {
         mo: "num",
         /** 1 when one of their creeps came within our T1's range (700) during the attempt. */
         tw: "num",
-        /** The lane's target point (lane_aggro TargetOf). */
+        /** The lane's target point (lane_push TargetOf). */
         tgt: "num",
         /** Seconds to our next wave at the hold point at the start; at the last branch read: seconds the drag needs and to our
          *  next wave behind the T1. */
@@ -1261,6 +1261,9 @@ export const EVENTS = {
     // diverted share then, n0 neutrals on the camp at the decision; end: nl neutrals left, back (arrival at the lane front),
     // g0/g1 net worth, secs on the job, hp0/hp share of max HP at start and end, died; ms madstone drops (dropped items named
     // *madstone*, PullFarm PickName) seen by the camp after the clear, mp of them gone from the ground after our pickup order.
+    // The kills (PullFarm LastHit, user 06/11/2026): lh the support's last hits over the farm, lt the clear's waits for a killing
+    // hit and lk those that got it; fl 1 when the camp's final neutral was the support's kill (0 not; none when the clear did
+    // not end cleared), fd the support's distance to it then; mi madstone charges gained in its item slots over the farm.
     pull_clear: {
         pid: "num",
         pos: "num",
@@ -1283,6 +1286,12 @@ export const EVENTS = {
         died: "num",
         ms: "num",
         mp: "num",
+        lh: "num",
+        lt: "num",
+        lk: "num",
+        fl: "num",
+        fd: "num",
+        mi: "num",
     },
     pull_job: {
         pid: "num",
@@ -1413,7 +1422,9 @@ export const EVENTS = {
     // Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
     // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv
-    // (clash move over 30 s from our side), cf (the same with our walking wave removed), tw (tower rule decided), ms (cost);
+    // (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target
+    // point, LanePush TargetOf: the pull is wanted when own + mv passes it by PullJob WantPast and st is not IN), cf (logs
+    // before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
@@ -1431,6 +1442,8 @@ export const EVENTS = {
         q: "num",
         mv: "num",
         cf: "num",
+        own: "num",
+        tgt: "num",
         tw: "num",
         ms: "num",
         cn: "num",
@@ -1444,9 +1457,6 @@ export const EVENTS = {
         // want of one (why=half-geo; pull_job hm).
         pk: "str",
         hm: "num",
-        // kind=pull: why the slot was wanted (want=1): lane (the reading, PullJob Wanted), off (the off-lane pos4 wants every
-        // slot, PullJob OffPos4Always, user 06/11/2026), harness (HalfAll).
-        wr: "str",
     },
     gank: {
         pid: "num",

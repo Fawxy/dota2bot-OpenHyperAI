@@ -234,6 +234,7 @@ local function stackRun(o)
 	o = o or {}
 	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, double = o.double, at = o.at })
 	if o.range then bot.range = o.range end
+	if o.setup then o.setup(H, bot) end
 	local camp = SPAWNERS[idxOf("good_1")].location
 	neutrals(camp, o.bN or 3)
 	local first = SPAWNERS[idxOf("good_2")].location
@@ -598,7 +599,9 @@ do
 end
 
 -- The pos4's offlane camps: each ancient camp and its neighbour as a pair (user 31/10/2026), and each wisdom shrine's large
--- camp single (user 01/11/2026: the shrine double dropped); one per trigger minute in turn; A's stand faces B. Fit for a
+-- camp single (user 01/11/2026: the shrine double dropped); the pair at every trigger minute, the single only when no pair
+-- resolves (user mark review 06/11/2026: the pos4 took the shrine's hard camp when the ancient double was the stack to
+-- make; the rotation by minute is gone); A's stand faces B. Fit for a
 -- 550-range hero per E1 (31/10/2026): good_8 then good_7 fits, evil_8 then evil_9 does not (EC-063's weakest pair).
 do
 	local H, bot = world({ double = true })
@@ -612,9 +615,9 @@ do
 			check("PairFor agrees with Pos4For", (pf and pf.b.campIdx) == (d and d.b.campIdx))
 		end
 	end
-	check("pos4 radiant: pair good_8>good_7, single good_13", seen[RAD]["good_8>good_7"] ~= nil and single[RAD]["good_13"] and next(seen[RAD], next(seen[RAD])) == nil)
-	check("pos4 dire: pair evil_8>evil_9, single evil_7", seen[DIRE]["evil_8>evil_9"] ~= nil and single[DIRE]["evil_7"] and next(seen[DIRE], next(seen[DIRE])) == nil)
-	check("pos4: minutes 3 and 5 take different camps", H.StackJob.Pos4For(RAD, 3)[1].campIdx ~= H.StackJob.Pos4For(RAD, 5)[1].campIdx)
+	check("pos4 radiant: pair good_8>good_7 every minute, no single", seen[RAD]["good_8>good_7"] ~= nil and next(single[RAD]) == nil and next(seen[RAD], next(seen[RAD])) == nil)
+	check("pos4 dire: pair evil_8>evil_9 every minute, no single", seen[DIRE]["evil_8>evil_9"] ~= nil and next(single[DIRE]) == nil and next(seen[DIRE], next(seen[DIRE])) == nil)
+	check("pos4: minutes 3 and 5 take the same pair", H.StackJob.Pos4For(RAD, 3)[1].campIdx == H.StackJob.Pos4For(RAD, 5)[1].campIdx)
 	bot.range = 550
 	local function fitsPair(team, k) return H.StackJob.Fits(bot, seen[team][k]) end
 	check("good_8>good_7 fits ranged", fitsPair(RAD, "good_8>good_7"))
@@ -684,7 +687,7 @@ do
 	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
 	check("pos4 shrine camp from the T1: no far skip", #lines >= 1 and field(lines[1], "why") ~= "far", lines[1])
 end
--- Overrides.StackFar (scenario games only): the same minute starts good_13's single instead.
+-- Overrides.StackFar (scenario games only): the same minute starts the ancient pair's job instead (good_7 the line's camp).
 do
 	local H, bot = world({ t = 3 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
@@ -693,10 +696,29 @@ do
 	local started = false
 	local lines = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H, bot) if H.Chooser.HoldsRun(bot) then started = true end end end))
 	Customize.Overrides.StackFar = false
-	check("StackFar: good_13's single starts from the T1", started)
-	check("StackFar: the line is good_13, no double", lines[1] ~= nil and tonumber(field(lines[1], "camp")) == idxOf("good_13") and field(lines[1], "double") == nil, lines[1])
+	check("StackFar: the pos4's job starts from the T1", started)
+	check("StackFar: the line is good_7, the ancient pair's B", lines[1] ~= nil and tonumber(field(lines[1], "camp")) == idxOf("good_7"), lines[1])
 end
 
+
+-- The pos5's double waits for a carry who can clear camp A (user mark review 06/11/2026, log 2026-11-05T18-13-16-bug-hunt_
+-- observe_team-bots_e3fcbd4 t=222.5 pid 2 and t=223.4 pid 7, marks 6, 7, 10: Venge and WD stacked the safe
+-- lane's hard camp at 3:5x before their carry could farm it). A level 1 pos1 cannot (CoreCamp's CampMinLevel large 6): the
+-- minute stacks good_1 alone with dwhy=carry; with the clear test saying yes, the double runs.
+do
+	local lines = stackRun({ double = true, setup = function() local c = MakeUnit({ pid = 1, team = 2, level = 1 }) c.pos = 1 end })
+	local l = lines[1]
+	check("carry gate: level 1 carry, single on good_1, double=0 dwhy=carry", l ~= nil and tonumber(field(l, "camp")) == idxOf("good_1") and field(l, "double") == "0" and field(l, "dwhy") == "carry" and field(l, "fcamp") == nil, l)
+	check("carry gate: the single stacks", field(l, "res") == "stacked", l)
+	local seen = {}
+	lines = stackRun({ double = true, setup = function(H)
+		local c = MakeUnit({ pid = 1, team = 2, level = 1 }) c.pos = 1
+		H.StackJob.SetCarryClear(function(core, idx, stacks) seen = { core = core, idx = idx, stacks = stacks } return true end)
+	end })
+	l = lines[1]
+	check("carry gate: a carry who can clear it gets the double", l ~= nil and field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
+	check("carry gate: asks about good_2 with one more stack, for the pos1", seen.idx == idxOf("good_2") and seen.stacks == 1 and seen.core ~= nil and seen.core.pos == 1, tostring(seen.idx) .. " " .. tostring(seen.stacks))
+end
 
 do
 	local lines, H = stackRun({ double = true })
