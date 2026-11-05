@@ -5,21 +5,23 @@
 -- The pulled wave (pull rows only; fragment pull_farm, as @pull_farm with its 45 s neutral window): n_puller, n_ours,
 --   own_died, own_denied, them_took, them_core.
 -- Their wave at our side: enemy lane creeps in the pulling team's creep_fate that died from the slot to slot + 75 s
---   (exclusive) within 2,500 of our front at the slot (fx, fy of the first ev=lane_read of that team and lane at or after
---   the slot): e_dead all of them, e_core our pos 1-3's last hits, e_ours other heroes of ours, e_denied denied by an enemy
---   hero, e_tower no hero and tw=1 (our tower was hitting it), e_none no hero and not the tower (creeps, spells, nobody);
+--   (exclusive) within 2,500 of our front at the slot (fx, fy of the first ev=lane_read of that team and lane in the 5 s from
+--   the slot; none, and every e_ and o_ column is null): e_dead all of them, e_core our pos 1-3's last hits, e_ours other heroes of ours, e_denied denied by an enemy
+--   hero, e_tower no hero and tw=1 (our tower was hitting it the frame before; not necessarily the killing blow), e_none no hero and not the tower (creeps, spells, nobody);
 --   e_tw every one of them with tw=1, whoever got it (the deaths under our tower).
---   o_dead, o_denied: our own lane creeps (creep_fate side own) in the same window and place, and our denies of them. Only
+--   o_dead, o_denied: our own lane creeps (creep_fate side own) in the same window and place, and our denies of them, less
+--   on pull rows those within 800 of the pulled camp's spawn (the pulled wave, counted in own_died). Only
 --   deaths within 1,500 of one of our heroes are logged (ev=creep_death), so a wave that died with none of us near is absent.
 --   Windows of consecutive slots overlap (75 s against a 30 s wave cycle): read a group's means, not sums over slots.
--- The lane after the slot: eq0, eq30 (ev=lane_read eq, -1 our T1 .. +1 theirs, first reading at or after slot and slot + 30);
+-- The lane after the slot: eq0, eq30 (ev=lane_read eq, -1 our T1 .. +1 theirs, first reading in the 5 s from slot and slot + 30);
 --   tw30 = 1 when eq30 < -0.8 (their wave under our tower by 30 s, EC-090).
 -- The next meeting point: the first ev=lane_read of that team and lane 60-90 s after the slot while our nearest tower on the
 --   lane is the T1 (tw = 1): eq60_90, meet_own = its distance from our T1 along the lane, (eq + 1) / 2 times the T1-T1 path
 --   length (lane_push_data LANE_PATHS towers: top 4,321, mid 2,902, bot 4,517; eq is read in lane-amount space from the two
 --   fronts, so this is the fronts' meet, not lane_push's forecast clash); target = lane_aggro TargetOf (900 side lanes,
 --   1,300 mid); meet_d = meet_own - target (positive: beyond the target towards their tower); meet_tw = 1 when meet_own
---   <= 700 (our T1's attack range: the meet sits under our tower). Null when no such reading.
+--   <= 700 (our T1's attack range: the meet sits under our tower). Null when no such reading. eq spans our nearest tower to
+--   theirs, so with their T1 down the proxy reads short (rare in the laning window).
 -- needs: ev_pull_job(pid, lane, camp, slot, res, div, dt)
 -- ensure: ev_choice(pid, kind, go, want, lane, slot)
 -- ensure: ev_lane_read(team, lane, eq, fx, fy, tw)
@@ -53,7 +55,9 @@ fr AS MATERIALIZED (
     SELECT d.*, r0.fx, r0.fy, r0.eq AS eq0, r6.eq AS eq60_90,
         CASE d.lane WHEN 2 THEN 2902 WHEN 1 THEN 4321 ELSE 4517 END AS span,
         CASE d.lane WHEN 2 THEN 1300 ELSE 900 END AS target
+        , cp.x AS cx, cp.y AS cy
     FROM rd d
+    LEFT JOIN camps cp ON cp.idx = d.camp
     LEFT JOIN ev_lane_read r0 ON r0.game_id = d.game_id AND r0.t = d.t0 AND r0.team = d.team AND r0.lane = d.lane
     LEFT JOIN ev_lane_read r6 ON r6.game_id = d.game_id AND r6.t = d.t60 AND r6.team = d.team AND r6.lane = d.lane
 ),
@@ -72,6 +76,7 @@ fate AS (
     FROM fr f
     JOIN cf c ON c.game_id = f.game_id AND c.team = f.team AND c.t >= f.slot AND c.t < f.slot + 75
         AND (c.x - f.fx) * (c.x - f.fx) + (c.y - f.fy) * (c.y - f.fy) <= 2500 * 2500
+        AND NOT (c.side = 'own' AND f.cx IS NOT NULL AND (c.x - f.cx) * (c.x - f.cx) + (c.y - f.cy) * (c.y - f.cy) <= 800 * 800)
     LEFT JOIN tm b ON b.game_id = c.game_id AND CAST(b.pid AS TEXT) = CAST(c.pid AS TEXT)
     WHERE f.fx IS NOT NULL
     GROUP BY 1, 2, 3

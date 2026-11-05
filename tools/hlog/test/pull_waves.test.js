@@ -81,3 +81,13 @@ test('control rows: one per team, lane and slot that wanted a pull and got none,
     assert.deepStrictEqual(out.map(r => [r.slot, r.grp, r.own_died, r.e_dead, r.e_core, r.tw30, r.meet_own, r.meet_tw]),
         [[200, 'ok_undiv', 0, null, null, null, null, null], [320, 'none', null, 1, 1, 0, 452, 1], [410, 'none', null, null, null, null, null, null]]);
 });
+
+test('a pull row leaves the pulled wave (within 800 of the camp spawn) out of our creeps at our side; own_died has it', () => {
+    const out = run([...bots,
+        line(195, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=200 res=ok why=ok dt=1'),
+        line(200, 'lane_read team=2 lane=3 eq=0.2 fx=-2000 fy=-7000 tw=1'),
+        line(205, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
+        line(206, 'own_creep_death team=2 kind=melee x=-1000 y=-7000 hp=0.05 by=none'),
+    ], 'SELECT * FROM pull_waves');
+    assert.deepStrictEqual(out.map(r => [r.own_died, r.o_dead]), [[1, 1]]);
+});
