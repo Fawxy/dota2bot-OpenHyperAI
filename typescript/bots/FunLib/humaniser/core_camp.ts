@@ -11,7 +11,6 @@ import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
-import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -55,19 +54,29 @@ export const SETTINGS = {
     MinNet: 30,
     CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     MaxCampDist: 3800,
-    /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's small and large camps within OffCampDist of its
-     *  outermost lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1) and
-     *  the small one beside it (about 3,700-4,100 from the usual T1 spots on the 7.41 spawners of bug-hunt 05/11/2026 ev=camp;
-     *  no other enemy small or large camp is within 6,000). Its own camps lie
+    /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's large camp within OffCampDist of its outermost
+     *  lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1; no other enemy
+     *  large camp is within 6,000 on the 7.41 spawners of bug-hunt 05/11/2026 ev=camp). Not the enemy small camp beside it
+     *  (about 3,700-4,100 from the T1): user 06/11/2026, that is the enemy pos5's pull camp, deep in their half, in their
+     *  support's path and next to their carry. Its own camps lie
      *  behind its T2, past MaxCampDist of the clash, so with its own team's spawners only it never fitted a camp (cngchk6,
      *  cngchk9; bug-hunt 05/11/2026: pid 1 and 9 gate no-camp 35 and 72, no plan). User 06/11/2026: "the offlaner needs to
      *  farm that camp as part of their lane farm routine, same way pos 1 considers camps". `judgement`. */
     OffCampDist: 4300,
-    OffCampTypes: { small: true, large: true } as Record<string, boolean>,
+    OffCampTypes: { large: true } as Record<string, boolean>,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
     PathFactor: 1.2,
     /** An enemy hero's reach (lane_spot HeroReach) plus this, touching the walk or the camp, holds the start. */
     ThreatMargin: 600,
+    /** The missing-hero gate (user 06/11/2026, every core position alike): an enemy hero alive and unseen for more than
+     *  MissingAfter seconds counts as possibly at the camp or on the walk when its last-seen spot lies within its possible
+     *  run since (MissingSpeed per second unseen, capped at MissingReachMax) plus ThreatMargin of the walk from the core to
+     *  the camp. The cap: a hero unseen long and last seen far off is as likely anywhere, and holding every trip on it would
+     *  hold them all while any enemy farms in fog; one last seen near the walk holds however old the sighting. MissingSpeed
+     *  is a laning-stage hero with boots (its speed is not readable in fog). All `judgement`. */
+    MissingAfter: 3,
+    MissingSpeed: 330,
+    MissingReachMax: 4000,
     MidRuneGuard: 40,
     /** Neutrals this far from the box centre are the camp's. */
     CampRadius: 700,
@@ -518,7 +527,7 @@ function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number
 }
 
 /**
- * The best camp of the core's own jungle (the offlaner's also the enemy's by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
+ * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
  * allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
  */
 export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan | undefined {
@@ -564,7 +573,8 @@ function laneTower(bot: Unit): Vector | undefined {
     return undefined;
 }
 
-/** The camps a trip may take: the core's own team's, and for the offlaner the enemy's by its lane (SETTINGS OffCampDist). */
+/** The camps a trip may take: the core's own team's, and for the offlaner the enemy's large camp by its lane (SETTINGS
+ *  OffCampDist, OffCampTypes). */
 function tripSpawners(bot: Unit): Camps.Spawner[] {
     const team = bot.GetTeam();
     const out: Camps.Spawner[] = [];
@@ -610,6 +620,34 @@ export function ThreatOnWay(bot: Unit, at: Vector): boolean {
     return false;
 }
 
+const MAX_PLAYER_ID = 23;
+
+/**
+ * Enemy heroes alive, unseen for more than MissingAfter, whose last-seen spot is within their possible run since (SETTINGS
+ * MissingSpeed, MissingReachMax) plus ThreatMargin of the walk from the core to `at`: each could be at the camp or on the way.
+ * Walks the player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team), as lane_read does. A hero the
+ * API has no sighting of is not placed and not counted.
+ */
+export function MissingNear(bot: Unit, at: Vector): number {
+    const s = SETTINGS;
+    const team = bot.GetTeam();
+    const here = bot.GetLocation();
+    const visible: Record<number, boolean> = {};
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e !== null && e !== undefined && e.CanBeSeen() && !e.IsIllusion()) visible[e.GetPlayerID()] = true;
+    }
+    let n = 0;
+    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
+        const run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax);
+        if (distToSegment(info.location, here, at) <= run + s.ThreatMargin) n++;
+    }
+    return n;
+}
+
 function mateOnJob(bot: Unit): boolean {
     const s = LaneState.ForBot(bot);
     if (s === undefined) return false;
@@ -646,14 +684,26 @@ function inLaneGate(bot: Unit, now: number): string | undefined {
     return undefined;
 }
 
-/** Why a fitting trip may not start now, or undefined. */
-function startGate(bot: Unit, plan: CampPlan, now: number): string | undefined {
-    if (mateOnJob(bot)) return "mate-job";
-    if (LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
-    if (LaneConfig.PositionOf(bot) === 2 && Runes.NextSpawn("power", now) - now < SETTINGS.MidRuneGuard) return "rune";
+/** A start gate's reason, and for `missing` how many enemies were. */
+interface Held {
+    why: string;
+    nmiss?: number;
+}
+
+/**
+ * Why a fitting trip may not start now, or undefined. The missing-hero gate (MissingNear) replaced the lane's
+ * `enemy-missing` read here: it covers the lane enemies gone from the front and any other enemy that could be at the camp or
+ * on the walk, for every core position alike (user 06/11/2026).
+ */
+function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
+    if (mateOnJob(bot)) return { why: "mate-job" };
+    if (LaneConfig.PositionOf(bot) === 2 && Runes.NextSpawn("power", now) - now < SETTINGS.MidRuneGuard) return { why: "rune" };
     const spawner = Camps.SpawnerByIdx(plan.camp);
-    if (spawner !== undefined && ThreatOnWay(bot, Camps.BoxCenter(spawner))) return "threat";
-    return undefined;
+    if (spawner === undefined) return undefined;
+    const center = Camps.BoxCenter(spawner);
+    if (ThreatOnWay(bot, center)) return { why: "threat" };
+    const nmiss = MissingNear(bot, center);
+    return nmiss > 0 ? { why: "missing", nmiss } : undefined;
 }
 
 // ------------------------------------------------------------------------------------------------ telemetry
@@ -692,13 +742,13 @@ function log(bot: Unit, phase: string, c: Clash, fields: Telemetry.Fields<"core_
 }
 
 /** One skip line per wave window and reason: the coverage count's windows where a camp fitted and no trip started. */
-function noteSkip(bot: Unit, why: string, c: Clash, plan: CampPlan): void {
+function noteSkip(bot: Unit, why: string, c: Clash, plan: CampPlan, nmiss?: number): void {
     const pid = bot.GetPlayerID();
     const key = `${math.floor(c.t / 30)}:${why}`;
     skipped[pid] = skipped[pid] ?? {};
     if (skipped[pid][key] === true) return;
     skipped[pid][key] = true;
-    log(bot, "skip", c, [["why", why], ...planFields(plan)]);
+    log(bot, "skip", c, [["why", why], ["nmiss", nmiss], ...planFields(plan)]);
 }
 
 type GateField = "h_dead" | "h_mode" | "h_hp" | "h_far" | "h_wave" | "h_camp" | "h_fc" | "h_clash" | "h_gap" | "h_plan" | "h_skip" | "h_trip";
@@ -905,9 +955,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (!force && clash.t - now < SETTINGS.MinGap) return held("gap");
     const plan = Plan(bot, bot.GetLocation(), now, clash);
     if (plan === undefined) return held("no-plan");
-    const why = blocked(bot) ?? startGate(bot, plan, now);
-    if (why !== undefined) {
-        noteSkip(bot, why, clash, plan);
+    const outer = blocked(bot);
+    const gate2 = outer !== undefined ? { why: outer } : startGate(bot, plan, now);
+    if (gate2 !== undefined) {
+        noteSkip(bot, gate2.why, clash, plan, gate2.nmiss);
         return held("skip");
     }
     tally(bot, now, "trip");

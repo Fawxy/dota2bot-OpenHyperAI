@@ -373,4 +373,57 @@ do
 	TOWERS_W[2][dota.Tower.Bot1] = saved
 end
 
+-- User 06/11/2026: the pos3 does not take the enemy small camp by its lane (the enemy pos5's pull camp, in their support's
+-- path, next to their carry); only the large one its pos4 pulls.
+do
+	local H, core = world({ camps = { { "small", Vector(-1000, -6000) }, { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	SPAWNERS[1].team, SPAWNERS[2].team = 3, 3
+	H.Lane.Camps.ResetCache()
+	local saved = TOWERS_W[2][dota.Tower.Bot1]
+	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(0, -5000) })
+	core.pos = 3
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local p = CC.Plan(core, FRONT, 300, c)
+	check("offlane: the pos3 takes the enemy large camp, not the nearer enemy small one", p ~= nil and p.camp == 2 and p.type == "large", p and p.camp)
+	table.remove(SPAWNERS, 2)
+	H.Lane.Camps.ResetCache()
+	local only = CC.Plan(core, FRONT, 300, c)
+	check("offlane: the enemy small camp alone is not offered to the pos3", only == nil, only and only.camp)
+	TOWERS_W[2][dota.Tower.Bot1] = saved
+end
+
+-- The missing-hero gate (user 06/11/2026, pos1 and pos3 alike): an enemy alive and unseen for more than MissingAfter whose
+-- last-seen spot is within its possible run of the walk or the camp holds the start, why=missing with the count; a visible
+-- far enemy, one last seen far off, a dead one or a fresh sighting does not.
+for _, pos in ipairs({ 1, 3 }) do
+	local H, core, _, enemy = world({ camps = { { "small", SMALL } } })
+	core.pos = pos
+	enemy.hiddenFrom = { [OBSERVER] = true }
+	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 10 }
+	local out = run(H, core, 302)
+	local skips = lines(out, "core_camp", "skip")
+	check("missing pos" .. pos .. ": an unseen enemy near the camp holds the trip", #lines(out, "core_camp", "start") == 0)
+	check("missing pos" .. pos .. ": one skip line, why=missing nmiss=1", #skips == 1 and field(skips[1], "why") == "missing" and field(skips[1], "nmiss") == "1", skips[1])
+end
+
+do
+	local H, core, _, enemy = world({ camps = { { "small", SMALL } } })
+	local CC = H.CoreCamp
+	check("missing: a visible enemy far off is not missing", CC.MissingNear(core, SMALL) == 0)
+	enemy.hiddenFrom = { [OBSERVER] = true }
+	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 2 }
+	check("missing: seen 2 s ago is not missing yet", CC.MissingNear(core, SMALL) == 0)
+	LAST_SEEN[enemy.pid] = { location = Vector(6000, 6000), time_since_seen = 5 }
+	check("missing: last seen far off a short while ago is not near", CC.MissingNear(core, SMALL) == 0)
+	LAST_SEEN[enemy.pid] = { location = Vector(6000, 6000), time_since_seen = 120 }
+	check("missing: long unseen far off is past MissingReachMax", CC.MissingNear(core, SMALL) == 0)
+	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 100 }
+	check("missing: long unseen by the camp counts", CC.MissingNear(core, SMALL) == 1)
+	enemy.alive = false
+	check("missing: a dead enemy does not count", CC.MissingNear(core, SMALL) == 0)
+	local out = run(H, core, 302)
+	check("missing: with the enemy dead the trip starts", #lines(out, "core_camp", "start") == 1)
+end
+
 finish()

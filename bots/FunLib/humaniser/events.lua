@@ -948,6 +948,7 @@ ____exports.EVENTS = {
         loss = "num",
         net = "num",
         why = "str",
+        nmiss = "num",
         after = "str",
         res = "str",
         label = "str",

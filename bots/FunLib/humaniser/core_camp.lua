@@ -278,7 +278,6 @@ local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
-local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -398,9 +397,12 @@ ____exports.SETTINGS = {
     CampMinLevel = {small = 3, medium = 4, large = 6, ancient = 12},
     MaxCampDist = 3800,
     OffCampDist = 4300,
-    OffCampTypes = {small = true, large = true},
+    OffCampTypes = {large = true},
     PathFactor = 1.2,
     ThreatMargin = 600,
+    MissingAfter = 3,
+    MissingSpeed = 330,
+    MissingReachMax = 4000,
     MidRuneGuard = 40,
     CampRadius = 700,
     ReturnArrive = 900,
@@ -847,7 +849,7 @@ local function campOpen(bot, spawner, center, now, pullCamps)
         bot:GetPlayerID()
     )
 end
---- The best camp of the core's own jungle (the offlaner's also the enemy's by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
+--- The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
 -- allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
 function ____exports.Plan(bot, from, now, c)
     local s = ____exports.SETTINGS
@@ -1011,6 +1013,53 @@ function ____exports.ThreatOnWay(bot, at)
     end
     return false
 end
+local MAX_PLAYER_ID = 23
+--- Enemy heroes alive, unseen for more than MissingAfter, whose last-seen spot is within their possible run since (SETTINGS
+-- MissingSpeed, MissingReachMax) plus ThreatMargin of the walk from the core to `at`: each could be at the camp or on the way.
+-- Walks the player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team), as lane_read does. A hero the
+-- API has no sighting of is not placed and not counted.
+function ____exports.MissingNear(bot, at)
+    local s = ____exports.SETTINGS
+    local team = bot:GetTeam()
+    local here = bot:GetLocation()
+    local visible = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if e ~= nil and e ~= nil and e:CanBeSeen() and not e:IsIllusion() then
+            visible[e:GetPlayerID()] = true
+        end
+    end
+    local n = 0
+    do
+        local pid = 0
+        while pid <= MAX_PLAYER_ID do
+            do
+                local __continue134
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
+                        __continue134 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil or info.time_since_seen <= s.MissingAfter then
+                        __continue134 = true
+                        break
+                    end
+                    local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
+                    if distToSegment(info.location, here, at) <= run + s.ThreatMargin then
+                        n = n + 1
+                    end
+                    __continue134 = true
+                until true
+                if not __continue134 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    return n
+end
 local function mateOnJob(bot)
     local s = LaneState.ForBot(bot)
     if s == nil then
@@ -1019,18 +1068,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue132
+            local __continue140
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue132 = true
+                    __continue140 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue132 = true
+                __continue140 = true
             until true
-            if not __continue132 then
+            if not __continue140 then
                 break
             end
         end
@@ -1040,19 +1089,19 @@ end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue137
+            local __continue145
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue137 = true
+                    __continue145 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue137 = true
+                __continue145 = true
             until true
-            if not __continue137 then
+            if not __continue145 then
                 break
             end
         end
@@ -1094,28 +1143,26 @@ local function inLaneGate(bot, now)
     end
     return nil
 end
---- Why a fitting trip may not start now, or undefined.
+--- Why a fitting trip may not start now, or undefined. The missing-hero gate (MissingNear) replaced the lane's
+-- `enemy-missing` read here: it covers the lane enemies gone from the front and any other enemy that could be at the camp or
+-- on the walk, for every core position alike (user 06/11/2026).
 local function startGate(bot, plan, now)
     if mateOnJob(bot) then
-        return "mate-job"
-    end
-    if LaneHooks.EnemiesMissing(
-        bot,
-        LaneConfig.Settings().Thresholds.JobMissingFresh
-    ) > 0 then
-        return "enemy-missing"
+        return {why = "mate-job"}
     end
     if LaneConfig.PositionOf(bot) == 2 and Runes.NextSpawn("power", now) - now < ____exports.SETTINGS.MidRuneGuard then
-        return "rune"
+        return {why = "rune"}
     end
     local spawner = Camps.SpawnerByIdx(plan.camp)
-    if spawner ~= nil and ____exports.ThreatOnWay(
-        bot,
-        Camps.BoxCenter(spawner)
-    ) then
-        return "threat"
+    if spawner == nil then
+        return nil
     end
-    return nil
+    local center = Camps.BoxCenter(spawner)
+    if ____exports.ThreatOnWay(bot, center) then
+        return {why = "threat"}
+    end
+    local nmiss = ____exports.MissingNear(bot, center)
+    return nmiss > 0 and ({why = "missing", nmiss = nmiss}) or nil
 end
 r1 = function(x) return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil end
 r2 = function(x) return math.floor(x * 100 + 0.5) / 100 end
@@ -1187,7 +1234,7 @@ local function log(bot, phase, c, fields)
     )
 end
 --- One skip line per wave window and reason: the coverage count's windows where a camp fitted and no trip started.
-local function noteSkip(bot, why, c, plan)
+local function noteSkip(bot, why, c, plan, nmiss)
     local pid = bot:GetPlayerID()
     local key = (tostring(math.floor(c.t / 30)) .. ":") .. why
     skipped[pid] = skipped[pid] or ({})
@@ -1201,6 +1248,7 @@ local function noteSkip(bot, why, c, plan)
         c,
         {
             {"why", why},
+            {"nmiss", nmiss},
             unpack(planFields(plan))
         }
     )
@@ -1281,10 +1329,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue167
+            local __continue175
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue167 = true
+                    __continue175 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1294,9 +1342,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue167 = true
+                __continue175 = true
             until true
-            if not __continue167 then
+            if not __continue175 then
                 break
             end
         end
@@ -1605,9 +1653,16 @@ function ____exports.Wants(bot, blocked, host)
     if plan == nil then
         return held("no-plan")
     end
-    local why = blocked(bot) or startGate(bot, plan, now)
-    if why ~= nil then
-        noteSkip(bot, why, clash, plan)
+    local outer = blocked(bot)
+    local gate2 = outer ~= nil and ({why = outer}) or startGate(bot, plan, now)
+    if gate2 ~= nil then
+        noteSkip(
+            bot,
+            gate2.why,
+            clash,
+            plan,
+            gate2.nmiss
+        )
         return held("skip")
     end
     tally(bot, now, "trip")
