@@ -443,7 +443,8 @@ export const EVENTS = {
          *  `retreat` (OHA's retreat took the core). */
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
-         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`. */
+         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
+         *  the hold point's floor). */
         res: "str",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
@@ -458,6 +459,8 @@ export const EVENTS = {
         /** Our T1's fire reach to a creep's centre (attack range plus both hull radii, from the API; fallback 860): the
          *  start's late floor and the hold point's floor are this plus 50. */
         rch: "num",
+        /** Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point. */
+        hdr: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         lh: "num",

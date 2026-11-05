@@ -355,6 +355,7 @@ ____exports.EVENTS = {
         fc = "num",
         hd = "num",
         rch = "num",
+        hdr = "num",
         n = "num",
         lh = "num",
         dn = "num",

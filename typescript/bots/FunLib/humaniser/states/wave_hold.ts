@@ -102,6 +102,15 @@ export const SETTINGS = {
     ForecastSecs: 8,
     /** One ev=wave_hold_skip per bot and reason at most this often. */
     SkipEvery: 5,
+    /**
+     * The hold takes their wave's aggro (hschk3: 16 of 37 holds ended `tower`; standing at the point, the core let their creeps
+     * walk past it, decided 06/11/2026): once their front is within HoldDrawLead seconds' walk of the hold point and the core
+     * stands within HoldNear of it with no creep of theirs on it, lane_aggro's draw (StartBack) walks it HoldDrawOut further out,
+     * so they fight it at the hold point, out of our T1's fire. `judgement`.
+     */
+    HoldDrawLead: 1,
+    HoldNear: 300,
+    HoldDrawOut: 150,
 };
 
 export type Branch = "hold" | "drag" | "retreat";
@@ -184,6 +193,18 @@ export function Near(schedule: number, live: number[]): number {
     return math.min(schedule, d / SETTINGS.CreepSpeed);
 }
 
+/** Pure: whether the hold draws their wave now: their front (from our T1) within the lead of the hold point `hd`, the core
+ *  `at` from it, `on` their creeps already on the core. */
+export function DrawNow(front: number, hd: number, at: number, on: number): boolean {
+    return on === 0 && at <= SETTINGS.HoldNear && front <= hd + SETTINGS.HoldDrawLead * SETTINGS.CreepSpeed;
+}
+
+/** Pure: lane_spot pushed the held spot back inside the hold point's floor for an enemy hero (`why` hero, spot `own` from our
+ *  T1): the hold cannot stand where it keeps their wave out of our T1's fire, so it ends `unsafe`. */
+export function Unsafe(anchor: string | undefined, why: string | undefined, own: number, reach: number): boolean {
+    return anchor === "hold" && why === "hero" && own < reach + SETTINGS.LateMargin;
+}
+
 /** Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin). */
 export function BehindAt(reach = EffReach()): number {
     return math.max(SETTINGS.Behind, reach + SETTINGS.LateMargin);
@@ -222,6 +243,8 @@ interface Attempt {
     rch: number;
     /** The drag point's distance behind our T1. */
     bd: number;
+    /** Hold draws given (lane_aggro StartBack on the hold branch). */
+    hdr: number;
     /** Our creeps already fighting at the start that do not end it as `met` (the losing wave, a lone creep under the T1). */
     old: Unit[];
     n: number;
@@ -373,6 +396,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["fc", a.fc !== undefined ? math.floor(a.fc * 10) / 10 : undefined],
         ["hd", math.floor(a.hd)],
         ["rch", math.floor(a.rch)],
+        ["hdr", a.hdr],
         ["n", a.n],
         ["lh", counter(bot, "GetLastHits") - a.lh0],
         ["dn", counter(bot, "GetDenies") - a.dn0],
@@ -427,6 +451,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, r
         hold,
         behind: pointAt(v, -BehindAt(reach), z),
         bd: BehindAt(reach),
+        hdr: 0,
         why: trig === "forecast" ? "losing" : whyGone(bot, now),
         trig,
         fc,
@@ -594,6 +619,13 @@ export function Step(bot: Unit): void {
         }
     }
     if (a.br === "hold" && front < SETTINGS.TowerR) return finish(bot, a, "tower", now);
+    if (a.br === "hold") {
+        const info = Laning.SpotInfo(bot);
+        if (info !== undefined) {
+            const [s] = LanePush.Project(v.path, info.spot.x, info.spot.y);
+            if (Unsafe(info.anchor, info.why, v.dir * (s - v.t1), a.rch)) return finish(bot, a, "unsafe", now);
+        }
+    }
 
     const threat = threatOf(bot, a.hold);
     if (threat !== undefined) a.thr = threat.GetPlayerID();
@@ -615,7 +647,16 @@ export function Step(bot: Unit): void {
         a.sw++;
         a.br = br;
     }
-    Laning.SetHold(bot, a.br === "hold" ? a.hold : undefined);
+    // The hold point (the drag's point on a drag) anchors the spot for the whole attempt, over lane_spot's other anchors.
+    Laning.SetHold(bot, a.br === "hold" ? a.hold : a.behind);
+    if (a.br === "hold" && !LaneAggro.Acting(bot)) {
+        let on = 0;
+        for (const x of v.units) {
+            const t = x.u.GetAttackTarget();
+            if (t !== undefined && t !== null && t === bot) on++;
+        }
+        if (DrawNow(front, a.hd, GetUnitToLocationDistance(bot, a.hold), on) && LaneAggro.StartBack(bot, pointAt(v, a.hd + SETTINGS.HoldDrawOut, a.hold.z))) a.hdr++;
+    }
 }
 
 export function Reset(): void {

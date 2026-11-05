@@ -6,8 +6,8 @@ local dota = require("bots/ts_libs/dota/index")
 local Lane, BotMode = dota.Lane, dota.BotMode
 
 local T1 = 8057
-local function world()
-	local H = LaneFresh({ Enable = true }, { telemetry = { Enable = true } })
+local function world(laneAggro)
+	local H = LaneFresh({ Enable = true }, { telemetry = { Enable = true }, laneAggro = laneAggro })
 	-- Our T1's API values as in game: range 700, tower hull 144; lane creeps' hull 16 (reach 860, floor 910).
 	for _, t in pairs(TOWERS_W[2]) do t.range, t.hull = 700, 144 end
 	local lines = {}
@@ -36,7 +36,7 @@ local function world()
 		end
 		return n
 	end
-	return { W = W, bot = bot, creep = creep, count = count, lines = lines, H = H }
+	return { W = W, bot = bot, creep = creep, count = count, lines = lines, H = H, at = at }
 end
 
 -- obs0611 mark 4's shape, the gone start: our pull returnee fighting at 666 under our T1, theirs at 950-990 (outside tower
@@ -145,6 +145,39 @@ do
 	w2.creep(2, 700)
 	w2.W.Step(w2.bot)
 	check("the API's tower hull sets the floor: front 880 starts and holds at 880", w2.count("wave_hold", "rch=816") == 1 and w2.count("wave_hold", "hd=879") + w2.count("wave_hold", "hd=880") == 1, table.concat(w2.lines, "\n"))
+end
+
+-- The hold takes their wave's aggro (decided 06/11/2026, hschk3: holds ended `tower` with the core at its point and their
+-- creeps walking past it): our wave gone, theirs walking in 1,150-1,190 out, an enemy hero in sight; the core stands at the
+-- hold point (910). Their front is under 1 s from it, so lane_aggro's draw starts.
+do
+	local w = world(true)
+	T = 200
+	local x, y = w.at(910)
+	w.bot.loc = Vector(x, y)
+	w.creep(3, 1150)
+	w.creep(3, 1170)
+	w.creep(3, 1190)
+	local hx, hy = w.at(1500)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	w.W.Step(w.bot)
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	check("hold draw: lane_aggro's draw runs for the holding core", A.Acting(w.bot), table.concat(w.lines, "\n"))
+end
+
+-- An enemy hero pushing the held spot inside the floor ends the attempt `unsafe` (lane_spot's last reading, here set by hand).
+do
+	local w = world()
+	T = 300
+	w.creep(3, 1500)
+	w.creep(3, 1520)
+	w.W.Step(w.bot)
+	local L = require("bots/FunLib/humaniser/states/laning")
+	local x, y = w.at(600)
+	L.SpotInfo = function() return { spot = Vector(x, y), pushed = 6, anchor = "hold", why = "hero", margin = 0, covered = 0 } end
+	T = 300.5
+	w.W.Step(w.bot)
+	check("unsafe: the held spot pushed by a hero to 600 from our T1 ends the attempt", w.count("wave_hold", "res=unsafe") == 1, table.concat(w.lines, "\n"))
 end
 
 finish()

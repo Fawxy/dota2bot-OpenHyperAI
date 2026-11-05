@@ -39,6 +39,15 @@ check("hold point, side lane: the target 900 is inside the 910 floor, so 910", W
 check("hold point, mid: their front past the target 1,300, the target", W.HoldAt(1300, 1500) == 1300)
 check("hold point, mid: their front 1,000 inside the target, at their front", W.HoldAt(1300, 1000) == 1000)
 check("hold point under the API's reach 840: floor 890", W.HoldAt(900, 960, 840) == 900 and W.HoldAt(1300, 895, 840) == 895 and W.HoldAt(1300, 880, 840) == 890)
+-- The hold takes their aggro: a draw once their front is within 1 s' walk (325) of the hold point, the core on it, none on it yet.
+check("hold draw: their front 1,200 walking to the hold point 910, core on it: draw", W.DrawNow(1200, 910, 100, 0))
+check("hold draw: their front 1,400 (over 1 s out): not yet", not W.DrawNow(1400, 910, 100, 0))
+check("hold draw: a creep of theirs already on the core: no draw", not W.DrawNow(1100, 910, 100, 1))
+check("hold draw: the core 500 off the hold point: no draw", not W.DrawNow(1100, 910, 500, 0))
+-- An enemy hero pushing the held spot inside the floor (reach 860 + 50) ends the hold `unsafe` (hschk3 Sniper 7:06 at 575).
+check("unsafe: the hold spot pushed by a hero to 575 from our T1", W.Unsafe("hold", "hero", 575, 860))
+check("not unsafe: pushed by a hero but still at 950", not W.Unsafe("hold", "hero", 950, 860))
+check("not unsafe: inside the floor for a creep ring, not a hero", not W.Unsafe("hold", "creep", 575, 860))
 -- The creeps of ours that do not end an attempt as met: those fighting in the clash at the start, not our next wave.
 check("in the clash: one of ours fighting 300 behind their rear", W.InClash(1500, true, 1800))
 check("not in the clash: our next wave walking up 3,000 behind our T1", not W.InClash(-3000, false, 1800))
