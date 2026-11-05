@@ -638,6 +638,8 @@ ____exports.SETTINGS = {
     Priority = 0.88,
     StartWithin = 12,
     MaxFarm = 35,
+    ClearSeconds = 4,
+    ClearReserve = 0.3,
     AbortHP = 0.35,
     CampRadius = 700,
     CoreThere = 600,
@@ -712,8 +714,8 @@ local function startGate(bot, camp, center, blocked)
     if coreThere(bot, center) then
         return "core-there"
     end
-    local dmg = PullJob.CampDamage(bot, state, camp.type, nil)
-    if bot:GetHealth() - dmg < bot:GetMaxHealth() * PullJob.SETTINGS.StartReserve then
+    local dmg = PullJob.CampDamage(bot, state, camp.type, ____exports.SETTINGS.ClearSeconds)
+    if bot:GetHealth() - dmg < bot:GetMaxHealth() * ____exports.SETTINGS.ClearReserve then
         return "camp-dmg"
     end
     if CoreCamp.ThreatOnWay(bot, center) then
