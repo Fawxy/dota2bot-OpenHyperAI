@@ -432,6 +432,63 @@ do
 	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
 end
 
+-- A creep that reads alive with no location when the attempt ends (prhfc2 game C, log 2026-11-04T02-49-08-prhfc2_C_on_3.log
+-- t=155.533: ev=state_task reason=error, `at` nil in placeOf): the attempt is still reported, placed from its last scan.
+do
+	local H, bot, c, events
+	silenced(function()
+		H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Laning = { LastHit = { 2 } } })
+		events = {}
+		require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+		H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+		for _ = 1, 4 do frame(H, bot) end
+		c = creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
+		for _ = 1, 3 do frame(H, bot) end
+		c.loc, c.removed = nil, true
+		for i = #CREEPS, 1, -1 do if CREEPS[i] == c then table.remove(CREEPS, i) end end
+		for _ = 1, 3 do frame(H, bot) end
+	end)
+	local lh, err
+	for _, l in ipairs(events) do
+		if l:find("ev=lh ", 1, true) then lh = l end
+		if l:find("reason=error", 1, true) then err = l end
+	end
+	check("body: no task error on a creep alive with no location", err == nil, err)
+	check("body: that attempt placed from its last scan", lh ~= nil and lh:find(" cx=-200 ", 1, true) ~= nil, lh)
+	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+end
+
+-- A creep the game has removed by the time the attempt ends: its handle raises on IsAlive (log
+-- 2026-11-04T04-59-58-prhchk5_A_on_1.log pid 1 t=215.833 and t=511.667: "laning.lua:308: Invalid object passed to IsAlive.",
+-- ev=state_task reason=error, the laning task failed). The attempt is still reported, placed from its last scan.
+do
+	local H, bot, c, events
+	silenced(function()
+		H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Laning = { LastHit = { 2 } } })
+		events = {}
+		require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+		H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+		for _ = 1, 4 do frame(H, bot) end
+		c = creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
+		for _ = 1, 3 do frame(H, bot) end
+		c.loc, c.removed = nil, true
+		c.IsAlive = function(self)
+			if self.removed then error("Invalid object passed to IsAlive.") end
+			return self.alive
+		end
+		for i = #CREEPS, 1, -1 do if CREEPS[i] == c then table.remove(CREEPS, i) end end
+		for _ = 1, 3 do frame(H, bot) end
+	end)
+	local lh, err
+	for _, l in ipairs(events) do
+		if l:find("ev=lh ", 1, true) then lh = l end
+		if l:find("reason=error", 1, true) then err = l end
+	end
+	check("body: no task error on a removed creep", err == nil, err)
+	check("body: the removed creep's attempt placed from its last scan", lh ~= nil and lh:find(" cx=-200 ", 1, true) ~= nil, lh)
+	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+end
+
 -- Not listed in Laning.LastHit: the Lua Think keeps its own last hits and the body never attacks.
 do
 	local H, bot

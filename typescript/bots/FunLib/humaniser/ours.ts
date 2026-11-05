@@ -33,6 +33,11 @@ export const DEFAULTS = {
     /** Slice support-lane-hits: with SupportDeny on, the support's body also takes the last hits no allied core will take
      *  (states/lane_claims), in place of OHA's last hits; false keeps those OHA's (denies only, sub-switch for debugging). */
     SupportLastHit: true,
+    /**
+     * Slice pre-hit: with CoreLastHit on, a core hits an enemy creep our tower is attacking when the tower would otherwise take
+     * it from above the core's kill range and one hit makes a window (states/pre_hit); false: the core only last-hits.
+     */
+    PreHit: true,
     /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
     RuneRotation: true,
     /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's

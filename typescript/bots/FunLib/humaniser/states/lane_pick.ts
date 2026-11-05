@@ -27,6 +27,17 @@ export const ARRIVE_SLACK = 0.45;
 export const MAX_WALK = 1.0;
 
 /** The reach rule: a creep in range always; one to walk to only when the walk is short and it outlives the walk and a swing. */
+export function Reachable(this: void, t: Lib.Verbs.LaneTarget): boolean {
+    return reachable(t);
+}
+
+/** A ranged or siege creep by unit name, as laneTargets' `ranged`. */
+export function IsRanged(this: void, c: Lib.TaskCreep): boolean {
+    const name = c.GetUnitName?.();
+    if (name === undefined) return false;
+    return string.find(name, "ranged", 1, true)[0] !== undefined || string.find(name, "siege", 1, true)[0] !== undefined;
+}
+
 function reachable(t: Lib.Verbs.LaneTarget): boolean {
     if (t.walk <= 0) return true;
     return t.walk <= MAX_WALK && t.walk + ARRIVE_SLACK < t.dies;
@@ -42,7 +53,11 @@ export const DUE_NOW = 0.2;
 export const SWITCH_GAP = 0.5;
 
 /**
- * The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+ * The pick, and while an attempt waits on `current`. `pre` is a pre-hit the bot would make now (states/pre_hit): it ranks
+ * below every reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit
+ * should not interfere with the last hits on offer) and above every deny, and replaces a wait on its own creep (the last-hit
+ * verb cannot win that creep: the tower's next hit takes it from above our kill range).
+ * Without `pre`: the pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
  * taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
  * never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
  * with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
@@ -54,7 +69,15 @@ export function Choose(
     targets: Lib.Verbs.LaneTarget[],
     current?: Lib.Verbs.LaneTarget,
     mine?: (this: void, t: Lib.Verbs.LaneTarget) => boolean,
+    pre?: Lib.Verbs.LaneTarget,
 ): Lib.Verbs.LaneTarget | undefined {
+    if (pre !== undefined) {
+        let other = false;
+        for (const t of targets) {
+            if (t.kind === "lasthit" && t.creep !== pre.creep && (mine === undefined || mine(t)) && reachable(t)) other = true;
+        }
+        if (!other) return pre;
+    }
     let best: Lib.Verbs.LaneTarget | undefined;
     let bestKey = Infinity;
     let cur: Lib.Verbs.LaneTarget | undefined;
@@ -129,6 +152,9 @@ interface Scan {
     n?: number;
     sk?: number;
     ch?: boolean;
+    /** The pre-hit's last verdict on a tower creep (states/pre_hit Verdict), and when. */
+    pr?: string;
+    prAt?: number;
 }
 const scans: Record<number, Scan> = {};
 
@@ -141,11 +167,17 @@ function scanOf(pid: number): Scan {
     return s;
 }
 
-/** The creep this laner's body is in an attempt on (walking to it, waiting, or swinging), if any: a support's claims read its core's. */
+/** The creep this laner's body is in an attempt on (walking to it, waiting, swinging, or pre-hitting), if any: a support's claims read its core's. */
 export function Attempting(pid: number): Lib.TaskCreep | undefined {
     const s = scans[pid];
-    if (s === undefined || (s.ph !== "lasthit" && s.ph !== "deny")) return undefined;
+    if (s === undefined || (s.ph !== "lasthit" && s.ph !== "deny" && s.ph !== "prehit")) return undefined;
     return s.chosen?.creep;
+}
+
+export function NoteVerdict(pid: number, now: number, verdict: string): void {
+    const s = scanOf(pid);
+    s.pr = verdict;
+    s.prAt = now;
 }
 
 export function NotePhase(pid: number, ph: string): void {
@@ -210,13 +242,17 @@ export function AttemptOffers(pid: number): LuaMultiReturn<[number | undefined, 
     return $multi(lastHits, denies, seen);
 }
 
-/** `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. */
+/**
+ * `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. With a
+ * pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict).
+ */
 export function Describe(pid: number, now: number): string | undefined {
     const s = scans[pid];
     if (s === undefined) return undefined;
     const age = (t: number | undefined): string => (t === undefined ? "-" : string.format("%.1f", now - t));
+    const pr = s.pr !== undefined && s.prAt !== undefined && now - s.prAt <= 2 ? ` pr=${s.pr}` : "";
     return string.format(
-        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s",
+        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s%s",
         s.ph ?? "-",
         age(s.scanAt),
         s.aw === undefined ? "-" : tostring(math.floor(s.aw)),
@@ -224,5 +260,6 @@ export function Describe(pid: number, now: number): string | undefined {
         tostring(s.n ?? "-"),
         tostring(s.sk ?? "-"),
         s.ch === undefined ? "-" : s.ch ? "1" : "0",
+        pr,
     );
 }

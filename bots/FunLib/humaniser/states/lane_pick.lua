@@ -1,5 +1,12 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local reachable
+function reachable(t)
+    if t.walk <= 0 then
+        return true
+    end
+    return t.walk <= ____exports.MAX_WALK and t.walk + ____exports.ARRIVE_SLACK < t.dies
+end
 --- Seconds of eta a ranged or siege creep is preferred by (more gold and XP).
 ____exports.RANGED_BIAS = 0.4
 --- Added to a deny's key so any last hit sorts before it.
@@ -14,11 +21,19 @@ ____exports.ARRIVE_SLACK = 0.45
 -- was inside such an attempt, so the chase cost the near creeps too. `judgement`.
 ____exports.MAX_WALK = 1
 --- The reach rule: a creep in range always; one to walk to only when the walk is short and it outlives the walk and a swing.
-local function reachable(t)
-    if t.walk <= 0 then
-        return true
+function ____exports.Reachable(t)
+    return reachable(t)
+end
+--- A ranged or siege creep by unit name, as laneTargets' `ranged`.
+function ____exports.IsRanged(c)
+    local ____this_1
+    ____this_1 = c
+    local ____opt_0 = ____this_1.GetUnitName
+    local name = ____opt_0 and ____opt_0(____this_1)
+    if name == nil then
+        return false
     end
-    return t.walk <= ____exports.MAX_WALK and t.walk + ____exports.ARRIVE_SLACK < t.dies
+    return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 --- A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`.
 ____exports.DUE_NOW = 0.2
@@ -27,29 +42,44 @@ ____exports.DUE_NOW = 0.2
 -- one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
 -- probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
 ____exports.SWITCH_GAP = 0.5
---- The pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
+--- The pick, and while an attempt waits on `current`. `pre` is a pre-hit the bot would make now (states/pre_hit): it ranks
+-- below every reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit
+-- should not interfere with the last hits on offer) and above every deny, and replaces a wait on its own creep (the last-hit
+-- verb cannot win that creep: the tower's next hit takes it from above our kill range).
+-- Without `pre`: the pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
 -- taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
 -- never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
 -- with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
 -- considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
 -- for it too.
-function ____exports.Choose(targets, current, mine)
+function ____exports.Choose(targets, current, mine, pre)
+    if pre ~= nil then
+        local other = false
+        for ____, t in ipairs(targets) do
+            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t) then
+                other = true
+            end
+        end
+        if not other then
+            return pre
+        end
+    end
     local best
     local bestKey = math.huge
     local cur
     for ____, t in ipairs(targets) do
         do
-            local __continue5
+            local __continue13
             repeat
                 if mine ~= nil and not mine(t) then
-                    __continue5 = true
+                    __continue13 = true
                     break
                 end
                 if current ~= nil and t.creep == current.creep then
                     cur = t
                 end
                 if not reachable(t) then
-                    __continue5 = true
+                    __continue13 = true
                     break
                 end
                 local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
@@ -57,9 +87,9 @@ function ____exports.Choose(targets, current, mine)
                     bestKey = key
                     best = t
                 end
-                __continue5 = true
+                __continue13 = true
             until true
-            if not __continue5 then
+            if not __continue13 then
                 break
             end
         end
@@ -82,10 +112,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue15
+            local __continue23
             repeat
                 if not reachable(t) then
-                    __continue15 = true
+                    __continue23 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -96,9 +126,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue15 = true
+                __continue23 = true
             until true
-            if not __continue15 then
+            if not __continue23 then
                 break
             end
         end
@@ -128,14 +158,19 @@ local function scanOf(pid)
     end
     return s
 end
---- The creep this laner's body is in an attempt on (walking to it, waiting, or swinging), if any: a support's claims read its core's.
+--- The creep this laner's body is in an attempt on (walking to it, waiting, swinging, or pre-hitting), if any: a support's claims read its core's.
 function ____exports.Attempting(pid)
     local s = scans[pid]
-    if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" then
+    if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" and s.ph ~= "prehit" then
         return nil
     end
-    local ____opt_0 = s.chosen
-    return ____opt_0 and ____opt_0.creep
+    local ____opt_2 = s.chosen
+    return ____opt_2 and ____opt_2.creep
+end
+function ____exports.NoteVerdict(pid, now, verdict)
+    local s = scanOf(pid)
+    s.pr = verdict
+    s.prAt = now
 end
 function ____exports.NotePhase(pid, ph)
     scanOf(pid).ph = ph
@@ -206,7 +241,8 @@ function ____exports.AttemptOffers(pid)
     end
     return lastHits, denies, seen
 end
---- `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any.
+--- `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. With a
+-- pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict).
 function ____exports.Describe(pid, now)
     local s = scans[pid]
     if s == nil then
@@ -215,15 +251,17 @@ function ____exports.Describe(pid, now)
     local function age(t)
         return t == nil and "-" or string.format("%.1f", now - t)
     end
+    local pr = s.pr ~= nil and s.prAt ~= nil and now - s.prAt <= 2 and " pr=" .. s.pr or ""
     return string.format(
-        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s",
+        "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s%s",
         s.ph or "-",
         age(s.scanAt),
         s.aw == nil and "-" or tostring(math.floor(s.aw)),
         age(s.pickAt),
         tostring(s.n or "-"),
         tostring(s.sk or "-"),
-        s.ch == nil and "-" or (s.ch and "1" or "0")
+        s.ch == nil and "-" or (s.ch and "1" or "0"),
+        pr
     )
 end
 return ____exports
