@@ -407,7 +407,7 @@ function ____exports.CoreAggroStep(bot)
         return false
     end
     if not ____exports.BodyLastHits(bot) then
-        return LaneAggro.Pending(bot) and LaneAggro.Step(bot)
+        return CoreLastHit.Applies(bot) and LaneAggro.StepOpen(bot)
     end
     WaveHold.Step(bot)
     return LaneAggro.Step(bot)

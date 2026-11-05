@@ -854,6 +854,31 @@ function skip(bot: Unit, why: string, now: number, ad?: number): void {
     ]);
 }
 
+/** Steps the bot's open attempt: the acting frame's result, or undefined when nothing acted (watching, ended or none). */
+function stepOpen(bot: Unit, now: number): boolean | undefined {
+    const pid = bot.GetPlayerID();
+    const a = attempts[pid];
+    if (a !== undefined && Stale(a.phase, now - a.steppedAt, a.left !== undefined)) finish(bot, a, "stale", now, now - a.steppedAt);
+    else if (a !== undefined) {
+        a.steppedAt = now;
+        a.left = undefined;
+    }
+    if (a === undefined || attempts[pid] !== a) return undefined;
+    if (a.phase !== "watch") return act(bot, a, now);
+    if (a.kind === "feed") {
+        // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
+        Laning.SetFed(bot, a.creep);
+        if (Laning.SpotInfo(bot)?.anchor === "fed") a.sty = 1;
+    }
+    watch(bot, a, now);
+    return undefined;
+}
+
+/** Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running. */
+export function StepOpen(bot: Unit): boolean {
+    return stepOpen(bot, DotaTime()) ?? false;
+}
+
 /**
  * One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
  * True when it gave the bot's order this frame (the caller's other steps then stay off).
@@ -861,24 +886,8 @@ function skip(bot: Unit, why: string, now: number, ad?: number): void {
 export function Step(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
-    const a = attempts[pid];
-    if (a !== undefined && Stale(a.phase, now - a.steppedAt, a.left !== undefined)) finish(bot, a, "stale", now, now - a.steppedAt);
-    else if (a !== undefined) {
-        a.steppedAt = now;
-        a.left = undefined;
-    }
-    if (a !== undefined && attempts[pid] === a) {
-        if (a.phase === "watch") {
-            if (a.kind === "feed") {
-                // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
-                Laning.SetFed(bot, a.creep);
-                if (Laning.SpotInfo(bot)?.anchor === "fed") a.sty = 1;
-            }
-            watch(bot, a, now);
-        } else {
-            return act(bot, a, now);
-        }
-    }
+    const acted = stepOpen(bot, now);
+    if (acted !== undefined) return acted;
     if (attempts[pid] !== undefined || !Owns(bot)) return false;
     const last = decidedAt[pid];
     if (last !== undefined && now - last < SETTINGS.Every) return false;

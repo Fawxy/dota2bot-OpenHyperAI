@@ -1238,11 +1238,9 @@ local function skip(bot, why, now, ad)
         }
     )
 end
---- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
--- True when it gave the bot's order this frame (the caller's other steps then stay off).
-function ____exports.Step(bot)
+--- Steps the bot's open attempt: the acting frame's result, or undefined when nothing acted (watching, ended or none).
+local function stepOpen(bot, now)
     local pid = bot:GetPlayerID()
-    local now = DotaTime()
     local a = attempts[pid]
     if a ~= nil and ____exports.Stale(a.phase, now - a.steppedAt, a.left ~= nil) then
         finish(
@@ -1256,19 +1254,41 @@ function ____exports.Step(bot)
         a.steppedAt = now
         a.left = nil
     end
-    if a ~= nil and attempts[pid] == a then
-        if a.phase == "watch" then
-            if a.kind == "feed" then
-                Laning.SetFed(bot, a.creep)
-                local ____opt_6 = Laning.SpotInfo(bot)
-                if (____opt_6 and ____opt_6.anchor) == "fed" then
-                    a.sty = 1
-                end
-            end
-            watch(bot, a, now)
-        else
-            return act(bot, a, now)
+    if a == nil or attempts[pid] ~= a then
+        return nil
+    end
+    if a.phase ~= "watch" then
+        return act(bot, a, now)
+    end
+    if a.kind == "feed" then
+        Laning.SetFed(bot, a.creep)
+        local ____opt_6 = Laning.SpotInfo(bot)
+        if (____opt_6 and ____opt_6.anchor) == "fed" then
+            a.sty = 1
         end
+    end
+    watch(bot, a, now)
+    return nil
+end
+--- Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running.
+function ____exports.StepOpen(bot)
+    local ____stepOpen_result_8 = stepOpen(
+        bot,
+        DotaTime()
+    )
+    if ____stepOpen_result_8 == nil then
+        ____stepOpen_result_8 = false
+    end
+    return ____stepOpen_result_8
+end
+--- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
+-- True when it gave the bot's order this frame (the caller's other steps then stay off).
+function ____exports.Step(bot)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local acted = stepOpen(bot, now)
+    if acted ~= nil then
+        return acted
     end
     if attempts[pid] ~= nil or not ____exports.Owns(bot) then
         return false

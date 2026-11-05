@@ -107,7 +107,7 @@ end
 -- A feed scene on the real top lane path from Radiant's T1 (the world's T1 moved onto it): our ranged creep `S` from the T1,
 -- two of their melee creeps on it 200 further out, the core 700 back from the creep (a walk of about 500 to the approach
 -- point), two enemy heroes 1600 out. The lane push reading says the clash is beyond the target point.
-local function feedScene(S)
+local function feedScene(S, pos)
 	local dota = require("bots/ts_libs/dota/index")
 	local H = LaneFresh({ Enable = true }, { laneAggro = true, telemetry = { Enable = true }, states = { Enable = true } })
 	local lines = {}
@@ -125,7 +125,7 @@ local function feedScene(S)
 	for i = 1, 2 do local cx, cy = pt(S + 200) MakeCreep({ team = 3, x = cx + 20 * i, y = cy }) end
 	local bx, by = pt(S - 700)
 	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(bx, by), hp = 600, mode = dota.BotMode.Laning })
-	bot.maxhp, bot.lane, bot.pos = 600, dota.Lane.Top, 3
+	bot.maxhp, bot.lane, bot.pos = 600, dota.Lane.Top, pos or 3
 	local hx, hy = pt(S + 1600)
 	local h1 = MakeUnit({ pid = 5, team = 3, loc = Vector(hx, hy) })
 	local h2 = MakeUnit({ pid = 6, team = 3, loc = Vector(hx + 300, hy) })
@@ -177,6 +177,31 @@ do
 	end
 	check("body off: the approach keeps stepping", #ActionsOf(1, "MoveToLocation") == n0 + 4 and Ag.Pending(bot), #ActionsOf(1, "MoveToLocation") - n0)
 	check("body off: no stale end", not has("result=stale"))
+end
+
+-- Review 2026-11-06-aggro-walkin-321f215 M1: with the body off only the open attempt is stepped, and only a core's. An attempt
+-- that ends there (a retreat held the bot) opens no new draw; a support's open draw stays support_lane's (body-running gate).
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	T = T + 0.25
+	bot.mode = dota.BotMode.Retreat
+	Ag.Tick(bot)
+	T = T + 0.5
+	bot.mode = dota.BotMode.Laning
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	check("body off: the laning body is not running", not H.States.BodyLastHits(bot))
+	H.States.CoreAggroStep(bot)
+	check("body off: the stale attempt ends and no new draw starts", has("result=stale") and not Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == n0)
+
+	Ag, bot, _, _, _, H = feedScene(1400, 5)
+	Ag.Step(bot)
+	check("support scene: the support's feed starts (its core away)", Ag.Pending(bot))
+	n0 = #ActionsOf(1, "MoveToLocation")
+	T = T + 0.25
+	H.States.CoreAggroStep(bot)
+	check("body off, a support: the core step does not step its draw", #ActionsOf(1, "MoveToLocation") == n0)
 end
 
 -- awchk2 (t=44.3 Pudge, 104.7): the walk went unstepped for 0.7-1.7 s with the bot in laning mode throughout, and a body
