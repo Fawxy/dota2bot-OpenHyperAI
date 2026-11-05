@@ -402,7 +402,12 @@
    "td": "num",
    "out": "num",
    "sty": "num",
-   "nd": "num"
+   "nd": "num",
+   "ad": "num",
+   "apt": "num",
+   "md": "num",
+   "lbl": "str",
+   "gap": "num"
   },
   "wave_hold": {
    "pid": "num",
@@ -433,7 +438,8 @@
   "aggro_skip": {
    "pid": "num",
    "role": "str",
-   "why": "str"
+   "why": "str",
+   "ad": "num"
   },
   "lane_tech": {
    "pid": "num",
@@ -1432,7 +1438,8 @@
    "role": "text",
    "kind": "text",
    "result": "text",
-   "st": "text"
+   "st": "text",
+   "lbl": "text"
   },
   "ev_wave_hold": {
    "br": "text",

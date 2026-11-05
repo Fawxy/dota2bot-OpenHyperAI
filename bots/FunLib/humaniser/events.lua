@@ -343,7 +343,12 @@ ____exports.EVENTS = {
         td = "num",
         out = "num",
         sty = "num",
-        nd = "num"
+        nd = "num",
+        ad = "num",
+        apt = "num",
+        md = "num",
+        lbl = "str",
+        gap = "num"
     },
     wave_hold = {
         pid = "num",
@@ -371,7 +376,7 @@ ____exports.EVENTS = {
         dur = "num",
         md = "num"
     },
-    aggro_skip = {pid = "num", role = "str", why = "str"},
+    aggro_skip = {pid = "num", role = "str", why = "str", ad = "num"},
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {
         pid = "num",

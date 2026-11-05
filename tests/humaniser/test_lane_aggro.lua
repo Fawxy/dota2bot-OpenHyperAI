@@ -52,4 +52,203 @@ do
 	check("moved: only the seen creep 200 from its spot counts", ok and n == 1, n)
 end
 
+-- Slice lane-aggro, user 06/11/2026 (obs0611 mark 1): lane_spot keeps an offlaner 560-940 from the feed's approach point, so
+-- the feed walks up to ApproachMax and gets the time to arrive; under a fixed 1.2 s a 900 walk ordered about 350 in, short of
+-- the creeps.
+check("approach: a 900 walk at 300 speed gets the time to arrive", A.ApproachTime(900, 300) * 300 >= 900, A.ApproachTime(900, 300))
+check("approach: a short walk orders soon after arriving", A.ApproachTime(120, 300) < 1, A.ApproachTime(120, 300))
+check("approach: a slowed or rooted hero orders from where it stands by the cap", A.ApproachTime(900, 0) <= 3.5 and A.ApproachTime(900, 150) <= 3.5)
+
+-- The feed never draws their creeps inside the wave hold point (900 from our T1 on a side lane, 1300 mid): wave_hold meets
+-- them there. Points are taken along the real lane paths from each team's own T1.
+do
+	local LP = require("bots/FunLib/humaniser/lane_push")
+	local dota = require("bots/ts_libs/dota/index")
+	local function at(lane, team, own)
+		local path = LP.PathOf(lane)
+		local t1, dir = LP.OwnT1(path, team)
+		local p = LP.PointAt(path, t1 + dir * own)
+		return path, p[1], p[2]
+	end
+	local function inside(lane, team, own)
+		local path, x, y = at(lane, team, own)
+		return A.InsideHold(path, team, lane, x, y)
+	end
+	check("hold: Radiant top, the walk back ends 700 from our T1: inside", inside(dota.Lane.Top, dota.Team.Radiant, 700))
+	check("hold: Radiant top, 1100 from our T1: outside", not inside(dota.Lane.Top, dota.Team.Radiant, 1100))
+	check("hold: Dire bot (the path runs the other way), 700 from their own T1: inside", inside(dota.Lane.Bot, dota.Team.Dire, 700))
+	check("hold: Dire bot, 1100 from their own T1: outside", not inside(dota.Lane.Bot, dota.Team.Dire, 1100))
+	check("hold: mid's hold point is further out: 1100 is inside", inside(dota.Lane.Mid, dota.Team.Radiant, 1100))
+end
+
+-- An order's hero that leaves vision before the order is re-picked (any visible enemy hero draws the creeps, EC-053) instead
+-- of ending the move `cancelled` (obs0611 t=33.1: Lich went into the trees, DK was still seen; 11% of feeds ended so).
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local function world()
+		LaneFresh({ Enable = true }, { laneAggro = true })
+		local Ag = require("bots/FunLib/humaniser/lane_aggro")
+		local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 5000), hp = 600 })
+		bot.maxhp, bot.lane = 600, dota.Lane.Top
+		MakeCreep({ team = 3, x = 150, y = 5000 })
+		local nearH = MakeUnit({ pid = 5, team = 3, loc = Vector(400, 5000) })
+		local farH = MakeUnit({ pid = 6, team = 3, loc = Vector(900, 5000) })
+		return Ag, bot, nearH, farH
+	end
+	local Ag, bot, nearH, farH = world()
+	check("re-pick: the draw starts on the nearest enemy hero", Ag.StartBack(bot, Vector(-3000, 5000)))
+	nearH.CanBeSeen = function() return false end
+	Ag.Step(bot)
+	local orders = ActionsOf(1, "AttackUnit")
+	check("re-pick: the order goes to the hero still seen", #orders == 1 and orders[1].args[1] == farH, #orders)
+	check("re-pick: the move is still open", Ag.Pending(bot))
+end
+
+-- A feed scene on the real top lane path from Radiant's T1 (the world's T1 moved onto it): our ranged creep `S` from the T1,
+-- two of their melee creeps on it 200 further out, the core 700 back from the creep (a walk of about 500 to the approach
+-- point), two enemy heroes 1600 out. The lane push reading says the clash is beyond the target point.
+local function feedScene(S, pos)
+	local dota = require("bots/ts_libs/dota/index")
+	local H = LaneFresh({ Enable = true }, { laneAggro = true, telemetry = { Enable = true }, states = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local LP = require("bots/FunLib/humaniser/lane_push")
+	LP.Read = function() return { own = 2000, move = 0, q = 0.5, state = "hold", clash = 0, tower = false } end
+	local Ag = require("bots/FunLib/humaniser/lane_aggro")
+	local path = LP.PathOf(dota.Lane.Top)
+	local t1, dir = LP.OwnT1(path, 2)
+	local function pt(own) local p = LP.PointAt(path, t1 + dir * own) return p[1], p[2] end
+	local tx, ty = pt(0)
+	TOWERS_W[2][dota.Tower.Top1].loc = Vector(tx, ty)
+	local x, y = pt(S)
+	MakeCreep({ team = 2, x = x, y = y, name = "npc_dota_creep_goodguys_ranged" })
+	for i = 1, 2 do local cx, cy = pt(S + 200) MakeCreep({ team = 3, x = cx + 20 * i, y = cy }) end
+	local bx, by = pt(S - 700)
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(bx, by), hp = 600, mode = dota.BotMode.Laning })
+	bot.maxhp, bot.lane, bot.pos = 600, dota.Lane.Top, pos or 3
+	local hx, hy = pt(S + 1600)
+	local h1 = MakeUnit({ pid = 5, team = 3, loc = Vector(hx, hy) })
+	local h2 = MakeUnit({ pid = 6, team = 3, loc = Vector(hx + 300, hy) })
+	T = 30
+	local function has(pat) for _, l in ipairs(lines) do if l:find(pat) then return true end end return false end
+	return Ag, bot, h1, h2, has, H
+end
+
+-- The feed's walk back would end 750 from our T1, inside the side lane's 900 hold point: no draw (wave_hold meets them there).
+do
+	local Ag, bot, _, _, has = feedScene(1000)
+	Ag.Step(bot)
+	check("inside hold: the feed does not start", not Ag.Pending(bot) and #ActionsOf(1) == 0)
+	check("inside hold: the skip says why", has("why=feed:inside_hold"))
+	Ag, bot = feedScene(1400)
+	Ag.Step(bot)
+	check("outside hold (the walk back ends 1150 out): the feed starts its approach", Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == 1)
+end
+
+-- The feed's own approach: the named hero leaves vision mid-walk; the order goes to the hero still seen when the bot arrives.
+do
+	local Ag, bot, h1, h2, has = feedScene(1400)
+	Ag.Step(bot)
+	h1.CanBeSeen = function() return false end
+	local orders
+	for _ = 1, 16 do
+		T = T + 0.25
+		Ag.Step(bot)
+		orders = ActionsOf(1, "AttackUnit")
+		if #orders > 0 then break end
+		local mv = ActionsOf(1, "MoveToLocation")
+		bot.loc = mv[#mv].args[1]
+	end
+	check("feed re-pick: the move is not cancelled", not has("result=cancelled"))
+	check("feed re-pick: the draw is ordered on the hero still seen", #orders == 1 and orders[1].args[1] == h2, #orders)
+end
+
+-- awchk1 (t=32.7, Pudge, ad=772): the approach returns from mode_laning's Think before the laning body is stepped, so the
+-- engine ends the body's task (stalled, then never_started) and the body stops running for a while. The draw step must keep
+-- stepping the open attempt then, or the attempt ends `stale` mid-walk (23 of 25 stale feeds in awchk1).
+do
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	check("body off: the laning body is not running", H.States.IsEnabled() and not H.States.BodyLastHits(bot))
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	for _ = 1, 4 do
+		T = T + 0.25
+		H.States.CoreAggroStep(bot)
+	end
+	check("body off: the approach keeps stepping", #ActionsOf(1, "MoveToLocation") == n0 + 4 and Ag.Pending(bot), #ActionsOf(1, "MoveToLocation") - n0)
+	check("body off: no stale end", not has("result=stale"))
+end
+
+-- Review 2026-11-06-aggro-walkin-321f215 M1: with the body off only the open attempt is stepped, and only a core's. An attempt
+-- that ends there (a retreat held the bot) opens no new draw; a support's open draw stays support_lane's (body-running gate).
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	T = T + 0.25
+	bot.mode = dota.BotMode.Retreat
+	Ag.Tick(bot)
+	T = T + 0.5
+	bot.mode = dota.BotMode.Laning
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	check("body off: the laning body is not running", not H.States.BodyLastHits(bot))
+	H.States.CoreAggroStep(bot)
+	check("body off: the stale attempt ends and no new draw starts", has("result=stale") and not Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == n0)
+
+	Ag, bot, _, _, _, H = feedScene(1400, 5)
+	Ag.Step(bot)
+	check("support scene: the support's feed starts (its core away)", Ag.Pending(bot))
+	n0 = #ActionsOf(1, "MoveToLocation")
+	T = T + 0.25
+	H.States.CoreAggroStep(bot)
+	check("body off, a support: the core step does not step its draw", #ActionsOf(1, "MoveToLocation") == n0)
+end
+
+-- awchk2 (t=44.3 Pudge, 104.7): the walk went unstepped for 0.7-1.7 s with the bot in laning mode throughout, and a body
+-- deny swing holds a feed's watch for seconds (161.9, 335.4). With no other mode seen holding the bot, the move resumes; after
+-- OHA's retreat held it, it ends `stale` naming that mode.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	for _ = 1, 6 do T = T + 0.25 H.States.Tick(bot) end
+	Ag.Step(bot)
+	check("gap in laning: the walk resumes", Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == n0 + 1 and not has("result=stale"))
+
+	Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	T = T + 0.25
+	bot.mode = dota.BotMode.Retreat
+	H.States.Tick(bot)
+	T = T + 0.5
+	bot.mode = dota.BotMode.Laning
+	H.States.Tick(bot)
+	Ag.Step(bot)
+	check("retreat held the bot: the move ends stale, naming the retreat", has("result=stale.* md=" .. dota.BotMode.Retreat .. " "))
+end
+
+-- A walk started safe is not dropped when an enemy hero edges a few units closer: the end needs its attack to reach the point.
+do
+	local Ag, bot, h1 = feedScene(1400)
+	Ag.Step(bot)
+	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
+	h1.loc = Vector(at.x + 750, at.y)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("hysteresis: a hero 750 from the approach point (inside the start margin, outside its attack) keeps the walk", Ag.Pending(bot))
+end
+
+-- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it
+-- ends the move before the order.
+do
+	local Ag, bot, h1, _, has = feedScene(1400)
+	Ag.Step(bot)
+	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
+	h1.loc = Vector(at.x + 300, at.y)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("unsafe mid-walk: the move ends `unsafe` with no draw order", has("result=unsafe") and not Ag.Pending(bot) and #ActionsOf(1, "AttackUnit") == 0)
+end
+
 finish()
