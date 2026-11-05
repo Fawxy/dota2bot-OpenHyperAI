@@ -93,8 +93,6 @@ ____exports.SETTINGS = {
     TowerBack = 450,
     TowerWalk = 1.8,
     TowerWatch = 1.5,
-    StayHp = 0.75,
-    StayMargin = 100,
     SkipEvery = 3,
     FightR = 700,
     FeedMinCreeps = 2,
@@ -687,6 +685,9 @@ local function tryFeed(bot, heroes, now)
 end
 local function finish(bot, a, result, now)
     attempts[bot:GetPlayerID()] = nil
+    if a.kind == "feed" then
+        Laning.SetFed(bot, nil)
+    end
     Telemetry.Event(
         "aggro",
         {
@@ -738,11 +739,11 @@ local function movedOf(a)
     local n = 0
     for ____, s0 in ipairs(a.start or ({})) do
         do
-            local __continue118
+            local __continue119
             repeat
                 local u = s0.unit
                 if u:IsNull() or not u:IsAlive() then
-                    __continue118 = true
+                    __continue119 = true
                     break
                 end
                 local l = u:GetLocation()
@@ -752,9 +753,9 @@ local function movedOf(a)
                 ) >= ____exports.SETTINGS.MovedR then
                     n = n + 1
                 end
-                __continue118 = true
+                __continue119 = true
             until true
-            if not __continue118 then
+            if not __continue119 then
                 break
             end
         end
@@ -765,19 +766,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue123
+            local __continue124
             repeat
                 if not valid(c) then
-                    __continue123 = true
+                    __continue124 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue123 = true
+                __continue124 = true
             until true
-            if not __continue123 then
+            if not __continue124 then
                 break
             end
         end
@@ -928,23 +929,23 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue158
+                    local __continue159
                     repeat
                         local u = s0.unit
                         if u:IsNull() or not u:IsAlive() or d2(
                             u:GetLocation(),
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue158 = true
+                            __continue159 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue158 = true
+                        __continue159 = true
                     until true
-                    if not __continue158 then
+                    if not __continue159 then
                         break
                     end
                 end
@@ -984,40 +985,6 @@ local function act(bot, a, now)
     a.phase = "watch"
     return false
 end
---- Feed watch: once the fed creep is going down, the bot keeps within its attack reach of it, so the body's deny scan has it
--- (lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee bot held 550-640 from it).
--- A lane hit due soon keeps the body's frame.
-local function stay(bot, a)
-    local c = a.creep
-    if c:IsNull() or not c:IsAlive() or frac(c) > ____exports.SETTINGS.StayHp then
-        return false
-    end
-    local reach = bot:GetAttackRange() + bot:GetBoundingRadius() + c:GetBoundingRadius()
-    if GetUnitToUnitDistance(bot, c) <= reach + ____exports.SETTINGS.StayMargin then
-        return false
-    end
-    if #laneTargets(bot, ____exports.SETTINGS.BusyWithin, true) > 0 then
-        return false
-    end
-    local at = along(
-        c:GetLocation(),
-        backDir(
-            bot:GetTeam(),
-            bot:GetAssignedLane(),
-            c:GetLocation()
-        ),
-        math.min(reach, 300) * 0.8
-    )
-    if not heroSafe(
-        at,
-        enemyHeroes(bot, 1600)
-    ) then
-        return false
-    end
-    bot:Action_MoveToLocation(at)
-    a.sty = a.sty + 1
-    return true
-end
 local function skip(bot, why, now)
     local pid = bot:GetPlayerID()
     local last = lastSkip[pid]
@@ -1045,10 +1012,14 @@ function ____exports.Step(bot)
     local a = attempts[pid]
     if a ~= nil then
         if a.phase == "watch" then
-            watch(bot, a, now)
-            if attempts[pid] == a and a.kind == "feed" and stay(bot, a) then
-                return true
+            if a.kind == "feed" then
+                Laning.SetFed(bot, a.creep)
+                local ____opt_1 = Laning.SpotInfo(bot)
+                if (____opt_1 and ____opt_1.anchor) == "fed" then
+                    a.sty = 1
+                end
             end
+            watch(bot, a, now)
         else
             return act(bot, a, now)
         end
@@ -1103,6 +1074,7 @@ function ____exports.Reset()
     for k in pairs(attempts) do
         attempts[k] = nil
     end
+    Laning.ClearFed()
     for k in pairs(orderedAt) do
         orderedAt[k] = nil
     end

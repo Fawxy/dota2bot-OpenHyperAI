@@ -6,7 +6,7 @@
  * forecast (lane_push) says where the clash is heading. Three moves, one module for both roles (a lane technique, bot code):
  * - `feed`: the enemy wave is walked back onto our ranged creep (any HP) whenever the clash sits or is heading beyond the target
  *   point (the first wave, a bigger wave of ours, a clash in the middle). Their melee creeps kill it quickly, we deny it (the
- *   deny is the laning body's; the bot stays in reach of the fed creep until it dies), and the clash tilts toward us.
+ *   deny is the laning body's; lane_spot keeps the bot in reach of the fed creep while it goes down), and the clash tilts toward us.
  * - `tower`: our wave pushed into their tower: drawn from just outside the tower's range and walked back, so their creeps
  *   follow us out and can be farmed there (user 05/11/2026; also an initiation point, for the fight work later).
  * - `drag`: one or two enemy creeps about to die beside an enemy hero are walked away from that hero, so the last hit is ours
@@ -65,9 +65,6 @@ export const SETTINGS = {
     TowerBack: 450,
     TowerWalk: 1.8,
     TowerWatch: 1.5,
-    /** Feed watch: the bot keeps within its attack reach + StayMargin of the fed creep once it is below StayHp. */
-    StayHp: 0.75,
-    StayMargin: 100,
     /** ev=aggro_skip: a bot's skip reason is logged when it changes, at most this often. */
     SkipEvery: 3,
     /** Feed: enemy melee creeps on our wave within this of our ranged creep, and at least FeedMinCreeps of them. */
@@ -127,7 +124,7 @@ interface Attempt {
     creep: Unit;
     tower?: Unit;
     out?: number;
-    /** Feed watch: decisions the bot walked back into reach of the fed creep. */
+    /** Feed watch: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`), else 0. */
     sty: number;
     own?: number;
     fc?: number;
@@ -511,6 +508,7 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
 
 function finish(bot: Unit, a: Attempt, result: string, now: number): void {
     attempts[bot.GetPlayerID()] = undefined;
+    if (a.kind === "feed") Laning.SetFed(bot, undefined);
     Telemetry.Event("aggro", [
         ["pid", bot.GetPlayerID()],
         ["role", a.role],
@@ -681,24 +679,6 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     return false;
 }
 
-/**
- * Feed watch: once the fed creep is going down, the bot keeps within its attack reach of it, so the body's deny scan has it
- * (lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee bot held 550-640 from it).
- * A lane hit due soon keeps the body's frame.
- */
-function stay(bot: Unit, a: Attempt): boolean {
-    const c = a.creep;
-    if (c.IsNull() || !c.IsAlive() || frac(c) > SETTINGS.StayHp) return false;
-    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + c.GetBoundingRadius();
-    if (GetUnitToUnitDistance(bot, c) <= reach + SETTINGS.StayMargin) return false;
-    if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return false;
-    const at = along(c.GetLocation(), backDir(bot.GetTeam(), bot.GetAssignedLane(), c.GetLocation()), math.min(reach, 300) * 0.8);
-    if (!heroSafe(at, enemyHeroes(bot, 1600))) return false;
-    bot.Action_MoveToLocation(at);
-    a.sty++;
-    return true;
-}
-
 function skip(bot: Unit, why: string, now: number): void {
     const pid = bot.GetPlayerID();
     const last = lastSkip[pid];
@@ -721,8 +701,12 @@ export function Step(bot: Unit): boolean {
     const a = attempts[pid];
     if (a !== undefined) {
         if (a.phase === "watch") {
+            if (a.kind === "feed") {
+                // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
+                Laning.SetFed(bot, a.creep);
+                if (Laning.SpotInfo(bot)?.anchor === "fed") a.sty = 1;
+            }
             watch(bot, a, now);
-            if (attempts[pid] === a && a.kind === "feed" && stay(bot, a)) return true;
         } else {
             return act(bot, a, now);
         }
@@ -770,6 +754,7 @@ export function Acting(bot: Unit): boolean {
 
 export function Reset(): void {
     for (const k in attempts) attempts[k as unknown as number] = undefined;
+    Laning.ClearFed();
     for (const k in orderedAt) orderedAt[k as unknown as number] = undefined;
     for (const k in decidedAt) decidedAt[k as unknown as number] = undefined;
     for (const k in laneDraw) laneDraw[k] = undefined;

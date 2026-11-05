@@ -76,6 +76,17 @@ interface SpotCache {
     info?: LaneSpot.SpotInfo;
 }
 const spotCache: Record<number, SpotCache | undefined> = {};
+/** lane_aggro's fed creep per bot (the lane_spot input `fed`), set while its feed watch runs. */
+const fedCreep: Record<number, Unit | undefined> = {};
+
+/** lane_aggro: the creep this bot fed their wave onto, or undefined when its watch ends. */
+export function SetFed(bot: Unit, creep: Unit | undefined): void {
+    fedCreep[bot.GetPlayerID()] = creep;
+}
+
+export function ClearFed(): void {
+    for (const k in fedCreep) fedCreep[k as unknown as number] = undefined;
+}
 
 /**
  * Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
@@ -97,7 +108,7 @@ export function Spot(bot: Unit): Vector | undefined {
     let v: Vector | undefined;
     let info: LaneSpot.SpotInfo | undefined;
     if (Settings().Spot === "sdk" || OwnsSpot(bot)) {
-        const [ok, res] = pcall(LaneSpot.Compute, bot, RoleOf(bot));
+        const [ok, res] = pcall(LaneSpot.Compute, bot, RoleOf(bot), fedCreep[pid]);
         if (ok && res !== undefined) {
             info = res;
             v = res.spot;

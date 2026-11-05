@@ -177,6 +177,17 @@ function ____exports.RoleOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
 local spotCache = {}
+--- lane_aggro's fed creep per bot (the lane_spot input `fed`), set while its feed watch runs.
+local fedCreep = {}
+--- lane_aggro: the creep this bot fed their wave onto, or undefined when its watch ends.
+function ____exports.SetFed(bot, creep)
+    fedCreep[bot:GetPlayerID()] = creep
+end
+function ____exports.ClearFed()
+    for k in pairs(fedCreep) do
+        fedCreep[k] = nil
+    end
+end
 --- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
 -- support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
 -- mode, so the body's hold no longer cancels them).
@@ -201,7 +212,8 @@ function ____exports.Spot(bot)
         local ok, res = pcall(
             LaneSpot.Compute,
             bot,
-            ____exports.RoleOf(bot)
+            ____exports.RoleOf(bot),
+            fedCreep[pid]
         )
         if ok and res ~= nil then
             info = res

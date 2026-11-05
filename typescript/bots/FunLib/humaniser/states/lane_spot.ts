@@ -15,6 +15,11 @@
  * other than us keeps only HELD_RING, and an enemy hero our tower is attacking, or one that would have to stand inside our
  * tower's range to hit the point, keeps only its attack reach plus TOWER_REACT_SECS of movement, with no MIN_REACH floor.
  * Cores only, and none of this at HP_LOW or below.
+ *
+ * A fed creep (lane_aggro's feed, the named input `fed`, slice lane-aggro): once our ranged creep that lane_aggro drew their wave
+ * onto is at FED_HP or below, the preferred point is FED_BEHIND behind it, inside the bot's attack reach, so the body's deny
+ * scan has it; the enemy creeps attacking it keep only HELD_RING (they are busy with it). The other limits stand.
+ * lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee core held 550-640 from it.
  * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
  * core's spot for 54 of 79, the hero reach for 15.
  */
@@ -68,6 +73,11 @@ const HELD_RING = 200;
 const TOWER_REACT_SECS = 0.5;
 /** Our tower's attack range when the API gives none. */
 const OWN_TOWER_RANGE = 700;
+/** The fed creep anchors the spot at or below this HP share (judgement: the deny window opens below 50%, the walk takes time). */
+export const FED_HP = 0.75;
+/** How far behind the fed creep, as a share of the bot's attack reach (capped at FED_REACH_CAP): inside reach, never past it. */
+const FED_BEHIND = 0.8;
+const FED_REACH_CAP = 300;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
@@ -77,7 +87,7 @@ export interface SpotInfo {
     spot: Vector;
     /** How far back along the lane the chosen candidate is, in 50-unit steps (telemetry). */
     pushed: number;
-    anchor: "creep" | "front" | "wave";
+    anchor: "creep" | "front" | "wave" | "fed";
     why: Why;
     /** The HP margin on the creep rings this frame. */
     margin: number;
@@ -185,6 +195,7 @@ export function Breaks(
     heroes: Unit[] = [],
     reach: number[] = [],
     cover?: Cover,
+    busy?: boolean[],
 ): Why | undefined {
     let hp = false;
     for (let i = 0; i < heroes.length; i++) {
@@ -199,7 +210,7 @@ export function Breaks(
     for (let i = 0; i < creeps.length; i++) {
         const c = creeps[i];
         if (!alive(c)) continue;
-        const ring = cover !== undefined && cover.held[i] ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
+        const ring = (cover !== undefined && cover.held[i]) || (busy !== undefined && busy[i]) ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
         const dist = d2(p, c.GetLocation());
         if (dist < ring) return "creep";
         if (dist < ring + margin) hp = true;
@@ -246,11 +257,17 @@ function breaksTower(p: Vector, towers: Unit[]): boolean {
     return false;
 }
 
+/** The fed creep when it anchors the spot: alive, in sight and at FED_HP or below. */
+export function FedAnchor(fed: Unit | undefined): Unit | undefined {
+    if (!alive(fed)) return undefined;
+    return fed.GetHealth() / math.max(1, fed.GetMaxHealth()) <= FED_HP ? fed : undefined;
+}
+
 /**
- * The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. Undefined only
- * when the lane has no direction (front and its back point coincide).
+ * The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
+ * lane_aggro's fed creep (see FedAnchor). Undefined only when the lane has no direction (front and its back point coincide).
  */
-export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
+export function Compute(bot: Unit, role: Role, fed?: Unit): SpotInfo | undefined {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
     const front = GetLaneFrontLocation(team, lane, 0);
@@ -287,7 +304,18 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     let py: number;
     let anchor: SpotInfo["anchor"] = "front";
     const range = bot.GetAttackRange();
-    if (creeps.length === 0) {
+    const anchorFed = FedAnchor(fed);
+    let busy: boolean[] | undefined;
+    if (anchorFed !== undefined) {
+        const reachFed = range + bot.GetBoundingRadius() + anchorFed.GetBoundingRadius();
+        const at = anchorFed.GetLocation();
+        const back = math.min(reachFed, FED_REACH_CAP) * FED_BEHIND;
+        px = at.x + dx * back;
+        py = at.y + dy * back;
+        anchor = "fed";
+        busy = [];
+        for (const c of creeps) busy.push(c.GetAttackTarget() === anchorFed);
+    } else if (creeps.length === 0) {
         anchor = "wave";
         px = front.x + dx * MELEE_BEHIND;
         py = front.y + dy * MELEE_BEHIND;
@@ -309,7 +337,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     // Perpendicular to the lane; shift away from the enemy hero (core) or towards its approach (support).
     const nx = -dy;
     const ny = dx;
-    if (enemyHero !== undefined) {
+    if (enemyHero !== undefined && anchorFed === undefined) {
         const [hx, hy] = sub(enemyHero.GetLocation(), front);
         const side = hx * nx + hy * ny >= 0 ? 1 : -1;
         const shift = role === "support" ? SIDE_SHIFT * 2 : -SIDE_SHIFT;
@@ -323,9 +351,9 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
     // creep that turns on it kills, so our tower's cover counts only above it.
     // Cores only: tspchk2 checked the core spot; a support's spot under our tower keeps the open-lane limits until a check reads it.
     const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
-    const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach) !== undefined ? 1 : 0);
+    const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach, undefined, busy) !== undefined ? 1 : 0);
     const pref = Vector(px, py, front.z);
-    const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover);
+    const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy);
     if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin, covered: covered(pref) };
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
@@ -347,7 +375,7 @@ export function Compute(bot: Unit, role: Role): SpotInfo | undefined {
                 keep = p;
                 keepPushed = k;
             }
-            if (Breaks(p, creeps, towers, margin, heroes, reach, cover) === undefined) {
+            if (Breaks(p, creeps, towers, margin, heroes, reach, cover, busy) === undefined) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;

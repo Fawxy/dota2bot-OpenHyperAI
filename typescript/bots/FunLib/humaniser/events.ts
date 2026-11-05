@@ -428,7 +428,7 @@ export const EVENTS = {
         td: "num",
         /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result. */
         out: "num",
-        /** feed: decisions the bot walked back into reach of the fed creep while it went down. */
+        /** feed: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`, `ev=lane_pos spot=fed`), else 0. */
         sty: "num",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
@@ -1224,6 +1224,7 @@ export const EVENTS = {
         running: "bool",
         label: "str",
         mode: "num",
+        /** The spot's anchor (creep, front, wave, fed: lane_aggro's fed creep going down), or oha. */
         spot: "str",
         pushed: "num",
         why: "str",
