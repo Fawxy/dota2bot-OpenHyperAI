@@ -46,9 +46,7 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportHalfPull = o.half
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
-	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600 })
-	-- MakeUnit drops `maxhp` (GetMaxHealth fell back to 100 against 600 HP, so the reserve checks ran on a 6x HP puller).
-	sup.maxhp = 600
+	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
 	local core = MakeUnit({ pid = 1, team = 2, loc = Vector(0, -5000), hp = o.coreHp })
 	core.lane, core.pos = Lane.Bot, 1
@@ -521,9 +519,9 @@ end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
 -- max HP. Eight neutrals (a stacked camp) against a single spawn's three, same puller (pw3_C_on_3 t=262.5, the one death:
--- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log). The window is the measured 1.5 s, not a share
--- of the lead (user 06/11/2026, the off-lane gates): a seen single spawn at 62% HP starts (120 dps x 1.5 s = 180 leaves
--- 192 of 600, above the 150 reserve; the old 0.5 x 3.9 s lead share priced it at 234 and held it), and the choice line's
+-- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log). The window is 1.5 s (`judgement`, between the measured 1.1 s of the hard camp and 2.4 s of the small camp), not a
+-- share of the lead (user 06/11/2026, the off-lane gates): a seen single spawn at 62% HP starts (120 dps x 1.5 s = 180 leaves
+-- 192 of 600, above the 150 reserve; the old 0.5 x 3.9 s lead share priced it at 330 and held it), and the choice line's
 -- `cdmg` is the damage the gate used.
 do
 	local function camp(k, hp)

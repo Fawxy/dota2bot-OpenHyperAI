@@ -66,7 +66,8 @@ export const SETTINGS = {
      *  StartReserve of its max HP. The window is a constant, not a share of the lead (user 06/11/2026: "when we're pulling
      *  the damage checks need to loosen. it's our creeps tanking that damage, not us, and we don't take much damage
      *  pulling"): on the banked `ok` pulls with no hero hit the puller lost 12% of its max HP on average whatever the camp
-     *  (583 off-lane pulls of the hard camp, 2,142 safe-lane pulls of the small camp; 9% lost 30% or more, 0 died), about
+     *  (518 off-lane pulls of the hard camp with no hero hit, 2,142 safe-lane pulls of the small camp; p90 30%, 0 died; the
+     *  numbers and query are in the slice file), about
      *  1.1 s of the hard camp's damage and 2.4 s of the small camp's; the old share of the lead (0.5 of 6.9 s) priced the
      *  hard camp at 38% of max HP and held 227 wanted off-lane slots at 63% HP. The camp's damage is what the API estimates
      *  for the neutrals it returns in the box, so a stacked camp still counts its stack (pw3_C_on_3 t=262.5: 8 neutrals,
