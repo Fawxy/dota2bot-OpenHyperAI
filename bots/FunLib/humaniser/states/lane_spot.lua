@@ -1,8 +1,11 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local sub, len, d2, alive, breaksTower, HOLD_DRIFT
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local UnitType = ____dota.UnitType
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
+local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 function sub(a, b)
     return {a.x - b.x, a.y - b.y}
 end
@@ -76,6 +79,16 @@ ____exports.FED_HP = 0.75
 --- How far behind the fed creep, as a share of the bot's attack reach (capped at FED_REACH_CAP): inside reach, never past it.
 local FED_BEHIND = 0.8
 local FED_REACH_CAP = 300
+--- Enemy creeps within this of our front are in the spot's own creep read; a clash anchor needs theirs further back.
+local FRONT_SEEN = 1000
+--- Their creeps up to our T1's range behind it still count as a clash at our tower.
+local CLASH_BEHIND = 700
+--- Our creep within this of their rearmost creep, on our side, is fighting it (wave_hold's MeetR).
+local MEET_R = 700
+--- Lane creeps further than this from the lane path are not on it (wave_hold's PathR).
+local PATH_R = 600
+--- The lane direction is read between the anchor and this far back along the path (GetLaneFrontLocation's -400).
+local BACK_ALONG = 400
 local function isRangedCreep(c)
     return (string.find(
         c:GetUnitName(),
@@ -340,6 +353,91 @@ function ____exports.FedAnchor(fed)
         fed:GetMaxHealth()
     ) <= ____exports.FED_HP and fed or nil
 end
+--- Pure: the rearmost clash, as a distance from our T1 along the lane (positive towards theirs), or undefined. `theirs` and
+-- `ours` are the lane creeps' distances, `front` our front's. Their creeps from CLASH_BEHIND behind our T1 to FRONT_SEEN short
+-- of our front count; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
+function ____exports.RearClash(theirs, ours, front)
+    local rear = math.huge
+    for ____, o in ipairs(theirs) do
+        if o >= -CLASH_BEHIND and o <= front - FRONT_SEEN and o < rear then
+            rear = o
+        end
+    end
+    if rear == math.huge then
+        return nil
+    end
+    local fight
+    for ____, o in ipairs(ours) do
+        if o <= rear and o >= rear - MEET_R and (fight == nil or o > fight) then
+            fight = o
+        end
+    end
+    return fight or rear
+end
+--- CANDIDATE(laneView): wave_hold's viewOf reads the same lane creep distances from our T1.
+local function ownDistances(path, t1, dir, list)
+    local out = {}
+    for ____, c in ipairs(list) do
+        do
+            local __continue68
+            repeat
+                if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue68 = true
+                    break
+                end
+                local l = c:GetLocation()
+                if l == nil then
+                    __continue68 = true
+                    break
+                end
+                local s, d = LanePush.Project(path, l.x, l.y)
+                if d <= PATH_R then
+                    out[#out + 1] = dir * (s - t1)
+                end
+                __continue68 = true
+            until true
+            if not __continue68 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- The rearmost clash on `lane` against our `front`: its point, the point BACK_ALONG behind it, and both distances.
+local function clashFor(team, lane, front)
+    local path = LanePush.PathOf(lane)
+    if path == nil then
+        return nil
+    end
+    local t1, dir = LanePush.OwnT1(path, team)
+    local far = dir * ((LanePush.Project(path, front.x, front.y)) - t1)
+    local own = ____exports.RearClash(
+        ownDistances(
+            path,
+            t1,
+            dir,
+            GetUnitList(UnitType.EnemyCreeps)
+        ),
+        ownDistances(
+            path,
+            t1,
+            dir,
+            GetUnitList(UnitType.AlliedCreeps)
+        ),
+        far
+    )
+    if own == nil then
+        return nil
+    end
+    local ax, ay = unpack(LanePush.PointAt(path, t1 + dir * own))
+    local bx, by = unpack(LanePush.PointAt(path, t1 + dir * (own - BACK_ALONG)))
+    return {
+        at = Vector(ax, ay, front.z),
+        back = Vector(bx, by, front.z),
+        own = own,
+        far = far
+    }
+end
 --- The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
 -- lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
 -- and its back point coincide).
@@ -348,6 +446,18 @@ function ____exports.Compute(bot, role, fed, hold)
     local lane = bot:GetAssignedLane()
     local front = GetLaneFrontLocation(team, lane, 0)
     local back = GetLaneFrontLocation(team, lane, -400)
+    local anchorFed = ____exports.FedAnchor(fed)
+    local ____temp_0
+    if role == "core" and anchorFed == nil and hold == nil then
+        ____temp_0 = clashFor(team, lane, front)
+    else
+        ____temp_0 = nil
+    end
+    local clash = ____temp_0
+    if clash ~= nil then
+        front = clash.at
+        back = clash.back
+    end
     local dx, dy = unpack(sub(back, front))
     local l = len(dx, dy)
     if l < 1 then
@@ -387,7 +497,6 @@ function ____exports.Compute(bot, role, fed, hold)
     local py
     local anchor = "front"
     local range = bot:GetAttackRange()
-    local anchorFed = ____exports.FedAnchor(fed)
     local busy
     if anchorFed ~= nil then
         local reachFed = range + bot:GetBoundingRadius() + anchorFed:GetBoundingRadius()
@@ -445,13 +554,15 @@ function ____exports.Compute(bot, role, fed, hold)
         bot:GetMaxHealth()
     )
     local margin = ____exports.HpMargin(hpFrac)
-    local ____temp_0
+    local ____temp_1
     if role == "core" and hpFrac > HP_LOW then
-        ____temp_0 = coverFor(bot, creeps, heroes)
+        ____temp_1 = coverFor(bot, creeps, heroes)
     else
-        ____temp_0 = nil
+        ____temp_1 = nil
     end
-    local cover = ____temp_0
+    local cover = ____temp_1
+    local cl = clash and clash.own
+    local fo = clash and clash.far
     local function covered(p)
         return cover ~= nil and ____exports.Breaks(
             p,
@@ -482,7 +593,9 @@ function ____exports.Compute(bot, role, fed, hold)
             anchor = anchor,
             why = "pref",
             margin = margin,
-            covered = covered(pref)
+            covered = covered(pref),
+            clash = cl,
+            far = fo
         }
     end
     local best
@@ -498,11 +611,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue84
+                    local __continue102
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue84 = true
+                            __continue102 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -524,9 +637,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue84 = true
+                        __continue102 = true
                     until true
-                    if not __continue84 then
+                    if not __continue102 then
                         break
                     end
                 end
@@ -545,7 +658,9 @@ function ____exports.Compute(bot, role, fed, hold)
                 anchor = anchor,
                 why = "xp",
                 margin = margin,
-                covered = 0
+                covered = 0,
+                clash = cl,
+                far = fo
             }
         end
         return {
@@ -554,7 +669,9 @@ function ____exports.Compute(bot, role, fed, hold)
             anchor = anchor,
             why = "xp",
             margin = margin,
-            covered = 0
+            covered = 0,
+            clash = cl,
+            far = fo
         }
     end
     return {
@@ -563,7 +680,9 @@ function ____exports.Compute(bot, role, fed, hold)
         anchor = anchor,
         why = first,
         margin = margin,
-        covered = covered(best)
+        covered = covered(best),
+        clash = cl,
+        far = fo
     }
 end
 return ____exports

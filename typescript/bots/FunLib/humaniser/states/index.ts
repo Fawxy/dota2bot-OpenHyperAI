@@ -179,6 +179,8 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["ne", ne !== undefined ? math.floor(ne) : undefined],
         ["nk", nk],
         ["nr", nr !== undefined ? math.floor(nr) : undefined],
+        ["cl", info?.clash !== undefined ? math.floor(info.clash) : undefined],
+        ["fo", info?.far !== undefined ? math.floor(info.far) : undefined],
     ]);
 }
 

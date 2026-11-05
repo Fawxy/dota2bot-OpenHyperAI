@@ -1305,7 +1305,9 @@
    "hph": "num",
    "ne": "num",
    "nk": "num",
-   "nr": "num"
+   "nr": "num",
+   "cl": "num",
+   "fo": "num"
   }
  },
  "kinds": {

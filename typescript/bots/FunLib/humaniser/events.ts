@@ -1497,6 +1497,10 @@ export const EVENTS = {
         ne: "num",
         nk: "num",
         nr: "num",
+        /** A core's spot on the rearmost clash (their creeps between our T1 and our front, the waves crossed): the clash's
+         *  distance from our T1 along the lane and our front's; absent when the spot anchored on our front as usual. */
+        cl: "num",
+        fo: "num",
     },
 } as const;
 

@@ -23,11 +23,18 @@
  * preferred point is the hold point (the lane's target point) and every enemy creep keeps only HELD_RING: the core means to
  * be their target there. The hero, tower and HP limits stand, so a threatening hero still pushes the spot back. `fed` wins.
  * lagchk3: in 15 of 30 fed creeps lost the bot made no deny attempt; lagrec1 2:32-2:38 a melee core held 550-640 from it.
+ * The rearmost clash (cores, no fed creep or hold): when their lane creeps stand on our lane between our T1 and our front, more
+ * than FRONT_SEEN short of it (the waves crossed: our old wave walked past theirs), the spot anchors there instead of on
+ * GetLaneFrontLocation, our furthest creep: on our creep nearest them on our side within MEET_R, else on their creep nearest
+ * our T1. awchk2 3:51 (pid 1, t=231.567): with the far front, a pos3 left 3 enemy creeps under our T1 and walked 3,301 up the
+ * lane past their carry; the bank held 23 such walks in 20 games.
  * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
  * core's spot for 54 of 79, the hero reach for 15.
  */
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { On } from "bots/FunLib/humaniser/ours";
+import * as LanePush from "bots/FunLib/humaniser/lane_push";
+import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 
 export const MELEE_RING = 520;
 export const RANGED_RING = 620;
@@ -81,6 +88,16 @@ export const FED_HP = 0.75;
 /** How far behind the fed creep, as a share of the bot's attack reach (capped at FED_REACH_CAP): inside reach, never past it. */
 const FED_BEHIND = 0.8;
 const FED_REACH_CAP = 300;
+/** Enemy creeps within this of our front are in the spot's own creep read; a clash anchor needs theirs further back. */
+const FRONT_SEEN = 1000;
+/** Their creeps up to our T1's range behind it still count as a clash at our tower. */
+const CLASH_BEHIND = 700;
+/** Our creep within this of their rearmost creep, on our side, is fighting it (wave_hold's MeetR). */
+const MEET_R = 700;
+/** Lane creeps further than this from the lane path are not on it (wave_hold's PathR). */
+const PATH_R = 600;
+/** The lane direction is read between the anchor and this far back along the path (GetLaneFrontLocation's -400). */
+const BACK_ALONG = 400;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
@@ -96,6 +113,9 @@ export interface SpotInfo {
     margin: number;
     /** 1 when the spot breaks a limit our tower relaxed (it stands closer than it would without our tower), else 0. */
     covered: number;
+    /** With the rearmost clash as the anchor: its distance from our T1 along the lane, and our front's (ev=lane_pos `cl`, `fo`). */
+    clash?: number;
+    far?: number;
 }
 
 /** Our towers' cover this frame: what each limit becomes under it. */
@@ -267,6 +287,46 @@ export function FedAnchor(fed: Unit | undefined): Unit | undefined {
 }
 
 /**
+ * Pure: the rearmost clash, as a distance from our T1 along the lane (positive towards theirs), or undefined. `theirs` and
+ * `ours` are the lane creeps' distances, `front` our front's. Their creeps from CLASH_BEHIND behind our T1 to FRONT_SEEN short
+ * of our front count; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
+ */
+export function RearClash(theirs: number[], ours: number[], front: number): number | undefined {
+    let rear = math.huge;
+    for (const o of theirs) if (o >= -CLASH_BEHIND && o <= front - FRONT_SEEN && o < rear) rear = o;
+    if (rear === math.huge) return undefined;
+    let fight: number | undefined;
+    for (const o of ours) if (o <= rear && o >= rear - MEET_R && (fight === undefined || o > fight)) fight = o;
+    return fight ?? rear;
+}
+
+/** CANDIDATE(laneView): wave_hold's viewOf reads the same lane creep distances from our T1. */
+function ownDistances(path: LanePath, t1: number, dir: number, list: Unit[]): number[] {
+    const out: number[] = [];
+    for (const c of list) {
+        if (c === undefined || c === null || c.IsNull() || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
+        const l = c.GetLocation();
+        if (l === undefined) continue;
+        const [s, d] = LanePush.Project(path, l.x, l.y);
+        if (d <= PATH_R) out.push(dir * (s - t1));
+    }
+    return out;
+}
+
+/** The rearmost clash on `lane` against our `front`: its point, the point BACK_ALONG behind it, and both distances. */
+function clashFor(team: number, lane: Lane, front: Vector): { at: Vector; back: Vector; own: number; far: number } | undefined {
+    const path = LanePush.PathOf(lane);
+    if (path === undefined) return undefined;
+    const [t1, dir] = LanePush.OwnT1(path, team);
+    const far = dir * (LanePush.Project(path, front.x, front.y)[0] - t1);
+    const own = RearClash(ownDistances(path, t1, dir, GetUnitList(UnitType.EnemyCreeps)), ownDistances(path, t1, dir, GetUnitList(UnitType.AlliedCreeps)), far);
+    if (own === undefined) return undefined;
+    const [ax, ay] = LanePush.PointAt(path, t1 + dir * own);
+    const [bx, by] = LanePush.PointAt(path, t1 + dir * (own - BACK_ALONG));
+    return { at: Vector(ax, ay, front.z), back: Vector(bx, by, front.z), own, far };
+}
+
+/**
  * The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
  * lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
  * and its back point coincide).
@@ -274,8 +334,14 @@ export function FedAnchor(fed: Unit | undefined): Unit | undefined {
 export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotInfo | undefined {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
-    const front = GetLaneFrontLocation(team, lane, 0);
-    const back = GetLaneFrontLocation(team, lane, -400);
+    let front = GetLaneFrontLocation(team, lane, 0);
+    let back = GetLaneFrontLocation(team, lane, -400);
+    const anchorFed = FedAnchor(fed);
+    const clash = role === "core" && anchorFed === undefined && hold === undefined ? clashFor(team, lane, front) : undefined;
+    if (clash !== undefined) {
+        front = clash.at;
+        back = clash.back;
+    }
     let [dx, dy] = sub(back, front);
     const l = len(dx, dy);
     if (l < 1) return undefined;
@@ -308,7 +374,6 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     let py: number;
     let anchor: SpotInfo["anchor"] = "front";
     const range = bot.GetAttackRange();
-    const anchorFed = FedAnchor(fed);
     let busy: boolean[] | undefined;
     if (anchorFed !== undefined) {
         const reachFed = range + bot.GetBoundingRadius() + anchorFed.GetBoundingRadius();
@@ -361,10 +426,12 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     // creep that turns on it kills, so our tower's cover counts only above it.
     // Cores only: tspchk2 checked the core spot; a support's spot under our tower keeps the open-lane limits until a check reads it.
     const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
+    const cl = clash?.own;
+    const fo = clash?.far;
     const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach, undefined, busy) !== undefined ? 1 : 0);
     const pref = Vector(px, py, front.z);
     const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy);
-    if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin, covered: covered(pref) };
+    if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin, covered: covered(pref), clash: cl, far: fo };
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
     let best: Vector | undefined;
@@ -394,8 +461,8 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
     if (best === undefined) {
-        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin, covered: 0 };
-        return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin, covered: 0 };
+        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin, covered: 0, clash: cl, far: fo };
+        return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin, covered: 0, clash: cl, far: fo };
     }
-    return { spot: best, pushed: bestPushed, anchor, why: first, margin, covered: covered(best) };
+    return { spot: best, pushed: bestPushed, anchor, why: first, margin, covered: covered(best), clash: cl, far: fo };
 }
