@@ -1495,13 +1495,17 @@ local function verbPlan(bot, pull, aggroAt)
     local s = LaneConfig.Settings()
     local camp = verbCamp(p)
     local lead = {unpack(p.lead)}
+    local stepIn = pull.timer.keep > 0 and s.PullTiming.HalfStepIn == true
+    if stepIn and #lead > 0 then
+        lead[#lead] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand or p.meet)
+    end
     camp.earlier = function()
         pull.hitAt = PullTiming.Read(
             pull.timer,
             DotaTime()
         )
         if pull.timer.stand ~= nil and #lead > 0 then
-            lead[#lead] = pull.timer.stand
+            lead[#lead] = stepIn and PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand) or pull.timer.stand
         end
         return aggroAt - pull.hitAt
     end
@@ -1511,8 +1515,8 @@ local function verbPlan(bot, pull, aggroAt)
         camp = camp,
         aggroAt = aggroAt,
         lead = lead,
-        watchAt = pull.timer.keep > 0 and s.PullTiming.HalfStepIn == true and (function()
-            local ____end = lead[#lead]
+        watchAt = stepIn and (function()
+            local ____end = pull.timer.stand or p.meet
             local engaged = __TS__ArraySome(
                 laneCreepsNear(p, s.Radii.MeetWatch),
                 function(____, c) return onNeutral(c) end

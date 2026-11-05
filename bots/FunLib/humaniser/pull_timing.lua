@@ -625,11 +625,24 @@ local function Clearance(t, alongs, keep, now, centre, heroSpeed)
     end
     return best
 end
---- A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): during the watch the puller, its
--- neutrals following, stands at the point on the line from HalfStepBack behind `stand` (towards `origin`) through `stand` to
--- `meet` that is nearest the meet point while every front creep, now and HalfStepAhead s on, stays more than HalfHeroAggro +
--- HalfStepBuffer from it; none clear: the back end. Once `engaged` (a creep of the wave on a neutral) it stays at `at`. The
--- hit's timing error (the neutrals' start 0.4-2.1 s after the hit, phchk3) is far above the search's margins (10-38).
+--- HalfStepBack behind `stand`, away from the lane towards `origin`: where a stepping-in half pull's lead ends.
+function ____exports.StepBackPoint(origin, stand)
+    local ox = stand.x - origin.x
+    local oy = stand.y - origin.y
+    local ol = math.max(
+        1,
+        math.sqrt(ox * ox + oy * oy)
+    )
+    local b = settings().HalfStepBack
+    return Vector(stand.x - ox / ol * b, stand.y - oy / ol * b, stand.z)
+end
+--- A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): the lead ends HalfStepBack behind
+-- `stand` (StepBackPoint), and during the watch the puller, its neutrals following, stands at the point on the line from
+-- there through `stand` to the lane at the meet point that is nearest the lane while every front creep, now and
+-- HalfStepAhead s on, stays more than HalfHeroAggro + HalfStepBuffer from it; none clear: the back end. Once `engaged` (a
+-- creep of the wave on a neutral) it stays at `at`. The hit's timing error (the neutrals' start 0.4-2.1 s after the hit,
+-- phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
+-- from the wave in phchk3, nothing taken) still reach the wave.
 function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
     if engaged then
         return at
@@ -639,6 +652,10 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
     local path = t.lanePath
     if path == nil then
         return stand
+    end
+    if t.meetAlong ~= nil then
+        local lx, ly = unpack(PathPoint(path, t.meetAlong))
+        meet = Vector(lx, ly, meet.z)
     end
     local alongs = ____exports.WaveAlongs(t, c.slot, now)
     if #alongs < c.keep + 1 then
@@ -653,13 +670,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
             k = k + 1
         end
     end
-    local ox = stand.x - origin.x
-    local oy = stand.y - origin.y
-    local ol = math.max(
-        1,
-        math.sqrt(ox * ox + oy * oy)
-    )
-    local back = Vector(stand.x - ox / ol * cfg.HalfStepBack, stand.y - oy / ol * cfg.HalfStepBack, stand.z)
+    local back = ____exports.StepBackPoint(origin, stand)
     local len = hypot(back.x, back.y, meet.x, meet.y)
     local n = math.max(
         1,

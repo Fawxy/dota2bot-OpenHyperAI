@@ -778,12 +778,16 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     const camp = verbCamp(p);
-    // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit.
+    // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit (with the
+    // step-in, HalfStepBack behind it, stepping in during the watch).
     const lead = [...p.lead];
+    const stepIn = pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true;
+    if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet);
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
         pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
-        if (pull.timer.stand !== undefined && lead.length > 0) lead[lead.length - 1] = pull.timer.stand;
+        if (pull.timer.stand !== undefined && lead.length > 0)
+            lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
     return {
@@ -792,10 +796,9 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
         camp,
         aggroAt,
         lead: lead as unknown as Lib.Vec[],
-        watchAt:
-            pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true
-                ? () => {
-                      const end = lead[lead.length - 1];
+        watchAt: stepIn
+            ? () => {
+                      const end = pull.timer.stand ?? p.meet;
                       const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
                       const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, bot.GetLocation());
                       if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());

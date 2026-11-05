@@ -420,12 +420,23 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
     return best;
 }
 
+/** HalfStepBack behind `stand`, away from the lane towards `origin`: where a stepping-in half pull's lead ends. */
+export function StepBackPoint(origin: Vector, stand: Vector): Vector {
+    const ox = stand.x - origin.x;
+    const oy = stand.y - origin.y;
+    const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
+    const b = settings().HalfStepBack;
+    return Vector(stand.x - (ox / ol) * b, stand.y - (oy / ol) * b, stand.z);
+}
+
 /**
- * A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): during the watch the puller, its
- * neutrals following, stands at the point on the line from HalfStepBack behind `stand` (towards `origin`) through `stand` to
- * `meet` that is nearest the meet point while every front creep, now and HalfStepAhead s on, stays more than HalfHeroAggro +
- * HalfStepBuffer from it; none clear: the back end. Once `engaged` (a creep of the wave on a neutral) it stays at `at`. The
- * hit's timing error (the neutrals' start 0.4-2.1 s after the hit, phchk3) is far above the search's margins (10-38).
+ * A half pull's live step-in (user 05/11/2026: walk-cancel towards the wave and time it): the lead ends HalfStepBack behind
+ * `stand` (StepBackPoint), and during the watch the puller, its neutrals following, stands at the point on the line from
+ * there through `stand` to the lane at the meet point that is nearest the lane while every front creep, now and
+ * HalfStepAhead s on, stays more than HalfHeroAggro + HalfStepBuffer from it; none clear: the back end. Once `engaged` (a
+ * creep of the wave on a neutral) it stays at `at`. The hit's timing error (the neutrals' start 0.4-2.1 s after the hit,
+ * phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
+ * from the wave in phchk3, nothing taken) still reach the wave.
  */
 export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector): Vector {
     if (engaged) return at;
@@ -433,6 +444,10 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     const t = c.timing;
     const path = t.lanePath;
     if (path === undefined) return stand;
+    if (t.meetAlong !== undefined) {
+        const [lx, ly] = PathPoint(path, t.meetAlong);
+        meet = Vector(lx, ly, meet.z);
+    }
     const alongs = WaveAlongs(t, c.slot, now);
     if (alongs.length < c.keep + 1) return stand;
     const fronts: [number, number][] = [];
@@ -440,10 +455,7 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
         fronts.push(PathPoint(path, alongs[k]));
         fronts.push(PathPoint(path, alongs[k] + cfg.CreepSpeed * cfg.HalfStepAhead));
     }
-    const ox = stand.x - origin.x;
-    const oy = stand.y - origin.y;
-    const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
-    const back = Vector(stand.x - (ox / ol) * cfg.HalfStepBack, stand.y - (oy / ol) * cfg.HalfStepBack, stand.z);
+    const back = StepBackPoint(origin, stand);
     const len = hypot(back.x, back.y, meet.x, meet.y);
     const n = math.max(1, math.ceil(len / 50));
     const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
