@@ -448,6 +448,12 @@ export const EVENTS = {
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
+        /** The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting at or
+         *  inside the hold point, lane_push's run has their front inside our T1's range in `fc` seconds; `why` is `losing`). */
+        trig: "str",
+        fc: "num",
+        /** The hold point's distance from our T1: the lane target, or their front when nearer, at least 800. */
+        hd: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         lh: "num",
@@ -479,6 +485,24 @@ export const EVENTS = {
         dur: "num",
         /** The bot's active mode when the attempt was left. */
         md: "num",
+    },
+    /**
+     * Slice core-in-lane: why the wave hold did not start for a core that owns it while their wave (2+ creeps) is at or inside
+     * the lane target, at most every 5 s per bot and reason. `why`: `ours` (our wave there and no forecast start), `late` (their
+     * front inside our T1's range + 50), `rest`, `reach`, `hp`.
+     */
+    wave_hold_skip: {
+        pid: "num",
+        lane: "num",
+        why: "str",
+        /** Their front's distance from our T1 and their creeps in the stretch. */
+        front: "num",
+        n: "num",
+        /** Our lane creeps from our T1's range out (`on`) and inside it (`oin`, from 400 behind the T1). */
+        on: "num",
+        oin: "num",
+        /** Forecast seconds until their front is inside our T1's range (on `rest`, `reach`, `hp` after a forecast start). */
+        fc: "num",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {

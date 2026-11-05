@@ -410,6 +410,9 @@
    "br": "str",
    "res": "str",
    "why": "str",
+   "trig": "str",
+   "fc": "num",
+   "hd": "num",
    "n": "num",
    "lh": "num",
    "dn": "num",
@@ -429,6 +432,16 @@
    "dhp": "num",
    "dur": "num",
    "md": "num"
+  },
+  "wave_hold_skip": {
+   "pid": "num",
+   "lane": "num",
+   "why": "str",
+   "front": "num",
+   "n": "num",
+   "on": "num",
+   "oin": "num",
+   "fc": "num"
   },
   "aggro_skip": {
    "pid": "num",
@@ -1437,6 +1450,10 @@
   "ev_wave_hold": {
    "br": "text",
    "res": "text",
+   "why": "text",
+   "trig": "text"
+  },
+  "ev_wave_hold_skip": {
    "why": "text"
   },
   "ev_aggro_skip": {

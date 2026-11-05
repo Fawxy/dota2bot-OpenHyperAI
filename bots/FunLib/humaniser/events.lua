@@ -351,6 +351,9 @@ ____exports.EVENTS = {
         br = "str",
         res = "str",
         why = "str",
+        trig = "str",
+        fc = "num",
+        hd = "num",
         n = "num",
         lh = "num",
         dn = "num",
@@ -370,6 +373,16 @@ ____exports.EVENTS = {
         dhp = "num",
         dur = "num",
         md = "num"
+    },
+    wave_hold_skip = {
+        pid = "num",
+        lane = "num",
+        why = "str",
+        front = "num",
+        n = "num",
+        on = "num",
+        oin = "num",
+        fc = "num"
     },
     aggro_skip = {pid = "num", role = "str", why = "str"},
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
