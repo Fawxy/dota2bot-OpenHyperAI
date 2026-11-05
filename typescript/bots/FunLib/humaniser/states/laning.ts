@@ -87,6 +87,15 @@ export function SetFed(bot: Unit, creep: Unit | undefined): void {
 
 export function ClearFed(): void {
     for (const k in fedCreep) fedCreep[k as unknown as number] = undefined;
+    for (const k in holdPoint) holdPoint[k as unknown as number] = undefined;
+}
+
+/** wave_hold's hold point per bot (the lane_spot input `hold`), set while a hold runs. */
+const holdPoint: Record<number, Vector | undefined> = {};
+
+/** wave_hold: the point this bot holds their wave at, or undefined when the hold ends. */
+export function SetHold(bot: Unit, at: Vector | undefined): void {
+    holdPoint[bot.GetPlayerID()] = at;
 }
 
 /**
@@ -109,7 +118,7 @@ export function Spot(bot: Unit): Vector | undefined {
     let v: Vector | undefined;
     let info: LaneSpot.SpotInfo | undefined;
     if (Settings().Spot === "sdk" || OwnsSpot(bot)) {
-        const [ok, res] = pcall(LaneSpot.Compute, bot, RoleOf(bot), fedCreep[pid]);
+        const [ok, res] = pcall(LaneSpot.Compute, bot, RoleOf(bot), fedCreep[pid], holdPoint[pid]);
         if (ok && res !== undefined) {
             info = res;
             v = res.spot;

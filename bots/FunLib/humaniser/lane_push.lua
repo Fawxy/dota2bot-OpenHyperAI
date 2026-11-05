@@ -156,11 +156,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue122
+            local __continue129
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue122 = true
+                    __continue129 = true
                     break
                 end
                 if select(
@@ -169,9 +169,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue122 = true
+                __continue129 = true
             until true
-            if not __continue122 then
+            if not __continue129 then
                 break
             end
         end
@@ -693,6 +693,44 @@ end
 function ____exports.PathOf(lane)
     return LANE_PATHS[lane]
 end
+--- The map point at distance `s` along the path (clamped to its ends).
+function ____exports.PointAt(lane, s)
+    local n = #lane.pts
+    if s <= lane.s[1] then
+        return lane.pts[1][1], lane.pts[1][2]
+    end
+    do
+        local i = 1
+        while i < n do
+            if s <= lane.s[i + 1] then
+                local seg = lane.s[i + 1] - lane.s[i]
+                local u = seg > 0 and (s - lane.s[i]) / seg or 0
+                local ax, ay = lane.pts[i][1], lane.pts[i][2]
+                return ax + u * (lane.pts[i + 1][1] - ax), ay + u * (lane.pts[i + 1][2] - ay)
+            end
+            i = i + 1
+        end
+    end
+    return lane.pts[n][1], lane.pts[n][2]
+end
+--- `team`'s T1 on the path, and the sign that turns a path distance into "towards their T1".
+function ____exports.OwnT1(lane, team)
+    return __TS__ArrayFind(
+        lane.towers,
+        function(____, tw) return tw.team == team end
+    ).s, dirOf(team)
+end
+--- When `team`'s next wave reaches path distance `s`, at or after `now`: waves spawn every 30 s from 0:00 (WaveAt) at the
+-- team's spawn end and walk the path at the lane creeps' 325.
+function ____exports.NextArrival(lane, team, s, now)
+    local spawn = team == R and lane.spawnR or lane.spawnD
+    local travel = math.abs(s - spawn) / SPEED
+    local k = math.max(
+        0,
+        math.ceil((now - travel) / 30)
+    )
+    return k * 30 + travel
+end
 local function kindOf(name)
     if (string.find(name, "siege", 1, true)) ~= nil then
         return "siege"
@@ -716,21 +754,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue116
+            local __continue123
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue116 = true
+                    __continue123 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue116 = true
+                    __continue123 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue116 = true
+                    __continue123 = true
                     break
                 end
                 out[#out + 1] = {
@@ -739,9 +777,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue116 = true
+                __continue123 = true
             until true
-            if not __continue116 then
+            if not __continue123 then
                 break
             end
         end

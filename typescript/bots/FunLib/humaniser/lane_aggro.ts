@@ -11,6 +11,8 @@
  *   follow us out and can be farmed there (user 05/11/2026; also an initiation point, for the fight work later).
  * - `drag`: one or two enemy creeps about to die beside an enemy hero are walked away from that hero, so the last hit is ours
  *   and a deny means the enemy walks up.
+ * - `back` (slice core-in-lane, started only by wave_hold's drag): their wave walking in with ours gone is drawn and walked
+ *   behind our T1 to meet our next wave there, a new draw each cooldown while no creep follows. The pull gate does not apply.
  * Cores do both. A support inherits them only while its lane's core is away (user 05/11/2026). One draw per lane at a time,
  * and none while our pull is out on that lane (the pull drags our wave away; feeding it then gives the wave away twice).
  * Stepped from mode_laning_generic's Think (cores, after the body's running swing) and from support_lane's step list.
@@ -28,7 +30,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 
-export type Kind = "feed" | "drag" | "tower";
+export type Kind = "feed" | "drag" | "tower" | "back";
 type PhaseName = "approach" | "walk" | "watch";
 
 // Mechanics are EC-053's; every other number is `judgement` until the probe (slice file) reads it.
@@ -110,6 +112,10 @@ export const SETTINGS = {
      */
     FeedHeroClear: 300,
     DragWatch: 3.5,
+    /** Back: the walk ends within BackArrive of its point or after BackWalk; drawn creeps within BackOut of it are `ok`. */
+    BackArrive: 150,
+    BackWalk: 10,
+    BackOut: 900,
     /** A support's lane core is away when no allied core of that lane is alive within this. */
     CoreNear: 1600,
 };
@@ -151,6 +157,8 @@ interface Attempt {
     role: string;
     /** Enemy hero to dragged creep distance at the hand-back. */
     hd?: number;
+    /** Back: the draws given. */
+    nd?: number;
 }
 
 const attempts: Record<number, Attempt | undefined> = {};
@@ -162,6 +170,12 @@ const fed: LuaTable<Unit, boolean> = new LuaTable();
 const laneDraw: Record<string, { pid: number; at: number } | undefined> = {};
 const pushCache: Record<string, { t: number; r: LanePush.Reading | undefined } | undefined> = {};
 const lastSkip: Record<number, { why: string; at: number } | undefined> = {};
+/** When each bot's last tower move ended (wave_hold logs it as why our wave is gone). */
+const towerEnd: Record<number, number | undefined> = {};
+
+export function TowerMovedAt(pid: number): number | undefined {
+    return towerEnd[pid];
+}
 
 function laneKey(team: number, lane: Lane): string {
     return `${team}:${lane}`;
@@ -525,6 +539,7 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
 function finish(bot: Unit, a: Attempt, result: string, now: number): void {
     attempts[bot.GetPlayerID()] = undefined;
     if (a.kind === "feed") Laning.SetFed(bot, undefined);
+    if (a.kind === "tower") towerEnd[bot.GetPlayerID()] = now;
     Telemetry.Event("aggro", [
         ["pid", bot.GetPlayerID()],
         ["role", a.role],
@@ -546,6 +561,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["td", a.td],
         ["out", a.out],
         ["sty", a.kind === "feed" ? a.sty : undefined],
+        ["nd", a.nd],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
     ]);
@@ -573,6 +589,27 @@ function drawnOn(bot: Unit, target: Unit): Unit[] {
     return out;
 }
 
+/**
+ * wave_hold's drag: draw their creeps near the bot and walk them to `to` (behind our T1). False when a move already runs or a
+ * shared gate (the draw clock, another hero's draw on the lane, HP, a trade) says no; the pull gate does not apply.
+ */
+export function StartBack(bot: Unit, to: Vector): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    if (attempts[pid] !== undefined || !Ours.On("LaneAggro")) return false;
+    if (!CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid))) return false;
+    if (LaneHeld(now, pid, laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())])) return false;
+    if (frac(bot) < SETTINGS.MinHp) return false;
+    const near = enemyCreepsNear(bot, bot.GetLocation(), SETTINGS.DrawR);
+    if (near.length === 0) return false;
+    const hero = orderTarget(bot);
+    if (hero === undefined) return false;
+    const a = newAttempt(bot, "back", "walk", hero, near[0], to, undefined, now);
+    a.nd = 0;
+    start(bot, a);
+    return true;
+}
+
 /** The result once the move has handed the frame back: the creep's fate, read from our last-hit and deny counters. */
 function watch(bot: Unit, a: Attempt, now: number): void {
     if (!bot.IsAlive()) return finish(bot, a, "died", now);
@@ -581,6 +618,14 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         if (!dead) a.onr = math.max(a.onr, drawnOn(bot, a.creep).length);
         if (dead) return finish(bot, a, counter(bot, "GetDenies") > a.dn0 ? "denied" : "lost", now);
         if (now - (a.droppedAt ?? a.startedAt) > SETTINGS.FeedWatch) return finish(bot, a, "alive", now);
+    } else if (a.kind === "back") {
+        let out = 0;
+        for (const s0 of a.start ?? []) {
+            const u = s0.unit;
+            if (!u.IsNull() && u.IsAlive() && d2(u.GetLocation(), a.back) <= SETTINGS.BackOut) out++;
+        }
+        a.out = out;
+        return finish(bot, a, out > 0 ? "ok" : "stayed", now);
     } else if (a.kind === "tower") {
         if (now - (a.walkedAt ?? a.startedAt) < SETTINGS.TowerWatch) return;
         let out = 0;
@@ -638,6 +683,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         CoreTrade.NotePrimed(pid, now);
         laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())] = { pid, at: now };
         if (a.kind === "feed") fed.set(a.creep, true);
+        if (a.nd !== undefined) a.nd++;
         return true;
     }
     const t = now - a.orderedAt;
@@ -674,6 +720,24 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         }
         bot.Action_MoveToLocation(a.back);
         return true;
+    }
+    if (a.kind === "back") {
+        if (GetUnitToLocationDistance(bot, a.back) > SETTINGS.BackArrive && now - a.startedAt < SETTINGS.BackWalk) {
+            if (drawnOn(bot, bot).length === 0 && CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid)) && valid(a.hero)) {
+                bot.Action_AttackUnit(a.hero, true);
+                a.orderedAt = now;
+                orderedAt[pid] = now;
+                CoreTrade.NotePrimed(pid, now);
+                laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())] = { pid, at: now };
+                a.nd = (a.nd ?? 0) + 1;
+                return true;
+            }
+            bot.Action_MoveToLocation(a.back);
+            return true;
+        }
+        a.walkedAt = now;
+        a.phase = "watch";
+        return false;
     }
     if (a.kind === "tower") {
         if (t < SETTINGS.TowerWalk) {
@@ -783,4 +847,5 @@ export function Reset(): void {
     for (const k in laneDraw) laneDraw[k] = undefined;
     for (const k in pushCache) pushCache[k] = undefined;
     for (const k in lastSkip) lastSkip[k as unknown as number] = undefined;
+    for (const k in towerEnd) towerEnd[k as unknown as number] = undefined;
 }
