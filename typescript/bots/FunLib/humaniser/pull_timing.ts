@@ -391,15 +391,19 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
             let stop: [number, number] | undefined;
             for (let j = 0; j <= span; j++) {
                 const [nx, ny] = stop ?? walked[j];
+                const hit = hs !== undefined && hypot(nx, ny, hero[j][0], hero[j][1]) <= cfg.HalfHitReach;
                 let fight = false;
                 for (let k = 0; k < creeps.length; k++) {
                     const [cx, cy] = creeps[k][h + j];
                     const d = hypot(nx, ny, cx, cy);
-                    // The nearer source in HalfAcquire's frame (a creep HalfHeroAggro from the puller counts as HalfAcquire).
-                    const e = hs !== undefined ? math.min(d, hypot(hero[j][0], hero[j][1], cx, cy) - rh + r) : d;
-                    if (k < keep) clear = math.min(clear, e);
+                    // The nearer source in HalfAcquire's frame (a creep HalfHeroAggro from the puller counts as HalfAcquire). For
+                    // the front creeps the puller counts throughout (it may be hit at any time); for the one meant to turn only
+                    // while the neutrals are in HalfHitReach of it (phhar2: camp 26's hits had the third creep pass the unhit
+                    // puller on the lane with the neutrals 600-700 behind it, and nothing turned).
+                    const dh = hs !== undefined ? hypot(hero[j][0], hero[j][1], cx, cy) - rh + r : math.huge;
+                    if (k < keep) clear = math.min(clear, math.min(d, dh));
                     else {
-                        if (k === keep) turn = math.min(turn, e);
+                        if (k === keep) turn = math.min(turn, hit ? math.min(d, dh) : d);
                         if (d <= r) fight = true;
                     }
                 }
@@ -481,7 +485,11 @@ export function Read(c: CreepTimer, now: number): number {
         if (alongs.length >= math.max(c.index, c.keep) + 2) {
             const v = settings().CreepSpeed;
             let hit = now + (meet + c.past - alongs[c.index]) / v - walk;
-            if (c.keep > 0) {
+            if (c.keep > 0 && settings().HalfStepIn === true) {
+                // With the live step-in the hit only has to bring the neutrals to the back point in time: early costs a wait
+                // off the lane, late loses the wave (phhar2 camp 26: the wave 450-730 past at their arrival, nothing taken).
+                hit -= settings().HalfNeutralDelay + settings().HalfStepEarly;
+            } else if (c.keep > 0) {
                 const s = Clearance(t, alongs, c.keep, now, hit, c.heroSpeed);
                 if (s !== undefined) {
                     hit = s.hit;

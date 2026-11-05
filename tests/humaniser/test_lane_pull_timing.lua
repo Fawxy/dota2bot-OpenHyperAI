@@ -211,7 +211,8 @@ do
 	-- wave, the neutrals walking towards the front creeps). A camp 900 ahead along the lane and 700 off it: at the
 	-- HalfClear aim the front creeps pass within 500 of the neutrals' walk. The search's hit keeps the front two outside
 	-- 500 and brings the third inside it, checked here by walking both at 0.01 s, the neutrals stopping at the fight.
-	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	-- The search runs without the live step-in (HalfStepIn false).
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 }, HalfStepIn = false } }).Lane.PullTiming
 	CURRENT_TEAM = 2
 	CREEPS[2], CREEPS[3] = {}, {}
 	local meet = Vector(-1600, -5000)
@@ -271,12 +272,11 @@ do
 	local sh = PT.Read(side, T)
 	local _, _, heroClear = walk(sh, side.standBack, 330)
 	check("precondition: the neutrals-only hit walks a front creep within 450 of the puller", side.margin > 0 and heroClear < 450, heroClear)
+	-- Counting the puller only while the neutrals are in reach of it to turn the third (phhar2: the unhit puller turned
+	-- nothing), no hit time splits this wave: the search says so (hm <= 0), where the neutrals-only search claimed one.
 	local withHero = PT.Timer(timing, slot, 1, 500, 2, 330)
-	local hh = PT.Read(withHero, T)
-	local nClear, nTurn, hClear, hTurn = walk(hh, withHero.standBack, 330)
-	check("half with the puller: the hit keeps the front two out of both (" .. math.floor(nClear) .. ", " .. math.floor(hClear) ..
-		") and turns the third (" .. math.floor(nTurn) .. ", " .. math.floor(hTurn) .. ")",
-		withHero.margin > 0 and nClear > 500 and hClear > 450 and (nTurn <= 500 or hTurn <= 450), withHero.margin)
+	PT.Read(withHero, T)
+	check("half with the puller: no clean split from the side camp (hm <= 0)", withHero.margin ~= nil and withHero.margin <= 0, withHero.margin)
 	-- The live step-in from the side camp: the puller holds off the lane while the front two are near the meet point and
 	-- steps in to it once they are past (front creeps more than 450 + 50 from where it stands, now and 0.5 s on).
 	local stand = Vector(meet.x + (origin.x - meet.x) * 300 / dist(origin, meet), meet.y + (origin.y - meet.y) * 300 / dist(origin, meet))
@@ -305,6 +305,18 @@ do
 		and dist(mid, meet) > 0, dist(mid, meet))
 	CREEPS[2] = {}
 	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
+	-- With the step-in (the default) the hit is the HalfClear aim brought forward by HalfNeutralDelay + HalfStepEarly
+	-- (2 s), so the neutrals wait off the lane rather than arrive late; no search runs.
+	local T0 = T
+	local SP = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	T, CURRENT_TEAM = T0, 2
+	CREEPS[2] = {}
+	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
+	local st = SP.For(2, Lane.Bot, origin, "small", { meet }, true, { 15, 45 })
+	local early = SP.Timer(st, slot, 1, 500, 2, 330)
+	local eh = SP.Read(early, T)
+	local aim2 = T + (st.meetAlong + 500 - alongs[2]) / 325 - st.walk
+	check("step-in aim: 2 s before the HalfClear aim, no search", math.abs(eh - (aim2 - 2)) < 1e-6 and early.margin == nil, eh - aim2)
 	local full = PT.Timer(timing, slot, 0, 100)
 	PT.Read(full, T)
 	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)

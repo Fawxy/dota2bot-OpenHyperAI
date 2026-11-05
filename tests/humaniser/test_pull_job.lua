@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -274,7 +274,7 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
@@ -377,11 +377,15 @@ end
 do
 	local function wave(t, aggroAt, now)
 		if t.meetAlong == nil or t.walk == nil then return {} end
-		local a2 = t.meetAlong + 500 - 325 * (aggroAt + 0.5 + t.walk - now)
+		local a2 = t.meetAlong + 500 - 325 * (aggroAt + 1.5 + t.walk - now)
 		return { a2 + 150, a2, a2 - 150, a2 - 300 }
 	end
+	-- The clearance search runs without the live step-in; the puller's own aggro is left out (HalfHeroAggro 0) so this
+	-- wave has a clean hit to log.
 	local function half(o)
 		o.reading = HOLD
+		o.stepIn = false
+		o.heroAggro = 0
 		return livePull(o)
 	end
 	local near = half({ alongs = wave })
@@ -400,7 +404,7 @@ do
 		local a = t.meetAlong - 325 * (aggroAt + t.walk - now)
 		return { a, a, a, a }
 	end
-	local job, out = livePull({ reading = HOLD, alongs = bunched })
+	local job, out = livePull({ reading = HOLD, alongs = bunched, stepIn = false })
 	local stay = lines(out, "choice")[1]
 	check("half geo: no split, no pull started, why=half-geo with hm <= 0", job == nil and stay ~= nil and field(stay, "go") == "0"
 		and field(stay, "why") == "half-geo" and field(stay, "hm") ~= nil and tonumber(field(stay, "hm")) <= 0, stay)

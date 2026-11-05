@@ -375,6 +375,9 @@ export const DEFAULTS = {
         // neutrals start 0.4-2.3 s after the hit (camp 1 0.6-1.4); the puller may stand short of the meet point by any of
         // HalfStandBack on the lead's last leg. `judgement`.
         HalfHeroStart: 400,
+        // The neutrals hit the puller within this of it (the search's turn on the puller; `judgement`: melee neutrals reach
+        // about 100-150, the camps' ranged ones 300-500).
+        HalfHitReach: 350,
         HalfNeutralDelay: 1,
         HalfStandBack: [0, 150, 300, 450] as number[],
         // The live step-in (PullTiming.StepIn): the puller may stand up to HalfStepBack behind the search's stand point, and
@@ -384,6 +387,9 @@ export const DEFAULTS = {
         HalfStepBack: 300,
         HalfStepAhead: 0.5,
         HalfStepBuffer: 50,
+        // With the step-in, the hit goes out HalfNeutralDelay + HalfStepEarly before the HalfClear aim (the clearance search
+        // runs only without it). `judgement`: the neutrals' start spread 0.4-2.1 s.
+        HalfStepEarly: 1,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.

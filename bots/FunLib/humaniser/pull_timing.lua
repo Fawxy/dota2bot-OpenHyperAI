@@ -579,21 +579,25 @@ local function Clearance(t, alongs, keep, now, centre, heroSpeed)
                     local j = 0
                     while j <= span do
                         local nx, ny = unpack(stop or walked[j + 1])
+                        local hit = hs ~= nil and hypot(nx, ny, hero[j + 1][1], hero[j + 1][2]) <= cfg.HalfHitReach
                         local fight = false
                         do
                             local k = 0
                             while k < #creeps do
                                 local cx, cy = unpack(creeps[k + 1][h + j + 1])
                                 local d = hypot(nx, ny, cx, cy)
-                                local e = hs ~= nil and math.min(
-                                    d,
-                                    hypot(hero[j + 1][1], hero[j + 1][2], cx, cy) - rh + r
-                                ) or d
+                                local dh = hs ~= nil and hypot(hero[j + 1][1], hero[j + 1][2], cx, cy) - rh + r or math.huge
                                 if k < keep then
-                                    clear = math.min(clear, e)
+                                    clear = math.min(
+                                        clear,
+                                        math.min(d, dh)
+                                    )
                                 else
                                     if k == keep then
-                                        turn = math.min(turn, e)
+                                        turn = math.min(
+                                            turn,
+                                            hit and math.min(d, dh) or d
+                                        )
                                     end
                                     if d <= r then
                                         fight = true
@@ -710,7 +714,9 @@ function ____exports.Read(c, now)
         if #alongs >= math.max(c.index, c.keep) + 2 then
             local v = settings().CreepSpeed
             local hit = now + (meet + c.past - alongs[c.index + 1]) / v - walk
-            if c.keep > 0 then
+            if c.keep > 0 and settings().HalfStepIn == true then
+                hit = hit - (settings().HalfNeutralDelay + settings().HalfStepEarly)
+            elseif c.keep > 0 then
                 local s = Clearance(
                     t,
                     alongs,
