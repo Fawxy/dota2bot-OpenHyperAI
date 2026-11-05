@@ -181,6 +181,23 @@ do
 	FOGGED = nil
 end
 
+-- A half-cleared camp is not its make-up: the respawn is priced as the camp was seen untouched (cngchk8 game 1049 camp 1).
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local extra = MakeNeutral({ x = LARGE.x + 50, y = LARGE.y, hp = 600, maxhp = 600 })
+	local whole = CC.Plan(core, FRONT, 300, c)
+	camp[1].hp = 1200
+	extra.hp = 0
+	CC.Plan(core, FRONT, 300, c)
+	camp[1].unseen = true
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local seen = CC.Plan(core, FRONT, 300, c)
+	check("seen: the fogged camp keeps its untouched two-neutral make-up", whole ~= nil and seen ~= nil and seen.src == "seen" and seen.n0 == 2 and math.abs(seen.clr - whole.clr) < 1e-6, seen and seen.n0)
+	FOGGED = nil
+end
+
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.
 do
 	local H, core = world({ camps = { { "small", SMALL } } })
