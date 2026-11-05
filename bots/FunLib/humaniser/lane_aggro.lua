@@ -756,30 +756,24 @@ local function finish(bot, a, result, now)
         }
     )
 end
+--- Where a creep seen at the order stands now: undefined once removed, dead or with no location (it left our vision; the
+-- handle stays valid but reads none: chold3_A_on_1 t=217.6, `lua_error` in States.SupportStep).
+local function seenAt(u)
+    if u:IsNull() or not u:IsAlive() then
+        return nil
+    end
+    return u:GetLocation() or nil
+end
 --- Enemy creeps near at the order that have since moved MovedR or more (drawn off their fight).
-local function movedOf(a)
+function ____exports.MovedOf(start)
     local n = 0
-    for ____, s0 in ipairs(a.start or ({})) do
-        do
-            local __continue123
-            repeat
-                local u = s0.unit
-                if u:IsNull() or not u:IsAlive() then
-                    __continue123 = true
-                    break
-                end
-                local l = u:GetLocation()
-                if d2(
-                    l,
-                    Vector(s0.x, s0.y, l.z)
-                ) >= ____exports.SETTINGS.MovedR then
-                    n = n + 1
-                end
-                __continue123 = true
-            until true
-            if not __continue123 then
-                break
-            end
+    for ____, s0 in ipairs(start or ({})) do
+        local l = seenAt(s0.unit)
+        if l ~= nil and d2(
+            l,
+            Vector(s0.x, s0.y, l.z)
+        ) >= ____exports.SETTINGS.MovedR then
+            n = n + 1
         end
     end
     return n
@@ -788,19 +782,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue128
+            local __continue129
             repeat
                 if not valid(c) then
-                    __continue128 = true
+                    __continue129 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue128 = true
+                __continue129 = true
             until true
-            if not __continue128 then
+            if not __continue129 then
                 break
             end
         end
@@ -889,10 +883,8 @@ local function watch(bot, a, now)
         local out = 0
         for ____, s0 in ipairs(a.start or ({})) do
             local u = s0.unit
-            if not u:IsNull() and u:IsAlive() and d2(
-                u:GetLocation(),
-                a.back
-            ) <= ____exports.SETTINGS.BackOut then
+            local l = seenAt(u)
+            if l ~= nil and d2(l, a.back) <= ____exports.SETTINGS.BackOut then
                 out = out + 1
             end
         end
@@ -906,10 +898,8 @@ local function watch(bot, a, now)
         local tl = a.tower:GetLocation()
         for ____, s0 in ipairs(a.start or ({})) do
             local u = s0.unit
-            if not u:IsNull() and u:IsAlive() and d2(
-                u:GetLocation(),
-                tl
-            ) >= ____exports.SETTINGS.TowerOrderR then
+            local l = seenAt(u)
+            if l ~= nil and d2(l, tl) >= ____exports.SETTINGS.TowerOrderR then
                 out = out + 1
             end
         end
@@ -1004,7 +994,7 @@ local function act(bot, a, now)
     )
     a.mv = math.max(
         a.mv,
-        movedOf(a)
+        ____exports.MovedOf(a.start)
     )
     if t >= ____exports.SETTINGS.DrawCheck and a.drawn == 0 and a.mv == 0 then
         finish(bot, a, "no_draw", now)
@@ -1021,23 +1011,24 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue175
+                    local __continue176
                     repeat
                         local u = s0.unit
-                        if u:IsNull() or not u:IsAlive() or d2(
-                            u:GetLocation(),
+                        local l = seenAt(u)
+                        if l == nil or d2(
+                            l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue175 = true
+                            __continue176 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue175 = true
+                        __continue176 = true
                     until true
-                    if not __continue175 then
+                    if not __continue176 then
                         break
                     end
                 end

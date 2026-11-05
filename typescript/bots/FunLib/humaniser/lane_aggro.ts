@@ -567,14 +567,21 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
     ]);
 }
 
+/**
+ * Where a creep seen at the order stands now: undefined once removed, dead or with no location (it left our vision; the
+ * handle stays valid but reads none: chold3_A_on_1 t=217.6, `lua_error` in States.SupportStep).
+ */
+function seenAt(u: Unit): Vector | undefined {
+    if (u.IsNull() || !u.IsAlive()) return undefined;
+    return u.GetLocation() ?? undefined;
+}
+
 /** Enemy creeps near at the order that have since moved MovedR or more (drawn off their fight). */
-function movedOf(a: Attempt): number {
+export function MovedOf(start: { unit: Unit; x: number; y: number }[] | undefined): number {
     let n = 0;
-    for (const s0 of a.start ?? []) {
-        const u = s0.unit;
-        if (u.IsNull() || !u.IsAlive()) continue;
-        const l = u.GetLocation();
-        if (d2(l, Vector(s0.x, s0.y, l.z)) >= SETTINGS.MovedR) n++;
+    for (const s0 of start ?? []) {
+        const l = seenAt(s0.unit);
+        if (l !== undefined && d2(l, Vector(s0.x, s0.y, l.z)) >= SETTINGS.MovedR) n++;
     }
     return n;
 }
@@ -622,7 +629,8 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         let out = 0;
         for (const s0 of a.start ?? []) {
             const u = s0.unit;
-            if (!u.IsNull() && u.IsAlive() && d2(u.GetLocation(), a.back) <= SETTINGS.BackOut) out++;
+            const l = seenAt(u);
+            if (l !== undefined && d2(l, a.back) <= SETTINGS.BackOut) out++;
         }
         a.out = out;
         return finish(bot, a, out > 0 ? "ok" : "stayed", now);
@@ -632,7 +640,8 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         const tl = a.tower!.GetLocation();
         for (const s0 of a.start ?? []) {
             const u = s0.unit;
-            if (!u.IsNull() && u.IsAlive() && d2(u.GetLocation(), tl) >= SETTINGS.TowerOrderR) out++;
+            const l = seenAt(u);
+            if (l !== undefined && d2(l, tl) >= SETTINGS.TowerOrderR) out++;
         }
         a.out = out;
         return finish(bot, a, out > 0 ? "ok" : "stayed", now);
@@ -688,7 +697,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     const t = now - a.orderedAt;
     a.drawn = math.max(a.drawn, drawnOn(bot, bot).length);
-    a.mv = math.max(a.mv, movedOf(a));
+    a.mv = math.max(a.mv, MovedOf(a.start));
     if (t >= SETTINGS.DrawCheck && a.drawn === 0 && a.mv === 0) {
         finish(bot, a, "no_draw", now);
         return false;
@@ -702,7 +711,8 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
             }
             for (const s0 of a.start ?? []) {
                 const u = s0.unit;
-                if (u.IsNull() || !u.IsAlive() || d2(u.GetLocation(), Vector(s0.x, s0.y, 0)) < SETTINGS.MovedR) continue;
+                const l = seenAt(u);
+                if (l === undefined || d2(l, Vector(s0.x, s0.y, 0)) < SETTINGS.MovedR) continue;
                 const d = GetUnitToUnitDistance(u, a.creep);
                 if (nearest === undefined || d < nearest) nearest = d;
             }
