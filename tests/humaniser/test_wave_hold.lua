@@ -14,30 +14,37 @@ check("our wave fighting theirs (600 past their front): no hold", W.Read({ 1500,
 check("our wave ahead of theirs walking back in: no hold", W.Read({ 1500, 1600 }, { 1200 }, 900) == "ours")
 local r2 = W.Read({ 1500, 1600 }, { -800 }, 900)
 check("our next wave still behind our T1 (800): ours is gone, hold", type(r2) == "table" and r2.front == 1500, r2)
-check("their front 20 inside the 750 floor (our T1's range + 50): late", W.Read({ 730, 800 }, {}, 900) == "late")
-local r3 = W.Read({ 800, 850 }, {}, 900)
-check("their front 800 out, inside the side target 900: a hold, not late", type(r3) == "table" and r3.front == 800, r3)
--- obs0611 mark 4 (Luna 1:48-1:53 bot): a pull returnee of ours at 666 fighting 3 of theirs just outside our T1's range; mark 5
--- (Sniper 2:35 mid): our lone ranged creep at 512 while 4 of theirs walk in from 900. A creep of ours inside the T1's range is
--- not our wave.
-local m4 = W.Read({ 760, 770, 775, 2200, 2230 }, { 666 }, 900, { true })
-check("mark 4: our lone creep fighting at 666 inside the T1's range does not keep the hold off", type(m4) == "table" and m4.front == 760 and m4.n == 5, m4)
-local m5 = W.Read({ 900, 920, 954, 1338 }, { 512 }, 1300, { true })
-check("mark 5: our lone ranged creep fighting at 512 does not keep the hold off", type(m5) == "table" and m5.front == 900, m5)
-check("one of ours at the T1's range edge (700) fighting their wave still counts as our wave", W.Read({ 800, 850 }, { 700 }, 900, { true }) == "ours")
+-- The user's rule (06/11/2026): the hold keeps their creeps just outside tower fire. Our T1 fires to its range plus both hull
+-- radii (fallback 700 + 144 + 16 = 860 to a creep's centre); a start needs their front 50 past that.
+check("tower reach from the fallbacks: 700 + 144 + 16", W.EffReach() == 860)
+check("tower reach from the API's values", W.EffReach(700, 120, 20) == 840)
+-- hschk2 8:18-8:25 top: Pudge held at 756 with their creeps at 727-795 from our T1; the tower shot the one at 795 dead.
+check("hschk2: their front 792 is inside tower fire: late, no start", W.Read({ 792, 830, 1188 }, {}, 900) == "late")
+check("their front 905, inside the 910 floor: late", W.Read({ 905, 950 }, {}, 900) == "late")
+local r3 = W.Read({ 920, 950 }, {}, 900)
+check("their front 920, outside the 910 floor: a hold", type(r3) == "table" and r3.front == 920, r3)
+check("a smaller reach from the API moves the floor: front 880 starts under 820", type(W.Read({ 880, 950 }, {}, 900, {}, 820)) == "table")
+-- obs0611 marks 4 and 5 (Luna 1:48 bot, Sniper 2:35 mid): a lone creep of ours fighting inside our T1's range (666, 512) is not
+-- our wave. Their wave stood 740-900 out there, inside tower fire by the rule above, so the shapes here sit further out.
+local m4 = W.Read({ 960, 970, 975, 2200, 2230 }, { 666 }, 900, { true })
+check("mark 4 shape: our lone creep fighting at 666 inside the T1's range does not keep the hold off", type(m4) == "table" and m4.front == 960 and m4.n == 5, m4)
+local m5 = W.Read({ 930, 950, 970, 1338 }, { 512 }, 1300, { true })
+check("mark 5 shape: our lone ranged creep fighting at 512 does not keep the hold off", type(m5) == "table" and m5.front == 930, m5)
+check("one of ours at the T1's range edge (700) fighting their wave still counts as our wave", W.Read({ 950, 990 }, { 700 }, 900, { true }) == "ours")
 -- hdchk1 0:27 top: our fresh wave walking out under our T1 while theirs walks in 2,190 out is our wave, not gone.
 check("our fresh wave walking out under our T1 (not fighting): our wave", W.Read({ 2190, 2290 }, { -205, -8, 115, 215 }, 900, { false, false, false, false }) == "ours")
 
--- The hold point: the lane target, or their front when it is already nearer our T1, never inside 800 of it.
-check("hold point: their front past the side target, the target", W.HoldAt(900, 1500) == 900)
-check("hold point: their front 850 inside the target, at their front", W.HoldAt(900, 850) == 850)
-check("hold point: their front 760, at their front (never past it)", W.HoldAt(900, 760) == 760)
+-- The hold point: the lane target, or their front when nearer, never inside tower fire + 50 (910 on the fallbacks).
+check("hold point, side lane: the target 900 is inside the 910 floor, so 910", W.HoldAt(900, 1500) == 910)
+check("hold point, mid: their front past the target 1,300, the target", W.HoldAt(1300, 1500) == 1300)
+check("hold point, mid: their front 1,000 inside the target, at their front", W.HoldAt(1300, 1000) == 1000)
+check("hold point under the API's reach 840: floor 890", W.HoldAt(900, 960, 840) == 900 and W.HoldAt(1300, 895, 840) == 895 and W.HoldAt(1300, 880, 840) == 890)
 -- The creeps of ours that do not end an attempt as met: those fighting in the clash at the start, not our next wave.
 check("in the clash: one of ours fighting 300 behind their rear", W.InClash(1500, true, 1800))
 check("not in the clash: our next wave walking up 3,000 behind our T1", not W.InClash(-3000, false, 1800))
 check("not in the clash: one of ours fighting 2,000 past their rear (another fight)", not W.InClash(3900, true, 1800))
 
--- The forecast start reads lane_push's run: their front inside our T1's range within 8 s while our wave still fights.
+-- The forecast start reads lane_push's run: their front inside our T1's fire (860) within 8 s while our wave still fights.
 -- Radiant's bot T1 sits at 8,057 on the bot path (sign +1); 2:30 has no spawn in the next 8 s.
 do
 	local bot = paths[3]
@@ -53,7 +60,7 @@ do
 		{ team = 3, kind = "melee", s = T + 960, hp = 562 },
 	})
 	local fc = W.TowerIn(losing, T, 1, 3, 150)
-	check("forecast: 2 weak creeps of ours v 4 at 900: their front inside our T1's range within 8 s", fc ~= nil and fc > 0 and fc <= 8, fc)
+	check("forecast: 2 weak creeps of ours v 4 at 900: their front inside our T1's fire (860) within 8 s", fc ~= nil and fc > 0 and fc <= 8, fc)
 	local winning = run({
 		{ team = 2, kind = "melee", s = T + 860, hp = 562 },
 		{ team = 2, kind = "melee", s = T + 870, hp = 562 },
@@ -69,9 +76,9 @@ do
 	-- Dire's view: its bot T1 at 12,574, distances towards Radiant's are negative path steps (sign -1).
 	local D1 = 12574
 	local dire = { { t = 150, front = { [2] = D1 - 1200 } }, { t = 155, front = { [2] = D1 - 650 } } }
-	check("forecast, Dire: Radiant's front 650 from Dire's T1 at 5 s", W.TowerIn(dire, D1, -1, 2, 150) == 5, W.TowerIn(dire, D1, -1, 2, 150))
-	local direOut = { { t = 150, front = { [2] = D1 - 1200 } }, { t = 155, front = { [2] = D1 - 750 } } }
-	check("forecast, Dire: Radiant's front 750 out: no start", W.TowerIn(direOut, D1, -1, 2, 150) == nil)
+	check("forecast, Dire: Radiant's front 650 from Dire's T1 (inside its fire) at 5 s", W.TowerIn(dire, D1, -1, 2, 150) == 5, W.TowerIn(dire, D1, -1, 2, 150))
+	local direOut = { { t = 150, front = { [2] = D1 - 1200 } }, { t = 155, front = { [2] = D1 - 870 } } }
+	check("forecast, Dire: Radiant's front 870 out, outside tower fire (860): no start", W.TowerIn(direOut, D1, -1, 2, 150) == nil)
 end
 -- chold1 0:31 mid: their front creeps chased 900 past a clash our wave was still fighting further out.
 check("our wave fighting their rear creeps 800 behind their front: no hold", W.Read({ 1100, 1900, 1950 }, { 2050 }, 1300) == "ours")

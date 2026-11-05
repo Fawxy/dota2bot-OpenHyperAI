@@ -448,12 +448,16 @@ export const EVENTS = {
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
-        /** The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting at or
-         *  inside the hold point, lane_push's run has their front inside our T1's range in `fc` seconds; `why` is `losing`). */
+        /** The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within
+         *  200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is
+         *  `losing`). */
         trig: "str",
         fc: "num",
-        /** The hold point's distance from our T1: the lane target, or their front when nearer, at least 800. */
+        /** The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50. */
         hd: "num",
+        /** Our T1's fire reach to a creep's centre (attack range plus both hull radii, from the API; fallback 860): the
+         *  start's late floor and the hold point's floor are this plus 50. */
+        rch: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         lh: "num",
@@ -501,6 +505,8 @@ export const EVENTS = {
         /** Our lane creeps from our T1's range out (`on`) and inside it (`oin`, from 400 behind the T1). */
         on: "num",
         oin: "num",
+        /** Our T1's fire reach (as ev=wave_hold `rch`). */
+        rch: "num",
         /** Forecast seconds until their front is inside our T1's range (on `rest`, `reach`, `hp` after a forecast start). */
         fc: "num",
     },

@@ -9,11 +9,11 @@
  * - `retreat`: OHA's retreat took the core.
  * Two starts (logged as `trig`, decided 06/11/2026 from obs0611 marks 4 and 5): `gone`, our wave is gone from the lane outside
  * our T1's range; `forecast`, our wave is still fighting theirs at or inside the hold point and lane_push's run has their front
- * inside our T1's range within ForecastSecs, so the core is in front before our wave dies.
+ * inside our T1's fire within ForecastSecs, so the core is in front before our wave dies.
  * One ev=wave_hold line per attempt, at its end. Stepped from the core draw step (States.CoreAggroStep, H1), before lane
  * aggro's own step; States.Tick ends an attempt whose caller lost the frame.
  */
-import { BotMode, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -33,9 +33,19 @@ export const SETTINGS = {
     /** Their wave: at least MinCreeps creeps from our T1 to StartAhead past the target point. */
     MinCreeps: 2,
     StartAhead: 1600,
-    /** Our T1's range (700); their front inside it plus LateMargin is too late to hold (obs0611 mark 4: at 300 the side
-     *  target 900 itself lay inside the floor). The hold point is never nearer our T1 than this floor. */
+    /** Our T1's listed attack range (game files), for the reads that count creeps "under our T1" (Read's busy rule, the
+     *  forecast, `tw`, the `tower` end). */
     TowerR: 700,
+    /**
+     * The user's rule (06/11/2026): the hold keeps their creeps just outside tower fire. The tower hits a creep whose centre
+     * is within its attack range plus both hull radii (hschk2 8:25 top: their creep at 792-795 from our T1's centre was shot
+     * dead). The reach comes from the API (our T1's GetAttackRange and GetBoundingRadius, a creep's GetBoundingRadius), these
+     * fallbacks when it gives nothing: range 700 (npc_units.txt), hulls DOTA_HULL_SIZE_TOWER 144 and DOTA_HULL_SIZE_REGULAR
+     * 16. Their front within LateMargin past that reach is too late to start; the hold point is never nearer our T1 than it.
+     * LateMargin is `judgement`.
+     */
+    TowerHull: 144,
+    CreepHull: 16,
     LateMargin: 50,
     /**
      * Our wave is gone when none of our lane creeps stands from OursBehind behind our T1 to OursAhead past their rearmost creep
@@ -78,8 +88,10 @@ export const SETTINGS = {
     Arrived: 300,
     /** A lane-aggro tower move that ended this recently is why our wave is gone. */
     AggroRecent: 20,
-    /** The forecast start: read at most every ForecastEvery while their front is at or inside the lane target and our wave is
-     *  there; it starts when lane_push's run puts their front inside TowerR within ForecastSecs. */
+    /** The forecast start: read at most every ForecastEvery while our wave is there and their front within ForecastAhead past
+     *  the hold point's ceiling (the lane target or the floor, whichever is further; `judgement`, since the side target 900
+     *  lies inside the floor); it starts when lane_push's run puts their front inside tower fire (the reach) within ForecastSecs. */
+    ForecastAhead: 200,
     ForecastEvery: 1,
     ForecastSecs: 8,
     /** One ev=wave_hold_skip per bot and reason at most this often. */
@@ -106,7 +118,7 @@ export function Stretch(theirs: number[], target: number): { n: number; front: n
  * Pure: the trigger's reading of a lane, from our T1 distances (positive towards theirs) of the lane creeps on it; `busy[i]`
  * when ours[i] has an attack target.
  */
-export function Read(theirs: number[], ours: number[], target: number, busy: boolean[] = []): { front: number; n: number } | string {
+export function Read(theirs: number[], ours: number[], target: number, busy: boolean[] = [], reach = EffReach()): { front: number; n: number } | string {
     const w = Stretch(theirs, target);
     if (w.n < SETTINGS.MinCreeps) return "none";
     for (let i = 0; i < ours.length; i++) {
@@ -114,13 +126,20 @@ export function Read(theirs: number[], ours: number[], target: number, busy: boo
         if (o < SETTINGS.TowerR && busy[i] === true) continue;
         if (o >= -SETTINGS.OursBehind && o <= w.rear + SETTINGS.OursAhead) return "ours";
     }
-    if (w.front < SETTINGS.TowerR + SETTINGS.LateMargin) return "late";
+    if (w.front < reach + SETTINGS.LateMargin) return "late";
     return { front: w.front, n: w.n };
 }
 
-/** Pure: the hold point's distance from our T1 for the lane target and their front at the start: never past their front. */
-export function HoldAt(target: number, front: number): number {
-    return math.max(SETTINGS.TowerR + SETTINGS.LateMargin, math.min(target, front));
+/** Pure: our T1's fire reach to a creep's centre (`reach` in the docs), from the API's values or the fallbacks. */
+export function EffReach(range?: number, towerHull?: number, creepHull?: number): number {
+    const ok = (x: number | undefined, d: number) => (x !== undefined && x > 0 ? x : d);
+    return ok(range, SETTINGS.TowerR) + ok(towerHull, SETTINGS.TowerHull) + ok(creepHull, SETTINGS.CreepHull);
+}
+
+/** Pure: the hold point's distance from our T1 for the lane target and their front at the start: never past their front, never
+ *  inside LateMargin past the tower's reach. */
+export function HoldAt(target: number, front: number, reach = EffReach()): number {
+    return math.max(reach + SETTINGS.LateMargin, math.min(target, front));
 }
 
 /** Pure: whether a creep of ours at `own` is in the clash at the start (fighting, within our-wave reach of their rear), so
@@ -133,11 +152,11 @@ export function InClash(own: number, busy: boolean, rear: number): boolean {
  * Pure: seconds from `t0` until lane_push's run (`samples`) has `enemy`'s front inside our T1's range, within ForecastSecs;
  * undefined when it stays out. `t1` and `dir` are our T1 on the path and the sign towards theirs.
  */
-export function TowerIn(samples: LanePush.Sample[], t1: number, dir: number, enemy: number, t0: number): number | undefined {
+export function TowerIn(samples: LanePush.Sample[], t1: number, dir: number, enemy: number, t0: number, reach = EffReach()): number | undefined {
     for (const smp of samples) {
         if (smp.t - t0 > SETTINGS.ForecastSecs) break;
         const f = smp.front[enemy];
-        if (f !== undefined && dir * (f - t1) < SETTINGS.TowerR) return smp.t - t0;
+        if (f !== undefined && dir * (f - t1) < reach) return smp.t - t0;
     }
     return undefined;
 }
@@ -176,6 +195,7 @@ interface Attempt {
     trig: string;
     fc?: number;
     hd: number;
+    rch: number;
     /** Our creeps already fighting at the start that do not end it as `met` (the losing wave, a lone creep under the T1). */
     old: Unit[];
     n: number;
@@ -215,6 +235,16 @@ function frac(u: Unit): number {
 /** Whether the hold may act for this bot: the switches, an in-lane core under CoreLastHit with our spot. */
 export function Owns(bot: Unit): boolean {
     return Ours.On("CoreHold") && Ours.On("LaneSpot") && CoreLastHit.Applies(bot) && bot.IsAlive() && Phase.IsLaningFor(bot);
+}
+
+const T1_OF: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
+
+/** Our T1's reach on this lane from the API, with a creep of theirs (when one is in view) for the creep hull. */
+function towerReach(team: number, lane: Lane, v: LaneView): number {
+    const t = GetTower(team, T1_OF[lane]);
+    const alive = t !== undefined && t !== null && !t.IsNull() && t.IsAlive();
+    const c = v.units.length > 0 ? v.units[0].u : undefined;
+    return EffReach(alive ? t.GetAttackRange() : undefined, alive ? t.GetBoundingRadius() : undefined, c !== undefined ? c.GetBoundingRadius() : undefined);
 }
 
 function fighting(c: Unit): boolean {
@@ -316,6 +346,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["trig", a.trig],
         ["fc", a.fc !== undefined ? math.floor(a.fc * 10) / 10 : undefined],
         ["hd", math.floor(a.hd)],
+        ["rch", math.floor(a.rch)],
         ["n", a.n],
         ["lh", counter(bot, "GetLastHits") - a.lh0],
         ["dn", counter(bot, "GetDenies") - a.dn0],
@@ -350,11 +381,11 @@ export function Tick(bot: Unit): void {
 }
 
 /** Why a start was refused (`reach`, `hp`), or the attempt. */
-function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, now: number, trig: string, fc: number | undefined): Attempt | string {
+function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, reach: number, now: number, trig: string, fc: number | undefined): Attempt | string {
     const lane = bot.GetAssignedLane();
     const tgt = LanePush.TargetOf(lane);
     const z = bot.GetLocation().z;
-    const hd = HoldAt(tgt, front);
+    const hd = HoldAt(tgt, front, reach);
     const hold = pointAt(v, hd, z);
     if (GetUnitToLocationDistance(bot, hold) > SETTINGS.Reach) return "reach";
     if (frac(bot) < SETTINGS.StartHp) return "hp";
@@ -373,6 +404,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, n
         trig,
         fc,
         hd,
+        rch: reach,
         old,
         n,
         lh0: counter(bot, "GetLastHits"),
@@ -389,7 +421,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, n
 }
 
 /** One ev=wave_hold_skip per bot and reason per SkipEvery. */
-function skip(bot: Unit, v: LaneView, why: string, front: number, n: number, now: number, fc?: number): void {
+function skip(bot: Unit, v: LaneView, why: string, front: number, n: number, reach: number, now: number, fc?: number): void {
     const key = `${bot.GetPlayerID()}:${why}`;
     const at = skippedAt[key];
     if (at !== undefined && now - at < SETTINGS.SkipEvery) return;
@@ -409,13 +441,14 @@ function skip(bot: Unit, v: LaneView, why: string, front: number, n: number, now
         ["n", n],
         ["on", on],
         ["oin", oin],
+        ["rch", math.floor(reach)],
         ["fc", fc !== undefined ? math.floor(fc * 10) / 10 : undefined],
     ]);
 }
 
 /** lane_push's run for the forecast start, at most every ForecastEvery per bot: seconds until their front is inside our T1's
  *  range, or undefined (also when the run fails or was read too recently: `false`). */
-function forecastIn(bot: Unit, v: LaneView, now: number): number | undefined | false {
+function forecastIn(bot: Unit, v: LaneView, reach: number, now: number): number | undefined | false {
     const pid = bot.GetPlayerID();
     const at = forecastAt[pid];
     if (at !== undefined && now - at < SETTINGS.ForecastEvery) return false;
@@ -428,7 +461,7 @@ function forecastIn(bot: Unit, v: LaneView, now: number): number | undefined | f
     const samples = (ok ? r : undefined) as LanePush.Sample[] | undefined;
     if (samples === undefined || samples.length === 0) return undefined;
     const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
-    return TowerIn(samples, v.t1, v.dir, enemy, samples[0].t);
+    return TowerIn(samples, v.t1, v.dir, enemy, samples[0].t, reach);
 }
 
 /** The start read: an attempt, or undefined (a skip worth reading is logged). */
@@ -438,7 +471,8 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
     const v = viewOf(bot.GetTeam(), lane);
     if (v === undefined) return undefined;
     const tgt = LanePush.TargetOf(lane);
-    const r = Read(v.theirs, v.ours, tgt, v.busy);
+    const reach = towerReach(bot.GetTeam(), lane, v);
+    const r = Read(v.theirs, v.ours, tgt, v.busy, reach);
     const w = Stretch(v.theirs, tgt);
     let front: number;
     let n: number;
@@ -446,20 +480,20 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
     let fc: number | undefined;
     if (typeof r === "string") {
         if (r !== "ours" && r !== "late") return undefined;
-        // Only a wave at or inside the hold point is worth a line or a forecast: further out the lanes are just fighting.
-        if (w.front > tgt) return undefined;
+        // Only a wave near the hold point is worth a line or a forecast: further out the lanes are just fighting.
+        if (w.front > math.max(tgt, reach + SETTINGS.LateMargin) + SETTINGS.ForecastAhead) return undefined;
         if (r === "late") {
-            skip(bot, v, "late", w.front, w.n, now);
+            skip(bot, v, "late", w.front, w.n, reach, now);
             return undefined;
         }
-        if (w.front < SETTINGS.TowerR + SETTINGS.LateMargin) {
-            skip(bot, v, "ours", w.front, w.n, now);
+        if (w.front < reach + SETTINGS.LateMargin) {
+            skip(bot, v, "ours", w.front, w.n, reach, now);
             return undefined;
         }
-        const f = forecastIn(bot, v, now);
+        const f = forecastIn(bot, v, reach, now);
         if (f === false) return undefined;
         if (f === undefined) {
-            skip(bot, v, "ours", w.front, w.n, now);
+            skip(bot, v, "ours", w.front, w.n, reach, now);
             return undefined;
         }
         front = w.front;
@@ -472,12 +506,12 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
     }
     const ended = endedAt[pid];
     if (ended !== undefined && now - ended < SETTINGS.RestAfter) {
-        skip(bot, v, "rest", front, n, now, fc);
+        skip(bot, v, "rest", front, n, reach, now, fc);
         return undefined;
     }
-    const a = begin(bot, v, front, n, w.rear, now, trig, fc);
+    const a = begin(bot, v, front, n, w.rear, reach, now, trig, fc);
     if (typeof a === "string") {
-        skip(bot, v, a, front, n, now, fc);
+        skip(bot, v, a, front, n, reach, now, fc);
         return undefined;
     }
     return a;

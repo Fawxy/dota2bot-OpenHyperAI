@@ -354,6 +354,7 @@ ____exports.EVENTS = {
         trig = "str",
         fc = "num",
         hd = "num",
+        rch = "num",
         n = "num",
         lh = "num",
         dn = "num",
@@ -382,6 +383,7 @@ ____exports.EVENTS = {
         n = "num",
         on = "num",
         oin = "num",
+        rch = "num",
         fc = "num"
     },
     aggro_skip = {pid = "num", role = "str", why = "str"},

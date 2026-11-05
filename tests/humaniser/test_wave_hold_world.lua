@@ -8,6 +8,8 @@ local Lane, BotMode = dota.Lane, dota.BotMode
 local T1 = 8057
 local function world()
 	local H = LaneFresh({ Enable = true }, { telemetry = { Enable = true } })
+	-- Our T1's API values as in game: range 700, tower hull 144; lane creeps' hull 16 (reach 860, floor 910).
+	for _, t in pairs(TOWERS_W[2]) do t.range, t.hull = 700, 144 end
 	local lines = {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 	local W = require("bots/FunLib/humaniser/states/wave_hold")
@@ -37,13 +39,15 @@ local function world()
 	return { W = W, bot = bot, creep = creep, count = count, lines = lines, H = H }
 end
 
--- obs0611 mark 4's shape, the gone start: our pull returnee fighting at 666 under our T1, theirs at 800-840 on it. The hold
--- starts, and the returnee's fight (within 700 of their front) does not end it as met; our next wave walking up does.
+-- obs0611 mark 4's shape, the gone start: our pull returnee fighting at 666 under our T1, theirs at 950-990 (outside tower
+-- fire). The hold starts, and the returnee's fight (within 700 of their front) does not end it as met; our next wave does.
 do
 	local w = world()
 	T = 110
 	local back = w.creep(2, 666)
-	local e1, e2, e3 = w.creep(3, 800), w.creep(3, 820), w.creep(3, 840)
+	local e1 = w.creep(3, 950)
+	w.creep(3, 970)
+	w.creep(3, 990)
 	back.target = e1
 	e1.target = back
 	w.W.Step(w.bot)
@@ -77,17 +81,17 @@ do
 	check("fresh wave walking out: no hold starts", w.count("wave_hold") == 0 and #w.lines == 0, table.concat(w.lines, "\n"))
 end
 
--- obs0611 mark 5's shape, the forecast start: 2 weak creeps of ours fighting 4 of theirs at 850-960. lane_push's run has their
+-- obs0611 mark 5's shape (moved out of tower fire), the forecast start: 2 weak creeps of ours fighting 4 of theirs at 950-1,060. lane_push's run has their
 -- front under our T1 within 8 s, so the hold starts while ours still fights; our next wave already on the map 3,000 behind our
 -- T1 is not in the clash, so it ends the attempt as met when it arrives.
 do
 	local w = world()
 	T = 150
-	local m = w.creep(2, 850, { hp = 200 })
-	local r = w.creep(2, 840, { hp = 150, kind = "ranged" })
+	local m = w.creep(2, 950, { hp = 200 })
+	local r = w.creep(2, 940, { hp = 150, kind = "ranged" })
 	local nextWave = w.creep(2, -3000)
 	local es = {}
-	for i, o in ipairs({ 900, 920, 940, 960 }) do es[i] = w.creep(3, o) end
+	for i, o in ipairs({ 1000, 1020, 1040, 1060 }) do es[i] = w.creep(3, o) end
 	m.target, r.target = es[1], es[1]
 	es[1].target, es[2].target = m, m
 	w.W.Step(w.bot)
@@ -102,8 +106,8 @@ do
 	check("forecast start: our next wave reaching their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=forecast") == 1 and w.count("wave_hold", "why=losing") == 1, table.concat(w.lines, "\n"))
 end
 
--- A full wave of ours fighting 2 weak creeps of theirs at 900: the run keeps their front out, so no start, and one skip line
--- `ours` for every SkipEvery (5 s) however often the core reads it.
+-- A full wave of ours fighting 2 weak creeps of theirs at 900 (inside the 910 floor): no start, and one skip line `ours` for
+-- every SkipEvery (5 s) however often the core reads it.
 do
 	local w = world()
 	T = 150
@@ -120,4 +124,28 @@ do
 	check("skip `ours` at most once per 5 s over 8 s of reads: 2 lines", w.count("wave_hold_skip", "why=ours") == 2, w.count("wave_hold_skip", "why=ours"))
 end
 
+-- hschk2 8:18 top (user, 06/11/2026: "pudge is holding their creeps under tower fire"): their creeps at 792-830 from our T1 with
+-- ours gone are inside its fire (reach 860): no hold, a `late` skip line with the reach. With a smaller tower hull from the API
+-- (100: reach 816, floor 866) a front at 880 starts, held at 880.
+do
+	local w = world()
+	T = 498
+	w.creep(3, 792)
+	w.creep(3, 830)
+	w.creep(3, 1188)
+	w.W.Step(w.bot)
+	check("hschk2: their front under tower fire: no hold, skip late with rch=860", w.count("wave_hold") == 0 and w.count("wave_hold_skip", "why=late") == 1 and w.count("wave_hold_skip", "rch=860") == 1, table.concat(w.lines, "\n"))
+	local w2 = world()
+	for _, t in pairs(TOWERS_W[2]) do t.hull = 100 end
+	T = 498
+	w2.creep(3, 880)
+	w2.creep(3, 900)
+	w2.W.Step(w2.bot)
+	T = 498.5
+	w2.creep(2, 700)
+	w2.W.Step(w2.bot)
+	check("the API's tower hull sets the floor: front 880 starts and holds at 880", w2.count("wave_hold", "rch=816") == 1 and w2.count("wave_hold", "hd=879") + w2.count("wave_hold", "hd=880") == 1, table.concat(w2.lines, "\n"))
+end
+
 finish()
+
