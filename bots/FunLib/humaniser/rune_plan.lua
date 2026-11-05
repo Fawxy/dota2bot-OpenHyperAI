@@ -186,7 +186,7 @@ function ____exports.Make(now, busy)
         plan.sup = best
         plan.supSpot = supSpot or nearer(best, a, b)
     else
-        plan.why = "no-near-support"
+        plan.why = freeSupport(nil, busy, {}) ~= nil and "no-near-support" or "no-free-support"
     end
     if plan.mid == nil then
         plan.why = plan.why or "no-mid"

@@ -128,7 +128,7 @@ export function Make(now: number, busy: (this: void, u: Unit) => boolean): Plan 
     if (best !== undefined) {
         plan.sup = best;
         plan.supSpot = supSpot ?? nearer(best, a, b);
-    } else plan.why = "no-near-support";
+    } else plan.why = freeSupport(undefined, busy, []) !== undefined ? "no-near-support" : "no-free-support";
     if (plan.mid === undefined) plan.why = plan.why ?? "no-mid";
     return plan;
 }

@@ -124,6 +124,15 @@ do
 	check("mark 14: the top-lane support gets the top spot, not the bot-lane one", plan.sup == wd and plan.supSpot == P1)
 	plan = H.RunePlan.Make(320, function(u) return u == wd end)
 	check("mark 14: with the top-lane support busy nobody crosses", plan.sup == nil and plan.why == "no-near-support", plan.why)
+	plan = H.RunePlan.Make(320, function() return true end)
+	check("mark 14: no free support at all keeps no-free-support", plan.sup == nil and plan.why == "no-free-support", plan.why)
+	-- Drop: WD is planned and drops; Lion is free but nearer the mid's (bot) spot, so he is refused (drop, not swap).
+	H.RunePlan.ResetCache()
+	CURRENT_TEAM = DIRE
+	T = 320
+	local sp = H.RunePlan.SpotOf(wd, function() return false end)
+	local rep = H.RunePlan.Drop(wd, "hit", function() return false end)
+	check("mark 14: Drop refuses a free support nearer the mid's spot", sp == P1 and rep == nil, tostring(rep))
 	check("mark 14: Lion is not planned either way", plan.sup ~= lion)
 end
 
