@@ -14,7 +14,10 @@ check("our wave fighting theirs (600 past their front): no hold", W.Read({ 1500,
 check("our wave ahead of theirs walking back in: no hold", W.Read({ 1500, 1600 }, { 1200 }, 900) == "ours")
 local r2 = W.Read({ 1500, 1600 }, { -800 }, 900)
 check("our next wave still behind our T1 (800): ours is gone, hold", type(r2) == "table" and r2.front == 1500, r2)
-check("their front already in our T1's range: late", W.Read({ 600, 700 }, {}, 900) == "late")
+check("their front within 300 of our T1's range: late", W.Read({ 950, 1100 }, {}, 900) == "late")
+check("their front 1,050 out: not late", type(W.Read({ 1050, 1100 }, {}, 900)) == "table")
+-- chold1 0:31 mid: their front creeps chased 900 past a clash our wave was still fighting further out.
+check("our wave fighting their rear creeps 800 behind their front: no hold", W.Read({ 1100, 1900, 1950 }, { 2050 }, 1300) == "ours")
 check("their wave still beyond the stretch (2,500 past our T1 on a side lane): none", W.Read({ 3000, 3100 }, {}, 900) == "none")
 check("mid's target sits further out, so the same wave is in its stretch", type(W.Read({ 2700, 2800 }, {}, 1300)) == "table")
 check("one creep is not a wave", W.Read({ 1500 }, {}, 900) == "none")

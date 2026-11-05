@@ -18,6 +18,7 @@ ____exports.SETTINGS = {
     MinCreeps = 2,
     StartAhead = 1600,
     TowerR = 700,
+    LateMargin = 300,
     OursBehind = 400,
     OursAhead = 600,
     MeetR = 700,
@@ -41,6 +42,7 @@ ____exports.SETTINGS = {
 function ____exports.Read(theirs, ours, target)
     local n = 0
     local front = math.huge
+    local rear = -math.huge
     for ____, o in ipairs(theirs) do
         do
             local __continue3
@@ -51,6 +53,7 @@ function ____exports.Read(theirs, ours, target)
                 end
                 n = n + 1
                 front = math.min(front, o)
+                rear = math.max(rear, o)
                 __continue3 = true
             until true
             if not __continue3 then
@@ -62,11 +65,11 @@ function ____exports.Read(theirs, ours, target)
         return "none"
     end
     for ____, o in ipairs(ours) do
-        if o >= -____exports.SETTINGS.OursBehind and o <= front + ____exports.SETTINGS.OursAhead then
+        if o >= -____exports.SETTINGS.OursBehind and o <= rear + ____exports.SETTINGS.OursAhead then
             return "ours"
         end
     end
-    if front < ____exports.SETTINGS.TowerR then
+    if front < ____exports.SETTINGS.TowerR + ____exports.SETTINGS.LateMargin then
         return "late"
     end
     return {front = front, n = n}

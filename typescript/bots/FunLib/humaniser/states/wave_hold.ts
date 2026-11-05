@@ -30,9 +30,14 @@ export const SETTINGS = {
     /** Their wave: at least MinCreeps creeps from our T1 to StartAhead past the target point. */
     MinCreeps: 2,
     StartAhead: 1600,
-    /** Their front inside our T1's range (700): too late to hold. */
+    /** Our T1's range (700); their front inside it plus LateMargin is too late to hold. */
     TowerR: 700,
-    /** Our wave is gone when none of our lane creeps stands from OursBehind behind our T1 to OursAhead past their front. */
+    LateMargin: 300,
+    /**
+     * Our wave is gone when none of our lane creeps stands from OursBehind behind our T1 to OursAhead past their rearmost creep
+     * in the stretch. chold1 0:31 mid: their front creeps chased past a clash still running 1,000 further out; a window on
+     * their front alone read that as our wave gone.
+     */
     OursBehind: 400,
     OursAhead: 600,
     /** The waves met: one of ours this close to their nearest creep. */
@@ -69,14 +74,16 @@ export type Branch = "hold" | "drag" | "retreat";
 export function Read(theirs: number[], ours: number[], target: number): { front: number; n: number } | string {
     let n = 0;
     let front = math.huge;
+    let rear = -math.huge;
     for (const o of theirs) {
         if (o < -SETTINGS.OursBehind || o > target + SETTINGS.StartAhead) continue;
         n++;
         front = math.min(front, o);
+        rear = math.max(rear, o);
     }
     if (n < SETTINGS.MinCreeps) return "none";
-    for (const o of ours) if (o >= -SETTINGS.OursBehind && o <= front + SETTINGS.OursAhead) return "ours";
-    if (front < SETTINGS.TowerR) return "late";
+    for (const o of ours) if (o >= -SETTINGS.OursBehind && o <= rear + SETTINGS.OursAhead) return "ours";
+    if (front < SETTINGS.TowerR + SETTINGS.LateMargin) return "late";
     return { front, n };
 }
 
