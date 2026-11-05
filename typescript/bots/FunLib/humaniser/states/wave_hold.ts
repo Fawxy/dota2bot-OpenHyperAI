@@ -47,14 +47,13 @@ export const SETTINGS = {
     StartHp: 0.5,
     /** A hero within lane_spot HeroReach plus this of the core or the hold point threatens it. */
     ThreatMargin: 200,
-    /** Our next wave is near when it reaches the hold point within NearSecs: no drag, the waves meet at the hold. */
-    NearSecs: 10,
     /**
-     * Our next wave also counts as near when one of our lane creeps already on the map and not fighting (no attack target)
-     * reaches the hold point within NearSecs at creep speed: creeps back from a pull camp, or a wave late off the spawn
-     * schedule. ptchk1 A 7:00 top: the pulled creeps walked back from the camp while the schedule said 24 s; the drag took
-     * their wave from 1,195 to 790 from our T1 just as ours met it.
+     * Our next wave is near when it reaches the hold point within NearSecs: no drag, the waves meet at the hold. It counts the
+     * spawn schedule and our lane creeps already on the map with no attack target at creep speed in a straight line (creeps
+     * back from a pull camp, a wave late off the schedule). ptchk1 A 7:00 top: the pulled creeps walked back from the camp
+     * while the schedule said 24 s; the drag took their wave from 1,195 to 790 from our T1 just as ours met it.
      */
+    NearSecs: 10,
     /** The drag's point: this far behind our T1 along the lane; its time: their front's walk there at creep speed plus
      *  DrawSecs, done DragMargin before our next wave reaches that point. */
     Behind: 500,
