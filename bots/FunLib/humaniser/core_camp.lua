@@ -737,6 +737,32 @@ local function allyInBox(bot, idx)
     end
     return false
 end
+--- A lane creep in the camp: a pulled wave is fighting it, and its neutrals die to the wave, not to the core (cngchk5-9: 6
+-- trips to camp 26 at about 3:36 found its neutrals damaged, saw them die to no hero and came back with 0 kills).
+local function pulledInto(center)
+    for ____, kind in ipairs({UnitType.AlliedCreeps, UnitType.EnemyCreeps}) do
+        for ____, u in ipairs(GetUnitList(kind) or ({})) do
+            do
+                local __continue86
+                repeat
+                    if u == nil or u == nil or not u:IsAlive() then
+                        __continue86 = true
+                        break
+                    end
+                    local at = u:GetLocation()
+                    if at ~= nil and at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
+                        return true
+                    end
+                    __continue86 = true
+                until true
+                if not __continue86 then
+                    break
+                end
+            end
+        end
+    end
+    return false
+end
 local function campOpen(bot, spawner, center, now, pullCamps)
     local team = bot:GetTeam()
     local ____opt_9 = cleared[team]
@@ -746,7 +772,7 @@ local function campOpen(bot, spawner, center, now, pullCamps)
     if IsLocationVisible(center) and campNeutralCount(center) == 0 then
         return false
     end
-    if pullCamps[spawner.idx] == true then
+    if pullCamps[spawner.idx] == true or pulledInto(center) then
         return false
     end
     return not allyInBox(bot, spawner.idx) and not otherTripOn(bot, spawner.idx) and not Stacking.ReservedByAlly(
@@ -772,10 +798,10 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue92
+            local __continue99
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue92 = true
+                    __continue99 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -786,7 +812,7 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue92 = true
+                    __continue99 = true
                     break
                 end
                 local stacks = math.max(
@@ -805,14 +831,14 @@ function ____exports.Plan(bot, from, now, c)
                 local clr = prior * ____exports.Pace(bot)
                 local hpc = hpPrior * ____exports.HPRate(bot)
                 if hpOf(bot) - hpc < s.ArriveHP then
-                    __continue92 = true
+                    __continue99 = true
                     break
                 end
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
                 local force = Overrides.CampForce()
                 if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
-                    __continue92 = true
+                    __continue99 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
@@ -838,9 +864,9 @@ function ____exports.Plan(bot, from, now, c)
                         net = net
                     }
                 end
-                __continue92 = true
+                __continue99 = true
             until true
-            if not __continue92 then
+            if not __continue99 then
                 break
             end
         end
@@ -852,10 +878,10 @@ local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(Camps.Spawners()) do
         do
-            local __continue100
+            local __continue107
             repeat
                 if spawner.team ~= bot:GetTeam() or level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue100 = true
+                    __continue107 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -868,9 +894,9 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue100 = true
+                __continue107 = true
             until true
-            if not __continue100 then
+            if not __continue107 then
                 break
             end
         end
@@ -882,10 +908,10 @@ local function threatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue105
+            local __continue112
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue105 = true
+                    __continue112 = true
                     break
                 end
                 if distToSegment(
@@ -895,9 +921,9 @@ local function threatOnWay(bot, at)
                 ) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue105 = true
+                __continue112 = true
             until true
-            if not __continue105 then
+            if not __continue112 then
                 break
             end
         end
@@ -912,18 +938,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue111
+            local __continue118
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue111 = true
+                    __continue118 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue111 = true
+                __continue118 = true
             until true
-            if not __continue111 then
+            if not __continue118 then
                 break
             end
         end
