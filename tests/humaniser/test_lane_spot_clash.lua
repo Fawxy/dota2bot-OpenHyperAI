@@ -24,6 +24,7 @@ function U:GetAttackRange() return self.range or 100 end
 function U:GetBoundingRadius() return 24 end
 function U:GetCurrentMovementSpeed() return 300 end
 function U:GetAssignedLane() return 1 end
+function U:GetTeam() return self.team end
 function U:GetPlayerID() return 1 end
 
 local T1 = Vector(-6336, 1856)
@@ -48,8 +49,8 @@ end
 local path = LanePush.PathOf(1)
 local frontS = LanePush.Project(path, FAR.x, FAR.y)
 function GetLaneFrontLocation(team, lane, delta)
-	-- Radiant's front moves up the path, so behind it is a smaller path distance.
-	local p = LanePush.PointAt(path, frontS + delta)
+	-- The path runs from Radiant's spawn: behind Radiant's front is a smaller path distance, behind Dire's a larger one.
+	local p = LanePush.PointAt(path, frontS + (team == 2 and delta or -delta))
 	return Vector(p[1], p[2])
 end
 
@@ -83,12 +84,39 @@ do
 	check("their creeps gone: the far front again", info ~= nil and info.clash == nil and dist(info.spot, FAR) < 300, info and string.format("%.0f,%.0f", info.spot.x, info.spot.y))
 end
 
+-- The same crossing mirrored for Dire (top, Dire T1 at path 10,090, distances from it run down the path): their 3 creeps
+-- 660-820 from our T1, our 4 at 150-600, our old wave 3,600 out.
+do
+	local t1s = 10090
+	local function at(own) local p = LanePush.PointAt(path, t1s - own) return Vector(p[1], p[2]) end
+	local T1d, savedS = at(0), frontS
+	frontS = t1s - 3600
+	world = { ours = {}, theirs = {}, towers = {} }
+	local mine = {}
+	for _, own in ipairs({ 600, 450, 300, 150 }) do
+		local c = unit({ loc = at(own), team = 3, hp = 550, name = "npc_dota_creep_badguys_melee" })
+		world.ours[#world.ours + 1] = c
+		mine[#mine + 1] = c
+	end
+	for _, own in ipairs({ 3500, 3600, 3700 }) do world.ours[#world.ours + 1] = unit({ loc = at(own), team = 3, hp = 550, name = "npc_dota_creep_badguys_melee" }) end
+	for i, own in ipairs({ 660, 740, 820 }) do
+		world.theirs[#world.theirs + 1] = unit({ loc = at(own), team = 2, hp = 550, name = "npc_dota_creep_goodguys_melee", target = mine[i] })
+	end
+	world.towers[1] = unit({ loc = T1d, team = 3, hp = 1800, range = 700 })
+	local bot = unit({ loc = at(500), team = 3, hp = 92, maxhp = 100, range = 150 })
+	local info = LaneSpot.Compute(bot, "core")
+	check("Dire crossing: the spot stays at the clash by our T1", info ~= nil and dist(info.spot, T1d) < 1000 and info.clash ~= nil and math.abs(info.clash - 600) < 1 and info.far ~= nil and math.abs(info.far - 3600) < 1,
+		info and string.format("%.0f,%.0f %s %s", info.spot.x, info.spot.y, tostring(info.clash), tostring(info.far)))
+	frontS = savedS
+end
+
 -- RearClash on lane distances from our T1.
 do
 	check("rear clash: their creeps within 1,000 of our front are the spot's usual read", LaneSpot.RearClash({ 1500, 1600 }, { 1450 }, 1500) == nil)
 	check("rear clash: our creep fighting their rearmost, on our side", LaneSpot.RearClash({ 820, 660, 740 }, { 600, 450, 3600 }, 3600) == 600)
 	check("rear clash: none of ours near, their rearmost creep", LaneSpot.RearClash({ 820, 660 }, { 3600, -100 }, 3600) == 660)
-	check("rear clash: creeps past our T1's range behind it do not count", LaneSpot.RearClash({ -900 }, {}, 3600) == nil)
+	check("rear clash: 700 behind our T1 counts, 701 does not", LaneSpot.RearClash({ -700 }, {}, 3600) == -700 and LaneSpot.RearClash({ -701 }, {}, 3600) == nil)
+	check("rear clash: 1,000 short of our front counts, 999 does not", LaneSpot.RearClash({ 2600 }, {}, 3600) == 2600 and LaneSpot.RearClash({ 2601 }, {}, 3600) == nil)
 end
 
 finish()
