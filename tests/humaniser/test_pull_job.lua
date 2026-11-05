@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro, HalfHoldOff = o.holdOff } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -275,7 +275,7 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro, holdOff = o.holdOff })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
@@ -404,6 +404,21 @@ do
 	end })
 	check("half step-in: a tagged neutral out of vision mid-watch raises no error", hitAt ~= nil and fogged ~= nil
 		and field(fogged, "why") ~= nil and not field(fogged, "why"):find("error", 1, true), fogged)
+	-- hi: the puller's offset off the lane path when a creep engages the neutrals (review 2026-11-05-pull-half M1: it
+	-- measured along a zero vector and logged 0 always). A creep engages while the puller is still 300 out of the camp,
+	-- well off the lane: hi is that frame's offset, read from the same path.
+	local offAt
+	local engaged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
+		if offAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then
+			local _, off = w.H.Lane.PullTiming.Along(PATH, w.sup.loc)
+			offAt = off
+			local meetAt = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+			MakeCreep({ team = 2, x = meetAt.x, y = meetAt.y, target = NEUTRALS[1] })
+		end
+	end })
+	local hi = tonumber(field(engaged, "hi"))
+	check("half step-in: hi is the puller's offset off the lane path at engagement (not 0 along a zero vector)", offAt ~= nil
+		and hi ~= nil and hi > 200 and math.abs(hi - offAt) <= 60, tostring(hi) .. " at " .. tostring(offAt))
 end
 
 -- A wave bunched on one point has no hit that keeps the front two out and turns the third: the half stays (why=half-geo,

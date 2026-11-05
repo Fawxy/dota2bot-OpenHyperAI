@@ -951,7 +951,12 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
                       }
                       const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
                       const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
-                      if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());
+                      // hi: the puller's offset off the lane path when the creeps engage (with the step-in `end` is the meet point,
+                      // so a measure along end-to-meet would be 0: review 2026-11-05-pull-half M1).
+                      if (engaged && pull.stepIn === undefined) {
+                          const path = p.timing.lanePath;
+                          pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
+                      }
                       return at as unknown as Lib.Vec;
                   }
                 : undefined,
@@ -1005,7 +1010,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (full === undefined || handled[pid] === full.key) return false;
     // A wave decided a half pull waits for the half's own (later) leave time.
     const kind = decided[pid]?.slot === full.key ? decided[pid]!.kind : "full";
-    const p = kind === "half" ? planFor(bot, now, "half") ?? full : full;
+    const half = kind === "half" ? planFor(bot, now, "half") : undefined;
+    // No half plan for this camp: the full plan runs and the decision says so, so choice and pull_job agree on pk.
+    if (kind === "half" && half === undefined && decided[pid] !== undefined) decided[pid]!.kind = "full";
+    const p = half ?? full;
     const walk = travel(bot, p);
     // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
     // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).

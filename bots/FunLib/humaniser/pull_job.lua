@@ -1766,11 +1766,11 @@ local function verbPlan(bot, pull, aggroAt)
                 byNeutrals and ranged
             )
             if engaged and pull.stepIn == nil then
-                pull.stepIn = stepped(
-                    p,
-                    ____end,
-                    bot:GetLocation()
-                )
+                local path = p.timing.lanePath
+                pull.stepIn = path ~= nil and math.floor(select(
+                    2,
+                    PullTiming.Along(path, here)
+                ) + 0.5) or stepped(p, ____end, here)
             end
             return at
         end) or nil,
@@ -1832,7 +1832,17 @@ function ____exports.Wants(bot, blocked, host)
     end
     local ____opt_21 = decided[pid]
     local kind = (____opt_21 and ____opt_21.slot) == full.key and decided[pid].kind or "full"
-    local p = kind == "half" and (planFor(bot, now, "half") or full) or full
+    local ____temp_23
+    if kind == "half" then
+        ____temp_23 = planFor(bot, now, "half")
+    else
+        ____temp_23 = nil
+    end
+    local half = ____temp_23
+    if kind == "half" and half == nil and decided[pid] ~= nil then
+        decided[pid].kind = "full"
+    end
+    local p = half or full
     local walk = travel(bot, p)
     local timer = timers[pid]
     if timer == nil or timer.slot ~= p.slot then
