@@ -5,13 +5,15 @@
 --   with a denier, same kind, within 1 s and 250 units, mutually nearest pair, two passes: each enemy death keeps its nearest own death, then each own death keeps its nearest enemy death; pid = the enemy denier. By=deny, if an enemy GetDenies read ever works, is enemy_deny too),
 --   other (tower, creep, a spell the counters do not see, or a death the other team did not log).
 -- fate, own side: own_deny (an own hero denied it, pid), lost (anything else: an enemy last hit, tower or creep kill).
+-- tw: enemy side only, the creep_death `tw` (one of the logging team's towers was attacking it the frame before; null
+-- on builds before the field).
 -- Logs from builds before the one that added ev=own_creep_death (406ee95) have no own deaths, so every enemy deny there reads
 -- `other`: split mixed sets by build.
 -- Enemy denies exist only here: ev=creep_death `by=deny` never fires (an enemy hero's GetDenies reads 0), so those deaths
 -- are by=none in the log and are named by the denier's own team log. A creep is in both teams' logs when each had a hero near;
 -- count one side of one team per question. Positions are the last frame seen, so a pair can lie a little apart: 250 is wide
 -- enough for a frame at 8x and narrow enough that two creeps of one kind in a wave rarely compete.
--- ensure: ev_creep_death(team, kind, x, y, by)
+-- ensure: ev_creep_death(team, kind, x, y, by, tw)
 -- ensure: ev_own_creep_death(team, kind, x, y, by)
 WITH cand AS (
     SELECT c.game_id, c.seq AS cseq, o.seq AS oseq, o."by" AS denier,
@@ -35,11 +37,13 @@ SELECT c.game_id, c.seq, c.t, c.team, 'enemy' AS side, c.kind, c.x, c.y,
     CASE WHEN CAST(c."by" AS TEXT) NOT IN ('none', 'deny') THEN 'own_lh'
          WHEN p.cseq IS NOT NULL OR CAST(c."by" AS TEXT) = 'deny' THEN 'enemy_deny'
          ELSE 'other' END AS fate,
-    CASE WHEN CAST(c."by" AS TEXT) NOT IN ('none', 'deny') THEN c."by" ELSE p.denier END AS pid
+    CASE WHEN CAST(c."by" AS TEXT) NOT IN ('none', 'deny') THEN c."by" ELSE p.denier END AS pid,
+    c.tw
 FROM ev_creep_death c
 LEFT JOIN pairs p ON p.game_id = c.game_id AND p.cseq = c.seq
 UNION ALL
 SELECT o.game_id, o.seq, o.t, o.team, 'own', o.kind, o.x, o.y,
     CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN 'own_deny' ELSE 'lost' END,
-    CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN o."by" END
+    CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN o."by" END,
+    NULL
 FROM ev_own_creep_death o
