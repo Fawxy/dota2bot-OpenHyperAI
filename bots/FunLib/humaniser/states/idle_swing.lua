@@ -311,12 +311,15 @@ local function findPreDeny(bot, me, verbs)
                 if ____exports.Better(key, bestKey) then
                     best = c
                     bestKey = key
+                    local at = c:GetLocation()
                     bestNote = {
                         kind = "predeny",
                         mode = "safe",
                         creep = tc,
                         hp = hp,
                         hf = hp / max,
+                        x = at.x,
+                        y = at.y,
                         kill = kill,
                         reach = reach,
                         focus = key.focus,
@@ -366,6 +369,7 @@ local function findShove(bot)
         return {nil, nil}
     end
     local max = c:GetMaxHealth()
+    local at = c:GetLocation()
     return {
         {
             kind = "shove",
@@ -373,6 +377,8 @@ local function findShove(bot)
             creep = c,
             hp = c:GetHealth(),
             hf = max > 0 and c:GetHealth() / max or 1,
+            x = at.x,
+            y = at.y,
             denies = 0,
             lastHits = 0
         },

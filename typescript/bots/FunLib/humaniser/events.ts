@@ -1017,6 +1017,11 @@ export const EVENTS = {
     idle_swing: {
         pid: "num",
         kind: "str",
+        /** predeny: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
+        n: "num",
+        /** The creep's place at the pick. */
+        cx: "num",
+        cy: "num",
         mode: "str",
         result: "str",
         reason: "str",

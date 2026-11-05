@@ -311,10 +311,14 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             const idle = t.kind === "prehit" ? IdleSwing.Of(bot.GetPlayerID(), t.creep) : undefined;
             if (idle !== undefined) {
+                const prior = idle.kind === "predeny" ? IdleSwing.SpentOn(bot.GetPlayerID(), t.creep) ?? 0 : undefined;
                 if (res.success && idle.kind === "predeny") IdleSwing.NoteSwing(bot.GetPlayerID(), t.creep);
                 Telemetry.Event("idle_swing", [
                     ["pid", bot.GetPlayerID()],
                     ["kind", idle.kind],
+                    ["n", prior],
+                    ["cx", math.floor(idle.x)],
+                    ["cy", math.floor(idle.y)],
                     ["mode", idle.mode],
                     ["result", res.success ? "ok" : "fail"],
                     ["reason", res.reason],

@@ -532,6 +532,10 @@ local body = __TS__Generator(function(bot, ctx)
                 end
                 local idle = ____temp_19
                 if idle ~= nil then
+                    local prior = idle.kind == "predeny" and (IdleSwing.SpentOn(
+                        bot:GetPlayerID(),
+                        t.creep
+                    ) or 0) or nil
                     if res.success and idle.kind == "predeny" then
                         IdleSwing.NoteSwing(
                             bot:GetPlayerID(),
@@ -545,6 +549,15 @@ local body = __TS__Generator(function(bot, ctx)
                             bot:GetPlayerID()
                         },
                         {"kind", idle.kind},
+                        {"n", prior},
+                        {
+                            "cx",
+                            math.floor(idle.x)
+                        },
+                        {
+                            "cy",
+                            math.floor(idle.y)
+                        },
                         {"mode", idle.mode},
                         {"result", res.success and "ok" or "fail"},
                         {"reason", res.reason},

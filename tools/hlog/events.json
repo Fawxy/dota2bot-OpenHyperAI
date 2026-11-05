@@ -915,6 +915,28 @@
    "cy": "num",
    "ca": "num",
    "ph": "bool",
+   "pre": "num",
+   "msg": "str"
+  },
+  "idle_swing": {
+   "pid": "num",
+   "kind": "str",
+   "n": "num",
+   "cx": "num",
+   "cy": "num",
+   "mode": "str",
+   "result": "str",
+   "reason": "str",
+   "ranged": "bool",
+   "walk": "num",
+   "hp": "num",
+   "hf": "num",
+   "kill": "num",
+   "reach": "num",
+   "focus": "bool",
+   "dn": "bool",
+   "lh": "bool",
+   "contested": "bool",
    "msg": "str"
   },
   "prehit": {
@@ -1663,6 +1685,13 @@
    "result": "text",
    "reason": "text",
    "claim": "text",
+   "msg": "text"
+  },
+  "ev_idle_swing": {
+   "kind": "text",
+   "mode": "text",
+   "result": "text",
+   "reason": "text",
    "msg": "text"
   },
   "ev_prehit": {

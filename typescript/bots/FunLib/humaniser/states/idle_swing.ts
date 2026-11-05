@@ -92,6 +92,9 @@ export interface Note {
     hp: number;
     /** HP as a fraction of max. */
     hf: number;
+    /** The creep's place at the pick. */
+    x: number;
+    y: number;
     /** predeny: our kill time and the nearest enemy hero's reach (math.huge: none near). */
     kill?: number;
     reach?: number;
@@ -229,7 +232,8 @@ function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Not
         if (Better(key, bestKey)) {
             best = c;
             bestKey = key;
-            bestNote = { kind: "predeny", mode: "safe", creep: tc, hp, hf: hp / max, kill, reach, focus: key.focus, denies: 0, lastHits: 0 };
+            const at = c.GetLocation();
+            bestNote = { kind: "predeny", mode: "safe", creep: tc, hp, hf: hp / max, x: at.x, y: at.y, kill, reach, focus: key.focus, denies: 0, lastHits: 0 };
         }
     }
     return [bestNote, best];
@@ -249,7 +253,11 @@ function findShove(bot: Unit): [Note | undefined, Unit | undefined] {
     const c = LaneTech.ShoveTarget(bot, near);
     if (c === undefined) return [undefined, undefined];
     const max = c.GetMaxHealth();
-    return [{ kind: "shove", mode: "shove", creep: c as unknown as Lib.TaskCreep, hp: c.GetHealth(), hf: max > 0 ? c.GetHealth() / max : 1, denies: 0, lastHits: 0 }, c];
+    const at = c.GetLocation();
+    return [
+        { kind: "shove", mode: "shove", creep: c as unknown as Lib.TaskCreep, hp: c.GetHealth(), hf: max > 0 ? c.GetHealth() / max : 1, x: at.x, y: at.y, denies: 0, lastHits: 0 },
+        c,
+    ];
 }
 
 /** The idle swing's switch: pre-deny under `Ours.PreDeny`; a forced shove needs no switch of its own (a harness knob). */
