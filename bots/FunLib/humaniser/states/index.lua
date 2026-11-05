@@ -58,6 +58,7 @@ local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
+local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -300,6 +301,7 @@ function ____exports.Tick(bot)
     end
     l.States.Tick(bot)
     LaneMetrics.Tick(bot)
+    WaveHold.Tick(bot)
     lanePos(bot, l)
 end
 --- Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own).
@@ -403,6 +405,7 @@ function ____exports.CoreAggroStep(bot)
     if not ____exports.IsEnabled() or not ____exports.BodyLastHits(bot) then
         return false
     end
+    WaveHold.Step(bot)
     return LaneAggro.Step(bot)
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).

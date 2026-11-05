@@ -57,6 +57,7 @@ ____exports.DEFAULTS = {
     LaneSpotTower = true,
     CoreLaneFight = true,
     LaneAggro = true,
+    CoreHold = true,
     CoreCampTrip = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).

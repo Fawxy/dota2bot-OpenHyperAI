@@ -401,7 +401,32 @@
    "fc": "num",
    "td": "num",
    "out": "num",
-   "sty": "num"
+   "sty": "num",
+   "nd": "num"
+  },
+  "wave_hold": {
+   "pid": "num",
+   "lane": "num",
+   "br": "str",
+   "res": "str",
+   "why": "str",
+   "n": "num",
+   "lh": "num",
+   "dn": "num",
+   "own0": "num",
+   "omin": "num",
+   "mo": "num",
+   "tw": "num",
+   "tgt": "num",
+   "nw": "num",
+   "ds": "num",
+   "nb": "num",
+   "thr": "num",
+   "sw": "num",
+   "hp": "num",
+   "dhp": "num",
+   "dur": "num",
+   "md": "num"
   },
   "aggro_skip": {
    "pid": "num",
@@ -1343,6 +1368,11 @@
    "kind": "text",
    "result": "text",
    "st": "text"
+  },
+  "ev_wave_hold": {
+   "br": "text",
+   "res": "text",
+   "why": "text"
   },
   "ev_aggro_skip": {
    "role": "text",

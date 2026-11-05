@@ -395,11 +395,12 @@ export const EVENTS = {
         pid: "num",
         /** `core`, or `support` (its lane core away). */
         role: "str",
-        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower) or `drag` (a dying creep
-         *  away from an enemy hero). */
+        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower), `drag` (a dying creep
+         *  away from an enemy hero) or `back` (wave_hold's drag: their wave behind our T1 to our next wave). */
         kind: "str",
         /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
-         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
+         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -426,10 +427,53 @@ export const EVENTS = {
         fc: "num",
         /** Distance to the order's hero at the order (any visible enemy hero may be named). */
         td: "num",
-        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result. */
+        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result; back: those
+         *  within BackOut of the point behind our T1. */
         out: "num",
         /** feed: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`, `ev=lane_pos spot=fed`), else 0. */
         sty: "num",
+        /** back: draw orders given (the first and each re-draw). */
+        nd: "num",
+    },
+    /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
+    wave_hold: {
+        pid: "num",
+        lane: "num",
+        /** The last branch: `hold` (at the lane target, lane_spot input `hold`), `drag` (lane_aggro `back` behind our T1),
+         *  `retreat` (OHA's retreat took the core). */
+        br: "str",
+        /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
+         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`. */
+        res: "str",
+        /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
+         *  the last 20 s), `other`. */
+        why: "str",
+        /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
+        n: "num",
+        lh: "num",
+        dn: "num",
+        /** Their front's distance from our T1 along the lane at the start, its least during the attempt, and when the waves met. */
+        own0: "num",
+        omin: "num",
+        mo: "num",
+        /** 1 when one of their creeps came within our T1's range (700) during the attempt. */
+        tw: "num",
+        /** The lane's target point (lane_aggro TargetOf). */
+        tgt: "num",
+        /** Seconds to our next wave at the hold point at the start; at the last branch read: seconds the drag needs and to our
+         *  next wave behind the T1. */
+        nw: "num",
+        ds: "num",
+        nb: "num",
+        /** The enemy hero whose reach made the threat, at the last read that saw one. */
+        thr: "num",
+        /** Branch changes during the attempt. */
+        sw: "num",
+        hp: "num",
+        dhp: "num",
+        dur: "num",
+        /** The bot's active mode when the attempt was left. */
+        md: "num",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {

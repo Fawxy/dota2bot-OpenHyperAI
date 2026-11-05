@@ -341,8 +341,9 @@ function ____exports.FedAnchor(fed)
     ) <= ____exports.FED_HP and fed or nil
 end
 --- The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
--- lane_aggro's fed creep (see FedAnchor). Undefined only when the lane has no direction (front and its back point coincide).
-function ____exports.Compute(bot, role, fed)
+-- lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
+-- and its back point coincide).
+function ____exports.Compute(bot, role, fed, hold)
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     local front = GetLaneFrontLocation(team, lane, 0)
@@ -399,6 +400,14 @@ function ____exports.Compute(bot, role, fed)
         for ____, c in ipairs(creeps) do
             busy[#busy + 1] = c:GetAttackTarget() == anchorFed
         end
+    elseif hold ~= nil then
+        px = hold.x
+        py = hold.y
+        anchor = "hold"
+        busy = {}
+        for ____, _ in ipairs(creeps) do
+            busy[#busy + 1] = true
+        end
     elseif #creeps == 0 then
         anchor = "wave"
         px = front.x + dx * MELEE_BEHIND
@@ -421,7 +430,7 @@ function ____exports.Compute(bot, role, fed)
     end
     local nx = -dy
     local ny = dx
-    if enemyHero ~= nil and anchorFed == nil then
+    if enemyHero ~= nil and anchorFed == nil and anchor ~= "hold" then
         local hx, hy = unpack(sub(
             enemyHero:GetLocation(),
             front
@@ -489,11 +498,11 @@ function ____exports.Compute(bot, role, fed)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue81
+                    local __continue84
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue81 = true
+                            __continue84 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -515,9 +524,9 @@ function ____exports.Compute(bot, role, fed)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue81 = true
+                        __continue84 = true
                     until true
-                    if not __continue81 then
+                    if not __continue84 then
                         break
                     end
                 end

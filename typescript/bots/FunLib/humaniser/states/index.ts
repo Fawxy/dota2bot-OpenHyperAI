@@ -26,6 +26,7 @@ import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
+import * as WaveHold from "bots/FunLib/humaniser/states/wave_hold";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -197,6 +198,7 @@ export function Tick(bot: Unit): void {
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
     LaneMetrics.Tick(bot);
+    WaveHold.Tick(bot);
     lanePos(bot, l);
 }
 
@@ -307,6 +309,8 @@ export function SupportStep(bot: Unit): boolean {
  */
 export function CoreAggroStep(bot: Unit): boolean {
     if (!IsEnabled() || !BodyLastHits(bot)) return false;
+    // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
+    WaveHold.Step(bot);
     return LaneAggro.Step(bot);
 }
 
