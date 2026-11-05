@@ -400,7 +400,7 @@ export const EVENTS = {
         kind: "str",
         /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
          *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
-         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled` (no visible enemy hero to order on, or the dragged creep died, before the order), `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -434,6 +434,14 @@ export const EVENTS = {
         sty: "num",
         /** back: draw orders given (the first and each re-draw). */
         nd: "num",
+        /** feed, tower: the bot's distance to the approach point at the start, and the seconds it got to walk there (feed: the
+         *  walk at its move speed + 0.4 s, at most 3.5 s). */
+        ad: "num",
+        apt: "num",
+        /** stale: the active mode, the task label (`-` none) when the frame came back, and the seconds it was away. */
+        md: "num",
+        lbl: "str",
+        gap: "num",
     },
     /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
     wave_hold: {
@@ -484,8 +492,11 @@ export const EVENTS = {
     aggro_skip: {
         pid: "num",
         role: "str",
-        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`. */
+        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`
+         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point). */
         why: "str",
+        /** feed:approach_far: the bot's distance to the approach point. */
+        ad: "num",
     },
     lane_tech: {
         pid: "num",

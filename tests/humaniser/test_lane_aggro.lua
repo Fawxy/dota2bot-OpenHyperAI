@@ -52,4 +52,63 @@ do
 	check("moved: only the seen creep 200 from its spot counts", ok and n == 1, n)
 end
 
+-- Slice lane-aggro, user 06/11/2026 (obs0611 mark 1): lane_spot keeps an offlaner 560-940 from the feed's approach point, so
+-- the feed walks up to ApproachMax and gets the time to arrive; under a fixed 1.2 s a 900 walk ordered about 350 in, short of
+-- the creeps.
+check("approach: a 900 walk at 300 speed gets the time to arrive", A.ApproachTime(900, 300) * 300 >= 900, A.ApproachTime(900, 300))
+check("approach: a short walk orders soon after arriving", A.ApproachTime(120, 300) < 1, A.ApproachTime(120, 300))
+check("approach: a slowed or rooted hero orders from where it stands by the cap", A.ApproachTime(900, 0) <= 3.5 and A.ApproachTime(900, 150) <= 3.5)
+
+-- The feed never draws their creeps inside the wave hold point (900 from our T1 on a side lane, 1300 mid): wave_hold meets
+-- them there. Points are taken along the real lane paths from each team's own T1.
+do
+	local LP = require("bots/FunLib/humaniser/lane_push")
+	local dota = require("bots/ts_libs/dota/index")
+	local function at(lane, team, own)
+		local path = LP.PathOf(lane)
+		local t1, dir = LP.OwnT1(path, team)
+		local p = LP.PointAt(path, t1 + dir * own)
+		return path, p[1], p[2]
+	end
+	local function inside(lane, team, own)
+		local path, x, y = at(lane, team, own)
+		return A.InsideHold(path, team, lane, x, y)
+	end
+	check("hold: Radiant top, the walk back ends 700 from our T1: inside", inside(dota.Lane.Top, dota.Team.Radiant, 700))
+	check("hold: Radiant top, 1100 from our T1: outside", not inside(dota.Lane.Top, dota.Team.Radiant, 1100))
+	check("hold: Dire bot (the path runs the other way), 700 from their own T1: inside", inside(dota.Lane.Bot, dota.Team.Dire, 700))
+	check("hold: Dire bot, 1100 from their own T1: outside", not inside(dota.Lane.Bot, dota.Team.Dire, 1100))
+	check("hold: mid's hold point is further out: 1100 is inside", inside(dota.Lane.Mid, dota.Team.Radiant, 1100))
+end
+
+-- An order's hero that leaves vision before the order is re-picked (any visible enemy hero draws the creeps, EC-053) instead
+-- of ending the move `cancelled` (obs0611 t=33.1: Lich went into the trees, DK was still seen; 11% of feeds ended so).
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local function world()
+		LaneFresh({ Enable = true }, { laneAggro = true })
+		local Ag = require("bots/FunLib/humaniser/lane_aggro")
+		local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 5000), hp = 600 })
+		bot.maxhp, bot.lane = 600, dota.Lane.Top
+		MakeCreep({ team = 3, x = 150, y = 5000 })
+		local nearH = MakeUnit({ pid = 5, team = 3, loc = Vector(400, 5000) })
+		local farH = MakeUnit({ pid = 6, team = 3, loc = Vector(900, 5000) })
+		return Ag, bot, nearH, farH
+	end
+	local Ag, bot, nearH, farH = world()
+	check("re-pick: the draw starts on the nearest enemy hero", Ag.StartBack(bot, Vector(-3000, 5000)))
+	nearH.CanBeSeen = function() return false end
+	Ag.Step(bot)
+	local orders = ActionsOf(1, "AttackUnit")
+	check("re-pick: the order goes to the hero still seen", #orders == 1 and orders[1].args[1] == farH, #orders)
+	check("re-pick: the move is still open", Ag.Pending(bot))
+
+	Ag, bot, nearH, farH = world()
+	Ag.StartBack(bot, Vector(-3000, 5000))
+	nearH.CanBeSeen = function() return false end
+	farH.CanBeSeen = function() return false end
+	Ag.Step(bot)
+	check("re-pick: no enemy hero seen at all: no order, the move ends", #ActionsOf(1, "AttackUnit") == 0 and not Ag.Pending(bot))
+end
+
 finish()
