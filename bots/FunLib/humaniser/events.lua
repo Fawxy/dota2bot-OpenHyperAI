@@ -343,7 +343,13 @@ ____exports.EVENTS = {
         td = "num",
         out = "num",
         sty = "num",
-        nd = "num"
+        nd = "num",
+        src = "str",
+        ad = "num",
+        apt = "num",
+        md = "num",
+        lbl = "str",
+        gap = "num"
     },
     wave_hold = {
         pid = "num",
@@ -351,6 +357,11 @@ ____exports.EVENTS = {
         br = "str",
         res = "str",
         why = "str",
+        trig = "str",
+        fc = "num",
+        hd = "num",
+        rch = "num",
+        hdr = "num",
         n = "num",
         lh = "num",
         dn = "num",
@@ -362,6 +373,8 @@ ____exports.EVENTS = {
         nw = "num",
         ds = "num",
         nb = "num",
+        nl = "num",
+        lv = "num",
         thr = "num",
         sw = "num",
         hp = "num",
@@ -369,7 +382,18 @@ ____exports.EVENTS = {
         dur = "num",
         md = "num"
     },
-    aggro_skip = {pid = "num", role = "str", why = "str"},
+    wave_hold_skip = {
+        pid = "num",
+        lane = "num",
+        why = "str",
+        front = "num",
+        n = "num",
+        on = "num",
+        oin = "num",
+        rch = "num",
+        fc = "num"
+    },
+    aggro_skip = {pid = "num", role = "str", why = "str", ad = "num"},
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},
     lane_job_start = {
         pid = "num",
@@ -1183,7 +1207,9 @@ ____exports.EVENTS = {
         hph = "num",
         ne = "num",
         nk = "num",
-        nr = "num"
+        nr = "num",
+        cl = "num",
+        fo = "num"
     }
 }
 return ____exports

@@ -517,21 +517,26 @@ do
 		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
 end
 
--- A camp the puller cannot take is not pulled: its estimated damage over the pull would leave less than StartReserve of
+-- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
 -- max HP. Eight neutrals (a stacked camp) against a single spawn's three, same puller (pw3_C_on_3 t=262.5, the one death:
--- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log).
+-- 8 neutrals led alone; ~/.dotactl/logs/2026-11-03T01-32-12-pw3_C_on_3.log). The window is 1.5 s (`judgement`, between the measured 1.1 s of the hard camp and 2.4 s of the small camp), not a
+-- share of the lead (user 06/11/2026, the off-lane gates): a seen single spawn at 62% HP starts (120 dps x 1.5 s = 180 leaves
+-- 192 of 600, above the 150 reserve; the old 0.5 x 3.9 s lead share priced it at 330 and held it), and the choice line's
+-- `cdmg` is the damage the gate used.
 do
-	local function camp(k)
-		local w = world({ reading = OUT, visible = true })
+	local function camp(k, hp)
+		local w = world({ reading = OUT, visible = true, supHp = hp })
 		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
 		local out = run(w, 80)
 		return lines(out, "choice")[1], #lines(out, "job")
 	end
 	local stacked, jobsS = camp(8)
 	local single, jobs1 = camp(3)
+	local low, jobsL = camp(3, 372)
 	check("stacked camp in sight: no start, why=camp-dmg, the probe counts its 8 neutrals", jobsS == 0 and field(stacked, "why") == "camp-dmg"
-		and field(stacked, "cn") == "8" and field(stacked, "cv") == "1", stacked)
+		and field(stacked, "cn") == "8" and field(stacked, "cv") == "1" and field(stacked, "cdmg") == "480", stacked)
 	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "3", single)
+	check("single spawn at 62% HP: starts on the 1.5 s window, cdmg=180", jobsL >= 1 and field(low, "go") == "1" and field(low, "cdmg") == "180", low)
 end
 
 -- A camp out of sight at the start (the API returns nothing, so the estimate is one spawn at DefaultDps) that the walk
