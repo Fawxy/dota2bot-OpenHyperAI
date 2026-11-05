@@ -1,5 +1,5 @@
 -- The team's 6:00 power rune (slice rune-spawn): one row per game and team that made a plan (`ev=rune_plan`).
---   mid, sup     the planned heroes in the team's last plan line (null: the plan's `why`, no-mid / no-free-support / drop:<gate>;
+--   mid, sup     the planned heroes in the team's last plan line (null: the plan's `why`, no-mid / no-near-support / drop:<gate>;
 --                not selected, the column exists only when a game logged one)
 --   swaps        plan lines after the first: a planned support dropped by its start gate, its spot handed on (`why` swap:<gate>)
 --                or left (drop:<gate>)

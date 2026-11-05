@@ -135,6 +135,7 @@ local function nearer(u, a, b)
     ) and a or b
 end
 --- The free support (alive, not `busy`, not in `skip`) with the shorter walk to `spot` (to its nearer spot with none).
+-- A support whose nearest spot is not `spot` never qualifies: it would cross a lane to the far rune (user 06/11/2026).
 local function freeSupport(spot, busy, skip)
     local a, b = unpack(____exports.Spots())
     local best
@@ -145,6 +146,10 @@ local function freeSupport(spot, busy, skip)
             repeat
                 local s = teamHero(pos)
                 if not FR.Alive(s) or busy(s) or __TS__ArrayIncludes(skip, s) then
+                    __continue13 = true
+                    break
+                end
+                if spot ~= nil and nearer(s, a, b) ~= spot then
                     __continue13 = true
                     break
                 end
@@ -165,7 +170,8 @@ local function freeSupport(spot, busy, skip)
     return best
 end
 --- The spot plan from plain choices: `mid` takes the spot nearer it; the other spot goes to the free support with the
--- shorter walk to it (pos4 on a tie). `busy(u)` says a support is not free (a stack that minute). Exported for tests.
+-- shorter walk to it among those it is nearest to (pos4 on a tie; a support nearer the mid's spot stays home rather than cross).
+-- `busy(u)` says a support is not free (a stack that minute). Exported for tests.
 function ____exports.Make(now, busy)
     local a, b = unpack(____exports.Spots())
     local mid = teamHero(2)
@@ -180,7 +186,7 @@ function ____exports.Make(now, busy)
         plan.sup = best
         plan.supSpot = supSpot or nearer(best, a, b)
     else
-        plan.why = "no-free-support"
+        plan.why = "no-near-support"
     end
     if plan.mid == nil then
         plan.why = plan.why or "no-mid"
@@ -281,7 +287,7 @@ function ____exports.StandFor(bot, spot)
             local k = 0
             while k < s.StandAngles do
                 do
-                    local __continue37
+                    local __continue38
                     repeat
                         local a = 2 * math.pi * k / s.StandAngles
                         local c = Vector(
@@ -290,7 +296,7 @@ function ____exports.StandFor(bot, spot)
                             spot.z
                         )
                         if not IsLocationPassable(c) then
-                            __continue37 = true
+                            __continue38 = true
                             break
                         end
                         local h = GetHeightLevel(c)
@@ -298,9 +304,9 @@ function ____exports.StandFor(bot, spot)
                         if cost < bestCost then
                             best, bestCost = {at = c, height = h, spotHeight = spotHeight}, cost
                         end
-                        __continue37 = true
+                        __continue38 = true
                     until true
-                    if not __continue37 then
+                    if not __continue38 then
                         break
                     end
                 end

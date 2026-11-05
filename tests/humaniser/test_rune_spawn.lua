@@ -110,6 +110,23 @@ do
 	check("plan: a support on a stack is not free", plan.sup == p4)
 end
 
+-- Mark 14 (bug-hunt log 2026-11-05T18-13-16 ..._team-bots_e3fcbd4, t=320-362): Dire mid DK took the bot spot, and Lion (pos4,
+-- bot lane) was sent across the map to the top spot while WD (pos5, top lane) stayed home (plan-other). A support goes only to
+-- the spot nearest it; with none nearest the free spot it stays home.
+do
+	local H = world({ t = 320 })
+	CURRENT_TEAM = DIRE
+	local mid = hero(5, 2, Vector(170, 218), DIRE)
+	local lion = hero(8, 4, Vector(5908, -4730), DIRE)
+	local wd = hero(7, 5, Vector(-3959, 5004), DIRE)
+	local plan = H.RunePlan.Make(320, function() return false end)
+	check("mark 14: the mid takes the bot spot", plan.mid == mid and plan.midSpot == P2, plan.midSpot)
+	check("mark 14: the top-lane support gets the top spot, not the bot-lane one", plan.sup == wd and plan.supSpot == P1)
+	plan = H.RunePlan.Make(320, function(u) return u == wd end)
+	check("mark 14: with the top-lane support busy nobody crosses", plan.sup == nil and plan.why == "no-near-support", plan.why)
+	check("mark 14: Lion is not planned either way", plan.sup ~= lion)
+end
+
 -- The mid's trip runs in the rune mode: the chooser's gates leave that mode and its exceptions to the mode file and hold
 -- the others, the farm host included, at 0 (rspchk1: the rune mode gated to 0 lost the mid to the attack mode, 9 of 10).
 do
