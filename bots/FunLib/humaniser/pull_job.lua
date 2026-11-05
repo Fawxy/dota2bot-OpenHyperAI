@@ -701,8 +701,8 @@ function trackTagged(bot, p)
                     __continue191 = true
                     break
                 end
-                local ____opt_23 = p.starts
-                local s0 = ____opt_23 and ____opt_23:get(u)
+                local ____opt_25 = p.starts
+                local s0 = ____opt_25 and ____opt_25:get(u)
                 if p.nm == nil and s0 ~= nil and GetUnitToLocationDistance(u, s0) >= ____exports.SETTINGS.Moved then
                     p.nm = now
                 end
@@ -871,8 +871,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_29 = Telemetry.Event
-    local ____array_28 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_31 = Telemetry.Event
+    local ____array_30 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -893,22 +893,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_25
+    local ____temp_27
     if best ~= nil then
-        ____temp_25 = r0(nd)
+        ____temp_27 = r0(nd)
     else
-        ____temp_25 = nil
+        ____temp_27 = nil
     end
-    __TS__SparseArrayPush(____array_28, {"nd", ____temp_25})
-    local ____temp_26
+    __TS__SparseArrayPush(____array_30, {"nd", ____temp_27})
+    local ____temp_28
     if best ~= nil then
-        ____temp_26 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_28 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
     else
-        ____temp_26 = nil
+        ____temp_28 = nil
     end
     __TS__SparseArrayPush(
-        ____array_28,
-        {"nh", ____temp_26},
+        ____array_30,
+        {"nh", ____temp_28},
         {
             "nt",
             best ~= nil and targetKind(
@@ -917,21 +917,21 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_27
+    local ____bot_IsAlive_result_29
     if bot:IsAlive() then
-        ____bot_IsAlive_result_27 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_29 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_27 = nil
+        ____bot_IsAlive_result_29 = nil
     end
     __TS__SparseArrayPush(
-        ____array_28,
-        {"pd", ____bot_IsAlive_result_27},
+        ____array_30,
+        {"pd", ____bot_IsAlive_result_29},
         {"shd", p.shs ~= nil and 1 or nil},
         unpack(taggedFields(bot, p, ours))
     )
-    ____Telemetry_Event_29(
+    ____Telemetry_Event_31(
         "pull_watch",
-        {__TS__SparseArraySpread(____array_28)}
+        {__TS__SparseArraySpread(____array_30)}
     )
 end
 function taggedFields(bot, p, ours)
@@ -1554,8 +1554,8 @@ local function choiceLine(bot, d, slot, go, why, camp)
     local function r1(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_18 = Telemetry.Event
-    local ____array_17 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_20 = Telemetry.Event
+    local ____array_19 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -1591,7 +1591,7 @@ local function choiceLine(bot, d, slot, go, why, camp)
     )
     local ____opt_8 = d.gone
     __TS__SparseArrayPush(
-        ____array_17,
+        ____array_19,
         {
             "pa",
             r1(____opt_8 and ____opt_8.own)
@@ -1599,7 +1599,7 @@ local function choiceLine(bot, d, slot, go, why, camp)
     )
     local ____opt_10 = d.gone
     __TS__SparseArrayPush(
-        ____array_17,
+        ____array_19,
         {
             "ap",
             r1(____opt_10 and ____opt_10.ap)
@@ -1607,30 +1607,32 @@ local function choiceLine(bot, d, slot, go, why, camp)
     )
     local ____opt_12 = d.gone
     __TS__SparseArrayPush(
-        ____array_17,
+        ____array_19,
         {
             "ep",
             r1(____opt_12 and ____opt_12.ep)
         }
     )
-    local ____temp_14
+    local ____opt_14 = d.gone
+    __TS__SparseArrayPush(____array_19, {"pw", ____opt_14 and ____opt_14.pw})
+    local ____temp_16
     if d.hold == nil then
-        ____temp_14 = nil
+        ____temp_16 = nil
     else
-        ____temp_14 = d.hold and 1 or 0
+        ____temp_16 = d.hold and 1 or 0
     end
     __TS__SparseArrayPush(
-        ____array_17,
-        {"hold", ____temp_14},
+        ____array_19,
+        {"hold", ____temp_16},
         {"rule", d.rule},
         {"ms", r and r.ms},
         {"pk", d.want and d.kind or nil},
         {"hm", d.hm},
         unpack(campFields(camp))
     )
-    ____Telemetry_Event_18(
+    ____Telemetry_Event_20(
         "choice",
-        {__TS__SparseArraySpread(____array_17)}
+        {__TS__SparseArraySpread(____array_19)}
     )
 end
 local function jobLine(bot, p, phase, why)
@@ -1656,7 +1658,7 @@ local function finish(bot, p, r, label)
     local function r1(x)
         return math.floor(x * 10) / 10
     end
-    local ____array_19 = __TS__SparseArrayNew(
+    local ____array_21 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -1702,7 +1704,7 @@ local function finish(bot, p, r, label)
         unpack(campFields(p.start))
     )
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_21,
         {
             "sh",
             math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
@@ -1744,7 +1746,7 @@ local function finish(bot, p, r, label)
             p.shh ~= nil and math.floor(p.shh * 100 + 0.5) / 100 or nil
         }
     )
-    local fields = {__TS__SparseArraySpread(____array_19)}
+    local fields = {__TS__SparseArraySpread(____array_21)}
     if not r.success then
         creepLines(bot, p)
         Telemetry.Event("pull_job", fields)
@@ -1775,18 +1777,18 @@ local function trail(bot, flush)
     end
     trailing[pid] = nil
     creepLines(bot, tr.pull)
-    local ____Telemetry_Event_21 = Telemetry.Event
-    local ____array_20 = __TS__SparseArrayNew(unpack(tr.fields))
+    local ____Telemetry_Event_23 = Telemetry.Event
+    local ____array_22 = __TS__SparseArrayNew(unpack(tr.fields))
     __TS__SparseArrayPush(
-        ____array_20,
+        ____array_22,
         {
             "dt",
             share(tr.pull)
         }
     )
-    ____Telemetry_Event_21(
+    ____Telemetry_Event_23(
         "pull_job",
-        {__TS__SparseArraySpread(____array_20)}
+        {__TS__SparseArraySpread(____array_22)}
     )
 end
 --- How far `at` is from `stand` towards the meet point (negative: back towards the camp).
@@ -1876,8 +1878,8 @@ local function tagCamp(bot, p)
     p.early = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
-            local ____p_early_22 = p.early
-            ____p_early_22[#____p_early_22 + 1] = c
+            local ____p_early_24 = p.early
+            ____p_early_24[#____p_early_24 + 1] = c
         end
     end
 end
@@ -2030,15 +2032,15 @@ function ____exports.Wants(bot, blocked, host)
     if full == nil or handled[pid] == full.key then
         return false
     end
-    local ____opt_32 = decided[pid]
-    local kind = (____opt_32 and ____opt_32.slot) == full.key and decided[pid].kind or "full"
-    local ____temp_34
+    local ____opt_34 = decided[pid]
+    local kind = (____opt_34 and ____opt_34.slot) == full.key and decided[pid].kind or "full"
+    local ____temp_36
     if kind == "half" then
-        ____temp_34 = planFor(bot, now, "half")
+        ____temp_36 = planFor(bot, now, "half")
     else
-        ____temp_34 = nil
+        ____temp_36 = nil
     end
-    local half = ____temp_34
+    local half = ____temp_36
     if kind == "half" and half == nil and decided[pid] ~= nil then
         decided[pid].kind = "full"
     end

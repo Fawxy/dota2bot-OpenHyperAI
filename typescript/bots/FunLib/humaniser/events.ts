@@ -1472,6 +1472,9 @@ export const EVENTS = {
         // above), old (own + mv past tgt + WantPast and st not IN, counted only with hold 1) or both; absent when neither.
         hold: "num",
         rule: "str",
+        // pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap
+        // were forecast with it in the lane.
+        pw: "num",
     },
     gank: {
         pid: "num",

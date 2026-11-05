@@ -369,7 +369,7 @@ end
 -- gone is not.
 do
 	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
-	local function first(withCore, coreAway)
+	local function first(withCore, coreAway, onJob)
 		local w = world({ reading = OUT, gone = { own = 900, ap = 1000, ep = 1000 } })
 		local path = P.PathOf(Lane.Bot)
 		local t1, dir = P.OwnT1(path, 2)
@@ -378,8 +378,11 @@ do
 		local WH = require("bots/FunLib/humaniser/states/wave_hold")
 		local owns = WH.Owns
 		WH.Owns = function(u) return withCore and u == w.core end
+		local CH = require("bots/FunLib/humaniser/chooser")
+		local running = CH.Running
+		CH.Running = function(u) return onJob == true and u == w.core or running(u) end
 		local out = run(w, 75)
-		WH.Owns = owns
+		WH.Owns, CH.Running = owns, running
 		return lines(out, "choice")[1]
 	end
 	local held = first(true)
@@ -390,6 +393,25 @@ do
 		and field(alone, "hold") == "0" and field(alone, "rule") == nil, alone)
 	local far = first(true, true)
 	check("core out of the hold's reach of the target point: no core to hold", field(far, "go") == "0" and field(far, "hold") == "0", far)
+	local busy = first(true, false, true)
+	check("core on one of our jobs (a camp, a rune): no core to hold", field(busy, "go") == "0" and field(busy, "hold") == "0", busy)
+end
+
+-- What Wants asks of the lane: our team's view of the bot's lane, the wave spawned on the 30 s before the slot, read
+-- ArriveAfter (12 s) after the slot.
+do
+	local w = world({ reading = OUT })
+	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
+	local args
+	P.WaveGoneNow = function(team, lane, ts, at)
+		args = { team, lane, ts, at }
+		return { own = 3000, ap = 1000, ep = 1000, pw = 1 }
+	end
+	local c = lines(run(w, 75), "choice")[1]
+	local slot = tonumber(field(c, "slot"))
+	check("Wants: WaveGoneNow gets our team, the lane, the pulled wave's spawn and slot + 12", args ~= nil and args[1] == 2
+		and args[2] == Lane.Bot and args[3] == math.floor((slot - 1) / 30) * 30 and math.abs(args[4] - slot - 12) < 0.01
+		and field(c, "pw") == "1", c)
 end
 
 -- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full

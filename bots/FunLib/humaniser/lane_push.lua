@@ -709,20 +709,23 @@ local function waveSpot(lane, team, ts, t0)
     return (team == R and lane.spawnR or lane.spawnD) + dirOf(team) * SPEED * (t0 - ts)
 end
 --- `team`'s view `init` at `t0` with its wave spawned at `ts` removed (its creeps near the schedule's spot, or the spawn left
--- out when it is still to come), run to `at`. CANDIDATE(wave_gone): the pull trigger is its one reader.
+-- out when it is still to come), run to `at`. A wave off its schedule (a creep block, already fighting) is not found and
+-- stays in the run (`pw` 0). CANDIDATE(wave_gone): the pull trigger is its one reader.
 function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
-    local spawned = t0 > ts
+    local spawned = t0 >= ts
     local function inWave(c)
         return spawned and math.abs(c.s - waveSpot(lane, c.team, ts, t0)) <= ____exports.SETTINGS.WaveWindow
     end
     local left = {}
     local ap = 0
     local ep = 0
+    local found = not spawned
     for ____, c in ipairs(init) do
         do
             local __continue109
             repeat
                 if c.team == team and inWave(c) then
+                    found = true
                     __continue109 = true
                     break
                 end
@@ -763,7 +766,8 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
     return {
         own = clash ~= nil and dirOf(team) * (clash - ours.s) or nil,
         ap = ap,
-        ep = ep
+        ep = ep,
+        pw = found and 1 or 0
     }
 end
 function ____exports.PathOf(lane)

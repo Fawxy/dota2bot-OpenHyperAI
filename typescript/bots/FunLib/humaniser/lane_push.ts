@@ -388,6 +388,8 @@ export interface WaveGone {
     /** HP of the creeps in lane before that pair of waves: ours less the pulled wave, theirs less the wave spawned with it. */
     ap: number;
     ep: number;
+    /** 1 when the pulled wave was found near the schedule's spot (or is still to spawn), 0 when the forecast runs with it in. */
+    pw: number;
 }
 
 /** Where the schedule puts `team`'s wave spawned at `ts` at second `t0`. */
@@ -397,7 +399,8 @@ function waveSpot(lane: LanePath, team: number, ts: number, t0: number): number 
 
 /**
  * `team`'s view `init` at `t0` with its wave spawned at `ts` removed (its creeps near the schedule's spot, or the spawn left
- * out when it is still to come), run to `at`. CANDIDATE(wave_gone): the pull trigger is its one reader.
+ * out when it is still to come), run to `at`. A wave off its schedule (a creep block, already fighting) is not found and
+ * stays in the run (`pw` 0). CANDIDATE(wave_gone): the pull trigger is its one reader.
  */
 export function WaveGoneFrom(
     lane: LanePath,
@@ -408,13 +411,17 @@ export function WaveGoneFrom(
     ts: number,
     at: number,
 ): WaveGone {
-    const spawned = t0 > ts;
+    const spawned = t0 >= ts;
     const inWave = (c: StartCreep) => spawned && math.abs(c.s - waveSpot(lane, c.team, ts, t0)) <= SETTINGS.WaveWindow;
     const left: StartCreep[] = [];
     let ap = 0;
     let ep = 0;
+    let found = !spawned;
     for (const c of init) {
-        if (c.team === team && inWave(c)) continue;
+        if (c.team === team && inWave(c)) {
+            found = true;
+            continue;
+        }
         left.push(c);
         if (c.team === team) ap += c.hp;
         else if (!inWave(c)) ep += c.hp;
@@ -422,7 +429,7 @@ export function WaveGoneFrom(
     const smp = Run(lane, t0, at + 2, left, towerHp, spawned ? undefined : { team, t: ts });
     const clash = ClashAt(smp, at);
     const ours = lane.towers.find((tw) => tw.team === team)!;
-    return { own: clash !== undefined ? dirOf(team) * (clash - ours.s) : undefined, ap, ep };
+    return { own: clash !== undefined ? dirOf(team) * (clash - ours.s) : undefined, ap, ep, pw: found ? 1 : 0 };
 }
 
 // ------------------------------------------------------------------------------------------------- the game's view

@@ -575,6 +575,7 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["pa", r1(d.gone?.own)],
         ["ap", r1(d.gone?.ap)],
         ["ep", r1(d.gone?.ep)],
+        ["pw", d.gone?.pw],
         ["hold", d.hold === undefined ? undefined : d.hold ? 1 : 0],
         ["rule", d.rule],
         ["ms", r?.ms],
