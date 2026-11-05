@@ -54,6 +54,7 @@ function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
         kind = kind,
         phase = phase,
         startedAt = now,
+        steppedAt = now,
         hero = hero,
         tpid = hero:GetPlayerID(),
         creep = creep,
@@ -111,6 +112,8 @@ ____exports.SETTINGS = {
     DragBack = 300,
     DragWalk = 1.2,
     BusyWithin = 1.5,
+    StaleActing = 0.5,
+    StaleWatch = 3,
     HurtShare = 0.12,
     FeedWatch = 30,
     FeedHeroClear = 300,
@@ -179,7 +182,10 @@ end
 function ____exports.LaneHeld(now, pid, held)
     return held ~= nil and held.pid ~= pid and now - held.at < ____exports.SETTINGS.Cooldown
 end
---- The lane's target meeting point, as a distance along the lane from our T1.
+--- Whether an attempt last stepped `gap` seconds ago is stale: the watch tolerates a short loss of the frame, acting does not.
+function ____exports.Stale(phase, gap)
+    return gap > (phase == "watch" and ____exports.SETTINGS.StaleWatch or ____exports.SETTINGS.StaleActing)
+end
 function ____exports.TargetOf(lane)
     return lane == Lane.Mid and ____exports.SETTINGS.TargetMid or ____exports.SETTINGS.TargetSide
 end
@@ -234,24 +240,24 @@ local function coreAway(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue23
+                local __continue24
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h == bot or h:IsNull() then
-                        __continue23 = true
+                        __continue24 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(h)
                     if pos == nil or pos > 3 or h:GetAssignedLane() ~= lane then
-                        __continue23 = true
+                        __continue24 = true
                         break
                     end
                     if h:IsAlive() and GetUnitToUnitDistance(h, bot) <= ____exports.SETTINGS.CoreNear then
                         return false
                     end
-                    __continue23 = true
+                    __continue24 = true
                 until true
-                if not __continue23 then
+                if not __continue24 then
                     break
                 end
             end
@@ -310,11 +316,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue44
+            local __continue45
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue44 = true
+                    __continue45 = true
                     break
                 end
                 local d = d2(
@@ -325,9 +331,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue44 = true
+                __continue45 = true
             until true
-            if not __continue44 then
+            if not __continue45 then
                 break
             end
         end
@@ -350,10 +356,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue50
+            local __continue51
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -361,9 +367,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
@@ -376,19 +382,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue55
+                local __continue56
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue55 = true
+                        __continue56 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue55 = true
+                    __continue56 = true
                 until true
-                if not __continue55 then
+                if not __continue56 then
                     break
                 end
             end
@@ -462,15 +468,15 @@ local function tryDrag(bot, heroes, now)
     local here = bot:GetLocation()
     for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
         do
-            local __continue73
+            local __continue74
             repeat
                 if t.kind ~= "lasthit" or t.due < ____exports.SETTINGS.DragDueMin or t.due > ____exports.SETTINGS.DragDueMax then
-                    __continue73 = true
+                    __continue74 = true
                     break
                 end
                 local creep = t.creep
                 if not valid(creep) or GetUnitToUnitDistance(bot, creep) > ____exports.SETTINGS.DrawR then
-                    __continue73 = true
+                    __continue74 = true
                     break
                 end
                 local contester
@@ -480,7 +486,7 @@ local function tryDrag(bot, heroes, now)
                     end
                 end
                 if contester == nil then
-                    __continue73 = true
+                    __continue74 = true
                     break
                 end
                 local hero = orderTarget(bot)
@@ -510,7 +516,7 @@ local function tryDrag(bot, heroes, now)
                     now
                 )
             until true
-            if not __continue73 then
+            if not __continue74 then
                 break
             end
         end
@@ -743,11 +749,11 @@ local function movedOf(a)
     local n = 0
     for ____, s0 in ipairs(a.start or ({})) do
         do
-            local __continue120
+            local __continue121
             repeat
                 local u = s0.unit
                 if u:IsNull() or not u:IsAlive() then
-                    __continue120 = true
+                    __continue121 = true
                     break
                 end
                 local l = u:GetLocation()
@@ -757,9 +763,9 @@ local function movedOf(a)
                 ) >= ____exports.SETTINGS.MovedR then
                     n = n + 1
                 end
-                __continue120 = true
+                __continue121 = true
             until true
-            if not __continue120 then
+            if not __continue121 then
                 break
             end
         end
@@ -770,19 +776,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue125
+            local __continue126
             repeat
                 if not valid(c) then
-                    __continue125 = true
+                    __continue126 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue125 = true
+                __continue126 = true
             until true
-            if not __continue125 then
+            if not __continue126 then
                 break
             end
         end
@@ -933,23 +939,23 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue160
+                    local __continue161
                     repeat
                         local u = s0.unit
                         if u:IsNull() or not u:IsAlive() or d2(
                             u:GetLocation(),
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue160 = true
+                            __continue161 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue160 = true
+                        __continue161 = true
                     until true
-                    if not __continue160 then
+                    if not __continue161 then
                         break
                     end
                 end
@@ -1014,7 +1020,12 @@ function ____exports.Step(bot)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local a = attempts[pid]
-    if a ~= nil then
+    if a ~= nil and ____exports.Stale(a.phase, now - a.steppedAt) then
+        finish(bot, a, "stale", now)
+    elseif a ~= nil then
+        a.steppedAt = now
+    end
+    if a ~= nil and attempts[pid] == a then
         if a.phase == "watch" then
             if a.kind == "feed" then
                 Laning.SetFed(bot, a.creep)
@@ -1068,6 +1079,10 @@ function ____exports.Step(bot)
     lastSkip[pid] = nil
     start(bot, next)
     return act(bot, next, now)
+end
+--- An attempt is open (acting or watching): its caller keeps stepping it so it ends cleanly.
+function ____exports.Pending(bot)
+    return attempts[bot:GetPlayerID()] ~= nil
 end
 --- A move is giving this bot's orders (not only watching its result).
 function ____exports.Acting(bot)

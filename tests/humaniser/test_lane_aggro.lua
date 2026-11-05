@@ -36,4 +36,10 @@ check("a drawn creep beside our ranged creep after the walk: drop", A.DropNow(1.
 check("beside it but too early (the creeps would turn back onto our melee): wait", not A.DropNow(0.5, 2, 150))
 check("still far from it: keep walking", not A.DropNow(1.0, 2, 600))
 check("the drop is never later than DropBy, near or not", A.DropNow(1.9, 1, 900))
+-- Review 2026-11-05-lane-aggro-41120ba F1: a move whose caller lost the frame (OHA's retreat 396-416 s in lagchk4 A) resumed past
+-- its gates. An acting move ends after half a second unstepped; the watch rides out a body swing but not a retreat.
+check("stale: acting, 0.3 s gap kept", not A.Stale("approach", 0.3))
+check("stale: acting, 1 s gap ends it", A.Stale("walk", 1))
+check("stale: watch, 1 s gap (a swing) kept", not A.Stale("watch", 1))
+check("stale: watch, 20 s gap (a retreat) ends it", A.Stale("watch", 20))
 finish()

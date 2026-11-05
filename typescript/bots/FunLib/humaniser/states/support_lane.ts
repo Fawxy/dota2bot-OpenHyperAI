@@ -54,7 +54,7 @@ const hold: LaneStep = {
  */
 const aggro: LaneStep = {
     name: "aggro",
-    wants: (bot, ctx) => ctx.bodyRunning() && LaneAggro.Owns(bot),
+    wants: (bot, ctx) => ctx.bodyRunning() && (LaneAggro.Owns(bot) || LaneAggro.Pending(bot)),
     run: (bot) => LaneAggro.Step(bot),
 };
 

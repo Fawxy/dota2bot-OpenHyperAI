@@ -11,6 +11,7 @@ package.loaded["bots/FunLib/humaniser/states/laning"] = {
 }
 package.loaded["bots/FunLib/humaniser/lane_aggro"] = {
 	Owns = function() return world.aggro == true end,
+	Pending = function() return world.aggroPending == true end,
 	Step = function() world.aggroSteps = (world.aggroSteps or 0) + 1 return world.aggroActs ~= false end,
 }
 package.loaded["bots/FunLib/humaniser/states/support_lane"] = nil
@@ -82,5 +83,12 @@ do
 	world.aggroActs, world.aggroSteps = nil, 0
 	c, o = ctx({ running = false })
 	check("body not running (another state): no draw", SupportLane.Step({}, c) == nil and world.aggroSteps == 0)
-	world.aggro = false
+	-- Review lane-aggro F1: the core came back mid-move; the support's open attempt is still stepped so it ends cleanly.
+	world.aggro, world.aggroPending, world.aggroActs, world.aggroSteps = false, true, false, 0
+	c, o = ctx({ running = true, label = "hold" })
+	check("core back, attempt open: the aggro step still runs it", SupportLane.Step({}, c) == "hold" and world.aggroSteps == 1)
+	world.aggroPending, world.aggroSteps = false, 0
+	c, o = ctx({ running = true, label = "hold" })
+	check("core back, nothing open: no aggro step", SupportLane.Step({}, c) == "hold" and world.aggroSteps == 0)
+	world.aggro, world.aggroActs = false, nil
 end

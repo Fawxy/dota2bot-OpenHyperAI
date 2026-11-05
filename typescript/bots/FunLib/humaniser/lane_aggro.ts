@@ -96,6 +96,10 @@ export const SETTINGS = {
     DragWalk: 1.2,
     /** A lane hit due this soon (any kind) keeps the body's frame: no feed. */
     BusyWithin: 1.5,
+    /** An attempt not stepped for this long ends `stale` (its caller lost the frame, e.g. OHA's retreat): acting phases (approach,
+     * walk) and the watch. Review 2026-11-05-lane-aggro-41120ba F1: a frozen move resumed past its gates. */
+    StaleActing: 0.5,
+    StaleWatch: 3,
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** Results are read until then: the fed creep's death, the dragged creep's death. */
@@ -114,6 +118,7 @@ interface Attempt {
     kind: Kind;
     phase: PhaseName;
     startedAt: number;
+    steppedAt: number;
     orderedAt?: number;
     walkedAt?: number;
     droppedAt?: number;
@@ -220,6 +225,11 @@ export function LaneHeld(now: number, pid: number, held: { pid: number; at: numb
 }
 
 /** The lane's target meeting point, as a distance along the lane from our T1. */
+/** Whether an attempt last stepped `gap` seconds ago is stale: the watch tolerates a short loss of the frame, acting does not. */
+export function Stale(phase: PhaseName, gap: number): boolean {
+    return gap > (phase === "watch" ? SETTINGS.StaleWatch : SETTINGS.StaleActing);
+}
+
 export function TargetOf(lane: Lane): number {
     return lane === Lane.Mid ? SETTINGS.TargetMid : SETTINGS.TargetSide;
 }
@@ -492,6 +502,7 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
         kind,
         phase,
         startedAt: now,
+        steppedAt: now,
         hero,
         tpid: hero.GetPlayerID(),
         creep,
@@ -704,7 +715,9 @@ export function Step(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const a = attempts[pid];
-    if (a !== undefined) {
+    if (a !== undefined && Stale(a.phase, now - a.steppedAt)) finish(bot, a, "stale", now);
+    else if (a !== undefined) a.steppedAt = now;
+    if (a !== undefined && attempts[pid] === a) {
         if (a.phase === "watch") {
             if (a.kind === "feed") {
                 // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
@@ -749,6 +762,11 @@ export function Step(bot: Unit): boolean {
     lastSkip[pid] = undefined;
     start(bot, next);
     return act(bot, next, now);
+}
+
+/** An attempt is open (acting or watching): its caller keeps stepping it so it ends cleanly. */
+export function Pending(bot: Unit): boolean {
+    return attempts[bot.GetPlayerID()] !== undefined;
 }
 
 /** A move is giving this bot's orders (not only watching its result). */

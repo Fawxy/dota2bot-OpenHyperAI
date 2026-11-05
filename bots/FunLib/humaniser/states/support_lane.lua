@@ -27,7 +27,7 @@ local hold = {
 -- and only while the body runs (so never inside another state's frame).
 local aggro = {
     name = "aggro",
-    wants = function(bot, ctx) return ctx.bodyRunning() and LaneAggro.Owns(bot) end,
+    wants = function(bot, ctx) return ctx.bodyRunning() and (LaneAggro.Owns(bot) or LaneAggro.Pending(bot)) end,
     run = function(bot) return LaneAggro.Step(bot) end
 }
 ____exports.STEPS = {hit, aggro, hold}
