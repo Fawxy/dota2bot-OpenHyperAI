@@ -319,6 +319,7 @@ ____exports.DEFAULTS = {
         HalfStepEarly = 0.5,
         HalfHoldOff = 550,
         HalfStepOver = 400,
+        HalfRangedFrom = 250,
         HalfAll = false,
         HalfStand = {},
         LanePaths = {}

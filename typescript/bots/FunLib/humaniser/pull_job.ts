@@ -940,14 +940,16 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
                       const here = bot.GetLocation();
                       // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
                       const offs: Vector[] = [];
+                      let ranged = false;
                       for (const u of pull.tagged ?? []) {
                           if (stale(u)) continue;
                           // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
                           const l = u.GetLocation();
                           if (l === undefined || l === null) continue;
                           offs.push(Vector(l.x - here.x, l.y - here.y, 0));
+                          if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
                       }
-                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, offs);
+                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, offs, ranged);
                       if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());
                       return at as unknown as Lib.Vec;
                   }

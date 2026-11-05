@@ -1728,6 +1728,7 @@ local function verbPlan(bot, pull, aggroAt)
             )
             local here = bot:GetLocation()
             local offs = {}
+            local ranged = false
             for ____, u in ipairs(pull.tagged or ({})) do
                 do
                     local __continue224
@@ -1742,6 +1743,9 @@ local function verbPlan(bot, pull, aggroAt)
                             break
                         end
                         offs[#offs + 1] = Vector(l.x - here.x, l.y - here.y, 0)
+                        if u:GetAttackRange() >= s.PullTiming.HalfRangedFrom then
+                            ranged = true
+                        end
                         __continue224 = true
                     until true
                     if not __continue224 then
@@ -1757,7 +1761,8 @@ local function verbPlan(bot, pull, aggroAt)
                 DotaTime(),
                 engaged,
                 here,
-                offs
+                offs,
+                ranged
             )
             if engaged and pull.stepIn == nil then
                 pull.stepIn = stepped(

@@ -40,6 +40,7 @@ function IsHeroAlive(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.p
 local CreepMeta = {}
 CreepMeta.__index = CreepMeta
 function CreepMeta:GetAttackTarget() return self.target end
+function CreepMeta:GetAttackRange() return self.range or 100 end
 function CreepMeta:GetHealth() return self.hp end
 function CreepMeta:GetMaxHealth() return self.maxhp end
 function CreepMeta:GetUnitName() return self.name end

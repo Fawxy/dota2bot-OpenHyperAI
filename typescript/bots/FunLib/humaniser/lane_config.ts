@@ -397,6 +397,9 @@ export const DEFAULTS = {
         // ranged ones hit from 400-500 behind it, phhar7) can still be brought within HalfAcquire of the back creeps.
         // `judgement`.
         HalfStepOver: 400,
+        // A tagged neutral with at least this attack range is ranged: only then does the step-in run HalfStepOver past the
+        // meet point (melee neutrals 100-150, ranged 400-600 in the game data). `judgement`.
+        HalfRangedFrom: 250,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

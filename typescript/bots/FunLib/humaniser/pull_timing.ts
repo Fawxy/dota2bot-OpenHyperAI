@@ -449,7 +449,7 @@ export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | 
  * phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
  * from the wave in phchk3, nothing taken) still reach the wave.
  */
-export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector, neutrals?: Vector[]): Vector {
+export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector, neutrals?: Vector[], ranged = false): Vector {
     if (engaged) return at;
     const cfg = settings();
     const t = c.timing;
@@ -473,11 +473,13 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     // with none known the puller stands for them at HalfHeroAggro.
     const offs = neutrals !== undefined && neutrals.length > 0 ? neutrals : undefined;
     const reach = (offs !== undefined ? cfg.HalfAcquire : cfg.HalfHeroAggro) + cfg.HalfStepBuffer;
-    // With the neutrals known the line runs on HalfStepOver past the meet point, so neutrals that trail the puller can
-    // still be brought to the lane; the far side is open only once the front creeps are clear of the crossing.
+    // With ranged neutrals known the line runs on HalfStepOver past the meet point, so neutrals that trail the puller can
+    // still be brought to the lane; the far side is open only once the front creeps are clear of the crossing. Melee
+    // neutrals close to 100-250 and need no crossing: with it they followed the puller on to the lane and took the
+    // whole wave (phhar9 camp 1, 2 of 2).
     const ux = (meet.x - back.x) / len;
     const uy = (meet.y - back.y) / len;
-    let crossClear = offs !== undefined;
+    let crossClear = offs !== undefined && ranged;
     if (crossClear) for (const [fx, fy] of fronts) if (hypot(meet.x, meet.y, fx, fy) <= reach) crossClear = false;
     const full = len + (crossClear ? cfg.HalfStepOver : 0);
     const n = math.max(1, math.ceil(full / 50));

@@ -664,7 +664,10 @@ end
 -- creep of the wave on a neutral) it stays at `at`. The hit's timing error (the neutrals' start 0.4-2.1 s after the hit,
 -- phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
 -- from the wave in phchk3, nothing taken) still reach the wave.
-function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals)
+function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, ranged)
+    if ranged == nil then
+        ranged = false
+    end
     if engaged then
         return at
     end
@@ -700,7 +703,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals)
     local reach = (offs ~= nil and cfg.HalfAcquire or cfg.HalfHeroAggro) + cfg.HalfStepBuffer
     local ux = (meet.x - back.x) / len
     local uy = (meet.y - back.y) / len
-    local crossClear = offs ~= nil
+    local crossClear = offs ~= nil and ranged
     if crossClear then
         for ____, ____value in ipairs(fronts) do
             local fx = ____value[1]
