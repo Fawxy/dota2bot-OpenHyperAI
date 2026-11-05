@@ -273,6 +273,7 @@ local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
@@ -403,6 +404,7 @@ function ____exports.ResetCache()
             __TS__Delete(t, k)
         end
     end
+    CampClaims.ResetCache()
 end
 local function clamp(v, r)
     return math.max(
@@ -793,7 +795,7 @@ local function campOpen(bot, spawner, center, now, pullCamps)
     if IsLocationVisible(center) and campNeutralCount(center) == 0 then
         return false
     end
-    if pullCamps[spawner.idx] == true or pulledInto(center) then
+    if pullCamps[spawner.idx] == true or pulledInto(center) and CampClaims.On("pullfarm", spawner.idx) == nil then
         return false
     end
     return not allyInBox(bot, spawner.idx) and not otherTripOn(bot, spawner.idx) and not Stacking.ReservedByAlly(
@@ -925,7 +927,7 @@ local function anyCamp(bot, front, now)
     return false
 end
 --- A visible enemy hero whose reach (plus ThreatMargin) touches the walk from the core to `at` or the camp itself.
-local function threatOnWay(bot, at)
+function ____exports.ThreatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
@@ -1046,7 +1048,7 @@ local function startGate(bot, plan, now)
         return "rune"
     end
     local spawner = Camps.SpawnerByIdx(plan.camp)
-    if spawner ~= nil and threatOnWay(
+    if spawner ~= nil and ____exports.ThreatOnWay(
         bot,
         Camps.BoxCenter(spawner)
     ) then
@@ -1369,6 +1371,11 @@ local body = __TS__Generator(function(bot, t, ctx)
             break
         end
         t.plan = next
+        CampClaims.Set(
+            "core",
+            bot:GetPlayerID(),
+            next.camp
+        )
         t.camps = t.camps + 1
         log(
             bot,
@@ -1387,6 +1394,11 @@ local body = __TS__Generator(function(bot, t, ctx)
 end)
 local function finish(bot, t, r, label)
     running[bot:GetPlayerID()] = nil
+    CampClaims.Set(
+        "core",
+        bot:GetPlayerID(),
+        nil
+    )
     local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
     if why == "interrupted:hp" and t.returning ~= true then
         growHP(bot)
@@ -1563,6 +1575,7 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     running[pid] = t
+    CampClaims.Set("core", pid, plan.camp)
     jobLine(bot, t, "start", "trigger")
     log(
         bot,

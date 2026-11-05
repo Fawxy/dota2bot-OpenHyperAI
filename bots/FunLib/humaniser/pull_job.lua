@@ -803,6 +803,7 @@ local handled = {}
 local decided = {}
 local tracks = {}
 local gateWhy = {}
+local ended = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({
         running,
@@ -810,7 +811,8 @@ function ____exports.ResetCache()
         handled,
         decided,
         gateWhy,
-        tracks
+        tracks,
+        ended
     }) do
         for k in pairs(t) do
             t[k] = nil
@@ -1062,7 +1064,7 @@ function ____exports.Wanted(r)
     return r.state == "OUT" or r.state == "HOLD" and r.q > ____exports.SETTINGS.HoldPastQ
 end
 --- Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined.
-local function partnerThreat(bot)
+function ____exports.PartnerThreat(bot)
     local lane = bot:GetAssignedLane()
     do
         local i = 1
@@ -1318,6 +1320,7 @@ local function finish(bot, p, r, label)
         return
     end
     local now = DotaTime()
+    ended[bot:GetPlayerID()] = {camp = p.plan.camp.campIdx, at = now, pull = p}
     trailing[bot:GetPlayerID()] = {
         pull = p,
         fields = fields,
@@ -1610,7 +1613,7 @@ function ____exports.Wants(bot, blocked, host)
     camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter)
     camp.php = bot:GetHealth()
     local site = siteThreat(p, camp)
-    local why = ____exports.CampGate(camp, now, hitAt) or blocked(bot) or campDmgGate(bot, camp.dmg) or site or partnerThreat(bot) or (acting(bot) and "acting" or nil)
+    local why = ____exports.CampGate(camp, now, hitAt) or blocked(bot) or campDmgGate(bot, camp.dmg) or site or ____exports.PartnerThreat(bot) or (acting(bot) and "acting" or nil)
     if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
         done(false, gateWhy[pid] or why or "late")
         return false
@@ -1675,6 +1678,15 @@ function ____exports.Step(bot, host)
     end
     sample(bot, p)
     return Tasks.Step(bot, host)
+end
+--- The bot's last ok pull: its camp index, end time and the wave's diverted share (still growing for TrailSec after the end).
+function ____exports.Finished(bot)
+    local e = ended[bot:GetPlayerID()]
+    return e ~= nil and ({
+        camp = e.camp,
+        at = e.at,
+        div = share(e.pull)
+    }) or nil
 end
 function ____exports.NoteHit(bot)
     local p = running[bot:GetPlayerID()]

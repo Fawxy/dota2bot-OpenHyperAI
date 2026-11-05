@@ -1,0 +1,701 @@
+--[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local function __TS__ClassExtends(target, base)
+    target.____super = base
+    local staticMetatable = setmetatable({__index = base}, base)
+    setmetatable(target, staticMetatable)
+    local baseMetatable = getmetatable(base)
+    if baseMetatable then
+        if type(baseMetatable.__index) == "function" then
+            staticMetatable.__index = baseMetatable.__index
+        end
+        if type(baseMetatable.__newindex) == "function" then
+            staticMetatable.__newindex = baseMetatable.__newindex
+        end
+    end
+    setmetatable(target.prototype, base.prototype)
+    if type(base.prototype.__index) == "function" then
+        target.prototype.__index = base.prototype.__index
+    end
+    if type(base.prototype.__newindex) == "function" then
+        target.prototype.__newindex = base.prototype.__newindex
+    end
+    if type(base.prototype.__tostring) == "function" then
+        target.prototype.__tostring = base.prototype.__tostring
+    end
+end
+
+local Error, RangeError, ReferenceError, SyntaxError, TypeError, URIError
+do
+    local function getErrorStack(self, constructor)
+        if debug == nil then
+            return nil
+        end
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "f")
+            level = level + 1
+            if not info then
+                level = 1
+                break
+            elseif info.func == constructor then
+                break
+            end
+        end
+        if __TS__StringIncludes(_VERSION, "Lua 5.0") then
+            return debug.traceback(("[Level " .. tostring(level)) .. "]")
+        else
+            return debug.traceback(nil, level)
+        end
+    end
+    local function wrapErrorToString(self, getDescription)
+        return function(self)
+            local description = getDescription(self)
+            local caller = debug.getinfo(3, "f")
+            local isClassicLua = __TS__StringIncludes(_VERSION, "Lua 5.0") or _VERSION == "Lua 5.1"
+            if isClassicLua or caller and caller.func ~= error then
+                return description
+            else
+                return (description .. "\n") .. tostring(self.stack)
+            end
+        end
+    end
+    local function initErrorClass(self, Type, name)
+        Type.name = name
+        return setmetatable(
+            Type,
+            {__call = function(____, _self, message) return __TS__New(Type, message) end}
+        )
+    end
+    local ____initErrorClass_1 = initErrorClass
+    local ____class_0 = __TS__Class()
+    ____class_0.name = ""
+    function ____class_0.prototype.____constructor(self, message)
+        if message == nil then
+            message = ""
+        end
+        self.message = message
+        self.name = "Error"
+        self.stack = getErrorStack(nil, self.constructor.new)
+        local metatable = getmetatable(self)
+        if metatable and not metatable.__errorToStringPatched then
+            metatable.__errorToStringPatched = true
+            metatable.__tostring = wrapErrorToString(nil, metatable.__tostring)
+        end
+    end
+    function ____class_0.prototype.__tostring(self)
+        return self.message ~= "" and (self.name .. ": ") .. self.message or self.name
+    end
+    Error = ____initErrorClass_1(nil, ____class_0, "Error")
+    local function createErrorClass(self, name)
+        local ____initErrorClass_3 = initErrorClass
+        local ____class_2 = __TS__Class()
+        ____class_2.name = ____class_2.name
+        __TS__ClassExtends(____class_2, Error)
+        function ____class_2.prototype.____constructor(self, ...)
+            ____class_2.____super.prototype.____constructor(self, ...)
+            self.name = name
+        end
+        return ____initErrorClass_3(nil, ____class_2, name)
+    end
+    RangeError = createErrorClass(nil, "RangeError")
+    ReferenceError = createErrorClass(nil, "ReferenceError")
+    SyntaxError = createErrorClass(nil, "SyntaxError")
+    TypeError = createErrorClass(nil, "TypeError")
+    URIError = createErrorClass(nil, "URIError")
+end
+
+local function __TS__ObjectGetOwnPropertyDescriptors(object)
+    local metatable = getmetatable(object)
+    if not metatable then
+        return {}
+    end
+    return rawget(metatable, "_descriptors") or ({})
+end
+
+local function __TS__Delete(target, key)
+    local descriptors = __TS__ObjectGetOwnPropertyDescriptors(target)
+    local descriptor = descriptors[key]
+    if descriptor then
+        if not descriptor.configurable then
+            error(
+                __TS__New(
+                    TypeError,
+                    ((("Cannot delete property " .. tostring(key)) .. " of ") .. tostring(target)) .. "."
+                ),
+                0
+            )
+        end
+        descriptors[key] = nil
+        return true
+    end
+    target[key] = nil
+    return true
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local __TS__Unpack = table.unpack or unpack
+
+local __TS__Generator
+do
+    local function generatorIterator(self)
+        return self
+    end
+    local function generatorNext(self, ...)
+        local co = self.____coroutine
+        if coroutine.status(co) == "dead" then
+            return {done = true}
+        end
+        local status, value = coroutine.resume(co, ...)
+        if not status then
+            error(value, 0)
+        end
+        return {
+            value = value,
+            done = coroutine.status(co) == "dead"
+        }
+    end
+    function __TS__Generator(fn)
+        return function(...)
+            local args = {...}
+            local argsLength = __TS__CountVarargs(...)
+            return {
+                ____coroutine = coroutine.create(function() return fn(__TS__Unpack(args, 1, argsLength)) end),
+                [Symbol.iterator] = generatorIterator,
+                next = generatorNext
+            }
+        end
+    end
+end
+
+local function __TS__StringAccess(self, index)
+    if index >= 0 and index < #self then
+        return string.sub(self, index + 1, index + 1)
+    end
+end
+
+local function __TS__DelegatedYield(iterable)
+    if type(iterable) == "string" then
+        for index = 0, #iterable - 1 do
+            coroutine.yield(__TS__StringAccess(iterable, index))
+        end
+    elseif iterable.____coroutine ~= nil then
+        local co = iterable.____coroutine
+        while true do
+            local status, value = coroutine.resume(co)
+            if not status then
+                error(value, 0)
+            end
+            if coroutine.status(co) == "dead" then
+                return value
+            else
+                coroutine.yield(value)
+            end
+        end
+    elseif iterable[Symbol.iterator] then
+        local iterator = iterable[Symbol.iterator](iterable)
+        while true do
+            local result = iterator:next()
+            if result.done then
+                return result.value
+            else
+                coroutine.yield(result.value)
+            end
+        end
+    else
+        for ____, value in ipairs(iterable) do
+            coroutine.yield(value)
+        end
+    end
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
+local ____exports = {}
+local locOf, dist, campLeft, running
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local UnitType = ____dota.UnitType
+local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
+local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
+local Tasks = ____tasks.ForOurs
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function locOf(u)
+    local at = u:GetLocation()
+    local ____temp_0
+    if at == nil then
+        ____temp_0 = nil
+    else
+        ____temp_0 = at
+    end
+    return ____temp_0
+end
+function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+function campLeft(center)
+    local n = 0
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        do
+            local __continue44
+            repeat
+                if u == nil or u == nil or not u:IsAlive() then
+                    __continue44 = true
+                    break
+                end
+                local at = locOf(u)
+                if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
+                    n = n + 1
+                end
+                __continue44 = true
+            until true
+            if not __continue44 then
+                break
+            end
+        end
+    end
+    return n
+end
+function ____exports.Running(bot)
+    return running[bot:GetPlayerID()] ~= nil
+end
+____exports.SETTINGS = {
+    Priority = 0.88,
+    StartWithin = 12,
+    MaxFarm = 35,
+    AbortHP = 0.35,
+    CampRadius = 700,
+    CoreThere = 600,
+    ReturnArrive = 900,
+    ReturnMax = 25,
+    ReturnReorder = 0.5
+}
+running = {}
+--- The pull end (`at`) each hero's window was last settled for: one start or one skip line per pull.
+local handled = {}
+local lastWhy = {}
+function ____exports.ResetCache()
+    for ____, t in ipairs({running, handled, lastWhy}) do
+        for k in pairs(t) do
+            __TS__Delete(t, k)
+        end
+    end
+end
+function ____exports.Applies(bot)
+    return Ours.On("SupportPullFarm") and PullJob.Applies(bot)
+end
+function ____exports.Priority(bot)
+    return ____exports.Applies(bot) and ____exports.SETTINGS.Priority or nil
+end
+function ____exports.Claims(bot)
+    return ____exports.Running(bot)
+end
+local function hpShare(bot)
+    return bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    )
+end
+--- An ally core (pos1-3) already at the camp.
+local function coreThere(bot, center)
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        do
+            local __continue13
+            repeat
+                if a == nil or a == nil or not a:IsAlive() or a == bot or (LaneConfig.PositionOf(a) or 9) > 3 then
+                    __continue13 = true
+                    break
+                end
+                local at = locOf(a)
+                if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CoreThere then
+                    return true
+                end
+                __continue13 = true
+            until true
+            if not __continue13 then
+                break
+            end
+        end
+    end
+    return false
+end
+--- Why the support may not start on the camp now, or undefined.
+local function startGate(bot, camp, center, blocked)
+    local state = PullJob.CampStateOf(camp)
+    if state.n == 0 then
+        return "no-neutrals"
+    end
+    if CampClaims.On("core", camp.idx) ~= nil then
+        return "core-coming"
+    end
+    if coreThere(bot, center) then
+        return "core-there"
+    end
+    local dmg = PullJob.CampDamage(bot, state, camp.type, nil)
+    if bot:GetHealth() - dmg < bot:GetMaxHealth() * PullJob.SETTINGS.StartReserve then
+        return "camp-dmg"
+    end
+    if CoreCamp.ThreatOnWay(bot, center) then
+        return "threat"
+    end
+    return blocked(bot) or PullJob.PartnerThreat(bot)
+end
+local function fields(bot, f, camp)
+    return {
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {
+            "pos",
+            LaneConfig.PositionOf(bot)
+        },
+        {
+            "lane",
+            bot:GetAssignedLane()
+        },
+        {"camp", camp},
+        {"ago", f and f.ago},
+        {"div", f and f.div},
+        {"n0", f and f.n0}
+    }
+end
+local function jobLine(bot, f, phase, why)
+    Telemetry.Event(
+        "job",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"job", "pullfarm"},
+            {"phase", phase},
+            {"why", why},
+            {"host", f.host},
+            unpack(phase == "end" and ({{"hit", f.hit == true and 1 or 0}}) or ({}))
+        }
+    )
+end
+--- Why the farm must stop now (the task's guard, every frame), or undefined. The walk back ignores heroes: laning decides.
+local function guard(bot, f)
+    if f.returning == true then
+        return nil
+    end
+    if CampClaims.On("core", f.camp) ~= nil then
+        return "yield"
+    end
+    if hpShare(bot) < ____exports.SETTINGS.AbortHP then
+        return "hp"
+    end
+    local near = false
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue29
+            repeat
+                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                    __continue29 = true
+                    break
+                end
+                local at = locOf(e)
+                if at ~= nil and dist(
+                    at,
+                    bot:GetLocation()
+                ) <= LaneSpot.HeroReach(bot, e) then
+                    near = true
+                end
+                __continue29 = true
+            until true
+            if not __continue29 then
+                break
+            end
+        end
+    end
+    if not near then
+        f.threatSince = nil
+        return nil
+    end
+    local now = DotaTime()
+    f.threatSince = f.threatSince or now
+    return now - f.threatSince >= Profile.Get(bot).reactBase and "threat" or nil
+end
+local walkBack = __TS__Generator(function(bot, f, ctx)
+    ctx.label("return")
+    f.returning = true
+    local from = DotaTime()
+    local orderedAt = -math.huge
+    while true do
+        if not bot:IsAlive() then
+            return {success = false, reason = "dead"}
+        end
+        local now = DotaTime()
+        local front = GetLaneFrontLocation(
+            bot:GetTeam(),
+            f.lane,
+            0
+        )
+        if dist(
+            bot:GetLocation(),
+            front
+        ) <= ____exports.SETTINGS.ReturnArrive then
+            f.back = now
+            return {success = true, reason = "ok", message = "back"}
+        end
+        if now - from > ____exports.SETTINGS.ReturnMax then
+            return {success = false, reason = "timeout", message = "late"}
+        end
+        if now - orderedAt >= ____exports.SETTINGS.ReturnReorder then
+            bot:Action_MoveToLocation(front)
+            orderedAt = now
+        end
+        coroutine.yield()
+    end
+end)
+local body = __TS__Generator(function(bot, f, ctx)
+    local hooks = {
+        label = function(l) return ctx.label(l) end,
+        urgent = ctx.urgent
+    }
+    local r = __TS__DelegatedYield(Tasks.Jobs().clearCamp(bot, {at = f.center, radius = ____exports.SETTINGS.CampRadius, deadline = f.left + ____exports.SETTINGS.MaxFarm}, hooks))
+    f.nl = campLeft(f.center)
+    if not r.success then
+        return r
+    end
+    return __TS__DelegatedYield(walkBack(bot, f, ctx))
+end)
+local function finish(bot, f, r, label)
+    running[bot:GetPlayerID()] = nil
+    CampClaims.Set(
+        "pullfarm",
+        bot:GetPlayerID(),
+        nil
+    )
+    local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
+    jobLine(bot, f, "end", why)
+    local function r1(x)
+        return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil
+    end
+    local ____Telemetry_Event_8 = Telemetry.Event
+    local ____array_7 = __TS__SparseArrayNew(
+        {"phase", "end"},
+        unpack(fields(bot, f, f.camp))
+    )
+    __TS__SparseArrayPush(
+        ____array_7,
+        {"res", r.success and "ok" or "fail"},
+        {"why", why},
+        {"label", label},
+        {
+            "nl",
+            f.nl or (label == "return" and 0 or campLeft(f.center))
+        },
+        {
+            "back",
+            r1(f.back)
+        },
+        {"g0", f.g0},
+        {
+            "g1",
+            bot:GetNetWorth()
+        },
+        {
+            "secs",
+            r1(DotaTime() - f.left)
+        },
+        {
+            "hp0",
+            math.floor(f.hp0 * 100 + 0.5) / 100
+        },
+        {
+            "hp",
+            math.floor(hpShare(bot) * 100 + 0.5) / 100
+        },
+        {
+            "died",
+            bot:IsAlive() and 0 or 1
+        }
+    )
+    ____Telemetry_Event_8(
+        "pull_clear",
+        {__TS__SparseArraySpread(____array_7)}
+    )
+end
+--- Every frame while the chooser asks: true while a farm runs or as one starts. A farm may start only in the StartWithin
+-- seconds after this hero's ok pull, on the pull's own camp; the window closes with one skip line naming the gate that held it.
+function ____exports.Wants(bot, blocked, host)
+    if not ____exports.Applies(bot) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    Tasks.Tick(bot)
+    if running[pid] ~= nil then
+        return true
+    end
+    if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
+        return false
+    end
+    local pull = PullJob.Finished(bot)
+    if pull == nil or handled[pid] == pull.at then
+        return false
+    end
+    local now = DotaTime()
+    local camp = Camps.SpawnerByIdx(pull.camp)
+    local ago = now - pull.at
+    if camp == nil then
+        return false
+    end
+    local center = Camps.BoxCenter(camp)
+    local f = {
+        camp = pull.camp,
+        center = center,
+        lane = bot:GetAssignedLane(),
+        left = now,
+        host = host,
+        ago = math.floor(ago * 10 + 0.5) / 10,
+        div = pull.div,
+        n0 = PullJob.CampStateOf(camp).n,
+        g0 = bot:GetNetWorth(),
+        hp0 = hpShare(bot)
+    }
+    local why = ago > ____exports.SETTINGS.StartWithin and (lastWhy[pid] or "late") or startGate(bot, camp, center, blocked)
+    if why ~= nil then
+        lastWhy[pid] = why
+        if ago > ____exports.SETTINGS.StartWithin or why == "no-neutrals" or why == "core-coming" or why == "core-there" then
+            handled[pid] = pull.at
+            lastWhy[pid] = nil
+            local ____Telemetry_Event_10 = Telemetry.Event
+            local ____array_9 = __TS__SparseArrayNew(
+                {"phase", "skip"},
+                unpack(fields(bot, f, pull.camp))
+            )
+            __TS__SparseArrayPush(____array_9, {"why", why})
+            ____Telemetry_Event_10(
+                "pull_clear",
+                {__TS__SparseArraySpread(____array_9)}
+            )
+        end
+        return false
+    end
+    handled[pid] = pull.at
+    lastWhy[pid] = nil
+    local ok = Tasks.Start(
+        bot,
+        {
+            name = "pullfarm",
+            host = host,
+            preemptAfter = 1,
+            stallAfter = 4,
+            guard = function() return guard(bot, f) end,
+            onEnd = function(r, info) return finish(bot, f, r, info.label) end
+        },
+        function(ctx) return body(bot, f, ctx) end
+    )
+    if not ok then
+        return false
+    end
+    running[pid] = f
+    CampClaims.Set("pullfarm", pid, f.camp)
+    jobLine(bot, f, "start", "trigger")
+    local ____Telemetry_Event_12 = Telemetry.Event
+    local ____array_11 = __TS__SparseArrayNew(
+        {"phase", "start"},
+        unpack(fields(bot, f, f.camp))
+    )
+    __TS__SparseArrayPush(
+        ____array_11,
+        {
+            "hp0",
+            math.floor(f.hp0 * 100 + 0.5) / 100
+        }
+    )
+    ____Telemetry_Event_12(
+        "pull_clear",
+        {__TS__SparseArraySpread(____array_11)}
+    )
+    return true
+end
+function ____exports.Step(bot, host)
+    return running[bot:GetPlayerID()] ~= nil and Tasks.Step(bot, host)
+end
+function ____exports.End(bot, why)
+    if running[bot:GetPlayerID()] ~= nil then
+        Tasks.Cancel(bot, "cancelled", why)
+    end
+end
+function ____exports.NoteHit(bot)
+    local f = running[bot:GetPlayerID()]
+    if f ~= nil then
+        f.hit = true
+    end
+end
+function ____exports.NoteIdleHeld(_bot)
+end
+return ____exports

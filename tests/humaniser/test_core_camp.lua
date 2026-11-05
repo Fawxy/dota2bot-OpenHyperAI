@@ -192,6 +192,12 @@ do
 	MakeCreep({ team = 3, x = LARGE.x + 100, y = LARGE.y })
 	local p = CC.Plan(core, FRONT, 300, c)
 	check("pulled: their lane creep in the large camp leaves the small one", p ~= nil and p.camp == 1, p and p.camp)
+	-- Slice support-pull-farm: while the support is clearing that camp (and will give it up) the core may price it.
+	H.CampClaims.Set("pullfarm", 5, 2)
+	local q = CC.Plan(core, FRONT, 300, c)
+	check("pulled: the support clearing the camp leaves it open to the core", q ~= nil and q.camp == 2, q and q.camp)
+	H.CampClaims.Set("pullfarm", 5, nil)
+	check("pulled: the claim released, the camp is closed again", (CC.Plan(core, FRONT, 300, c) or {}).camp == 1)
 end
 
 -- A half-cleared camp is not its make-up: the respawn is priced as the camp was seen untouched (cngchk8 game 1049 camp 1).

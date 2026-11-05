@@ -1212,6 +1212,31 @@ export const EVENTS = {
     // gave up; a chasing neutral out of attack range also reads no target, so movement decides), gd the nearest of them to
     // our lane creeps at gu, wa the first time a lane creep not already there at ht came within PullJob ArriveR of the meet
     // point.
+    // Slice support-pull-farm (PullFarm): the support clearing its own pull's camp. phase start, skip (the window after an ok pull
+    // closed with `why` the gate that held it) and end. ago: seconds from the pull's end to this line's decision, div: the pull's
+    // diverted share then, n0 neutrals on the camp at the decision; end: nl neutrals left, back (arrival at the lane front),
+    // g0/g1 net worth, secs on the job, hp0/hp share of max HP at start and end, died.
+    pull_clear: {
+        pid: "num",
+        pos: "num",
+        lane: "num",
+        phase: "str",
+        camp: "num",
+        ago: "num",
+        div: "num",
+        n0: "num",
+        why: "str",
+        res: "str",
+        label: "str",
+        nl: "num",
+        back: "num",
+        g0: "num",
+        g1: "num",
+        secs: "num",
+        hp0: "num",
+        hp: "num",
+        died: "num",
+    },
     pull_job: {
         pid: "num",
         pos: "num",

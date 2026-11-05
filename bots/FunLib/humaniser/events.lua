@@ -979,6 +979,27 @@ ____exports.EVENTS = {
         play = "num",
         gank = "num"
     },
+    pull_clear = {
+        pid = "num",
+        pos = "num",
+        lane = "num",
+        phase = "str",
+        camp = "num",
+        ago = "num",
+        div = "num",
+        n0 = "num",
+        why = "str",
+        res = "str",
+        label = "str",
+        nl = "num",
+        back = "num",
+        g0 = "num",
+        g1 = "num",
+        secs = "num",
+        hp0 = "num",
+        hp = "num",
+        died = "num"
+    },
     pull_job = {
         pid = "num",
         pos = "num",
