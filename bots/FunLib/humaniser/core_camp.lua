@@ -168,6 +168,31 @@ local function __TS__ArraySort(self, compareFn)
     return self
 end
 
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local __TS__Symbol, Symbol
 do
     local symbolMetatable = {__tostring = function(self)
@@ -184,10 +209,6 @@ do
         species = __TS__Symbol("Symbol.species"),
         toStringTag = __TS__Symbol("Symbol.toStringTag")
     }
-end
-
-local function __TS__CountVarargs(...)
-    return select("#", ...)
 end
 
 local __TS__Unpack = table.unpack or unpack
@@ -266,7 +287,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, hpOf, currentMinute, campNeutralCount, laneTower, tripSpawners, measured, r1, r2
+local dist, distToSegment, hpOf, currentMinute, campNeutralCount, laneTower, tripSpawners, measured, MAX_PLAYER_ID, r1, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -294,6 +315,16 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+function distToSegment(p, a, b)
+    local vx = b.x - a.x
+    local vy = b.y - a.y
+    local len2 = vx * vx + vy * vy
+    local u = len2 > 0 and math.max(
+        0,
+        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
+    ) or 0
+    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
 end
 function hpOf(bot)
     local m = bot:GetMaxHealth()
@@ -364,16 +395,61 @@ function tripSpawners(bot)
     end
     return out
 end
+function ____exports.MissingOf(bot, at)
+    local s = ____exports.SETTINGS
+    local team = bot:GetTeam()
+    local here = bot:GetLocation()
+    local visible = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if e ~= nil and e ~= nil and e:CanBeSeen() and not e:IsIllusion() then
+            visible[e:GetPlayerID()] = true
+        end
+    end
+    local out = {n = 0, pids = {}}
+    do
+        local pid = 0
+        while pid <= MAX_PLAYER_ID do
+            do
+                local __continue149
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
+                        __continue149 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil or info.time_since_seen <= s.MissingAfter then
+                        __continue149 = true
+                        break
+                    end
+                    local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
+                    if distToSegment(info.location, here, at) <= run + s.ThreatMargin then
+                        out.n = out.n + 1
+                        local ____out_pids_19 = out.pids
+                        ____out_pids_19[#____out_pids_19 + 1] = pid
+                        out.mtss = math.max(out.mtss or 0, info.time_since_seen)
+                    end
+                    __continue149 = true
+                until true
+                if not __continue149 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    return out
+end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
-    local ____t_18 = t
-    local ____temp_17
+    local ____t_31 = t
+    local ____temp_30
     if t.engagedAt ~= nil then
-        ____temp_17 = r1(now - t.engagedAt)
+        ____temp_30 = r1(now - t.engagedAt)
     else
-        ____temp_17 = nil
+        ____temp_30 = nil
     end
-    ____t_18.clrm = ____temp_17
+    ____t_31.clrm = ____temp_30
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
@@ -434,6 +510,8 @@ local cleared = {}
 --- Skip lines written, by pid: one per wave window and reason.
 local skipped = {}
 local gates = {}
+--- No-camp lines written, by pid: one per game minute and reason of the nearest trip camp.
+local noCampSeen = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({
         running,
@@ -443,7 +521,8 @@ function ____exports.ResetCache()
         cleared,
         lastSeen,
         skipped,
-        gates
+        gates,
+        noCampSeen
     }) do
         for k in pairs(t) do
             __TS__Delete(t, k)
@@ -467,16 +546,6 @@ local function locOf(u)
         ____temp_0 = at
     end
     return ____temp_0
-end
-local function distToSegment(p, a, b)
-    local vx = b.x - a.x
-    local vy = b.y - a.y
-    local len2 = vx * vx + vy * vy
-    local u = len2 > 0 and math.max(
-        0,
-        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
-    ) or 0
-    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
 end
 local function speedOf(bot)
     return math.max(
@@ -832,22 +901,38 @@ local function pulledInto(center)
     end
     return false
 end
-local function campOpen(bot, spawner, center, now, pullCamps)
+--- Why the camp is closed to a trip now (`cleared`, `empty`, `pulled`, `ally`, `trip`, `reserved`), or undefined when open.
+local function closedWhy(bot, spawner, center, now, pullCamps)
     local team = bot:GetTeam()
     local ____opt_10 = cleared[team]
     if (____opt_10 and ____opt_10[spawner.idx]) == currentMinute(now) then
-        return false
+        return "cleared"
     end
     if IsLocationVisible(center) and campNeutralCount(center) == 0 then
-        return false
+        return "empty"
     end
     if pullCamps[spawner.idx] == true or pulledInto(center) and CampClaims.On("pullfarm", spawner.idx) == nil then
-        return false
+        return "pulled"
     end
-    return not allyInBox(bot, spawner.idx) and not otherTripOn(bot, spawner.idx) and not Stacking.ReservedByAlly(
+    if allyInBox(bot, spawner.idx) then
+        return "ally"
+    end
+    if otherTripOn(bot, spawner.idx) then
+        return "trip"
+    end
+    return Stacking.ReservedByAlly(
         spawner.idx,
         bot:GetPlayerID()
-    )
+    ) and "reserved" or nil
+end
+local function campOpen(bot, spawner, center, now, pullCamps)
+    return closedWhy(
+        bot,
+        spawner,
+        center,
+        now,
+        pullCamps
+    ) == nil
 end
 --- The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
 -- allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
@@ -867,10 +952,10 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(tripSpawners(bot)) do
         do
-            local __continue101
+            local __continue104
             repeat
                 if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue101 = true
+                    __continue104 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -881,7 +966,7 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue101 = true
+                    __continue104 = true
                     break
                 end
                 local stacks = math.max(
@@ -900,14 +985,14 @@ function ____exports.Plan(bot, from, now, c)
                 local clr = prior * ____exports.Pace(bot)
                 local hpc = hpPrior * ____exports.HPRate(bot)
                 if hpOf(bot) - hpc < s.ArriveHP then
-                    __continue101 = true
+                    __continue104 = true
                     break
                 end
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
                 local force = Overrides.CampForce()
                 if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
-                    __continue101 = true
+                    __continue104 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
@@ -933,9 +1018,9 @@ function ____exports.Plan(bot, from, now, c)
                         net = net
                     }
                 end
-                __continue101 = true
+                __continue104 = true
             until true
-            if not __continue101 then
+            if not __continue104 then
                 break
             end
         end
@@ -964,10 +1049,10 @@ local function anyCamp(bot, front, now)
     local level = bot:GetLevel()
     for ____, spawner in ipairs(tripSpawners(bot)) do
         do
-            local __continue121
+            local __continue124
             repeat
                 if level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue121 = true
+                    __continue124 = true
                     break
                 end
                 local center = Camps.BoxCenter(spawner)
@@ -980,101 +1065,118 @@ local function anyCamp(bot, front, now)
                 ) then
                     return true
                 end
-                __continue121 = true
+                __continue124 = true
             until true
-            if not __continue121 then
+            if not __continue124 then
                 break
             end
         end
     end
     return false
+end
+--- Why no camp fitted (the `no-camp` gate), for the throttled `phase=nocamp` line: the trip list's size and how many of it
+-- are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`level`, `far`
+-- past MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
+-- that never planned a camp in core-missing_fn1 (05/11/2026, pid 1 and 8) read only as h_camp on the gates line.
+local function noCampFields(bot, front, now)
+    local level = bot:GetLevel()
+    local team = bot:GetTeam()
+    local list = tripSpawners(bot)
+    local inList = {}
+    local noff = 0
+    local best
+    local bestD = math.huge
+    for ____, sp in ipairs(list) do
+        inList[sp.idx] = true
+        if sp.team ~= team then
+            noff = noff + 1
+        end
+        local d = dist(
+            Camps.BoxCenter(sp),
+            front
+        )
+        if d < bestD then
+            best = sp
+            bestD = d
+        end
+    end
+    local why = "none"
+    if best ~= nil then
+        if level < (____exports.SETTINGS.CampMinLevel[best.type] or 1) then
+            why = "level"
+        elseif bestD > ____exports.SETTINGS.MaxCampDist then
+            why = "far"
+        else
+            why = closedWhy(
+                bot,
+                best,
+                Camps.BoxCenter(best),
+                now,
+                {}
+            ) or "open"
+        end
+    end
+    local near, nd = Camps.NearestSpawner(front)
+    local other = near ~= nil and inList[near.idx] ~= true
+    return why, {
+        {"lvl", level},
+        {"ncand", #list},
+        {"noff", noff},
+        {"camp", best and best.idx},
+        {"type", best and best.type},
+        {
+            "cd",
+            best ~= nil and math.floor(bestD) or nil
+        },
+        {"why", why},
+        {"near", other and near.idx or nil},
+        {
+            "nd",
+            other and math.floor(nd) or nil
+        },
+        {"nwhy", other and "list" or nil}
+    }
+end
+--- One `phase=nocamp` line per core per game minute and reason.
+local function noteNoCamp(bot, front, now)
+    local pid = bot:GetPlayerID()
+    local why, fields = noCampFields(bot, front, now)
+    local key = (tostring(math.floor(now / 60)) .. ":") .. why
+    noCampSeen[pid] = noCampSeen[pid] or ({})
+    if noCampSeen[pid][key] == true then
+        return
+    end
+    noCampSeen[pid][key] = true
+    Telemetry.Event(
+        "core_camp",
+        {
+            {"pid", pid},
+            {
+                "pos",
+                LaneConfig.PositionOf(bot)
+            },
+            {
+                "lane",
+                bot:GetAssignedLane()
+            },
+            {"phase", "nocamp"},
+            unpack(fields)
+        }
+    )
 end
 --- A visible enemy hero whose reach (plus ThreatMargin) touches the walk from the core to `at` or the camp itself.
 function ____exports.ThreatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue126
+            local __continue140
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue126 = true
+                    __continue140 = true
                     break
                 end
                 local loc = locOf(e)
                 if loc ~= nil and distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
-                    return true
-                end
-                __continue126 = true
-            until true
-            if not __continue126 then
-                break
-            end
-        end
-    end
-    return false
-end
-local MAX_PLAYER_ID = 23
---- Enemy heroes alive, unseen for more than MissingAfter, whose last-seen spot is within their possible run since (SETTINGS
--- MissingSpeed, MissingReachMax) plus ThreatMargin of the walk from the core to `at`: each could be at the camp or on the way.
--- Walks the player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team), as lane_read does. A hero the
--- API has no sighting of is not placed and not counted.
-function ____exports.MissingNear(bot, at)
-    local s = ____exports.SETTINGS
-    local team = bot:GetTeam()
-    local here = bot:GetLocation()
-    local visible = {}
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if e ~= nil and e ~= nil and e:CanBeSeen() and not e:IsIllusion() then
-            visible[e:GetPlayerID()] = true
-        end
-    end
-    local n = 0
-    do
-        local pid = 0
-        while pid <= MAX_PLAYER_ID do
-            do
-                local __continue134
-                repeat
-                    local t = GetTeamForPlayer(pid)
-                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue134 = true
-                        break
-                    end
-                    local info = GetHeroLastSeenInfo(pid)[1]
-                    if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue134 = true
-                        break
-                    end
-                    local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
-                    if distToSegment(info.location, here, at) <= run + s.ThreatMargin then
-                        n = n + 1
-                    end
-                    __continue134 = true
-                until true
-                if not __continue134 then
-                    break
-                end
-            end
-            pid = pid + 1
-        end
-    end
-    return n
-end
-local function mateOnJob(bot)
-    local s = LaneState.ForBot(bot)
-    if s == nil then
-        return false
-    end
-    local pid = bot:GetPlayerID()
-    for ____, h in ipairs(s.allies) do
-        do
-            local __continue140
-            repeat
-                if not h.assigned or h.pid == pid or not h.alive then
-                    __continue140 = true
-                    break
-                end
-                if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
                 __continue140 = true
@@ -1086,22 +1188,56 @@ local function mateOnJob(bot)
     end
     return false
 end
+MAX_PLAYER_ID = 23
+--- Enemy heroes alive, unseen for more than MissingAfter, whose last-seen spot is within their possible run since (SETTINGS
+-- MissingSpeed, MissingReachMax) plus ThreatMargin of the walk from the core to `at`: each could be at the camp or on the way.
+-- Walks the player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team), as lane_read does. A hero the
+-- API has no sighting of is not placed and not counted.
+function ____exports.MissingNear(bot, at)
+    return ____exports.MissingOf(bot, at).n
+end
+local function mateOnJob(bot)
+    local s = LaneState.ForBot(bot)
+    if s == nil then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    for ____, h in ipairs(s.allies) do
+        do
+            local __continue155
+            repeat
+                if not h.assigned or h.pid == pid or not h.alive then
+                    __continue155 = true
+                    break
+                end
+                if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
+                    return true
+                end
+                __continue155 = true
+            until true
+            if not __continue155 then
+                break
+            end
+        end
+    end
+    return false
+end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue145
+            local __continue160
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue145 = true
+                    __continue160 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue145 = true
+                __continue160 = true
             until true
-            if not __continue145 then
+            if not __continue160 then
                 break
             end
         end
@@ -1143,7 +1279,19 @@ local function inLaneGate(bot, now)
     end
     return nil
 end
---- Why a fitting trip may not start now, or undefined. The missing-hero gate (MissingNear) replaced the lane's
+local function heldFields(h)
+    return {
+        {"why", h.why},
+        {"nmiss", h.nmiss},
+        {
+            "mtss",
+            h.mtss ~= nil and math.floor(h.mtss + 0.5) or nil
+        },
+        {"mpid", h.mpid}
+    }
+end
+--- Why a fitting trip may not start now (the first camp, or a chained one after a clear: the core is then at the camp, and
+-- the walk checked is from there to the next), or undefined. The missing-hero gate (MissingNear) replaced the lane's
 -- `enemy-missing` read here: it covers the lane enemies gone from the front and any other enemy that could be at the camp or
 -- on the walk, for every core position alike (user 06/11/2026).
 local function startGate(bot, plan, now)
@@ -1161,8 +1309,13 @@ local function startGate(bot, plan, now)
     if ____exports.ThreatOnWay(bot, center) then
         return {why = "threat"}
     end
-    local nmiss = ____exports.MissingNear(bot, center)
-    return nmiss > 0 and ({why = "missing", nmiss = nmiss}) or nil
+    local m = ____exports.MissingOf(bot, center)
+    return m.n > 0 and ({
+        why = "missing",
+        nmiss = m.n,
+        mtss = m.mtss,
+        mpid = table.concat(m.pids, ",")
+    }) or nil
 end
 r1 = function(x) return x ~= nil and math.floor(x * 10 + 0.5) / 10 or nil end
 r2 = function(x) return math.floor(x * 100 + 0.5) / 100 end
@@ -1234,23 +1387,27 @@ local function log(bot, phase, c, fields)
     )
 end
 --- One skip line per wave window and reason: the coverage count's windows where a camp fitted and no trip started.
-local function noteSkip(bot, why, c, plan, nmiss)
+local function noteSkip(bot, h, c, plan)
     local pid = bot:GetPlayerID()
-    local key = (tostring(math.floor(c.t / 30)) .. ":") .. why
+    local key = (tostring(math.floor(c.t / 30)) .. ":") .. h.why
     skipped[pid] = skipped[pid] or ({})
     if skipped[pid][key] == true then
         return
     end
     skipped[pid][key] = true
-    log(
-        bot,
+    local ____log_23 = log
+    local ____bot_21 = bot
+    local ____c_22 = c
+    local ____array_20 = __TS__SparseArrayNew(unpack(heldFields(h)))
+    __TS__SparseArrayPush(
+        ____array_20,
+        unpack(planFields(plan))
+    )
+    ____log_23(
+        ____bot_21,
         "skip",
-        c,
-        {
-            {"why", why},
-            {"nmiss", nmiss},
-            unpack(planFields(plan))
-        }
+        ____c_22,
+        {__TS__SparseArraySpread(____array_20)}
     )
 end
 local GATE_FIELD = {
@@ -1329,10 +1486,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue175
+            local __continue191
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue175 = true
+                    __continue191 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1342,9 +1499,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue175 = true
+                __continue191 = true
             until true
-            if not __continue175 then
+            if not __continue191 then
                 break
             end
         end
@@ -1412,11 +1569,11 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         t.engagedAt = nil
         t.hpAtEngage = nil
-        local ____t_16 = t
-        local ____t_15 = t
+        local ____t_25 = t
+        local ____t_24 = t
         t.nl = nil
-        ____t_15.hpm = nil
-        ____t_16.clrm = nil
+        ____t_24.hpm = nil
+        ____t_25.clrm = nil
         t.center = Camps.BoxCenter(spawner)
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
@@ -1477,6 +1634,30 @@ local body = __TS__Generator(function(bot, t, ctx)
             t.clash
         )
         if next == nil then
+            break
+        end
+        local hold = startGate(bot, next, now)
+        if hold ~= nil then
+            local ____log_29 = log
+            local ____bot_27 = bot
+            local ____t_clash_28 = t.clash
+            local ____array_26 = __TS__SparseArrayNew(
+                {"after", r.message or "ok"},
+                {"clrm", t.clrm},
+                {"hpm", t.hpm},
+                {"nl", t.nl},
+                unpack(heldFields(hold))
+            )
+            __TS__SparseArrayPush(
+                ____array_26,
+                unpack(planFields(next))
+            )
+            ____log_29(
+                ____bot_27,
+                "nexthold",
+                ____t_clash_28,
+                {__TS__SparseArraySpread(____array_26)}
+            )
             break
         end
         t.plan = next
@@ -1597,15 +1778,13 @@ function ____exports.Wants(bot, blocked, host)
         return held(gate)
     end
     local lane = bot:GetAssignedLane()
-    if not anyCamp(
-        bot,
-        GetLaneFrontLocation(
-            bot:GetTeam(),
-            lane,
-            0
-        ),
-        now
-    ) then
+    local front = GetLaneFrontLocation(
+        bot:GetTeam(),
+        lane,
+        0
+    )
+    if not anyCamp(bot, front, now) then
+        noteNoCamp(bot, front, now)
         return held("no-camp")
     end
     local samples, path = LanePush.Forecast(
@@ -1656,13 +1835,7 @@ function ____exports.Wants(bot, blocked, host)
     local outer = blocked(bot)
     local gate2 = outer ~= nil and ({why = outer}) or startGate(bot, plan, now)
     if gate2 ~= nil then
-        noteSkip(
-            bot,
-            gate2.why,
-            clash,
-            plan,
-            gate2.nmiss
-        )
+        noteSkip(bot, gate2, clash, plan)
         return held("skip")
     end
     tally(bot, now, "trip")

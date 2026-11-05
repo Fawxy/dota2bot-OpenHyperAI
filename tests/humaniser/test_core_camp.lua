@@ -426,4 +426,68 @@ do
 	check("missing: with the enemy dead the trip starts", #lines(out, "core_camp", "start") == 1)
 end
 
+-- Review M1 (2fec253): the skip line carries the longest time_since_seen of the counted heroes (mtss, rounded) and their
+-- pids (mpid), so holds on stale sightings can be split by age from the logs.
+do
+	local H, core, _, enemy = world({ camps = { { "small", SMALL } } })
+	enemy.hiddenFrom = { [OBSERVER] = true }
+	local e2 = MakeUnit({ pid = 11, team = 3, loc = Vector(6000, 6000) })
+	e2.hiddenFrom = { [OBSERVER] = true }
+	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 10 }
+	LAST_SEEN[e2.pid] = { location = Vector(-1500, -6800), time_since_seen = 31.6 }
+	local skip = lines(run(H, core, 302), "core_camp", "skip")[1]
+	check("missing M1: nmiss=2, mtss the longest unseen rounded, mpid both pids", skip ~= nil and field(skip, "nmiss") == "2" and field(skip, "mtss") == "32" and field(skip, "mpid") == "10,11", skip)
+end
+
+-- The no-camp gate names why (smoke ~/.dotactl/logs/2026-11-05T19-50-59-core-missing_fn1.log, t=180-600: the pos3s pid 1
+-- and 8 read h_camp on the gates line and never planned a camp; their nearest trip camp was the enemy off-lane large camp,
+-- 1,400-2,300 from the front, held by CampMinLevel large 6 at levels 2-5). One phase=nocamp line per minute and reason.
+do
+	local H, core = world({ camps = { { "large", LARGE, 2400, 8 } }, level = 5 })
+	SPAWNERS[1].team = 3
+	H.Lane.Camps.ResetCache()
+	local saved = TOWERS_W[2][dota.Tower.Bot1]
+	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(0, -5000) })
+	core.pos = 3
+	local out = run(H, core, 303)
+	local nc = lines(out, "core_camp", "nocamp")
+	check("nocamp: one line for the minute, the offlane large camp in the list held by level", #nc == 1 and field(nc[1], "why") == "level" and field(nc[1], "camp") == "1" and field(nc[1], "noff") == "1" and field(nc[1], "ncand") == "1" and field(nc[1], "lvl") == "5" and field(nc[1], "cd") == "2121", nc[1])
+	check("nocamp: no start", #lines(out, "core_camp", "start") == 0)
+	core.pos = 1
+	out = run(H, core, 306)
+	nc = lines(out, "core_camp", "nocamp")
+	check("nocamp: for a pos1 the enemy camp is not in the list (nwhy=list), none of its own", #nc == 1 and field(nc[1], "why") == "none" and field(nc[1], "ncand") == "0" and field(nc[1], "near") == "1" and field(nc[1], "nwhy") == "list", nc[1])
+	TOWERS_W[2][dota.Tower.Bot1] = saved
+end
+
+do
+	local H, core = world({ camps = { { "small", Vector(0, -9500) } } })
+	local nc = lines(run(H, core, 302), "core_camp", "nocamp")
+	check("nocamp: an own camp past MaxCampDist of the front reads why=far", #nc == 1 and field(nc[1], "why") == "far" and field(nc[1], "cd") == "4500" and field(nc[1], "near") == nil, nc[1])
+end
+
+-- Review L3 (2fec253): a chained camp after a clear passes the start gates; held (an enemy unseen by the next camp, or one
+-- visible on the walk to it), the core logs phase=nexthold with the gate and walks back. With no hold it chains (control).
+local CAMP2 = Vector(-1200, -6200)
+for _, case in ipairs({ "none", "missing", "threat" }) do
+	local H, core, camp, enemy = world({ camps = { { "small", SMALL, 300, 5 }, { "small", CAMP2, 300, 5 } } })
+	local out = run(H, core, 340, function()
+		if not H.CoreCamp.Running(core) or camp[1].hp > 0 then return end
+		if case == "missing" and LAST_SEEN[enemy.pid] == nil then
+			enemy.hiddenFrom = { [OBSERVER] = true }
+			LAST_SEEN[enemy.pid] = { location = Vector(-4000, -6200), time_since_seen = 10 }
+		elseif case == "threat" then
+			enemy.loc = Vector(-1500, -6500)
+		end
+	end)
+	local nexts, holds, ended = lines(out, "core_camp", "next"), lines(out, "core_camp", "nexthold"), lines(out, "core_camp", "end")[1]
+	if case == "none" then
+		check("chain: with no hold the next camp is taken", #nexts == 1 and field(nexts[1], "camp") == "2" and #holds == 0, nexts[1] or ended)
+	else
+		check("chain " .. case .. ": the next camp is held, why=" .. case, #nexts == 0 and #holds == 1 and field(holds[1], "why") == case and field(holds[1], "camp") == "2" and field(holds[1], "after") == "cleared", holds[1] or nexts[1])
+		check("chain " .. case .. ": the core walks back after the first camp", ended ~= nil and field(ended, "camps") == "1" and field(ended, "camp") == "1" and camp[2].hp > 0, ended)
+		if case == "missing" then check("chain missing: nmiss, mtss and mpid on the hold", holds[1] ~= nil and field(holds[1], "nmiss") == "1" and field(holds[1], "mtss") == "10" and field(holds[1], "mpid") == "10", holds[1]) end
+	end
+end
+
 finish()

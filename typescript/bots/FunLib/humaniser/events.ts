@@ -1152,7 +1152,12 @@ export const EVENTS = {
     // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), skip (a camp fitted and a
     // gate held it: one line per wave window `win` and why), end. clash: the forecast's next clash second; ret: the planned
     // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 net worth;
-    // nmiss (skip why=missing): enemy heroes unseen that could be at the camp or on the walk.
+    // nmiss (skip or nexthold why=missing): enemy heroes unseen that could be at the camp or on the walk, mtss the longest of
+    // their time_since_seen (s, rounded), mpid their player ids (comma list). nexthold: a chained camp after a clear held by a
+    // start gate (why: the gate; after: how the last camp ended), the core walks back. nocamp (one per core, minute and why,
+    // while the no-camp gate holds): lvl, ncand (camps in the trip list), noff (enemy camps among them), camp/type/cd (the
+    // nearest trip camp and its distance to the lane front), why (what dropped it: level, far, cleared, empty, pulled, ally,
+    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list).
     core_camp: {
         pid: "num",
         pos: "num",
@@ -1178,6 +1183,15 @@ export const EVENTS = {
         net: "num",
         why: "str",
         nmiss: "num",
+        mtss: "num",
+        mpid: "str",
+        lvl: "num",
+        ncand: "num",
+        noff: "num",
+        cd: "num",
+        near: "num",
+        nd: "num",
+        nwhy: "str",
         after: "str",
         res: "str",
         label: "str",
