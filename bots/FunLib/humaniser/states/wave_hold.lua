@@ -82,6 +82,15 @@ function ____exports.Choose(threat, near, need, behind)
     end
     return need + ____exports.SETTINGS.DragMargin <= behind and "drag" or "hold"
 end
+--- Pure: seconds until our next wave reaches the hold point, from the spawn schedule's `schedule` and the straight-line
+-- distances to it of our lane creeps already on the map and walking.
+function ____exports.Near(schedule, live)
+    local d = math.huge
+    for ____, x in ipairs(live) do
+        d = math.min(d, x)
+    end
+    return math.min(schedule, d / ____exports.SETTINGS.CreepSpeed)
+end
 --- Pure: the seconds the drag needs from their front's distance from our T1.
 function ____exports.DragSecs(front)
     return (front + ____exports.SETTINGS.Behind) / ____exports.SETTINGS.CreepSpeed + ____exports.SETTINGS.DrawSecs
@@ -113,20 +122,20 @@ local function viewOf(team, lane)
         local out = {}
         for ____, c in ipairs(list) do
             do
-                local __continue20
+                local __continue23
                 repeat
                     if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                        __continue20 = true
+                        __continue23 = true
                         break
                     end
                     local l = c:GetLocation()
                     if l == nil then
-                        __continue20 = true
+                        __continue23 = true
                         break
                     end
                     local s, d = LanePush.Project(path, l.x, l.y)
                     if d > ____exports.SETTINGS.PathR then
-                        __continue20 = true
+                        __continue23 = true
                         break
                     end
                     local own = dir * (s - t1)
@@ -135,9 +144,9 @@ local function viewOf(team, lane)
                     if ____opt_0 ~= nil then
                         keep[#keep + 1] = {u = c, own = own}
                     end
-                    __continue20 = true
+                    __continue23 = true
                 until true
-                if not __continue20 then
+                if not __continue23 then
                     break
                 end
             end
@@ -163,25 +172,55 @@ local function pointAt(v, own, z)
     local x, y = unpack(LanePush.PointAt(v.path, v.t1 + v.dir * own))
     return Vector(x, y, z)
 end
+--- Distances to the hold point of our lane creeps within NearSecs' walk of it that have no attack target.
+local function walkingTo(hold)
+    local out = {}
+    local r = ____exports.SETTINGS.NearSecs * ____exports.SETTINGS.CreepSpeed
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        do
+            local __continue30
+            repeat
+                if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
+                    __continue30 = true
+                    break
+                end
+                local t = c:GetAttackTarget()
+                if t ~= nil and t ~= nil and not t:IsNull() then
+                    __continue30 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(c, hold)
+                if d <= r then
+                    out[#out + 1] = d
+                end
+                __continue30 = true
+            until true
+            if not __continue30 then
+                break
+            end
+        end
+    end
+    return out
+end
 local function whyGone(bot, now)
     local lane = bot:GetAssignedLane()
     do
         local i = 1
         while i <= 5 do
             do
-                local __continue27
+                local __continue36
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue27 = true
+                        __continue36 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return "pull"
                     end
-                    __continue27 = true
+                    __continue36 = true
                 until true
-                if not __continue27 then
+                if not __continue36 then
                     break
                 end
             end
@@ -198,19 +237,19 @@ end
 local function threatOf(bot, hold)
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None)) do
         do
-            local __continue32
+            local __continue41
             repeat
                 if h == nil or h == nil or h:IsNull() or not h:IsAlive() or h:IsIllusion() then
-                    __continue32 = true
+                    __continue41 = true
                     break
                 end
                 local r = LaneSpot.HeroReach(bot, h) + ____exports.SETTINGS.ThreatMargin
                 if GetUnitToUnitDistance(bot, h) <= r or GetUnitToLocationDistance(h, hold) <= r then
                     return h
                 end
-                __continue32 = true
+                __continue41 = true
             until true
-            if not __continue32 then
+            if not __continue41 then
                 break
             end
         end
@@ -266,6 +305,10 @@ local function finish(bot, a, res, now)
             {
                 "nb",
                 a.nb ~= nil and math.floor(a.nb * 10) / 10 or nil
+            },
+            {
+                "nl",
+                a.nl ~= nil and math.floor(a.nl * 10) / 10 or nil
             },
             {"thr", a.thr},
             {"sw", a.sw},
@@ -420,19 +463,19 @@ function ____exports.Step(bot)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue58
+            local __continue67
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - ____exports.SETTINGS.Behind or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue58 = true
+                    __continue67 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue58 = true
+                __continue67 = true
             until true
-            if not __continue58 then
+            if not __continue67 then
                 break
             end
         end
@@ -446,19 +489,19 @@ function ____exports.Step(bot)
     end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue64
+            local __continue73
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue64 = true
+                    __continue73 = true
                     break
                 end
                 if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
                     a.mo = front
                     return finish(bot, a, "met", now)
                 end
-                __continue64 = true
+                __continue73 = true
             until true
-            if not __continue64 then
+            if not __continue73 then
                 break
             end
         end
@@ -470,12 +513,17 @@ function ____exports.Step(bot)
     if threat ~= nil then
         a.thr = threat:GetPlayerID()
     end
-    local near = LanePush.NextArrival(
-        v.path,
-        bot:GetTeam(),
-        v.t1 + v.dir * a.tgt,
-        now
-    ) - now
+    local live = walkingTo(a.hold)
+    a.nl = #live > 0 and ____exports.Near(math.huge, live) or nil
+    local near = ____exports.Near(
+        LanePush.NextArrival(
+            v.path,
+            bot:GetTeam(),
+            v.t1 + v.dir * a.tgt,
+            now
+        ) - now,
+        live
+    )
     a.ds = ____exports.DragSecs(math.max(0, front))
     a.nb = LanePush.NextArrival(
         v.path,

@@ -27,6 +27,10 @@ check("no threat: hold", W.Choose(false, 30, 5, 30) == "hold")
 check("threat, our next wave 8 s from the hold point: hold, the waves meet there", W.Choose(true, 8, 5, 20) == "hold")
 check("threat, our wave 20 s off, the drag needs 6 s of 12: drag", W.Choose(true, 20, 6, 12) == "drag")
 check("threat, the drag needs 11 s of 12 (inside the 2 s margin): hold", W.Choose(true, 20, 11, 12) == "hold")
+-- ptchk1 A 7:00 top: the schedule put our next wave 24 s off while the pulled creeps walked back 1,000 from the hold point.
+check("threat, schedule 24 s, our pulled creeps walking back 1,000 out: hold", W.Choose(true, W.Near(24, { 1000, 1400 }), 6, 30) == "hold", W.Near(24, { 1000, 1400 }))
+check("threat, schedule 24 s, no creep of ours walking: drag", W.Choose(true, W.Near(24, {}), 6, 30) == "drag")
+check("a wave on schedule sooner than the creeps walking in: the schedule's time", near(W.Near(5, { 3000 }), 5))
 check("their front 1,475 from our T1: (1,475 + 500) / 325 + 1 s for the draw", near(W.DragSecs(1475), 1975 / 325 + 1), W.DragSecs(1475))
 
 -- lane_push's schedule: waves every 30 s from 0:00 at each team's spawn end, 325 a second along the path. Bot lane: Radiant

@@ -49,6 +49,12 @@ export const SETTINGS = {
     ThreatMargin: 200,
     /** Our next wave is near when it reaches the hold point within NearSecs: no drag, the waves meet at the hold. */
     NearSecs: 10,
+    /**
+     * Our next wave also counts as near when one of our lane creeps already on the map and not fighting (no attack target)
+     * reaches the hold point within NearSecs at creep speed: creeps back from a pull camp, or a wave late off the spawn
+     * schedule. ptchk1 A 7:00 top: the pulled creeps walked back from the camp while the schedule said 24 s; the drag took
+     * their wave from 1,195 to 790 from our T1 just as ours met it.
+     */
     /** The drag's point: this far behind our T1 along the lane; its time: their front's walk there at creep speed plus
      *  DrawSecs, done DragMargin before our next wave reaches that point. */
     Behind: 500,
@@ -96,6 +102,14 @@ export function Choose(threat: boolean, near: number, need: number, behind: numb
     return need + SETTINGS.DragMargin <= behind ? "drag" : "hold";
 }
 
+/** Pure: seconds until our next wave reaches the hold point, from the spawn schedule's `schedule` and the straight-line
+ *  distances to it of our lane creeps already on the map and walking. */
+export function Near(schedule: number, live: number[]): number {
+    let d = math.huge;
+    for (const x of live) d = math.min(d, x);
+    return math.min(schedule, d / SETTINGS.CreepSpeed);
+}
+
 /** Pure: the seconds the drag needs from their front's distance from our T1. */
 export function DragSecs(front: number): number {
     return (front + SETTINGS.Behind) / SETTINGS.CreepSpeed + SETTINGS.DrawSecs;
@@ -121,6 +135,7 @@ interface Attempt {
     nw: number;
     ds?: number;
     nb?: number;
+    nl?: number;
     thr?: number;
     hp0: number;
     hpMin: number;
@@ -184,6 +199,20 @@ function pointAt(v: LaneView, own: number, z: number): Vector {
     return Vector(x, y, z);
 }
 
+/** Distances to the hold point of our lane creeps within NearSecs' walk of it that have no attack target. */
+function walkingTo(hold: Vector): number[] {
+    const out: number[] = [];
+    const r = SETTINGS.NearSecs * SETTINGS.CreepSpeed;
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) {
+        if (c === undefined || c === null || c.IsNull() || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
+        const t = c.GetAttackTarget();
+        if (t !== undefined && t !== null && !t.IsNull()) continue;
+        const d = GetUnitToLocationDistance(c, hold);
+        if (d <= r) out.push(d);
+    }
+    return out;
+}
+
 function whyGone(bot: Unit, now: number): string {
     const lane = bot.GetAssignedLane();
     for (let i = 1; i <= 5; i++) {
@@ -228,6 +257,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["nw", math.floor(a.nw * 10) / 10],
         ["ds", a.ds !== undefined ? math.floor(a.ds * 10) / 10 : undefined],
         ["nb", a.nb !== undefined ? math.floor(a.nb * 10) / 10 : undefined],
+        ["nl", a.nl !== undefined ? math.floor(a.nl * 10) / 10 : undefined],
         ["thr", a.thr],
         ["sw", a.sw],
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -335,7 +365,9 @@ export function Step(bot: Unit): void {
 
     const threat = threatOf(bot, a.hold);
     if (threat !== undefined) a.thr = threat.GetPlayerID();
-    const near = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now;
+    const live = walkingTo(a.hold);
+    a.nl = live.length > 0 ? Near(math.huge, live) : undefined;
+    const near = Near(LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now, live);
     a.ds = DragSecs(math.max(0, front));
     a.nb = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 - v.dir * SETTINGS.Behind, now) - now;
     // A drag under way is lane_aggro's until its walk ends, and once behind our T1 the core waits there for our wave: the
