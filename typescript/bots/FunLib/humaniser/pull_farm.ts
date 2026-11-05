@@ -5,7 +5,7 @@
  * it up and goes back to lane. The job chooser hosts it, after PullJob in rank.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { DroppedItem, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
@@ -35,6 +35,13 @@ export const SETTINGS = {
     ReturnArrive: 900,
     ReturnMax: 25,
     ReturnReorder: 0.5,
+    /** After the clear, pick up the madstone drops by the camp before the walk back (user 06/11/2026: "they should pick up
+     *  the madstone after if they do the support-pull-farm routine"): dropped items whose name holds PickName (the item is
+     *  `madstone_bundle` in the OpenDota match data under docs/team/research/replay-index/cache, item_uses) within
+     *  PickRadius of the camp's box centre, for at most PickMax seconds, the order re-given every ReturnReorder. `judgement`. */
+    PickName: "madstone",
+    PickRadius: 900,
+    PickMax: 6,
 };
 
 interface Farm {
@@ -53,6 +60,9 @@ interface Farm {
     threatSince?: number;
     back?: number;
     nl?: number;
+    /** Madstone drops seen by the camp after the clear, and those gone from the ground after our pickup order. */
+    ms?: number;
+    mp?: number;
 }
 
 const running: Record<number, Farm | undefined> = {};
@@ -186,7 +196,55 @@ function* body(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {
     );
     f.nl = campLeft(f.center);
     if (!r.success) return r;
+    yield* pickUp(bot, f, ctx);
     return yield* walkBack(bot, f, ctx);
+}
+
+/** The madstone drops on the ground within PickRadius of the camp, keyed by where they lie (a handle may not compare equal
+ *  between calls). */
+function madstones(center: Vector): Map<string, DroppedItem> {
+    const out = new Map<string, DroppedItem>();
+    for (const d of GetDroppedItemList() ?? []) {
+        if (d === undefined || d === null || d.item === undefined || d.item === null || d.location === undefined) continue;
+        if (string.find(d.item.GetName(), SETTINGS.PickName, 1, true)[0] === undefined || dist(d.location, center) > SETTINGS.PickRadius) continue;
+        out.set(`${math.floor(d.location.x)},${math.floor(d.location.y)}`, d);
+    }
+    return out;
+}
+
+/** Picks up the madstone drops by the cleared camp (SETTINGS PickName), nearest first, for at most PickMax seconds. */
+function* pickUp(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {
+    let left = madstones(f.center);
+    f.ms = left.size;
+    f.mp = 0;
+    const done: Lib.Result = { success: true, reason: "ok" };
+    if (f.ms === 0) return done;
+    ctx.label("pickup");
+    const from = DotaTime();
+    let ordered: string[] = [];
+    let orderedAt = -math.huge;
+    while (bot.IsAlive() && DotaTime() - from <= SETTINGS.PickMax) {
+        let best: DroppedItem | undefined;
+        let bestKey: string | undefined;
+        for (const [k, d] of left) {
+            if (best === undefined || dist(bot.GetLocation(), d.location) < dist(bot.GetLocation(), best.location)) {
+                best = d;
+                bestKey = k;
+            }
+        }
+        if (best === undefined || bestKey === undefined) break;
+        if (DotaTime() - orderedAt >= SETTINGS.ReturnReorder) {
+            bot.Action_PickUpItem(best.item);
+            if (ordered.indexOf(bestKey) < 0) ordered.push(bestKey);
+            orderedAt = DotaTime();
+        }
+        yield;
+        const now = madstones(f.center);
+        f.mp += ordered.filter((k) => !now.has(k)).length;
+        ordered = ordered.filter((k) => now.has(k));
+        left = now;
+    }
+    return done;
 }
 
 function campLeft(center: Vector): number {
@@ -219,6 +277,8 @@ function finish(bot: Unit, f: Farm, r: Lib.Result, label: string | undefined): v
         ["hp0", math.floor(f.hp0 * 100 + 0.5) / 100],
         ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
         ["died", bot.IsAlive() ? 0 : 1],
+        ["ms", f.ms],
+        ["mp", f.mp],
     ]);
 }
 

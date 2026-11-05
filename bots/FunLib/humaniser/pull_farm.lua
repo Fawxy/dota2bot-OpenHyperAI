@@ -253,6 +253,225 @@ local function __TS__DelegatedYield(iterable)
     end
 end
 
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local Map
+do
+    Map = __TS__Class()
+    Map.name = "Map"
+    function Map.prototype.____constructor(self, entries)
+        self[Symbol.toStringTag] = "Map"
+        self.items = {}
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if entries == nil then
+            return
+        end
+        local iterable = entries
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                local value = result.value
+                self:set(value[1], value[2])
+            end
+        else
+            local array = entries
+            for ____, kvp in ipairs(array) do
+                self:set(kvp[1], kvp[2])
+            end
+        end
+    end
+    function Map.prototype.clear(self)
+        self.items = {}
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Map.prototype.delete(self, key)
+        local contains = self:has(key)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[key]
+            local previous = self.previousKey[key]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[key] = nil
+            self.previousKey[key] = nil
+        end
+        self.items[key] = nil
+        return contains
+    end
+    function Map.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, self.items[key], key, self)
+        end
+    end
+    function Map.prototype.get(self, key)
+        return self.items[key]
+    end
+    function Map.prototype.has(self, key)
+        return self.nextKey[key] ~= nil or self.lastKey == key
+    end
+    function Map.prototype.set(self, key, value)
+        local isNewValue = not self:has(key)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        self.items[key] = value
+        if self.firstKey == nil then
+            self.firstKey = key
+            self.lastKey = key
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = key
+            self.previousKey[key] = self.lastKey
+            self.lastKey = key
+        end
+        return self
+    end
+    Map.prototype[Symbol.iterator] = function(self)
+        return self:entries()
+    end
+    function Map.prototype.entries(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, items[key]}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.values(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = items[key]}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    Map[Symbol.species] = Map
+end
+
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
+end
+
 local function __TS__SparseArrayNew(...)
     local sparseArray = {...}
     sparseArray.sparseLength = __TS__CountVarargs(...)
@@ -275,7 +494,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local locOf, dist, campLeft, running
+local locOf, dist, madstones, campLeft, running, pickUp
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
@@ -302,23 +521,109 @@ end
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
+function madstones(center)
+    local out = __TS__New(Map)
+    for ____, d in ipairs(GetDroppedItemList() or ({})) do
+        do
+            local __continue44
+            repeat
+                if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
+                    __continue44 = true
+                    break
+                end
+                if (string.find(
+                    d.item:GetName(),
+                    ____exports.SETTINGS.PickName,
+                    1,
+                    true
+                )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
+                    __continue44 = true
+                    break
+                end
+                out:set(
+                    (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
+                    d
+                )
+                __continue44 = true
+            until true
+            if not __continue44 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- Picks up the madstone drops by the cleared camp (SETTINGS PickName), nearest first, for at most PickMax seconds.
+pickUp = __TS__Generator(function(bot, f, ctx)
+    local left = madstones(f.center)
+    f.ms = left.size
+    f.mp = 0
+    local done = {success = true, reason = "ok"}
+    if f.ms == 0 then
+        return done
+    end
+    ctx.label("pickup")
+    local from = DotaTime()
+    local ordered = {}
+    local orderedAt = -math.huge
+    while bot:IsAlive() and DotaTime() - from <= ____exports.SETTINGS.PickMax do
+        local best
+        local bestKey
+        for ____, ____value in __TS__Iterator(left) do
+            local k = ____value[1]
+            local d = ____value[2]
+            if best == nil or dist(
+                bot:GetLocation(),
+                d.location
+            ) < dist(
+                bot:GetLocation(),
+                best.location
+            ) then
+                best = d
+                bestKey = k
+            end
+        end
+        if best == nil or bestKey == nil then
+            break
+        end
+        if DotaTime() - orderedAt >= ____exports.SETTINGS.ReturnReorder then
+            bot:Action_PickUpItem(best.item)
+            if __TS__ArrayIndexOf(ordered, bestKey) < 0 then
+                ordered[#ordered + 1] = bestKey
+            end
+            orderedAt = DotaTime()
+        end
+        coroutine.yield()
+        local now = madstones(f.center)
+        f.mp = f.mp + #__TS__ArrayFilter(
+            ordered,
+            function(____, k) return not now:has(k) end
+        )
+        ordered = __TS__ArrayFilter(
+            ordered,
+            function(____, k) return now:has(k) end
+        )
+        left = now
+    end
+    return done
+end)
 function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue44
+            local __continue60
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue44 = true
+                    __continue60 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue44 = true
+                __continue60 = true
             until true
-            if not __continue44 then
+            if not __continue60 then
                 break
             end
         end
@@ -337,7 +642,10 @@ ____exports.SETTINGS = {
     CoreThere = 600,
     ReturnArrive = 900,
     ReturnMax = 25,
-    ReturnReorder = 0.5
+    ReturnReorder = 0.5,
+    PickName = "madstone",
+    PickRadius = 900,
+    PickMax = 6
 }
 running = {}
 --- The pull end (`at`) each hero's window was last settled for: one start or one skip line per pull.
@@ -529,6 +837,7 @@ local body = __TS__Generator(function(bot, f, ctx)
     if not r.success then
         return r
     end
+    __TS__DelegatedYield(pickUp(bot, f, ctx))
     return __TS__DelegatedYield(walkBack(bot, f, ctx))
 end)
 local function finish(bot, f, r, label)
@@ -581,7 +890,9 @@ local function finish(bot, f, r, label)
         {
             "died",
             bot:IsAlive() and 0 or 1
-        }
+        },
+        {"ms", f.ms},
+        {"mp", f.mp}
     )
     ____Telemetry_Event_8(
         "pull_clear",

@@ -22,6 +22,14 @@ export interface Ping {
     player_id: number;
 }
 
+/** One entry of GetDroppedItemList. */
+export interface DroppedItem {
+    item: Item;
+    location: Vector;
+    owner?: Unit;
+    playerid?: number;
+}
+
 export interface Item {
     GetName(): string;
     GetCooldownTimeRemaining(): number;
@@ -133,6 +141,7 @@ export interface Unit {
 
     Action_UseAbility(ability: Ability): void;
     Action_MoveToLocation(location: Vector): void;
+    Action_PickUpItem(item: Item): void;
     Action_AttackUnit(unit: Unit, once: boolean): void;
 
     GetAttackTarget(): Unit | null;

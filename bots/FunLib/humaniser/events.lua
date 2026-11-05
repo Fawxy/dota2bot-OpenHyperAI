@@ -1023,7 +1023,9 @@ ____exports.EVENTS = {
         secs = "num",
         hp0 = "num",
         hp = "num",
-        died = "num"
+        died = "num",
+        ms = "num",
+        mp = "num"
     },
     pull_job = {
         pid = "num",
@@ -1071,7 +1073,9 @@ ____exports.EVENTS = {
         gu = "num",
         gd = "num",
         wa = "num",
-        nm = "num"
+        nm = "num",
+        shs = "num",
+        shh = "num"
     },
     pull_creep = {
         pid = "num",
@@ -1113,7 +1117,8 @@ ____exports.EVENTS = {
         tp = "num",
         tc = "num",
         td = "num",
-        th = "num"
+        th = "num",
+        shd = "num"
     },
     choice = {
         pid = "num",
@@ -1138,7 +1143,8 @@ ____exports.EVENTS = {
         php = "num",
         se = "num",
         pk = "str",
-        hm = "num"
+        hm = "num",
+        wr = "str"
     },
     gank = {
         pid = "num",

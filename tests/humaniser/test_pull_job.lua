@@ -577,4 +577,65 @@ do
 	check("no bail with HP to spare: the lead goes on", not bailed and field(pull, "why") ~= "interrupted:bail", pull)
 end
 
+-- The shed (user 06/11/2026: "get the neutrals onto your allied creeps and not tank asap after pull succeeds"): in the watch,
+-- once a creep of ours attacks the neutral that still hits the puller, the puller walks out of its range plus ShedMargin and
+-- stays there; the job still ends ok. Bug-hunt mark 13, ~/.dotactl/logs/2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log
+-- t=322-330 (WD pid 7, camp 26): held the watch point at 67% -> 44% HP while 1-4 creeps fought the neutrals from t=324.
+local function dist2(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
+local function shedPull(engage)
+	local w = world({ reading = OUT })
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	kobold.target = w.sup
+	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local creep, far, ended
+	local out = capture(function()
+		while T < 140 and ended == nil do
+			frame(w)
+			local running = w.H.PullJob.Running(w.sup)
+			-- The neutral chases the puller 100 behind it until our creep reaches it, then fights where it stands.
+			if running and creep == nil and w.sup.loc.y > SMALL.y + 300 then kobold.loc = Vector(w.sup.loc.x, w.sup.loc.y - 100) end
+			if engage and running and creep == nil and dist2(w.sup.loc, meet) < 50 then
+				creep = MakeCreep({ team = 2, x = kobold.loc.x, y = kobold.loc.y - 50, target = kobold })
+			end
+			if creep ~= nil and kobold.target == w.sup and dist2(w.sup.loc, kobold.loc) > kobold:GetAttackRange() + 200 then kobold.target = creep end
+			if creep ~= nil then far = math.max(far or 0, dist2(w.sup.loc, kobold.loc)) end
+			if (creep ~= nil or T > 100) and not running then ended = T end
+		end
+	end)
+	out = capture(function() local t = T while T < t + 30 do frame(w) end end)
+	return lines(out, "pull_job")[1], far, kobold, w
+end
+do
+	local pull, far, kobold, w = shedPull(true)
+	check("shed: the puller walked out of the neutral's range plus ShedMargin, and it turned onto our creep", far ~= nil
+		and far >= kobold:GetAttackRange() + 300 - 1 and kobold.target ~= nil and kobold.target ~= w.sup, far)
+	check("shed: the job ended ok (not a bail) with the shed's start and HP logged", pull ~= nil and field(pull, "res") == "ok"
+		and field(pull, "shs") ~= nil and field(pull, "shh") ~= nil, pull)
+	local plain = shedPull(false)
+	check("shed: no creep on the neutral, no shed", plain ~= nil and field(plain, "shs") == nil, plain)
+end
+
+-- The off-lane pos4 wants every slot whatever the reading (user 06/11/2026; bug-hunt mark 16, same log, Lion pid 8 lane 3:
+-- why=lane st=IN 14 of 26 slots); the safe-lane supports keep the reading's rule.
+do
+	local w = world({ reading = OUT })
+	local IN = { state = "IN", clash = 7000, move = -500, q = 0.3, tower = false }
+	local PJ = w.H.PullJob
+	check("want: a reading that wants it says lane", PJ.WantWhy(w.sup, OUT) == "lane")
+	check("want: safe-lane pos5, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
+	w.sup.pos = 4
+	check("want: safe-lane pos4, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
+	w.sup.lane = Lane.Top
+	check("want: off-lane pos4, IN or no reading: off", PJ.WantWhy(w.sup, IN) == "off" and PJ.WantWhy(w.sup, nil) == "off")
+	w.sup.pos = 5
+	check("want: off-lane pos5, IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
+	PJ.SETTINGS.OffPos4Always = false
+	w.sup.pos = 4
+	check("want: OffPos4Always off, off-lane pos4 IN: not wanted", PJ.WantWhy(w.sup, IN) == nil)
+	PJ.SETTINGS.OffPos4Always = true
+	local out = run(world({ reading = OUT }), 75)
+	check("want: the choice line names wr=lane", field(lines(out, "choice")[1], "wr") == "lane", lines(out, "choice")[1])
+end
+
 finish()

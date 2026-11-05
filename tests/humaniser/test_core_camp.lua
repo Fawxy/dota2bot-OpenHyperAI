@@ -353,4 +353,24 @@ do
 	check("late: the pace grew", H.CoreCamp.Pace(core) > 1 + 1e-3, H.CoreCamp.Pace(core))
 end
 
+-- The offlaner also takes the enemy's small and large camps by its lane (the hard camp its pos4 pulls): with its own team's
+-- camps only, pos3 never fitted one (cngchk6, cngchk9; ~/.dotactl/logs/2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log
+-- t=661-781: pid 1 and 9 gate no-camp, no plan; user 06/11/2026). A pos1 does not take the enemy's camp.
+do
+	local H, core = world({ camps = { { "large", LARGE, 2400, 8 }, { "medium", Vector(-1500, -6500), 2400, 8 } } })
+	local CC = H.CoreCamp
+	SPAWNERS[1].team, SPAWNERS[2].team = 3, 3
+	H.Lane.Camps.ResetCache()
+	local saved = TOWERS_W[2][dota.Tower.Bot1]
+	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(0, -5000) })
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	check("offlane: a pos1 takes no enemy camp", CC.Plan(core, FRONT, 300, c) == nil)
+	core.pos = 3
+	local p = CC.Plan(core, FRONT, 300, c)
+	check("offlane: the pos3 takes the enemy's large camp by its lane tower, not their medium one", p ~= nil and p.camp == 1 and p.type == "large", p and p.camp)
+	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(6000, -5000) })
+	check("offlane: an enemy camp past OffCampDist of the tower is not offered", CC.Plan(core, FRONT, 300, c) == nil)
+	TOWERS_W[2][dota.Tower.Bot1] = saved
+end
+
 finish()

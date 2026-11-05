@@ -201,4 +201,35 @@ do
 	check("enemy by the camp: no farm, one skip naming why", #pc == 1 and field(pc[1], "phase") == "skip" and (field(pc[1], "why") == "threat" or field(pc[1], "why") == "enemy-near"), pc[1])
 end
 
+-- Madstone (user 06/11/2026: "they should pick up the madstone after if they do the support-pull-farm routine"): a drop by
+-- the cleared camp is picked up before the walk back; an item of another name or one far from the camp is left.
+do
+	local w, all, neutrals, ended, take = afterPull()
+	local stone = { item = { GetName = function() return "item_madstone_bundle" end }, location = Vector(SMALL.x + 100, SMALL.y) }
+	local other = { item = { GetName = function() return "item_branches" end }, location = Vector(SMALL.x - 100, SMALL.y) }
+	local far = { item = { GetName = function() return "item_madstone_bundle" end }, location = Vector(SMALL.x + 3000, SMALL.y) }
+	DROPPED = { stone, other, far }
+	local picked = {}
+	take(capture(function()
+		while T < ended + 40 do
+			local n0 = #ACTIONS
+			frame(w)
+			for i = n0 + 1, #ACTIONS do
+				local a = ACTIONS[i]
+				if a.pid == w.sup.pid and a.kind == "PickUpItem" then
+					table.insert(picked, a.args[1])
+					for j = #DROPPED, 1, -1 do if DROPPED[j].item == a.args[1] then table.remove(DROPPED, j) end end
+				end
+			end
+		end
+	end))
+	DROPPED = {}
+	local fin
+	for _, l in ipairs(lines(all, "pull_clear")) do if field(l, "phase") == "end" then fin = l end end
+	check("madstone: the drop by the camp picked up, nothing else", #picked >= 1 and picked[1] == stone.item and #lines({}, "x") == 0
+		and (function() for _, it in ipairs(picked) do if it ~= stone.item then return false end end return true end)(), #picked)
+	check("madstone: the end line counts one seen, one picked, and the walk back still ends it", fin ~= nil and field(fin, "ms") == "1"
+		and field(fin, "mp") == "1" and field(fin, "why") == "back", fin)
+end
+
 finish()
