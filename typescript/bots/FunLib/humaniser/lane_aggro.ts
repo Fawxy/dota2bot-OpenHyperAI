@@ -166,6 +166,11 @@ function valid(u: Unit | undefined | null): u is Unit {
     return u !== undefined && u !== null && !u.IsNull() && u.IsAlive() && u.CanBeSeen();
 }
 
+/** A creep handle turns null once the unit is removed; IsAlive on it throws (lagchk5 t=484). */
+function live(u: Unit): boolean {
+    return !u.IsNull() && u.IsAlive();
+}
+
 function frac(u: Unit): number {
     return u.GetHealth() / math.max(1, u.GetMaxHealth());
 }
@@ -518,7 +523,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["near", a.near],
         ["drawn", a.drawn],
         ["mv", a.mv],
-        ["rhp", a.kind === "feed" && !a.creep.IsNull() && a.creep.IsAlive() ? math.floor(frac(a.creep) * 100) / 100 : undefined],
+        ["rhp", a.kind === "feed" && live(a.creep) ? math.floor(frac(a.creep) * 100) / 100 : undefined],
         ["onr", a.onr],
         ["dhp", a.hp0 - a.hpMin],
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -560,7 +565,7 @@ function drawnOn(bot: Unit, target: Unit): Unit[] {
 /** The result once the move has handed the frame back: the creep's fate, read from our last-hit and deny counters. */
 function watch(bot: Unit, a: Attempt, now: number): void {
     if (!bot.IsAlive()) return finish(bot, a, "died", now);
-    const dead = a.creep.IsNull() || !a.creep.IsAlive();
+    const dead = !live(a.creep);
     if (a.kind === "feed") {
         if (!dead) a.onr = math.max(a.onr, drawnOn(bot, a.creep).length);
         if (dead) return finish(bot, a, counter(bot, "GetDenies") > a.dn0 ? "denied" : "lost", now);
@@ -589,7 +594,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         finish(bot, a, "died", now);
         return false;
     }
-    if (!valid(a.hero) || (a.kind === "drag" && (a.creep.IsNull() || !a.creep.IsAlive()))) {
+    if (!valid(a.hero) || (a.kind === "drag" && !live(a.creep))) {
         if (a.orderedAt === undefined) {
             finish(bot, a, "cancelled", now);
             return false;
@@ -605,7 +610,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
             bot.Action_MoveToLocation(at);
             return true;
         }
-        if (!a.creep.IsAlive() || !valid(a.hero)) {
+        if (!live(a.creep) || !valid(a.hero)) {
             finish(bot, a, "cancelled", now);
             return false;
         }
@@ -633,7 +638,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.kind === "feed") {
         let nearest: number | undefined;
-        if (a.creep.IsAlive()) {
+        if (live(a.creep)) {
             for (const c of drawnOn(bot, bot)) {
                 const d = GetUnitToUnitDistance(c, a.creep);
                 if (nearest === undefined || d < nearest) nearest = d;
@@ -645,7 +650,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
                 if (nearest === undefined || d < nearest) nearest = d;
             }
         }
-        if (!a.creep.IsAlive()) {
+        if (!live(a.creep)) {
             a.phase = "watch";
             a.droppedAt = now;
             return false;
@@ -669,12 +674,12 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         return false;
     }
     // drag: walk the drawn creeps back, then the body takes the last hit as it comes due.
-    if (t < SETTINGS.DragWalk && a.creep.IsAlive()) {
+    if (t < SETTINGS.DragWalk && live(a.creep)) {
         bot.Action_MoveToLocation(a.back);
         return true;
     }
     a.walkedAt = now;
-    if (a.creep.IsAlive() && valid(a.hero)) a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep));
+    if (live(a.creep) && valid(a.hero)) a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep));
     a.phase = "watch";
     return false;
 }
