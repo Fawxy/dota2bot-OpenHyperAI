@@ -1738,28 +1738,17 @@ local function trackCreepDeaths(bot, now)
         c.deadNeutrals[d.creep] = d.seen
     end
     for ____, u in ipairs(neutralList) do
-        do
-            local __continue228
-            repeat
-                local loc = u:GetLocation()
-                if loc == nil then
-                    __continue228 = true
-                    break
-                end
-                c.neutrals[u] = {
-                    kind = neutralKind(u),
-                    x = loc.x,
-                    y = loc.y,
-                    hp = u:GetHealth() / math.max(
-                        1,
-                        u:GetMaxHealth()
-                    )
-                }
-                __continue228 = true
-            until true
-            if not __continue228 then
-                break
-            end
+        local loc = u:GetLocation()
+        if loc ~= nil and loc ~= nil then
+            c.neutrals[u] = {
+                kind = neutralKind(u),
+                x = loc.x,
+                y = loc.y,
+                hp = u:GetHealth() / math.max(
+                    1,
+                    u:GetMaxHealth()
+                )
+            }
         end
     end
     c.towerOn = {}

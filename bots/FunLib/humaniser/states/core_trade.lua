@@ -743,6 +743,14 @@ function ____exports.LastHitYields(bot)
     local ep = episodes[bot:GetPlayerID()]
     return ep ~= nil and ep.lf and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
+--- When this bot last gave an attack order on an enemy hero from a trade (lane_aggro shares the 3 s draw clock).
+function ____exports.PrimedAt(pid)
+    return primedAt[pid]
+end
+--- Another lane module gave an attack order on an enemy hero: the trade's aggro-free plan counts it as its prime.
+function ____exports.NotePrimed(pid, t)
+    primedAt[pid] = t
+end
 function ____exports.Reset()
     for k in pairs(episodes) do
         episodes[k] = nil

@@ -268,7 +268,10 @@ Customize.Humaniser = {
 -- 40% HP or less with even numbers or more (our attack mode), joins an ally's running play near it (hum/plays), and rolls a
 -- lane_fight play when no clear window decides; team roam keeps only its non-fight branches for it and LaneFight makes no claim.
 -- Off: team roam's fight branches, LaneFight's claims and the trade's 25% kill cut.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true }
+-- LaneAggro (slice lane-aggro): an in-lane pos1-3, and a pos4-5 whose lane core is away, draws enemy lane creeps on purpose: `feed`
+-- walks the enemy wave onto our ranged creep for our deny (tilting the clash toward our tower), `drag` walks a creep about to die
+-- away from an enemy hero for a safe last hit. Off: no draws; OHA-era lane_tech keeps its aggro pull.
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
@@ -277,8 +280,9 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- minute from 2:00 (slice 4 diagnosis, scenario games only; StackJob.Bench, StackJob.Minutes); StackFar: no 25 s away skip
 -- (slice double-stack: execution apart from getting there; scenario games only). LaneOnly: every bot stays in laning mode
 -- through the laning phase and only holds its spot, last-hits and denies (no techniques, harass, trades, spells or items):
--- the last-hit check harness (slice lane-last-hits, scenario games only; humaniser/overrides.ts).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false }
+-- the last-hit check harness (slice lane-last-hits, scenario games only; humaniser/overrides.ts). CampForce: an owned core's
+-- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

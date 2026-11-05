@@ -304,6 +304,30 @@ do
 	check("creep outside our tower's range: the 520 ring", sf ~= nil and dist(sf, c.loc) >= 520, sf and dist(sf, c.loc))
 end
 
+-- lane_aggro's fed creep (lane_spot input `fed`, slice lane-aggro). lagchk3: in 15 of 30 fed creeps lost the bot made no deny
+-- attempt; lagrec1 2:32-2:38 a melee core held 550-640 from it. Our ranged creep at (0, 0), an enemy melee creep at (60, 0)
+-- hitting it; a melee core (reach 150 + 48).
+do
+	local fed, e
+	local setup = function(hp, target)
+		return function(bot)
+			fed = creep({ loc = Vector(0, 0), team = 2, hp = hp, name = "npc_dota_creep_goodguys_ranged" })
+			fed.maxhp = 300
+			e = creep({ loc = Vector(60, 0) })
+			e.target = target == "bot" and bot or fed
+			require("bots/FunLib/humaniser/states/laning").SetFed(bot, fed)
+		end
+	end
+	local s, bot = spotFor(SDK, nil, setup(150))
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("fed creep at 50%: the spot is in deny reach of it", s ~= nil and dist(s, fed.loc) <= 198, s and dist(s, fed.loc))
+	check("fed creep at 50%: behind it, anchor fed", s ~= nil and s.x < 0 and info ~= nil and info.anchor == "fed", info and info.anchor)
+	local sh = spotFor(SDK, nil, setup(270))
+	check("fed creep at 90%: the usual 520 ring", sh ~= nil and dist(sh, e.loc) >= 520, sh and dist(sh, e.loc))
+	local sb = spotFor(SDK, nil, setup(150, "bot"))
+	check("fed creep, enemy creep on us: its 520 ring stands", sb ~= nil and dist(sb, e.loc) >= 520, sb and dist(sb, e.loc))
+end
+
 -- A melee enemy hero 400 from the preferred point: in the open lane the 800 floor; with our tower 200 behind the point it would
 -- have to stand inside the tower's range to hit the core there, so the point holds (reach 198 + 150).
 do

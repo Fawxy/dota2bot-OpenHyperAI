@@ -19,6 +19,10 @@ end
 function FarmWorld(o)
 	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { dire_bot = { { 325 * o.travel, -5000 }, { -7000, -5000 } } } } },
 		{ skill = o.skill or 0.9, farm = o.farm, transitions = o.transitions })
+	-- FarmPattern's own trips: slice core-next-gold's CoreCamp owns lane-stage trips of our cores when its switch is on.
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	C.Ours = C.Ours or {}
+	if o.coreCamp ~= true then C.Ours.CoreCampTrip = false end
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1

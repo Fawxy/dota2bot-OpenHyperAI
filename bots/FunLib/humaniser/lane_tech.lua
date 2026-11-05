@@ -171,6 +171,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
+local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 local IN_LANE_FLAGS = {
     "Block",
     "AggroPull",
@@ -763,6 +764,10 @@ local function trySwap(bot, s, enemies, reason, lastHit)
     return false
 end
 local function startAggro(bot, s, enemies, choice, lastHit)
+    if LaneAggro.OwnsTechnique(bot) and s ~= nil then
+        overlay(bot, "tech=aggro_pull ours")
+        return false
+    end
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local at = drawAt[pid]
@@ -967,10 +972,10 @@ local function zoneTarget(bot, s)
     local bestDist = math.huge
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue149
+            local __continue150
             repeat
                 if not e.visible or dist2D(e.location, s.frontLoc) > zone then
-                    __continue149 = true
+                    __continue150 = true
                     break
                 end
                 local d = dist2D(e.location, s.frontLoc)
@@ -978,9 +983,9 @@ local function zoneTarget(bot, s)
                     best = e.location
                     bestDist = d
                 end
-                __continue149 = true
+                __continue150 = true
             until true
-            if not __continue149 then
+            if not __continue150 then
                 break
             end
         end

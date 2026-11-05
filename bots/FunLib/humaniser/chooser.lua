@@ -14,6 +14,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
+local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
@@ -79,7 +80,18 @@ local PULL = {
     NoteHit = function(bot) return PullJob.NoteHit(bot) end,
     NoteIdleHeld = function(bot) return PullJob.NoteIdleHeld(bot) end
 }
-local JOBS = {STACK, RUNE, PULL}
+local CAMP = {
+    name = "camp",
+    Priority = function(bot) return CoreCamp.Priority(bot) end,
+    Claims = function(bot) return CoreCamp.Claims(bot) end,
+    Wants = function(bot, blocked, host) return CoreCamp.Wants(bot, blocked, host) end,
+    Running = function(bot) return CoreCamp.Running(bot) end,
+    Step = function(bot, host) return CoreCamp.Step(bot, host) end,
+    End = function(bot, why) return CoreCamp.End(bot, why) end,
+    NoteHit = function(bot) return CoreCamp.NoteHit(bot) end,
+    NoteIdleHeld = function(bot) return CoreCamp.NoteIdleHeld(bot) end
+}
+local JOBS = {STACK, RUNE, PULL, CAMP}
 --- The jobs that apply to this hero, highest priority first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}

@@ -57,6 +57,12 @@ function CreepMeta:GetTeam() return self.team end
 -- Creep and tower damage default to 0 so worlds that do not set it keep the kill check's incoming damage at 0.
 function CreepMeta:GetAttackDamage() return self.dmg or 0 end
 function CreepMeta:GetAttackSpeed() return self.aspd or 1 end
+function CreepMeta:GetSecondsPerAttack() return self.spa or 1 end
+-- `armor`: physical damage taken through Dota's armour formula.
+function CreepMeta:GetActualIncomingDamage(dmg)
+	local a = self.armor or 0
+	return dmg * (1 - 0.06 * a / (1 + 0.06 * math.abs(a)))
+end
 -- `dps`: the damage per second Valve's estimate gives against any target (default 0).
 function CreepMeta:GetEstimatedDamageToTarget(current, target, duration) return (self.dps or 0) * duration end
 function CreepMeta:IsHero() return false end
@@ -172,6 +178,8 @@ function UnitMeta:GetAttackProjectileSpeed() return self.projSpeed or 0 end
 function UnitMeta:GetCurrentMovementSpeed() return self.speed or 300 end
 function UnitMeta:GetAttackSpeed() return self.aspd or 1 end
 function UnitMeta:GetActualIncomingDamage(dmg) return dmg end
+function UnitMeta:GetSecondsPerAttack() return self.spa or 1.7 end
+function UnitMeta:GetHealthRegen() return self.regen or 0 end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
 function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
 function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end
@@ -271,6 +279,8 @@ function LaneFresh(laneCfg, extra)
 		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true
+	-- lane_tech's aggro pull is Ours.LaneAggro's OFF arm, so this world tests it unless a test asks for ours.
+	package.loaded["bots/FunLib/custom_loader"].Ours.LaneAggro = extra.laneAggro == true
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
