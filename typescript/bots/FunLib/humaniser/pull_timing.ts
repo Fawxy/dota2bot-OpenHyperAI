@@ -449,7 +449,7 @@ export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | 
  * phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
  * from the wave in phchk3, nothing taken) still reach the wave.
  */
-export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector): Vector {
+export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vector, now: number, engaged: boolean, at: Vector, neutrals?: Vector[]): Vector {
     if (engaged) return at;
     const cfg = settings();
     const t = c.timing;
@@ -467,21 +467,36 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
         fronts.push(PathPoint(path, alongs[k] + cfg.CreepSpeed * cfg.HalfStepAhead));
     }
     const back = StepBackPoint(origin, stand, path);
-    const len = hypot(back.x, back.y, meet.x, meet.y);
-    const n = math.max(1, math.ceil(len / 50));
-    const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
+    const len = math.max(1, hypot(back.x, back.y, meet.x, meet.y));
+    // What turns a creep is a neutral within HalfAcquire of it (the harness phhar5/phhar7: no creep turned on one farther
+    // out, hit puller or not), so with the neutrals known their places, moved with the puller, are what must stay clear;
+    // with none known the puller stands for them at HalfHeroAggro.
+    const offs = neutrals !== undefined && neutrals.length > 0 ? neutrals : undefined;
+    const reach = (offs !== undefined ? cfg.HalfAcquire : cfg.HalfHeroAggro) + cfg.HalfStepBuffer;
+    // With the neutrals known the line runs on HalfStepOver past the meet point, so neutrals that trail the puller can
+    // still be brought to the lane; the far side is open only once the front creeps are clear of the crossing.
+    const ux = (meet.x - back.x) / len;
+    const uy = (meet.y - back.y) / len;
+    let crossClear = offs !== undefined;
+    if (crossClear) for (const [fx, fy] of fronts) if (hypot(meet.x, meet.y, fx, fy) <= reach) crossClear = false;
+    const full = len + (crossClear ? cfg.HalfStepOver : 0);
+    const n = math.max(1, math.ceil(full / 50));
     const pins = cfg.HalfStand;
     const pin = pins.length > 0 ? pins[math.floor(c.slot / 30) % pins.length] : 0;
     for (let i = n; i >= 0; i--) {
-        const x = back.x + ((meet.x - back.x) * i) / n;
-        const y = back.y + ((meet.y - back.y) * i) / n;
+        const x = back.x + ux * ((full * i) / n);
+        const y = back.y + uy * ((full * i) / n);
         // The harness pin: the nearest point of the line to the lane that is still HalfStand off it, whatever the wave does.
         if (pin > 0) {
             if (Along(path, Vector(x, y, stand.z))[1] >= pin) return Vector(x, y, stand.z);
             continue;
         }
         let clear = true;
-        for (const [fx, fy] of fronts) if (hypot(x, y, fx, fy) <= reach) clear = false;
+        if (offs !== undefined) {
+            for (const o of offs) for (const [fx, fy] of fronts) if (hypot(x + o.x, y + o.y, fx, fy) <= reach) clear = false;
+        } else {
+            for (const [fx, fy] of fronts) if (hypot(x, y, fx, fy) <= reach) clear = false;
+        }
         if (clear) return Vector(x, y, stand.z);
     }
     return back;

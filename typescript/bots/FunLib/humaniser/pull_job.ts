@@ -59,6 +59,8 @@ export const SETTINGS = {
     HomeMargin: 150,
     /** A tagged neutral has started (`nm`) once it is this far from where it stood at the hit. */
     Moved: 50,
+    /** A lane creep has left the lane (pull_creep lt) once it is this far off the lane path above its own least. */
+    Leave: 100,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -171,6 +173,11 @@ interface CreepTrack {
     pv?: number;
     po?: number;
     ca?: number;
+    /** Least distance off the lane path so far, and the frame it rose Leave above it (the creep left the lane). */
+    off0?: number;
+    lt?: number;
+    ld?: number;
+    ln?: number;
 }
 
 interface Decision {
@@ -556,6 +563,9 @@ function creepLines(bot: Unit, p: Pull): void {
             ["pv", r0(c.pv)],
             ["po", r0(c.po)],
             ["ca", r0(c.ca)],
+            ["lt", r1(c.lt)],
+            ["ld", r0(c.ld)],
+            ["ln", r0(c.ln)],
         ]);
     }
     p.creeps = undefined;
@@ -594,13 +604,26 @@ function trackCreeps(bot: Unit, p: Pull): void {
         }
         if (t.tr === 1) continue;
         const dp = GetUnitToUnitDistance(c, bot);
+        const nearest = () => {
+            let dn: number | undefined;
+            for (const u of alive) {
+                const d = GetUnitToUnitDistance(c, u);
+                if (dn === undefined || d < dn) dn = d;
+            }
+            return dn;
+        };
+        if (path !== undefined && t.lt === undefined) {
+            const off = PullTiming.Along(path, c.GetLocation())[1];
+            if (t.off0 === undefined || off < t.off0) t.off0 = off;
+            else if (off > t.off0 + SETTINGS.Leave) {
+                t.lt = now - p.hat;
+                t.ld = dp;
+                t.ln = nearest();
+            }
+        }
         const turned = onNeutral(c);
         if (!turned && t.dp !== undefined && dp >= t.dp) continue;
-        let dn: number | undefined;
-        for (const u of alive) {
-            const d = GetUnitToUnitDistance(c, u);
-            if (dn === undefined || d < dn) dn = d;
-        }
+        const dn = nearest();
         t.tr = turned ? 1 : 0;
         t.tt = now - p.hat;
         t.dp = dp;
@@ -910,7 +933,15 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
             ? () => {
                       const end = pull.timer.stand ?? p.meet;
                       const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
-                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, bot.GetLocation());
+                      const here = bot.GetLocation();
+                      // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
+                      const offs: Vector[] = [];
+                      for (const u of pull.tagged ?? []) {
+                          if (stale(u)) continue;
+                          const l = u.GetLocation();
+                          offs.push(Vector(l.x - here.x, l.y - here.y, 0));
+                      }
+                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, offs);
                       if (engaged && pull.stepIn === undefined) pull.stepIn = stepped(p, end, bot.GetLocation());
                       return at as unknown as Lib.Vec;
                   }

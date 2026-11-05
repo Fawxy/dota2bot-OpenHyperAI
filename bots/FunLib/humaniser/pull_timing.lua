@@ -664,7 +664,7 @@ end
 -- creep of the wave on a neutral) it stays at `at`. The hit's timing error (the neutrals' start 0.4-2.1 s after the hit,
 -- phchk3) is far above the search's margins (10-38); the lane end lets an off-lane meet point (camp 26: the puller 515-830
 -- from the wave in phchk3, nothing taken) still reach the wave.
-function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
+function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals)
     if engaged then
         return at
     end
@@ -692,22 +692,39 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
         end
     end
     local back = ____exports.StepBackPoint(origin, stand, path)
-    local len = hypot(back.x, back.y, meet.x, meet.y)
+    local len = math.max(
+        1,
+        hypot(back.x, back.y, meet.x, meet.y)
+    )
+    local offs = neutrals ~= nil and #neutrals > 0 and neutrals or nil
+    local reach = (offs ~= nil and cfg.HalfAcquire or cfg.HalfHeroAggro) + cfg.HalfStepBuffer
+    local ux = (meet.x - back.x) / len
+    local uy = (meet.y - back.y) / len
+    local crossClear = offs ~= nil
+    if crossClear then
+        for ____, ____value in ipairs(fronts) do
+            local fx = ____value[1]
+            local fy = ____value[2]
+            if hypot(meet.x, meet.y, fx, fy) <= reach then
+                crossClear = false
+            end
+        end
+    end
+    local full = len + (crossClear and cfg.HalfStepOver or 0)
     local n = math.max(
         1,
-        math.ceil(len / 50)
+        math.ceil(full / 50)
     )
-    local reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer
     local pins = cfg.HalfStand
     local pin = #pins > 0 and pins[math.floor(c.slot / 30) % #pins + 1] or 0
     do
         local i = n
         while i >= 0 do
             do
-                local __continue89
+                local __continue93
                 repeat
-                    local x = back.x + (meet.x - back.x) * i / n
-                    local y = back.y + (meet.y - back.y) * i / n
+                    local x = back.x + ux * (full * i / n)
+                    local y = back.y + uy * (full * i / n)
                     if pin > 0 then
                         if select(
                             2,
@@ -718,23 +735,35 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
                         ) >= pin then
                             return Vector(x, y, stand.z)
                         end
-                        __continue89 = true
+                        __continue93 = true
                         break
                     end
                     local clear = true
-                    for ____, ____value in ipairs(fronts) do
-                        local fx = ____value[1]
-                        local fy = ____value[2]
-                        if hypot(x, y, fx, fy) <= reach then
-                            clear = false
+                    if offs ~= nil then
+                        for ____, o in ipairs(offs) do
+                            for ____, ____value in ipairs(fronts) do
+                                local fx = ____value[1]
+                                local fy = ____value[2]
+                                if hypot(x + o.x, y + o.y, fx, fy) <= reach then
+                                    clear = false
+                                end
+                            end
+                        end
+                    else
+                        for ____, ____value in ipairs(fronts) do
+                            local fx = ____value[1]
+                            local fy = ____value[2]
+                            if hypot(x, y, fx, fy) <= reach then
+                                clear = false
+                            end
                         end
                     end
                     if clear then
                         return Vector(x, y, stand.z)
                     end
-                    __continue89 = true
+                    __continue93 = true
                 until true
-                if not __continue89 then
+                if not __continue93 then
                     break
                 end
             end

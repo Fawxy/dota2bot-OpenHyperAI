@@ -960,7 +960,10 @@ ____exports.EVENTS = {
         ph = "num",
         pv = "num",
         po = "num",
-        ca = "num"
+        ca = "num",
+        lt = "num",
+        ld = "num",
+        ln = "num"
     },
     pull_watch = {
         pid = "num",

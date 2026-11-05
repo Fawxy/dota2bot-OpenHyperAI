@@ -393,6 +393,10 @@ export const DEFAULTS = {
         HalfStepEarly: 0.5,
         // A stepping-in half pull waits at least this far off the lane path (HalfHeroAggro + HalfStepBuffer). `judgement`.
         HalfHoldOff: 550,
+        // The step-in's line runs this far past the meet point across the lane, so neutrals trailing the puller (camp 26's
+        // ranged ones hit from 400-500 behind it, phhar7) can still be brought within HalfAcquire of the back creeps.
+        // `judgement`.
+        HalfStepOver: 400,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

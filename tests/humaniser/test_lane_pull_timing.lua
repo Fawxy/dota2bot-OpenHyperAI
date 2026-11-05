@@ -303,6 +303,25 @@ do
 	local mid = waveAt(400)
 	check("step-in: in between, as far in as keeps the front two out", frontsOut(mid, 400, 500) and dist(mid, meet) < dist(near, meet)
 		and dist(mid, meet) > 0, dist(mid, meet))
+	-- With the camp's neutrals known (offsets from the puller) it is their places, moved with the puller, that stay 550
+	-- (HalfAcquire + buffer) from the front two, not the puller's: neutrals 300 behind it let it stand 300 nearer the wave;
+	-- one 300 ahead of it (lane side) holds it back.
+	local ul = dist(origin, meet)
+	local toCamp = Vector((origin.x - meet.x) / ul * 300, (origin.y - meet.y) / ul * 300)
+	local function waveAtWith(front, offs)
+		CREEPS[2] = {}
+		for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + front - 100 * k, y = -5000 }) end
+		local c = PT.Timer(timing, slot, 1, 500, 2, 330)
+		return PT.StepIn(c, origin, stand, meet, T + (front + 1000) / 325, false, stand, offs)
+	end
+	local behind = waveAtWith(100, { toCamp })
+	check("step-in on the neutrals: 300 behind the puller, it stands nearer the wave than on its own and they stay 550 out",
+		dist(behind, meet) < dist(near, meet) - 100 and frontsOut(Vector(behind.x + toCamp.x, behind.y + toCamp.y), 100, 550), dist(behind, meet))
+	local ahead = waveAtWith(100, { Vector(-toCamp.x, -toCamp.y) })
+	check("step-in on the neutrals: 300 ahead of the puller, it holds at the back point", dist(ahead, meet) >= dist(near, meet) - 1, dist(ahead, meet))
+	local over = waveAtWith(700, { toCamp })
+	check("step-in on the neutrals: the wave past, the line runs on across the lane (HalfStepOver 400)",
+		dist(over, meet) > 300 and dist(over, origin) > dist(meet, origin), dist(over, meet))
 	CREEPS[2] = {}
 	for _, a in ipairs(alongs) do MakeCreep({ team = 2, x = PATH[1][1] + a, y = -5000 }) end
 	-- With the step-in (the default) the hit is the HalfClear aim brought forward by HalfNeutralDelay + HalfStepEarly

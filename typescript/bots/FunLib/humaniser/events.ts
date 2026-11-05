@@ -1173,6 +1173,9 @@ export const EVENTS = {
     // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
     // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
     // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
+    // The creep's decision frame, before its target shows: lt seconds after the hit its distance off the lane path first
+    // rose PullJob Leave above its own least so far (it left the lane), ld its distance to the puller and ln to the nearest
+    // tagged neutral then; unset when it never left.
     pull_creep: {
         pid: "num",
         slot: "num",
@@ -1187,6 +1190,9 @@ export const EVENTS = {
         pv: "num",
         po: "num",
         ca: "num",
+        lt: "num",
+        ld: "num",
+        ln: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
