@@ -23,7 +23,6 @@ check("clash coming back in from beyond the target: still feed", A.FeedWanted({ 
 check("clash at the target and holding: no feed", not A.FeedWanted({ own = 950, move = 50 }, 900))
 check("clash inside the target, coming in: no feed", not A.FeedWanted({ own = 600, move = -200 }, 900))
 check("no reading: no feed", not A.FeedWanted(nil, 900))
-check("mid's target sits further out (our high-ground edge) than a side lane's", A.TargetOf(require(GetScriptDirectory() .. "/ts_libs/dota/index").Lane.Mid) > A.TargetOf(require(GetScriptDirectory() .. "/ts_libs/dota/index").Lane.Bot))
 
 -- The tower move orders just past their creeps, never from inside the tower's reach.
 local x, y = A.TowerPoint(0, 0, 500, 0)

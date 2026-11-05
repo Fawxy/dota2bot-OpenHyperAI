@@ -89,7 +89,7 @@ end
 
 local function run(w, untilT) return capture(function() while T < untilT do frame(w) end end) end
 
-local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, tower = false, cf = -420, ms = 3.1 }
+local OUT = { state = "OUT", clash = 9000, move = 640, q = 0.7, own = 3160, tower = false, ms = 3.1 }
 
 -- A pull that ends ok with `left` neutrals still on the camp. Returns the world, the output so far and the neutrals.
 local function afterPull(o)

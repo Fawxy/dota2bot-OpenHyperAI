@@ -82,8 +82,6 @@ ____exports.SETTINGS = {
     TowerR = 1000,
     TowerOrderR = 900,
     FeedCreepHp = 0.25,
-    TargetSide = 900,
-    TargetMid = 1300,
     FeedMargin = 150,
     OwnTowerR = 800,
     TowerHit = 850,
@@ -194,9 +192,6 @@ end
 function ____exports.Stale(phase, gap)
     return gap > (phase == "watch" and ____exports.SETTINGS.StaleWatch or ____exports.SETTINGS.StaleActing)
 end
-function ____exports.TargetOf(lane)
-    return lane == Lane.Mid and ____exports.SETTINGS.TargetMid or ____exports.SETTINGS.TargetSide
-end
 --- Pure: whether the clash sits, or is forecast to sit, beyond the target point (`own` the clash's distance from our T1 now,
 -- `move` its forecast move toward their T1). A clash coming in from beyond it still wants the feed: it is not ours yet.
 function ____exports.FeedWanted(r, target)
@@ -248,24 +243,24 @@ local function coreAway(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue25
+                local __continue24
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h == bot or h:IsNull() then
-                        __continue25 = true
+                        __continue24 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(h)
                     if pos == nil or pos > 3 or h:GetAssignedLane() ~= lane then
-                        __continue25 = true
+                        __continue24 = true
                         break
                     end
                     if h:IsAlive() and GetUnitToUnitDistance(h, bot) <= ____exports.SETTINGS.CoreNear then
                         return false
                     end
-                    __continue25 = true
+                    __continue24 = true
                 until true
-                if not __continue25 then
+                if not __continue24 then
                     break
                 end
             end
@@ -324,11 +319,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue46
+            local __continue45
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue46 = true
+                    __continue45 = true
                     break
                 end
                 local d = d2(
@@ -339,9 +334,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue46 = true
+                __continue45 = true
             until true
-            if not __continue46 then
+            if not __continue45 then
                 break
             end
         end
@@ -364,10 +359,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue52
+            local __continue51
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue52 = true
+                    __continue51 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -375,9 +370,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue52 = true
+                __continue51 = true
             until true
-            if not __continue52 then
+            if not __continue51 then
                 break
             end
         end
@@ -390,19 +385,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue57
+                local __continue56
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue57 = true
+                        __continue56 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue57 = true
+                    __continue56 = true
                 until true
-                if not __continue57 then
+                if not __continue56 then
                     break
                 end
             end
@@ -476,15 +471,15 @@ local function tryDrag(bot, heroes, now)
     local here = bot:GetLocation()
     for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
         do
-            local __continue75
+            local __continue74
             repeat
                 if t.kind ~= "lasthit" or t.due < ____exports.SETTINGS.DragDueMin or t.due > ____exports.SETTINGS.DragDueMax then
-                    __continue75 = true
+                    __continue74 = true
                     break
                 end
                 local creep = t.creep
                 if not valid(creep) or GetUnitToUnitDistance(bot, creep) > ____exports.SETTINGS.DrawR then
-                    __continue75 = true
+                    __continue74 = true
                     break
                 end
                 local contester
@@ -494,7 +489,7 @@ local function tryDrag(bot, heroes, now)
                     end
                 end
                 if contester == nil then
-                    __continue75 = true
+                    __continue74 = true
                     break
                 end
                 local hero = orderTarget(bot)
@@ -524,7 +519,7 @@ local function tryDrag(bot, heroes, now)
                     now
                 )
             until true
-            if not __continue75 then
+            if not __continue74 then
                 break
             end
         end
@@ -625,7 +620,7 @@ local function tryFeed(bot, heroes, now)
     local r = pushRead(team, lane)
     if not ____exports.FeedWanted(
         r,
-        ____exports.TargetOf(lane)
+        LanePush.TargetOf(lane)
     ) then
         return nil, r == nil and "no_read" or "at_target"
     end
@@ -782,19 +777,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue129
+            local __continue128
             repeat
                 if not valid(c) then
-                    __continue129 = true
+                    __continue128 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue129 = true
+                __continue128 = true
             until true
-            if not __continue129 then
+            if not __continue128 then
                 break
             end
         end
@@ -1011,7 +1006,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue176
+                    local __continue175
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1019,16 +1014,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue176 = true
+                            __continue175 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue176 = true
+                        __continue175 = true
                     until true
-                    if not __continue176 then
+                    if not __continue175 then
                         break
                     end
                 end

@@ -308,7 +308,7 @@ function ____exports.Tick(bot)
 end
 local function begin(bot, v, front, n, now)
     local lane = bot:GetAssignedLane()
-    local tgt = LaneAggro.TargetOf(lane)
+    local tgt = LanePush.TargetOf(lane)
     local z = bot:GetLocation().z
     local hold = pointAt(v, tgt, z)
     if GetUnitToLocationDistance(bot, hold) > ____exports.SETTINGS.Reach or frac(bot) < ____exports.SETTINGS.StartHp then
@@ -371,7 +371,7 @@ function ____exports.Step(bot)
         local r = ____exports.Read(
             v.theirs,
             v.ours,
-            LaneAggro.TargetOf(bot:GetAssignedLane())
+            LanePush.TargetOf(bot:GetAssignedLane())
         )
         if type(r) == "string" then
             return

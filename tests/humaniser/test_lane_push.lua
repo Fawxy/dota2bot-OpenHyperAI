@@ -55,12 +55,10 @@ do
 	end
 	check("view: the 2:00 Dire wave placed where the schedule puts it", ok)
 
-	local r = P.ReadFrom(paths[2], 2, 137, init, { [2] = 1700 }, 3000)
+	local r = P.ReadFrom(paths[2], 2, 137, init, { [2] = 1700 })
 	check("reading: clash and 30 s move as the offline model", near(r.clash, 5600) and near(r.move, 574.875),
 		tostring(r.clash) .. " " .. tostring(r.move))
 	check("reading: away from both T1s the model decides, OUT", r.state == "OUT" and not r.tower, r.state)
-	-- Without our walking wave (short of 3000) Dire's waves push into us: the counterfactual of a pull turns OUT into IN.
-	check("counterfactual: our walking wave removed", near(r.cf, -808.625), tostring(r.cf))
 end
 
 -- Tower rule (EC-079): a clash within 900 of our T1 bounces out, of theirs comes in, whatever the model says.
