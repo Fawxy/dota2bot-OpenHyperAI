@@ -308,7 +308,10 @@ export function SupportStep(bot: Unit): boolean {
  * after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
  */
 export function CoreAggroStep(bot: Unit): boolean {
-    if (!IsEnabled() || !BodyLastHits(bot)) return false;
+    if (!IsEnabled()) return false;
+    // While a draw gives the orders, this Think returns before the body is stepped, so the engine ends the body's task
+    // (stalled, never_started) until the state restarts it; the open draw is stepped regardless or it ends `stale` (awchk1).
+    if (!BodyLastHits(bot)) return LaneAggro.Pending(bot) && LaneAggro.Step(bot);
     // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
     WaveHold.Step(bot);
     return LaneAggro.Step(bot);

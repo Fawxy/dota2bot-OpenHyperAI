@@ -402,8 +402,11 @@ end
 --- Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, stepped by mode_laning_generic
 -- after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
 function ____exports.CoreAggroStep(bot)
-    if not ____exports.IsEnabled() or not ____exports.BodyLastHits(bot) then
+    if not ____exports.IsEnabled() then
         return false
+    end
+    if not ____exports.BodyLastHits(bot) then
+        return LaneAggro.Pending(bot) and LaneAggro.Step(bot)
     end
     WaveHold.Step(bot)
     return LaneAggro.Step(bot)

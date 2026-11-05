@@ -109,7 +109,7 @@ end
 -- point), two enemy heroes 1600 out. The lane push reading says the clash is beyond the target point.
 local function feedScene(S)
 	local dota = require("bots/ts_libs/dota/index")
-	local H = LaneFresh({ Enable = true }, { laneAggro = true, telemetry = { Enable = true } })
+	local H = LaneFresh({ Enable = true }, { laneAggro = true, telemetry = { Enable = true }, states = { Enable = true } })
 	local lines = {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 	local LP = require("bots/FunLib/humaniser/lane_push")
@@ -131,7 +131,7 @@ local function feedScene(S)
 	local h2 = MakeUnit({ pid = 6, team = 3, loc = Vector(hx + 300, hy) })
 	T = 30
 	local function has(pat) for _, l in ipairs(lines) do if l:find(pat) then return true end end return false end
-	return Ag, bot, h1, h2, has
+	return Ag, bot, h1, h2, has, H
 end
 
 -- The feed's walk back would end 750 from our T1, inside the side lane's 900 hold point: no draw (wave_hold meets them there).
@@ -161,6 +161,22 @@ do
 	end
 	check("feed re-pick: the move is not cancelled", not has("result=cancelled"))
 	check("feed re-pick: the draw is ordered on the hero still seen", #orders == 1 and orders[1].args[1] == h2, #orders)
+end
+
+-- awchk1 (t=32.7, Pudge, ad=772): the approach returns from mode_laning's Think before the laning body is stepped, so the
+-- engine ends the body's task (stalled, then never_started) and the body stops running for a while. The draw step must keep
+-- stepping the open attempt then, or the attempt ends `stale` mid-walk (23 of 25 stale feeds in awchk1).
+do
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	check("body off: the laning body is not running", H.States.IsEnabled() and not H.States.BodyLastHits(bot))
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	for _ = 1, 4 do
+		T = T + 0.25
+		H.States.CoreAggroStep(bot)
+	end
+	check("body off: the approach keeps stepping", #ActionsOf(1, "MoveToLocation") == n0 + 4 and Ag.Pending(bot), #ActionsOf(1, "MoveToLocation") - n0)
+	check("body off: no stale end", not has("result=stale"))
 end
 
 -- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it
