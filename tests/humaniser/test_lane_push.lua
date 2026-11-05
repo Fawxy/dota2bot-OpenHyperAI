@@ -77,4 +77,46 @@ do
 	check("project a path vertex", math.abs(s - top.s[5]) < 1 and d < 1, s .. " " .. d)
 end
 
+-- Slice pull-gate: the lane with a pulled wave gone. Bot lane at 65 s: our 60 s wave walking out from the spawn, theirs
+-- walking in. With ours, the two meet mid-way; with it pulled, theirs walks unopposed to our T1 and meets our 90 s wave there.
+do
+	local bot = paths[3]
+	local function wave(team, s, dir)
+		return { { team = team, kind = "melee", s = s, hp = 550 }, { team = team, kind = "melee", s = s, hp = 550 },
+			{ team = team, kind = "melee", s = s, hp = 550 }, { team = team, kind = "ranged", s = s - 150 * dir, hp = 300 } }
+	end
+	local init = wave(2, bot.spawnR + 325 * 5, 1)
+	for _, c in ipairs(wave(3, bot.spawnD - 325 * 5, -1)) do table.insert(init, c) end
+	local kept = P.WaveGoneFrom(bot, 2, 65, init, {}, 30, 95)
+	local gone = P.WaveGoneFrom(bot, 2, 65, init, {}, 60, 95)
+	check("wave gone: their wave walks in past where the waves would have met", gone.own ~= nil and kept.own ~= nil
+		and gone.own < kept.own - 2000, tostring(gone.own) .. " " .. tostring(kept.own))
+	check("wave gone: neither the pulled wave nor the one spawned with it counts as power", gone.ap == 0 and gone.ep == 0
+		and kept.ap == 1950 and kept.ep == 1950, gone.ap .. " " .. gone.ep .. " " .. kept.ap .. " " .. kept.ep)
+	check("wave gone: found (pw 1); a wave not near its scheduled spot is not found (pw 0)", gone.pw == 1 and kept.pw == 0)
+	-- Decided on the spawn second itself, with the wave's creeps already in the view: still removed.
+	local onSpawn = {}
+	for _, c in ipairs(wave(2, bot.spawnR, 1)) do table.insert(onSpawn, c) end
+	for _, c in ipairs(wave(3, bot.spawnD, -1)) do table.insert(onSpawn, c) end
+	local at60 = P.WaveGoneFrom(bot, 2, 60, onSpawn, {}, 60, 90)
+	check("wave gone: on the spawn second the wave in the view is removed", at60.pw == 1 and at60.ap == 0, at60.ap)
+
+	-- Dire's side of the same lane: theirs (Radiant's) walks unopposed to Dire's T1.
+	local dire = wave(3, bot.spawnD - 325 * 5, -1)
+	for _, c in ipairs(wave(2, bot.spawnR + 325 * 5, 1)) do table.insert(dire, c) end
+	local dKept = P.WaveGoneFrom(bot, 3, 65, dire, {}, 30, 95)
+	local dGone = P.WaveGoneFrom(bot, 3, 65, dire, {}, 60, 95)
+	check("wave gone, Dire: their wave walks in past the meeting point", dGone.own ~= nil and dKept.own ~= nil
+		and dGone.own < dKept.own - 2000 and dGone.pw == 1 and dGone.ap == 0, tostring(dGone.own) .. " " .. tostring(dKept.own))
+end
+
+-- A wave still to spawn is pulled by leaving its spawn out of the run.
+do
+	local bot = paths[3]
+	local at = function(smp, t) for _, s in ipairs(smp) do if s.t >= t then return s end end end
+	local skipped = at(P.Run(bot, 55, 70, {}, {}, { team = 2, t = 60 }), 65)
+	local plain = at(P.Run(bot, 55, 70, {}, {}), 65)
+	check("skip: our 60 s wave left out, theirs spawns", skipped.front[2] == nil and skipped.front[3] ~= nil and plain.front[2] ~= nil)
+end
+
 finish()

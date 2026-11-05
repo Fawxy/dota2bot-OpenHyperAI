@@ -1296,7 +1296,13 @@
    "php": "num",
    "se": "num",
    "pk": "str",
-   "hm": "num"
+   "hm": "num",
+   "pa": "num",
+   "ap": "num",
+   "ep": "num",
+   "hold": "num",
+   "rule": "str",
+   "pw": "num"
   },
   "gank": {
    "pid": "num",
@@ -1753,7 +1759,8 @@
    "why": "text",
    "src": "text",
    "st": "text",
-   "pk": "text"
+   "pk": "text",
+   "rule": "text"
   },
   "ev_gank": {
    "score": "text",

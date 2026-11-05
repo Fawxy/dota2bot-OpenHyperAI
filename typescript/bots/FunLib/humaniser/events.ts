@@ -1476,7 +1476,7 @@ export const EVENTS = {
     // reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it;
     // pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv
     // (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target
-    // point, LanePush TargetOf: the pull is wanted when own + mv passes it by PullJob WantPast and st is not IN), cf (logs
+    // point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs
     // before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
@@ -1510,6 +1510,19 @@ export const EVENTS = {
         // want of one (why=half-geo; pull_job hm).
         pk: "str",
         hm: "num",
+        // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
+        // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
+        // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).
+        pa: "num",
+        ap: "num",
+        ep: "num",
+        // hold 1 when our lane core could hold their wave (PullJob CoreToHold); rule which trigger wanted the pull: new (the
+        // above), old (own + mv past tgt + WantPast and st not IN, counted only with hold 1) or both; absent when neither.
+        hold: "num",
+        rule: "str",
+        // pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap
+        // were forecast with it in the lane.
+        pw: "num",
     },
     gank: {
         pid: "num",

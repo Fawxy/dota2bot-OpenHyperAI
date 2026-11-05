@@ -56,6 +56,11 @@ local function world(o)
 		w.reads = w.reads + 1
 		return o.reading
 	end
+	-- `gone`: what LanePush.WaveGoneNow returns; by default the reading's 30 s forecast, with equal powers.
+	P.WaveGoneNow = function()
+		if o.gone ~= nil then return o.gone end
+		return o.reading and { own = o.reading.own + o.reading.move, ap = 1000, ep = 1000 }
+	end
 	return w
 end
 
@@ -329,19 +334,84 @@ do
 	check("HOLD beyond the target: pull started", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "go") == "1")
 end
 
--- The trigger (plan docs/proposals/2026-11-05-pull-effect.md s4 step 3): the clash forecast beyond the lane's target point
--- and not coming in. Unlike the old OUT / HOLD-past-the-middle rule, a clash bouncing out from under our T1 (the tower rule's
--- OUT) wants no pull while its forecast stays short of the target: pulling then sends their wave into our tower.
+-- The trigger (slice pull-gate, Decision 06/11/2026): with the pulled wave gone, the clash once the current wave's fight
+-- resolves is forecast beyond the lane's target point, and their creeps in lane are not clearly stronger than ours.
 do
 	local W = world({}).H.PullJob.Wanted
-	local function r(state, own, move) return { state = state, own = own, move = move, q = 0, clash = 0, tower = false } end
-	check("trigger: tower-rule OUT from under our T1, forecast short of the target: no pull", not W(r("OUT", 200, 500), 900))
-	check("trigger: OUT whose forecast passes the side target: pull", W(r("OUT", 600, 500), 900))
-	check("trigger: holding on our half but past the target: pull", W(r("HOLD", 1300, 0), 900))
-	check("trigger: holding inside the target's margin: no pull", not W(r("HOLD", 1000, 0), 900))
-	check("trigger: mid's target sits further out, the same clash wants no pull there", not W(r("HOLD", 1300, 0), 1300))
-	check("trigger: far out but coming in: no pull", not W(r("IN", 2500, -400), 900))
+	local function g(own, ap, ep) return { own = own, ap = ap, ep = ep } end
+	check("trigger: past the side target with even waves: pull", W(g(1300, 1000, 1000), 900))
+	check("trigger: inside the target's margin: no pull", not W(g(1000, 1000, 1000), 900))
+	check("trigger: mid's target sits further out, the same clash wants no pull there", not W(g(1300, 1000, 1000), 1300))
+	check("trigger: their creeps 1.5 times ours: no pull (their wave would run into our tower)", not W(g(3000, 1000, 1500), 900))
+	check("trigger: no clash at the arrival: no pull", not W(g(nil, 1000, 1000), 900))
 	check("trigger: no reading: no pull", not W(nil, 900))
+	local PS = world({}).H.PullJob.PulledSpawn
+	check("trigger: the wave a slot pulls spawned on the 30 s before it, not at the slot itself", PS(77.4) == 60 and PS(90) == 60)
+end
+
+-- An IN reading is no refusal (obs0611_A_on_1 t=74.4, ES offlane: our wave dying under their T1, refused st=IN): with the
+-- pulled wave gone the clash stays out and their wave is the smaller, so the pull goes; a bigger enemy wave keeps it.
+do
+	local IN_T1 = { state = "IN", clash = 11500, move = -56, q = 0.95, own = 3509, tower = true }
+	local function first(gone)
+		local out = run(world({ reading = IN_T1, gone = gone }), 75)
+		return lines(out, "choice")[1]
+	end
+	local go = first({ own = 3721, ap = 1542, ep = 400 })
+	check("IN at their T1, smaller enemy wave: pull, the inputs logged", field(go, "go") == "1" and field(go, "st") == "IN"
+		and field(go, "pa") == "3721" and field(go, "ap") == "1542" and field(go, "ep") == "400", go)
+	local stay = first({ own = 3721, ap = 555, ep = 3014 })
+	check("IN at their T1, their wave much bigger: stays (why=lane)", field(stay, "go") == "0" and field(stay, "why") == "lane", stay)
+end
+
+-- With our lane core there to hold their wave, the earlier trigger also wants the pull (user 06/11/2026: the hold catches
+-- the overshoot); with none, only the new one. Here the 30 s forecast is past the target but the clash with the pulled wave
+-- gone is not.
+do
+	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
+	local function first(withCore, coreAway, onJob)
+		local w = world({ reading = OUT, gone = { own = 900, ap = 1000, ep = 1000 } })
+		local path = P.PathOf(Lane.Bot)
+		local t1, dir = P.OwnT1(path, 2)
+		local pt = P.PointAt(path, t1 + dir * 900)
+		w.core.loc = coreAway and Vector(pt[1] + 2500, pt[2]) or Vector(pt[1], pt[2])
+		local WH = require("bots/FunLib/humaniser/states/wave_hold")
+		local owns = WH.Owns
+		WH.Owns = function(u) return withCore and u == w.core end
+		local CH = require("bots/FunLib/humaniser/chooser")
+		local running = CH.Running
+		CH.Running = function(u) return onJob == true and u == w.core or running(u) end
+		local out = run(w, 75)
+		WH.Owns, CH.Running = owns, running
+		return lines(out, "choice")[1]
+	end
+	local held = first(true)
+	check("core to hold: the earlier rule's pull goes, hold=1 rule=old", field(held, "go") == "1" and field(held, "hold") == "1"
+		and field(held, "rule") == "old", held)
+	local alone = first(false)
+	check("no core to hold: the new rule only, stays (why=lane, hold=0)", field(alone, "go") == "0" and field(alone, "why") == "lane"
+		and field(alone, "hold") == "0" and field(alone, "rule") == nil, alone)
+	local far = first(true, true)
+	check("core out of the hold's reach of the target point: no core to hold", field(far, "go") == "0" and field(far, "hold") == "0", far)
+	local busy = first(true, false, true)
+	check("core on one of our jobs (a camp, a rune): no core to hold", field(busy, "go") == "0" and field(busy, "hold") == "0", busy)
+end
+
+-- What Wants asks of the lane: our team's view of the bot's lane, the wave spawned on the 30 s before the slot, read
+-- ArriveAfter (12 s) after the slot.
+do
+	local w = world({ reading = OUT })
+	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
+	local args
+	P.WaveGoneNow = function(team, lane, ts, at)
+		args = { team, lane, ts, at }
+		return { own = 3000, ap = 1000, ep = 1000, pw = 1 }
+	end
+	local c = lines(run(w, 75), "choice")[1]
+	local slot = tonumber(field(c, "slot"))
+	check("Wants: WaveGoneNow gets our team, the lane, the pulled wave's spawn and slot + 12", args ~= nil and args[1] == 2
+		and args[2] == Lane.Bot and args[3] == math.floor((slot - 1) / 30) * 30 and math.abs(args[4] - slot - 12) < 0.01
+		and field(c, "pw") == "1", c)
 end
 
 -- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full

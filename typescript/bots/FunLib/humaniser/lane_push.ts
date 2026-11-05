@@ -30,6 +30,9 @@ export const SETTINGS = {
      *  high-ground edge; slice lane-aggro, `judgement`). Lane aggro's feed, the wave hold and the pull trigger read it. */
     TargetSide: 900,
     TargetMid: 1300,
+    /** A wave's creeps are the lane creeps within this of where the schedule puts it (melee at the spot, ranged 150 behind;
+     *  waves walk 9,750 apart; `judgement`). */
+    WaveWindow: 500,
 };
 
 const R = Team.Radiant;
@@ -147,9 +150,17 @@ function round3(x: number): number {
  * One lane from `from` to `until` (s), mean damage. `init` creeps start at `from` (given, even empty, no wave spawns at
  * `from` itself);
  * `towerHp[team]` starts that team's T1 at a value, undefined leaves it at full, false leaves it out (down).
+ * `skip` leaves out one team's wave spawning at second `skip.t` (a wave pulled before it reaches the lane).
  * Returns a sample of both leads every second from `from`.
  */
-export function Run(lane: LanePath, from: number, until: number, init: StartCreep[] | undefined, towerHp: Record<number, number | false | undefined>): Sample[] {
+export function Run(
+    lane: LanePath,
+    from: number,
+    until: number,
+    init: StartCreep[] | undefined,
+    towerHp: Record<number, number | false | undefined>,
+    skip?: { team: number; t: number },
+): Sample[] {
     const dt = SETTINGS.Dt;
     const units: SimUnit[] = [];
     for (const tw of lane.towers) {
@@ -194,8 +205,8 @@ export function Run(lane: LanePath, from: number, until: number, init: StartCree
     for (let t = from; t <= until + 1e-9; t = round3(t + dt)) {
         if (math.abs(t % 30) < dt / 2 && !(init !== undefined && t < from + dt / 2)) {
             const ts = math.floor(t + 0.5);
-            for (const u of WaveAt(R, ts, lane.spawnR)) units.push(u);
-            for (const u of WaveAt(D, ts, lane.spawnD)) units.push(u);
+            if (skip?.team !== R || skip.t !== ts) for (const u of WaveAt(R, ts, lane.spawnR)) units.push(u);
+            if (skip?.team !== D || skip.t !== ts) for (const u of WaveAt(D, ts, lane.spawnD)) units.push(u);
         }
         live = [];
         for (const u of units) if (u.alive) live.push(u);
@@ -370,6 +381,57 @@ export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCr
     return reading;
 }
 
+/** The lane as a pull leaves it: `team`'s wave spawned at `ts` gone to the neutrals. */
+export interface WaveGone {
+    /** The clash's distance from our T1 along the path (positive towards theirs) at second `at`; undefined with no clash. */
+    own?: number;
+    /** HP of the creeps in lane before that pair of waves: ours less the pulled wave, theirs less the wave spawned with it. */
+    ap: number;
+    ep: number;
+    /** 1 when the pulled wave was found near the schedule's spot (or is still to spawn), 0 when the forecast runs with it in. */
+    pw: number;
+}
+
+/** Where the schedule puts `team`'s wave spawned at `ts` at second `t0`. */
+function waveSpot(lane: LanePath, team: number, ts: number, t0: number): number {
+    return (team === R ? lane.spawnR : lane.spawnD) + dirOf(team) * SPEED * (t0 - ts);
+}
+
+/**
+ * `team`'s view `init` at `t0` with its wave spawned at `ts` removed (its creeps near the schedule's spot, or the spawn left
+ * out when it is still to come), run to `at`. A wave off its schedule (a creep block, already fighting) is not found and
+ * stays in the run (`pw` 0). CANDIDATE(wave_gone): the pull trigger is its one reader.
+ */
+export function WaveGoneFrom(
+    lane: LanePath,
+    team: number,
+    t0: number,
+    init: StartCreep[],
+    towerHp: Record<number, number | false | undefined>,
+    ts: number,
+    at: number,
+): WaveGone {
+    const spawned = t0 >= ts;
+    const inWave = (c: StartCreep) => spawned && math.abs(c.s - waveSpot(lane, c.team, ts, t0)) <= SETTINGS.WaveWindow;
+    const left: StartCreep[] = [];
+    let ap = 0;
+    let ep = 0;
+    let found = !spawned;
+    for (const c of init) {
+        if (c.team === team && inWave(c)) {
+            found = true;
+            continue;
+        }
+        left.push(c);
+        if (c.team === team) ap += c.hp;
+        else if (!inWave(c)) ep += c.hp;
+    }
+    const smp = Run(lane, t0, at + 2, left, towerHp, spawned ? undefined : { team, t: ts });
+    const clash = ClashAt(smp, at);
+    const ours = lane.towers.find((tw) => tw.team === team)!;
+    return { own: clash !== undefined ? dirOf(team) * (clash - ours.s) : undefined, ap, ep, pw: found ? 1 : 0 };
+}
+
 // ------------------------------------------------------------------------------------------------- the game's view
 
 /** Distance along the lane path of the point nearest `(x, y)`, and how far the point is from the path. */
@@ -475,6 +537,13 @@ export function Read(team: number, lane: Lane): Reading | undefined {
 /** The lane's target meeting point, as a distance along the lane from our T1. */
 export function TargetOf(lane: Lane): number {
     return lane === Lane.Mid ? SETTINGS.TargetMid : SETTINGS.TargetSide;
+}
+
+/** `team`'s view of `lane` now with its wave spawned at `ts` pulled away (WaveGoneFrom). */
+export function WaveGoneNow(team: number, lane: Lane, ts: number, at: number): WaveGone | undefined {
+    const [path, t0, init, towerHp] = viewNow(team, lane);
+    if (path === undefined) return undefined;
+    return WaveGoneFrom(path, team, t0, init, towerHp, ts, at);
 }
 
 /** One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined. */

@@ -106,6 +106,27 @@ local function __TS__ArrayFind(self, predicate, thisArg)
     end
     return nil
 end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local nearerLane
@@ -144,11 +165,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue124
+            local __continue135
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue124 = true
+                    __continue135 = true
                     break
                 end
                 if select(
@@ -157,9 +178,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue124 = true
+                __continue135 = true
             until true
-            if not __continue124 then
+            if not __continue135 then
                 break
             end
         end
@@ -175,7 +196,8 @@ ____exports.SETTINGS = {
     OurVision = 300,
     Assign = 1100,
     TargetSide = 900,
-    TargetMid = 1300
+    TargetMid = 1300,
+    WaveWindow = 500
 }
 local R = Team.Radiant
 local D = Team.Dire
@@ -315,8 +337,9 @@ end
 --- One lane from `from` to `until` (s), mean damage. `init` creeps start at `from` (given, even empty, no wave spawns at
 -- `from` itself);
 -- `towerHp[team]` starts that team's T1 at a value, undefined leaves it at full, false leaves it out (down).
+-- `skip` leaves out one team's wave spawning at second `skip.t` (a wave pulled before it reaches the lane).
 -- Returns a sample of both leads every second from `from`.
-function ____exports.Run(lane, from, ____until, init, towerHp)
+function ____exports.Run(lane, from, ____until, init, towerHp, skip)
     local dt = ____exports.SETTINGS.Dt
     local units = {}
     for ____, tw in ipairs(lane.towers) do
@@ -396,11 +419,15 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
         while t <= ____until + 1e-9 do
             if math.abs(t % 30) < dt / 2 and not (init ~= nil and t < from + dt / 2) then
                 local ts = math.floor(t + 0.5)
-                for ____, u in ipairs(____exports.WaveAt(R, ts, lane.spawnR)) do
-                    units[#units + 1] = u
+                if (skip and skip.team) ~= R or skip.t ~= ts then
+                    for ____, u in ipairs(____exports.WaveAt(R, ts, lane.spawnR)) do
+                        units[#units + 1] = u
+                    end
                 end
-                for ____, u in ipairs(____exports.WaveAt(D, ts, lane.spawnD)) do
-                    units[#units + 1] = u
+                if (skip and skip.team) ~= D or skip.t ~= ts then
+                    for ____, u in ipairs(____exports.WaveAt(D, ts, lane.spawnD)) do
+                        units[#units + 1] = u
+                    end
                 end
             end
             live = {}
@@ -423,14 +450,14 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
             end
             for ____, u in ipairs(live) do
                 do
-                    local __continue49
+                    local __continue51
                     repeat
                         if u.target ~= nil and not u.target.alive then
                             u.target = nil
                             u.swingAt = nil
                         end
                         if u.swingAt ~= nil then
-                            __continue49 = true
+                            __continue51 = true
                             break
                         end
                         if u.target ~= nil then
@@ -444,9 +471,9 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
                         if u.target == nil then
                             u.target = best(u, u.acq)
                         end
-                        __continue49 = true
+                        __continue51 = true
                     until true
-                    if not __continue49 then
+                    if not __continue51 then
                         break
                     end
                 end
@@ -494,17 +521,17 @@ function ____exports.Run(lane, from, ____until, init, towerHp)
                 local front = {}
                 for ____, u in ipairs(units) do
                     do
-                        local __continue69
+                        local __continue71
                         repeat
                             if not u.alive or u.building == true then
-                                __continue69 = true
+                                __continue71 = true
                                 break
                             end
                             local f = front[u.team]
                             front[u.team] = f == nil and u.s or (u.team == R and math.max(f, u.s) or math.min(f, u.s))
-                            __continue69 = true
+                            __continue71 = true
                         until true
-                        if not __continue69 then
+                        if not __continue71 then
                             break
                         end
                     end
@@ -596,7 +623,7 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
         local ts = math.floor(t0 / 30) * 30
         while ts >= t0 - 90 and ts >= 0 do
             do
-                local __continue90
+                local __continue92
                 repeat
                     local pos = spawnE + de * SPEED * (t0 - ts)
                     local seen = false
@@ -606,11 +633,11 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                         end
                     end
                     if seen then
-                        __continue90 = true
+                        __continue92 = true
                         break
                     end
                     if lead ~= nil and de * (pos - lead) >= -____exports.SETTINGS.OurVision then
-                        __continue90 = true
+                        __continue92 = true
                         break
                     end
                     for ____, u in ipairs(____exports.WaveAt(e, ts, spawnE)) do
@@ -622,9 +649,9 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                             maxhp = u.maxhp
                         }
                     end
-                    __continue90 = true
+                    __continue92 = true
                 until true
-                if not __continue90 then
+                if not __continue92 then
                     break
                 end
             end
@@ -677,6 +704,72 @@ function ____exports.ReadFrom(lane, team, t0, init, towerHp)
     end
     return reading
 end
+--- Where the schedule puts `team`'s wave spawned at `ts` at second `t0`.
+local function waveSpot(lane, team, ts, t0)
+    return (team == R and lane.spawnR or lane.spawnD) + dirOf(team) * SPEED * (t0 - ts)
+end
+--- `team`'s view `init` at `t0` with its wave spawned at `ts` removed (its creeps near the schedule's spot, or the spawn left
+-- out when it is still to come), run to `at`. A wave off its schedule (a creep block, already fighting) is not found and
+-- stays in the run (`pw` 0). CANDIDATE(wave_gone): the pull trigger is its one reader.
+function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
+    local spawned = t0 >= ts
+    local function inWave(c)
+        return spawned and math.abs(c.s - waveSpot(lane, c.team, ts, t0)) <= ____exports.SETTINGS.WaveWindow
+    end
+    local left = {}
+    local ap = 0
+    local ep = 0
+    local found = not spawned
+    for ____, c in ipairs(init) do
+        do
+            local __continue109
+            repeat
+                if c.team == team and inWave(c) then
+                    found = true
+                    __continue109 = true
+                    break
+                end
+                left[#left + 1] = c
+                if c.team == team then
+                    ap = ap + c.hp
+                elseif not inWave(c) then
+                    ep = ep + c.hp
+                end
+                __continue109 = true
+            until true
+            if not __continue109 then
+                break
+            end
+        end
+    end
+    local ____exports_Run_14 = ____exports.Run
+    local ____array_13 = __TS__SparseArrayNew(
+        lane,
+        t0,
+        at + 2,
+        left,
+        towerHp
+    )
+    local ____spawned_12
+    if spawned then
+        ____spawned_12 = nil
+    else
+        ____spawned_12 = {team = team, t = ts}
+    end
+    __TS__SparseArrayPush(____array_13, ____spawned_12)
+    local smp = ____exports_Run_14(__TS__SparseArraySpread(____array_13))
+    local clash = ____exports.ClashAt(smp, at)
+    local ours = __TS__ArrayFind(
+        lane.towers,
+        function(____, tw) return tw.team == team end
+    )
+    return {
+        own = clash ~= nil and dirOf(team) * (clash - ours.s) or nil,
+        ap = ap,
+        ep = ep,
+        pw = found and 1 or 0
+    }
+end
 function ____exports.PathOf(lane)
     return LANE_PATHS[lane]
 end
@@ -721,21 +814,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue118
+            local __continue129
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue118 = true
+                    __continue129 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue118 = true
+                    __continue129 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue118 = true
+                    __continue129 = true
                     break
                 end
                 out[#out + 1] = {
@@ -744,9 +837,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue118 = true
+                __continue129 = true
             until true
-            if not __continue118 then
+            if not __continue129 then
                 break
             end
         end
@@ -756,13 +849,13 @@ end
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local function t1Hp(team, lane)
     local t = GetTower(team, T1[lane])
-    local ____temp_8
+    local ____temp_15
     if t == nil or t == nil or not t:IsAlive() then
-        ____temp_8 = false
+        ____temp_15 = false
     else
-        ____temp_8 = t:GetHealth()
+        ____temp_15 = t:GetHealth()
     end
-    return ____temp_8
+    return ____temp_15
 end
 --- `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from.
 local function viewNow(team, lane)
@@ -811,6 +904,22 @@ end
 --- The lane's target meeting point, as a distance along the lane from our T1.
 function ____exports.TargetOf(lane)
     return lane == Lane.Mid and ____exports.SETTINGS.TargetMid or ____exports.SETTINGS.TargetSide
+end
+--- `team`'s view of `lane` now with its wave spawned at `ts` pulled away (WaveGoneFrom).
+function ____exports.WaveGoneNow(team, lane, ts, at)
+    local path, t0, init, towerHp = viewNow(team, lane)
+    if path == nil then
+        return nil
+    end
+    return ____exports.WaveGoneFrom(
+        path,
+        team,
+        t0,
+        init,
+        towerHp,
+        ts,
+        at
+    )
 end
 --- One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined.
 function ____exports.Forecast(team, lane, horizon)
