@@ -8,6 +8,7 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, DamageType, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
+import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
@@ -166,6 +167,7 @@ const gates: Record<number, { min: number; n: Record<string, number> }> = {};
 
 export function ResetCache(): void {
     for (const t of [running, nextPlanAt, pace, hpRate, cleared, lastSeen, skipped, gates] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
+    CampClaims.ResetCache();
 }
 
 function clamp(v: number, r: number[]): number {
@@ -471,8 +473,10 @@ function otherTripOn(bot: Unit, idx: number): boolean {
 
 function allyInBox(bot: Unit, idx: number): boolean {
     const pid = bot.GetPlayerID();
+    // The support clearing its own pull there is the one this trip takes the camp from (PullFarm yields to it).
+    const farmer = CampClaims.On("pullfarm", idx);
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (a === null || a === undefined || !a.IsAlive() || a.GetPlayerID() === pid) continue;
+        if (a === null || a === undefined || !a.IsAlive() || a.GetPlayerID() === pid || a.GetPlayerID() === farmer) continue;
         const at = locOf(a);
         if (at !== undefined && Camps.InBox(idx, at, 300)) return true;
     }
@@ -499,7 +503,8 @@ function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number
     if (cleared[team]?.[spawner.idx] === currentMinute(now)) return false;
     // The API returns no neutrals in fog: a camp is known empty only where we see.
     if (IsLocationVisible(center) && campNeutralCount(center) === 0) return false;
-    if (pullCamps[spawner.idx] === true || pulledInto(center)) return false;
+    // A pulled camp is open to a core only while the support clears it (PullFarm), which then gives it up.
+    if (pullCamps[spawner.idx] === true || (pulledInto(center) && CampClaims.On("pullfarm", spawner.idx) === undefined)) return false;
     return !allyInBox(bot, spawner.idx) && !otherTripOn(bot, spawner.idx) && !Stacking.ReservedByAlly(spawner.idx, bot.GetPlayerID());
 }
 
@@ -552,7 +557,7 @@ function anyCamp(bot: Unit, front: Vector, now: number): boolean {
 // ------------------------------------------------------------------------------------------------ gates
 
 /** A visible enemy hero whose reach (plus ThreatMargin) touches the walk from the core to `at` or the camp itself. */
-function threatOnWay(bot: Unit, at: Vector): boolean {
+export function ThreatOnWay(bot: Unit, at: Vector): boolean {
     const here = bot.GetLocation();
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
@@ -604,7 +609,7 @@ function startGate(bot: Unit, plan: CampPlan, now: number): string | undefined {
     if (LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     if (LaneConfig.PositionOf(bot) === 2 && Runes.NextSpawn("power", now) - now < SETTINGS.MidRuneGuard) return "rune";
     const spawner = Camps.SpawnerByIdx(plan.camp);
-    if (spawner !== undefined && threatOnWay(bot, Camps.BoxCenter(spawner))) return "threat";
+    if (spawner !== undefined && ThreatOnWay(bot, Camps.BoxCenter(spawner))) return "threat";
     return undefined;
 }
 
@@ -781,6 +786,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
         if (next === undefined) break;
         t.plan = next;
+        CampClaims.Set("core", bot.GetPlayerID(), next.camp);
         t.camps++;
         log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...planFields(next)]);
     }
@@ -795,6 +801,7 @@ function measured(bot: Unit, t: Trip, now: number, center: Vector): void {
 
 function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
+    CampClaims.Set("core", bot.GetPlayerID(), undefined);
     const why = r.success ? (r.message ?? "ok") : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
     if (why === "interrupted:hp" && t.returning !== true) growHP(bot);
     if (t.returning !== true && t.engagedAt !== undefined && t.clrm === undefined && t.center !== undefined) measured(bot, t, DotaTime(), t.center);
@@ -867,6 +874,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     );
     if (!ok) return false;
     running[pid] = t;
+    CampClaims.Set("core", pid, plan.camp);
     jobLine(bot, t, "start", "trigger");
     log(bot, "start", clash, planFields(plan));
     return true;

@@ -201,9 +201,17 @@ const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
+const ended: Record<number, Ended | undefined> = {};
+
+/** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
+interface Ended {
+    camp: number;
+    at: number;
+    pull: Pull;
+}
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -385,7 +393,7 @@ export function Wanted(r: LanePush.Reading | undefined): boolean {
 }
 
 /** Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined. */
-function partnerThreat(bot: Unit): string | undefined {
+export function PartnerThreat(bot: Unit): string | undefined {
     const lane = bot.GetAssignedLane();
     for (let i = 1; i <= 5; i++) {
         const m = GetTeamMember(i);
@@ -522,6 +530,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         return;
     }
     const now = DotaTime();
+    ended[bot.GetPlayerID()] = { camp: p.plan.camp.campIdx, at: now, pull: p };
     trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer) ?? now) + SETTINGS.TrailSec };
 }
 
@@ -1059,7 +1068,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
     camp.php = bot.GetHealth();
     const site = siteThreat(p, camp);
-    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? partnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -1102,6 +1111,12 @@ export function Step(bot: Unit, host: number): boolean {
     }
     sample(bot, p);
     return Tasks.Step(bot, host);
+}
+
+/** The bot's last ok pull: its camp index, end time and the wave's diverted share (still growing for TrailSec after the end). */
+export function Finished(bot: Unit): { camp: number; at: number; div: number } | undefined {
+    const e = ended[bot.GetPlayerID()];
+    return e !== undefined ? { camp: e.camp, at: e.at, div: share(e.pull) } : undefined;
 }
 
 export function Running(bot: Unit): boolean {

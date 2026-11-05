@@ -274,7 +274,9 @@ Customize.Humaniser = {
 -- CoreHold (slice core-in-lane): with CoreLastHit and LaneSpot on, an in-lane core whose wave is gone holds their incoming wave at
 -- the lane's target point (states/wave_hold), or under an enemy hero's threat with time to spare drags it behind our T1 to our
 -- next wave (lane_aggro `back`, needs LaneAggro). Off: no hold.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true }
+-- SupportPullFarm (slice support-pull-farm): with SupportPull and JobChooser on, the support that pulled clears the neutrals the
+-- wave left on the camp when the site is safe, and gives the camp up to a core whose camp trip comes. Off: it walks back to lane.
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

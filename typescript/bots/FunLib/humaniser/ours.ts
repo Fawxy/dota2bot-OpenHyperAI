@@ -88,6 +88,11 @@ export const DEFAULTS = {
      *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
      *  for it in the laning phase. */
     CoreCampTrip: true,
+    /** Slice support-pull-farm: with SupportPull and JobChooser on, the support that pulled stays on the camp and clears the
+     *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core whose camp trip
+     *  comes; a core may then price the pulled camp. Off: the support walks back to lane after its pull, a core never takes a
+     *  pulled camp. */
+    SupportPullFarm: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
