@@ -984,10 +984,9 @@ ____exports.SETTINGS = {
     HomeMargin = 150,
     Moved = 50,
     Leave = 100,
-    HitShare = 0.5,
-    StartReserve = 0.3,
+    HitSeconds = 1.5,
+    StartReserve = 0.25,
     DefaultDps = {small = 40, medium = 60, large = 80, ancient = 150},
-    DefaultExposure = 8,
     BailReserve = 0.25,
     BailGrace = 2,
     BailFor = 6,
@@ -1218,9 +1217,9 @@ function ____exports.CampGate(s, now, hitAt)
     end
     return nil
 end
---- The camp's expected damage on `bot` over the pull (SETTINGS HitShare, DefaultDps).
-function ____exports.CampDamage(bot, s, ____type, waveAfter)
-    local exposure = (waveAfter or ____exports.SETTINGS.DefaultExposure) * ____exports.SETTINGS.HitShare
+--- The camp's expected damage on `bot` over `seconds` of its hits (the pull's HitSeconds by default; DefaultDps unseen).
+function ____exports.CampDamage(bot, s, ____type, seconds)
+    local exposure = seconds or ____exports.SETTINGS.HitSeconds
     if #s.units == 0 then
         return ____exports.SETTINGS.DefaultDps[____type] * exposure
     end
@@ -2008,7 +2007,7 @@ function ____exports.Wants(bot, blocked, host)
         done(false, "half-geo")
         return false
     end
-    camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter)
+    camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type)
     camp.php = bot:GetHealth()
     local site = siteThreat(p, camp)
     local why = ____exports.CampGate(camp, now, hitAt) or blocked(bot) or campDmgGate(bot, camp.dmg) or site or ____exports.PartnerThreat(bot) or (acting(bot) and "acting" or nil)
@@ -2060,7 +2059,7 @@ function ____exports.Step(bot, host)
     end
     if p.label == nil or p.label == "travel" or p.label == "wait" then
         local s = ____exports.CampStateOf(p.plan.spawner)
-        s.dmg = ____exports.CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter)
+        s.dmg = ____exports.CampDamage(bot, s, p.plan.spawner.type)
         s.php = bot:GetHealth()
         local why = ____exports.CampGate(
             s,

@@ -62,16 +62,20 @@ export const SETTINGS = {
     Moved: 50,
     /** A lane creep has left the lane (pull_creep lt) once it is this far off the lane path above its own least. */
     Leave: 100,
-    /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
-     *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
-     *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
-     *  counts double (pw3_C_on_3 t=262.5: 8 neutrals, the one death); with none returned, one spawn at DefaultDps. All
-     *  `judgement`. */
-    HitShare: 0.5,
-    StartReserve: 0.3,
+    /** The start check (`why=camp-dmg`, also run on the walk): the camp's damage on the puller for HitSeconds must leave it
+     *  StartReserve of its max HP. The window is a constant, not a share of the lead (user 06/11/2026: "when we're pulling
+     *  the damage checks need to loosen. it's our creeps tanking that damage, not us, and we don't take much damage
+     *  pulling"): on the banked `ok` pulls with no hero hit the puller lost 12% of its max HP on average whatever the camp
+     *  (583 off-lane pulls of the hard camp, 2,142 safe-lane pulls of the small camp; 9% lost 30% or more, 0 died), about
+     *  1.1 s of the hard camp's damage and 2.4 s of the small camp's; the old share of the lead (0.5 of 6.9 s) priced the
+     *  hard camp at 38% of max HP and held 227 wanted off-lane slots at 63% HP. The camp's damage is what the API estimates
+     *  for the neutrals it returns in the box, so a stacked camp still counts its stack (pw3_C_on_3 t=262.5: 8 neutrals,
+     *  the one death; the off-lane walk met the hard camp stacked 5-12 deep on 250 of its 312 `cancelled:camp-dmg`); with
+     *  none returned, one spawn at DefaultDps (`large` 80 is the API's own 53-89 for the seen hard camp). StartReserve is
+     *  the bail reserve: a start that would leave less plans to bail. All `judgement`. */
+    HitSeconds: 1.5,
+    StartReserve: 0.25,
     DefaultDps: { small: 40, medium: 60, large: 80, ancient: 150 } as Record<Camps.CampType, number>,
-    /** Seconds of exposure when the camp has no wave timing. */
-    DefaultExposure: 8,
     /** After the hit (lead and watch), the puller steps back towards our tower when neutrals hit it and its HP after
      *  BailGrace seconds of their damage is under BailReserve of its max; it keeps stepping back while they still hit it, at
      *  most BailFor seconds, then the job ends `interrupted:bail`. The horizon is short on purpose: a puller walking the lead
@@ -349,9 +353,9 @@ export function CampGate(s: CampState, now: number, hitAt: number): string | und
     return undefined;
 }
 
-/** The camp's expected damage on `bot` over the pull (SETTINGS HitShare, DefaultDps). */
-export function CampDamage(bot: Unit, s: CampState, type: Camps.CampType, waveAfter: number | undefined): number {
-    const exposure = (waveAfter ?? SETTINGS.DefaultExposure) * SETTINGS.HitShare;
+/** The camp's expected damage on `bot` over `seconds` of its hits (the pull's HitSeconds by default; DefaultDps unseen). */
+export function CampDamage(bot: Unit, s: CampState, type: Camps.CampType, seconds?: number): number {
+    const exposure = seconds ?? SETTINGS.HitSeconds;
     if (s.units.length === 0) return SETTINGS.DefaultDps[type] * exposure;
     let dmg = 0;
     for (const u of s.units) dmg += u.GetEstimatedDamageToTarget(true, bot, exposure, DamageType.All);
@@ -1133,7 +1137,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         done(false, "half-geo");
         return false;
     }
-    camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
+    camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
     const site = siteThreat(p, camp);
     const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
@@ -1167,7 +1171,7 @@ export function Step(bot: Unit, host: number): boolean {
     // Before the hit the walk may bring the camp into sight: stop there rather than hit an empty camp or one it cannot take.
     if (p.label === undefined || p.label === "travel" || p.label === "wait") {
         const s = CampStateOf(p.plan.spawner);
-        s.dmg = CampDamage(bot, s, p.plan.spawner.type, p.plan.timing.waveAfter);
+        s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
         const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
