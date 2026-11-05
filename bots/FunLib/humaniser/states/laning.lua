@@ -133,6 +133,7 @@ local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/supp
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LaneClaims = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_claims")
 local PreHit = require(GetScriptDirectory().."/FunLib/humaniser/states/pre_hit")
+local IdleSwing = require(GetScriptDirectory().."/FunLib/humaniser/states/idle_swing")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 --- Read once: Customize is fixed for the game (tests reload the module with each config).
 function ____exports.Settings()
@@ -352,13 +353,30 @@ local function placeOf(pid, creep)
         math.floor((DotaTime() - s.t) * 100) / 100
     }
 end
+--- The idle swing the body last picked, per bot, so its phase label and attempt line name it (states/idle_swing).
+local idlePicks = {}
 local function choose(bot, targets, current, pre)
-    return LanePick.Choose(
+    local mine = claimsFor(bot)
+    local idle
+    local chosen = LanePick.Choose(
         targets,
         current,
-        claimsFor(bot),
-        pre
+        mine,
+        pre,
+        function()
+            local verbs = Tasks.Verbs()
+            local ____temp_15
+            if verbs ~= nil then
+                ____temp_15 = IdleSwing.Find(bot, verbs, mine)
+            else
+                ____temp_15 = nil
+            end
+            idle = ____temp_15
+            return idle
+        end
     )
+    idlePicks[bot:GetPlayerID()] = idle ~= nil and chosen == idle and idle or nil
+    return chosen
 end
 --- The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
 -- pre-hit). A creep handle stays the same unit until it dies.
@@ -443,13 +461,13 @@ local body = __TS__Generator(function(bot, ctx)
             within = ____exports.Settings().LastHitWithin,
             pick = function(targets, current)
                 local verbs = Tasks.Verbs()
-                local ____temp_15
+                local ____temp_16
                 if verbs ~= nil then
-                    ____temp_15 = PreHit.Find(bot, verbs)
+                    ____temp_16 = PreHit.Find(bot, verbs)
                 else
-                    ____temp_15 = nil
+                    ____temp_16 = nil
                 end
-                local pre = ____temp_15
+                local pre = ____temp_16
                 local chosen = choose(bot, targets, current, pre)
                 if chosen ~= nil then
                     noteSeen(
@@ -482,6 +500,14 @@ local body = __TS__Generator(function(bot, ctx)
                 return chosen
             end,
             label = function(l)
+                local ip = idlePicks[bot:GetPlayerID()]
+                if l == "prehit" and ip ~= nil then
+                    local ____opt_17 = IdleSwing.Of(
+                        bot:GetPlayerID(),
+                        ip.creep
+                    )
+                    l = ____opt_17 and ____opt_17.kind or l
+                end
                 ctx.label(l)
                 LanePick.NotePhase(
                     bot:GetPlayerID(),
@@ -495,6 +521,88 @@ local body = __TS__Generator(function(bot, ctx)
             dropLost = ____exports.OwnsSupportHits(bot),
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())
+                local ____temp_19
+                if t.kind == "prehit" then
+                    ____temp_19 = IdleSwing.Of(
+                        bot:GetPlayerID(),
+                        t.creep
+                    )
+                else
+                    ____temp_19 = nil
+                end
+                local idle = ____temp_19
+                if idle ~= nil then
+                    if res.success and idle.kind == "predeny" then
+                        IdleSwing.NoteSwing(
+                            bot:GetPlayerID(),
+                            t.creep
+                        )
+                    end
+                    local ____Telemetry_Event_26 = Telemetry.Event
+                    local ____array_25 = __TS__SparseArrayNew(
+                        {
+                            "pid",
+                            bot:GetPlayerID()
+                        },
+                        {"kind", idle.kind},
+                        {"mode", idle.mode},
+                        {"result", res.success and "ok" or "fail"},
+                        {"reason", res.reason},
+                        {"ranged", t.ranged},
+                        {
+                            "walk",
+                            math.floor(t.walk * 100) / 100
+                        },
+                        {
+                            "hp",
+                            math.floor(idle.hp)
+                        },
+                        {
+                            "hf",
+                            math.floor(idle.hf * 100) / 100
+                        }
+                    )
+                    local ____temp_20
+                    if idle.kill == nil or idle.kill == math.huge then
+                        ____temp_20 = nil
+                    else
+                        ____temp_20 = math.floor(idle.kill * 100) / 100
+                    end
+                    __TS__SparseArrayPush(____array_25, {"kill", ____temp_20})
+                    local ____temp_21
+                    if idle.reach == nil then
+                        ____temp_21 = nil
+                    else
+                        ____temp_21 = idle.reach == math.huge and -1 or math.floor(idle.reach * 100) / 100
+                    end
+                    __TS__SparseArrayPush(____array_25, {"reach", ____temp_21})
+                    local ____temp_22
+                    if idle.focus == true then
+                        ____temp_22 = true
+                    else
+                        ____temp_22 = nil
+                    end
+                    __TS__SparseArrayPush(____array_25, {"focus", ____temp_22})
+                    local ____temp_23
+                    if IdleSwing.Count(bot, "GetDenies") > idle.denies then
+                        ____temp_23 = true
+                    else
+                        ____temp_23 = nil
+                    end
+                    __TS__SparseArrayPush(____array_25, {"dn", ____temp_23})
+                    local ____temp_24
+                    if IdleSwing.Count(bot, "GetLastHits") > idle.lastHits then
+                        ____temp_24 = true
+                    else
+                        ____temp_24 = nil
+                    end
+                    __TS__SparseArrayPush(____array_25, {"lh", ____temp_24}, {"contested", contested}, {"msg", res.message})
+                    ____Telemetry_Event_26(
+                        "idle_swing",
+                        {__TS__SparseArraySpread(____array_25)}
+                    )
+                    return
+                end
                 if t.kind == "prehit" then
                     local n = PreHit.NoteOf(
                         bot:GetPlayerID(),
@@ -555,22 +663,22 @@ local body = __TS__Generator(function(bot, ctx)
                     )
                     return
                 end
-                local ____OwnsSupportHits_result_30
+                local ____OwnsSupportHits_result_41
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_30 = claimOf(
+                    ____OwnsSupportHits_result_41 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_30 = nil
+                    ____OwnsSupportHits_result_41 = nil
                 end
-                local claim = ____OwnsSupportHits_result_30
+                local claim = ____OwnsSupportHits_result_41
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
                 ))
-                local ____Telemetry_Event_33 = Telemetry.Event
-                local ____array_32 = __TS__SparseArrayNew(
+                local ____Telemetry_Event_45 = Telemetry.Event
+                local ____array_44 = __TS__SparseArrayNew(
                     {
                         "pid",
                         bot:GetPlayerID()
@@ -600,19 +708,29 @@ local body = __TS__Generator(function(bot, ctx)
                     {"cy", cy},
                     {"ca", ca}
                 )
-                local ____temp_31
+                local ____temp_42
                 if t.kind == "lasthit" and wasPreHit(
                     bot:GetPlayerID(),
                     t.creep
                 ) then
-                    ____temp_31 = true
+                    ____temp_42 = true
                 else
-                    ____temp_31 = nil
+                    ____temp_42 = nil
                 end
-                __TS__SparseArrayPush(____array_32, {"ph", ____temp_31}, {"msg", res.message})
-                ____Telemetry_Event_33(
+                __TS__SparseArrayPush(____array_44, {"ph", ____temp_42})
+                local ____temp_43
+                if t.kind == "deny" then
+                    ____temp_43 = IdleSwing.SpentOn(
+                        bot:GetPlayerID(),
+                        t.creep
+                    )
+                else
+                    ____temp_43 = nil
+                end
+                __TS__SparseArrayPush(____array_44, {"pre", ____temp_43}, {"msg", res.message})
+                ____Telemetry_Event_45(
                     "lh",
-                    {__TS__SparseArraySpread(____array_32)}
+                    {__TS__SparseArraySpread(____array_44)}
                 )
             end
         }

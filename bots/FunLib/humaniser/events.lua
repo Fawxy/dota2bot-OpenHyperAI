@@ -798,6 +798,25 @@ ____exports.EVENTS = {
         cy = "num",
         ca = "num",
         ph = "bool",
+        pre = "num",
+        msg = "str"
+    },
+    idle_swing = {
+        pid = "num",
+        kind = "str",
+        mode = "str",
+        result = "str",
+        reason = "str",
+        ranged = "bool",
+        walk = "num",
+        hp = "num",
+        hf = "num",
+        kill = "num",
+        reach = "num",
+        focus = "bool",
+        dn = "bool",
+        lh = "bool",
+        contested = "bool",
         msg = "str"
     },
     prehit = {

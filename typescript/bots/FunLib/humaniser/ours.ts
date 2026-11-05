@@ -93,6 +93,10 @@ export const DEFAULTS = {
      *  comes; a core may then price the pulled camp. Off: the support walks back to lane after its pull, a core never takes a
      *  pulled camp. */
     SupportPullFarm: true,
+    /** Slice idle-swing (lane controller design s5.6): an owned laner with no last hit, deny or pre-hit on offer hits our lane
+     *  creep below half HP that no enemy hero reaches before our hits kill it (states/idle_swing), both laners on one creep.
+     *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
+    PreDeny: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

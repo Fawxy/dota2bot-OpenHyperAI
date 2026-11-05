@@ -18,6 +18,7 @@ import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LaneClaims from "bots/FunLib/humaniser/states/lane_claims";
 import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
+import * as IdleSwing from "bots/FunLib/humaniser/states/idle_swing";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 export const NAME = "laning";
@@ -206,8 +207,19 @@ function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number
     return [math.floor(s.x), math.floor(s.y), math.floor((DotaTime() - s.t) * 100) / 100];
 }
 
+/** The idle swing the body last picked, per bot, so its phase label and attempt line name it (states/idle_swing). */
+const idlePicks: Record<number, Lib.Verbs.LaneTarget | undefined> = {};
+
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
-    return LanePick.Choose(targets, current, claimsFor(bot), pre);
+    const mine = claimsFor(bot);
+    let idle: Lib.Verbs.LaneTarget | undefined;
+    const chosen = LanePick.Choose(targets, current, mine, pre, () => {
+        const verbs = Tasks.Verbs();
+        idle = verbs !== undefined ? IdleSwing.Find(bot, verbs, mine) : undefined;
+        return idle;
+    });
+    idlePicks[bot.GetPlayerID()] = idle !== undefined && chosen === idle ? idle : undefined;
+    return chosen;
 }
 
 /**
@@ -282,6 +294,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             return chosen;
         },
         label: (l) => {
+            // A caller-built `prehit` is a tower pre-hit or an idle swing; the swing is labelled by its kind.
+            const ip = idlePicks[bot.GetPlayerID()];
+            if (l === "prehit" && ip !== undefined) l = IdleSwing.Of(bot.GetPlayerID(), ip.creep)?.kind ?? l;
             ctx.label(l);
             LanePick.NotePhase(bot.GetPlayerID(), l);
         },
@@ -294,6 +309,29 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         dropLost: OwnsSupportHits(bot),
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
+            const idle = t.kind === "prehit" ? IdleSwing.Of(bot.GetPlayerID(), t.creep) : undefined;
+            if (idle !== undefined) {
+                if (res.success && idle.kind === "predeny") IdleSwing.NoteSwing(bot.GetPlayerID(), t.creep);
+                Telemetry.Event("idle_swing", [
+                    ["pid", bot.GetPlayerID()],
+                    ["kind", idle.kind],
+                    ["mode", idle.mode],
+                    ["result", res.success ? "ok" : "fail"],
+                    ["reason", res.reason],
+                    ["ranged", t.ranged],
+                    ["walk", math.floor(t.walk * 100) / 100],
+                    ["hp", math.floor(idle.hp)],
+                    ["hf", math.floor(idle.hf * 100) / 100],
+                    ["kill", idle.kill === undefined || idle.kill === math.huge ? undefined : math.floor(idle.kill * 100) / 100],
+                    ["reach", idle.reach === undefined ? undefined : idle.reach === math.huge ? -1 : math.floor(idle.reach * 100) / 100],
+                    ["focus", idle.focus === true ? true : undefined],
+                    ["dn", IdleSwing.Count(bot, "GetDenies") > idle.denies ? true : undefined],
+                    ["lh", IdleSwing.Count(bot, "GetLastHits") > idle.lastHits ? true : undefined],
+                    ["contested", contested],
+                    ["msg", res.message],
+                ]);
+                return;
+            }
             if (t.kind === "prehit") {
                 const n = PreHit.NoteOf(bot.GetPlayerID(), t.creep);
                 if (res.success) notePreHit(bot.GetPlayerID(), t.creep);
@@ -336,6 +374,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["cy", cy],
                 ["ca", ca],
                 ["ph", t.kind === "lasthit" && wasPreHit(bot.GetPlayerID(), t.creep) ? true : undefined],
+                ["pre", t.kind === "deny" ? IdleSwing.SpentOn(bot.GetPlayerID(), t.creep) : undefined],
                 ["msg", res.message],
             ]);
         },

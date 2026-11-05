@@ -276,7 +276,9 @@ Customize.Humaniser = {
 -- next wave (lane_aggro `back`, needs LaneAggro). Off: no hold.
 -- SupportPullFarm (slice support-pull-farm): with SupportPull and JobChooser on, the support that pulled clears the neutrals the
 -- wave left on the camp when the site is safe, and gives the camp up to a core whose camp trip comes. Off: it walks back to lane.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true }
+-- PreDeny (slice idle-swing): an owned laner with no last hit, deny or pre-hit on offer hits our lane creep below half HP that
+-- no enemy hero reaches before our hits kill it, both laners on one creep (states/idle_swing). Off: it stands.
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true, PreDeny = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
@@ -287,7 +289,9 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- through the laning phase and only holds its spot, last-hits and denies (no techniques, harass, trades, spells or items):
 -- the last-hit check harness (slice lane-last-hits, scenario games only; humaniser/overrides.ts). CampForce: an owned core's
 -- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false }
+-- ForceShove: lanes whose owned laners shove (idle swing on enemy creeps outside their tower) instead of pre-denying, as
+-- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false, ForceShove = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
