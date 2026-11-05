@@ -428,8 +428,22 @@ do
 	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
 	local east = false
 	for _, m in ipairs(ACTIONS) do if m.pid == 4 and m.kind == "MoveToLocation" and m.args[1].x > 8000 and m.args[1].y < -3000 then east = true end end
-	check("shrine: a path past the tier-1 loses to the edge route, which keeps TowerAvoid", trip ~= nil and field(trip, "route") == "edge" and tonumber(field(trip, "vclr")) >= H.RuneJob.SETTINGS.TowerAvoid, trip)
+	check("shrine: from a lane start a path past the tier-1 loses to the edge route, which keeps TowerAvoid", trip ~= nil and field(trip, "route") == "edge" and tonumber(field(trip, "vclr")) >= H.RuneJob.SETTINGS.TowerAvoid, trip)
 	check("shrine: the contest walks to the edge route's first point", east)
+end
+
+-- Review 2026-11-05 F1: a path request that never answers (or whose answers are always dropped) keeps PathPending true
+-- on every re-ask; the contest waits at most RouteWait and then starts on the edge route instead of skipping as late.
+do
+	local H = world({ t = 395 })
+	draws(H, 0.0)
+	GeneratePath = function() end
+	local p5 = hero(4, 5, Vector(6612, -4500))
+	local out = run(H, { p5 }, 450)
+	GeneratePath = nil
+	local trip
+	for _, x in ipairs(lines(out, "rune_job")) do if field(x, "kind") == "contest" and field(x, "res") ~= "skip" then trip = x end end
+	check("shrine: with no path answer the contest starts on the edge route after RouteWait", trip ~= nil and field(trip, "route") == "edge", trip)
 end
 
 -- An enemy hero on the spot at the spawn: the rune-fight roll; fired, the support fights it instead of the race's act.

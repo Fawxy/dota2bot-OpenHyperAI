@@ -347,6 +347,7 @@ ____exports.SETTINGS = {
     RouteStep = 600,
     RouteMoved = 400,
     RouteFresh = 10,
+    RouteWait = 1.5,
     RouteEnds = 300,
     FightNear = 700,
     StopTower = 700,
@@ -508,8 +509,10 @@ local function edgeVia(team)
     )
 end
 local paths = {}
---- Answers PathVia threw away since the hero's last rune_job line, as `vbad`.
+--- Answers PathVia threw away since the hero's last contest line, as `vbad`.
 local rejected = {}
+--- When a contest started waiting for Valve's path at its leave time: [spawn, DotaTime].
+local pathWait = {}
 --- CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
 -- until an answer asked within RouteMoved of where the hero is now and at most RouteFresh s ago arrives (an older answer
 -- starts from somewhere else: its first leg is a straight line that can cross the lane by a tower). A request that has not
@@ -911,7 +914,16 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("busy")
                     end
                     if t.route == "edge" and ____exports.PathPending(bot) then
-                        return false
+                        local ____opt_31 = pathWait[pid]
+                        if (____opt_31 and ____opt_31[1]) ~= spawn then
+                            pathWait[pid] = {
+                                spawn,
+                                DotaTime()
+                            }
+                        end
+                        if DotaTime() - pathWait[pid][2] <= ____exports.SETTINGS.RouteWait then
+                            return false
+                        end
                     end
                     local play = Plays.Roll({kind = "shrine", by = bot, at = t.at})
                     if play == nil then
@@ -983,13 +995,13 @@ function ____exports.MidWants(bot)
         return false
     end
     if not bot:IsAlive() then
-        local ____temp_31
+        local ____temp_33
         if now >= spawn then
-            ____temp_31 = skip("dead")
+            ____temp_33 = skip("dead")
         else
-            ____temp_31 = false
+            ____temp_33 = false
         end
-        return ____temp_31
+        return ____temp_33
     end
     local t = tripFor(
         bot,
@@ -1004,13 +1016,13 @@ function ____exports.MidWants(bot)
     end
     local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
     if why ~= nil then
-        local ____temp_32
+        local ____temp_34
         if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_32 = skip(why)
+            ____temp_34 = skip(why)
         else
-            ____temp_32 = false
+            ____temp_34 = false
         end
-        return ____temp_32
+        return ____temp_34
     end
     local ok = Tasks.Start(
         bot,
@@ -1036,8 +1048,8 @@ function ____exports.MidStep(bot)
 end
 --- The mode that steps this hero's running trip (the chooser's host, or the rune mode for the mid's 6:00 trip), if any.
 function ____exports.HostOf(bot)
-    local ____opt_33 = running[bot:GetPlayerID()]
-    return ____opt_33 and ____opt_33.host
+    local ____opt_35 = running[bot:GetPlayerID()]
+    return ____opt_35 and ____opt_35.host
 end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
@@ -1083,20 +1095,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue151
+                local __continue153
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue151 = true
+                        __continue153 = true
                         break
                     end
-                    local ____opt_35 = running[m:GetPlayerID()]
-                    if (____opt_35 and ____opt_35.kind) == "wisdom" then
+                    local ____opt_37 = running[m:GetPlayerID()]
+                    if (____opt_37 and ____opt_37.kind) == "wisdom" then
                         return true
                     end
-                    __continue151 = true
+                    __continue153 = true
                 until true
-                if not __continue151 then
+                if not __continue153 then
                     break
                 end
             end

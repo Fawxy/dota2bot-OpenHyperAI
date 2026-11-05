@@ -60,6 +60,9 @@ export const SETTINGS = {
     /** A cached path is asked again once the hero has moved this far from where it was asked, or after RouteFresh s. */
     RouteMoved: 400,
     RouteFresh: 10,
+    /** At its leave time a contest waits at most this long for Valve's path, then walks the edge route (answers took
+     *  0.03-0.3 s in probe v8, but one can never come or always be dropped: review 2026-11-05 F1). */
+    RouteWait: 1.5,
     /** An answer is the hero's own only when its first waypoint is this near where it was asked and its last this near the
      *  goal (judgement: Valve's waypoints are about 128 apart; the shrine itself is not walkable). */
     RouteEnds: 300,
@@ -224,8 +227,10 @@ declare function GeneratePath(this: void, from: Vector, to: Vector, avoid: unkno
 
 type Path = { from: Vector; asked: number; to: Vector; via?: Vector[] };
 const paths: Record<number, Path> = {};
-/** Answers PathVia threw away since the hero's last rune_job line, as `vbad`. */
+/** Answers PathVia threw away since the hero's last contest line, as `vbad`. */
 const rejected: Record<number, number> = {};
+/** When a contest started waiting for Valve's path at its leave time: [spawn, DotaTime]. */
+const pathWait: Record<number, [number, number]> = {};
 
 /**
  * CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
@@ -447,7 +452,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             // The contest is a play: a free pos5 rolls for it at its leave time; no fire, no trip.
             if (Busy(bot)) return skip("busy");
             // The start waits a frame or so for Valve's path, which may be clear and shorter than the edge route.
-            if (t.route === "edge" && PathPending(bot)) return false;
+            if (t.route === "edge" && PathPending(bot)) {
+                if (pathWait[pid]?.[0] !== spawn) pathWait[pid] = [spawn, DotaTime()];
+                if (DotaTime() - pathWait[pid][1] <= SETTINGS.RouteWait) return false;
+            }
             const play = Plays.Roll({ kind: "shrine", by: bot, at: t.at });
             if (play === undefined) return skip("roll");
             t.play = play;
