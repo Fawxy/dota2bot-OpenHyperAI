@@ -208,9 +208,13 @@ function ____exports.DrawNow(front, hd, at, on)
     return on == 0 and at <= ____exports.SETTINGS.HoldNear and front <= hd + ____exports.SETTINGS.HoldDrawLead * ____exports.SETTINGS.CreepSpeed
 end
 --- Pure: lane_spot pushed the held spot back inside the hold point's floor for an enemy hero (`why` hero, spot `own` from our
--- T1): the hold cannot stand where it keeps their wave out of our T1's fire, so it ends `unsafe`.
-function ____exports.Unsafe(anchor, why, own, reach)
-    return anchor == "hold" and why == "hero" and own < reach + ____exports.SETTINGS.LateMargin
+-- T1) while their front is within HoldDrawLead seconds' walk of the floor: the hold cannot stand where it keeps their wave out
+-- of our T1's fire, so it ends `unsafe`. Further out the hold runs on from the pushed spot (hschk4: 7 of 13 unsafe ends were
+-- Zeus mid stepping out of Sniper's reach with their front 1,100-1,440 out; user 06/11/2026: stepping back from a hero's reach
+-- is right, the hold point would give Sniper free harass).
+function ____exports.Unsafe(anchor, why, own, reach, front)
+    local floor = reach + ____exports.SETTINGS.LateMargin
+    return anchor == "hold" and why == "hero" and own < floor and front <= floor + ____exports.SETTINGS.HoldDrawLead * ____exports.SETTINGS.CreepSpeed
 end
 --- Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin).
 function ____exports.BehindAt(reach)
@@ -936,7 +940,13 @@ function ____exports.Step(bot)
         local info = Laning.SpotInfo(bot)
         if info ~= nil then
             local s = LanePush.Project(v.path, info.spot.x, info.spot.y)
-            if ____exports.Unsafe(info.anchor, info.why, v.dir * (s - v.t1), a.rch) then
+            if ____exports.Unsafe(
+                info.anchor,
+                info.why,
+                v.dir * (s - v.t1),
+                a.rch,
+                front
+            ) then
                 return finish(bot, a, "unsafe", now)
             end
         end

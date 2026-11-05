@@ -165,19 +165,25 @@ do
 	check("hold draw: lane_aggro's draw runs for the holding core", A.Acting(w.bot), table.concat(w.lines, "\n"))
 end
 
--- An enemy hero pushing the held spot inside the floor ends the attempt `unsafe` (lane_spot's last reading, here set by hand).
+-- An enemy hero pushing the held spot inside the floor ends the attempt `unsafe` once their front is within 1 s of the floor
+-- (lane_spot's last reading, here set by hand).
 do
 	local w = world()
 	T = 300
-	w.creep(3, 1500)
-	w.creep(3, 1520)
+	local c1, c2 = w.creep(3, 1500), w.creep(3, 1520)
 	w.W.Step(w.bot)
 	local L = require("bots/FunLib/humaniser/states/laning")
 	local x, y = w.at(600)
 	L.SpotInfo = function() return { spot = Vector(x, y), pushed = 6, anchor = "hold", why = "hero", margin = 0, covered = 0 } end
 	T = 300.5
 	w.W.Step(w.bot)
-	check("unsafe: the held spot pushed by a hero to 600 from our T1 ends the attempt", w.count("wave_hold", "res=unsafe") == 1, table.concat(w.lines, "\n"))
+	check("pushed by a hero to 600 with their front 1,500 out: the hold runs on", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	local x1, y1 = w.at(1150)
+	local x2, y2 = w.at(1170)
+	c1.loc, c2.loc = Vector(x1, y1), Vector(x2, y2)
+	T = 301
+	w.W.Step(w.bot)
+	check("unsafe: still pushed to 600 with their front at 1,150 (within 1 s of the floor) ends the attempt", w.count("wave_hold", "res=unsafe") == 1, table.concat(w.lines, "\n"))
 end
 
 finish()

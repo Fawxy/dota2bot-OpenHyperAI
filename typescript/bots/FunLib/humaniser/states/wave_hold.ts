@@ -199,10 +199,16 @@ export function DrawNow(front: number, hd: number, at: number, on: number): bool
     return on === 0 && at <= SETTINGS.HoldNear && front <= hd + SETTINGS.HoldDrawLead * SETTINGS.CreepSpeed;
 }
 
-/** Pure: lane_spot pushed the held spot back inside the hold point's floor for an enemy hero (`why` hero, spot `own` from our
- *  T1): the hold cannot stand where it keeps their wave out of our T1's fire, so it ends `unsafe`. */
-export function Unsafe(anchor: string | undefined, why: string | undefined, own: number, reach: number): boolean {
-    return anchor === "hold" && why === "hero" && own < reach + SETTINGS.LateMargin;
+/**
+ * Pure: lane_spot pushed the held spot back inside the hold point's floor for an enemy hero (`why` hero, spot `own` from our
+ * T1) while their front is within HoldDrawLead seconds' walk of the floor: the hold cannot stand where it keeps their wave out
+ * of our T1's fire, so it ends `unsafe`. Further out the hold runs on from the pushed spot (hschk4: 7 of 13 unsafe ends were
+ * Zeus mid stepping out of Sniper's reach with their front 1,100-1,440 out; user 06/11/2026: stepping back from a hero's reach
+ * is right, the hold point would give Sniper free harass).
+ */
+export function Unsafe(anchor: string | undefined, why: string | undefined, own: number, reach: number, front: number): boolean {
+    const floor = reach + SETTINGS.LateMargin;
+    return anchor === "hold" && why === "hero" && own < floor && front <= floor + SETTINGS.HoldDrawLead * SETTINGS.CreepSpeed;
 }
 
 /** Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin). */
@@ -623,7 +629,7 @@ export function Step(bot: Unit): void {
         const info = Laning.SpotInfo(bot);
         if (info !== undefined) {
             const [s] = LanePush.Project(v.path, info.spot.x, info.spot.y);
-            if (Unsafe(info.anchor, info.why, v.dir * (s - v.t1), a.rch)) return finish(bot, a, "unsafe", now);
+            if (Unsafe(info.anchor, info.why, v.dir * (s - v.t1), a.rch, front)) return finish(bot, a, "unsafe", now);
         }
     }
 
