@@ -438,7 +438,8 @@ export const EVENTS = {
          *  walk at its move speed + 0.4 s, at most 3.5 s). */
         ad: "num",
         apt: "num",
-        /** stale: the active mode, the task label (`-` none) when the frame came back, and the seconds it was away. */
+        /** stale: the first other mode seen holding the bot during the gap (else the active mode), the task label (`-` none) when the
+         *  frame came back, and the seconds it was away. */
         md: "num",
         lbl: "str",
         gap: "num",

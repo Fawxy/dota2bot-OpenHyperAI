@@ -101,10 +101,19 @@ export const SETTINGS = {
     DragWalk: 1.2,
     /** A lane hit due this soon (any kind) keeps the body's frame: no feed. */
     BusyWithin: 1.5,
-    /** An attempt not stepped for this long ends `stale` (its caller lost the frame, e.g. OHA's retreat): acting phases (approach,
-     * walk) and the watch. Review 2026-11-05-lane-aggro-41120ba F1: a frozen move resumed past its gates. */
+    /**
+     * An attempt not stepped for this long while another mode held the bot ends `stale` (its caller lost the frame, e.g. OHA's
+     * retreat): acting phases (approach, walk) and the watch. Review 2026-11-05-lane-aggro-41120ba F1: a frozen move resumed
+     * past its gates. A gap with the bot in laning mode throughout (a body swing, a Think that did not reach the step: awchk2
+     * 5 of 26 stales) is resumed, up to StaleCap.
+     */
     StaleActing: 0.5,
     StaleWatch: 3,
+    StaleCap: 10,
+    /** During the approach the move ends `unsafe` only once an enemy hero's attack reaches the approach point (or the feed's
+     *  walk-back point) with this margin: less than HeroMargin at the start, so a walk started safe is not dropped by a few
+     *  units (awchk2: 9 feed walks ended within about 0.5 s of their start, no HP lost). */
+    UnsafeMargin: 0,
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** Results are read until then: the fed creep's death, the dragged creep's death. */
@@ -164,6 +173,8 @@ interface Attempt {
     hd?: number;
     /** Back: the draws given. */
     nd?: number;
+    /** The first other mode seen holding the bot since the last step (Tick). */
+    left?: number;
 }
 
 const attempts: Record<number, Attempt | undefined> = {};
@@ -243,9 +254,21 @@ export function LaneHeld(now: number, pid: number, held: { pid: number; at: numb
     return held !== undefined && held.pid !== pid && now - held.at < SETTINGS.Cooldown;
 }
 
-/** Whether an attempt last stepped `gap` seconds ago is stale: the watch tolerates a short loss of the frame, acting does not. */
-export function Stale(phase: PhaseName, gap: number): boolean {
+/**
+ * Whether an attempt last stepped `gap` seconds ago is stale: after another mode held the bot (`left`), the watch tolerates a
+ * short loss of the frame and acting does not; with the bot in laning throughout, only a gap past StaleCap.
+ */
+export function Stale(phase: PhaseName, gap: number, left: boolean = true): boolean {
+    if (!left) return gap > SETTINGS.StaleCap;
     return gap > (phase === "watch" ? SETTINGS.StaleWatch : SETTINGS.StaleActing);
+}
+
+/** Every frame (States.Tick, from ItemUsageThink, whichever mode runs): notes another mode holding the bot during an attempt. */
+export function Tick(bot: Unit): void {
+    const a = attempts[bot.GetPlayerID()];
+    if (a === undefined || a.left !== undefined) return;
+    const mode = bot.GetActiveMode();
+    if (mode !== BotMode.Laning) a.left = mode;
 }
 
 /**
@@ -339,9 +362,9 @@ function enemyHeroes(bot: Unit, r: number): Unit[] {
 }
 
 /** No enemy hero reaches `at` (attack range + radii + margin). */
-function heroSafe(at: Vector, heroes: Unit[]): boolean {
+function heroSafe(at: Vector, heroes: Unit[], margin: number = SETTINGS.HeroMargin): boolean {
     for (const h of heroes) {
-        if (GetUnitToLocationDistance(h, at) <= h.GetAttackRange() + h.GetBoundingRadius() * 2 + SETTINGS.HeroMargin) return false;
+        if (GetUnitToLocationDistance(h, at) <= h.GetAttackRange() + h.GetBoundingRadius() * 2 + margin) return false;
     }
     return true;
 }
@@ -586,7 +609,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["nd", a.nd],
         ["ad", a.ad],
         ["apt", a.ad !== undefined ? math.floor(a.approachTime * 100) / 100 : undefined],
-        ["md", result === "stale" ? bot.GetActiveMode() : undefined],
+        ["md", result === "stale" ? a.left ?? bot.GetActiveMode() : undefined],
         ["lbl", result === "stale" ? Tasks.Current(bot)?.label ?? "-" : undefined],
         ["gap", gap !== undefined ? math.floor(gap * 100) / 100 : undefined],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
@@ -716,7 +739,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
         const heroes = enemyHeroes(bot, 1600);
-        if (!heroSafe(at, heroes) || (a.kind === "feed" && !heroSafe(a.back, heroes))) {
+        if (!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin))) {
             finish(bot, a, "unsafe", now);
             return false;
         }
@@ -839,8 +862,11 @@ export function Step(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const a = attempts[pid];
-    if (a !== undefined && Stale(a.phase, now - a.steppedAt)) finish(bot, a, "stale", now, now - a.steppedAt);
-    else if (a !== undefined) a.steppedAt = now;
+    if (a !== undefined && Stale(a.phase, now - a.steppedAt, a.left !== undefined)) finish(bot, a, "stale", now, now - a.steppedAt);
+    else if (a !== undefined) {
+        a.steppedAt = now;
+        a.left = undefined;
+    }
     if (a !== undefined && attempts[pid] === a) {
         if (a.phase === "watch") {
             if (a.kind === "feed") {

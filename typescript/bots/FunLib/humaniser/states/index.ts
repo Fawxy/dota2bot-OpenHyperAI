@@ -185,6 +185,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
     if (!IsEnabled()) return;
+    LaneAggro.Tick(bot);
     if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot) && !SupportDeny.Applies(bot)) return;
     const l = lib();
     if (l === undefined) return;

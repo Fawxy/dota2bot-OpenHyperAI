@@ -124,7 +124,7 @@ local function feedScene(S)
 	MakeCreep({ team = 2, x = x, y = y, name = "npc_dota_creep_goodguys_ranged" })
 	for i = 1, 2 do local cx, cy = pt(S + 200) MakeCreep({ team = 3, x = cx + 20 * i, y = cy }) end
 	local bx, by = pt(S - 700)
-	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(bx, by), hp = 600 })
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(bx, by), hp = 600, mode = dota.BotMode.Laning })
 	bot.maxhp, bot.lane, bot.pos = 600, dota.Lane.Top, 3
 	local hx, hy = pt(S + 1600)
 	local h1 = MakeUnit({ pid = 5, team = 3, loc = Vector(hx, hy) })
@@ -177,6 +177,41 @@ do
 	end
 	check("body off: the approach keeps stepping", #ActionsOf(1, "MoveToLocation") == n0 + 4 and Ag.Pending(bot), #ActionsOf(1, "MoveToLocation") - n0)
 	check("body off: no stale end", not has("result=stale"))
+end
+
+-- awchk2 (t=44.3 Pudge, 104.7): the walk went unstepped for 0.7-1.7 s with the bot in laning mode throughout, and a body
+-- deny swing holds a feed's watch for seconds (161.9, 335.4). With no other mode seen holding the bot, the move resumes; after
+-- OHA's retreat held it, it ends `stale` naming that mode.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	local n0 = #ActionsOf(1, "MoveToLocation")
+	for _ = 1, 6 do T = T + 0.25 H.States.Tick(bot) end
+	Ag.Step(bot)
+	check("gap in laning: the walk resumes", Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == n0 + 1 and not has("result=stale"))
+
+	Ag, bot, _, _, has, H = feedScene(1400)
+	Ag.Step(bot)
+	T = T + 0.25
+	bot.mode = dota.BotMode.Retreat
+	H.States.Tick(bot)
+	T = T + 0.5
+	bot.mode = dota.BotMode.Laning
+	H.States.Tick(bot)
+	Ag.Step(bot)
+	check("retreat held the bot: the move ends stale, naming the retreat", has("result=stale.* md=" .. dota.BotMode.Retreat .. " "))
+end
+
+-- A walk started safe is not dropped when an enemy hero edges a few units closer: the end needs its attack to reach the point.
+do
+	local Ag, bot, h1 = feedScene(1400)
+	Ag.Step(bot)
+	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
+	h1.loc = Vector(at.x + 750, at.y)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("hysteresis: a hero 750 from the approach point (inside the start margin, outside its attack) keeps the walk", Ag.Pending(bot))
 end
 
 -- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it

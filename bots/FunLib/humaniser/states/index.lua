@@ -281,6 +281,7 @@ function ____exports.Tick(bot)
     if not ____exports.IsEnabled() then
         return
     end
+    LaneAggro.Tick(bot)
     if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) and not CoreLastHit.Applies(bot) and not SupportDeny.Applies(bot) then
         return
     end
