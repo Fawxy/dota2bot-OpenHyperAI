@@ -1007,7 +1007,8 @@ function ____exports.Step(bot)
             on
         ) and LaneAggro.StartBack(
             bot,
-            pointAt(v, a.hd + ____exports.SETTINGS.HoldDrawOut, a.hold.z)
+            pointAt(v, a.hd + ____exports.SETTINGS.HoldDrawOut, a.hold.z),
+            "hold"
         ) then
             a.hdr = a.hdr + 1
         end

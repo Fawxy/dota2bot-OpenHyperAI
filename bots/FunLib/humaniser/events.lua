@@ -344,6 +344,7 @@ ____exports.EVENTS = {
         out = "num",
         sty = "num",
         nd = "num",
+        src = "str",
         ad = "num",
         apt = "num",
         md = "num",

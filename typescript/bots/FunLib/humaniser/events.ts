@@ -434,6 +434,9 @@ export const EVENTS = {
         sty: "num",
         /** back: draw orders given (the first and each re-draw). */
         nd: "num",
+        /** back: who asked, `drag` (wave_hold's drag behind our T1) or `hold` (wave_hold's hold draw, a point 150 past the
+         *  hold point: its `result` is nearly free, read `drawn` for the aggro taken). */
+        src: "str",
         /** feed, tower: the bot's distance to the approach point at the start, and the seconds it got to walk there (feed: the
          *  walk at its move speed + 0.4 s, at most 3.5 s). */
         ad: "num",

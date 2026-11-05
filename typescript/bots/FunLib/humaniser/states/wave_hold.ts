@@ -653,7 +653,8 @@ export function Step(bot: Unit): void {
         a.sw++;
         a.br = br;
     }
-    // The hold point (the drag's point on a drag) anchors the spot for the whole attempt, over lane_spot's other anchors.
+    // The hold point (the drag's point on the drag and retreat branches; OHA's retreat holds the frame on the latter) anchors
+    // the spot for the whole attempt, over lane_spot's other anchors.
     Laning.SetHold(bot, a.br === "hold" ? a.hold : a.behind);
     if (a.br === "hold" && !LaneAggro.Acting(bot)) {
         let on = 0;
@@ -661,7 +662,7 @@ export function Step(bot: Unit): void {
             const t = x.u.GetAttackTarget();
             if (t !== undefined && t !== null && t === bot) on++;
         }
-        if (DrawNow(front, a.hd, GetUnitToLocationDistance(bot, a.hold), on) && LaneAggro.StartBack(bot, pointAt(v, a.hd + SETTINGS.HoldDrawOut, a.hold.z))) a.hdr++;
+        if (DrawNow(front, a.hd, GetUnitToLocationDistance(bot, a.hold), on) && LaneAggro.StartBack(bot, pointAt(v, a.hd + SETTINGS.HoldDrawOut, a.hold.z), "hold")) a.hdr++;
     }
 }
 

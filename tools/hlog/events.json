@@ -403,6 +403,7 @@
    "out": "num",
    "sty": "num",
    "nd": "num",
+   "src": "str",
    "ad": "num",
    "apt": "num",
    "md": "num",
@@ -1457,6 +1458,7 @@
    "kind": "text",
    "result": "text",
    "st": "text",
+   "src": "text",
    "lbl": "text"
   },
   "ev_wave_hold": {
