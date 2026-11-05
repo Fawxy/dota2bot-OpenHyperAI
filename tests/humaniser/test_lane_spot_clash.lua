@@ -13,7 +13,7 @@ local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) en
 local U = {}
 U.__index = U
 function U:IsNull() return false end
-function U:IsAlive() return true end
+function U:IsAlive() return not self.dead end
 function U:GetLocation() return self.loc end
 function U:GetUnitName() return self.name end
 function U:GetTeam() return self.team end
@@ -34,7 +34,7 @@ local world
 local function unit(o) return setmetatable(o, U) end
 local function near(self, list, r)
 	local out = {}
-	for _, u in ipairs(list) do if dist(u.loc, self.loc) <= r then out[#out + 1] = u end end
+	for _, u in ipairs(list) do if u.loc ~= nil and dist(u.loc, self.loc) <= r then out[#out + 1] = u end end
 	return out
 end
 function U:GetNearbyLaneCreeps(r, enemies) return near(self, enemies and world.theirs or world.ours, r) end
@@ -84,6 +84,22 @@ do
 	check("their creeps gone: the far front again", info ~= nil and info.clash == nil and dist(info.spot, FAR) < 300, info and string.format("%.0f,%.0f", info.spot.x, info.spot.y))
 end
 
+-- The handles the anchor reads: a dead creep, one in the fog (a valid handle with no location) and a neutral on the lane
+-- are skipped; a siege creep counts (sachk1 8:38 pid 1 and 6:41 pid 8: the clash the anchor read was a siege creep lagging
+-- behind its wave, 900-1,150 from our T1).
+do
+	local function stand(o)
+		local bot = awchk2(false)
+		world.theirs[1] = unit({ loc = o.loc or Vector(-6450, 2668), team = 3, hp = 550, name = o.name or "npc_dota_creep_badguys_melee", dead = o.dead })
+		if o.fog then world.theirs[1].loc = nil end
+		return LaneSpot.Compute(bot, "core")
+	end
+	local dead, fog, neutral = stand({ dead = true }), stand({ fog = true }), stand({ name = "npc_dota_neutral_kobold" })
+	check("handles: dead, fogged and neutral creeps set no clash", dead.clash == nil and fog.clash == nil and neutral.clash == nil)
+	local siege = stand({ name = "npc_dota_badguys_siege" })
+	check("handles: a siege creep at our T1 is a clash", siege.clash ~= nil and dist(siege.spot, T1) < 1000, tostring(siege.clash))
+end
+
 -- The same crossing mirrored for Dire (top, Dire T1 at path 10,090, distances from it run down the path): their 3 creeps
 -- 660-820 from our T1, our 4 at 150-600, our old wave 3,600 out.
 do
@@ -116,7 +132,9 @@ do
 	check("rear clash: our creep fighting their rearmost, on our side", LaneSpot.RearClash({ 820, 660, 740 }, { 600, 450, 3600 }, 3600) == 600)
 	check("rear clash: none of ours near, their rearmost creep", LaneSpot.RearClash({ 820, 660 }, { 3600, -100 }, 3600) == 660)
 	check("rear clash: 700 behind our T1 counts, 701 does not", LaneSpot.RearClash({ -700 }, {}, 3600) == -700 and LaneSpot.RearClash({ -701 }, {}, 3600) == nil)
-	check("rear clash: 1,000 short of our front counts, 999 does not", LaneSpot.RearClash({ 2600 }, {}, 3600) == 2600 and LaneSpot.RearClash({ 2601 }, {}, 3600) == nil)
+	check("rear clash: 1,000 short of our front counts, 999 does not", LaneSpot.RearClash({ 900 }, {}, 1900) == 900 and LaneSpot.RearClash({ 900 }, {}, 1899) == nil)
+	check("rear clash: their rearmost 1,000 from our T1 counts, 1,001 does not (a second clash further out keeps the front)",
+		LaneSpot.RearClash({ 1000, 1400 }, { 900 }, 3600) == 900 and LaneSpot.RearClash({ 1001, 1400 }, { 900 }, 3600) == nil)
 end
 
 finish()

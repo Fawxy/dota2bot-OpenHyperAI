@@ -83,6 +83,8 @@ local FED_REACH_CAP = 300
 local FRONT_SEEN = 1000
 --- Their creeps up to our T1's range behind it still count as a clash at our tower.
 local CLASH_BEHIND = 700
+--- Their rearmost creep must be within this of our T1 (along the lane) for the clash to anchor: our tower's range plus 300.
+local NEAR_T1 = 1000
 --- Our creep within this of their rearmost creep, on our side, is fighting it (wave_hold's MeetR).
 local MEET_R = 700
 --- Lane creeps further than this from the lane path are not on it (wave_hold's PathR).
@@ -355,7 +357,7 @@ function ____exports.FedAnchor(fed)
 end
 --- Pure: the rearmost clash, as a distance from our T1 along the lane (positive towards theirs), or undefined. `theirs` and
 -- `ours` are the lane creeps' distances, `front` our front's. Their creeps from CLASH_BEHIND behind our T1 to FRONT_SEEN short
--- of our front count; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
+-- of our front count, and only while the rearmost of them is within NEAR_T1 of our T1; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
 function ____exports.RearClash(theirs, ours, front)
     local rear = math.huge
     for ____, o in ipairs(theirs) do
@@ -363,7 +365,7 @@ function ____exports.RearClash(theirs, ours, front)
             rear = o
         end
     end
-    if rear == math.huge then
+    if rear > NEAR_T1 then
         return nil
     end
     local fight

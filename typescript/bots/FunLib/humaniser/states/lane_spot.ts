@@ -27,7 +27,9 @@
  * than FRONT_SEEN short of it (the waves crossed: our old wave walked past theirs), the spot anchors there instead of on
  * GetLaneFrontLocation, our furthest creep: on our creep nearest them on our side within MEET_R, else on their creep nearest
  * our T1. awchk2 3:51 (pid 1, t=231.567): with the far front, a pos3 left 3 enemy creeps under our T1 and walked 3,301 up the
- * lane past their carry; the bank held 23 such walks in 20 games.
+ * lane past their carry; the bank held 23 such walks in 20 games. Only while their rearmost creep is within NEAR_T1 of our
+ * T1 (their creeps left at our tower): sachk1 fired it on 32 clashes, most 800-2,700 out, of which 15 were a real second
+ * clash, 7 a straggler or drawn creep and 8 creeps fighting none of ours; further out the front anchor stands.
  * prhchk2, lhrchk1, lhrchk2: of the creeps our tower hit that died to no one out of a core's reach, the creep ring had set the
  * core's spot for 54 of 79, the hero reach for 15.
  */
@@ -92,6 +94,8 @@ const FED_REACH_CAP = 300;
 const FRONT_SEEN = 1000;
 /** Their creeps up to our T1's range behind it still count as a clash at our tower. */
 const CLASH_BEHIND = 700;
+/** Their rearmost creep must be within this of our T1 (along the lane) for the clash to anchor: our tower's range plus 300. */
+const NEAR_T1 = 1000;
 /** Our creep within this of their rearmost creep, on our side, is fighting it (wave_hold's MeetR). */
 const MEET_R = 700;
 /** Lane creeps further than this from the lane path are not on it (wave_hold's PathR). */
@@ -289,12 +293,12 @@ export function FedAnchor(fed: Unit | undefined): Unit | undefined {
 /**
  * Pure: the rearmost clash, as a distance from our T1 along the lane (positive towards theirs), or undefined. `theirs` and
  * `ours` are the lane creeps' distances, `front` our front's. Their creeps from CLASH_BEHIND behind our T1 to FRONT_SEEN short
- * of our front count; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
+ * of our front count, and only while the rearmost of them is within NEAR_T1 of our T1; the anchor is our creep nearest the rearmost of them, on our side within MEET_R, else that creep.
  */
 export function RearClash(theirs: number[], ours: number[], front: number): number | undefined {
     let rear = math.huge;
     for (const o of theirs) if (o >= -CLASH_BEHIND && o <= front - FRONT_SEEN && o < rear) rear = o;
-    if (rear === math.huge) return undefined;
+    if (rear > NEAR_T1) return undefined;
     let fight: number | undefined;
     for (const o of ours) if (o <= rear && o >= rear - MEET_R && (fight === undefined || o > fight)) fight = o;
     return fight ?? rear;
