@@ -24,9 +24,14 @@ export const SETTINGS = {
     Early: 2,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
     PathFactor: 1.2,
-    /** A pull is wanted when the clash is forecast more than this beyond the lane's target point (LanePush TargetOf) in
-     *  30 s and not coming in (slice support-lane, plan docs/proposals/2026-11-05-pull-effect.md s4 step 3). */
+    /** A pull is wanted when, with the pulled wave gone, the clash ArriveAfter s after the slot (the current wave's fight
+     *  resolved) is forecast more than WantPast beyond the lane's target point (LanePush TargetOf), and their creeps in lane
+     *  have at most PowerRatio times our HP (slice support-lane, Decision 06/11/2026; ArriveAfter and PowerRatio
+     *  `judgement`, scored offline on the banked slots before the change: the slice file). A lane coming in (IN) is no
+     *  refusal: the pull keeps our next wave from dying under their tower. */
     WantPast: 150,
+    ArriveAfter: 12,
+    PowerRatio: 1.2,
     /** The lane partner is under threat: HP share below PartnerHp with an enemy hero within PartnerRadius, or PartnerGank
      *  enemy heroes within it. */
     PartnerHp: 0.5,
@@ -199,6 +204,8 @@ interface Decision {
     want: boolean;
     kind: Kind;
     reading?: LanePush.Reading;
+    /** The lane with the pulled wave gone (Wanted's input). */
+    gone?: LanePush.WaveGone;
     /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
     hm?: number;
 }
@@ -452,9 +459,14 @@ function ourTower(bot: Unit): Vector | undefined {
  * The reading wants a pull: the clash is forecast beyond the lane's target point (`target`, from our T1) and is not coming
  * in. Lane aggro feeds on the same target and the wave hold meets their wave at it, so all three aim at one meeting point.
  */
-export function Wanted(r: LanePush.Reading | undefined, target: number): boolean {
-    if (r === undefined || r.state === "IN") return false;
-    return r.own + r.move > target + SETTINGS.WantPast;
+export function Wanted(g: LanePush.WaveGone | undefined, target: number): boolean {
+    if (g === undefined || g.own === undefined) return false;
+    return g.own > target + SETTINGS.WantPast && g.ep <= SETTINGS.PowerRatio * g.ap;
+}
+
+/** The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn). */
+export function PulledSpawn(slot: number): number {
+    return math.floor((slot - 1) / 30) * 30;
 }
 
 /** Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined. */
@@ -526,6 +538,9 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["own", r1(r?.own)],
         ["tgt", LanePush.TargetOf(bot.GetAssignedLane())],
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
+        ["pa", r1(d.gone?.own)],
+        ["ap", r1(d.gone?.ap)],
+        ["ep", r1(d.gone?.ep)],
         ["ms", r?.ms],
         ["pk", d.want ? d.kind : undefined],
         ["hm", d.hm],
@@ -1111,8 +1126,9 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // The half-pull harness (HalfAll) wants every slot of the half-pulling support, so the hit and step-in get read
         // many times a game; the lane reading's trigger is checked in normal games.
         const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
-        const want = Wanted(reading, LanePush.TargetOf(bot.GetAssignedLane())) || harness;
-        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading };
+        const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key), p.key + SETTINGS.ArriveAfter);
+        const want = Wanted(gone, LanePush.TargetOf(bot.GetAssignedLane())) || harness;
+        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone };
         decided[pid] = d;
         gateWhy[pid] = undefined;
         if (d.kind === "half") return false;

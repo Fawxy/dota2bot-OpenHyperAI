@@ -56,6 +56,11 @@ local function world(o)
 		w.reads = w.reads + 1
 		return o.reading
 	end
+	-- `gone`: what LanePush.WaveGoneNow returns; by default the reading's 30 s forecast, with equal powers.
+	P.WaveGoneNow = function()
+		if o.gone ~= nil then return o.gone end
+		return o.reading and { own = o.reading.own + o.reading.move, ap = 1000, ep = 1000 }
+	end
 	return w
 end
 
@@ -329,19 +334,34 @@ do
 	check("HOLD beyond the target: pull started", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "go") == "1")
 end
 
--- The trigger (plan docs/proposals/2026-11-05-pull-effect.md s4 step 3): the clash forecast beyond the lane's target point
--- and not coming in. Unlike the old OUT / HOLD-past-the-middle rule, a clash bouncing out from under our T1 (the tower rule's
--- OUT) wants no pull while its forecast stays short of the target: pulling then sends their wave into our tower.
+-- The trigger (slice pull-gate, Decision 06/11/2026): with the pulled wave gone, the clash once the current wave's fight
+-- resolves is forecast beyond the lane's target point, and their creeps in lane are not clearly stronger than ours.
 do
 	local W = world({}).H.PullJob.Wanted
-	local function r(state, own, move) return { state = state, own = own, move = move, q = 0, clash = 0, tower = false } end
-	check("trigger: tower-rule OUT from under our T1, forecast short of the target: no pull", not W(r("OUT", 200, 500), 900))
-	check("trigger: OUT whose forecast passes the side target: pull", W(r("OUT", 600, 500), 900))
-	check("trigger: holding on our half but past the target: pull", W(r("HOLD", 1300, 0), 900))
-	check("trigger: holding inside the target's margin: no pull", not W(r("HOLD", 1000, 0), 900))
-	check("trigger: mid's target sits further out, the same clash wants no pull there", not W(r("HOLD", 1300, 0), 1300))
-	check("trigger: far out but coming in: no pull", not W(r("IN", 2500, -400), 900))
+	local function g(own, ap, ep) return { own = own, ap = ap, ep = ep } end
+	check("trigger: past the side target with even waves: pull", W(g(1300, 1000, 1000), 900))
+	check("trigger: inside the target's margin: no pull", not W(g(1000, 1000, 1000), 900))
+	check("trigger: mid's target sits further out, the same clash wants no pull there", not W(g(1300, 1000, 1000), 1300))
+	check("trigger: their creeps 1.5 times ours: no pull (their wave would run into our tower)", not W(g(3000, 1000, 1500), 900))
+	check("trigger: no clash at the arrival: no pull", not W(g(nil, 1000, 1000), 900))
 	check("trigger: no reading: no pull", not W(nil, 900))
+	local PS = world({}).H.PullJob.PulledSpawn
+	check("trigger: the wave a slot pulls spawned on the 30 s before it, not at the slot itself", PS(77.4) == 60 and PS(90) == 60)
+end
+
+-- An IN reading is no refusal (obs0611_A_on_1 t=74.4, ES offlane: our wave dying under their T1, refused st=IN): with the
+-- pulled wave gone the clash stays out and their wave is the smaller, so the pull goes; a bigger enemy wave keeps it.
+do
+	local IN_T1 = { state = "IN", clash = 11500, move = -56, q = 0.95, own = 3509, tower = true }
+	local function first(gone)
+		local out = run(world({ reading = IN_T1, gone = gone }), 75)
+		return lines(out, "choice")[1]
+	end
+	local go = first({ own = 3721, ap = 1542, ep = 400 })
+	check("IN at their T1, smaller enemy wave: pull, the inputs logged", field(go, "go") == "1" and field(go, "st") == "IN"
+		and field(go, "pa") == "3721" and field(go, "ap") == "1542" and field(go, "ep") == "400", go)
+	local stay = first({ own = 3721, ap = 555, ep = 3014 })
+	check("IN at their T1, their wave much bigger: stays (why=lane)", field(stay, "go") == "0" and field(stay, "why") == "lane", stay)
 end
 
 -- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full

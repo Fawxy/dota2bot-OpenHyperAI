@@ -59,6 +59,8 @@ local function world(o)
 		w.reads = w.reads + 1
 		return o.reading
 	end
+	-- The pull trigger's lane with the pulled wave gone: the reading's 30 s forecast, even waves.
+	P.WaveGoneNow = function() return o.reading and { own = o.reading.own + o.reading.move, ap = 1000, ep = 1000 } end
 	return w
 end
 

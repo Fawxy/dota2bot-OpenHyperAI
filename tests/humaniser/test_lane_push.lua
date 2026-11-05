@@ -77,4 +77,31 @@ do
 	check("project a path vertex", math.abs(s - top.s[5]) < 1 and d < 1, s .. " " .. d)
 end
 
+-- Slice pull-gate: the lane with a pulled wave gone. Bot lane at 65 s: our 60 s wave walking out from the spawn, theirs
+-- walking in. With ours, the two meet mid-way; with it pulled, theirs walks unopposed to our T1 and meets our 90 s wave there.
+do
+	local bot = paths[3]
+	local function wave(team, s, dir)
+		return { { team = team, kind = "melee", s = s, hp = 550 }, { team = team, kind = "melee", s = s, hp = 550 },
+			{ team = team, kind = "melee", s = s, hp = 550 }, { team = team, kind = "ranged", s = s - 150 * dir, hp = 300 } }
+	end
+	local init = wave(2, bot.spawnR + 325 * 5, 1)
+	for _, c in ipairs(wave(3, bot.spawnD - 325 * 5, -1)) do table.insert(init, c) end
+	local kept = P.WaveGoneFrom(bot, 2, 65, init, {}, 30, 95)
+	local gone = P.WaveGoneFrom(bot, 2, 65, init, {}, 60, 95)
+	check("wave gone: their wave walks in past where the waves would have met", gone.own ~= nil and kept.own ~= nil
+		and gone.own < kept.own - 2000, tostring(gone.own) .. " " .. tostring(kept.own))
+	check("wave gone: neither the pulled wave nor the one spawned with it counts as power", gone.ap == 0 and gone.ep == 0
+		and kept.ap == 1950 and kept.ep == 1950, gone.ap .. " " .. gone.ep .. " " .. kept.ap .. " " .. kept.ep)
+end
+
+-- A wave still to spawn is pulled by leaving its spawn out of the run.
+do
+	local bot = paths[3]
+	local at = function(smp, t) for _, s in ipairs(smp) do if s.t >= t then return s end end end
+	local skipped = at(P.Run(bot, 55, 70, {}, {}, { team = 2, t = 60 }), 65)
+	local plain = at(P.Run(bot, 55, 70, {}, {}), 65)
+	check("skip: our 60 s wave left out, theirs spawns", skipped.front[2] == nil and skipped.front[3] ~= nil and plain.front[2] ~= nil)
+end
+
 finish()

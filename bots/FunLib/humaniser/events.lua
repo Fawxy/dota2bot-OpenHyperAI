@@ -1153,7 +1153,10 @@ ____exports.EVENTS = {
         php = "num",
         se = "num",
         pk = "str",
-        hm = "num"
+        hm = "num",
+        pa = "num",
+        ap = "num",
+        ep = "num"
     },
     gank = {
         pid = "num",
