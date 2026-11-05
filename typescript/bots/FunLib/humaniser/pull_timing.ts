@@ -470,9 +470,15 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     const len = hypot(back.x, back.y, meet.x, meet.y);
     const n = math.max(1, math.ceil(len / 50));
     const reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer;
+    const pin = cfg.HalfStand;
     for (let i = n; i >= 0; i--) {
         const x = back.x + ((meet.x - back.x) * i) / n;
         const y = back.y + ((meet.y - back.y) * i) / n;
+        // The harness pin: the nearest point of the line to the lane that is still HalfStand off it, whatever the wave does.
+        if (pin > 0) {
+            if (Along(path, Vector(x, y, stand.z))[1] >= pin) return Vector(x, y, stand.z);
+            continue;
+        }
         let clear = true;
         for (const [fx, fy] of fronts) if (hypot(x, y, fx, fy) <= reach) clear = false;
         if (clear) return Vector(x, y, stand.z);

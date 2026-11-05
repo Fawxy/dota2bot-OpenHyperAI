@@ -57,6 +57,8 @@ export const SETTINGS = {
      *  no attack target (review 2026-11-04-pull-diag H1), so giving up is read from movement. */
     Left: 400,
     HomeMargin: 150,
+    /** A tagged neutral has started (`nm`) once it is this far from where it stood at the hit. */
+    Moved: 50,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -146,6 +148,29 @@ interface Pull {
     gu?: number;
     gd?: number;
     wa?: number;
+    /** Where each tagged neutral stood at the hit, and when the first was 50 from it (nm). */
+    starts?: Map<Unit, Vector>;
+    nm?: number;
+    /** The half-pull harness's per-creep record (ev=pull_creep), and the puller's last place and time for its speed. */
+    creeps?: Map<Unit, CreepTrack>;
+    creepN?: number;
+    pAt?: Vector;
+    pT?: number;
+}
+
+/** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
+ *  nearest approach to the puller so far. */
+interface CreepTrack {
+    ci: number;
+    rg: number;
+    tr: number;
+    tt?: number;
+    dp?: number;
+    dn?: number;
+    ph?: number;
+    pv?: number;
+    po?: number;
+    ca?: number;
 }
 
 interface Decision {
@@ -481,8 +506,10 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["gu", p.gu],
         ["gd", p.gd !== undefined ? math.floor(p.gd + 0.5) : undefined],
         ["wa", p.wa],
+        ["nm", p.nm],
     ];
     if (!r.success) {
+        creepLines(bot, p);
         Telemetry.Event("pull_job", fields);
         return;
     }
@@ -505,7 +532,84 @@ function trail(bot: Unit, flush: boolean): void {
         return;
     }
     trailing[pid] = undefined;
+    creepLines(bot, tr.pull);
     Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
+}
+
+/** The harness's per-creep lines (ev=pull_creep), written once with the pull's own line. */
+function creepLines(bot: Unit, p: Pull): void {
+    if (p.creeps === undefined) return;
+    const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10 + 0.5) / 10 : undefined);
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    for (const [, c] of p.creeps) {
+        Telemetry.Event("pull_creep", [
+            ["pid", bot.GetPlayerID()],
+            ["slot", p.plan.slot],
+            ["camp", p.plan.camp.campIdx],
+            ["ci", c.ci],
+            ["rg", c.rg],
+            ["tr", c.tr],
+            ["tt", r1(c.tt)],
+            ["dp", r0(c.dp)],
+            ["dn", r0(c.dn)],
+            ["ph", c.ph],
+            ["pv", r0(c.pv)],
+            ["po", r0(c.po)],
+            ["ca", r0(c.ca)],
+        ]);
+    }
+    p.creeps = undefined;
+}
+
+/**
+ * Every frame after the hit: each lane creep of ours near the watch is read at the frame its attack target becomes a
+ * neutral, else at its nearest approach to the puller so far (CreepTrack). What the puller was doing is read in the same
+ * frame: hit by a tagged neutral or not, moving or standing, how far off the lane.
+ */
+function trackCreeps(bot: Unit, p: Pull): void {
+    if (p.hat === undefined) return;
+    const now = DotaTime();
+    const at = bot.GetLocation();
+    let pv = 0;
+    if (p.pAt !== undefined && p.pT !== undefined && now > p.pT) pv = GetUnitToLocationDistance(bot, p.pAt) / (now - p.pT);
+    p.pAt = at;
+    p.pT = now;
+    if (p.creeps === undefined) p.creeps = new Map();
+    const path = p.plan.timing.lanePath;
+    const meetAlong = p.plan.timing.meetAlong;
+    let ph = 0;
+    const alive: Unit[] = [];
+    for (const u of p.tagged ?? []) {
+        if (stale(u)) continue;
+        alive.push(u);
+        if (u.GetAttackTarget() === bot) ph = 1;
+    }
+    const po = path !== undefined ? PullTiming.Along(path, at)[1] : undefined;
+    for (const c of laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch)) {
+        let t = p.creeps.get(c);
+        if (t === undefined) {
+            t = { ci: p.creepN ?? 0, rg: string.find(c.GetUnitName(), "ranged")[0] !== undefined ? 1 : 0, tr: 0 };
+            p.creepN = (p.creepN ?? 0) + 1;
+            p.creeps.set(c, t);
+        }
+        if (t.tr === 1) continue;
+        const dp = GetUnitToUnitDistance(c, bot);
+        const turned = onNeutral(c);
+        if (!turned && t.dp !== undefined && dp >= t.dp) continue;
+        let dn: number | undefined;
+        for (const u of alive) {
+            const d = GetUnitToUnitDistance(c, u);
+            if (dn === undefined || d < dn) dn = d;
+        }
+        t.tr = turned ? 1 : 0;
+        t.tt = now - p.hat;
+        t.dp = dp;
+        t.dn = dn;
+        t.ph = ph;
+        t.pv = pv;
+        t.po = po;
+        if (path !== undefined && meetAlong !== undefined) t.ca = PullTiming.Along(path, c.GetLocation())[0] - meetAlong;
+    }
 }
 
 /** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
@@ -538,6 +642,7 @@ function onNeutral(c: Unit): boolean {
 function sample(bot: Unit, p: Pull): void {
     if (p.label !== "lead" && p.label !== "watch") return;
     watchLine(bot, p, p.label);
+    diag(bot, p, trackCreeps);
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
@@ -556,6 +661,7 @@ function sample(bot: Unit, p: Pull): void {
 
 function sampleWave(bot: Unit, p: Pull): void {
     const now = DotaTime();
+    diag(bot, p, trackCreeps);
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
@@ -580,6 +686,8 @@ function tagCamp(bot: Unit, p: Pull): void {
     }
     p.tagged = tagged;
     p.peaks = new Map();
+    p.starts = new Map();
+    for (const u of tagged) p.starts.set(u, u.GetLocation());
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
@@ -637,6 +745,8 @@ function trackTagged(bot: Unit, p: Pull): void {
     let home = 0;
     for (const u of p.tagged) {
         if (stale(u)) continue;
+        const s0 = p.starts?.get(u);
+        if (p.nm === undefined && s0 !== undefined && GetUnitToLocationDistance(u, s0) >= SETTINGS.Moved) p.nm = now;
         const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
         const peak = math.max(p.peaks.get(u) ?? 0, h);
         p.peaks.set(u, peak);

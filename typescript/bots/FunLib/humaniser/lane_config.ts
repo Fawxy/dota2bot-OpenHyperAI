@@ -395,6 +395,9 @@ export const DEFAULTS = {
         HalfHoldOff: 550,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
+        // Harness only (0 off): the step-in holds at the point of its line HalfStand off the lane path and never nearer, so
+        // the wave passes a standing, hit puller at a known offset and ev=pull_creep measures what turns (EC-090's radius).
+        HalfStand: 0,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
     },

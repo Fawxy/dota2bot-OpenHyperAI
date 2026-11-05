@@ -944,7 +944,23 @@ ____exports.EVENTS = {
         na = "num",
         gu = "num",
         gd = "num",
-        wa = "num"
+        wa = "num",
+        nm = "num"
+    },
+    pull_creep = {
+        pid = "num",
+        slot = "num",
+        camp = "num",
+        ci = "num",
+        rg = "num",
+        tr = "num",
+        tt = "num",
+        dp = "num",
+        dn = "num",
+        ph = "num",
+        pv = "num",
+        po = "num",
+        ca = "num"
     },
     pull_watch = {
         pid = "num",

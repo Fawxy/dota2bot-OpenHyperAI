@@ -321,6 +321,16 @@ do
 	local hold = SP.StepBackPoint(origin, meet, PATH)
 	check("step-in hold: 550 off the lane, on the way back to the camp", math.abs(hold.y - (-5000)) >= 550 and dist(hold, origin) < dist(meet, origin),
 		tostring(hold.x) .. "," .. tostring(hold.y))
+	-- The harness pin (HalfStand): with the wave past (the live step-in would walk on to the meet point) the puller still
+	-- stands at the nearest point of its line that is HalfStand off the lane.
+	local HP = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 }, HalfStand = 450 } }).Lane.PullTiming
+	T, CURRENT_TEAM = T0, 2
+	CREEPS[2] = {}
+	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + 700 - 100 * k, y = -5000 }) end
+	local ht = HP.For(2, Lane.Bot, origin, "small", { meet }, true, { 15, 45 })
+	local pinned = HP.StepIn(HP.Timer(ht, slot, 1, 500, 2, 330), origin, stand, meet, T + 1700 / 325, false, stand)
+	local off = math.abs(pinned.y - (-5000))
+	check("harness pin: the second creep 600 past, the puller holds 450-500 off the lane", off >= 450 and off < 500, off)
 	local full = PT.Timer(timing, slot, 0, 100)
 	PT.Read(full, T)
 	check("full: no search (hf unset)", full.clear == nil and full.hit ~= nil)

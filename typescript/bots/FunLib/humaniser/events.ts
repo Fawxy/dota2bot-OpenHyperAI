@@ -1162,6 +1162,31 @@ export const EVENTS = {
         gu: "num",
         gd: "num",
         wa: "num",
+        // nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after
+        // the order).
+        nm: "num",
+    },
+    // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
+    // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
+    // attack target became one of the camp's neutrals before the line was written, else 0. The rest are read at the turn
+    // (tr 1) or at its nearest approach to the puller (tr 0): tt seconds after the hit (ht), dp its distance to the puller,
+    // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
+    // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
+    // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
+    pull_creep: {
+        pid: "num",
+        slot: "num",
+        camp: "num",
+        ci: "num",
+        rg: "num",
+        tr: "num",
+        tt: "num",
+        dp: "num",
+        dn: "num",
+        ph: "num",
+        pv: "num",
+        po: "num",
+        ca: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything

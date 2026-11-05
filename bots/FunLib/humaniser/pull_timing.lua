@@ -698,21 +698,44 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at)
         math.ceil(len / 50)
     )
     local reach = cfg.HalfHeroAggro + cfg.HalfStepBuffer
+    local pin = cfg.HalfStand
     do
         local i = n
         while i >= 0 do
-            local x = back.x + (meet.x - back.x) * i / n
-            local y = back.y + (meet.y - back.y) * i / n
-            local clear = true
-            for ____, ____value in ipairs(fronts) do
-                local fx = ____value[1]
-                local fy = ____value[2]
-                if hypot(x, y, fx, fy) <= reach then
-                    clear = false
+            do
+                local __continue89
+                repeat
+                    local x = back.x + (meet.x - back.x) * i / n
+                    local y = back.y + (meet.y - back.y) * i / n
+                    if pin > 0 then
+                        if select(
+                            2,
+                            ____exports.Along(
+                                path,
+                                Vector(x, y, stand.z)
+                            )
+                        ) >= pin then
+                            return Vector(x, y, stand.z)
+                        end
+                        __continue89 = true
+                        break
+                    end
+                    local clear = true
+                    for ____, ____value in ipairs(fronts) do
+                        local fx = ____value[1]
+                        local fy = ____value[2]
+                        if hypot(x, y, fx, fy) <= reach then
+                            clear = false
+                        end
+                    end
+                    if clear then
+                        return Vector(x, y, stand.z)
+                    end
+                    __continue89 = true
+                until true
+                if not __continue89 then
+                    break
                 end
-            end
-            if clear then
-                return Vector(x, y, stand.z)
             end
             i = i - 1
         end
