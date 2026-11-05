@@ -47,13 +47,16 @@ local function world(o)
 	local camp = {}
 	for i, c in ipairs(o.camps) do
 		table.insert(SPAWNERS, spawner(c[1], c[2]))
-		camp[i] = MakeNeutral({ x = c[2].x, y = c[2].y, hp = c[3] or 300 })
+		camp[i] = MakeNeutral({ x = c[2].x, y = c[2].y, hp = c[3] or 300, maxhp = c[3] or 300 })
+		camp[i].dmg, camp[i].armor = c[4], c[5]
 	end
 	H.Lane.Camps.ResetCache()
 	H.FarmPattern.ResetCache()
 	H.CoreCamp.ResetCache()
 	local core = MakeUnit({ pid = 1, team = 2, loc = o.at or FRONT, level = o.level or 6, mode = LANING })
 	core.lane, core.pos, core.maxhp, core.hp, core.gold = Lane.Bot, 1, 600, 600, 500
+	-- The clear model sees the hit this world deals: 100 a second.
+	core.dmg, core.spa = 100, 1
 	getmetatable(core).__index.GetNetWorth = function(self) return self.gold or 0 end
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = o.enemyAt or Vector(6000, 6000) })
 	enemy.pos = 3
@@ -122,14 +125,27 @@ local function run(H, bot, untilT, each)
 	return capture(function() while T < untilT do frame(H, bot) if each then each() end end end)
 end
 
--- Price: the hard camp when its clear fits the gap, the small one when it does not; never past the clash + MaxLate.
+-- The clear model: kills in the order that loses the least HP, each neutral hitting until it dies, regen against the loss.
 do
-	local H, core = world({ camps = { { "small", SMALL }, { "large", LARGE } } })
+	local H, core = world({ camps = { { "small", SMALL } } })
+	core.dmg, core.spa, core.regen = 60, 1.5, 5
+	-- 40 a second: the 200-HP hard hitter dies first (5.6 s with the switch), the 400-HP one by 16.2 s.
+	local secs, hp = H.CoreCamp.ClearOf(core, { { hp = 400, take = 1, dmg = 20, spa = 1 }, { hp = 200, take = 1, dmg = 40, spa = 1 } })
+	check("model: the clear is each kill plus a switch", math.abs(secs - 16.2) < 1e-6, secs)
+	check("model: the hard hitter dies first; the loss net of regen (40 x 5.6 + 20 x 16.2 - 5 x 16.2) / 600", math.abs(hp - 467 / 600) < 1e-6, hp)
+	local slow = H.CoreCamp.ClearOf(core, { { hp = 400, take = 0.5, dmg = 20, spa = 1 } })
+	check("model: armour (half the hit taken) doubles the kill", math.abs(slow - 20.6) < 1e-6, slow)
+end
+
+-- Price from the model: the hard camp when its clear fits the gap and leaves the core HP; the hero's damage decides, not
+-- its level (beyond the type's level gate).
+do
+	local H, core, camp = world({ camps = { { "small", SMALL }, { "large", LARGE, 2400, 8 } } })
 	local CC = H.CoreCamp
 	local c = CC.ClashOf(samples(300, 340), PATH, 2)
 	check("clash: first second the fronts meet, at their midpoint on the lane", c ~= nil and c.t == 340 and dist(c.at, FRONT) < 1, c and c.t)
 	local p = CC.Plan(core, FRONT, 300, c)
-	check("plan: a level-6 core with 40 s takes the large camp (more gold, fits)", p ~= nil and p.camp == 2 and p.type == "large", p and p.camp)
+	check("plan: with 40 s the large camp (24.6 s clear by the model) is taken", p ~= nil and p.camp == 2 and p.src == "live" and math.abs(p.clr - 24.6) < 1e-6, p and p.clr)
 	check("plan: the return is walk in + clear + walk back", p ~= nil and math.abs(p.ret - (300 + 2 * 2121 * 1.2 / 300 + p.clr)) < 0.01, p and p.ret)
 	local tight = CC.ClashOf(samples(300, 318), PATH, 2)
 	local q = CC.Plan(core, FRONT, 300, tight)
@@ -139,15 +155,30 @@ do
 	check("plan: below level 6 the large camp is not offered", r ~= nil and r.type == "small", r and r.type)
 	core.level, core.hp = 6, 480
 	local h = CC.Plan(core, FRONT, 300, c)
-	check("plan: at 80% HP a level-6 core still takes an unstacked large camp", h ~= nil and h.type == "large" and h.gold == 160, h and h.type)
+	check("plan: at 80% HP the core takes it (8 a second for 24.6 s is 0.33 of its HP)", h ~= nil and h.type == "large" and math.abs(h.hpc - 8 * 24.6 / 600) < 1e-6, h and h.hpc)
+	core.hp, camp[2].dmg = 600, 20
+	check("plan: a camp hitting for 20 a second would leave it under 40% even from full HP", (CC.Plan(core, FRONT, 300, c) or {}).type == "small")
+	core.dmg = 200
+	local strong = CC.Plan(core, FRONT, 300, c)
+	check("plan: a core hitting twice as hard clears it in half the time and takes it", strong ~= nil and strong.type == "large", strong and strong.type)
 	for _ = 1, 5 do MakeNeutral({ x = LARGE.x + 50, y = LARGE.y, hp = 300 }) end
 	local st = CC.Plan(core, FRONT, 300, c)
-	check("plan: six neutrals read as a stack the stack job never made; at 80% HP it would leave the core under 40% (cnghar2 camp 2)", st ~= nil and st.type == "small", st and st.type)
-	core.hp = 600
-	check("plan: a level-6 core skips the stacked large camp even at full HP", (CC.Plan(core, FRONT, 300, c) or {}).type == "small")
-	core.level = 9
-	local full = CC.Plan(core, FRONT, 300, c)
-	check("plan: at level 9 the stacked large camp is taken, at double gold", full ~= nil and full.type == "large" and full.gold == 320, full and full.gold)
+	check("plan: six neutrals are a stack the stack job never made: double gold, and the extra neutrals in the clear", st ~= nil and st.gold == 320 and st.clr > strong.clr + 10, st and st.clr)
+end
+
+-- Fog: a camp seen once is priced as last seen; one never seen falls back to the type tables.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	check("fog: seen, priced live", (CC.Plan(core, FRONT, 300, c) or {}).src == "live")
+	camp[1].unseen = true
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local seen = CC.Plan(core, FRONT, 300, c)
+	check("fog: fogged, priced as last seen", seen ~= nil and seen.src == "seen" and math.abs(seen.clr - 24.6) < 1e-6, seen and seen.src)
+	CC.ResetCache()
+	check("fog: never seen, the type tables", (CC.Plan(core, FRONT, 300, c) or {}).src == "table")
+	FOGGED = nil
 end
 
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.
@@ -204,7 +235,7 @@ end
 
 -- A trip end to end: started by the chooser, the camp cleared on the verb, the walk back, `back` logged; FarmPattern idle.
 do
-	local H, core, camp = world({ camps = { { "small", SMALL } } })
+	local H, core, camp = world({ camps = { { "small", SMALL, 300, 5 } } })
 	local fp = 0
 	local out = run(H, core, 330, function() if H.FarmPattern.Desire(core) > 0 then fp = fp + 1 end end)
 	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
@@ -214,7 +245,7 @@ do
 	check("trip: FarmPattern never bid for the owned core", fp == 0, fp)
 	check("trip: pace learned from the measured clear", math.abs(H.CoreCamp.Pace(core) - 1) > 1e-3, H.CoreCamp.Pace(core))
 	check("trip: a clear that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
-	check("trip: the end line logs the HP and the rate", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil, ended)
+	check("trip: the end line logs the HP, the rate and the measured clear", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil and tonumber(field(ended, "clrm")) > 0, ended)
 end
 
 -- Switch off: no trip of ours; the core is FarmPattern's again.
@@ -245,9 +276,10 @@ end
 
 -- An enemy hero walks up during the clear: the trip ends `threat` after the core's reaction time, not at once.
 do
-	local H, core, camp, enemy = world({ camps = { { "small", SMALL, 5000 } } })
+	local H, core, camp, enemy = world({ camps = { { "small", SMALL } } })
 	local cameAt
 	local out = run(H, core, 325, function()
+		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 		if cameAt == nil and H.CoreCamp.Running(core) and dist(core.loc, SMALL) < 700 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
 			cameAt = T
@@ -261,10 +293,12 @@ do
 	check("threat on the trip: after a reaction time, within 2 s", cameAt ~= nil and endT ~= nil and endT - cameAt > 0.05 and endT - cameAt < 2, endT and cameAt and endT - cameAt)
 end
 
--- A camp that will not die in time: left at its leave time, walked back, the pace grows.
+-- A camp that will not die in time (tougher than the model read): left at its leave time, walked back, the pace grows.
 do
-	local H, core, camp = world({ camps = { { "small", SMALL, 5000 } }, clash = 30 })
-	local out = run(H, core, 340)
+	local H, core, camp = world({ camps = { { "small", SMALL } }, clash = 30 })
+	local out = run(H, core, 340, function()
+		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
+	end)
 	local ended = lines(out, "core_camp", "end")[1]
 	check("late: the camp left unfinished and the core walked back", ended ~= nil and field(ended, "why") == "back" and camp[1].hp > 0, ended)
 	check("late: the pace grew", H.CoreCamp.Pace(core) > 1 + 1e-3, H.CoreCamp.Pace(core))
