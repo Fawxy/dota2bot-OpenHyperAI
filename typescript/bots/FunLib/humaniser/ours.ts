@@ -46,6 +46,10 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,
+    /** Slice pull-half: with SupportPull on, the safe-lane pos5 half-pulls (the neutrals reach the meet point after the wave's
+     *  body, so only its back creeps turn) when the lane holds on their half, and full-pulls when it pushes out; false: full
+     *  pulls only. */
+    SupportHalfPull: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with

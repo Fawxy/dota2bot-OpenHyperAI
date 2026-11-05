@@ -1152,16 +1152,43 @@
    "se": "num",
    "sh": "num",
    "lv": "num",
-   "sf": "num",
    "s0": "num",
-   "pz": "num",
+   "pk": "str",
+   "hr": "str",
+   "hc": "num",
+   "hn": "num",
+   "hb": "num",
+   "hf": "num",
+   "hu": "num",
+   "hm": "num",
+   "hs": "num",
+   "hi": "num",
    "ht": "num",
    "g4": "num",
    "gh": "num",
    "na": "num",
    "gu": "num",
    "gd": "num",
-   "wa": "num"
+   "wa": "num",
+   "nm": "num"
+  },
+  "pull_creep": {
+   "pid": "num",
+   "slot": "num",
+   "camp": "num",
+   "ci": "num",
+   "rg": "num",
+   "tr": "num",
+   "tt": "num",
+   "dp": "num",
+   "dn": "num",
+   "ph": "num",
+   "pv": "num",
+   "po": "num",
+   "ca": "num",
+   "lt": "num",
+   "ld": "num",
+   "ln": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -1208,7 +1235,9 @@
    "cv": "num",
    "cdmg": "num",
    "php": "num",
-   "se": "num"
+   "se": "num",
+   "pk": "str",
+   "hm": "num"
   },
   "gank": {
    "pid": "num",
@@ -1638,7 +1667,9 @@
   "ev_pull_job": {
    "res": "text",
    "why": "text",
-   "label": "text"
+   "label": "text",
+   "pk": "text",
+   "hr": "text"
   },
   "ev_pull_watch": {
    "ph": "text",
@@ -1648,7 +1679,8 @@
    "kind": "text",
    "why": "text",
    "src": "text",
-   "st": "text"
+   "st": "text",
+   "pk": "text"
   },
   "ev_gank": {
    "score": "text",

@@ -99,9 +99,11 @@ const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6
 
 const override = Overrides.Get;
 
-/** Overrides.Solo names another hero: this one sits out the game in its fountain. */
+/** Overrides.Solo names another hero: this one sits out the game in its fountain. "pos5" keeps both teams' position 5s
+ *  only (the half-pull harness, slice pull-half). */
 export function Benched(bot: Unit): boolean {
     const solo = override("Solo");
+    if (solo === "pos5") return LaneConfig.PositionOf(bot) !== 5;
     if (typeof solo === "string") {
         for (const [n] of string.gmatch(solo, "%d+")) if (tonumber(n) === bot.GetPlayerID()) return false;
         return true;

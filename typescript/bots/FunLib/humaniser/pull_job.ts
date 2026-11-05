@@ -57,6 +57,10 @@ export const SETTINGS = {
      *  no attack target (review 2026-11-04-pull-diag H1), so giving up is read from movement. */
     Left: 400,
     HomeMargin: 150,
+    /** A tagged neutral has started (`nm`) once it is this far from where it stood at the hit. */
+    Moved: 50,
+    /** A lane creep has left the lane (pull_creep lt) once it is this far off the lane path above its own least. */
+    Leave: 100,
     /** The start check (`why=camp-dmg`): the camp's damage on the puller from the hit to the wave's arrival at the meet point,
      *  counted for HitShare of that time (the puller walks the lead while melee neutrals chase), must leave it StartReserve
      *  of its max HP. The camp's damage is what the API estimates for the neutrals it returns in the box, so a stacked camp
@@ -75,15 +79,6 @@ export const SETTINGS = {
     BailReserve: 0.25,
     BailGrace: 2,
     BailFor: 6,
-    /** Live re-timing (slice pull-live): after the hit, the puller holds where it is (at most PaceFor s) while the wave,
-     *  read live, would reach the meet point more than PaceLead after the neutrals following the puller there, and every
-     *  tagged neutral is still within PaceGuard of its camp (EC-084: the 5 s give-up timer starts past 400, so a wait
-     *  inside it costs the chase nothing; a wait outside it does). PaceLead is under the plan's Lead (1.5 s), so an on-time
-     *  pull waits about a second too: neutrals there too soon took the front two creeps and turned home before the rest
-     *  came (the user's replays of camp 1 partial pulls, 04/11/2026). All `judgement`. */
-    PaceLead: 0.5,
-    PaceGuard: 350,
-    PaceFor: 3,
     /** Neutrals within this of the puller are the ones that can be hitting it. */
     BailScan: 1200,
     /** With no tower of ours on the lane, step this far straight away from the neutrals. */
@@ -106,7 +101,12 @@ interface CampState {
     se?: number;
 }
 
+export type Kind = "full" | "half";
+
 interface Plan {
+    kind: Kind;
+    /** The full pull's hit second for this wave: the slot the lane is read and decided for, whatever the kind. */
+    key: number;
     camp: Camps.CampJobData;
     spawner: Camps.Spawner;
     stand: Vector;
@@ -132,11 +132,9 @@ interface Pull {
     neutrals: number;
     /** The hit second as last read (the live wave up to the order), and the shift it had at the start. */
     hitAt: number;
-    startShift: number;
-    track: PullTiming.LiveHit;
-    /** Seconds the puller held after the hit for a late wave (`pz`). */
-    paced?: number;
-    pacedFrom?: number;
+    timer: PullTiming.CreepTimer;
+    /** A half pull's step-in: the puller's offset from the stand point towards the meet point when the wave engaged (hi). */
+    stepIn?: number;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -152,12 +150,43 @@ interface Pull {
     gu?: number;
     gd?: number;
     wa?: number;
+    /** Where each tagged neutral stood at the hit, and when the first was 50 from it (nm). */
+    starts?: Map<Unit, Vector>;
+    nm?: number;
+    /** The half-pull harness's per-creep record (ev=pull_creep), and the puller's last place and time for its speed. */
+    creeps?: Map<Unit, CreepTrack>;
+    creepN?: number;
+    pAt?: Vector;
+    pT?: number;
+}
+
+/** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
+ *  nearest approach to the puller so far. */
+interface CreepTrack {
+    ci: number;
+    rg: number;
+    tr: number;
+    tt?: number;
+    dp?: number;
+    dn?: number;
+    ph?: number;
+    pv?: number;
+    po?: number;
+    ca?: number;
+    /** Least distance off the lane path so far, and the frame it rose Leave above it (the creep left the lane). */
+    off0?: number;
+    lt?: number;
+    ld?: number;
+    ln?: number;
 }
 
 interface Decision {
     slot: number;
     want: boolean;
+    kind: Kind;
     reading?: LanePush.Reading;
+    /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
+    hm?: number;
 }
 
 interface Trail {
@@ -170,11 +199,11 @@ const running: Record<number, Pull | undefined> = {};
 const trailing: Record<number, Trail | undefined> = {};
 const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
-const tracks: Record<number, PullTiming.LiveHit | undefined> = {};
+const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, tracks] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -220,20 +249,45 @@ export function NextSlot(from: number, seconds: number[], period: number): numbe
     return best;
 }
 
-function planFor(bot: Unit, now: number): Plan | undefined {
+/**
+ * The next wave's pull of `kind`. A half pull is the same wave and the same meet point hit HalfPullLater after the full
+ * pull's second (pull_timing's half timing), so its slot is the first half second at or after the full one; `key` stays
+ * the full slot, so one wave is read and decided once whatever the kind.
+ */
+function planFor(bot: Unit, now: number, kind: Kind): Plan | undefined {
     const camp = campFor(bot);
     const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
     if (camp === undefined || camp.pull === undefined || spawner === undefined) return undefined;
     const t = LaneConfig.Settings().Timing;
-    const timing = PullTiming.ForCamp(camp, false);
-    if (timing.seconds.length === 0) return undefined;
-    const slot = NextSlot(now - t.JobStartLate, timing.seconds, t.PullPeriod);
+    const full = PullTiming.ForCamp(camp, false);
+    if (full.seconds.length === 0) return undefined;
+    const key = NextSlot(now - t.JobStartLate, full.seconds, t.PullPeriod);
     // Camps hold neutrals for a whole minute only from their first spawn on (camp_jobs' CampsUp).
-    if (math.floor(slot / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
+    if (math.floor(key / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
     const meet = camp.pull.meetPoint;
+    const timing = kind === "half" ? PullTiming.ForCamp(camp, true, meet) : full;
+    if (timing.seconds.length === 0) return undefined;
+    const slot = kind === "half" ? NextSlot(key, timing.seconds, t.PullPeriod) : key;
     const lead = PullTiming.LeadPath(camp.pull, meet);
     const stand = Camps.StandPoint(spawner, lead[0], LaneConfig.Settings().Radii.StandOffset);
-    return { camp, spawner, stand, lead, meet, timing, slot };
+    return { kind, key, camp, spawner, stand, lead, meet, timing, slot };
+}
+
+/** The safe lane of `bot`'s team (pull_timing's LaneAhead rule). */
+function safeLane(bot: Unit): boolean {
+    const lane = bot.GetAssignedLane();
+    return lane !== Lane.Mid && (bot.GetTeam() === Team.Radiant) === (lane === Lane.Bot);
+}
+
+/**
+ * Which pull a wanted slot gets: the safe-lane pos5 half-pulls when the lane holds on their half (it is out a little: slow
+ * and thin the wave rather than reset it; banked full pulls from there took the clash to -0.66 in 30 s and back to +0.07
+ * in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
+ */
+export function KindFor(bot: Unit, r: LanePush.Reading | undefined): Kind {
+    if (!Ours.On("SupportHalfPull") || LaneConfig.PositionOf(bot) !== 5 || !safeLane(bot)) return "full";
+    if (LaneConfig.Settings().PullTiming.HalfAll === true) return "half";
+    return r !== undefined && r.state === "HOLD" ? "half" : "full";
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -297,8 +351,9 @@ function bailPoint(bot: Unit): Vector | undefined {
     let k = 0;
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive() || u.GetAttackTarget() !== bot || GetUnitToUnitDistance(u, bot) > SETTINGS.BailScan) continue;
-        dps += u.GetEstimatedDamageToTarget(true, bot, 1, DamageType.All);
         const l = u.GetLocation();
+        if (l === undefined || l === null) continue;
+        dps += u.GetEstimatedDamageToTarget(true, bot, 1, DamageType.All);
         cx += l.x;
         cy += l.y;
         k++;
@@ -379,7 +434,8 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
     ];
 }
 
-function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined, camp: CampState): void {
+/** `slot` the plan's hit second (a half pull's, not the wave's `key`), so the line joins its `pull_job` line. */
+function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
     Telemetry.Event("choice", [
@@ -390,13 +446,15 @@ function choiceLine(bot: Unit, d: Decision, go: boolean, why: string | undefined
         ["why", why],
         ["src", "own"],
         ["lane", bot.GetAssignedLane()],
-        ["slot", d.slot],
+        ["slot", slot],
         ["st", r?.state],
         ["q", r !== undefined ? math.floor(r.q * 100 + 0.5) / 100 : undefined],
         ["mv", r1(r?.move)],
         ["cf", r1(r?.cf)],
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
         ["ms", r?.ms],
+        ["pk", d.want ? d.kind : undefined],
+        ["hm", d.hm],
         ...campFields(camp),
     ]);
 }
@@ -423,6 +481,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["lane", bot.GetAssignedLane()],
         ["camp", p.plan.camp.campIdx],
         ["slot", p.plan.slot],
+        ["pk", p.plan.kind],
         ["res", r.success ? "ok" : "fail"],
         ["why", why],
         ["label", label ?? p.label],
@@ -437,10 +496,17 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nn", p.neutrals],
         ...campFields(p.start),
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
-        ["s0", math.floor(p.startShift * 10 + 0.5) / 10],
-        ["lv", p.track.reads],
-        ["sf", p.track.read !== undefined ? math.floor(p.track.read.front * 10 + 0.5) / 10 : undefined],
-        ["pz", p.paced !== undefined ? math.floor(p.paced * 10 + 0.5) / 10 : undefined],
+        ["s0", p.timer.first !== undefined ? math.floor(p.timer.first * 10 + 0.5) / 10 : undefined],
+        ["lv", p.timer.reads],
+        ["hr", p.timer.hit !== undefined ? "geo" : "plan"],
+        ["hc", p.timer.n],
+        ["hn", p.timer.next],
+        ["hb", p.timer.back],
+        ["hf", p.timer.clear],
+        ["hu", p.timer.turn],
+        ["hm", p.timer.margin],
+        ["hs", p.timer.standBack],
+        ["hi", p.stepIn],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -448,13 +514,15 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["gu", p.gu],
         ["gd", p.gd !== undefined ? math.floor(p.gd + 0.5) : undefined],
         ["wa", p.wa],
+        ["nm", p.nm],
     ];
     if (!r.success) {
+        creepLines(bot, p);
         Telemetry.Event("pull_job", fields);
         return;
     }
     const now = DotaTime();
-    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.track, now) ?? now) + SETTINGS.TrailSec };
+    trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer) ?? now) + SETTINGS.TrailSec };
 }
 
 function share(p: Pull): number {
@@ -472,12 +540,113 @@ function trail(bot: Unit, flush: boolean): void {
         return;
     }
     trailing[pid] = undefined;
+    creepLines(bot, tr.pull);
     Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
+}
+
+/** The harness's per-creep lines (ev=pull_creep), written once with the pull's own line. */
+function creepLines(bot: Unit, p: Pull): void {
+    if (p.creeps === undefined) return;
+    const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10 + 0.5) / 10 : undefined);
+    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
+    for (const [, c] of p.creeps) {
+        Telemetry.Event("pull_creep", [
+            ["pid", bot.GetPlayerID()],
+            ["slot", p.plan.slot],
+            ["camp", p.plan.camp.campIdx],
+            ["ci", c.ci],
+            ["rg", c.rg],
+            ["tr", c.tr],
+            ["tt", r1(c.tt)],
+            ["dp", r0(c.dp)],
+            ["dn", r0(c.dn)],
+            ["ph", c.ph],
+            ["pv", r0(c.pv)],
+            ["po", r0(c.po)],
+            ["ca", r0(c.ca)],
+            ["lt", r1(c.lt)],
+            ["ld", r0(c.ld)],
+            ["ln", r0(c.ln)],
+        ]);
+    }
+    p.creeps = undefined;
+}
+
+/**
+ * Every frame after the hit: each lane creep of ours near the watch is read at the frame its attack target becomes a
+ * neutral, else at its nearest approach to the puller so far (CreepTrack). What the puller was doing is read in the same
+ * frame: hit by a tagged neutral or not, moving or standing, how far off the lane.
+ */
+function trackCreeps(bot: Unit, p: Pull): void {
+    if (p.hat === undefined) return;
+    const now = DotaTime();
+    const at = bot.GetLocation();
+    let pv = 0;
+    if (p.pAt !== undefined && p.pT !== undefined && now > p.pT) pv = GetUnitToLocationDistance(bot, p.pAt) / (now - p.pT);
+    p.pAt = at;
+    p.pT = now;
+    if (p.creeps === undefined) p.creeps = new Map();
+    const path = p.plan.timing.lanePath;
+    const meetAlong = p.plan.timing.meetAlong;
+    let ph = 0;
+    const alive: Unit[] = [];
+    for (const u of p.tagged ?? []) {
+        if (stale(u)) continue;
+        alive.push(u);
+        if (u.GetAttackTarget() === bot) ph = 1;
+    }
+    const po = path !== undefined ? PullTiming.Along(path, at)[1] : undefined;
+    for (const c of laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch)) {
+        let t = p.creeps.get(c);
+        if (t === undefined) {
+            t = { ci: p.creepN ?? 0, rg: string.find(c.GetUnitName(), "ranged")[0] !== undefined ? 1 : 0, tr: 0 };
+            p.creepN = (p.creepN ?? 0) + 1;
+            p.creeps.set(c, t);
+        }
+        if (t.tr === 1) continue;
+        const dp = GetUnitToUnitDistance(c, bot);
+        const nearest = () => {
+            let dn: number | undefined;
+            for (const u of alive) {
+                const d = GetUnitToUnitDistance(c, u);
+                if (dn === undefined || d < dn) dn = d;
+            }
+            return dn;
+        };
+        if (path !== undefined && t.lt === undefined) {
+            const off = PullTiming.Along(path, c.GetLocation())[1];
+            if (t.off0 === undefined || off < t.off0) t.off0 = off;
+            else if (off > t.off0 + SETTINGS.Leave) {
+                t.lt = now - p.hat;
+                t.ld = dp;
+                t.ln = nearest();
+            }
+        }
+        const turned = onNeutral(c);
+        if (!turned && t.dp !== undefined && dp >= t.dp) continue;
+        const dn = nearest();
+        t.tr = turned ? 1 : 0;
+        t.tt = now - p.hat;
+        t.dp = dp;
+        t.dn = dn;
+        t.ph = ph;
+        t.pv = pv;
+        t.po = po;
+        if (path !== undefined && meetAlong !== undefined) t.ca = PullTiming.Along(path, c.GetLocation())[0] - meetAlong;
+    }
 }
 
 /** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
  *  into the camp and fights there (pw1: the Radiant safe small camp sits about 1100 from its meet point, so a watch of the
  *  meet point alone logged those waves as never diverted). */
+/** How far `at` is from `stand` towards the meet point (negative: back towards the camp). */
+function stepped(p: Plan, stand: Vector, at: Vector): number {
+    const dx = p.meet.x - stand.x;
+    const dy = p.meet.y - stand.y;
+    const l = math.max(1, math.sqrt(dx * dx + dy * dy));
+    return math.floor(((at.x - stand.x) * dx + (at.y - stand.y) * dy) / l + 0.5);
+}
+
 function laneCreepsNear(p: Plan, radius: number): Unit[] {
     const out: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
@@ -497,6 +666,7 @@ function onNeutral(c: Unit): boolean {
 function sample(bot: Unit, p: Pull): void {
     if (p.label !== "lead" && p.label !== "watch") return;
     watchLine(bot, p, p.label);
+    diag(bot, p, trackCreeps);
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
@@ -515,6 +685,7 @@ function sample(bot: Unit, p: Pull): void {
 
 function sampleWave(bot: Unit, p: Pull): void {
     const now = DotaTime();
+    diag(bot, p, trackCreeps);
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
@@ -539,6 +710,11 @@ function tagCamp(bot: Unit, p: Pull): void {
     }
     p.tagged = tagged;
     p.peaks = new Map();
+    p.starts = new Map();
+    for (const u of tagged) {
+        const l = u.GetLocation();
+        if (l !== undefined && l !== null) p.starts.set(u, l);
+    }
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
@@ -596,6 +772,8 @@ function trackTagged(bot: Unit, p: Pull): void {
     let home = 0;
     for (const u of p.tagged) {
         if (stale(u)) continue;
+        const s0 = p.starts?.get(u);
+        if (p.nm === undefined && s0 !== undefined && GetUnitToLocationDistance(u, s0) >= SETTINGS.Moved) p.nm = now;
         const h = GetUnitToLocationDistance(u, p.plan.spawner.location);
         const peak = math.max(p.peaks.get(u) ?? 0, h);
         p.peaks.set(u, peak);
@@ -733,51 +911,58 @@ function verbCamp(p: Plan): JobVerbs.Camp {
     };
 }
 
-/**
- * After the hit: true while the neutrals would reach the meet point more than PaceLead before the wave (read live), and none
- * of them has passed PaceGuard from its camp yet (the tagged set; none alive, no pacing).
- */
-function pace(bot: Unit, p: Pull): boolean {
-    const now = DotaTime();
-    const waveAt = PullTiming.WaveAt(p.track, now);
-    const speed = (LaneConfig.Settings().PullTiming.NeutralSpeed as Record<string, number>)[p.plan.spawner.type];
-    if (waveAt === undefined || speed === undefined || p.tagged === undefined) return false;
-    // The neutrals follow the puller: their walk to the meet point is the nearest one's gap to it plus the puller's lead.
-    let gap: number | undefined;
-    for (const u of p.tagged) {
-        if (stale(u)) continue;
-        if (GetUnitToLocationDistance(u, p.plan.spawner.location) > SETTINGS.PaceGuard) return false;
-        const d = GetUnitToUnitDistance(u, bot);
-        if (gap === undefined || d < gap) gap = d;
-    }
-    if (gap === undefined) return false;
-    const eta = (gap + PullTiming.WalkLength(bot.GetLocation(), p.plan.lead)) / speed;
-    if (waveAt - now - eta <= SETTINGS.PaceLead) return false;
-    p.pacedFrom = p.pacedFrom ?? now;
-    p.paced = now - p.pacedFrom;
-    return true;
-}
-
 function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     const camp = verbCamp(p);
+    // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit (with the
+    // step-in, HalfStepBack behind it, stepping in during the watch).
+    const lead = [...p.lead];
+    const stepIn = pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true;
+    if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet, p.timing.lanePath);
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
-        pull.hitAt = PullTiming.Update(pull.track, DotaTime());
+        pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
+        if (pull.timer.stand !== undefined && lead.length > 0)
+            lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
     return {
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
-        pace: () => pace(bot, pull),
-        paceFor: SETTINGS.PaceFor,
         camp,
         aggroAt,
-        lead: p.lead as unknown as Lib.Vec[],
+        lead: lead as unknown as Lib.Vec[],
+        watchAt: stepIn
+            ? () => {
+                      const end = pull.timer.stand ?? p.meet;
+                      const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
+                      const here = bot.GetLocation();
+                      // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
+                      const offs: Vector[] = [];
+                      let ranged = false;
+                      for (const u of pull.tagged ?? []) {
+                          if (stale(u)) continue;
+                          // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
+                          const l = u.GetLocation();
+                          if (l === undefined || l === null) continue;
+                          offs.push(Vector(l.x - here.x, l.y - here.y, 0));
+                          if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
+                      }
+                      const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
+                      const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
+                      // hi: the puller's offset off the lane path when the creeps engage (with the step-in `end` is the meet point,
+                      // so a measure along end-to-meet would be 0: review 2026-11-05-pull-half M1).
+                      if (engaged && pull.stepIn === undefined) {
+                          const path = p.timing.lanePath;
+                          pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
+                      }
+                      return at as unknown as Lib.Vec;
+                  }
+                : undefined,
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
-            const w = PullTiming.WaveAt(pull.track, DotaTime());
+            const w = PullTiming.WaveAt(pull.timer);
             return w !== undefined ? w + s.PullTiming.WatchAfterWave : undefined;
         },
         leadDeadline: aggroAt + s.Timing.JobMaxAfterAggro,
@@ -821,34 +1006,54 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
-    const p = planFor(bot, now);
-    if (p === undefined || handled[pid] === p.slot) return false;
+    const full = planFor(bot, now, "full");
+    if (full === undefined || handled[pid] === full.key) return false;
+    // A wave decided a half pull waits for the half's own (later) leave time.
+    const kind = decided[pid]?.slot === full.key ? decided[pid]!.kind : "full";
+    const half = kind === "half" ? planFor(bot, now, "half") : undefined;
+    // No half plan for this camp: the full plan runs and the decision says so, so choice and pull_job agree on pk.
+    if (kind === "half" && half === undefined && decided[pid] !== undefined) decided[pid]!.kind = "full";
+    const p = half ?? full;
     const walk = travel(bot, p);
-    // Once our wave is out it says how early or late it really is (pull_timing's LiveRead, read again every LiveEvery s up
-    // to the hit, slice pull-live); the leave time, the late check and the hit all use the shifted second (pw2: 12 starts
-    // planned against the slot failed `late` while still walking, the hit having moved up to LiveMaxShift earlier).
-    let track = tracks[pid];
-    if (track === undefined || track.slot !== p.slot) {
-        track = PullTiming.Track(p.timing, p.slot);
-        tracks[pid] = track;
+    // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
+    // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
+    let timer = timers[pid];
+    if (timer === undefined || timer.slot !== p.slot) {
+        const cfg = LaneConfig.Settings().PullTiming;
+        timer =
+            p.kind === "half"
+                ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear, 2, bot.GetCurrentMovementSpeed())
+                : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
+        timers[pid] = timer;
     }
-    const hitAt = PullTiming.Update(track, now);
+    const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
-    if (d === undefined || d.slot !== p.slot) {
+    if (d === undefined || d.slot !== p.key) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
-        d = { slot: p.slot, want: Wanted(reading), reading };
+        // The half-pull harness (HalfAll) wants every slot of the half-pulling support, so the hit and step-in get read
+        // many times a game; the lane reading's trigger is checked in normal games.
+        const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
+        const want = Wanted(reading) || harness;
+        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading };
         decided[pid] = d;
         gateWhy[pid] = undefined;
+        if (d.kind === "half") return false;
     }
     const camp = CampStateOf(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
-        handled[pid] = p.slot;
+        handled[pid] = p.key;
         gateWhy[pid] = undefined;
-        choiceLine(bot, d!, go, why, camp);
+        choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
         done(false, d.reading === undefined ? "no-read" : "lane");
+        return false;
+    }
+    // No hit splits the wave: a half that takes all four is the full pull the lane reading turned down.
+    if (d.kind === "half" && timer.margin !== undefined && timer.margin <= 0) {
+        d.hm = timer.margin;
+        done(false, "half-geo");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type, p.timing.waveAfter);
@@ -865,7 +1070,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, startShift: hitAt - p.slot, track, start: camp };
+    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
     const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );

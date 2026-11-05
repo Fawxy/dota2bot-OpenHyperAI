@@ -40,6 +40,7 @@ function IsHeroAlive(pid) for t = 2, 3 do for _, u in ipairs(UNITS[t]) do if u.p
 local CreepMeta = {}
 CreepMeta.__index = CreepMeta
 function CreepMeta:GetAttackTarget() return self.target end
+function CreepMeta:GetAttackRange() return self.range or 100 end
 function CreepMeta:GetHealth() return self.hp end
 function CreepMeta:GetMaxHealth() return self.maxhp end
 function CreepMeta:GetUnitName() return self.name end
@@ -200,8 +201,11 @@ function UnitMeta:GetNearbyHeroes(r, enemy)
 	end
 	return out
 end
+-- Like GetUnitToLocationDistance, on the raw position: in the game the call returns a number for a unit out of vision whose
+-- GetLocation is nil (phhar8: pull_creep dn to a tagged neutral in the frame the watch's GetLocation read errored); whether
+-- that number is the true distance the log does not show.
 function GetUnitToUnitDistance(a, b)
-	local dx, dy = a:GetLocation().x - b:GetLocation().x, a:GetLocation().y - b:GetLocation().y
+	local dx, dy = a.loc.x - b.loc.x, a.loc.y - b.loc.y
 	return math.sqrt(dx * dx + dy * dy)
 end
 -- `listedUnseen`: a creep out of sight the engine still lists, with no location.

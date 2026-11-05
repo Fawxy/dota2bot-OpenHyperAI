@@ -1282,12 +1282,29 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads (slice pull-half;
+        // before it, the wave body's shift and LiveRead's readings).
         sh: "num",
         lv: "num",
-        sf: "num",
-        // Slice pull-live: s0 the shift at the start (sh is the one at the order), pz seconds held after the hit for a late wave.
         s0: "num",
-        pz: "num",
+        // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
+        // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
+        // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
+        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
+        // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
+        // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
+        // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
+        // engaged (negative: back towards the camp).
+        pk: "str",
+        hr: "str",
+        hc: "num",
+        hn: "num",
+        hb: "num",
+        hf: "num",
+        hu: "num",
+        hm: "num",
+        hs: "num",
+        hi: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1295,6 +1312,37 @@ export const EVENTS = {
         gu: "num",
         gd: "num",
         wa: "num",
+        // nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after
+        // the order).
+        nm: "num",
+    },
+    // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
+    // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
+    // attack target became one of the camp's neutrals before the line was written, else 0. The rest are read at the turn
+    // (tr 1) or at its nearest approach to the puller (tr 0): tt seconds after the hit (ht), dp its distance to the puller,
+    // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
+    // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
+    // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
+    // The creep's decision frame, before its target shows: lt seconds after the hit its distance off the lane path first
+    // rose PullJob Leave above its own least so far (it left the lane), ld its distance to the puller and ln to the nearest
+    // tagged neutral then; unset when it never left.
+    pull_creep: {
+        pid: "num",
+        slot: "num",
+        camp: "num",
+        ci: "num",
+        rg: "num",
+        tr: "num",
+        tt: "num",
+        dp: "num",
+        dn: "num",
+        ph: "num",
+        pv: "num",
+        po: "num",
+        ca: "num",
+        lt: "num",
+        ld: "num",
+        ln: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -1358,6 +1406,10 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
+        // Slice pull-half: the pull's kind for kind=pull (full or half); hm a half pull's clearance margin when it stayed for
+        // want of one (why=half-geo; pull_job hm).
+        pk: "str",
+        hm: "num",
     },
     gank: {
         pid: "num",

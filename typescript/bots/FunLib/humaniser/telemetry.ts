@@ -1118,7 +1118,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         c.deadNeutrals.set(d.creep, d.seen);
     }
     for (const u of neutralList) {
-        // A neutral removed this frame can still be listed with no location (cnghar2_B_harness_5, t=624.0).
+        // A neutral removed this frame can still be listed with no location (cnghar2_B_harness_5, t=624.0; phchk1 t=271).
         const loc = u.GetLocation();
         if (loc !== null && loc !== undefined)
             c.neutrals.set(u, { kind: neutralKind(u), x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
