@@ -1001,7 +1001,6 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
     return yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(bot, p, aggroAt), hooks);
 }
 
-/** The pull side of the lane path: our walking wave is everything of ours short of the meet point (the counterfactual). */
 /**
  * Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
  * time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
