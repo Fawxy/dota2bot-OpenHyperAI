@@ -713,6 +713,13 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.phase === "approach") {
         const at = a.approach!;
+        // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
+        // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
+        const heroes = enemyHeroes(bot, 1600);
+        if (!heroSafe(at, heroes) || (a.kind === "feed" && !heroSafe(a.back, heroes))) {
+            finish(bot, a, "unsafe", now);
+            return false;
+        }
         if (GetUnitToLocationDistance(bot, at) > 60 && now - a.startedAt < a.approachTime) {
             bot.Action_MoveToLocation(at);
             return true;

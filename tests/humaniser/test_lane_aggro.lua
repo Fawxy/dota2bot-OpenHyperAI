@@ -102,13 +102,77 @@ do
 	local orders = ActionsOf(1, "AttackUnit")
 	check("re-pick: the order goes to the hero still seen", #orders == 1 and orders[1].args[1] == farH, #orders)
 	check("re-pick: the move is still open", Ag.Pending(bot))
+end
 
-	Ag, bot, nearH, farH = world()
-	Ag.StartBack(bot, Vector(-3000, 5000))
-	nearH.CanBeSeen = function() return false end
-	farH.CanBeSeen = function() return false end
+-- A feed scene on the real top lane path from Radiant's T1 (the world's T1 moved onto it): our ranged creep `S` from the T1,
+-- two of their melee creeps on it 200 further out, the core 700 back from the creep (a walk of about 500 to the approach
+-- point), two enemy heroes 1600 out. The lane push reading says the clash is beyond the target point.
+local function feedScene(S)
+	local dota = require("bots/ts_libs/dota/index")
+	local H = LaneFresh({ Enable = true }, { laneAggro = true, telemetry = { Enable = true } })
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	local LP = require("bots/FunLib/humaniser/lane_push")
+	LP.Read = function() return { own = 2000, move = 0, q = 0.5, state = "hold", clash = 0, tower = false } end
+	local Ag = require("bots/FunLib/humaniser/lane_aggro")
+	local path = LP.PathOf(dota.Lane.Top)
+	local t1, dir = LP.OwnT1(path, 2)
+	local function pt(own) local p = LP.PointAt(path, t1 + dir * own) return p[1], p[2] end
+	local tx, ty = pt(0)
+	TOWERS_W[2][dota.Tower.Top1].loc = Vector(tx, ty)
+	local x, y = pt(S)
+	MakeCreep({ team = 2, x = x, y = y, name = "npc_dota_creep_goodguys_ranged" })
+	for i = 1, 2 do local cx, cy = pt(S + 200) MakeCreep({ team = 3, x = cx + 20 * i, y = cy }) end
+	local bx, by = pt(S - 700)
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(bx, by), hp = 600 })
+	bot.maxhp, bot.lane, bot.pos = 600, dota.Lane.Top, 3
+	local hx, hy = pt(S + 1600)
+	local h1 = MakeUnit({ pid = 5, team = 3, loc = Vector(hx, hy) })
+	local h2 = MakeUnit({ pid = 6, team = 3, loc = Vector(hx + 300, hy) })
+	T = 30
+	local function has(pat) for _, l in ipairs(lines) do if l:find(pat) then return true end end return false end
+	return Ag, bot, h1, h2, has
+end
+
+-- The feed's walk back would end 750 from our T1, inside the side lane's 900 hold point: no draw (wave_hold meets them there).
+do
+	local Ag, bot, _, _, has = feedScene(1000)
 	Ag.Step(bot)
-	check("re-pick: no enemy hero seen at all: no order, the move ends", #ActionsOf(1, "AttackUnit") == 0 and not Ag.Pending(bot))
+	check("inside hold: the feed does not start", not Ag.Pending(bot) and #ActionsOf(1) == 0)
+	check("inside hold: the skip says why", has("why=feed:inside_hold"))
+	Ag, bot = feedScene(1400)
+	Ag.Step(bot)
+	check("outside hold (the walk back ends 1150 out): the feed starts its approach", Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == 1)
+end
+
+-- The feed's own approach: the named hero leaves vision mid-walk; the order goes to the hero still seen when the bot arrives.
+do
+	local Ag, bot, h1, h2, has = feedScene(1400)
+	Ag.Step(bot)
+	h1.CanBeSeen = function() return false end
+	local orders
+	for _ = 1, 16 do
+		T = T + 0.25
+		Ag.Step(bot)
+		orders = ActionsOf(1, "AttackUnit")
+		if #orders > 0 then break end
+		local mv = ActionsOf(1, "MoveToLocation")
+		bot.loc = mv[#mv].args[1]
+	end
+	check("feed re-pick: the move is not cancelled", not has("result=cancelled"))
+	check("feed re-pick: the draw is ordered on the hero still seen", #orders == 1 and orders[1].args[1] == h2, #orders)
+end
+
+-- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it
+-- ends the move before the order.
+do
+	local Ag, bot, h1, _, has = feedScene(1400)
+	Ag.Step(bot)
+	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
+	h1.loc = Vector(at.x + 300, at.y)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("unsafe mid-walk: the move ends `unsafe` with no draw order", has("result=unsafe") and not Ag.Pending(bot) and #ActionsOf(1, "AttackUnit") == 0)
 end
 
 finish()

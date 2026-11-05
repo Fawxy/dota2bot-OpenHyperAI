@@ -1039,6 +1039,11 @@ local function act(bot, a, now)
     end
     if a.phase == "approach" then
         local at = a.approach
+        local heroes = enemyHeroes(bot, 1600)
+        if not heroSafe(at, heroes) or a.kind == "feed" and not heroSafe(a.back, heroes) then
+            finish(bot, a, "unsafe", now)
+            return false
+        end
         if GetUnitToLocationDistance(bot, at) > 60 and now - a.startedAt < a.approachTime then
             bot:Action_MoveToLocation(at)
             return true
@@ -1105,7 +1110,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue181
+                    local __continue182
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1113,16 +1118,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue181 = true
+                            __continue182 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue181 = true
+                        __continue182 = true
                     until true
-                    if not __continue181 then
+                    if not __continue182 then
                         break
                     end
                 end
