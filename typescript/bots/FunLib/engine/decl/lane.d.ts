@@ -14,7 +14,10 @@ export interface LaneFarmOpts {
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
      * the verb asks whether to stay on it (its fresh facts are among `targets`): returning another creep ends the
      * attempt for it; returning `current`'s creep keeps waiting, and undefined keeps waiting or, with `dropLost`, releases it. Whether a switch is worth the
-     * attack cooldown is the caller's rule.
+     * attack cooldown is the caller's rule. `pick` is asked on every scan, also when laneTargets offers nothing (`targets`
+     * empty), so it may answer a creep of its own: a target of kind `prehit` (built by the caller; laneTargets never offers
+     * one) is carried out as one attack on the creep (`attackAndConfirm`, confirmed only by the bot's own attack firing),
+     * after which the verb scans again. With `retarget`, a `prehit` on the creep an attempt waits for replaces that attempt.
      */
     pick?: (this: void, targets: LaneTarget[], current?: LaneTarget) => LaneTarget | undefined;
     /** An attempt is dropped once the bot is this far from the spot. Default 900. */
@@ -48,7 +51,7 @@ export interface LaneFarmOpts {
 /**
  * Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
  * the creep `pick` chooses from laneTargets (walking in so it arrives as the creep becomes killable), swings with the
- * skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
- * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
+ * skill-scaled lastHit/deny verbs (a `prehit` pick with one plain attack), then walks back. Never ends ok by itself; ends on death, `deadline`,
+ * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny` / `prehit`.
  */
 export declare function laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, opts?: LaneFarmOpts): TaskBody;

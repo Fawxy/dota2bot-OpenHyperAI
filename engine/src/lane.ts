@@ -1,6 +1,6 @@
 import { get } from "./adapter";
-import { HoldOpts, holdAt } from "./verbs";
-import { deny, lastHit, LaneTarget, laneTargets, LastHitOpts } from "./lasthit";
+import { attackAndConfirm, HoldOpts, holdAt } from "./verbs";
+import { deny, lastHit, LaneTarget, laneTargets, LastHitOpts, ownHitTime } from "./lasthit";
 import { Result, TaskBody, TaskUnit, Vec } from "./types";
 
 export interface LaneFarmOpts {
@@ -15,7 +15,10 @@ export interface LaneFarmOpts {
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
      * the verb asks whether to stay on it (its fresh facts are among `targets`): returning another creep ends the
      * attempt for it; returning `current`'s creep keeps waiting, and undefined keeps waiting or, with `dropLost`, releases it. Whether a switch is worth the
-     * attack cooldown is the caller's rule.
+     * attack cooldown is the caller's rule. `pick` is asked on every scan, also when laneTargets offers nothing (`targets`
+     * empty), so it may answer a creep of its own: a target of kind `prehit` (built by the caller; laneTargets never offers
+     * one) is carried out as one attack on the creep (`attackAndConfirm`, confirmed only by the bot's own attack firing),
+     * after which the verb scans again. With `retarget`, a `prehit` on the creep an attempt waits for replaces that attempt.
      */
     pick?: (this: void, targets: LaneTarget[], current?: LaneTarget) => LaneTarget | undefined;
     /** An attempt is dropped once the bot is this far from the spot. Default 900. */
@@ -47,6 +50,9 @@ export interface LaneFarmOpts {
     interruptIf?: (this: void) => boolean;
 }
 
+/** Seconds past the expected attack before a pre-hit that has not fired counts as `missed`. */
+const PREHIT_SLACK = 0.5;
+
 function dist(a: Vec, b: Vec): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -61,8 +67,8 @@ function enemyHeroNear(bot: TaskUnit, r: number): boolean {
 /**
  * Posture verb for a laner: holds `spot()` (re-read every frame) and, while `lastHits()` allows, breaks off for
  * the creep `pick` chooses from laneTargets (walking in so it arrives as the creep becomes killable), swings with the
- * skill-scaled lastHit/deny verbs, then walks back. Never ends ok by itself; ends on death, `deadline`,
- * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny`.
+ * skill-scaled lastHit/deny verbs (a `prehit` pick with one plain attack), then walks back. Never ends ok by itself; ends on death, `deadline`,
+ * `interruptIf`. Labels phases `walk` / `hold` / `lasthit` / `deny` / `prehit`.
  */
 export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, opts: LaneFarmOpts = {}): TaskBody {
     const near = opts.near ?? 600;
@@ -83,8 +89,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
         // Not beyond the leash: an attempt there is dropped at once, and picking it again would spin.
         if (away() > leash) return false;
-        const offered = laneTargets(bot, { within: opts.within });
-        target = offered.length > 0 ? opts.pick(offered) : undefined;
+        target = opts.pick(laneTargets(bot, { within: opts.within }));
         return target !== undefined;
     };
     const stop = (): boolean => (opts.interruptIf !== undefined && opts.interruptIf()) || (opts.deadline !== undefined && get()!.now() >= opts.deadline);
@@ -110,11 +115,11 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
                 dropped = true;
                 return true;
             }
-            if (next === undefined || next.creep === current.creep) return false;
+            if (next === undefined || (next.creep === current.creep && next.kind === current.kind)) return false;
             target = next;
             return true;
         }
-        target = offered.length > 0 ? opts.pick(offered) : undefined;
+        target = opts.pick(offered);
         if (target === undefined && opts.dropLost) dropped = true;
         return target !== undefined || dropped;
     };
@@ -159,7 +164,24 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             hold: opts.hold?.hold,
             interruptIf: () => stop() || away() > leash || retarget(t),
         };
-        const res = t.kind === "lasthit" ? yield* lastHit(bot, o) : yield* deny(bot, o);
+        const res =
+            t.kind === "prehit"
+                ? yield* attackAndConfirm(bot, () => (t.creep.IsAlive() ? t.creep : undefined), {
+                      findFor: 0,
+                      // The walk into range, the swing, and the attack cooldown left: past that the attack did not fire.
+                      confirmFor: t.walk + ownHitTime(bot, t.creep) + PREHIT_SLACK,
+                      aggroConfirms: false,
+                      hold: opts.hold?.hold,
+                      deadline: opts.deadline,
+                      interruptIf: () => stop() || away() > leash,
+                  })
+                : t.kind === "lasthit"
+                  ? yield* lastHit(bot, o)
+                  : yield* deny(bot, o);
+        // An attack order outlives the one attack it was given for: the bot keeps swinging at the creep until it dies or
+        // another order comes, and a last-hit wait in range gives none (prhchk5: a second, unplanned hit about one attack
+        // cycle after every pre-hit). A pre-hit is one attack, so its order is cancelled once it has fired or failed.
+        if (t.kind === "prehit") bot.Action_MoveToLocation(bot.GetLocation());
         if (res.reason === "interrupted" && (target !== undefined || dropped)) res.message = `${res.message ?? ""} sw=${target !== undefined ? 1 : 0}`;
         if (opts.onAttempt !== undefined) opts.onAttempt(t, res, contested);
         if (res.reason === "dead") return res;

@@ -903,7 +903,60 @@ export const EVENTS = {
         cx: "num",
         cy: "num",
         ca: "num",
+        /** 1 when this bot pre-hit the creep earlier (states/pre_hit): last hits per pre-hit. */
+        ph: "bool",
         msg: "str",
+    },
+    /** A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one per attempt. */
+    prehit: {
+        pid: "num",
+        /** ok once our attack fired (attackAndConfirm), fail missed / no_target (the creep died first) / interrupted / dead. */
+        result: "str",
+        reason: "str",
+        ranged: "bool",
+        /** At the decision: walk into range (s), when the forecast has the creep dead (s), its HP, our earliest landing t0 (s), our low-roll damage. */
+        walk: "num",
+        dies: "num",
+        hp: "num",
+        t0: "num",
+        lo: "num",
+        /** The plan (states/pre_hit Plan): pre-hits before the kill, the kill's landing (s), the HP it lands on and its margin from the kill range's edges. */
+        np: "num",
+        tk: "num",
+        hk: "num",
+        mg: "num",
+        /** Reachable last hits offered at the pick. */
+        ol: "num",
+        contested: "bool",
+    },
+    /**
+     * Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on later scans (`hs`, "s:hp" from the decision)
+     * beside the forecast's (`fs`, spread, without our hit) until it dies (`dead`, `end` s) or 2.5 s pass. At the decision:
+     * `hp`, our low roll `lo`, the tower's hit after armour `tw` and `GetSecondsPerAttack` `twp`, the forecast's own tower hit
+     * `td`, its known hits within 1 s by kind (`kt` tower, `kc` creep, `kh` hero, `ks` self), unphased attackers `nu` and their
+     * DPS `ud`, and our lane creeps `ac` and other own heroes `ah` attacking the creep; `fdies` the forecast's death time.
+     */
+    prehit_fc: {
+        pid: "num",
+        hp: "num",
+        lo: "num",
+        tw: "num",
+        td: "num",
+        twp: "num",
+        kt: "num",
+        kc: "num",
+        kh: "num",
+        ks: "num",
+        nu: "num",
+        ud: "num",
+        ac: "num",
+        ah: "num",
+        end: "num",
+        dead: "bool",
+        fdies: "num",
+        hs: "str",
+        fs: "str",
+        fire: "str",
     },
     /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
