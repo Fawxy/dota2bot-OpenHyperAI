@@ -179,12 +179,15 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["ne", ne !== undefined ? math.floor(ne) : undefined],
         ["nk", nk],
         ["nr", nr !== undefined ? math.floor(nr) : undefined],
+        ["cl", info?.clash !== undefined ? math.floor(info.clash) : undefined],
+        ["fo", info?.far !== undefined ? math.floor(info.far) : undefined],
     ]);
 }
 
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
     if (!IsEnabled()) return;
+    LaneAggro.Tick(bot);
     if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot) && !SupportDeny.Applies(bot)) return;
     const l = lib();
     if (l === undefined) return;
@@ -308,7 +311,11 @@ export function SupportStep(bot: Unit): boolean {
  * after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
  */
 export function CoreAggroStep(bot: Unit): boolean {
-    if (!IsEnabled() || !BodyLastHits(bot)) return false;
+    if (!IsEnabled()) return false;
+    // While a draw gives the orders, this Think returns before the body is stepped, so the engine ends the body's task
+    // (stalled, never_started) until the state restarts it; a core's open draw is stepped regardless or it ends `stale`
+    // (awchk1). Only the open one: no new draw starts with the body off, and a support's draw stays support_lane's.
+    if (!BodyLastHits(bot)) return CoreLastHit.Applies(bot) && LaneAggro.StepOpen(bot);
     // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
     WaveHold.Step(bot);
     return LaneAggro.Step(bot);

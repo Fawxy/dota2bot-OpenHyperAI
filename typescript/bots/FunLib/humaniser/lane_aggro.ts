@@ -24,6 +24,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
+import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
@@ -69,10 +70,15 @@ export const SETTINGS = {
     /** Feed: enemy melee creeps on our wave within this of our ranged creep, and at least FeedMinCreeps of them. */
     FightR: 700,
     FeedMinCreeps: 2,
-    /** Feed: the approach point stands this far back (toward our tower) from the enemy creeps' centre, at most ApproachMax walk away. */
+    /**
+     * Feed: the approach point stands this far back (toward our tower) from the enemy creeps' centre, at most ApproachMax walk
+     * away (user 06/11/2026: lane_spot keeps an offlaner 560-940 from it, obs0611 mark 1). The walk gets its own time
+     * (ApproachTime): distance / move speed + ApproachSlack, at most ApproachTimeMax.
+     */
     ApproachBack: 380,
-    ApproachMax: 350,
-    ApproachTime: 1.2,
+    ApproachMax: 900,
+    ApproachSlack: 0.4,
+    ApproachTimeMax: 3.5,
     /** Feed: walk back to this far behind our ranged creep, so it is the nearest of ours when the creeps re-pick. */
     FeedBack: 250,
     /** Feed: the drop (attack order on our ranged creep) once a drawn creep is this close to it, after DropAfter, or at DropBy. */
@@ -95,10 +101,19 @@ export const SETTINGS = {
     DragWalk: 1.2,
     /** A lane hit due this soon (any kind) keeps the body's frame: no feed. */
     BusyWithin: 1.5,
-    /** An attempt not stepped for this long ends `stale` (its caller lost the frame, e.g. OHA's retreat): acting phases (approach,
-     * walk) and the watch. Review 2026-11-05-lane-aggro-41120ba F1: a frozen move resumed past its gates. */
+    /**
+     * An attempt not stepped for this long while another mode held the bot ends `stale` (its caller lost the frame, e.g. OHA's
+     * retreat): acting phases (approach, walk) and the watch. Review 2026-11-05-lane-aggro-41120ba F1: a frozen move resumed
+     * past its gates. A gap with the bot in laning mode throughout (a body swing, a Think that did not reach the step: awchk2
+     * 5 of 26 stales) is resumed, up to StaleCap.
+     */
     StaleActing: 0.5,
     StaleWatch: 3,
+    StaleCap: 10,
+    /** During the approach the move ends `unsafe` only once an enemy hero's attack reaches the approach point (or the feed's
+     *  walk-back point) with this margin: less than HeroMargin at the start, so a walk started safe is not dropped by a few
+     *  units (awchk2: 9 feed walks ended within about 0.5 s of their start, no HP lost). */
+    UnsafeMargin: 0,
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** Results are read until then: the fed creep's death, the dragged creep's death. */
@@ -137,6 +152,8 @@ interface Attempt {
     own?: number;
     fc?: number;
     approachTime: number;
+    /** Distance from the bot to the approach point at the start. */
+    ad?: number;
     /** Enemy lane creeps within 500 at the order and where they stood. */
     start?: { unit: Unit; x: number; y: number }[];
     mv: number;
@@ -156,6 +173,8 @@ interface Attempt {
     hd?: number;
     /** Back: the draws given. */
     nd?: number;
+    /** The first other mode seen holding the bot since the last step (Tick). */
+    left?: number;
 }
 
 const attempts: Record<number, Attempt | undefined> = {};
@@ -235,9 +254,21 @@ export function LaneHeld(now: number, pid: number, held: { pid: number; at: numb
     return held !== undefined && held.pid !== pid && now - held.at < SETTINGS.Cooldown;
 }
 
-/** Whether an attempt last stepped `gap` seconds ago is stale: the watch tolerates a short loss of the frame, acting does not. */
-export function Stale(phase: PhaseName, gap: number): boolean {
+/**
+ * Whether an attempt last stepped `gap` seconds ago is stale: after another mode held the bot (`left`), the watch tolerates a
+ * short loss of the frame and acting does not; with the bot in laning throughout, only a gap past StaleCap.
+ */
+export function Stale(phase: PhaseName, gap: number, left: boolean = true): boolean {
+    if (!left) return gap > SETTINGS.StaleCap;
     return gap > (phase === "watch" ? SETTINGS.StaleWatch : SETTINGS.StaleActing);
+}
+
+/** Every frame (States.Tick, from ItemUsageThink, whichever mode runs): notes another mode holding the bot during an attempt. */
+export function Tick(bot: Unit): void {
+    const a = attempts[bot.GetPlayerID()];
+    if (a === undefined || a.left !== undefined) return;
+    const mode = bot.GetActiveMode();
+    if (mode !== BotMode.Laning) a.left = mode;
 }
 
 /**
@@ -259,6 +290,21 @@ export function TowerPoint(tx: number, ty: number, cx: number, cy: number): LuaM
     const len = math.max(1, math.sqrt(dx * dx + dy * dy));
     const r = math.max(len + SETTINGS.TowerPast, SETTINGS.TowerOrderR);
     return $multi(tx + (dx / len) * r, ty + (dy / len) * r);
+}
+
+/** Pure: seconds the bot gets to walk `dist` to the approach point at `speed` before it orders from where it stands. */
+export function ApproachTime(dist: number, speed: number): number {
+    return math.min(SETTINGS.ApproachTimeMax, dist / math.max(1, speed) + SETTINGS.ApproachSlack);
+}
+
+/**
+ * Pure: whether the point `(x, y)` lies inside `team`'s wave hold point on `lane` (closer to our T1 along the path than lane_push
+ * TargetOf). The feed walks their creeps to its back point, so a back point inside it draws them where wave_hold meets them.
+ */
+export function InsideHold(path: LanePath, team: number, lane: Lane, x: number, y: number): boolean {
+    const [s] = LanePush.Project(path, x, y);
+    const [t1, dir] = LanePush.OwnT1(path, team);
+    return dir * (s - t1) < LanePush.TargetOf(lane);
 }
 
 /** Pure: the feed's drop now? `t` seconds since the order, `nearest` the closest drawn creep to our ranged creep. */
@@ -316,9 +362,9 @@ function enemyHeroes(bot: Unit, r: number): Unit[] {
 }
 
 /** No enemy hero reaches `at` (attack range + radii + margin). */
-function heroSafe(at: Vector, heroes: Unit[]): boolean {
+function heroSafe(at: Vector, heroes: Unit[], margin: number = SETTINGS.HeroMargin): boolean {
     for (const h of heroes) {
-        if (GetUnitToLocationDistance(h, at) <= h.GetAttackRange() + h.GetBoundingRadius() * 2 + SETTINGS.HeroMargin) return false;
+        if (GetUnitToLocationDistance(h, at) <= h.GetAttackRange() + h.GetBoundingRadius() * 2 + margin) return false;
     }
     return true;
 }
@@ -405,7 +451,8 @@ function start(bot: Unit, a: Attempt): void {
     attempts[bot.GetPlayerID()] = a;
 }
 
-type Try = LuaMultiReturn<[Attempt | undefined, string]>;
+/** The attempt, or why not and (feed `approach_far`) the approach distance. */
+type Try = LuaMultiReturn<[Attempt | undefined, string, number?]>;
 
 function tryDrag(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
     const here = bot.GetLocation();
@@ -454,6 +501,7 @@ function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
     const back = along(at, backDir(team, bot.GetAssignedLane(), at), SETTINGS.TowerBack);
     const a = newAttempt(bot, "tower", "approach", hero, drawable[0], back, at, now);
     a.tower = tw;
+    a.ad = math.floor(GetUnitToLocationDistance(bot, at));
     a.approachTime = SETTINGS.TowerApproachTime;
     return $multi(a, "go");
 }
@@ -487,15 +535,20 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const centre = Vector(cx / fighting.length, cy / fighting.length, ranged.GetLocation().z);
     const dir = backDir(team, lane, centre);
     const approach = along(centre, dir, SETTINGS.ApproachBack);
-    if (GetUnitToLocationDistance(bot, approach) > SETTINGS.ApproachMax) return $multi(undefined, "approach_far");
+    const ad = GetUnitToLocationDistance(bot, approach);
+    if (ad > SETTINGS.ApproachMax) return $multi(undefined, "approach_far", ad);
     if (enemyCreepsNear(bot, approach, SETTINGS.DrawR).length < SETTINGS.FeedMinCreeps) return $multi(undefined, "approach_creeps");
     const back = along(ranged.GetLocation(), dir, SETTINGS.FeedBack);
+    const path = LanePush.PathOf(lane);
+    if (path !== undefined && InsideHold(path, team, lane, back.x, back.y)) return $multi(undefined, "inside_hold");
     if (!heroSafe(approach, heroes) || !heroSafe(back, heroes)) return $multi(undefined, "unsafe");
     if (nearTower(approach, team)) return $multi(undefined, "tower");
     if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return $multi(undefined, "busy");
     const hero = orderTarget(bot);
     if (hero === undefined) return $multi(undefined, "no_target");
     const a = newAttempt(bot, "feed", "approach", hero, ranged, back, approach, now);
+    a.ad = math.floor(ad);
+    a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
     a.q = math.floor(r!.q * 100) / 100;
     a.st = r!.state;
     a.own = math.floor(r!.own);
@@ -514,7 +567,7 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
         creep,
         mv: 0,
         sty: 0,
-        approachTime: SETTINGS.ApproachTime,
+        approachTime: SETTINGS.ApproachTimeMax,
         approach,
         back,
         hp0: bot.GetHealth(),
@@ -528,7 +581,7 @@ function newAttempt(bot: Unit, kind: Kind, phase: PhaseName, hero: Unit, creep: 
     };
 }
 
-function finish(bot: Unit, a: Attempt, result: string, now: number): void {
+function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number): void {
     attempts[bot.GetPlayerID()] = undefined;
     if (a.kind === "feed") Laning.SetFed(bot, undefined);
     if (a.kind === "tower") towerEnd[bot.GetPlayerID()] = now;
@@ -554,6 +607,11 @@ function finish(bot: Unit, a: Attempt, result: string, now: number): void {
         ["out", a.out],
         ["sty", a.kind === "feed" ? a.sty : undefined],
         ["nd", a.nd],
+        ["ad", a.ad],
+        ["apt", a.ad !== undefined ? math.floor(a.approachTime * 100) / 100 : undefined],
+        ["md", result === "stale" ? a.left ?? bot.GetActiveMode() : undefined],
+        ["lbl", result === "stale" ? Tasks.Current(bot)?.label ?? "-" : undefined],
+        ["gap", gap !== undefined ? math.floor(gap * 100) / 100 : undefined],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
     ]);
@@ -643,6 +701,19 @@ function watch(bot: Unit, a: Attempt, now: number): void {
     }
 }
 
+/**
+ * Keeps the order's hero, or re-picks it (orderTarget's rule) once it has left vision: any visible enemy hero draws the creeps
+ * (EC-053), so losing the first one need not end the move (obs0611: 11% of feeds ended `cancelled` that way). False when none is seen.
+ */
+function retarget(bot: Unit, a: Attempt): boolean {
+    if (valid(a.hero)) return true;
+    const h = orderTarget(bot);
+    if (h === undefined) return false;
+    a.hero = h;
+    a.tpid = h.GetPlayerID();
+    return true;
+}
+
 /** The move's frame: true while it gives the bot's orders (approach, the draw, the walk back). */
 function act(bot: Unit, a: Attempt, now: number): boolean {
     const pid = bot.GetPlayerID();
@@ -651,11 +722,13 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         finish(bot, a, "died", now);
         return false;
     }
-    if (!valid(a.hero) || (a.kind === "drag" && !live(a.creep))) {
-        if (a.orderedAt === undefined) {
-            finish(bot, a, "cancelled", now);
-            return false;
-        }
+    if (a.orderedAt === undefined && !retarget(bot, a)) {
+        finish(bot, a, "cancelled", now);
+        return false;
+    }
+    if (a.orderedAt === undefined && a.kind === "drag" && !live(a.creep)) {
+        finish(bot, a, "cancelled", now);
+        return false;
     }
     if ((a.hp0 - bot.GetHealth()) / math.max(1, bot.GetMaxHealth()) > SETTINGS.HurtShare) {
         finish(bot, a, "hurt", now);
@@ -663,11 +736,18 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.phase === "approach") {
         const at = a.approach!;
+        // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
+        // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
+        const heroes = enemyHeroes(bot, 1600);
+        if (!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin))) {
+            finish(bot, a, "unsafe", now);
+            return false;
+        }
         if (GetUnitToLocationDistance(bot, at) > 60 && now - a.startedAt < a.approachTime) {
             bot.Action_MoveToLocation(at);
             return true;
         }
-        if (!live(a.creep) || !valid(a.hero)) {
+        if (!live(a.creep) || !retarget(bot, a)) {
             finish(bot, a, "cancelled", now);
             return false;
         }
@@ -725,7 +805,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.kind === "back") {
         if (GetUnitToLocationDistance(bot, a.back) > SETTINGS.BackArrive && now - a.startedAt < SETTINGS.BackWalk) {
-            if (drawnOn(bot, bot).length === 0 && CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid)) && valid(a.hero)) {
+            if (drawnOn(bot, bot).length === 0 && CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid)) && retarget(bot, a)) {
                 bot.Action_AttackUnit(a.hero, true);
                 a.orderedAt = now;
                 orderedAt[pid] = now;
@@ -761,7 +841,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     return false;
 }
 
-function skip(bot: Unit, why: string, now: number): void {
+function skip(bot: Unit, why: string, now: number, ad?: number): void {
     const pid = bot.GetPlayerID();
     const last = lastSkip[pid];
     if (last !== undefined && (last.why === why || now - last.at < SETTINGS.SkipEvery)) return;
@@ -770,7 +850,33 @@ function skip(bot: Unit, why: string, now: number): void {
         ["pid", pid],
         ["role", roleOf(bot) ?? "?"],
         ["why", why],
+        ["ad", ad !== undefined ? math.floor(ad) : undefined],
     ]);
+}
+
+/** Steps the bot's open attempt: the acting frame's result, or undefined when nothing acted (watching, ended or none). */
+function stepOpen(bot: Unit, now: number): boolean | undefined {
+    const pid = bot.GetPlayerID();
+    const a = attempts[pid];
+    if (a !== undefined && Stale(a.phase, now - a.steppedAt, a.left !== undefined)) finish(bot, a, "stale", now, now - a.steppedAt);
+    else if (a !== undefined) {
+        a.steppedAt = now;
+        a.left = undefined;
+    }
+    if (a === undefined || attempts[pid] !== a) return undefined;
+    if (a.phase !== "watch") return act(bot, a, now);
+    if (a.kind === "feed") {
+        // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
+        Laning.SetFed(bot, a.creep);
+        if (Laning.SpotInfo(bot)?.anchor === "fed") a.sty = 1;
+    }
+    watch(bot, a, now);
+    return undefined;
+}
+
+/** Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running. */
+export function StepOpen(bot: Unit): boolean {
+    return stepOpen(bot, DotaTime()) ?? false;
 }
 
 /**
@@ -780,21 +886,8 @@ function skip(bot: Unit, why: string, now: number): void {
 export function Step(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
-    const a = attempts[pid];
-    if (a !== undefined && Stale(a.phase, now - a.steppedAt)) finish(bot, a, "stale", now);
-    else if (a !== undefined) a.steppedAt = now;
-    if (a !== undefined && attempts[pid] === a) {
-        if (a.phase === "watch") {
-            if (a.kind === "feed") {
-                // The deny reach is positioning's: lane_spot anchors on the fed creep once it is going down (H1 input `fed`).
-                Laning.SetFed(bot, a.creep);
-                if (Laning.SpotInfo(bot)?.anchor === "fed") a.sty = 1;
-            }
-            watch(bot, a, now);
-        } else {
-            return act(bot, a, now);
-        }
-    }
+    const acted = stepOpen(bot, now);
+    if (acted !== undefined) return acted;
     if (attempts[pid] !== undefined || !Owns(bot)) return false;
     const last = decidedAt[pid];
     if (last !== undefined && now - last < SETTINGS.Every) return false;
@@ -811,18 +904,20 @@ export function Step(bot: Unit): boolean {
     }
     let next = tryDrag(bot, heroes, now);
     let why = "drag";
+    let ad: number | undefined;
     if (next === undefined) {
         const [tw, twWhy] = tryTower(bot, heroes, now);
         next = tw;
         why = "tower:" + twWhy;
         if (next === undefined && twWhy === "none") {
-            const [fd, fdWhy] = tryFeed(bot, heroes, now);
+            const [fd, fdWhy, fdAd] = tryFeed(bot, heroes, now);
             next = fd;
+            ad = fdAd;
             why = "feed:" + fdWhy;
         }
     }
     if (next === undefined) {
-        skip(bot, why, now);
+        skip(bot, why, now, ad);
         return false;
     }
     lastSkip[pid] = undefined;
