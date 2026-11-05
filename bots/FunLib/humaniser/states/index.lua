@@ -57,6 +57,7 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
+local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -395,6 +396,14 @@ function ____exports.SupportStep(bot)
         }
     )
     return acted ~= nil
+end
+--- Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, stepped by mode_laning_generic
+-- after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
+function ____exports.CoreAggroStep(bot)
+    if not ____exports.IsEnabled() or not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    return LaneAggro.Step(bot)
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)

@@ -367,6 +367,8 @@ if bOwnsThink then
 			if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
 			return
 		end
+		-- Ours.LaneAggro: a core's creep draw (lane_aggro feed, drag) before OHA's techniques and the body's next scan.
+		if States.CoreAggroStep(bot) then return end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.

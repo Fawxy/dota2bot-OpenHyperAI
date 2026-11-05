@@ -379,6 +379,35 @@
    "ed": "str",
    "ns": "str"
   },
+  "aggro": {
+   "pid": "num",
+   "role": "str",
+   "kind": "str",
+   "result": "str",
+   "tgt": "num",
+   "near": "num",
+   "drawn": "num",
+   "mv": "num",
+   "onr": "num",
+   "rhp": "num",
+   "dhp": "num",
+   "hp": "num",
+   "q": "num",
+   "st": "str",
+   "hd": "num",
+   "drop": "num",
+   "dur": "num",
+   "own": "num",
+   "fc": "num",
+   "td": "num",
+   "out": "num",
+   "sty": "num"
+  },
+  "aggro_skip": {
+   "pid": "num",
+   "role": "str",
+   "why": "str"
+  },
   "lane_tech": {
    "pid": "num",
    "tech": "str",
@@ -1253,6 +1282,16 @@
    "ec": "text",
    "ed": "text",
    "ns": "text"
+  },
+  "ev_aggro": {
+   "role": "text",
+   "kind": "text",
+   "result": "text",
+   "st": "text"
+  },
+  "ev_aggro_skip": {
+   "role": "text",
+   "why": "text"
   },
   "ev_lane_tech": {
    "tech": "text",

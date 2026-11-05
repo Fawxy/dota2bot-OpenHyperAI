@@ -9,6 +9,11 @@ package.loaded["bots/FunLib/humaniser/states/laning"] = {
 	HitOffered = function() return world.offered end,
 	OwnsSpot = function() return world.spot end,
 }
+package.loaded["bots/FunLib/humaniser/lane_aggro"] = {
+	Owns = function() return world.aggro == true end,
+	Pending = function() return world.aggroPending == true end,
+	Step = function() world.aggroSteps = (world.aggroSteps or 0) + 1 return world.aggroActs ~= false end,
+}
 package.loaded["bots/FunLib/humaniser/states/support_lane"] = nil
 local SupportLane = require("bots/FunLib/humaniser/states/support_lane")
 
@@ -62,3 +67,28 @@ do
 end
 
 finish()
+
+-- Slice lane-aggro: a support whose lane core is away draws creeps after its lane hits and before the hold.
+do
+	world.denyOnly, world.spot, world.aggro, world.aggroSteps = true, true, true, 0
+	world.offered = true
+	local c, o = ctx({ running = true, label = "hold" })
+	check("core away, a hit offered: the hit goes first, no draw", SupportLane.Step({}, c) == "hit" and world.aggroSteps == 0)
+	world.offered = false
+	c, o = ctx({ running = true, label = "hold" })
+	check("core away, no hit: the aggro step takes the frame before the hold", SupportLane.Step({}, c) == "aggro" and o.steps == 0)
+	world.aggroActs = false
+	c, o = ctx({ running = true, label = "hold" })
+	check("aggro step gives no order: the hold still runs", SupportLane.Step({}, c) == "hold" and o.steps == 1)
+	world.aggroActs, world.aggroSteps = nil, 0
+	c, o = ctx({ running = false })
+	check("body not running (another state): no draw", SupportLane.Step({}, c) == nil and world.aggroSteps == 0)
+	-- Review lane-aggro F1: the core came back mid-move; the support's open attempt is still stepped so it ends cleanly.
+	world.aggro, world.aggroPending, world.aggroActs, world.aggroSteps = false, true, false, 0
+	c, o = ctx({ running = true, label = "hold" })
+	check("core back, attempt open: the aggro step still runs it", SupportLane.Step({}, c) == "hold" and world.aggroSteps == 1)
+	world.aggroPending, world.aggroSteps = false, 0
+	c, o = ctx({ running = true, label = "hold" })
+	check("core back, nothing open: no aggro step", SupportLane.Step({}, c) == "hold" and world.aggroSteps == 0)
+	world.aggro, world.aggroActs = false, nil
+end

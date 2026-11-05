@@ -390,6 +390,54 @@ export const EVENTS = {
         ed: "str",
         ns: "str",
     },
+    /** Slice lane-aggro: one line per draw (lane_aggro). */
+    aggro: {
+        pid: "num",
+        /** `core`, or `support` (its lane core away). */
+        role: "str",
+        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower) or `drag` (a dying creep
+         *  away from an enemy hero). */
+        kind: "str",
+        /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
+         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled`, `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+        result: "str",
+        tgt: "num",
+        /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
+        near: "num",
+        drawn: "num",
+        /** Enemy creeps near at the order that moved MovedR since (drawn off their fight), most at once. */
+        mv: "num",
+        onr: "num",
+        /** feed: the fed creep's HP fraction at the result line, when alive. */
+        rhp: "num",
+        /** HP the bot lost from the start to the hand-back (min HP), and its HP fraction at the start. */
+        dhp: "num",
+        hp: "num",
+        /** Lane push reading at a feed: clash between the T1s (0 ours) and its state. */
+        q: "num",
+        st: "str",
+        /** drag: enemy hero to creep distance at the hand-back. */
+        hd: "num",
+        /** feed: seconds from the order to the drop order. */
+        drop: "num",
+        dur: "num",
+        /** feed: the clash's distance from our T1 along the lane now, and forecast (own + move), against the lane's target point. */
+        own: "num",
+        fc: "num",
+        /** Distance to the order's hero at the order (any visible enemy hero may be named). */
+        td: "num",
+        /** tower: enemy creeps drawn at the order that stood out of the tower's reach (TowerOrderR) at the result. */
+        out: "num",
+        /** feed: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`, `ev=lane_pos spot=fed`), else 0. */
+        sty: "num",
+    },
+    /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
+    aggro_skip: {
+        pid: "num",
+        role: "str",
+        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`. */
+        why: "str",
+    },
     lane_tech: {
         pid: "num",
         tech: "str",
@@ -1229,6 +1277,7 @@ export const EVENTS = {
         running: "bool",
         label: "str",
         mode: "num",
+        /** The spot's anchor (creep, front, wave, fed: lane_aggro's fed creep going down), or oha. */
         spot: "str",
         pushed: "num",
         why: "str",

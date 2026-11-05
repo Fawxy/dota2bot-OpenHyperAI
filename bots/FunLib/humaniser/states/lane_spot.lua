@@ -71,6 +71,11 @@ local HELD_RING = 200
 local TOWER_REACT_SECS = 0.5
 --- Our tower's attack range when the API gives none.
 local OWN_TOWER_RANGE = 700
+--- The fed creep anchors the spot at or below this HP share (judgement: the deny window opens below 50%, the walk takes time).
+____exports.FED_HP = 0.75
+--- How far behind the fed creep, as a share of the bot's attack reach (capped at FED_REACH_CAP): inside reach, never past it.
+local FED_BEHIND = 0.8
+local FED_REACH_CAP = 300
 local function isRangedCreep(c)
     return (string.find(
         c:GetUnitName(),
@@ -174,7 +179,7 @@ end
 --- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
 -- `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order;
 -- `cover`, when given, relaxes them under our towers.
-function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover)
+function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, busy)
     if margin == nil then
         margin = 0
     end
@@ -230,7 +235,7 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover)
                         __continue31 = true
                         break
                     end
-                    local ring = cover ~= nil and cover.held[i + 1] and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
+                    local ring = (cover ~= nil and cover.held[i + 1] or busy ~= nil and busy[i + 1]) and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
                     local dist = d2(
                         p,
                         c:GetLocation()
@@ -325,9 +330,19 @@ local function coverFor(bot, creeps, heroes)
         hit = hit
     }
 end
---- The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. Undefined only
--- when the lane has no direction (front and its back point coincide).
-function ____exports.Compute(bot, role)
+--- The fed creep when it anchors the spot: alive, in sight and at FED_HP or below.
+function ____exports.FedAnchor(fed)
+    if not alive(fed) then
+        return nil
+    end
+    return fed:GetHealth() / math.max(
+        1,
+        fed:GetMaxHealth()
+    ) <= ____exports.FED_HP and fed or nil
+end
+--- The spot. `role` decides the preferred point: a support stands between the nearest enemy hero and our wave. `fed` is
+-- lane_aggro's fed creep (see FedAnchor). Undefined only when the lane has no direction (front and its back point coincide).
+function ____exports.Compute(bot, role, fed)
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     local front = GetLaneFrontLocation(team, lane, 0)
@@ -371,7 +386,20 @@ function ____exports.Compute(bot, role)
     local py
     local anchor = "front"
     local range = bot:GetAttackRange()
-    if #creeps == 0 then
+    local anchorFed = ____exports.FedAnchor(fed)
+    local busy
+    if anchorFed ~= nil then
+        local reachFed = range + bot:GetBoundingRadius() + anchorFed:GetBoundingRadius()
+        local at = anchorFed:GetLocation()
+        local back = math.min(reachFed, FED_REACH_CAP) * FED_BEHIND
+        px = at.x + dx * back
+        py = at.y + dy * back
+        anchor = "fed"
+        busy = {}
+        for ____, c in ipairs(creeps) do
+            busy[#busy + 1] = c:GetAttackTarget() == anchorFed
+        end
+    elseif #creeps == 0 then
         anchor = "wave"
         px = front.x + dx * MELEE_BEHIND
         py = front.y + dy * MELEE_BEHIND
@@ -393,7 +421,7 @@ function ____exports.Compute(bot, role)
     end
     local nx = -dy
     local ny = dx
-    if enemyHero ~= nil then
+    if enemyHero ~= nil and anchorFed == nil then
         local hx, hy = unpack(sub(
             enemyHero:GetLocation(),
             front
@@ -422,7 +450,9 @@ function ____exports.Compute(bot, role)
             towers,
             margin,
             heroes,
-            reach
+            reach,
+            nil,
+            busy
         ) ~= nil and 1 or 0
     end
     local pref = Vector(px, py, front.z)
@@ -433,7 +463,8 @@ function ____exports.Compute(bot, role)
         margin,
         heroes,
         reach,
-        cover
+        cover,
+        busy
     )
     if first == nil then
         return {
@@ -458,11 +489,11 @@ function ____exports.Compute(bot, role)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue76
+                    local __continue81
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue76 = true
+                            __continue81 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -477,15 +508,16 @@ function ____exports.Compute(bot, role)
                             margin,
                             heroes,
                             reach,
-                            cover
+                            cover,
+                            busy
                         ) == nil then
                             best = p
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue76 = true
+                        __continue81 = true
                     until true
-                    if not __continue76 then
+                    if not __continue81 then
                         break
                     end
                 end

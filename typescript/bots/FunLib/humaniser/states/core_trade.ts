@@ -557,6 +557,16 @@ export function LastHitYields(bot: Unit): boolean {
     return ep !== undefined && ep.lf && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
 }
 
+/** When this bot last gave an attack order on an enemy hero from a trade (lane_aggro shares the 3 s draw clock). */
+export function PrimedAt(pid: number): number | undefined {
+    return primedAt[pid];
+}
+
+/** Another lane module gave an attack order on an enemy hero: the trade's aggro-free plan counts it as its prime. */
+export function NotePrimed(pid: number, t: number): void {
+    primedAt[pid] = t;
+}
+
 export function Reset(): void {
     for (const k in episodes) episodes[k as unknown as number] = undefined;
     for (const k in recoverTo) recoverTo[k as unknown as number] = undefined;

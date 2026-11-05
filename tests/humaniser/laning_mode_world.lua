@@ -127,6 +127,7 @@ function LaningLoad(opts)
 			BodyBusy = function() return false end,
 			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the support's
 			-- lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
+			CoreAggroStep = function() return false end,
 			SupportStep = function() if opts.supportStep then bot.supportStepped = true return true end return false end,
 			BodySupportHits = function() return opts.bodyDenies == true end,
 			BodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,

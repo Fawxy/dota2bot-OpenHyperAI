@@ -675,6 +675,7 @@ function ____exports.ReadFrom(lane, team, t0, init, towerHp, dropBefore)
         clash = c0,
         move = move,
         q = (c0 - ours.s) / (theirs.s - ours.s),
+        own = dir * (c0 - ours.s),
         tower = tower ~= nil
     }
     if dropBefore ~= nil then

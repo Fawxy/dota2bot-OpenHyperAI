@@ -25,6 +25,7 @@ import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
+import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -298,6 +299,15 @@ export function SupportStep(bot: Unit): boolean {
         stepBody: () => Step(bot, BotMode.Laning),
     });
     return acted !== undefined;
+}
+
+/**
+ * Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, stepped by mode_laning_generic
+ * after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
+ */
+export function CoreAggroStep(bot: Unit): boolean {
+    if (!IsEnabled() || !BodyLastHits(bot)) return false;
+    return LaneAggro.Step(bot);
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
