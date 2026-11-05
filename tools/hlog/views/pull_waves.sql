@@ -18,7 +18,7 @@
 -- The next meeting point: the first ev=lane_read of that team and lane 60-90 s after the slot while our nearest tower on the
 --   lane is the T1 (tw = 1): eq60_90, meet_own = its distance from our T1 along the lane, (eq + 1) / 2 times the T1-T1 path
 --   length (lane_push_data LANE_PATHS towers: top 4,321, mid 2,902, bot 4,517; eq is read in lane-amount space from the two
---   fronts, so this is the fronts' meet, not lane_push's forecast clash); target = lane_aggro TargetOf (900 side lanes,
+--   fronts, so this is the fronts' meet, not lane_push's forecast clash); target = lane_push TargetOf (900 side lanes,
 --   1,300 mid); meet_d = meet_own - target (positive: beyond the target towards their tower); meet_tw = 1 when meet_own
 --   <= 700 (our T1's attack range: the meet sits under our tower). Null when no such reading. eq spans our nearest tower to
 --   theirs, so with their T1 down the proxy reads short (rare in the laning window).
