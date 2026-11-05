@@ -154,8 +154,8 @@ const running: Record<number, Trip | undefined> = {};
 const nextPlanAt: Record<number, number> = {};
 const pace: Record<number, number> = {};
 const hpRate: Record<number, number> = {};
-/** Each camp's neutrals as last seen, by team then camp (a respawn is assumed the same until seen again). */
-const lastSeen: Record<number, Record<number, Neutral[]>> = {};
+/** Each camp's neutrals as last seen untouched, by team then camp, with the minute (a respawn is assumed the same). */
+const lastSeen: Record<number, Record<number, { min: number; ns: Neutral[] }>> = {};
 /** Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next). */
 const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
@@ -312,32 +312,38 @@ export function ClearOf(bot: Unit, camp: Neutral[]): LuaMultiReturn<[number, num
     return $multi(t, hp);
 }
 
-/** The camp's live neutrals (the API returns none in fog), kept as its last-seen make-up at full HP. */
-function liveNeutrals(team: number, idx: number, center: Vector): Neutral[] {
+/**
+ * The camp's live neutrals (the API returns none in fog). Kept as its make-up only when untouched (every one at full HP),
+ * and never replaced by fewer within the same minute: a read of a half-cleared or half-seen camp priced its respawn at one
+ * neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
+ */
+function liveNeutrals(team: number, idx: number, center: Vector, now: number): Neutral[] {
     const live: Neutral[] = [];
-    const full: Neutral[] = [];
+    let untouched = true;
     for (const u of GetUnitList(UnitType.NeutralCreeps) ?? []) {
         if (u === null || u === undefined || !u.IsAlive()) continue;
         const at = u.GetLocation();
         if (at === null || at === undefined || dist(at, center) > SETTINGS.CampRadius) continue;
         live.push(readNeutral(u, u.GetHealth()));
-        full.push(readNeutral(u, u.GetMaxHealth()));
+        if (u.GetHealth() < u.GetMaxHealth()) untouched = false;
     }
-    if (full.length > 0) {
+    const min = currentMinute(now);
+    const old = lastSeen[team]?.[idx];
+    if (live.length > 0 && untouched && (old === undefined || old.min !== min || live.length >= old.ns.length)) {
         lastSeen[team] = lastSeen[team] ?? {};
-        lastSeen[team][idx] = full;
+        lastSeen[team][idx] = { min, ns: live };
     }
     return live;
 }
 
 /** Clear seconds and HP fraction before the learned factors, and their source; `stacks` scales only the unseen ones. */
-function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number): LuaMultiReturn<[number, number, string, Neutral[] | undefined]> {
-    const live = liveNeutrals(bot.GetTeam(), spawner.idx, center);
+function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number, now: number): LuaMultiReturn<[number, number, string, Neutral[] | undefined]> {
+    const live = liveNeutrals(bot.GetTeam(), spawner.idx, center, now);
     if (live.length > 0) {
         const [secs, hp] = ClearOf(bot, live);
         return $multi(secs, hp, "live", live);
     }
-    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx];
+    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx]?.ns;
     if (seen !== undefined) {
         const [secs, hp] = ClearOf(bot, seen);
         const k = 1 + SETTINGS.StackedClearMul * stacks;
@@ -488,7 +494,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
         const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
-        const [prior, hpPrior, src, priced] = estimate(bot, spawner, center, stacks);
+        const [prior, hpPrior, src, priced] = estimate(bot, spawner, center, stacks, now);
         const clrt = PriorClearTime(spawner.type, level, stacks);
         const hpt = PriorClearHP(spawner.type, level, stacks);
         const clr = prior * Pace(bot);
