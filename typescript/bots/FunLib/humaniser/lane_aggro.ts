@@ -173,6 +173,8 @@ interface Attempt {
     hd?: number;
     /** Back: the draws given. */
     nd?: number;
+    /** Back: who asked (wave_hold `drag` or `hold`, slice core-in-lane). */
+    src?: string;
     /** The first other mode seen holding the bot since the last step (Tick). */
     left?: number;
 }
@@ -607,6 +609,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["out", a.out],
         ["sty", a.kind === "feed" ? a.sty : undefined],
         ["nd", a.nd],
+        ["src", a.src],
         ["ad", a.ad],
         ["apt", a.ad !== undefined ? math.floor(a.approachTime * 100) / 100 : undefined],
         ["md", result === "stale" ? a.left ?? bot.GetActiveMode() : undefined],
@@ -650,7 +653,7 @@ function drawnOn(bot: Unit, target: Unit): Unit[] {
  * wave_hold's drag: draw their creeps near the bot and walk them to `to` (behind our T1). False when a move already runs or a
  * shared gate (the draw clock, another hero's draw on the lane, HP, a trade) says no; the pull gate does not apply.
  */
-export function StartBack(bot: Unit, to: Vector): boolean {
+export function StartBack(bot: Unit, to: Vector, src: "drag" | "hold" = "drag"): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     if (attempts[pid] !== undefined || !Ours.On("LaneAggro")) return false;
@@ -662,6 +665,7 @@ export function StartBack(bot: Unit, to: Vector): boolean {
     const hero = orderTarget(bot);
     if (hero === undefined) return false;
     const a = newAttempt(bot, "back", "walk", hero, near[0], to, undefined, now);
+    a.src = src;
     a.nd = 0;
     start(bot, a);
     return true;

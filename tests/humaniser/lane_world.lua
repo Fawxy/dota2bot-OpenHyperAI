@@ -57,6 +57,7 @@ function CreepMeta:CanBeSeen() return not self.unseen end
 -- `unseen`: a live handle the team cannot see; the engine gives it no location.
 function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
+function CreepMeta:GetBoundingRadius() return self.hull or 16 end
 -- Creep and tower damage default to 0 so worlds that do not set it keep the kill check's incoming damage at 0.
 function CreepMeta:GetAttackDamage() return self.dmg or 0 end
 function CreepMeta:GetAttackSpeed() return self.aspd or 1 end

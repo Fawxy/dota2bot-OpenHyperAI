@@ -500,7 +500,15 @@ function ____exports.Compute(bot, role, fed, hold)
     local anchor = "front"
     local range = bot:GetAttackRange()
     local busy
-    if anchorFed ~= nil then
+    if hold ~= nil then
+        px = hold.x
+        py = hold.y
+        anchor = "hold"
+        busy = {}
+        for ____, _ in ipairs(creeps) do
+            busy[#busy + 1] = true
+        end
+    elseif anchorFed ~= nil then
         local reachFed = range + bot:GetBoundingRadius() + anchorFed:GetBoundingRadius()
         local at = anchorFed:GetLocation()
         local back = math.min(reachFed, FED_REACH_CAP) * FED_BEHIND
@@ -510,14 +518,6 @@ function ____exports.Compute(bot, role, fed, hold)
         busy = {}
         for ____, c in ipairs(creeps) do
             busy[#busy + 1] = c:GetAttackTarget() == anchorFed
-        end
-    elseif hold ~= nil then
-        px = hold.x
-        py = hold.y
-        anchor = "hold"
-        busy = {}
-        for ____, _ in ipairs(creeps) do
-            busy[#busy + 1] = true
         end
     elseif #creeps == 0 then
         anchor = "wave"
@@ -541,7 +541,7 @@ function ____exports.Compute(bot, role, fed, hold)
     end
     local nx = -dy
     local ny = dx
-    if enemyHero ~= nil and anchorFed == nil and anchor ~= "hold" then
+    if enemyHero ~= nil and anchor ~= "fed" and anchor ~= "hold" then
         local hx, hy = unpack(sub(
             enemyHero:GetLocation(),
             front

@@ -434,6 +434,9 @@ export const EVENTS = {
         sty: "num",
         /** back: draw orders given (the first and each re-draw). */
         nd: "num",
+        /** back: who asked, `drag` (wave_hold's drag behind our T1) or `hold` (wave_hold's hold draw, a point 150 past the
+         *  hold point: its `result` is nearly free, read `drawn` for the aggro taken). */
+        src: "str",
         /** feed, tower: the bot's distance to the approach point at the start, and the seconds it got to walk there (feed: the
          *  walk at its move speed + 0.4 s, at most 3.5 s). */
         ad: "num",
@@ -452,11 +455,24 @@ export const EVENTS = {
          *  `retreat` (OHA's retreat took the core). */
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
-         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`. */
+         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
+         *  the hold point's floor). */
         res: "str",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
+        /** The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within
+         *  200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is
+         *  `losing`). */
+        trig: "str",
+        fc: "num",
+        /** The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50. */
+        hd: "num",
+        /** Our T1's fire reach to a creep's centre (attack range plus both hull radii, from the API; fallback 860): the
+         *  start's late floor and the hold point's floor are this plus 50. */
+        rch: "num",
+        /** Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point. */
+        hdr: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         lh: "num",
@@ -488,6 +504,26 @@ export const EVENTS = {
         dur: "num",
         /** The bot's active mode when the attempt was left. */
         md: "num",
+    },
+    /**
+     * Slice core-in-lane: why the wave hold did not start for a core that owns it while their wave (2+ creeps) is at or inside
+     * the lane target, at most every 5 s per bot and reason. `why`: `ours` (our wave there and no forecast start), `late` (their
+     * front inside our T1's range + 50), `rest`, `reach`, `hp`.
+     */
+    wave_hold_skip: {
+        pid: "num",
+        lane: "num",
+        why: "str",
+        /** Their front's distance from our T1 and their creeps in the stretch. */
+        front: "num",
+        n: "num",
+        /** Our lane creeps from our T1's range out (`on`) and inside it (`oin`, from 400 behind the T1). */
+        on: "num",
+        oin: "num",
+        /** Our T1's fire reach (as ev=wave_hold `rch`). */
+        rch: "num",
+        /** Forecast seconds until their front is inside our T1's range (on `rest`, `reach`, `hp` after a forecast start). */
+        fc: "num",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {

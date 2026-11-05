@@ -819,6 +819,7 @@ local function finish(bot, a, result, now, gap)
         {"out", a.out},
         {"sty", a.kind == "feed" and a.sty or nil},
         {"nd", a.nd},
+        {"src", a.src},
         {"ad", a.ad},
         {
             "apt",
@@ -904,7 +905,10 @@ local function drawnOn(bot, target)
 end
 --- wave_hold's drag: draw their creeps near the bot and walk them to `to` (behind our T1). False when a move already runs or a
 -- shared gate (the draw clock, another hero's draw on the lane, HP, a trade) says no; the pull gate does not apply.
-function ____exports.StartBack(bot, to)
+function ____exports.StartBack(bot, to, src)
+    if src == nil then
+        src = "drag"
+    end
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     if attempts[pid] ~= nil or not Ours.On("LaneAggro") then
@@ -952,6 +956,7 @@ function ____exports.StartBack(bot, to)
         nil,
         now
     )
+    a.src = src
     a.nd = 0
     start(bot, a)
     return true

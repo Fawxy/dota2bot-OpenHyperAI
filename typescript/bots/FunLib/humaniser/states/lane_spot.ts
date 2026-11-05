@@ -379,7 +379,15 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     let anchor: SpotInfo["anchor"] = "front";
     const range = bot.GetAttackRange();
     let busy: boolean[] | undefined;
-    if (anchorFed !== undefined) {
+    // wave_hold's hold point overrides every other anchor during an attempt, lane_aggro's fed creep included (decided
+    // 06/11/2026, hschk3: the creep, front and fed anchors took holding cores off their point).
+    if (hold !== undefined) {
+        px = hold.x;
+        py = hold.y;
+        anchor = "hold";
+        busy = [];
+        for (const _ of creeps) busy.push(true);
+    } else if (anchorFed !== undefined) {
         const reachFed = range + bot.GetBoundingRadius() + anchorFed.GetBoundingRadius();
         const at = anchorFed.GetLocation();
         const back = math.min(reachFed, FED_REACH_CAP) * FED_BEHIND;
@@ -388,12 +396,6 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         anchor = "fed";
         busy = [];
         for (const c of creeps) busy.push(c.GetAttackTarget() === anchorFed);
-    } else if (hold !== undefined) {
-        px = hold.x;
-        py = hold.y;
-        anchor = "hold";
-        busy = [];
-        for (const _ of creeps) busy.push(true);
     } else if (creeps.length === 0) {
         anchor = "wave";
         px = front.x + dx * MELEE_BEHIND;
@@ -416,7 +418,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     // Perpendicular to the lane; shift away from the enemy hero (core) or towards its approach (support).
     const nx = -dy;
     const ny = dx;
-    if (enemyHero !== undefined && anchorFed === undefined && anchor !== "hold") {
+    if (enemyHero !== undefined && anchor !== "fed" && anchor !== "hold") {
         const [hx, hy] = sub(enemyHero.GetLocation(), front);
         const side = hx * nx + hy * ny >= 0 ? 1 : -1;
         const shift = role === "support" ? SIDE_SHIFT * 2 : -SIDE_SHIFT;
