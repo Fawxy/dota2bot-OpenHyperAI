@@ -34,16 +34,16 @@ export const SETTINGS = {
     MinCreeps: 2,
     StartAhead: 1600,
     /** Our T1's range (700); their front inside it plus LateMargin is too late to hold (obs0611 mark 4: at 300 the side
-     *  target 900 itself lay inside the floor). */
+     *  target 900 itself lay inside the floor). The hold point is never nearer our T1 than this floor. */
     TowerR: 700,
     LateMargin: 50,
-    /** The hold point: the lane target, or their front when nearer, but no nearer our T1 than TowerR plus this. */
-    HoldFloor: 100,
     /**
-     * Their wave counts from OursBehind behind our T1. Our wave is gone when none of our lane creeps stands from TowerR out to
-     * OursAhead past their rearmost creep in the stretch. chold1 0:31 mid: their front creeps chased past a clash still running
-     * 1,000 further out; a window on their front alone read that as our wave gone. obs0611 marks 4 and 5: a lone creep of ours
-     * inside our T1's range (a pull returnee at 666, a ranged creep at 512) kept the hold off until their front was late.
+     * Our wave is gone when none of our lane creeps stands from OursBehind behind our T1 to OursAhead past their rearmost creep
+     * in the stretch, not counting one inside TowerR that is already fighting. chold1 0:31 mid: their front creeps chased past
+     * a clash still running 1,000 further out; a window on their front alone read that as our wave gone. obs0611 marks 4 and
+     * 5: a lone creep of ours fighting inside our T1's range (a pull returnee at 666, a ranged creep at 512) kept the hold off
+     * until their front was late. A fresh wave walking out under our T1 still counts (63 banked replays: ignoring it too
+     * started 154 holds 10 s or more before their creeps reached our T1, 24 when it counts).
      */
     OursBehind: 400,
     OursAhead: 600,
@@ -102,18 +102,31 @@ export function Stretch(theirs: number[], target: number): { n: number; front: n
     return { n, front, rear };
 }
 
-/** Pure: the trigger's reading of a lane, from our T1 distances (positive towards theirs) of the lane creeps on it. */
-export function Read(theirs: number[], ours: number[], target: number): { front: number; n: number } | string {
+/**
+ * Pure: the trigger's reading of a lane, from our T1 distances (positive towards theirs) of the lane creeps on it; `busy[i]`
+ * when ours[i] has an attack target.
+ */
+export function Read(theirs: number[], ours: number[], target: number, busy: boolean[] = []): { front: number; n: number } | string {
     const w = Stretch(theirs, target);
     if (w.n < SETTINGS.MinCreeps) return "none";
-    for (const o of ours) if (o >= SETTINGS.TowerR && o <= w.rear + SETTINGS.OursAhead) return "ours";
+    for (let i = 0; i < ours.length; i++) {
+        const o = ours[i];
+        if (o < SETTINGS.TowerR && busy[i] === true) continue;
+        if (o >= -SETTINGS.OursBehind && o <= w.rear + SETTINGS.OursAhead) return "ours";
+    }
     if (w.front < SETTINGS.TowerR + SETTINGS.LateMargin) return "late";
     return { front: w.front, n: w.n };
 }
 
-/** Pure: the hold point's distance from our T1 for the lane target and their front at the start. */
+/** Pure: the hold point's distance from our T1 for the lane target and their front at the start: never past their front. */
 export function HoldAt(target: number, front: number): number {
-    return math.max(SETTINGS.TowerR + SETTINGS.HoldFloor, math.min(target, front));
+    return math.max(SETTINGS.TowerR + SETTINGS.LateMargin, math.min(target, front));
+}
+
+/** Pure: whether a creep of ours at `own` is in the clash at the start (fighting, within our-wave reach of their rear), so
+ *  its fight does not end the attempt as `met`. Our next wave walking up is not. */
+export function InClash(own: number, busy: boolean, rear: number): boolean {
+    return busy && own >= -SETTINGS.OursBehind && own <= rear + SETTINGS.OursAhead;
 }
 
 /**
@@ -204,12 +217,18 @@ export function Owns(bot: Unit): boolean {
     return Ours.On("CoreHold") && Ours.On("LaneSpot") && CoreLastHit.Applies(bot) && bot.IsAlive() && Phase.IsLaningFor(bot);
 }
 
+function fighting(c: Unit): boolean {
+    const t = c.GetAttackTarget();
+    return t !== undefined && t !== null && !t.IsNull();
+}
+
 interface LaneView {
     path: LanePath;
     t1: number;
     dir: number;
     theirs: number[];
     ours: number[];
+    busy: boolean[];
     /** Their creeps on the lane with their distance from our T1. */
     units: { u: Unit; own: number }[];
     /** Ours likewise. */
@@ -238,7 +257,8 @@ function viewOf(team: number, lane: Lane): LaneView | undefined {
     const theirs = project(GetUnitList(UnitType.EnemyCreeps), units);
     const mine: { u: Unit; own: number }[] = [];
     const ours = project(GetUnitList(UnitType.AlliedCreeps), mine);
-    return { path, t1, dir, theirs, ours, units, mine };
+    const busy = mine.map((m) => fighting(m.u));
+    return { path, t1, dir, theirs, ours, busy, units, mine };
 }
 
 function pointAt(v: LaneView, own: number, z: number): Vector {
@@ -329,13 +349,8 @@ export function Tick(bot: Unit): void {
     finish(bot, a, "left", now);
 }
 
-function fighting(c: Unit): boolean {
-    const t = c.GetAttackTarget();
-    return t !== undefined && t !== null && !t.IsNull();
-}
-
 /** Why a start was refused (`reach`, `hp`), or the attempt. */
-function begin(bot: Unit, v: LaneView, front: number, n: number, now: number, trig: string, fc: number | undefined): Attempt | string {
+function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, now: number, trig: string, fc: number | undefined): Attempt | string {
     const lane = bot.GetAssignedLane();
     const tgt = LanePush.TargetOf(lane);
     const z = bot.GetLocation().z;
@@ -345,7 +360,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, now: number, tr
     if (frac(bot) < SETTINGS.StartHp) return "hp";
     const nw = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * hd, now) - now;
     const old: Unit[] = [];
-    for (const m of v.mine) if (trig === "forecast" || (m.own < SETTINGS.TowerR && fighting(m.u))) old.push(m.u);
+    for (let i = 0; i < v.mine.length; i++) if (InClash(v.mine[i].own, v.busy[i], rear)) old.push(v.mine[i].u);
     return {
         lane,
         br: "hold",
@@ -405,11 +420,13 @@ function forecastIn(bot: Unit, v: LaneView, now: number): number | undefined | f
     const at = forecastAt[pid];
     if (at !== undefined && now - at < SETTINGS.ForecastEvery) return false;
     forecastAt[pid] = now;
-    const [ok, samples] = pcall(() => {
+    const [ok, r] = pcall(() => {
         const [smp] = LanePush.Forecast(bot.GetTeam(), bot.GetAssignedLane(), SETTINGS.ForecastSecs + 1);
         return smp;
     });
-    if (!ok || samples === undefined || samples.length === 0) return undefined;
+    // Typed again: pcall's result is untyped, and TSTL shifts array indices only on array types.
+    const samples = (ok ? r : undefined) as LanePush.Sample[] | undefined;
+    if (samples === undefined || samples.length === 0) return undefined;
     const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
     return TowerIn(samples, v.t1, v.dir, enemy, samples[0].t);
 }
@@ -421,14 +438,14 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
     const v = viewOf(bot.GetTeam(), lane);
     if (v === undefined) return undefined;
     const tgt = LanePush.TargetOf(lane);
-    const r = Read(v.theirs, v.ours, tgt);
+    const r = Read(v.theirs, v.ours, tgt, v.busy);
+    const w = Stretch(v.theirs, tgt);
     let front: number;
     let n: number;
     let trig = "gone";
     let fc: number | undefined;
     if (typeof r === "string") {
         if (r !== "ours" && r !== "late") return undefined;
-        const w = Stretch(v.theirs, tgt);
         // Only a wave at or inside the hold point is worth a line or a forecast: further out the lanes are just fighting.
         if (w.front > tgt) return undefined;
         if (r === "late") {
@@ -458,7 +475,7 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
         skip(bot, v, "rest", front, n, now, fc);
         return undefined;
     }
-    const a = begin(bot, v, front, n, now, trig, fc);
+    const a = begin(bot, v, front, n, w.rear, now, trig, fc);
     if (typeof a === "string") {
         skip(bot, v, a, front, n, now, fc);
         return undefined;
