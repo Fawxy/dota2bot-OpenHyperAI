@@ -1248,6 +1248,8 @@
    "q": "num",
    "mv": "num",
    "cf": "num",
+   "own": "num",
+   "tgt": "num",
    "tw": "num",
    "ms": "num",
    "cn": "num",

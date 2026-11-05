@@ -26,6 +26,10 @@ export const SETTINGS = {
     OurVision: 300,
     /** Lane creeps further than this from the lane path are not in the lane (lane_read's LaneAssign is the same idea). */
     Assign: 1100,
+    /** The lane's target meeting point, this far along the lane from our T1 (side lanes: out of its range; mid: our
+     *  high-ground edge; slice lane-aggro, `judgement`). Lane aggro's feed, the wave hold and the pull trigger read it. */
+    TargetSide: 900,
+    TargetMid: 1300,
 };
 
 const R = Team.Radiant;
@@ -333,17 +337,12 @@ export interface Reading {
     own: number;
     /** The tower rule decided. */
     tower: boolean;
-    /** Counterfactual move with `team`'s creeps short of `dropBefore` removed (the wave a pull takes), when asked. */
-    cf?: number;
     /** Real milliseconds the runs took, when RealTime exists. */
     ms?: number;
 }
 
-/**
- * The reading for a start state. `dropBefore`: also run the counterfactual without our creeps short of that point along
- * the path (behind it from our side). Undefined when the run leaves no clash (a lane with no creeps of one team).
- */
-export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCreep[], towerHp: Record<number, number | false | undefined>, dropBefore?: number): Reading | undefined {
+/** The reading for a start state. Undefined when the run leaves no clash (a lane with no creeps of one team). */
+export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCreep[], towerHp: Record<number, number | false | undefined>): Reading | undefined {
     const clock = (RealTime as unknown) !== undefined ? RealTime : undefined;
     const started = clock?.();
     const h = SETTINGS.Horizon;
@@ -367,10 +366,6 @@ export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCr
         own: dir * (c0 - ours.s),
         tower: tower !== undefined,
     };
-    if (dropBefore !== undefined) {
-        const kept = init.filter((c) => c.team !== team || dir * (c.s - dropBefore) >= 0);
-        reading.cf = moveOf(kept)[1];
-    }
     if (started !== undefined) reading.ms = math.floor((clock!() - started) * 10000 + 0.5) / 10;
     return reading;
 }
@@ -470,12 +465,16 @@ function viewNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined
     return $multi(path, t0, init, { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) });
 }
 
-/** The reading for `team`'s side of `lane` now (the calling script must be `team`'s). `dropBefore`: a point along the path,
- *  see ReadFrom. */
-export function Read(team: number, lane: Lane, dropBefore?: number): Reading | undefined {
+/** The reading for `team`'s side of `lane` now (the calling script must be `team`'s). */
+export function Read(team: number, lane: Lane): Reading | undefined {
     const [path, t0, init, towerHp] = viewNow(team, lane);
     if (path === undefined) return undefined;
-    return ReadFrom(path, team, t0, init, towerHp, dropBefore);
+    return ReadFrom(path, team, t0, init, towerHp);
+}
+
+/** The lane's target meeting point, as a distance along the lane from our T1. */
+export function TargetOf(lane: Lane): number {
+    return lane === Lane.Mid ? SETTINGS.TargetMid : SETTINGS.TargetSide;
 }
 
 /** One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined. */

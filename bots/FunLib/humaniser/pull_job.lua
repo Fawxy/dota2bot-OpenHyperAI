@@ -967,7 +967,7 @@ ____exports.SETTINGS = {
     Priority = 0.9,
     Early = 2,
     PathFactor = 1.2,
-    HoldPastQ = 0.5,
+    WantPast = 150,
     PartnerHp = 0.5,
     PartnerRadius = 900,
     PartnerGank = 3,
@@ -1135,7 +1135,7 @@ local function safeLane(bot)
     local lane = bot:GetAssignedLane()
     return lane ~= Lane.Mid and bot:GetTeam() == Team.Radiant == (lane == Lane.Bot)
 end
---- Which pull a wanted slot gets: the safe-lane pos5 half-pulls when the lane holds on their half (it is out a little: slow
+--- Which pull a wanted slot gets: the safe-lane pos5 half-pulls when a wanted lane holds (it is out a little: slow
 -- and thin the wave rather than reset it; banked full pulls from there took the clash to -0.66 in 30 s and back to +0.07
 -- in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
 function ____exports.KindFor(bot, r)
@@ -1283,12 +1283,13 @@ local function bailPoint(bot)
     )
     return Vector(at.x + dx * ____exports.SETTINGS.BailStep / d, at.y + dy * ____exports.SETTINGS.BailStep / d, at.z)
 end
---- The reading wants a pull: our clash point moves out (towards their tower), or holds past the middle on their side.
-function ____exports.Wanted(r)
-    if r == nil then
+--- The reading wants a pull: the clash is forecast beyond the lane's target point (`target`, from our T1) and is not coming
+-- in. Lane aggro feeds on the same target and the wave hold meets their wave at it, so all three aim at one meeting point.
+function ____exports.Wanted(r, target)
+    if r == nil or r.state == "IN" then
         return false
     end
-    return r.state == "OUT" or r.state == "HOLD" and r.q > ____exports.SETTINGS.HoldPastQ
+    return r.own + r.move > target + ____exports.SETTINGS.WantPast
 end
 --- Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined.
 function ____exports.PartnerThreat(bot)
@@ -1433,8 +1434,12 @@ local function choiceLine(bot, d, slot, go, why, camp)
                 r1(r and r.move)
             },
             {
-                "cf",
-                r1(r and r.cf)
+                "own",
+                r1(r and r.own)
+            },
+            {
+                "tgt",
+                LanePush.TargetOf(bot:GetAssignedLane())
             },
             {"tw", r ~= nil and (r.tower and 1 or 0) or nil},
             {"ms", r and r.ms},
@@ -1807,11 +1812,6 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
         hooks
     ))
 end)
---- The pull side of the lane path: our walking wave is everything of ours short of the meet point (the counterfactual).
-local function meetAlong(bot, p)
-    local path = LanePush.PathOf(bot:GetAssignedLane())
-    return path ~= nil and (LanePush.Project(path, p.meet.x, p.meet.y)) or nil
-end
 --- Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
 -- time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
 -- action until it could no longer reach the camp by the hit's late limit.
@@ -1868,11 +1868,13 @@ function ____exports.Wants(bot, blocked, host)
     if d == nil or d.slot ~= p.key then
         local reading = LanePush.Read(
             bot:GetTeam(),
-            bot:GetAssignedLane(),
-            meetAlong(bot, p)
+            bot:GetAssignedLane()
         )
         local harness = LaneConfig.Settings().PullTiming.HalfAll == true and ____exports.KindFor(bot, reading) == "half"
-        local want = ____exports.Wanted(reading) or harness
+        local want = ____exports.Wanted(
+            reading,
+            LanePush.TargetOf(bot:GetAssignedLane())
+        ) or harness
         d = {
             slot = p.key,
             want = want,

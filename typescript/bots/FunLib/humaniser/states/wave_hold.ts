@@ -1,7 +1,7 @@
 /**
  * The wave hold (slice core-in-lane, `Ours.CoreHold`; docs/proposals/2026-11-05-pull-effect.md s4 step 2, design by the user
  * 05/11/2026): when our wave on an in-lane core's lane is gone (pulled, drawn away by lane aggro's tower move, or anything
- * else) and theirs walks in, the core meets it at the lane's target point (lane_aggro TargetOf) instead of letting it die to
+ * else) and theirs walks in, the core meets it at the lane's target point (lane_push TargetOf) instead of letting it die to
  * our T1. The trigger is the event, never the reason (logged as `why`).
  * - `hold`: the target point is lane_spot's named input `hold`; the body keeps last hitting from that spot.
  * - `drag`: an enemy hero threatens the core (lane_spot HeroReach) and our next wave is far enough that their creeps can be
@@ -250,7 +250,7 @@ export function Tick(bot: Unit): void {
 
 function begin(bot: Unit, v: LaneView, front: number, n: number, now: number): Attempt | undefined {
     const lane = bot.GetAssignedLane();
-    const tgt = LaneAggro.TargetOf(lane);
+    const tgt = LanePush.TargetOf(lane);
     const z = bot.GetLocation().z;
     const hold = pointAt(v, tgt, z);
     if (GetUnitToLocationDistance(bot, hold) > SETTINGS.Reach || frac(bot) < SETTINGS.StartHp) return undefined;
@@ -295,7 +295,7 @@ export function Step(bot: Unit): void {
         if (ended !== undefined && now - ended < SETTINGS.RestAfter) return;
         const v = viewOf(bot.GetTeam(), bot.GetAssignedLane());
         if (v === undefined) return;
-        const r = Read(v.theirs, v.ours, LaneAggro.TargetOf(bot.GetAssignedLane()));
+        const r = Read(v.theirs, v.ours, LanePush.TargetOf(bot.GetAssignedLane()));
         if (typeof r === "string") return;
         a = begin(bot, v, r.front, r.n, now);
         if (a === undefined) return;

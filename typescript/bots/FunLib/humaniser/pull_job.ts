@@ -24,8 +24,9 @@ export const SETTINGS = {
     Early: 2,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
     PathFactor: 1.2,
-    /** HOLD counts as wanting a pull once the clash point sits this far from our T1 towards theirs (0 ours, 1 theirs). */
-    HoldPastQ: 0.5,
+    /** A pull is wanted when the clash is forecast more than this beyond the lane's target point (LanePush TargetOf) in
+     *  30 s and not coming in (slice support-lane, plan docs/proposals/2026-11-05-pull-effect.md s4 step 3). */
+    WantPast: 150,
     /** The lane partner is under threat: HP share below PartnerHp with an enemy hero within PartnerRadius, or PartnerGank
      *  enemy heroes within it. */
     PartnerHp: 0.5,
@@ -288,7 +289,7 @@ function safeLane(bot: Unit): boolean {
 }
 
 /**
- * Which pull a wanted slot gets: the safe-lane pos5 half-pulls when the lane holds on their half (it is out a little: slow
+ * Which pull a wanted slot gets: the safe-lane pos5 half-pulls when a wanted lane holds (it is out a little: slow
  * and thin the wave rather than reset it; banked full pulls from there took the clash to -0.66 in 30 s and back to +0.07
  * in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
  */
@@ -386,10 +387,13 @@ function ourTower(bot: Unit): Vector | undefined {
     return undefined;
 }
 
-/** The reading wants a pull: our clash point moves out (towards their tower), or holds past the middle on their side. */
-export function Wanted(r: LanePush.Reading | undefined): boolean {
-    if (r === undefined) return false;
-    return r.state === "OUT" || (r.state === "HOLD" && r.q > SETTINGS.HoldPastQ);
+/**
+ * The reading wants a pull: the clash is forecast beyond the lane's target point (`target`, from our T1) and is not coming
+ * in. Lane aggro feeds on the same target and the wave hold meets their wave at it, so all three aim at one meeting point.
+ */
+export function Wanted(r: LanePush.Reading | undefined, target: number): boolean {
+    if (r === undefined || r.state === "IN") return false;
+    return r.own + r.move > target + SETTINGS.WantPast;
 }
 
 /** Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined. */
@@ -458,7 +462,8 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["st", r?.state],
         ["q", r !== undefined ? math.floor(r.q * 100 + 0.5) / 100 : undefined],
         ["mv", r1(r?.move)],
-        ["cf", r1(r?.cf)],
+        ["own", r1(r?.own)],
+        ["tgt", LanePush.TargetOf(bot.GetAssignedLane())],
         ["tw", r !== undefined ? (r.tower ? 1 : 0) : undefined],
         ["ms", r?.ms],
         ["pk", d.want ? d.kind : undefined],
@@ -997,11 +1002,6 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
 }
 
 /** The pull side of the lane path: our walking wave is everything of ours short of the meet point (the counterfactual). */
-function meetAlong(bot: Unit, p: Plan): number | undefined {
-    const path = LanePush.PathOf(bot.GetAssignedLane());
-    return path !== undefined ? LanePush.Project(path, p.meet.x, p.meet.y)[0] : undefined;
-}
-
 /**
  * Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
  * time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
@@ -1039,11 +1039,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
     if (d === undefined || d.slot !== p.key) {
-        const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
+        const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane());
         // The half-pull harness (HalfAll) wants every slot of the half-pulling support, so the hit and step-in get read
         // many times a game; the lane reading's trigger is checked in normal games.
         const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
-        const want = Wanted(reading) || harness;
+        const want = Wanted(reading, LanePush.TargetOf(bot.GetAssignedLane())) || harness;
         d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading };
         decided[pid] = d;
         gateWhy[pid] = undefined;
