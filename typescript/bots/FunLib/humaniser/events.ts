@@ -1129,7 +1129,7 @@ export const EVENTS = {
         dur: "num",
     },
     // Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt and again each time a planned support's start
-    // gate drops it: mid / sup the planned heroes' pids, ms / ss their spots' rune ids; why no-free-support or no-mid when a
+    // gate drops it: mid / sup the planned heroes' pids, ms / ss their spots' rune ids; why no-free-support, no-near-support (a free support is nearer the mid's spot) or no-mid when a
     // side is empty, swap:<gate> when the spot went to the other support, drop:<gate> when no support was free for it.
     rune_plan: {
         team: "num",

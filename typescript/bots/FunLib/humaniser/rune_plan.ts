@@ -92,7 +92,10 @@ function nearer(u: Unit, a: number, b: number): number {
     return GetUnitToLocationDistance(u, SpotAt(a)) <= GetUnitToLocationDistance(u, SpotAt(b)) ? a : b;
 }
 
-/** The free support (alive, not `busy`, not in `skip`) with the shorter walk to `spot` (to its nearer spot with none). */
+/**
+ * The free support (alive, not `busy`, not in `skip`) with the shorter walk to `spot` (to its nearer spot with none).
+ * A support whose nearest spot is not `spot` never qualifies: it would cross a lane to the far rune (user 06/11/2026).
+ */
 function freeSupport(spot: number | undefined, busy: (this: void, u: Unit) => boolean, skip: Unit[]): Unit | undefined {
     const [a, b] = Spots();
     let best: Unit | undefined;
@@ -100,6 +103,7 @@ function freeSupport(spot: number | undefined, busy: (this: void, u: Unit) => bo
     for (const pos of [4, 5]) {
         const s = teamHero(pos);
         if (!FR.Alive(s) || busy(s) || skip.includes(s!)) continue;
+        if (spot !== undefined && nearer(s, a, b) !== spot) continue;
         const d = GetUnitToLocationDistance(s, SpotAt(spot ?? nearer(s, a, b)));
         if (d < bestD) [best, bestD] = [s, d];
     }
@@ -108,7 +112,8 @@ function freeSupport(spot: number | undefined, busy: (this: void, u: Unit) => bo
 
 /**
  * The spot plan from plain choices: `mid` takes the spot nearer it; the other spot goes to the free support with the
- * shorter walk to it (pos4 on a tie). `busy(u)` says a support is not free (a stack that minute). Exported for tests.
+ * shorter walk to it among those it is nearest to (pos4 on a tie; a support nearer the mid's spot stays home rather than cross).
+ * `busy(u)` says a support is not free (a stack that minute). Exported for tests.
  */
 export function Make(now: number, busy: (this: void, u: Unit) => boolean): Plan {
     const [a, b] = Spots();
@@ -123,7 +128,7 @@ export function Make(now: number, busy: (this: void, u: Unit) => boolean): Plan 
     if (best !== undefined) {
         plan.sup = best;
         plan.supSpot = supSpot ?? nearer(best, a, b);
-    } else plan.why = "no-free-support";
+    } else plan.why = freeSupport(undefined, busy, []) !== undefined ? "no-near-support" : "no-free-support";
     if (plan.mid === undefined) plan.why = plan.why ?? "no-mid";
     return plan;
 }
