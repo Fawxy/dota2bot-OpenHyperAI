@@ -156,11 +156,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue123
+            local __continue126
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue123 = true
+                    __continue126 = true
                     break
                 end
                 if select(
@@ -169,9 +169,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue123 = true
+                __continue126 = true
             until true
-            if not __continue123 then
+            if not __continue126 then
                 break
             end
         end
@@ -698,6 +698,24 @@ end
 function ____exports.PathOf(lane)
     return LANE_PATHS[lane]
 end
+--- `team`'s T1 on the path, and the sign that turns a path distance into "towards their T1".
+function ____exports.OwnT1(lane, team)
+    return __TS__ArrayFind(
+        lane.towers,
+        function(____, tw) return tw.team == team end
+    ).s, dirOf(team)
+end
+--- When `team`'s next wave reaches path distance `s`, at or after `now`: waves spawn every 30 s from 0:00 (WaveAt) at the
+-- team's spawn end and walk the path at the lane creeps' 325.
+function ____exports.NextArrival(lane, team, s, now)
+    local spawn = team == R and lane.spawnR or lane.spawnD
+    local travel = math.abs(s - spawn) / SPEED
+    local k = math.max(
+        0,
+        math.ceil((now - travel) / 30)
+    )
+    return k * 30 + travel
+end
 local function kindOf(name)
     if (string.find(name, "siege", 1, true)) ~= nil then
         return "siege"
@@ -721,21 +739,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue117
+            local __continue120
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue117 = true
+                    __continue120 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue117 = true
+                    __continue120 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue117 = true
+                    __continue120 = true
                     break
                 end
                 out[#out + 1] = {
@@ -744,9 +762,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue117 = true
+                __continue120 = true
             until true
-            if not __continue117 then
+            if not __continue120 then
                 break
             end
         end

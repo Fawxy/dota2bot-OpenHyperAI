@@ -713,4 +713,29 @@ do
 	check("support last hit: a core out of reach leaves the creep to the support", offered == true)
 end
 
+-- wave_hold's hold point (lane_spot input `hold`, slice core-in-lane): our wave gone, their melee creep walking in at (-200, 0)
+-- and on the core; the hold point (-500, 0) is the preferred point and the creep keeps only the 200 held ring. A melee enemy
+-- hero 600 from the point still pushes the spot back to its 800 reach: the hero limit stands.
+do
+	local L = function() return require("bots/FunLib/humaniser/states/laning") end
+	local hold = Vector(-500, 0)
+	local c
+	local setup = function(hero)
+		return function(bot)
+			c = creep({ loc = Vector(-200, 0) })
+			c.target = bot
+			if hero then local e = MakeUnit({ pid = 7, team = 3, loc = Vector(100, 0) }) e.range = 150 end
+			L().SetHold(bot, hold)
+		end
+	end
+	local s, bot = spotFor(SDK, nil, setup(false))
+	local info = L().SpotInfo(bot)
+	check("hold: the spot is the hold point, anchor hold", s ~= nil and dist(s, hold) < 1 and info ~= nil and info.anchor == "hold", info and info.anchor)
+	check("hold: inside the creep's 520 ring (it is meant to be on us)", s ~= nil and dist(s, c.loc) < 520, s and dist(s, c.loc))
+	local sh = spotFor(SDK, nil, setup(true))
+	check("hold under a melee hero 600 from the point: backed to its 800 reach", sh ~= nil and dist(sh, Vector(100, 0)) >= 800, sh and dist(sh, Vector(100, 0)))
+	local so = spotFor(SDK, nil, function(bot) c = creep({ loc = Vector(-200, 0) }) c.target = bot end)
+	check("no hold: the 520 ring", so ~= nil and dist(so, c.loc) >= 520, so and dist(so, c.loc))
+end
+
 finish()

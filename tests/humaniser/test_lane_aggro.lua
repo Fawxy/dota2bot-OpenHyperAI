@@ -42,4 +42,15 @@ check("stale: acting, 0.3 s gap kept", not A.Stale("approach", 0.3))
 check("stale: acting, 1 s gap ends it", A.Stale("walk", 1))
 check("stale: watch, 1 s gap (a swing) kept", not A.Stale("watch", 1))
 check("stale: watch, 20 s gap (a retreat) ends it", A.Stale("watch", 20))
+
+-- A creep seen at the order that has since left our vision keeps a valid handle with no location (chold3_A_on_1 t=217.6:
+-- `lua_error` in States.SupportStep, lane_aggro's moved count indexed it). It is not counted, and nothing raises.
+do
+	local function u(loc, alive) return { IsNull = function() return false end, IsAlive = function() return alive ~= false end, GetLocation = function() return loc end } end
+	local start = { { unit = u(nil), x = 0, y = 0 }, { unit = u(Vector(200, 0)), x = 0, y = 0 }, { unit = u(Vector(50, 0)), x = 0, y = 0 }, { unit = u(Vector(500, 0), false), x = 0, y = 0 } }
+	local ok, n = pcall(A.MovedOf, start)
+	check("moved: a creep with no location is skipped, no error", ok, n)
+	check("moved: only the seen creep 200 from its spot counts", ok and n == 1, n)
+end
+
 finish()

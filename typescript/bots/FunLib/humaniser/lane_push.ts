@@ -400,6 +400,22 @@ export function PathOf(lane: Lane): LanePath | undefined {
     return LANE_PATHS[lane];
 }
 
+/** `team`'s T1 on the path, and the sign that turns a path distance into "towards their T1". */
+export function OwnT1(lane: LanePath, team: number): LuaMultiReturn<[number, number]> {
+    return $multi(lane.towers.find((tw) => tw.team === team)!.s, dirOf(team));
+}
+
+/**
+ * When `team`'s next wave reaches path distance `s`, at or after `now`: waves spawn every 30 s from 0:00 (WaveAt) at the
+ * team's spawn end and walk the path at the lane creeps' 325.
+ */
+export function NextArrival(lane: LanePath, team: number, s: number, now: number): number {
+    const spawn = team === R ? lane.spawnR : lane.spawnD;
+    const travel = math.abs(s - spawn) / SPEED;
+    const k = math.max(0, math.ceil((now - travel) / 30));
+    return k * 30 + travel;
+}
+
 function kindOf(name: string): string | undefined {
     if (string.find(name, "siege", 1, true)[0] !== undefined) return "siege";
     if (string.find(name, "creep_goodguys", 1, true)[0] === undefined && string.find(name, "creep_badguys", 1, true)[0] === undefined) return undefined;
