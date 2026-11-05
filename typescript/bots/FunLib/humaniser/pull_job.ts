@@ -870,7 +870,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     let d = decided[pid];
     if (d === undefined || d.slot !== p.key) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane(), meetAlong(bot, p));
-        const want = Wanted(reading);
+        // The half-pull harness (HalfAll) wants every slot of the half-pulling support, so the hit and step-in get read
+        // many times a game; the lane reading's trigger is checked in normal games.
+        const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
+        const want = Wanted(reading) || harness;
         d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading };
         decided[pid] = d;
         gateWhy[pid] = undefined;

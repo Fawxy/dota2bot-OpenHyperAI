@@ -1619,7 +1619,8 @@ function ____exports.Wants(bot, blocked, host)
             bot:GetAssignedLane(),
             meetAlong(bot, p)
         )
-        local want = ____exports.Wanted(reading)
+        local harness = LaneConfig.Settings().PullTiming.HalfAll == true and ____exports.KindFor(bot, reading) == "half"
+        local want = ____exports.Wanted(reading) or harness
         d = {
             slot = p.key,
             want = want,

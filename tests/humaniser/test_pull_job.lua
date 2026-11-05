@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -346,6 +346,20 @@ do
 	check("half: the lane read once for the wave", w.reads == 1, w.reads)
 	check("half: OUT gets a full pull", field(full, "pk") == "full", full)
 	check("half: switch off, HOLD gets a full pull on the full slot", field(off, "pk") == "full" and field(off, "slot") == field(full, "slot"), off)
+end
+
+-- The half-pull harness (HalfAll): a lane that wants no pull (IN on our half) still gets a half pull from the safe-lane
+-- pos5, so the hit and the step-in are read every slot; without it the slot stays (why=lane).
+do
+	local IN = { state = "IN", clash = 7000, move = -50, q = 0.3, tower = false }
+	local function first(o)
+		local out = run(world(o), 80)
+		return lines(out, "choice")[1], lines(out, "job")[1]
+	end
+	local harness, hjob = first({ reading = IN, halfAll = true })
+	local plain, pjob = first({ reading = IN })
+	check("harness: IN still half-pulls", field(harness, "go") == "1" and field(harness, "pk") == "half" and hjob ~= nil, harness)
+	check("harness: off, IN stays", field(plain, "go") == "0" and field(plain, "why") == "lane" and pjob == nil, plain)
 end
 
 -- Only the safe-lane pos5: an off-lane support (Radiant top) or a pos4 full-pulls the same reading.

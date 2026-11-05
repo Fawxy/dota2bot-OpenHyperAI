@@ -384,7 +384,7 @@ export const DEFAULTS = {
         HalfStepBack: 300,
         HalfStepAhead: 0.5,
         HalfStepBuffer: 50,
-        // Tuning only: every wanted slot of a half-pulling support is a half pull, whatever the lane reading.
+        // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
