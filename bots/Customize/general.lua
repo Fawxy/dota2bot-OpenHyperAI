@@ -154,6 +154,7 @@ Customize.Humaniser = {
         Enable = true,
         -- Who gets OHA's laning Think() for in-lane techniques: 'allies' (allies of humans), 'all' (every bot), 'off'.
         OwnLaningThink = 'allies',
+        PullTiming = { HalfAll = true }, -- arm phhar3 (half-pull harness)
         Plan = true, Block = true, FullPull = true, HalfPull = true, StackPull = true,
         AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
         Mid = true, CounterPlay = true, Telegraph = true,
@@ -278,7 +279,7 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- (slice double-stack: execution apart from getting there; scenario games only). LaneOnly: every bot stays in laning mode
 -- through the laning phase and only holds its spot, last-hits and denies (no techniques, harass, trades, spells or items):
 -- the last-hit check harness (slice lane-last-hits, scenario games only; humaniser/overrides.ts).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false }
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = "pos5", StackEvery = false, StackFar = false, LaneOnly = false }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
