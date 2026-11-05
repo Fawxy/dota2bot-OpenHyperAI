@@ -236,8 +236,8 @@ end
 -- The kills (user 06/11/2026: the hero that finishes a camp gets its madstone when close enough, else it drops and is often
 -- contested; the support takes the last hits, at least the camp's last neutral). The pulled wave drains each neutral at
 -- 100 HP/s; the support's hit (200) would leave it to the wave if it attacked at once, so the clear waits in range for the
--- hit that kills (the engine's lastHit) and the kill is credited to it. The pull tweaks come from the bug-hunt log
--- C:\Users\Chris\.dotactl\logs\2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log (marks 13 and 16).
+-- hit that kills (the engine's lastHit) and the kill is credited to it. A user ask, not a log fault (the branch's log faults
+-- are bug-hunt marks 13 and 16, ~/.dotactl/logs/2026-11-05T18-13-16-bug-hunt_observe_team-bots_e3fcbd4.log, in test_pull_job).
 local function lastHits(o)
 	o = o or {}
 	local w, all, neutrals, ended, take = afterPull({ pos = o.pos })
