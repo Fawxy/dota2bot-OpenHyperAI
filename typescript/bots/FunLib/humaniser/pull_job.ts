@@ -216,6 +216,8 @@ interface Decision {
     /** A core could hold their wave (CoreToHold), and which rule wanted the pull: new, old or both. */
     hold?: boolean;
     rule?: string;
+    /** The lane controller decided this wave (slice lane-control 2b): a refusal is `ctl`, not `lane`. */
+    ctl?: boolean;
     /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
     hm?: number;
 }
@@ -472,6 +474,12 @@ function ourTower(bot: Unit): Vector | undefined {
 export function Wanted(g: LanePush.WaveGone | undefined, target: number): boolean {
     if (g === undefined || g.own === undefined) return false;
     return g.own > target + SETTINGS.WantPast && g.ep <= SETTINGS.PowerRatio * g.ap;
+}
+
+/** The lane controller's decision has this support's pull in its set (slice lane-control 2b). */
+export function CtlWants(d: { levers: string[]; who: string[] }, pid: number): boolean {
+    for (let i = 0; i < d.levers.length; i++) if (d.levers[i] === "pull" && d.who[i] === `${pid}`) return true;
+    return false;
 }
 
 /** The earlier trigger: the 30 s forecast past the target and the lane not coming in. */
@@ -1171,11 +1179,16 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key), p.key + SETTINGS.ArriveAfter);
         const tgt = LanePush.TargetOf(bot.GetAssignedLane());
         const hold = CoreToHold(bot) !== undefined;
-        const byNew = Wanted(gone, tgt);
-        const byOld = hold && OldWanted(reading, tgt);
-        const rule = byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
+        // Slice lane-control 2b: the lane controller's decision for the pulled wave says whether to pull (rule `ctl`); the
+        // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
+        const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
+        const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key));
+        const byCtl = ctl !== undefined && CtlWants(ctl, pid);
+        const byNew = ctl === undefined && Wanted(gone, tgt);
+        const byOld = ctl === undefined && hold && OldWanted(reading, tgt);
+        const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
         const want = rule !== undefined || harness;
-        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone, hold, rule };
+        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone, hold, rule, ctl: ctl !== undefined };
         decided[pid] = d;
         gateWhy[pid] = undefined;
         if (d.kind === "half") return false;
@@ -1187,7 +1200,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
-        done(false, d.reading === undefined ? "no-read" : "lane");
+        done(false, d.ctl === true ? "ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
     // No hit splits the wave: a half that takes all four is the full pull the lane reading turned down.

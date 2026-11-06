@@ -63,4 +63,31 @@ do
 	Customize.Ours.LaneControl = nil
 end
 
+-- Slice 2b: what the levers' owners read.
+do
+	Customize.Ours.LaneControl = true
+	Customize.Ours.LaneControlDrive = true
+	local now = 302
+	DotaTime = function() return now end
+	Ctl.Remember(TEAM_DIRE, LANE_TOP, { wave = 300, at = 302, rule = "R1", mode = "safe", intent = "back", levers = { "feed", "pull" }, who = { "core", "8" }, cx = 0, cy = 0 })
+	check("current: the live decision", Ctl.Current(TEAM_DIRE, LANE_TOP) ~= nil and Ctl.Chosen(TEAM_DIRE, LANE_TOP, "feed") == true)
+	check("chosen: a lever not in the set", Ctl.Chosen(TEAM_DIRE, LANE_TOP, "predeny") == false)
+	check("chosen: another lane has no decision", Ctl.Chosen(TEAM_DIRE, LANE_MID, "feed") == nil)
+	check("decision for the pulled wave", Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300) ~= nil and Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 270) == nil)
+	local PullJob = require("bots/FunLib/humaniser/pull_job")
+	check("pull: this support's pull", PullJob.CtlWants(Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300), 8))
+	check("pull: another support's is not", not PullJob.CtlWants(Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300), 9))
+	now = 334
+	check("current: expired after the next read is due", Ctl.Current(TEAM_DIRE, LANE_TOP) == nil and Ctl.Chosen(TEAM_DIRE, LANE_TOP, "feed") == nil)
+	check("decision for the wave outlives the live window", Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300) ~= nil)
+	now = 310
+	Customize.Ours.LaneControlDrive = false
+	check("drive off: nothing read", Ctl.Current(TEAM_DIRE, LANE_TOP) == nil and Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300) == nil)
+	Customize.Ours.LaneControlDrive = true
+	Ctl.ResetCache()
+	-- forward in safe mode takes the setup, never the shove.
+	local levers = { lv("setup", 300, 1), lv("shove", 300, 2, "mode"), lv("predeny", -300, 1) }
+	check("forward, safe: the setup", names(Ctl.Choose(-400, 150, levers)) == "setup")
+end
+
 finish()

@@ -48,4 +48,9 @@ test('lane_ctl: decisions joined to their check, the pull term only on a pulled 
     assert.strictEqual(all[0].e_plain, 200);
     const hold = out.find(r => r.pulled === 0 && r.intent === 'hold');
     assert.strictEqual(hold.lever, 'none');
+    // Slice 2b: the pull at slot 106 has no div field, so the wave is pulled but not diverted. The back wave read own 1500
+    // (600 past the target 900) and checked at 1000 (100 past): nearer. Hold waves are not scored for it.
+    assert.strictEqual(all[1].div, 0);
+    assert.strictEqual(all[1].nearer, 1);
+    assert.strictEqual(hold.nearer, null);
 });

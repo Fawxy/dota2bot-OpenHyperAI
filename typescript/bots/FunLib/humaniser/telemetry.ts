@@ -879,6 +879,21 @@ function trackHero(this: void, unit: Unit, s: BotState, now: number, slow: boole
     s.aegis = aegis;
 }
 
+/** A creep's id in this log: one number per unit handle, first come first numbered (slice lane-control 2b: an idle swing
+ *  joins its creep's death by it, review 2026-11-06-idle-swing-014bae7 F2). Both teams' lines share the numbering only where
+ *  they share a Lua state. */
+const creepIds = new LuaTable<Unit, number>();
+let nextCreepId = 0;
+export function CreepId(u: Unit): number {
+    let id = creepIds.get(u);
+    if (id === undefined) {
+        nextCreepId++;
+        id = nextCreepId;
+        creepIds.set(u, id);
+    }
+    return id;
+}
+
 // Lane creep deaths (BACKLOG 1.12, WO-025): who got each enemy lane creep that died near the team, and what each own core
 // was doing. Read from what was seen last frame, never through a dead creep's handle (BACKLOG 0.14).
 interface CreepSeen {
@@ -1069,6 +1084,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
             ["tw", c.towerOn.get(d.creep) === true],
+            ["cid", CreepId(d.creep)],
         ];
         // The killer's mode when it started the swing that killed (slice 3: a mode switch between swing and death
         // otherwise leaves the snapshot mode wrong).
@@ -1184,6 +1200,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["y", math.floor(d.seen.y)],
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
+            ["cid", CreepId(d.creep)],
         ]);
     for (const u of ownList) {
         const kind = creepKind(u.GetUnitName());

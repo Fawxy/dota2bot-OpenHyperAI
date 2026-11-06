@@ -63,7 +63,8 @@ ____exports.DEFAULTS = {
     CoreCampTrip = true,
     SupportPullFarm = true,
     PreDeny = true,
-    LaneControl = true
+    LaneControl = true,
+    LaneControlDrive = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

@@ -101,9 +101,13 @@ export const DEFAULTS = {
      *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
     PreDeny: true,
     /** Slice lane-control 2a (lane controller design s5.1-s5.3): once per wave per team and lane, the controller's reading,
-     *  mode, intent and chosen levers as ev=lane_ctl (lane_control). Shadow: nothing reads the decision, so no bot acts on
-     *  it. Off: no reading and no line. */
+     *  mode, intent and chosen levers as ev=lane_ctl (lane_control); LaneControlDrive decides whether bots act on it. Off: no reading,
+     *  no line and no driving. */
     LaneControl: true,
+    /** Slice lane-control 2b (design s7 step 2b): under LaneControl, the controller's decision drives the levers: the idle
+     *  swing's mode and setup, lane aggro's feed and the support's pull read it, each keeping its own gates. Off: shadow
+     *  (2a), each lever on its own trigger. */
+    LaneControlDrive: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
