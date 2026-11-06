@@ -127,9 +127,9 @@ export function NearestSpawner(loc: Vector): LuaMultiReturn<[Spawner | undefined
 const FeedSpawnerRange = 600;
 
 /**
- * Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups the neutrals `bot` sees by the camp type of their nearest
- * spawner and remembers each type's speed. One scan per second serves every bot of the team (not telemetry's tick, so it
- * runs with telemetry off).
+ * Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups every neutral the API lists (GetUnitList) by its nearest
+ * spawner and remembers each camp's speed, and its type's. One scan per second serves every bot of the team (not
+ * telemetry's tick, so it runs with telemetry off).
  */
 export function FeedNeutralSpeeds(_bot: Unit): void {
     if (!WorldFacts.FeedDue()) return;

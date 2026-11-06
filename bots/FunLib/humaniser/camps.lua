@@ -209,9 +209,9 @@ function ____exports.NearestSpawner(loc)
 end
 --- A neutral belongs to the camp whose spawner is nearest, if within this (the box is about 300 across).
 local FeedSpawnerRange = 600
---- Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups the neutrals `bot` sees by the camp type of their nearest
--- spawner and remembers each type's speed. One scan per second serves every bot of the team (not telemetry's tick, so it
--- runs with telemetry off).
+--- Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups every neutral the API lists (GetUnitList) by its nearest
+-- spawner and remembers each camp's speed, and its type's. One scan per second serves every bot of the team (not
+-- telemetry's tick, so it runs with telemetry off).
 function ____exports.FeedNeutralSpeeds(_bot)
     if not WorldFacts.FeedDue() then
         return
