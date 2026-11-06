@@ -7,7 +7,7 @@
  *
  * Slice 2b (`Ours.LaneControlDrive`, under `Ours.LaneControl`): the decision drives the levers. Each lever's owner reads it
  * as a named input and keeps its own gates (rule 6: nobody scales another's output): the idle swing reads the mode and intent
- * (`ModeFor`, `IntentFor`), lane aggro's feed whether the feed is in this wave's set (`Chosen`), the pull trigger whether the
+ * (`ModeFor`) and its `setup` lever (`Chosen`), lane aggro's feed whether the feed is in this wave's set (`Chosen`), the pull trigger whether the
  * pull of the pulled wave is (`DecisionFor`). Commitment (s5.1b): a decision holds for its wave; a `shove` mode breaks early
  * (`kind=break`) when an enemy laner shows up near the clash or the core drops low. With no decision for the moment (before
  * From, after Until, or no reading) each owner falls back to its own trigger. Aggro's other draws (drag, tower, the hold's
@@ -438,25 +438,38 @@ export function ModeFor(team: number, lane: Lane): Mode {
     return Current(team, lane)?.mode ?? "safe";
 }
 
-/** The lane's intent for the idle swing, undefined with no live decision. */
-export function IntentFor(team: number, lane: Lane): Intent | undefined {
-    return Current(team, lane)?.intent;
-}
-
 /** Whether `lever` is in the lane's live decision; undefined with none (the owner's own trigger then decides). */
 export function Chosen(team: number, lane: Lane, lever: string): boolean | undefined {
     const d = Current(team, lane);
     return d === undefined ? undefined : d.levers.includes(lever);
 }
 
-/** Commitment's breaking events for a `shove` mode (s5.1b): an enemy laner back near the clash, or the core low or dead. */
+/** An enemy hero seen (visible, alive, not an illusion) within EnemyAway of the clash: the shove's break. Vision loss is no
+ *  break (review 2026-11-06-lane-control-2b H1: every R5 shove in lctl2 broke 0-13 s in when `enemiesAway` read a hero out of
+ *  vision as near). */
+export function EnemySeenNear(heroes: { x: number; y: number }[], cx: number, cy: number, r: number): boolean {
+    for (const h of heroes) if ((h.x - cx) ** 2 + (h.y - cy) ** 2 <= r * r) return true;
+    return false;
+}
+
+function seenEnemies(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e === null || e === undefined || e.IsNull() || !e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
+        const at = e.GetLocation();
+        out.push({ x: at.x, y: at.y });
+    }
+    return out;
+}
+
+/** Commitment's breaking events for a `shove` mode (s5.1b): an enemy hero seen near the clash, or the core low or dead. */
 function breakCheck(team: number, lane: Lane, m: LaneMemory, now: number): void {
     const d = m.last;
     if (d === undefined || d.mode !== "shove" || now - d.at > SETTINGS.Live) return;
     if (m.breakAt !== undefined && now - m.breakAt < SETTINGS.BreakEvery) return;
     m.breakAt = now;
     let why: string | undefined;
-    if (!enemiesAway(m, now, d.cx, d.cy)) why = "enemy";
+    if (EnemySeenNear(seenEnemies(), d.cx, d.cy, SETTINGS.EnemyAway)) why = "enemy";
     else if (d.core !== undefined && !d.core.IsNull() && (!d.core.IsAlive() || d.core.GetHealth() / math.max(1, d.core.GetMaxHealth()) < SETTINGS.CoreLowHp))
         why = "core_low";
     if (why === undefined) return;

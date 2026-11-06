@@ -853,23 +853,50 @@ function ____exports.ModeFor(team, lane)
     local ____opt_29 = ____exports.Current(team, lane)
     return ____opt_29 and ____opt_29.mode or "safe"
 end
---- The lane's intent for the idle swing, undefined with no live decision.
-function ____exports.IntentFor(team, lane)
-    local ____opt_31 = ____exports.Current(team, lane)
-    return ____opt_31 and ____opt_31.intent
-end
 --- Whether `lever` is in the lane's live decision; undefined with none (the owner's own trigger then decides).
 function ____exports.Chosen(team, lane, lever)
     local d = ____exports.Current(team, lane)
-    local ____temp_33
+    local ____temp_31
     if d == nil then
-        ____temp_33 = nil
+        ____temp_31 = nil
     else
-        ____temp_33 = __TS__ArrayIncludes(d.levers, lever)
+        ____temp_31 = __TS__ArrayIncludes(d.levers, lever)
     end
-    return ____temp_33
+    return ____temp_31
 end
---- Commitment's breaking events for a `shove` mode (s5.1b): an enemy laner back near the clash, or the core low or dead.
+--- An enemy hero seen (visible, alive, not an illusion) within EnemyAway of the clash: the shove's break. Vision loss is no
+-- break (review 2026-11-06-lane-control-2b H1: every R5 shove in lctl2 broke 0-13 s in when `enemiesAway` read a hero out of
+-- vision as near).
+function ____exports.EnemySeenNear(heroes, cx, cy, r)
+    for ____, h in ipairs(heroes) do
+        if (h.x - cx) ^ 2 + (h.y - cy) ^ 2 <= r * r then
+            return true
+        end
+    end
+    return false
+end
+local function seenEnemies()
+    local out = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue93
+            repeat
+                if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
+                    __continue93 = true
+                    break
+                end
+                local at = e:GetLocation()
+                out[#out + 1] = {x = at.x, y = at.y}
+                __continue93 = true
+            until true
+            if not __continue93 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- Commitment's breaking events for a `shove` mode (s5.1b): an enemy hero seen near the clash, or the core low or dead.
 local function breakCheck(team, lane, m, now)
     local d = m.last
     if d == nil or d.mode ~= "shove" or now - d.at > ____exports.SETTINGS.Live then
@@ -880,7 +907,12 @@ local function breakCheck(team, lane, m, now)
     end
     m.breakAt = now
     local why
-    if not enemiesAway(m, now, d.cx, d.cy) then
+    if ____exports.EnemySeenNear(
+        seenEnemies(),
+        d.cx,
+        d.cy,
+        ____exports.SETTINGS.EnemyAway
+    ) then
         why = "enemy"
     elseif d.core ~= nil and not d.core:IsNull() and (not d.core:IsAlive() or d.core:GetHealth() / math.max(
         1,

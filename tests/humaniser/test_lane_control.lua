@@ -88,6 +88,10 @@ do
 	-- forward in safe mode takes the setup, never the shove.
 	local levers = { lv("setup", 300, 1), lv("shove", 300, 2, "mode"), lv("predeny", -300, 1) }
 	check("forward, safe: the setup", names(Ctl.Choose(-400, 150, levers)) == "setup")
+	-- The shove's break: an enemy hero seen within 3,000 of the clash; none seen (out of vision) is no break (review H1).
+	check("break: a seen enemy near", Ctl.EnemySeenNear({ { x = 2000, y = 0 } }, 0, 0, 3000))
+	check("break: a seen enemy far", not Ctl.EnemySeenNear({ { x = 3500, y = 0 } }, 0, 0, 3000))
+	check("break: none seen, no break", not Ctl.EnemySeenNear({}, 0, 0, 3000))
 end
 
 finish()
