@@ -48,6 +48,7 @@ ____exports.DEFAULTS = {
     SupportDeny = true,
     SupportDenyDire = true,
     SupportLastHit = true,
+    CoreDenyYield = true,
     PreHit = true,
     RuneRotation = true,
     RuneSpawn = true,

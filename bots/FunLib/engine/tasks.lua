@@ -1702,6 +1702,9 @@ local SEEN_AHEAD = 0.45
 local COOLDOWN_QUEUE = 0.25
 --- Seconds after the predicted hit time before an unresolved swing counts as `missed`.
 local CONFIRM_SLACK = 0.5
+--- A gap between the frames the verb is stepped at longer than this is a pause (the host stopped stepping the body, e.g.
+-- its mode changed), not a slow frame: frame gaps run under MAX_MARGIN / 1.2. Message attribution only (`wb=paused`).
+local PAUSE_GAP = 0.5
 local function ok()
     return {success = true, reason = "ok"}
 end
@@ -2085,6 +2088,11 @@ local function rollFor(bot, creep)
     end
     return r
 end
+--- True once the bot's error for this creep has been rolled (a peek: never rolls one, so it draws no random number).
+local function hasRoll(bot, creep)
+    local ____opt_97 = rolls[bot:GetPlayerID()]
+    return (____opt_97 and ____opt_97[creep]) ~= nil
+end
 --- What the bot believes about a swing ordered now. A negative timing shift shortens the horizon (late swing);
 -- a positive one extends it with the attackers' DPS, i.e. counts hits that have not started yet (early swing):
 -- the visible prediction alone cannot over-anticipate, so without that extrapolation early errors vanish.
@@ -2098,15 +2106,15 @@ local function believe(bot, creep, withError, observedDps)
         observedDps = 0
     end
     local tHit = ____exports.ownHitTime(bot, creep)
-    local ____this_98
-    ____this_98 = creep
-    local ____opt_97 = ____this_98.GetHealthRegen
-    local regen = ____opt_97 and ____opt_97(____this_98) or 0
+    local ____this_100
+    ____this_100 = creep
+    local ____opt_99 = ____this_100.GetHealthRegen
+    local regen = ____opt_99 and ____opt_99(____this_100) or 0
     local hp = creep:GetHealth()
     local relied = math.max(0, tHit - MIN_MARGIN)
-    local ____exports_incomingDps_result_99 = ____exports.incomingDps(bot, creep)
-    local dps = ____exports_incomingDps_result_99.dps
-    local between = ____exports_incomingDps_result_99.between
+    local ____exports_incomingDps_result_101 = ____exports.incomingDps(bot, creep)
+    local dps = ____exports_incomingDps_result_101.dps
+    local between = ____exports_incomingDps_result_101.between
     local unseen = math.max(0, observedDps + regen - dps)
     local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
     local visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied
@@ -2126,24 +2134,24 @@ local function believe(bot, creep, withError, observedDps)
             believed = visible + regen * r.shift - dps * r.shift
         end
     end
-    local ____tHit_105 = tHit
-    local ____temp_106 = certain > 0
-    local ____believed_107 = believed
-    local ____reliedUsed_108 = reliedUsed
-    local ____physical_104 = physical
-    local ____creep_103 = creep
-    local ____temp_102 = bot:GetAttackDamage()
-    local ____this_101
-    ____this_101 = bot
-    local ____opt_100 = ____this_101.GetBaseDamageVariance
+    local ____tHit_107 = tHit
+    local ____temp_108 = certain > 0
+    local ____believed_109 = believed
+    local ____reliedUsed_110 = reliedUsed
+    local ____physical_106 = physical
+    local ____creep_105 = creep
+    local ____temp_104 = bot:GetAttackDamage()
+    local ____this_103
+    ____this_103 = bot
+    local ____opt_102 = ____this_103.GetBaseDamageVariance
     return {
-        tHit = ____tHit_105,
-        survives = ____temp_106,
-        hpAtHit = ____believed_107,
-        relied = ____reliedUsed_108,
-        mine = ____physical_104(
-            ____creep_103,
-            (____temp_102 - (____opt_100 and ____opt_100(____this_101) or 0)) * (1 + eps * width)
+        tHit = ____tHit_107,
+        survives = ____temp_108,
+        hpAtHit = ____believed_109,
+        relied = ____reliedUsed_110,
+        mine = ____physical_106(
+            ____creep_105,
+            (____temp_104 - (____opt_102 and ____opt_102(____this_103) or 0)) * (1 + eps * width)
         )
     }
 end
@@ -2151,21 +2159,30 @@ end
 local function due(b)
     return b.survives and b.hpAtHit <= b.mine
 end
+local function windowText(w)
+    return string.format(
+        " wo=%.2f wb=%s wn=%d wg=%.2f",
+        w.at,
+        w.by,
+        w.frames,
+        w.gap
+    )
+end
 local function isRangedCreep(c)
-    local ____this_110
-    ____this_110 = c
-    local ____opt_109 = ____this_110.GetUnitName
-    local name = ____opt_109 and ____opt_109(____this_110)
+    local ____this_112
+    ____this_112 = c
+    local ____opt_111 = ____this_112.GetUnitName
+    local name = ____opt_111 and ____opt_111(____this_112)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_112
-    ____this_112 = c
-    local ____opt_111 = ____this_112.GetMaxHealth
-    local max = ____opt_111 and ____opt_111(____this_112)
+    local ____this_114
+    ____this_114 = c
+    local ____opt_113 = ____this_114.GetMaxHealth
+    local max = ____opt_113 and ____opt_113(____this_114)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -2191,16 +2208,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_114
-    ____this_114 = bot
-    local ____opt_113 = ____this_114.GetNearbyHeroes
-    local heroes = ____opt_113 and ____opt_113(____this_114, 1200, true, 0)
+    local ____this_116
+    ____this_116 = bot
+    local ____opt_115 = ____this_116.GetNearbyHeroes
+    local heroes = ____opt_115 and ____opt_115(____this_116, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_115 = h.GetAttackTarget
-        if (____opt_115 and ____opt_115(h)) == creep then
+        local ____opt_117 = h.GetAttackTarget
+        if (____opt_117 and ____opt_117(h)) == creep then
             return true
         end
     end
@@ -2221,14 +2238,14 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    local ____exports_incomingDps_result_dps_120 = ____exports.incomingDps(bot, c).dps
-    local ____math_max_119 = math.max
-    local ____this_118
-    ____this_118 = c
-    local ____opt_117 = ____this_118.GetHealthRegen
-    local dps = ____exports_incomingDps_result_dps_120 + ____math_max_119(
+    local ____exports_incomingDps_result_dps_122 = ____exports.incomingDps(bot, c).dps
+    local ____math_max_121 = math.max
+    local ____this_120
+    ____this_120 = c
+    local ____opt_119 = ____this_120.GetHealthRegen
+    local dps = ____exports_incomingDps_result_dps_122 + ____math_max_121(
         0,
-        -(____opt_117 and ____opt_117(____this_118) or 0)
+        -(____opt_119 and ____opt_119(____this_120) or 0)
     )
     local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
     if margin <= 0 then
@@ -2258,13 +2275,13 @@ function ____exports.laneTargets(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local ____math_max_123 = math.max
-    local ____this_122
-    ____this_122 = bot
-    local ____opt_121 = ____this_122.GetCurrentMovementSpeed
-    local speed = ____math_max_123(
+    local ____math_max_125 = math.max
+    local ____this_124
+    ____this_124 = bot
+    local ____opt_123 = ____this_124.GetCurrentMovementSpeed
+    local speed = ____math_max_125(
         100,
-        ____opt_121 and ____opt_121(____this_122) or 300
+        ____opt_123 and ____opt_123(____this_124) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -2305,6 +2322,7 @@ function ____exports.laneTargets(bot, opts)
     return out
 end
 local strike = __TS__Generator(function(bot, mode, opts)
+    local observedDps
     local adapter = get()
     if bot.GetAttackDamage == nil or bot.GetAttackPoint == nil then
         return fail("unsupported")
@@ -2360,12 +2378,28 @@ local strike = __TS__Generator(function(bot, mode, opts)
     }
     local diag = ""
     local held = "start"
+    local win = {at = -1, by = "none", frames = 0, gap = 0}
+    local function openNow()
+        return due(believe(
+            bot,
+            creep,
+            hasRoll(bot, creep),
+            observedDps
+        ))
+    end
+    local function opened(t, gap, by)
+        if win.frames == 0 then
+            win.at = t - start
+            win.by = by ~= "swing" and gap > PAUSE_GAP and "paused" or by
+        end
+        win.frames = win.frames + 1
+    end
     local function early(r)
-        r.message = string.format(
+        r.message = (string.format(
             "w=%.2f why=%s",
             now() - start,
             held
-        ) .. heroWatchText(heroes)
+        ) .. windowText(win)) .. heroWatchText(heroes)
         return r
     end
     local lastFrame
@@ -2373,16 +2407,19 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local gapSum = 0
     local gapN = 0
     local seen = {}
-    local observedDps = 0
+    observedDps = 0
     while true do
         local t = now()
+        local gap = 0
         if lastFrame ~= nil and t > lastFrame then
+            gap = t - lastFrame
             margin = math.min(
                 MAX_MARGIN,
-                math.max(MIN_MARGIN, 1.2 * (t - lastFrame))
+                math.max(MIN_MARGIN, 1.2 * gap)
             )
-            gapSum = gapSum + (t - lastFrame)
+            gapSum = gapSum + gap
             gapN = gapN + 1
+            win.gap = math.max(win.gap, gap)
         end
         lastFrame = t
         if not gone(creep) then
@@ -2429,6 +2466,9 @@ local strike = __TS__Generator(function(bot, mode, opts)
                     creep:GetLocation()
                 ) - bot:GetAttackRange())
             )
+            if openNow() then
+                opened(t, gap, "range")
+            end
             bot:Action_MoveToLocation(creep:GetLocation())
         else
             local cd = ____exports.cooldownLeft(bot)
@@ -2442,6 +2482,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
                     math.floor(b.mine)
                 )
                 if due(b) then
+                    opened(t, gap, "swing")
                     tHit = b.tHit
                     diag = string.format(
                         "w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d",
@@ -2468,6 +2509,12 @@ local strike = __TS__Generator(function(bot, mode, opts)
                     bot:Action_AttackUnit(creep, true)
                     break
                 end
+            elseif openNow() then
+                opened(
+                    t,
+                    gap,
+                    mode == "deny" and not deniable(creep) and "hp50" or "cd"
+                )
             end
             if opts.hold ~= nil and adapter.hold ~= nil then
                 adapter.hold(bot, opts.hold)
@@ -2479,15 +2526,15 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_125
-    ____this_125 = bot
-    local ____opt_124 = ____this_125.GetLastAttackTime
-    local atk0 = ____opt_124 and ____opt_124(____this_125)
+    local ____this_127
+    ____this_127 = bot
+    local ____opt_126 = ____this_127.GetLastAttackTime
+    local atk0 = ____opt_126 and ____opt_126(____this_127)
     local fireAt
     local landHp
     local function out(r)
         local hp = gone(creep) and 0 or math.floor(creep:GetHealth())
-        r.message = string.format(
+        r.message = (string.format(
             "%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f",
             diag,
             hp,
@@ -2495,11 +2542,16 @@ local strike = __TS__Generator(function(bot, mode, opts)
             fireAt or -1,
             landHp or -1,
             gapN > 0 and gapSum / gapN or 0
-        ) .. heroWatchText(heroes)
+        ) .. windowText(win)) .. heroWatchText(heroes)
         return r
     end
     while true do
         coroutine.yield()
+        local t = now()
+        if t > lastFrame then
+            win.gap = math.max(win.gap, t - lastFrame)
+        end
+        lastFrame = t
         if fireAt == nil and atk0 ~= nil and bot:GetLastAttackTime() > atk0 then
             fireAt = now() - swingAt
         end
@@ -2513,7 +2565,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             return out(fail(landBy() and (fireAt ~= nil or (landHp or 0) > 0) and "missed" or lostReason(enemyOnIt)))
         end
         if not bot:IsAlive() then
-            return fail("dead")
+            return out(fail("dead"))
         end
         if now() - swingAt > tHit + CONFIRM_SLACK then
             return out(fail("missed"))

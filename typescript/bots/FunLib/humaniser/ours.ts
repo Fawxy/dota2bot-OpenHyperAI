@@ -33,6 +33,9 @@ export const DEFAULTS = {
     /** Slice support-lane-hits: with SupportDeny on, the support's body also takes the last hits no allied core will take
      *  (states/lane_claims), in place of OHA's last hits; false keeps those OHA's (denies only, sub-switch for debugging). */
     SupportLastHit: true,
+    /** User 06/11/2026 (bug-hunt mark 11): a core leaves a deny an allied support's laning body is in an attempt on and goes for
+     *  the next last hit or deny (states/lane_claims DenyYield); false: a core takes every creep (sub-switch for debugging). */
+    CoreDenyYield: true,
     /**
      * Slice pre-hit: with CoreLastHit on, a core hits an enemy creep our tower is attacking when the tower would otherwise take
      * it from above the core's kill range and one hit makes a window (states/pre_hit); false: the core only last-hits.

@@ -181,6 +181,15 @@ function ____exports.NoteVerdict(pid, now, verdict)
     s.pr = verdict
     s.prAt = now
 end
+--- A core left deny `creep` to an allied support's attempt (states/lane_claims DenyYield); counted once per creep.
+function ____exports.NoteYield(pid, creep)
+    local s = scanOf(pid)
+    if s.yCreep == creep then
+        return
+    end
+    s.yCreep = creep
+    s.yc = (s.yc or 0) + 1
+end
 function ____exports.NotePhase(pid, ph)
     scanOf(pid).ph = ph
 end
@@ -251,7 +260,8 @@ function ____exports.AttemptOffers(pid)
     return lastHits, denies, seen
 end
 --- `ph=hold sc=0.1 aw=340 pk=2.3 n=2 sk=1 ch=0`: ages in s since the last scan and the last pick; undefined before any. With a
--- pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict).
+-- pre-hit verdict in the last 2 s, ` pr=<verdict>` follows (states/pre_hit Verdict); after a core's first deny yield, ` yc=<n>`
+-- (the denies it has left to an allied support's attempt so far).
 function ____exports.Describe(pid, now)
     local s = scans[pid]
     if s == nil then
@@ -260,7 +270,7 @@ function ____exports.Describe(pid, now)
     local function age(t)
         return t == nil and "-" or string.format("%.1f", now - t)
     end
-    local pr = s.pr ~= nil and s.prAt ~= nil and now - s.prAt <= 2 and " pr=" .. s.pr or ""
+    local pr = (s.pr ~= nil and s.prAt ~= nil and now - s.prAt <= 2 and " pr=" .. s.pr or "") .. (s.yc ~= nil and " yc=" .. tostring(s.yc) or "")
     return string.format(
         "ph=%s sc=%s aw=%s pk=%s n=%s sk=%s ch=%s%s",
         s.ph or "-",

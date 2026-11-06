@@ -264,8 +264,12 @@ function ____exports.SpotInfo(bot)
     local ____opt_9 = spotCache[bot:GetPlayerID()]
     return ____opt_9 and ____opt_9.info
 end
---- The creeps this laner may take: undefined for a core (all), the support's claims otherwise.
+--- The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
+-- Ours.CoreDenyYield off), the support's claims otherwise.
 local function claimsFor(bot)
+    if ____exports.OwnsLastHit(bot) then
+        return LaneClaims.CoreMine(bot)
+    end
     if not ____exports.OwnsSupportHits(bot) then
         return nil
     end
@@ -378,6 +382,37 @@ local function choose(bot, targets, current, pre)
     idlePicks[bot:GetPlayerID()] = idle ~= nil and chosen == idle and idle or nil
     return chosen
 end
+--- A core's last yield (Ours.CoreDenyYield) not yet reported, for its ev=lh `yd`: the support it left a deny to, and when. The
+-- next attempt reported carries it if it ends within YIELD_REPORT_SECS of the yield; in smoke game deny-yield_fn1 most yields
+-- came with nothing else on offer, so the yield and the next attempt are often seconds apart (ev=snap's `yc` counts every
+-- yield). An older yield is dropped unreported (review 2026-11-06-deny-yield-0ee970a F2: a stale yd on a later last hit).
+local yields = {}
+local YIELD_REPORT_SECS = 6
+--- After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it.
+local function noteYield(bot, targets, current, pre, chosen)
+    if not ____exports.OwnsLastHit(bot) or LaneClaims.CoreMine(bot) == nil then
+        return
+    end
+    local plain = LanePick.Choose(targets, current, nil, pre)
+    if plain == nil or plain.kind ~= "deny" or chosen ~= nil and chosen.creep == plain.creep then
+        return
+    end
+    local sup = LaneClaims.DenyYield(bot, plain)
+    if sup == nil then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    LanePick.NoteYield(pid, plain.creep)
+    yields[pid] = {
+        sup = sup,
+        t = DotaTime()
+    }
+end
+local function yieldOf(pid)
+    local y = yields[pid]
+    yields[pid] = nil
+    return y ~= nil and DotaTime() - y.t <= YIELD_REPORT_SECS and y.sup or nil
+end
 --- The creeps this bot pre-hit (states/pre_hit), newest last, so the ev=lh of a later attempt on one says `ph=1` (last hits per
 -- pre-hit). A creep handle stays the same unit until it dies.
 local preHits = {}
@@ -469,6 +504,13 @@ local body = __TS__Generator(function(bot, ctx)
                 end
                 local pre = ____temp_16
                 local chosen = choose(bot, targets, current, pre)
+                noteYield(
+                    bot,
+                    targets,
+                    current,
+                    pre,
+                    chosen
+                )
                 if chosen ~= nil then
                     noteSeen(
                         bot:GetPlayerID(),
@@ -741,7 +783,15 @@ local body = __TS__Generator(function(bot, ctx)
                 else
                     ____temp_43 = nil
                 end
-                __TS__SparseArrayPush(____array_44, {"pre", ____temp_43}, {"msg", res.message})
+                __TS__SparseArrayPush(
+                    ____array_44,
+                    {"pre", ____temp_43},
+                    {
+                        "yd",
+                        yieldOf(bot:GetPlayerID())
+                    },
+                    {"msg", res.message}
+                )
                 ____Telemetry_Event_45(
                     "lh",
                     {__TS__SparseArraySpread(____array_44)}

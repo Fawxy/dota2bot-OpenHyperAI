@@ -11,7 +11,6 @@ import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
-import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -55,19 +54,29 @@ export const SETTINGS = {
     MinNet: 30,
     CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     MaxCampDist: 3800,
-    /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's small and large camps within OffCampDist of its
-     *  outermost lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1) and
-     *  the small one beside it (about 3,700-4,100 from the usual T1 spots on the 7.41 spawners of bug-hunt 05/11/2026 ev=camp;
-     *  no other enemy small or large camp is within 6,000). Its own camps lie
+    /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's large camp within OffCampDist of its outermost
+     *  lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1; no other enemy
+     *  large camp is within 6,000 on the 7.41 spawners of bug-hunt 05/11/2026 ev=camp). Not the enemy small camp beside it
+     *  (about 3,700-4,100 from the T1): user 06/11/2026, that is the enemy pos5's pull camp, deep in their half, in their
+     *  support's path and next to their carry. Its own camps lie
      *  behind its T2, past MaxCampDist of the clash, so with its own team's spawners only it never fitted a camp (cngchk6,
      *  cngchk9; bug-hunt 05/11/2026: pid 1 and 9 gate no-camp 35 and 72, no plan). User 06/11/2026: "the offlaner needs to
      *  farm that camp as part of their lane farm routine, same way pos 1 considers camps". `judgement`. */
     OffCampDist: 4300,
-    OffCampTypes: { small: true, large: true } as Record<string, boolean>,
+    OffCampTypes: { large: true } as Record<string, boolean>,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
     PathFactor: 1.2,
     /** An enemy hero's reach (lane_spot HeroReach) plus this, touching the walk or the camp, holds the start. */
     ThreatMargin: 600,
+    /** The missing-hero gate (user 06/11/2026, every core position alike): an enemy hero alive and unseen for more than
+     *  MissingAfter seconds counts as possibly at the camp or on the walk when its last-seen spot lies within its possible
+     *  run since (MissingSpeed per second unseen, capped at MissingReachMax) plus ThreatMargin of the walk from the core to
+     *  the camp. The cap: a hero unseen long and last seen far off is as likely anywhere, and holding every trip on it would
+     *  hold them all while any enemy farms in fog; one last seen near the walk holds however old the sighting. MissingSpeed
+     *  is a laning-stage hero with boots (its speed is not readable in fog). All `judgement`. */
+    MissingAfter: 3,
+    MissingSpeed: 330,
+    MissingReachMax: 4000,
     MidRuneGuard: 40,
     /** Neutrals this far from the box centre are the camp's. */
     CampRadius: 700,
@@ -173,9 +182,11 @@ const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
 const skipped: Record<number, Record<string, boolean>> = {};
 const gates: Record<number, { min: number; n: Record<string, number> }> = {};
+/** No-camp lines written, by pid: one per game minute and reason of the nearest trip camp. */
+const noCampSeen: Record<number, Record<string, boolean>> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, nextPlanAt, pace, hpRate, cleared, lastSeen, skipped, gates] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
+    for (const t of [running, nextPlanAt, pace, hpRate, cleared, lastSeen, skipped, gates, noCampSeen] as Record<number, unknown>[]) for (const [k] of pairs(t)) delete t[k as number];
     CampClaims.ResetCache();
 }
 
@@ -507,18 +518,25 @@ function pulledInto(center: Vector): boolean {
     return false;
 }
 
-function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number, pullCamps: Record<number, boolean>): boolean {
+/** Why the camp is closed to a trip now (`cleared`, `empty`, `pulled`, `ally`, `trip`, `reserved`), or undefined when open. */
+function closedWhy(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number, pullCamps: Record<number, boolean>): string | undefined {
     const team = bot.GetTeam();
-    if (cleared[team]?.[spawner.idx] === currentMinute(now)) return false;
+    if (cleared[team]?.[spawner.idx] === currentMinute(now)) return "cleared";
     // The API returns no neutrals in fog: a camp is known empty only where we see.
-    if (IsLocationVisible(center) && campNeutralCount(center) === 0) return false;
+    if (IsLocationVisible(center) && campNeutralCount(center) === 0) return "empty";
     // A pulled camp is open to a core only while the support clears it (PullFarm), which then gives it up.
-    if (pullCamps[spawner.idx] === true || (pulledInto(center) && CampClaims.On("pullfarm", spawner.idx) === undefined)) return false;
-    return !allyInBox(bot, spawner.idx) && !otherTripOn(bot, spawner.idx) && !Stacking.ReservedByAlly(spawner.idx, bot.GetPlayerID());
+    if (pullCamps[spawner.idx] === true || (pulledInto(center) && CampClaims.On("pullfarm", spawner.idx) === undefined)) return "pulled";
+    if (allyInBox(bot, spawner.idx)) return "ally";
+    if (otherTripOn(bot, spawner.idx)) return "trip";
+    return Stacking.ReservedByAlly(spawner.idx, bot.GetPlayerID()) ? "reserved" : undefined;
+}
+
+function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number, pullCamps: Record<number, boolean>): boolean {
+    return closedWhy(bot, spawner, center, now, pullCamps) === undefined;
 }
 
 /**
- * The best camp of the core's own jungle (the offlaner's also the enemy's by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
+ * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
  * allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
  */
 export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan | undefined {
@@ -564,7 +582,8 @@ function laneTower(bot: Unit): Vector | undefined {
     return undefined;
 }
 
-/** The camps a trip may take: the core's own team's, and for the offlaner the enemy's by its lane (SETTINGS OffCampDist). */
+/** The camps a trip may take: the core's own team's, and for the offlaner the enemy's large camp by its lane (SETTINGS
+ *  OffCampDist, OffCampTypes). */
 function tripSpawners(bot: Unit): Camps.Spawner[] {
     const team = bot.GetTeam();
     const out: Camps.Spawner[] = [];
@@ -597,6 +616,62 @@ function anyCamp(bot: Unit, front: Vector, now: number): boolean {
     return false;
 }
 
+/**
+ * Why no camp fitted (the `no-camp` gate), for the throttled `phase=nocamp` line: the trip list's size and how many of it
+ * are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`level`, `far`
+ * past MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
+ * that never planned a camp in core-missing_fn1 (05/11/2026, pid 1 and 8) read only as h_camp on the gates line.
+ */
+function noCampFields(bot: Unit, front: Vector, now: number): LuaMultiReturn<[string, Telemetry.Fields<"core_camp">]> {
+    const level = bot.GetLevel();
+    const team = bot.GetTeam();
+    const list = tripSpawners(bot);
+    const inList: Record<number, boolean> = {};
+    let noff = 0;
+    let best: Camps.Spawner | undefined;
+    let bestD = math.huge;
+    for (const sp of list) {
+        inList[sp.idx] = true;
+        if (sp.team !== team) noff++;
+        const d = dist(Camps.BoxCenter(sp), front);
+        if (d < bestD) {
+            best = sp;
+            bestD = d;
+        }
+    }
+    let why = "none";
+    if (best !== undefined) {
+        if (level < (SETTINGS.CampMinLevel[best.type] ?? 1)) why = "level";
+        else if (bestD > SETTINGS.MaxCampDist) why = "far";
+        else why = closedWhy(bot, best, Camps.BoxCenter(best), now, {}) ?? "open";
+    }
+    const [near, nd] = Camps.NearestSpawner(front);
+    const other = near !== undefined && inList[near.idx] !== true;
+    return $multi(why, [
+        ["lvl", level],
+        ["ncand", list.length],
+        ["noff", noff],
+        ["camp", best?.idx],
+        ["type", best?.type],
+        ["cd", best !== undefined ? math.floor(bestD) : undefined],
+        ["why", why],
+        ["near", other ? near!.idx : undefined],
+        ["nd", other ? math.floor(nd) : undefined],
+        ["nwhy", other ? "list" : undefined],
+    ]);
+}
+
+/** One `phase=nocamp` line per core per game minute and reason. */
+function noteNoCamp(bot: Unit, front: Vector, now: number): void {
+    const pid = bot.GetPlayerID();
+    const [why, fields] = noCampFields(bot, front, now);
+    const key = `${math.floor(now / 60)}:${why}`;
+    noCampSeen[pid] = noCampSeen[pid] ?? {};
+    if (noCampSeen[pid][key] === true) return;
+    noCampSeen[pid][key] = true;
+    Telemetry.Event("core_camp", [["pid", pid], ["pos", LaneConfig.PositionOf(bot)], ["lane", bot.GetAssignedLane()], ["phase", "nocamp"], ...fields]);
+}
+
 // ------------------------------------------------------------------------------------------------ gates
 
 /** A visible enemy hero whose reach (plus ThreatMargin) touches the walk from the core to `at` or the camp itself. */
@@ -608,6 +683,49 @@ export function ThreatOnWay(bot: Unit, at: Vector): boolean {
         if (loc !== undefined && distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + SETTINGS.ThreatMargin) return true;
     }
     return false;
+}
+
+const MAX_PLAYER_ID = 23;
+
+/**
+ * Enemy heroes alive, unseen for more than MissingAfter, whose last-seen spot is within their possible run since (SETTINGS
+ * MissingSpeed, MissingReachMax) plus ThreatMargin of the walk from the core to `at`: each could be at the camp or on the way.
+ * Walks the player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team), as lane_read does. A hero the
+ * API has no sighting of is not placed and not counted.
+ */
+export function MissingNear(bot: Unit, at: Vector): number {
+    return MissingOf(bot, at).n;
+}
+
+/** MissingNear's count, the longest time_since_seen of the counted heroes (seconds) and their player ids. */
+export interface Missing {
+    n: number;
+    mtss?: number;
+    pids: number[];
+}
+
+export function MissingOf(bot: Unit, at: Vector): Missing {
+    const s = SETTINGS;
+    const team = bot.GetTeam();
+    const here = bot.GetLocation();
+    const visible: Record<number, boolean> = {};
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e !== null && e !== undefined && e.CanBeSeen() && !e.IsIllusion()) visible[e.GetPlayerID()] = true;
+    }
+    const out: Missing = { n: 0, pids: [] };
+    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
+        const run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax);
+        if (distToSegment(info.location, here, at) <= run + s.ThreatMargin) {
+            out.n++;
+            out.pids.push(pid);
+            out.mtss = math.max(out.mtss ?? 0, info.time_since_seen);
+        }
+    }
+    return out;
 }
 
 function mateOnJob(bot: Unit): boolean {
@@ -646,14 +764,33 @@ function inLaneGate(bot: Unit, now: number): string | undefined {
     return undefined;
 }
 
-/** Why a fitting trip may not start now, or undefined. */
-function startGate(bot: Unit, plan: CampPlan, now: number): string | undefined {
-    if (mateOnJob(bot)) return "mate-job";
-    if (LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
-    if (LaneConfig.PositionOf(bot) === 2 && Runes.NextSpawn("power", now) - now < SETTINGS.MidRuneGuard) return "rune";
+/** A start gate's reason, and for `missing` how many enemies were, the longest unseen (s) and their pids. */
+interface Held {
+    why: string;
+    nmiss?: number;
+    mtss?: number;
+    mpid?: string;
+}
+
+function heldFields(h: Held): Telemetry.Fields<"core_camp"> {
+    return [["why", h.why], ["nmiss", h.nmiss], ["mtss", h.mtss !== undefined ? math.floor(h.mtss + 0.5) : undefined], ["mpid", h.mpid]];
+}
+
+/**
+ * Why a fitting trip may not start now (the first camp, or a chained one after a clear: the core is then at the camp, and
+ * the walk checked is from there to the next), or undefined. The missing-hero gate (MissingNear) replaced the lane's
+ * `enemy-missing` read here: it covers the lane enemies gone from the front and any other enemy that could be at the camp or
+ * on the walk, for every core position alike (user 06/11/2026).
+ */
+function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
+    if (mateOnJob(bot)) return { why: "mate-job" };
+    if (LaneConfig.PositionOf(bot) === 2 && Runes.NextSpawn("power", now) - now < SETTINGS.MidRuneGuard) return { why: "rune" };
     const spawner = Camps.SpawnerByIdx(plan.camp);
-    if (spawner !== undefined && ThreatOnWay(bot, Camps.BoxCenter(spawner))) return "threat";
-    return undefined;
+    if (spawner === undefined) return undefined;
+    const center = Camps.BoxCenter(spawner);
+    if (ThreatOnWay(bot, center)) return { why: "threat" };
+    const m = MissingOf(bot, center);
+    return m.n > 0 ? { why: "missing", nmiss: m.n, mtss: m.mtss, mpid: m.pids.join(",") } : undefined;
 }
 
 // ------------------------------------------------------------------------------------------------ telemetry
@@ -692,13 +829,13 @@ function log(bot: Unit, phase: string, c: Clash, fields: Telemetry.Fields<"core_
 }
 
 /** One skip line per wave window and reason: the coverage count's windows where a camp fitted and no trip started. */
-function noteSkip(bot: Unit, why: string, c: Clash, plan: CampPlan): void {
+function noteSkip(bot: Unit, h: Held, c: Clash, plan: CampPlan): void {
     const pid = bot.GetPlayerID();
-    const key = `${math.floor(c.t / 30)}:${why}`;
+    const key = `${math.floor(c.t / 30)}:${h.why}`;
     skipped[pid] = skipped[pid] ?? {};
     if (skipped[pid][key] === true) return;
     skipped[pid][key] = true;
-    log(bot, "skip", c, [["why", why], ...planFields(plan)]);
+    log(bot, "skip", c, [...heldFields(h), ...planFields(plan)]);
 }
 
 type GateField = "h_dead" | "h_mode" | "h_hp" | "h_far" | "h_wave" | "h_camp" | "h_fc" | "h_clash" | "h_gap" | "h_plan" | "h_skip" | "h_trip";
@@ -828,6 +965,12 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         markCleared(bot.GetTeam(), t.plan.camp, now);
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
         if (next === undefined) break;
+        // A chained camp passes the same start gates as the first (review L3 of 2fec253): held, the core walks back.
+        const hold = startGate(bot, next, now);
+        if (hold !== undefined) {
+            log(bot, "nexthold", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...heldFields(hold), ...planFields(next)]);
+            break;
+        }
         t.plan = next;
         CampClaims.Set("core", bot.GetPlayerID(), next.camp);
         t.camps++;
@@ -890,7 +1033,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (gate === "time") return false;
     if (gate !== undefined) return held(gate);
     const lane = bot.GetAssignedLane();
-    if (!anyCamp(bot, GetLaneFrontLocation(bot.GetTeam(), lane, 0), now)) return held("no-camp");
+    const front = GetLaneFrontLocation(bot.GetTeam(), lane, 0);
+    if (!anyCamp(bot, front, now)) {
+        noteNoCamp(bot, front, now);
+        return held("no-camp");
+    }
     const [samples, path] = LanePush.Forecast(bot.GetTeam(), lane, SETTINGS.Horizon);
     if (samples === undefined || path === undefined || samples.length === 0) return held("no-forecast");
     const force = Overrides.CampForce();
@@ -905,9 +1052,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (!force && clash.t - now < SETTINGS.MinGap) return held("gap");
     const plan = Plan(bot, bot.GetLocation(), now, clash);
     if (plan === undefined) return held("no-plan");
-    const why = blocked(bot) ?? startGate(bot, plan, now);
-    if (why !== undefined) {
-        noteSkip(bot, why, clash, plan);
+    const outer = blocked(bot);
+    const gate2 = outer !== undefined ? { why: outer } : startGate(bot, plan, now);
+    if (gate2 !== undefined) {
+        noteSkip(bot, gate2, clash, plan);
         return held("skip");
     }
     tally(bot, now, "trip");
