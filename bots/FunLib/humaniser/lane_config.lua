@@ -402,6 +402,10 @@ local CONSUMER_FLAGS = {
 function ____exports.TowerReach()
     return WorldFacts.Reach(____exports.Settings().Thresholds.EnemyTowerRange)
 end
+--- The enemy tower's attack range alone (read from the game; 700 when the read fails).
+function ____exports.TowerAttackRange()
+    return WorldFacts.TowerAttackRange(700)
+end
 function ____exports.ResetSettings()
     cached = nil
 end

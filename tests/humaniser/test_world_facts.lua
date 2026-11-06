@@ -62,3 +62,18 @@ do
 end
 
 finish()
+
+do
+	WF.Reset()
+	local tw = unit({ range = 700, radius = 144 })
+	local saved = GetTower
+	GetTower = function() return tw end
+	check("game reach is range plus radius", WF.Reach(850) == 844)
+	check("game attack range is the range alone", WF.TowerAttackRange(700) == 700)
+	tw.range = 999
+	check("both are read once per game", WF.Reach(850) == 844 and WF.TowerAttackRange(700) == 700)
+	WF.Reset()
+	GetTower = function() return nil end
+	check("no tower answers: the constants", WF.Reach(850) == 850 and WF.TowerAttackRange(700) == 700)
+	GetTower = saved
+end

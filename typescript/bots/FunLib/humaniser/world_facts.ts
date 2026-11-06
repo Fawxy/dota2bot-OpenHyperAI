@@ -49,6 +49,23 @@ function perMoment(fact: string, key: string, read: () => number | undefined): n
 }
 
 let gameReach: number | undefined;
+let gameRange: number | undefined;
+
+/** The towers' attack range itself (700 in 7.41), the distance a hit reaches from the tower's edge. Per game, from the first tower that answers. */
+export function TowerAttackRange(fb: number): number {
+    if (gameRange !== undefined) return gameRange;
+    for (const team of [Team.Radiant, Team.Dire]) {
+        const t = GetTower(team, Tower.Top1);
+        if (t !== null && t !== undefined && valid(t)) {
+            const r = t.GetAttackRange();
+            if (r !== undefined && r > 0) {
+                gameRange = r;
+                return r;
+            }
+        }
+    }
+    return fallback("tower_range", fb);
+}
 
 /**
  * The towers' attack reach for the whole game (every tier has the same range and size in 7.41; read from the first tower that
@@ -135,6 +152,7 @@ export function Reset(): void {
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
     towers = newTowers();
     gameReach = undefined;
+    gameRange = undefined;
 }
 
 export interface ProbeRow {

@@ -484,6 +484,11 @@ export function TowerReach(): number {
     return WorldFacts.Reach(Settings().Thresholds.EnemyTowerRange);
 }
 
+/** The enemy tower's attack range alone (read from the game; 700 when the read fails). */
+export function TowerAttackRange(): number {
+    return WorldFacts.TowerAttackRange(700);
+}
+
 export function Settings(): LaneSettings {
     if (cached === undefined) cached = merge(DEFAULTS, Config.Get().Lane) as LaneSettings;
     return cached;

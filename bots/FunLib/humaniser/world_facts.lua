@@ -228,6 +228,24 @@ local function perMoment(fact, key, read)
     return v
 end
 local gameReach
+local gameRange
+--- The towers' attack range itself (700 in 7.41), the distance a hit reaches from the tower's edge. Per game, from the first tower that answers.
+function ____exports.TowerAttackRange(fb)
+    if gameRange ~= nil then
+        return gameRange
+    end
+    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+        local t = GetTower(team, Tower.Top1)
+        if t ~= nil and t ~= nil and valid(t) then
+            local r = t:GetAttackRange()
+            if r ~= nil and r > 0 then
+                gameRange = r
+                return r
+            end
+        end
+    end
+    return fallback("tower_range", fb)
+end
 --- The towers' attack reach for the whole game (every tier has the same range and size in 7.41; read from the first tower that
 -- answers, either team). Contexts add their own stated margin to it. `fb` is the constant it replaces.
 function ____exports.Reach(fb)
@@ -249,19 +267,19 @@ end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue20
+            local __continue26
             repeat
                 if not valid(u) then
-                    __continue20 = true
+                    __continue26 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue20 = true
+                __continue26 = true
             until true
-            if not __continue20 then
+            if not __continue26 then
                 break
             end
         end
@@ -325,6 +343,7 @@ function ____exports.Reset()
     end
     towers = newTowers()
     gameReach = nil
+    gameRange = nil
 end
 --- What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game).
 function ____exports.Probe(bot, constants)
