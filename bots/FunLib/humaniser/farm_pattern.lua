@@ -179,6 +179,7 @@ local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
@@ -786,7 +787,10 @@ function ____exports.NextWaveAt(team, lane, front, now)
         return nil
     end
     local along = PullTiming.Along(path, front)
-    local travel = along / LaneConfig.Settings().PullTiming.CreepSpeed
+    local travel = along / WorldFacts.Latest(
+        "lane_creep_speed",
+        LaneConfig.Settings().PullTiming.CreepSpeed
+    )
     local period = ____exports.Settings().WavePeriod
     local k = math.max(
         0,

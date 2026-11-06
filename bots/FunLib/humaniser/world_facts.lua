@@ -308,16 +308,30 @@ function ____exports.NeutralSpeed(bot, fb)
     return v or live.neutral_speed or fallback("neutral_speed", fb)
 end
 --- Acquisition range of `unit`, keyed by its name (one read per unit type per second).
-function ____exports.AcquisitionRange(unit, fb)
+function ____exports.AcquisitionRange(unit, fb, kind)
     local v = perMoment(
-        "acquisition",
+        "acquisition_" .. kind,
         unit:GetUnitName(),
         function()
             local r = unit:GetAcquisitionRange()
             return r ~= nil and r > 0 and r or nil
         end
     )
-    return v or fallback("acquisition", fb)
+    return v or live["acquisition_" .. kind] or fallback("acquisition_" .. kind, fb)
+end
+local noReadYet = {}
+--- The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
+-- (telemetry's world-facts tick reads each moment); before the first read, or with telemetry off, it returns `fb`, counted once.
+function ____exports.Latest(fact, fb)
+    local v = live[fact]
+    if v ~= nil then
+        return v
+    end
+    if noReadYet[fact] ~= true then
+        noReadYet[fact] = true
+        fallback(fact, fb)
+    end
+    return fb
 end
 --- Latest live value per fact, for the probe's ev=world_fact line.
 function ____exports.Live()
@@ -340,6 +354,9 @@ function ____exports.Reset()
     end
     for ____, k in ipairs(__TS__ObjectKeys(____exports.ReadCount)) do
         __TS__Delete(____exports.ReadCount, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(noReadYet)) do
+        __TS__Delete(noReadYet, k)
     end
     towers = newTowers()
     gameReach = nil
@@ -371,7 +388,7 @@ function ____exports.Probe(bot, constants)
         }
         rows[#rows + 1] = {
             fact = "acquisition_lane_creep",
-            live = ____exports.AcquisitionRange(creep, constants.acquisition),
+            live = ____exports.AcquisitionRange(creep, constants.acquisition, "lane_creep"),
             constant = constants.acquisition
         }
     end
@@ -384,7 +401,7 @@ function ____exports.Probe(bot, constants)
         }
         rows[#rows + 1] = {
             fact = "acquisition_neutral",
-            live = ____exports.AcquisitionRange(n, constants.acquisition),
+            live = ____exports.AcquisitionRange(n, constants.acquisition, "neutral"),
             constant = constants.acquisition
         }
     end

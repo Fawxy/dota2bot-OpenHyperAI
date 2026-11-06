@@ -23,9 +23,14 @@ import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 
 // Every number is `judgement` (slice core-in-lane, Decisions 05/11/2026).
+function creepSpeed(): number {
+    return WorldFacts.Latest("lane_creep_speed", SETTINGS.CreepSpeed);
+}
+
 export const SETTINGS = {
     Every: 0.25,
     /** Lane creeps within this of the lane path count as on the lane. */
@@ -80,6 +85,7 @@ export const SETTINGS = {
      * route around the T1: its lane is walled by trees and cliffs, and the hold point is the simpler fallback.
      */
     Behind: 500,
+    /** Fallback only: the lane creeps' speed is read live (WorldFacts.Latest). */
     CreepSpeed: 325,
     DrawSecs: 1,
     DragMargin: 2,
@@ -190,13 +196,13 @@ export function Choose(threat: boolean, near: number, need: number, behind: numb
 export function Near(schedule: number, live: number[]): number {
     let d = math.huge;
     for (const x of live) d = math.min(d, x);
-    return math.min(schedule, d / SETTINGS.CreepSpeed);
+    return math.min(schedule, d / creepSpeed());
 }
 
 /** Pure: whether the hold draws their wave now: their front (from our T1) within the lead of the hold point `hd`, the core
  *  `at` from it, `on` their creeps already on the core. */
 export function DrawNow(front: number, hd: number, at: number, on: number): boolean {
-    return on === 0 && at <= SETTINGS.HoldNear && front <= hd + SETTINGS.HoldDrawLead * SETTINGS.CreepSpeed;
+    return on === 0 && at <= SETTINGS.HoldNear && front <= hd + SETTINGS.HoldDrawLead * creepSpeed();
 }
 
 /**
@@ -208,7 +214,7 @@ export function DrawNow(front: number, hd: number, at: number, on: number): bool
  */
 export function Unsafe(anchor: string | undefined, why: string | undefined, own: number, reach: number, front: number): boolean {
     const floor = reach + SETTINGS.LateMargin;
-    return anchor === "hold" && why === "hero" && own < floor && front <= floor + SETTINGS.HoldDrawLead * SETTINGS.CreepSpeed;
+    return anchor === "hold" && why === "hero" && own < floor && front <= floor + SETTINGS.HoldDrawLead * creepSpeed();
 }
 
 /** Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin). */
@@ -218,7 +224,7 @@ export function BehindAt(reach = EffReach()): number {
 
 /** Pure: the seconds the drag needs from their front's distance from our T1, to the drag point `bd` behind it. */
 export function DragSecs(front: number, bd = SETTINGS.Behind): number {
-    return (front + bd) / SETTINGS.CreepSpeed + SETTINGS.DrawSecs;
+    return (front + bd) / creepSpeed() + SETTINGS.DrawSecs;
 }
 
 /**
@@ -229,7 +235,7 @@ export function OursAtBehind(ours: number[], bd: number, front: number): number 
     let s = math.huge;
     for (const o of ours) {
         if (o > front) continue;
-        s = math.min(s, o >= -bd ? 0 : (-bd - o) / SETTINGS.CreepSpeed);
+        s = math.min(s, o >= -bd ? 0 : (-bd - o) / creepSpeed());
     }
     return s;
 }
@@ -354,7 +360,7 @@ function pointAt(v: LaneView, own: number, z: number): Vector {
 /** Distances to the hold point of our lane creeps within NearSecs' walk of it that have no attack target. */
 function walkingTo(hold: Vector): number[] {
     const out: number[] = [];
-    const r = SETTINGS.NearSecs * SETTINGS.CreepSpeed;
+    const r = SETTINGS.NearSecs * creepSpeed();
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c === undefined || c === null || c.IsNull() || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
         const t = c.GetAttackTarget();

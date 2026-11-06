@@ -56,9 +56,9 @@ do
 	c.neutrals = { unit({ speed = 0 }) }
 	check("only zero readings: the last live value stands, not 0", WF.NeutralSpeed(c, 300) == 290)
 	local u = unit({ name = "npc_dota_creep_lane", acq = 600 })
-	check("acquisition live", WF.AcquisitionRange(u, 500) == 600)
+	check("acquisition live", WF.AcquisitionRange(u, 500, "lane_creep") == 600)
 	local noacq = unit({ name = "npc_x" })
-	check("acquisition missing falls back", WF.AcquisitionRange(noacq, 500) == 500 and WF.Fallbacks().acquisition == 1)
+	check("acquisition missing falls back", WF.AcquisitionRange(noacq, 500, "neutral") == 500 and WF.Fallbacks().acquisition_neutral == 1)
 end
 
 finish()
@@ -76,4 +76,14 @@ do
 	GetTower = function() return nil end
 	check("no tower answers: the constants", WF.Reach(850) == 850 and WF.TowerAttackRange(700) == 700)
 	GetTower = saved
+end
+
+do
+	-- Latest: the last live value for code with no unit in hand; the constant (counted once) before any read.
+	WF.Reset()
+	check("Latest before any read is the constant", WF.Latest("lane_creep_speed", 325) == 325 and WF.Latest("lane_creep_speed", 325) == 325 and WF.Fallbacks().lane_creep_speed == 1)
+	T = 100
+	local a = unit({ team = 2, enemyCreeps = { unit({ speed = 330, team = 3 }) } })
+	WF.LaneCreepSpeed(a, 3, 325)
+	check("Latest after a read is the live value", WF.Latest("lane_creep_speed", 325) == 330)
 end

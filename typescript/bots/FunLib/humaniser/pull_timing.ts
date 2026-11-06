@@ -5,6 +5,7 @@
  * Camps whose meet point is not on our lane's chain (another map, a moved camp) keep their data-table seconds.
  */
 import { Lane, Team, UnitType, Vector } from "bots/ts_libs/dota";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -124,7 +125,7 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     if (off > cfg.PathMaxOffset) return fallback;
     const t = LaneConfig.Settings().Timing;
     const ahead = LaneAhead(team, lane);
-    const waveTravel = meetAlong / cfg.CreepSpeed - ahead;
+    const waveTravel = meetAlong / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) - ahead;
     // A half pull is timed as a full pull to its own (later) meet point, then HalfPullLater later, as the seeds were.
     const walk = WalkLength(origin, leadPath) / neutralSpeed;
     const waveAfter = walk + cfg.Lead - (half ? t.HalfPullLater : 0);
@@ -189,9 +190,9 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
     const cfg = settings();
     const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
     if (now < spawnAt + cfg.LiveFrom) return undefined;
-    const expected = (now - spawnAt + (timing.ahead ?? 0)) * cfg.CreepSpeed;
+    const expected = (now - spawnAt + (timing.ahead ?? 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
     if (expected >= timing.meetAlong) return undefined;
-    const window = cfg.LiveWindow * cfg.CreepSpeed;
+    const window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
     let front: number | undefined;
     let sum = 0;
     let n = 0;
@@ -205,7 +206,7 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
         n += 1;
     }
     if (front === undefined) return undefined;
-    const clamp = (d: number) => math.max(-cfg.LiveMaxShift, math.min(cfg.LiveMaxShift, (expected - d) / cfg.CreepSpeed));
+    const clamp = (d: number) => math.max(-cfg.LiveMaxShift, math.min(cfg.LiveMaxShift, (expected - d) / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)));
     return { shift: clamp(sum / n), front: clamp(front) };
 }
 
@@ -219,8 +220,8 @@ export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): nu
     if (timing.source !== "wave" || timing.waveAfter === undefined || timing.waveTravel === undefined || timing.lanePath === undefined) return out;
     const cfg = settings();
     const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
-    const expected = (now - spawnAt + (timing.ahead ?? 0)) * cfg.CreepSpeed;
-    const window = cfg.LiveWindow * cfg.CreepSpeed;
+    const expected = (now - spawnAt + (timing.ahead ?? 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
+    const window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
     const kind = timing.team === undefined || timing.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
     for (const c of GetUnitList(kind) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
@@ -358,9 +359,9 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
     const walk = t.walk;
     if (path === undefined || origin === undefined || lead === undefined || speed === undefined || walk === undefined) return undefined;
     const step = cfg.HalfStep;
-    const r = cfg.HalfAcquire;
+    const r = WorldFacts.Latest("acquisition_lane_creep", cfg.HalfAcquire);
     const rh = cfg.HalfHeroAggro;
-    const v = cfg.CreepSpeed;
+    const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
     const [lo, hi] = cfg.HalfSearch;
     const first = math.max(0, math.ceil((centre + lo - now) / step));
     const last = math.floor((centre + hi - now) / step);
@@ -464,7 +465,7 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     const fronts: [number, number][] = [];
     for (let k = 0; k < c.keep; k++) {
         fronts.push(PathPoint(path, alongs[k]));
-        fronts.push(PathPoint(path, alongs[k] + cfg.CreepSpeed * cfg.HalfStepAhead));
+        fronts.push(PathPoint(path, alongs[k] + WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HalfStepAhead));
     }
     const back = StepBackPoint(origin, stand, path);
     const len = math.max(1, hypot(back.x, back.y, meet.x, meet.y));
@@ -472,7 +473,7 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     // out, hit puller or not), so with the neutrals known their places, moved with the puller, are what must stay clear;
     // with none known the puller stands for them at HalfHeroAggro.
     const offs = neutrals !== undefined && neutrals.length > 0 ? neutrals : undefined;
-    const reach = (offs !== undefined ? cfg.HalfAcquire : cfg.HalfHeroAggro) + cfg.HalfStepBuffer;
+    const reach = (offs !== undefined ? WorldFacts.Latest("acquisition_lane_creep", cfg.HalfAcquire) : cfg.HalfHeroAggro) + cfg.HalfStepBuffer;
     // With ranged neutrals known the line runs on HalfStepOver past the meet point, so neutrals that trail the puller can
     // still be brought to the lane; the far side is open only once the front creeps are clear of the crossing. Melee
     // neutrals close to 100-250 and need no crossing: with it they followed the puller on to the lane and took the
@@ -514,7 +515,7 @@ export function Read(c: CreepTimer, now: number): number {
         const alongs = WaveAlongs(t, c.slot, now);
         c.n = alongs.length;
         if (alongs.length >= math.max(c.index, c.keep) + 2) {
-            const v = settings().CreepSpeed;
+            const v = WorldFacts.Latest("lane_creep_speed", settings().CreepSpeed);
             let hit = now + (meet + c.past - alongs[c.index]) / v - walk;
             if (c.keep > 0 && settings().HalfStepIn === true) {
                 // With the live step-in the hit only has to bring the neutrals to the back point in time: early costs a wait
