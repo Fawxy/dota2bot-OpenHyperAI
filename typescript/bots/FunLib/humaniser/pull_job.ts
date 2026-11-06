@@ -6,6 +6,7 @@
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as Calendar from "bots/FunLib/humaniser/calendar";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -20,6 +21,13 @@ export const SETTINGS = {
     /** Rank against the hero's other jobs: below the stack (0.92) and the rune trip (0.85 pos5 / 0.95 pos4 rank above at their
      *  times through their claims). */
     Priority: 0.9,
+    /** Slice lane-control 3: the rank while the lane's decision wants this pull and it fits before the next departure (above
+     *  the pos4 rune trip's 0.95 and the stack's 0.92). PriorityEvery: how often it is re-read. Take: a pull's end after its
+     *  hit second for the calendar (the job ends 3 s after the wave is due at the camp, about 7 s after the hit). All
+     *  `judgement`. */
+    FitPriority: 0.96,
+    PriorityEvery: 0.5,
+    Take: 12,
     /** Leave this long before the walk alone would arrive, so the bot stands at the camp before the hit. */
     Early: 2,
     /** Walking paths run longer than the straight line (rune_job's PathFactor). */
@@ -235,6 +243,7 @@ const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 const ended: Record<number, Ended | undefined> = {};
+const priorities: Record<number, { at: number; p: number } | undefined> = {};
 
 /** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
 interface Ended {
@@ -244,7 +253,8 @@ interface Ended {
 }
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    Calendar.ResetCache();
 }
 
 function isSupport(u: Unit): boolean {
@@ -274,8 +284,40 @@ export function Applies(bot: Unit): boolean {
     return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
 }
 
+/**
+ * Slice lane-control 3 (design s5.4, s5.5): above the hero's other jobs (FitPriority) while the lane controller's decision
+ * for the next pulled wave has this support's pull and the pull fits before the next departure on its calendar (a claim has
+ * begun, the walk has not: a rune trip claims from a minute before its spawn, a stack from :15); else Priority, so a
+ * departure the pull does not fit before keeps its rank. Read at most every PriorityEvery s.
+ */
 export function Priority(bot: Unit): number | undefined {
-    return Applies(bot) ? SETTINGS.Priority : undefined;
+    if (!Applies(bot)) return undefined;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const c = priorities[pid];
+    if (c !== undefined && now >= c.at && now - c.at < SETTINGS.PriorityEvery) return c.p;
+    const p = fitsAhead(bot, now) ? SETTINGS.FitPriority : SETTINGS.Priority;
+    priorities[pid] = { at: now, p };
+    return p;
+}
+
+/** The next full pull's walk start, end (the hit second plus Take) and hit second (`key`), or undefined with no plan. */
+export function Window(bot: Unit, now: number): { start: number; end: number; key: number } | undefined {
+    const p = planFor(bot, now, "full");
+    if (p === undefined) return undefined;
+    return { start: p.key - travel(bot, p) - SETTINGS.Early, end: p.key + SETTINGS.Take, key: p.key };
+}
+
+function fitsAhead(bot: Unit, now: number): boolean {
+    const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
+    const pid = bot.GetPlayerID();
+    if (!LaneControl.Drives() || running[pid] !== undefined) return false;
+    const w = Window(bot, now);
+    if (w === undefined || handled[pid] === w.key) return false;
+    const d = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(w.key));
+    if (d === undefined || !CtlWants(d, pid)) return false;
+    const [fit] = Calendar.FitOf(Calendar.Of(bot, now), w.start, w.end);
+    return fit === "fits";
 }
 
 export function Claims(bot: Unit): boolean {

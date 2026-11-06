@@ -946,6 +946,8 @@
    "core": "num",
    "sup": "num",
    "dep": "num",
+   "fit": "str",
+   "yld": "num",
    "away": "bool",
    "why": "str",
    "ms": "num"
@@ -1106,6 +1108,13 @@
    "why": "str",
    "join": "num",
    "dur": "num"
+  },
+  "world_fact": {
+   "team": "num",
+   "fact": "str",
+   "live": "num",
+   "constant": "num",
+   "fell": "num"
   },
   "rune_plan": {
    "team": "num",
@@ -1740,6 +1749,7 @@
    "lever": "text",
    "who": "text",
    "rej": "text",
+   "fit": "text",
    "why": "text"
   },
   "ev_idle_swing": {
@@ -1794,6 +1804,9 @@
    "kind": "text",
    "res": "text",
    "why": "text"
+  },
+  "ev_world_fact": {
+   "fact": "text"
   },
   "ev_rune_plan": {
    "why": "text"

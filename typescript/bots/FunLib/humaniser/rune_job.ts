@@ -29,6 +29,9 @@ export const SETTINGS = {
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
     ClaimFrom: 60,
+    /** The calendar's estimate of a trip's end: this long after the spawn (banked trips are away about 14 s, `away`), then
+     *  the walk back (slice lane-control 3; `judgement`). */
+    CalendarBack: 10,
     /** A start held back (gate or another job) past its leave time by this much is skipped: it would arrive late. */
     StartSlack: 3,
     /** Walking paths run longer than the straight line (states/rotate's PATH_FACTOR). */
@@ -156,6 +159,55 @@ function open(bot: Unit): [Kind, number][] {
         if (handled[pid]?.[key(kind, spawn)] !== true && now >= spawn - SETTINGS.ClaimFrom && now < spawn + SETTINGS.LateBy[kind]) out.push([kind, spawn]);
     }
     return out;
+}
+
+/**
+ * This bot's rune trips still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from ClaimFrom
+ * before the spawn, leaving at the spawn less the walk to the nearer power spot (PathFactor on the straight line; the shrine
+ * trips are planned later and sit about as far, so the same estimate), back CalendarBack after the spawn plus the same walk.
+ * Fixed: a rune trip is never traded for lane control (design s5.5 rule 1).
+ */
+export function CalendarEntries(bot: Unit, now: number): { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] {
+    if (!Applies(bot)) return [];
+    const pid = bot.GetPlayerID();
+    const out: { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] = [];
+    let walk = math.huge;
+    for (const [, at] of powerRunes()) walk = math.min(walk, (GetUnitToLocationDistance(bot, at) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed()));
+    const r = running[pid];
+    for (const [kind, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
+        if (kind === "contest" && !RunePlan.On()) continue;
+        const back = spawn + SETTINGS.CalendarBack + walk;
+        if (r !== undefined && r.kind === kind && r.spawn === spawn) {
+            out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: r.left, back, fixed: true, running: true });
+            continue;
+        }
+        if (handled[pid]?.[key(kind, spawn)] === true || now >= spawn + SETTINGS.LateBy[kind]) continue;
+        const leave = Tasks.Jobs() !== undefined ? calendarLeave(bot, kind, spawn, now) : spawn - walk;
+        if (leave === false) continue;
+        out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: leave ?? spawn - walk, back, fixed: true });
+    }
+    return out;
+}
+
+/**
+ * The trip's own leave time (`leaveAt`, as `Wants` reads it), for the calendar (review H1, lctl4_C_on_3 t=362 pid 0 and
+ * lctl4_B_on_5 pid 2: the walk to a power spot put the 7:00 contest's leave 20 s late, so a pull fitted before it and the
+ * contest was lost). The contest's route is the edge route (the longer one, so never a later leave; the trip asks Valve's
+ * path only when it starts). A planned power rune: the plan's spot once the plan exists, `false` when the plan gave this
+ * bot none; undefined before the plan (the caller's walk estimate).
+ */
+function calendarLeave(bot: Unit, kind: Kind, spawn: number, now: number): number | false | undefined {
+    if (kind === "contest") {
+        const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+        return leaveAt(bot, { kind, spawn, at: Rotate.ShrineFor(enemy), via: edgeVia(enemy), left: now, host: 0 });
+    }
+    if (planned(kind, spawn)) {
+        if (now < RunePlan.SETTINGS.PlanAt) return undefined;
+        const mine = RunePlan.SpotOf(bot, Busy, now);
+        if (mine === undefined) return false;
+        return leaveAt(bot, tripFor(bot, kind, spawn, 0, mine));
+    }
+    return leaveAt(bot, tripFor(bot, kind, spawn, 0));
 }
 
 /** True while a trip runs or is pending for this bot: lower-ranked jobs wait. */

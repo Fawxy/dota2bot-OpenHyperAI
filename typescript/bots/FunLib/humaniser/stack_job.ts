@@ -1200,6 +1200,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             ]);
             return false;
         };
+        // Slice lane-control 3: the lane controller's live decision gave this minute's support to the lane (a pull its lane
+        // needs more than the stack, design s5.4); the minute is skipped before the walk.
+        const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
+        if (LaneControl.YieldsStack(bot.GetTeam(), bot.GetAssignedLane(), pid, minute)) return skip("lane");
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
         // A double starts from camp A: its stand point and hit second set the start.
         const fd = pos4 ? pair : Ours.On("DoubleStack") ? Partner(data) : undefined;
@@ -1255,6 +1259,43 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         return true;
     }
     return false;
+}
+
+/**
+ * This bot's stack minutes still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from LookFrom,
+ * leaving at the single stack's hit second less the walk to its stand point and Lead (Wants' own leave; a double leaves
+ * earlier, so this is the latest leave), back at :00 + FarEnd plus the same walk. Tentative: the lane may take the minute
+ * (`skip why=lane`).
+ */
+export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] {
+    if (!Applies(bot)) return [];
+    const pid = bot.GetPlayerID();
+    const out: { kind: "stack"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] = [];
+    const a = running[pid];
+    for (const minute of Minutes()) {
+        const end = minute * 60 + 60 + SETTINGS.FarEnd;
+        if (now >= end) continue;
+        if (a !== undefined && a.minute === minute) {
+            out.push({ kind: "stack", key: minute, claim: minute * 60 + SETTINGS.LookFrom, leave: a.startedAt, back: end, fixed: false, running: true });
+            continue;
+        }
+        if (handled[pid]?.[minute] === true || now >= minute * 60 + 60) continue;
+        let [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
+        const pos4 = LaneConfig.PositionOf(bot) === 4;
+        const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
+        if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
+        if (data === undefined || stand === undefined) continue;
+        const walk = travel(bot, stand);
+        let leave = minute * 60 + SingleSec(data) - walk - SETTINGS.Lead;
+        // A double leaves earlier, from camp A (review M4): the same choice as Wants (its far and late checks are read at
+        // the start; the earlier leave is the safe estimate here).
+        const fd = pos4 ? job?.[1] : Ours.On("DoubleStack") ? Partner(data) : undefined;
+        if (fd !== undefined && Fits(bot, fd) && (pos4 || carryClears(bot.GetTeam(), fd))) {
+            leave = math.min(leave, minute * 60 + fd.fsec - travel(bot, fd.stand) - SETTINGS.DoubleLead);
+        }
+        out.push({ kind: "stack", key: minute, claim: minute * 60 + SETTINGS.LookFrom, leave, back: end + walk, fixed: false });
+    }
+    return out;
 }
 
 /** True while an attempt runs or a trigger minute is still open for this bot (the job chooser's claim between jobs). */

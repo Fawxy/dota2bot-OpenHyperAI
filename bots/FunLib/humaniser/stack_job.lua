@@ -2262,6 +2262,15 @@ function ____exports.Wants(bot, blocked, host)
                     log(bot, minute, {{"res", "skip"}, {"why", why}})
                     return false
                 end
+                local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+                if LaneControl.YieldsStack(
+                    bot:GetTeam(),
+                    bot:GetAssignedLane(),
+                    pid,
+                    minute
+                ) then
+                    return skip("lane")
+                end
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
@@ -2387,6 +2396,113 @@ function ____exports.Wants(bot, blocked, host)
     end
     return false
 end
+--- This bot's stack minutes still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from LookFrom,
+-- leaving at the single stack's hit second less the walk to its stand point and Lead (Wants' own leave; a double leaves
+-- earlier, so this is the latest leave), back at :00 + FarEnd plus the same walk. Tentative: the lane may take the minute
+-- (`skip why=lane`).
+function ____exports.CalendarEntries(bot, now)
+    if not ____exports.Applies(bot) then
+        return {}
+    end
+    local pid = bot:GetPlayerID()
+    local out = {}
+    local a = running[pid]
+    for ____, minute in ipairs(____exports.Minutes()) do
+        do
+            local __continue255
+            repeat
+                local ____end = minute * 60 + 60 + ____exports.SETTINGS.FarEnd
+                if now >= ____end then
+                    __continue255 = true
+                    break
+                end
+                if a ~= nil and a.minute == minute then
+                    out[#out + 1] = {
+                        kind = "stack",
+                        key = minute,
+                        claim = minute * 60 + ____exports.SETTINGS.LookFrom,
+                        leave = a.startedAt,
+                        back = ____end,
+                        fixed = false,
+                        running = true
+                    }
+                    __continue255 = true
+                    break
+                end
+                local ____opt_39 = handled[pid]
+                if (____opt_39 and ____opt_39[minute]) == true or now >= minute * 60 + 60 then
+                    __continue255 = true
+                    break
+                end
+                local data, stand = ____exports.Nearest(
+                    bot:GetTeam(),
+                    bot:GetLocation()
+                )
+                local pos4 = LaneConfig.PositionOf(bot) == 4
+                local ____pos4_41
+                if pos4 then
+                    ____pos4_41 = ____exports.Pos4For(
+                        bot:GetTeam(),
+                        minute
+                    )
+                else
+                    ____pos4_41 = nil
+                end
+                local job = ____pos4_41
+                if pos4 then
+                    data, stand = unpack(job ~= nil and ({
+                        job[1],
+                        ____exports.Stand(
+                            Camps.SpawnerByIdx(job[1].campIdx),
+                            job[1]
+                        )
+                    }) or ({nil, nil}))
+                end
+                if data == nil or stand == nil then
+                    __continue255 = true
+                    break
+                end
+                local walk = travel(bot, stand)
+                local leave = minute * 60 + ____exports.SingleSec(data) - walk - ____exports.SETTINGS.Lead
+                local ____pos4_45
+                if pos4 then
+                    ____pos4_45 = job and job[2]
+                else
+                    local ____Ours_On_result_44
+                    if Ours.On("DoubleStack") then
+                        ____Ours_On_result_44 = ____exports.Partner(data)
+                    else
+                        ____Ours_On_result_44 = nil
+                    end
+                    ____pos4_45 = ____Ours_On_result_44
+                end
+                local fd = ____pos4_45
+                if fd ~= nil and ____exports.Fits(bot, fd) and (pos4 or carryClears(
+                    bot:GetTeam(),
+                    fd
+                )) then
+                    leave = math.min(
+                        leave,
+                        minute * 60 + fd.fsec - travel(bot, fd.stand) - ____exports.SETTINGS.DoubleLead
+                    )
+                end
+                out[#out + 1] = {
+                    kind = "stack",
+                    key = minute,
+                    claim = minute * 60 + ____exports.SETTINGS.LookFrom,
+                    leave = leave,
+                    back = ____end + walk,
+                    fixed = false
+                }
+                __continue255 = true
+            until true
+            if not __continue255 then
+                break
+            end
+        end
+    end
+    return out
+end
 --- True while an attempt runs or a trigger minute is still open for this bot (the job chooser's claim between jobs).
 function ____exports.Pending(bot)
     if not ____exports.Applies(bot) then
@@ -2398,8 +2514,8 @@ function ____exports.Pending(bot)
     end
     local now = DotaTime()
     for ____, minute in ipairs(____exports.Minutes()) do
-        local ____opt_39 = handled[pid]
-        if (____opt_39 and ____opt_39[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
+        local ____opt_46 = handled[pid]
+        if (____opt_46 and ____opt_46[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
             return true
         end
     end
