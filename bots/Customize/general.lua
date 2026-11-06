@@ -158,6 +158,8 @@ Customize.Humaniser = {
         AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
+        -- HARNESS (slice pull-aggro, revert before merge): every half-pulling pos5 slot is a half pull, held at these offsets.
+        PullTiming = { HalfAll = true, HalfStand = { 250, 350, 450, 550 } },
     },
     -- Lane fights (task 11): lane trades and kill setups with imperfect memory of enemy cooldowns.
     -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
@@ -297,7 +299,7 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only).
 -- ForceShove: lanes whose owned laners shove (idle swing on enemy creeps outside their tower) instead of pre-denying, as
 -- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false, ForceShove = "" }
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = "pos5", StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false, ForceShove = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
