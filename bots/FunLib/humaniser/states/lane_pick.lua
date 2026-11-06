@@ -1,16 +1,68 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local reachable
+local reachable, choose, DENY_OFFSET
 function reachable(t)
     if t.walk <= 0 then
         return true
     end
     return t.walk <= ____exports.MAX_WALK and t.walk + ____exports.ARRIVE_SLACK < t.dies
 end
+function choose(targets, current, mine, pre)
+    if pre ~= nil then
+        local other = false
+        for ____, t in ipairs(targets) do
+            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t) then
+                other = true
+            end
+        end
+        if not other then
+            return pre
+        end
+    end
+    local best
+    local bestKey = math.huge
+    local cur
+    for ____, t in ipairs(targets) do
+        do
+            local __continue15
+            repeat
+                if mine ~= nil and not mine(t) then
+                    __continue15 = true
+                    break
+                end
+                if current ~= nil and t.creep == current.creep then
+                    cur = t
+                end
+                if not reachable(t) then
+                    __continue15 = true
+                    break
+                end
+                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
+                if key < bestKey then
+                    bestKey = key
+                    best = t
+                end
+                __continue15 = true
+            until true
+            if not __continue15 then
+                break
+            end
+        end
+    end
+    if cur == nil or best == nil or best.creep == cur.creep then
+        return best
+    end
+    if cur.kind == "deny" and best.kind == "lasthit" then
+        return best
+    end
+    if best.kind == "deny" then
+        return cur
+    end
+    return best.eta <= ____exports.DUE_NOW and cur.eta >= ____exports.SWITCH_GAP and best or cur
+end
 --- Seconds of eta a ranged or siege creep is preferred by (more gold and XP).
 ____exports.RANGED_BIAS = 0.4
---- Added to a deny's key so any last hit sorts before it.
-local DENY_OFFSET = 1000
+DENY_OFFSET = 1000
 --- Seconds a swing needs after the walk into range (wind-up plus a little) for the creep to still be alive when it lands.
 -- A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
 -- were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
@@ -52,58 +104,15 @@ ____exports.SWITCH_GAP = 0.5
 -- with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
 -- considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
 -- for it too.
-function ____exports.Choose(targets, current, mine, pre)
-    if pre ~= nil then
-        local other = false
-        for ____, t in ipairs(targets) do
-            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t) then
-                other = true
-            end
-        end
-        if not other then
-            return pre
-        end
+-- `idle` finds the idle swing (states/idle_swing: a pre-deny or a shove; asked lazily, its search reads forecasts): taken only
+-- when nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit (lane controller design
+-- s5.6, user 06/11/2026).
+function ____exports.Choose(targets, current, mine, pre, idle)
+    local chosen = choose(targets, current, mine, pre)
+    if chosen == nil and current == nil and idle ~= nil then
+        return idle()
     end
-    local best
-    local bestKey = math.huge
-    local cur
-    for ____, t in ipairs(targets) do
-        do
-            local __continue13
-            repeat
-                if mine ~= nil and not mine(t) then
-                    __continue13 = true
-                    break
-                end
-                if current ~= nil and t.creep == current.creep then
-                    cur = t
-                end
-                if not reachable(t) then
-                    __continue13 = true
-                    break
-                end
-                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
-                if key < bestKey then
-                    bestKey = key
-                    best = t
-                end
-                __continue13 = true
-            until true
-            if not __continue13 then
-                break
-            end
-        end
-    end
-    if cur == nil or best == nil or best.creep == cur.creep then
-        return best
-    end
-    if cur.kind == "deny" and best.kind == "lasthit" then
-        return best
-    end
-    if best.kind == "deny" then
-        return cur
-    end
-    return best.eta <= ____exports.DUE_NOW and cur.eta >= ____exports.SWITCH_GAP and best or cur
+    return chosen
 end
 --- How many of `targets` are reachable last hits and reachable denies (the reach rule above), and how many last hits other than `except`.
 local function countOffers(targets, except)
@@ -112,10 +121,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue23
+            local __continue25
             repeat
                 if not reachable(t) then
-                    __continue23 = true
+                    __continue25 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -126,9 +135,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue23 = true
+                __continue25 = true
             until true
-            if not __continue23 then
+            if not __continue25 then
                 break
             end
         end
@@ -161,7 +170,7 @@ end
 --- The creep this laner's body is in an attempt on (walking to it, waiting, swinging, or pre-hitting), if any: a support's claims read its core's.
 function ____exports.Attempting(pid)
     local s = scans[pid]
-    if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" and s.ph ~= "prehit" then
+    if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" and s.ph ~= "prehit" and s.ph ~= "predeny" and s.ph ~= "shove" then
         return nil
     end
     local ____opt_2 = s.chosen

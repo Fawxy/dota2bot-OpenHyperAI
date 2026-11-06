@@ -1004,6 +1004,39 @@ export const EVENTS = {
         ph: "bool",
         /** A core's first attempt reported after it left a deny to the allied support (this pid) whose laning body was in an attempt on it (Ours.CoreDenyYield). */
         yd: "num",
+        /** A deny: the pre-deny swings this bot spent on the creep before it (states/idle_swing); absent for none. */
+        pre: "num",
+        msg: "str",
+    },
+    /**
+     * An owned laner's idle swing (states/idle_swing): one attack when the picker had no last hit, deny or pre-hit to offer.
+     * `kind` predeny (our creep under half HP that no enemy hero reaches before our hits kill it) or shove (an enemy creep outside
+     * their tower), `mode` the lane's mode (`safe`, or `shove` forced by Overrides.ForceShove). `result` ok once the attack fired.
+     * At the pick: `walk` (s), the creep's `hp` and fraction `hf`; predeny: our kill time `kill` (s, absent past the horizon), the
+     * nearest enemy hero's reach `reach` (s, -1 none near), `focus` 1 when an allied hero was already hitting it. `dn` / `lh` 1
+     * when this bot's deny / last-hit count rose during the swing (the swing took the creep itself).
+     */
+    idle_swing: {
+        pid: "num",
+        kind: "str",
+        /** predeny: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
+        n: "num",
+        /** The creep's place at the pick. */
+        cx: "num",
+        cy: "num",
+        mode: "str",
+        result: "str",
+        reason: "str",
+        ranged: "bool",
+        walk: "num",
+        hp: "num",
+        hf: "num",
+        kill: "num",
+        reach: "num",
+        focus: "bool",
+        dn: "bool",
+        lh: "bool",
+        contested: "bool",
         msg: "str",
     },
     /** A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one per attempt. */

@@ -63,6 +63,9 @@ export const SWITCH_GAP = 0.5;
  * with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
  * considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
  * for it too.
+ * `idle` finds the idle swing (states/idle_swing: a pre-deny or a shove; asked lazily, its search reads forecasts): taken only
+ * when nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit (lane controller design
+ * s5.6, user 06/11/2026).
  */
 export function Choose(
     this: void,
@@ -70,6 +73,18 @@ export function Choose(
     current?: Lib.Verbs.LaneTarget,
     mine?: (this: void, t: Lib.Verbs.LaneTarget) => boolean,
     pre?: Lib.Verbs.LaneTarget,
+    idle?: (this: void) => Lib.Verbs.LaneTarget | undefined,
+): Lib.Verbs.LaneTarget | undefined {
+    const chosen = choose(targets, current, mine, pre);
+    if (chosen === undefined && current === undefined && idle !== undefined) return idle();
+    return chosen;
+}
+
+function choose(
+    targets: Lib.Verbs.LaneTarget[],
+    current: Lib.Verbs.LaneTarget | undefined,
+    mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined,
+    pre: Lib.Verbs.LaneTarget | undefined,
 ): Lib.Verbs.LaneTarget | undefined {
     if (pre !== undefined) {
         let other = false;
@@ -173,7 +188,7 @@ function scanOf(pid: number): Scan {
 /** The creep this laner's body is in an attempt on (walking to it, waiting, swinging, or pre-hitting), if any: a support's claims read its core's. */
 export function Attempting(pid: number): Lib.TaskCreep | undefined {
     const s = scans[pid];
-    if (s === undefined || (s.ph !== "lasthit" && s.ph !== "deny" && s.ph !== "prehit")) return undefined;
+    if (s === undefined || (s.ph !== "lasthit" && s.ph !== "deny" && s.ph !== "prehit" && s.ph !== "predeny" && s.ph !== "shove")) return undefined;
     return s.chosen?.creep;
 }
 

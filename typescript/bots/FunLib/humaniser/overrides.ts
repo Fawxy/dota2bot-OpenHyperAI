@@ -1,7 +1,7 @@
 /**
  * Customize.Overrides: test-harness knobs written per turn by dotactl (`--set Overrides.<Key>=<value>`), read where a
  * scenario changes what a bot does. Readers: stack_job (Solo, StackEvery, StackFar), chooser and mode_laning_generic
- * (LaneOnly), core_camp (CampForce).
+ * (LaneOnly), core_camp (CampForce), states/idle_swing (ForceShove: the lanes whose laners shove, `bot`, `r:bot`, `all`).
  */
 import Customize = require("bots/FunLib/custom_loader");
 
