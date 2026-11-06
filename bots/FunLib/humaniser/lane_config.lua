@@ -228,7 +228,8 @@ ____exports.DEFAULTS = {
         AggroDanceRadius = 500,
         HarassTowerLevel = 6,
         HarassTowerTargetHP = 0.3,
-        EnemyTowerRange = 850,
+        EnemyTowerRange = 844,
+        HeroRadius = 24,
         TakePullLaneCreeps = 1,
         TakePullDangerEnemies = 2,
         ShoveMinHP = 0.5,
@@ -398,9 +399,11 @@ local CONSUMER_FLAGS = {
     "CounterPlay",
     "CampBlock"
 }
---- The enemy tower's attack reach: read from the game (world_facts), the Thresholds.EnemyTowerRange constant when the read fails.
+--- How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
+-- (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
 function ____exports.TowerReach()
-    return WorldFacts.Reach(____exports.Settings().Thresholds.EnemyTowerRange)
+    local t = ____exports.Settings().Thresholds
+    return WorldFacts.Reach(t.EnemyTowerRange) + WorldFacts.HeroRadius(t.HeroRadius)
 end
 --- The enemy tower's attack range alone (read from the game; 700 when the read fails).
 function ____exports.TowerAttackRange()

@@ -812,6 +812,7 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
     const rows = WorldFacts.Probe(bot, {
         tower: lc.Thresholds.EnemyTowerRange,
         towerRange: 700,
+        hero: lc.Thresholds.HeroRadius,
         laneCreep: lc.PullTiming.CreepSpeed,
         neutral: lc.PullTiming.NeutralSpeed.medium,
         neutralSeeds: lc.PullTiming.NeutralSpeed as Record<string, number>,
