@@ -58,15 +58,23 @@ function perMoment(fact: string, key: string, read: () => number | undefined): n
     return v;
 }
 
+/**
+ * The script's own team first: each team's bots run in their own VM, and a fogged enemy tower answers with a wrong attack range
+ * (lctl6 smoke, Dire reading Radiant's top T1 at the start: 200, not 700), so only a tower the team sees is read.
+ */
+function teamsOwnFirst(): number[] {
+    return GetTeam() === Team.Dire ? [Team.Dire, Team.Radiant] : [Team.Radiant, Team.Dire];
+}
+
 let gameReach: number | undefined;
 let gameRange: number | undefined;
 
 /** The towers' attack range itself (700 in 7.41), the distance a hit reaches from the tower's edge. Per game, from the first tower that answers. */
 export function TowerAttackRange(fb: number): number {
     if (gameRange !== undefined) return gameRange;
-    for (const team of [Team.Radiant, Team.Dire]) {
+    for (const team of teamsOwnFirst()) {
         const t = GetTower(team, Tower.Top1);
-        if (t !== null && t !== undefined && valid(t)) {
+        if (t !== null && t !== undefined && valid(t) && t.CanBeSeen()) {
             const r = t.GetAttackRange();
             if (r !== undefined && r > 0) {
                 gameRange = r;
@@ -83,9 +91,9 @@ export function TowerAttackRange(fb: number): number {
  */
 export function Reach(fb: number): number {
     if (gameReach !== undefined) return gameReach;
-    for (const team of [Team.Radiant, Team.Dire]) {
+    for (const team of teamsOwnFirst()) {
         const t = GetTower(team, Tower.Top1);
-        if (t !== null && t !== undefined && valid(t)) {
+        if (t !== null && t !== undefined && valid(t) && t.CanBeSeen()) {
             const r = TowerReach(t, -1);
             if (r > 0) {
                 gameReach = r;

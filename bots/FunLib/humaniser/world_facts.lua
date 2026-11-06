@@ -269,6 +269,11 @@ local function perMoment(fact, key, read)
     end
     return v
 end
+--- The script's own team first: each team's bots run in their own VM, and a fogged enemy tower answers with a wrong attack range
+-- (lctl6 smoke, Dire reading Radiant's top T1 at the start: 200, not 700), so only a tower the team sees is read.
+local function teamsOwnFirst()
+    return GetTeam() == Team.Dire and ({Team.Dire, Team.Radiant}) or ({Team.Radiant, Team.Dire})
+end
 local gameReach
 local gameRange
 --- The towers' attack range itself (700 in 7.41), the distance a hit reaches from the tower's edge. Per game, from the first tower that answers.
@@ -276,9 +281,9 @@ function ____exports.TowerAttackRange(fb)
     if gameRange ~= nil then
         return gameRange
     end
-    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+    for ____, team in ipairs(teamsOwnFirst()) do
         local t = GetTower(team, Tower.Top1)
-        if t ~= nil and t ~= nil and valid(t) then
+        if t ~= nil and t ~= nil and valid(t) and t:CanBeSeen() then
             local r = t:GetAttackRange()
             if r ~= nil and r > 0 then
                 gameRange = r
@@ -294,9 +299,9 @@ function ____exports.Reach(fb)
     if gameReach ~= nil then
         return gameReach
     end
-    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+    for ____, team in ipairs(teamsOwnFirst()) do
         local t = GetTower(team, Tower.Top1)
-        if t ~= nil and t ~= nil and valid(t) then
+        if t ~= nil and t ~= nil and valid(t) and t:CanBeSeen() then
             local r = ____exports.TowerReach(t, -1)
             if r > 0 then
                 gameReach = r
@@ -309,19 +314,19 @@ end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue27
+            local __continue28
             repeat
                 if not valid(u) then
-                    __continue27 = true
+                    __continue28 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue27 = true
+                __continue28 = true
             until true
-            if not __continue27 then
+            if not __continue28 then
                 break
             end
         end

@@ -6,6 +6,7 @@ local function unit(o) o.IsNull = nil return setmetatable(o, { __index = {
 	IsNull = function(s) return s.removed == true end,
 	GetAttackRange = function(s) return s.range end,
 	GetBoundingRadius = function(s) return s.radius end,
+	CanBeSeen = function(s) return s.seen ~= false end,
 	GetBaseMovementSpeed = function(s) return s.speed end,
 	GetAcquisitionRange = function(s) return s.acq end,
 	GetUnitName = function(s) return s.name end,
@@ -63,7 +64,6 @@ do
 	check("acquisition missing falls back", WF.AcquisitionRange(noacq, 500, "neutral") == 500 and WF.Fallbacks().acquisition_neutral == 1)
 end
 
-finish()
 
 do
 	WF.Reset()
@@ -89,3 +89,23 @@ do
 	WF.LaneCreepSpeed(a, 3, 325)
 	check("Latest after a read is the live value", WF.Latest("lane_creep_speed", 325) == 330)
 end
+
+do
+	-- lctl6 smoke (log 2026-11-06T19-10-35-lctl6_A_on_1, team 3 world_fact tower_range live=200): the Dire VM read Radiant's
+	-- fogged top T1. The own team's tower is read first, and a tower the team cannot see is skipped.
+	WF.Reset()
+	local rad = unit({ range = 200, radius = 0, seen = false })
+	local dire = unit({ range = 700, radius = 144 })
+	local saved, savedTeam = GetTower, GetTeam
+	GetTower = function(team) return team == TEAM_RADIANT and rad or dire end
+	GetTeam = function() return TEAM_DIRE end
+	check("Dire reads its own tower's range", WF.TowerAttackRange(700) == 700)
+	check("Dire reads its own tower's reach", WF.Reach(850) == 844)
+	WF.Reset()
+	GetTower = function(team) return team == TEAM_RADIANT and rad or nil end
+	check("only a fogged tower: the constants", WF.TowerAttackRange(700) == 700 and WF.Reach(850) == 850)
+	GetTower, GetTeam = saved, savedTeam
+	WF.Reset()
+end
+
+finish()
