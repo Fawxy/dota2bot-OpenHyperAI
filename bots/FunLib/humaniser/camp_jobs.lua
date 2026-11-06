@@ -730,7 +730,7 @@ function ____exports.DoubleGeometry(small, hard, speed)
         speed
     )
     local before = gap + cfg.Timing.DoublePullHitGap
-    local hardSpeed = WorldFacts.NeutralSpeedFor(hard.type, cfg.PullTiming.NeutralSpeed[hard.type] or 300)
+    local hardSpeed = WorldFacts.NeutralSpeedFor(hard.type, cfg.PullTiming.NeutralSpeed[hard.type] or 300, hard.campIdx)
     local late = PullTiming.WalkLength(
         hardSp.location,
         {

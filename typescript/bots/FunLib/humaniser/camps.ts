@@ -3,7 +3,7 @@
  * (meet points, pull paths, stack exits) for seeds that carry no explicit vectors.
  * Spawn boxes always come from GetNeutralSpawners(), never from data.
  */
-import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import { CAMP_DATA, CampDataEntry, DEFAULT_STACK_SEC } from "bots/FunLib/humaniser/camps_data";
@@ -131,18 +131,20 @@ const FeedSpawnerRange = 600;
  * spawner and remembers each type's speed. One scan per second serves every bot of the team (not telemetry's tick, so it
  * runs with telemetry off).
  */
-export function FeedNeutralSpeeds(bot: Unit): void {
+export function FeedNeutralSpeeds(_bot: Unit): void {
     if (!WorldFacts.FeedDue()) return;
-    const byType: Record<string, Unit[]> = {};
-    for (const n of bot.GetNearbyNeutralCreeps(1600, true) ?? []) {
+    // Every neutral the API lists (visible or not is the API's business): the puller's own camp is read whoever ticks first.
+    const bySpawner: Record<number, { type: string; units: Unit[] }> = {};
+    for (const n of GetUnitList(UnitType.NeutralCreeps) ?? []) {
         if (n === undefined || n.IsNull()) continue;
         const loc = n.GetLocation();
         if (loc === undefined || loc === null) continue;
         const [sp, d] = NearestSpawner(loc);
         if (sp === undefined || d > FeedSpawnerRange) continue;
-        (byType[sp.type] = byType[sp.type] ?? []).push(n);
+        const e = (bySpawner[sp.idx] = bySpawner[sp.idx] ?? { type: sp.type, units: [] });
+        e.units.push(n);
     }
-    for (const [type, units] of Object.entries(byType)) WorldFacts.FeedNeutral(type, units);
+    for (const [idx, e] of Object.entries(bySpawner)) WorldFacts.FeedNeutral(e.type, e.units, tonumber(idx));
 }
 
 export function InBox(idx: number, loc: Vector, margin: number = 0): boolean {

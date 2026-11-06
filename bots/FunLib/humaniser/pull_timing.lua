@@ -216,7 +216,7 @@ local function normalise(s, period)
 end
 --- Wave-derived aggro seconds for `team`'s wave on `lane` and a camp whose neutrals walk `leadPath` (ending at the
 -- meet point) from `origin`; `seed` when an input is missing or the meet point is off the lane path.
-function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
+function ____exports.For(team, lane, origin, ____type, leadPath, half, seed, campIdx)
     local cfg = settings()
     local fallback = {seconds = seed, source = "seed"}
     local meet = leadPath[#leadPath]
@@ -225,7 +225,7 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
     if seedSpeed == nil then
         ____temp_0 = nil
     else
-        ____temp_0 = WorldFacts.NeutralSpeedFor(____type, seedSpeed)
+        ____temp_0 = WorldFacts.NeutralSpeedFor(____type, seedSpeed, campIdx)
     end
     local neutralSpeed = ____temp_0
     if cfg.FromWave ~= true or lane == nil or origin == nil or meet == nil or neutralSpeed == nil then
@@ -328,7 +328,8 @@ function ____exports.ForCamp(data, half, meet)
         data.type,
         ____exports.LeadPath(data.pull, target),
         half,
-        seed
+        seed,
+        data.campIdx
     )
 end
 --- The old camp-job pulls' live correction (camp_jobs; the pull job times its hit on the creeps, CreepTimer).

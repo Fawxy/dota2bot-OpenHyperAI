@@ -1237,6 +1237,7 @@ local function trackWorldFacts(team, bot)
         towerRange = 700,
         laneCreep = lc.PullTiming.CreepSpeed,
         neutral = lc.PullTiming.NeutralSpeed.medium,
+        neutralSeeds = lc.PullTiming.NeutralSpeed,
         acquisition = 500
     })
     local fell = WorldFacts.Fallbacks()

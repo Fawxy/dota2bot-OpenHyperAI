@@ -41,6 +41,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local ____camps_data = require(GetScriptDirectory().."/FunLib/humaniser/camps_data")
@@ -211,12 +212,12 @@ local FeedSpawnerRange = 600
 --- Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups the neutrals `bot` sees by the camp type of their nearest
 -- spawner and remembers each type's speed. One scan per second serves every bot of the team (not telemetry's tick, so it
 -- runs with telemetry off).
-function ____exports.FeedNeutralSpeeds(bot)
+function ____exports.FeedNeutralSpeeds(_bot)
     if not WorldFacts.FeedDue() then
         return
     end
-    local byType = {}
-    for ____, n in ipairs(bot:GetNearbyNeutralCreeps(1600, true) or ({})) do
+    local bySpawner = {}
+    for ____, n in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
             local __continue21
             repeat
@@ -234,9 +235,11 @@ function ____exports.FeedNeutralSpeeds(bot)
                     __continue21 = true
                     break
                 end
-                local ____temp_0 = byType[sp.type] or ({})
-                byType[sp.type] = ____temp_0
-                ____temp_0[#____temp_0 + 1] = n
+                local ____temp_0 = bySpawner[sp.idx] or ({type = sp.type, units = {}})
+                bySpawner[sp.idx] = ____temp_0
+                local e = ____temp_0
+                local ____e_units_1 = e.units
+                ____e_units_1[#____e_units_1 + 1] = n
                 __continue21 = true
             until true
             if not __continue21 then
@@ -244,10 +247,14 @@ function ____exports.FeedNeutralSpeeds(bot)
             end
         end
     end
-    for ____, ____value in ipairs(__TS__ObjectEntries(byType)) do
-        local ____type = ____value[1]
-        local units = ____value[2]
-        WorldFacts.FeedNeutral(____type, units)
+    for ____, ____value in ipairs(__TS__ObjectEntries(bySpawner)) do
+        local idx = ____value[1]
+        local e = ____value[2]
+        WorldFacts.FeedNeutral(
+            e.type,
+            e.units,
+            tonumber(idx)
+        )
     end
 end
 function ____exports.InBox(idx, loc, margin)
@@ -575,8 +582,8 @@ function ____exports.Resolve()
     end
     local result = {}
     for ____, s in ipairs(spawners) do
-        local ____opt_5 = jobs[s.team]
-        local job = ____opt_5 and ____opt_5[s.idx] or ({
+        local ____opt_6 = jobs[s.team]
+        local job = ____opt_6 and ____opt_6[s.idx] or ({
             campIdx = s.idx,
             team = s.team,
             stack = stackFor(s, nil),
@@ -600,14 +607,14 @@ end
 --- `team`'s job on the camp, else the job of the spawner's own team (every spawner has one).
 function ____exports.ByIdx(idx, team)
     ____exports.Resolve()
-    local ____temp_9
+    local ____temp_10
     if team ~= nil then
-        local ____opt_7 = byTeam[team]
-        ____temp_9 = ____opt_7 and ____opt_7[idx]
+        local ____opt_8 = byTeam[team]
+        ____temp_10 = ____opt_8 and ____opt_8[idx]
     else
-        ____temp_9 = nil
+        ____temp_10 = nil
     end
-    return ____temp_9 or byIdx[idx]
+    return ____temp_10 or byIdx[idx]
 end
 function ____exports.PullCampsFor(team, lane)
     local found = {}

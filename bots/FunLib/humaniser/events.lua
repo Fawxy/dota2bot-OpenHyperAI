@@ -1162,6 +1162,7 @@ ____exports.EVENTS = {
         lv = "num",
         s0 = "num",
         pk = "str",
+        nsp = "num",
         hr = "str",
         hc = "num",
         hn = "num",

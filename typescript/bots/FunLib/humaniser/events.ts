@@ -1496,6 +1496,7 @@ export const EVENTS = {
         // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
         // engaged (negative: back towards the camp).
         pk: "str",
+        nsp: "num",
         hr: "str",
         hc: "num",
         hn: "num",

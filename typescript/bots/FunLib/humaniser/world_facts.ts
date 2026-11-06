@@ -144,6 +144,7 @@ export function NeutralSpeed(bot: Unit, fb: number): number {
 }
 
 const neutralByType: Record<string, number> = {};
+const neutralByCamp: Record<number, number> = {};
 const neutralNoRead: Record<string, boolean> = {};
 let neutralFedAt: number | undefined;
 
@@ -155,8 +156,12 @@ export function FeedDue(): boolean {
     return true;
 }
 
-/** Remember the speed `units` (creeps of one camp of `type`) move at: the mean of their base speeds, readings of 0 or less skipped. */
-export function FeedNeutral(type: string, units: Unit[]): void {
+/**
+ * Remember the speed `units` (creeps of the camp `camp`, of `type`) move at: the mean of their base speeds (a camp's creeps
+ * differ a little and the pull's timing needs the pack, so the mean), readings of 0 or less skipped. Camps of one type differ
+ * (large 270 and 295 in the step 6 smoke), so the camp's own value is kept beside the type's.
+ */
+export function FeedNeutral(type: string, units: Unit[], camp?: number): void {
     let sum = 0;
     let n = 0;
     for (const u of units) {
@@ -170,11 +175,14 @@ export function FeedNeutral(type: string, units: Unit[]): void {
     if (n === 0) return;
     counted("neutral_speed_type");
     neutralByType[type] = sum / n;
+    if (camp !== undefined) neutralByCamp[camp] = sum / n;
     live["neutral_speed_" + type] = sum / n;
 }
 
-/** The speed the neutrals of a camp of `type` move at (camp creeps differ by camp: 310-350 against 290/300 in the smoke games); the last sighting, else `fb` (counted once per type). */
-export function NeutralSpeedFor(type: string, fb: number): number {
+/** The speed the neutrals of camp `camp` (of `type`) move at: that camp's last sighting, else the last of its type, else `fb` (counted once per type). */
+export function NeutralSpeedFor(type: string, fb: number, camp?: number): number {
+    const own = camp !== undefined ? neutralByCamp[camp] : undefined;
+    if (own !== undefined) return own;
     const v = neutralByType[type];
     if (v !== undefined) return v;
     if (neutralNoRead[type] !== true) {
@@ -253,6 +261,7 @@ export function Reset(): void {
     for (const k of Object.keys(noReadYet)) delete noReadYet[k];
     for (const k of Object.keys(neutralByType)) delete neutralByType[k];
     for (const k of Object.keys(neutralNoRead)) delete neutralNoRead[k];
+    for (const k of Object.keys(neutralByCamp)) delete neutralByCamp[tonumber(k) as number];
     neutralFedAt = undefined;
     towers = newTowers();
     gameReach = undefined;
@@ -268,7 +277,7 @@ export interface ProbeRow {
 /** What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game). */
 export function Probe(
     bot: Unit,
-    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number },
+    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number; neutralSeeds?: Record<string, number> },
 ): ProbeRow[] {
     const rows: ProbeRow[] = [];
     const tower = bot.GetNearbyTowers(1600, true)[0] ?? bot.GetNearbyTowers(1600, false)[0];
@@ -291,7 +300,7 @@ export function Probe(
         rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition, "neutral"), constant: constants.acquisition });
     }
     for (const type of Object.keys(neutralByType)) {
-        rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutral });
+        rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutralSeeds?.[type] ?? constants.neutral });
     }
     return rows;
 }
