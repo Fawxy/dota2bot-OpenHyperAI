@@ -334,6 +334,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                     ["contested", contested],
                     ["msg", res.message],
                 ]);
+                // The note is spent: a later tower pre-hit on the same creep is a prehit, not this swing.
+                IdleSwing.Clear(bot.GetPlayerID());
                 return;
             }
             if (t.kind === "prehit") {

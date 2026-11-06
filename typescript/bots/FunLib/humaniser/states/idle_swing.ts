@@ -33,7 +33,8 @@ const CREEP_RADIUS = 900;
 
 /**
  * Seconds until our hits kill a creep: our first landing at `first`, then one every `period`, each of `mean` damage, on the
- * creep's forecast HP without our hits (`hpAt`). The others' damage counts through `hpAt`. Math.huge when it outlives `horizon`.
+ * creep's forecast HP without our hits (`hpAt`). The others' damage counts through `hpAt`. Math.huge when it outlives `horizon`;
+ * RACE_LOST when the others kill it before one of our hits lands (the deny would come due while our attack is on cooldown).
  */
 export function KillTime(
     this: void,
@@ -46,11 +47,16 @@ export function KillTime(
     if (mean <= 0 || period <= 0) return math.huge;
     let k = 0;
     for (let t = first; t <= horizon; t += period) {
+        const left = hpAt(t) - k * mean;
+        if (left <= 0) return RACE_LOST;
         k++;
-        if (hpAt(t) - k * mean <= 0) return t;
+        if (left - mean <= 0) return t;
     }
     return math.huge;
 }
+
+/** KillTime's value for a creep the others kill between our hits. */
+export const RACE_LOST = -1;
 
 /**
  * Whether a pre-deny on our creep is safe from an enemy last hit: every enemy hero's time to reach attack range of it and swing
@@ -110,6 +116,11 @@ const notes: Record<number, Note | undefined> = {};
 export function Of(pid: number, creep: Lib.TaskCreep): Note | undefined {
     const n = notes[pid];
     return n !== undefined && n.creep === creep ? n : undefined;
+}
+
+/** Forgets the bot's note once its swing is logged. */
+export function Clear(pid: number): void {
+    notes[pid] = undefined;
 }
 
 /** Pre-denied creeps per bot, newest last, with the swings spent on each, for the later deny's `pre`. */
@@ -228,6 +239,7 @@ function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Not
         // In one-hit range at our hit it is a deny, the deny pick's with its timing and claim (user 06/11/2026), not a pre-deny.
         if (verbs.forecastHp(f, first) <= mean) continue;
         const kill = KillTime((t) => verbs.forecastHp(f, t), first, period, mean, HORIZON);
+        if (kill === RACE_LOST) continue;
         const reach = enemyReach(bot, c);
         if (!SafeFromEnemy(kill, reach)) continue;
         const key = { focus: partner.has(c), ranged: LanePick.IsRanged(tc), hp };

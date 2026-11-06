@@ -16,6 +16,10 @@ do
 	check("kill time: third hit at 3.5 s", near(Idle.KillTime(hpAt, 0.5, 1.5, 30, 6), 3.5))
 	check("kill time: past the horizon is huge", Idle.KillTime(function() return 1000 end, 0.5, 1.5, 30, 6) == math.huge)
 	check("kill time: no damage is huge", Idle.KillTime(hpAt, 0.5, 1.5, 0, 6) == math.huge)
+	-- Review F1 (isw2_A_on_1, 2026-11-05T23-49-39, pid 5 t=41.0: deny attempts on pre-denied creeps failed why=cd): their creeps
+	-- take 50 HP a second from 120. 0.5 s: 95, our hit leaves 65; 2.0 s: 20 - 30 <= 0 before our second hit lands: race lost.
+	check("kill time: the others kill it before our next hit, race lost",
+		Idle.KillTime(function(t) return 120 - 50 * t end, 0.5, 1.5, 30, 6) == Idle.RACE_LOST)
 	check("safe: enemy reach beyond our kill", Idle.SafeFromEnemy(2, 2.5))
 	check("unsafe: enemy reaches first", not Idle.SafeFromEnemy(2, 1.5))
 	check("safe: no enemy near", Idle.SafeFromEnemy(3.5, math.huge))
@@ -137,6 +141,13 @@ do
 	check("find: in one-hit range it is a deny, no pre-deny", Idle.Find(bot, verbs()) == nil)
 	c.hp = 41
 	check("find: one HP above one hit, pre-deny", Idle.Find(bot, verbs()) ~= nil)
+	-- 120 HP under their creeps' 50 a second (our hits 40 at 0.4 s, then every 1.5 s): 100 at 0.4, 60 left after ours;
+	-- 1.9 s: 25 - 40 <= 0 before our second hit lands. The deny would come due on our cooldown: no pre-deny.
+	c.hp = 120
+	local v = verbs()
+	v.forecastHp = function(f, t) return f.c.hp - 50 * t end
+	check("find: the others kill it before our next hit, no pre-deny", Idle.Find(bot, v) == nil)
+	check("find: the same creep with no other damage, pre-deny", Idle.Find(bot, verbs()) ~= nil)
 end
 
 do

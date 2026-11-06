@@ -614,6 +614,7 @@ local body = __TS__Generator(function(bot, ctx)
                         "idle_swing",
                         {__TS__SparseArraySpread(____array_25)}
                     )
+                    IdleSwing.Clear(bot:GetPlayerID())
                     return
                 end
                 if t.kind == "prehit" then
