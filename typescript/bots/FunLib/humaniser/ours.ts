@@ -100,6 +100,10 @@ export const DEFAULTS = {
      *  creep below half HP that no enemy hero reaches before our hits kill it (states/idle_swing), both laners on one creep.
      *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
     PreDeny: true,
+    /** Slice lane-control 2a (lane controller design s5.1-s5.3): once per wave per team and lane, the controller's reading,
+     *  mode, intent and chosen levers as ev=lane_ctl (lane_control). Shadow: nothing reads the decision, so no bot acts on
+     *  it. Off: no reading and no line. */
+    LaneControl: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

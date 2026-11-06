@@ -37,6 +37,7 @@ local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -70,6 +71,7 @@ ____exports.CoreCamp = CoreCamp
 ____exports.Tasks = Tasks
 ____exports.States = States
 ____exports.CoreTrade = CoreTrade
+____exports.LaneControl = LaneControl
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -260,6 +262,7 @@ local function tick(bot)
     LastHitSkill.Tick(bot)
     Orders.GetFor(bot)
     Intent.Tick(bot)
+    LaneControl.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
     States.Tick(bot)
     Tasks.Tick(bot)
@@ -411,6 +414,7 @@ if Telemetry.GuardsEnabled() then
         DesireFloor = zero
     })
     Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
+    Telemetry.GuardModule("LaneControl", LaneControl, {Tick = none})
     Telemetry.GuardModule(
         "Perception",
         Perception,

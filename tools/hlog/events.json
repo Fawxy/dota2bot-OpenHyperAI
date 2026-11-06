@@ -919,6 +919,35 @@
    "pre": "num",
    "msg": "str"
   },
+  "lane_ctl": {
+   "team": "num",
+   "lane": "num",
+   "kind": "str",
+   "wave": "num",
+   "mode": "str",
+   "rule": "str",
+   "tgt": "num",
+   "own": "num",
+   "mv": "num",
+   "st": "str",
+   "need": "num",
+   "m45": "num",
+   "p45": "num",
+   "pe": "num",
+   "n45": "num",
+   "intent": "str",
+   "lever": "str",
+   "who": "str",
+   "left": "num",
+   "short": "bool",
+   "rej": "str",
+   "core": "num",
+   "sup": "num",
+   "dep": "num",
+   "away": "bool",
+   "why": "str",
+   "ms": "num"
+  },
   "idle_swing": {
    "pid": "num",
    "kind": "str",
@@ -1697,6 +1726,17 @@
    "reason": "text",
    "claim": "text",
    "msg": "text"
+  },
+  "ev_lane_ctl": {
+   "kind": "text",
+   "mode": "text",
+   "rule": "text",
+   "st": "text",
+   "intent": "text",
+   "lever": "text",
+   "who": "text",
+   "rej": "text",
+   "why": "text"
   },
   "ev_idle_swing": {
    "kind": "text",
