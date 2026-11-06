@@ -2438,11 +2438,18 @@ function ____exports.CalendarEntries(bot, now)
                     bot:GetTeam(),
                     bot:GetLocation()
                 )
-                if LaneConfig.PositionOf(bot) == 4 then
-                    local job = ____exports.Pos4For(
+                local pos4 = LaneConfig.PositionOf(bot) == 4
+                local ____pos4_41
+                if pos4 then
+                    ____pos4_41 = ____exports.Pos4For(
                         bot:GetTeam(),
                         minute
                     )
+                else
+                    ____pos4_41 = nil
+                end
+                local job = ____pos4_41
+                if pos4 then
                     data, stand = unpack(job ~= nil and ({
                         job[1],
                         ____exports.Stand(
@@ -2456,11 +2463,34 @@ function ____exports.CalendarEntries(bot, now)
                     break
                 end
                 local walk = travel(bot, stand)
+                local leave = minute * 60 + ____exports.SingleSec(data) - walk - ____exports.SETTINGS.Lead
+                local ____pos4_45
+                if pos4 then
+                    ____pos4_45 = job and job[2]
+                else
+                    local ____Ours_On_result_44
+                    if Ours.On("DoubleStack") then
+                        ____Ours_On_result_44 = ____exports.Partner(data)
+                    else
+                        ____Ours_On_result_44 = nil
+                    end
+                    ____pos4_45 = ____Ours_On_result_44
+                end
+                local fd = ____pos4_45
+                if fd ~= nil and ____exports.Fits(bot, fd) and (pos4 or carryClears(
+                    bot:GetTeam(),
+                    fd
+                )) then
+                    leave = math.min(
+                        leave,
+                        minute * 60 + fd.fsec - travel(bot, fd.stand) - ____exports.SETTINGS.DoubleLead
+                    )
+                end
                 out[#out + 1] = {
                     kind = "stack",
                     key = minute,
                     claim = minute * 60 + ____exports.SETTINGS.LookFrom,
-                    leave = minute * 60 + ____exports.SingleSec(data) - walk - ____exports.SETTINGS.Lead,
+                    leave = leave,
                     back = ____end + walk,
                     fixed = false
                 }
@@ -2484,8 +2514,8 @@ function ____exports.Pending(bot)
     end
     local now = DotaTime()
     for ____, minute in ipairs(____exports.Minutes()) do
-        local ____opt_41 = handled[pid]
-        if (____opt_41 and ____opt_41[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
+        local ____opt_46 = handled[pid]
+        if (____opt_46 and ____opt_46[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
             return true
         end
     end

@@ -65,9 +65,13 @@ export const SETTINGS = {
     /** Slice 3 (design s5.4, s5.5 rule 2): a support's pull that does not fit before a stack on its calendar takes the
      *  stack's minute when the lane's predicted need (n45) is past YieldBase + YieldPerMin a minute after 3:00 (the stack
      *  weighted up as the game goes on, user 06/11/2026); else the stack keeps it. `judgement`: on the banked :30 waves of
-     *  stack minutes (lctl2, lctl3) this yields about two stacks in three at 3:30 and one in two at 7:30. */
-    YieldBase: 800,
+     *  stack minutes (lctl2, lctl3) 800 read as two in three at 3:30, but the check run lctl4 (07/11/2026) yielded 16 of 17
+     *  clash:stack minutes at 3:30 (review M3: 4 of 20 supports never stacked); on lctl4 n45, 1,600 yields 0.65 at 3:30,
+     *  0.32 at 5:30, 0.29 at 7:30. */
+    YieldBase: 1600,
     YieldPerMin: 200,
+    /** The minute YieldPerMin counts from (the first stack minute). */
+    YieldFrom: 3,
     /** ...and not sooner than this: a support leaving before this wave's pull slot (about 16 s after the spawn, 14 after
      *  the read) has no time to reset it (review 2026-11-06-lane-control-3115b32 M2: lctl1 read at 5:32, departure 5:35). */
     DepartAfter: 15,
@@ -233,7 +237,7 @@ function lanersOf(lane: Lane, cx: number, cy: number): Laner[] {
 
 /** The need past which a support's pull takes a stack's minute (slice 3). */
 export function YieldPast(now: number): number {
-    return SETTINGS.YieldBase + SETTINGS.YieldPerMin * math.max(0, now / 60 - 3);
+    return SETTINGS.YieldBase + SETTINGS.YieldPerMin * math.max(0, now / 60 - SETTINGS.YieldFrom);
 }
 
 /**

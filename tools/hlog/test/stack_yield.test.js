@@ -28,10 +28,11 @@ test('stack_yield: what the pull did with each minute the stack gave it', () => 
     const out = run([
         line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
         line(0, 'bot pid=6 hero=h6 team=2 pos=4'),
-        // Minute 3: pid 5 yields and pulls the 3:16 spawn (ok).
+        // Minute 3: pid 5 yields and pulls the 3:46 spawn (ok); a pull slot before the yield (3:16) did not buy it.
+        line(190, pull(5, 196, 'ok')),
         line(212, 'stack pid=5 min=3 res=skip why=lane'),
-        line(221, pull(5, 196, 'ok')),
-        // Minute 5: pid 5 yields; the pull is refused (hit, then enemy-site: the last counts); a pull in minute 6 does not count.
+        line(221, pull(5, 226, 'ok')),
+        // Minute 5: pid 5 yields; the pull is refused (hit, then enemy-site: the last counts); a pull 64 s on does not count.
         line(312, 'stack pid=5 min=5 res=skip why=lane'),
         line(314, choice(5, 316, 'hit')),
         line(344, choice(5, 346, 'enemy-site')),

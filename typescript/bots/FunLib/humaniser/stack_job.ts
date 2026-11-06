@@ -1281,13 +1281,19 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: n
         }
         if (handled[pid]?.[minute] === true || now >= minute * 60 + 60) continue;
         let [data, stand] = Nearest(bot.GetTeam(), bot.GetLocation());
-        if (LaneConfig.PositionOf(bot) === 4) {
-            const job = Pos4For(bot.GetTeam(), minute);
-            [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
-        }
+        const pos4 = LaneConfig.PositionOf(bot) === 4;
+        const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
+        if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
         if (data === undefined || stand === undefined) continue;
         const walk = travel(bot, stand);
-        out.push({ kind: "stack", key: minute, claim: minute * 60 + SETTINGS.LookFrom, leave: minute * 60 + SingleSec(data) - walk - SETTINGS.Lead, back: end + walk, fixed: false });
+        let leave = minute * 60 + SingleSec(data) - walk - SETTINGS.Lead;
+        // A double leaves earlier, from camp A (review M4): the same choice as Wants (its far and late checks are read at
+        // the start; the earlier leave is the safe estimate here).
+        const fd = pos4 ? job?.[1] : Ours.On("DoubleStack") ? Partner(data) : undefined;
+        if (fd !== undefined && Fits(bot, fd) && (pos4 || carryClears(bot.GetTeam(), fd))) {
+            leave = math.min(leave, minute * 60 + fd.fsec - travel(bot, fd.stand) - SETTINGS.DoubleLead);
+        }
+        out.push({ kind: "stack", key: minute, claim: minute * 60 + SETTINGS.LookFrom, leave, back: end + walk, fixed: false });
     }
     return out;
 }

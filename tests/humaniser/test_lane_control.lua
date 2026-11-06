@@ -44,20 +44,20 @@ do
 	check("reset: a lane well short of the target is let go", Ctl.IntentOf(-400, 150, true) == "forward")
 end
 
--- Slice 3: the pull against the puller's calendar (YieldPast 800 at 3:00, +200 a minute).
+-- Slice 3: the pull against the puller's calendar (YieldPast 1,600 at 3:00, +200 a minute).
 do
-	check("yield past: 800 at 3:00", Ctl.YieldPast(180) == 800)
-	check("yield past: 1,600 at 7:00", Ctl.YieldPast(420) == 1600)
-	check("yield past: no less before 3:00", Ctl.YieldPast(60) == 800)
+	check("yield past: 1,600 at 3:00", Ctl.YieldPast(180) == 1600)
+	check("yield past: 2,400 at 7:00", Ctl.YieldPast(420) == 2400)
+	check("yield past: no less before 3:00", Ctl.YieldPast(60) == 1600)
 	local stack = { kind = "stack", key = 3, claim = 195, leave = 215, back = 250, fixed = false }
 	local rune = { kind = "rune", key = 360, claim = 300, leave = 345, back = 375, fixed = true }
 	check("free: no refusal", Ctl.PullCalendar("free", nil, 2000, 212).why == nil and Ctl.PullCalendar("free", nil, 2000, 212).fit == "free")
 	check("fits: no refusal", Ctl.PullCalendar("fits", rune, 2000, 302).why == nil)
 	local r = Ctl.PullCalendar("clash", rune, 5000, 332)
 	check("a rune trip is never traded", r.why == "away" and r.yld == nil and r.fit == "clash:rune")
-	local y = Ctl.PullCalendar("clash", stack, 1100, 212)
+	local y = Ctl.PullCalendar("clash", stack, 2000, 212)
 	check("the lane needs it more: the pull takes the stack minute", y.why == nil and y.yld == 3)
-	local k = Ctl.PullCalendar("clash", stack, 700, 212)
+	local k = Ctl.PullCalendar("clash", stack, 1100, 212)
 	check("the stack keeps its minute", k.why == "stack" and k.yld == nil)
 	stack.running = true
 	check("a running stack is never taken", Ctl.PullCalendar("clash", stack, 5000, 212).why == "away")

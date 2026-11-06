@@ -1152,6 +1152,7 @@ function ____exports.ResetCache()
             t[k] = nil
         end
     end
+    Calendar.ResetCache()
 end
 local function isSupport(u)
     local pos = LaneConfig.PositionOf(u)

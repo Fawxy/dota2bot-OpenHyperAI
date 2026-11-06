@@ -254,6 +254,7 @@ interface Ended {
 
 export function ResetCache(): void {
     for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    Calendar.ResetCache();
 }
 
 function isSupport(u: Unit): boolean {

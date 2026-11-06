@@ -182,9 +182,32 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "rune"; key: nu
             continue;
         }
         if (handled[pid]?.[key(kind, spawn)] === true || now >= spawn + SETTINGS.LateBy[kind]) continue;
-        out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: spawn - walk, back, fixed: true });
+        const leave = Tasks.Jobs() !== undefined ? calendarLeave(bot, kind, spawn, now) : spawn - walk;
+        if (leave === false) continue;
+        out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: leave ?? spawn - walk, back, fixed: true });
     }
     return out;
+}
+
+/**
+ * The trip's own leave time (`leaveAt`, as `Wants` reads it), for the calendar (review H1, lctl4_C_on_3 t=362 pid 0 and
+ * lctl4_B_on_5 pid 2: the walk to a power spot put the 7:00 contest's leave 20 s late, so a pull fitted before it and the
+ * contest was lost). The contest's route is the edge route (the longer one, so never a later leave; the trip asks Valve's
+ * path only when it starts). A planned power rune: the plan's spot once the plan exists, `false` when the plan gave this
+ * bot none; undefined before the plan (the caller's walk estimate).
+ */
+function calendarLeave(bot: Unit, kind: Kind, spawn: number, now: number): number | false | undefined {
+    if (kind === "contest") {
+        const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+        return leaveAt(bot, { kind, spawn, at: Rotate.ShrineFor(enemy), via: edgeVia(enemy), left: now, host: 0 });
+    }
+    if (planned(kind, spawn)) {
+        if (now < RunePlan.SETTINGS.PlanAt) return undefined;
+        const mine = RunePlan.SpotOf(bot, Busy, now);
+        if (mine === undefined) return false;
+        return leaveAt(bot, tripFor(bot, kind, spawn, 0, mine));
+    }
+    return leaveAt(bot, tripFor(bot, kind, spawn, 0));
 }
 
 /** True while a trip runs or is pending for this bot: lower-ranked jobs wait. */

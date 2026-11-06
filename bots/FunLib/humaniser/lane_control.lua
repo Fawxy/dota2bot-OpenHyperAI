@@ -297,8 +297,9 @@ ____exports.SETTINGS = {
     SetupSize = 300,
     InLane = 2000,
     DepartWithin = 60,
-    YieldBase = 800,
+    YieldBase = 1600,
     YieldPerMin = 200,
+    YieldFrom = 3,
     DepartAfter = 15,
     CoreLowHp = 0.4,
     CoreThreat = 2,
@@ -469,7 +470,7 @@ local function lanersOf(lane, cx, cy)
 end
 --- The need past which a support's pull takes a stack's minute (slice 3).
 function ____exports.YieldPast(now)
-    return ____exports.SETTINGS.YieldBase + ____exports.SETTINGS.YieldPerMin * math.max(0, now / 60 - 3)
+    return ____exports.SETTINGS.YieldBase + ____exports.SETTINGS.YieldPerMin * math.max(0, now / 60 - ____exports.SETTINGS.YieldFrom)
 end
 --- The pull lever's calendar check (slice 3): `fit` the calendar's answer for the support's next pull window; `why` the
 -- refusal (`away`: it does not fit before a rune trip; `stack`: nor before a stack the lane does not need more); `yld` the
