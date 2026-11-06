@@ -57,3 +57,10 @@ test('an arm may expect its own build stamp (a remote arm is its own commit)', (
     assert.deepStrictEqual(checkGame(log({ set: '' }), { lineup: 'A', arm: 'off', build: 'zzz', arms }), []);
     assert.match(checkGame(log({ set: '' }), { lineup: 'A', arm: 'on', build: 'abc1234', arms }).join('; '), /build abc1234/);
 });
+
+test('a --set value may hold commas (lctl2shove: Overrides.ForceShove=r:bot,d:top)', () => {
+    const arms = { on: { set: ['Overrides.ForceShove=r:bot,d:top'], states: true } };
+    assert.deepStrictEqual(checkGame(log({ set: 'Overrides.ForceShove=r:bot,d:top', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234', arms }), []);
+    const two = { on: { set: ['Overrides.ForceShove=r:bot,d:top', 'X.Y=1'], states: true } };
+    assert.deepStrictEqual(checkGame(log({ set: 'Overrides.ForceShove=r:bot,d:top,X.Y=1', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234', arms: two }), []);
+});

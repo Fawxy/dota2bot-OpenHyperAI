@@ -192,6 +192,8 @@ export const EVENTS = {
         p3r: "num",
         p3t: "bool",
         p3a: "num",
+        /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
+        cid: "num",
     },
     /** Slice lane-farm-logs: a neutral creep that died within 1,500 of one of the logging team's heroes. `by` the hero whose
      *  last hits rose (a pid) or `none`; `camp` the nearest camp's spawner index within 1,200; `np`/`nd` the nearest own hero. */
@@ -213,6 +215,8 @@ export const EVENTS = {
         y: "num",
         hp: "num",
         by: "mixed",
+        /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
+        cid: "num",
     },
     player: {
         pid: "num",
@@ -1060,7 +1064,7 @@ export const EVENTS = {
     idle_swing: {
         pid: "num",
         kind: "str",
-        /** predeny: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
+        /** predeny and setup: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
         n: "num",
         /** The creep's place at the pick. */
         cx: "num",
@@ -1075,6 +1079,10 @@ export const EVENTS = {
         kill: "num",
         reach: "num",
         focus: "bool",
+        /** setup: our hits to the kill at the pick, this swing included. */
+        hits: "num",
+        /** The creep's id (Telemetry CreepId), the same as on its ev=creep_death or ev=own_creep_death. */
+        cid: "num",
         dn: "bool",
         lh: "bool",
         contested: "bool",

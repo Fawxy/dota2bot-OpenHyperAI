@@ -172,7 +172,8 @@
    "p3d": "num",
    "p3r": "num",
    "p3t": "bool",
-   "p3a": "num"
+   "p3a": "num",
+   "cid": "num"
   },
   "neutral_death": {
    "team": "num",
@@ -191,7 +192,8 @@
    "x": "num",
    "y": "num",
    "hp": "num",
-   "by": "mixed"
+   "by": "mixed",
+   "cid": "num"
   },
   "player": {
    "pid": "num",
@@ -964,6 +966,8 @@
    "kill": "num",
    "reach": "num",
    "focus": "bool",
+   "hits": "num",
+   "cid": "num",
    "dn": "bool",
    "lh": "bool",
    "contested": "bool",

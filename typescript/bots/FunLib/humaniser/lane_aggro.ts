@@ -520,8 +520,13 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
         if (valid(c) && isLaneCreep(c) && isRanged(c) && fed.get(c) !== true && frac(c) >= SETTINGS.FeedCreepHp) ranged = c;
     }
     if (ranged === undefined) return $multi(undefined, "no_ranged");
+    // Slice lane-control 2b: the lane controller's wave decision says whether this wave wants the feed (a named input; the
+    // feed keeps its own gates below); with no live decision, the feed's own reading decides.
+    const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
+    const chosen = LaneControl.Chosen(team, lane, "feed");
+    if (chosen === false) return $multi(undefined, "ctl");
     const r = pushRead(team, lane);
-    if (!FeedWanted(r, LanePush.TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
+    if (chosen === undefined && !FeedWanted(r, LanePush.TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
     if (nearOwnTower(ranged.GetLocation(), team)) return $multi(undefined, "own_tower");
     const fighting = enemyCreepsNear(bot, ranged.GetLocation(), SETTINGS.FightR);
     if (fighting.length < SETTINGS.FeedMinCreeps) return $multi(undefined, "few_creeps");

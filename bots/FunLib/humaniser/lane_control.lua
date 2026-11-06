@@ -232,6 +232,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local memoryOf, memory
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -242,6 +243,29 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function memoryOf(team, lane)
+    local key = (tostring(team) .. ":") .. tostring(lane)
+    local m = memory[key]
+    if m == nil then
+        m = {enemies = {}, chks = {}, decisions = {}}
+        memory[key] = m
+    end
+    return m
+end
+--- Stores a wave's decision for the levers' owners (decide's, and the tests'); the last few waves are kept.
+function ____exports.Remember(team, lane, d)
+    local m = memoryOf(team, lane)
+    m.decisions[d.wave] = d
+    m.last = d
+    for k in pairs(m.decisions) do
+        if tonumber(k) < d.wave - 120 then
+            __TS__Delete(
+                m.decisions,
+                tonumber(k)
+            )
+        end
+    end
+end
 --- All `judgement` unless marked.
 ____exports.SETTINGS = {
     ReadAt = 2,
@@ -250,8 +274,12 @@ ____exports.SETTINGS = {
     Horizon = 45,
     Band = 150,
     PullScale = 0.6,
+    DivertShare = 0.4,
+    Live = 31,
+    BreakEvery = 1,
     PreDenySize = 300,
     FeedSize = 300,
+    SetupSize = 300,
     InLane = 2000,
     DepartWithin = 60,
     DepartLead = 25,
@@ -377,20 +405,11 @@ function ____exports.IntentOf(need, band, reset)
     end
     return need > band and "back" or (need < -band and "forward" or "hold")
 end
-local memory = {}
+memory = {}
 function ____exports.ResetCache()
     for k in pairs(memory) do
         __TS__Delete(memory, k)
     end
-end
-local function memoryOf(team, lane)
-    local key = (tostring(team) .. ":") .. tostring(lane)
-    local m = memory[key]
-    if m == nil then
-        m = {enemies = {}, chks = {}}
-        memory[key] = m
-    end
-    return m
 end
 local function dist(a, x, y)
     return math.sqrt((a.x - x) ^ 2 + (a.y - y) ^ 2)
@@ -613,7 +632,7 @@ local function decide(team, lane, now, m)
     local base = plain or r.own + r.move
     local n45 = base - tgt
     local intent = ____exports.IntentOf(n45, s.Band, rule == "R2")
-    local pe = (gone and gone.own) ~= nil and plain ~= nil and s.PullScale * (gone.own - plain) or nil
+    local pe = (gone and gone.own) ~= nil and plain ~= nil and s.PullScale * s.DivertShare * (gone.own - plain) or nil
     local levers = {}
     local anyIn = coreIn ~= nil or supIn ~= nil
     levers[#levers + 1] = {
@@ -638,6 +657,13 @@ local function decide(team, lane, now, m)
         why = supBot == nil and "no_sup" or (rule == "R6" and "r6" or (pe == nil and "no_clash" or (gone ~= nil and gone.pw == 0 and "no_wave" or nil)))
     }
     levers[#levers + 1] = {
+        name = "setup",
+        effect = s.SetupSize,
+        danger = 1,
+        who = coreIn ~= nil and supIn ~= nil and "both" or (coreIn ~= nil and "core" or "sup"),
+        why = mode == "shove" and "mode" or (not anyIn and "nobody" or (not Ours.On("PreDeny") and "off" or nil))
+    }
+    levers[#levers + 1] = {
         name = "shove",
         effect = s.PreDenySize,
         danger = 2,
@@ -648,7 +674,7 @@ local function decide(team, lane, now, m)
     if intent == "reset" and math.abs(n45) <= s.Band then
         local pd = levers[1]
         c = pd.why == nil and ({levers = {pd}, left = n45 + pd.effect, short = false}) or ({levers = {}, left = n45, short = true})
-    elseif intent == "back" or intent == "reset" or intent == "forward" and mode == "shove" then
+    elseif intent == "back" or intent == "reset" or intent == "forward" then
         c = ____exports.Choose(n45, s.Band, levers)
     else
         c = {levers = {}, left = n45, short = false}
@@ -677,8 +703,21 @@ local function decide(team, lane, now, m)
     local ms = started ~= nil and math.floor((clock() - started) * 10000 + 0.5) / 10 or nil
     local ____m_chks_10 = m.chks
     ____m_chks_10[#____m_chks_10 + 1] = ts
-    local ____Telemetry_Event_16 = Telemetry.Event
-    local ____array_15 = __TS__SparseArrayNew(
+    local d = {
+        wave = ts,
+        at = now,
+        rule = rule,
+        mode = mode,
+        intent = intent,
+        levers = chosen,
+        who = who,
+        cx = cx,
+        cy = cy,
+        core = coreIn and coreIn.unit
+    }
+    ____exports.Remember(team, lane, d)
+    local ____Telemetry_Event_18 = Telemetry.Event
+    local ____array_17 = __TS__SparseArrayNew(
         {"team", team},
         {"lane", lane},
         {"kind", "wave"},
@@ -732,15 +771,15 @@ local function decide(team, lane, now, m)
             round(after - tgt)
         }
     )
-    local ____c_short_13
+    local ____c_short_15
     if c.short then
-        ____c_short_13 = true
+        ____c_short_15 = true
     else
-        ____c_short_13 = nil
+        ____c_short_15 = nil
     end
     __TS__SparseArrayPush(
-        ____array_15,
-        {"short", ____c_short_13},
+        ____array_17,
+        {"short", ____c_short_15},
         {
             "rej",
             table.concat(rej, ";")
@@ -752,16 +791,16 @@ local function decide(team, lane, now, m)
             round(dep)
         }
     )
-    local ____away_14
+    local ____away_16
     if away then
-        ____away_14 = true
+        ____away_16 = true
     else
-        ____away_14 = nil
+        ____away_16 = nil
     end
-    __TS__SparseArrayPush(____array_15, {"away", ____away_14}, {"ms", ms})
-    ____Telemetry_Event_16(
+    __TS__SparseArrayPush(____array_17, {"away", ____away_16}, {"ms", ms})
+    ____Telemetry_Event_18(
         "lane_ctl",
-        {__TS__SparseArraySpread(____array_15)}
+        {__TS__SparseArraySpread(____array_17)}
     )
 end
 local function check(team, lane, wave)
@@ -784,6 +823,119 @@ local function check(team, lane, wave)
             {"st", r and r.state}
         }
     )
+end
+--- Slice 2b's sub-switch: the decision drives the levers (off: shadow, 2a's behaviour).
+function ____exports.Drives()
+    return Ours.On("LaneControl") and Ours.On("LaneControlDrive")
+end
+--- The decision made for the wave that spawned at `wave` (a pull's pulled wave), while the controller drives.
+function ____exports.DecisionFor(team, lane, wave)
+    if not ____exports.Drives() then
+        return nil
+    end
+    local ____opt_25 = memory[(tostring(team) .. ":") .. tostring(lane)]
+    return ____opt_25 and ____opt_25.decisions[wave]
+end
+--- The lane's live decision (this wave's, until the next read), while the controller drives.
+function ____exports.Current(team, lane, now)
+    if now == nil then
+        now = DotaTime()
+    end
+    if not ____exports.Drives() then
+        return nil
+    end
+    local ____opt_27 = memory[(tostring(team) .. ":") .. tostring(lane)]
+    local d = ____opt_27 and ____opt_27.last
+    return d ~= nil and now - d.at <= ____exports.SETTINGS.Live and d or nil
+end
+--- The lane's mode for the idle swing: the live decision's, `safe` with none.
+function ____exports.ModeFor(team, lane)
+    local ____opt_29 = ____exports.Current(team, lane)
+    return ____opt_29 and ____opt_29.mode or "safe"
+end
+--- Whether `lever` is in the lane's live decision; undefined with none (the owner's own trigger then decides).
+function ____exports.Chosen(team, lane, lever)
+    local d = ____exports.Current(team, lane)
+    local ____temp_31
+    if d == nil then
+        ____temp_31 = nil
+    else
+        ____temp_31 = __TS__ArrayIncludes(d.levers, lever)
+    end
+    return ____temp_31
+end
+--- An enemy hero seen (visible, alive, not an illusion) within EnemyAway of the clash: the shove's break. Vision loss is no
+-- break (review 2026-11-06-lane-control-2b H1: every R5 shove in lctl2 broke 0-13 s in when `enemiesAway` read a hero out of
+-- vision as near).
+function ____exports.EnemySeenNear(heroes, cx, cy, r)
+    for ____, h in ipairs(heroes) do
+        if (h.x - cx) ^ 2 + (h.y - cy) ^ 2 <= r * r then
+            return true
+        end
+    end
+    return false
+end
+local function seenEnemies()
+    local out = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue93
+            repeat
+                if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
+                    __continue93 = true
+                    break
+                end
+                local at = e:GetLocation()
+                out[#out + 1] = {x = at.x, y = at.y}
+                __continue93 = true
+            until true
+            if not __continue93 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- Commitment's breaking events for a `shove` mode (s5.1b): an enemy hero seen near the clash, or the core low or dead.
+local function breakCheck(team, lane, m, now)
+    local d = m.last
+    if d == nil or d.mode ~= "shove" or now - d.at > ____exports.SETTINGS.Live then
+        return
+    end
+    if m.breakAt ~= nil and now - m.breakAt < ____exports.SETTINGS.BreakEvery then
+        return
+    end
+    m.breakAt = now
+    local why
+    if ____exports.EnemySeenNear(
+        seenEnemies(),
+        d.cx,
+        d.cy,
+        ____exports.SETTINGS.EnemyAway
+    ) then
+        why = "enemy"
+    elseif d.core ~= nil and not d.core:IsNull() and (not d.core:IsAlive() or d.core:GetHealth() / math.max(
+        1,
+        d.core:GetMaxHealth()
+    ) < ____exports.SETTINGS.CoreLowHp) then
+        why = "core_low"
+    end
+    if why == nil then
+        return
+    end
+    d.mode = "safe"
+    d.broke = why
+    d.levers = __TS__ArrayFilter(
+        d.levers,
+        function(____, l) return l ~= "shove" end
+    )
+    Telemetry.Event("lane_ctl", {
+        {"team", team},
+        {"lane", lane},
+        {"kind", "break"},
+        {"wave", d.wave},
+        {"why", why}
+    })
 end
 --- Called every frame by every hero of the team: the first call in a lane's read second decides that lane's wave (each lane the
 -- team has a hero assigned to), and the first call Horizon s after a decision logs its check.
@@ -812,6 +964,9 @@ function ____exports.Tick(bot)
             lane,
             table.remove(m.chks, 1)
         )
+    end
+    if ____exports.Drives() then
+        breakCheck(team, lane, m, now)
     end
     if now > s.Until or now - wave < s.ReadAt or m.wave == wave then
         return

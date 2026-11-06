@@ -1,10 +1,17 @@
 /**
- * Lane controller, slice 2a (design `docs/proposals/2026-11-06-lane-controller.md` s5.1-s5.3, s5.1c; slice file
- * `docs/team/slices/lane-controller.md`): once per wave per team and lane, one reading of where the clash will sit against the
- * lane's target point, the mode from the ruleset R1-R6, the wave intent, the levers that could close the gap with each one's
- * predicted effect, and the set it would choose. Shadow only: nothing reads the decision yet (slice 2b wires the levers to
- * it), so this module changes no bot action. One `ev=lane_ctl kind=wave` line per decision and one `kind=chk` line Horizon s
- * later with the clash then, which scores the prediction (hlog view `lane_ctl`).
+ * Lane controller, slices 2a and 2b (design `docs/proposals/2026-11-06-lane-controller.md` s5.1-s5.3, s5.1b, s5.1c; slice
+ * file `docs/team/slices/lane-controller.md`): once per wave per team and lane, one reading of where the clash will sit against
+ * the lane's target point, the mode from the ruleset R1-R6, the wave intent, the levers that could close the gap with each
+ * one's predicted effect, and the set it chooses. One `ev=lane_ctl kind=wave` line per decision and one `kind=chk` line
+ * Horizon s later with the clash then, which scores the prediction (hlog view `lane_ctl`).
+ *
+ * Slice 2b (`Ours.LaneControlDrive`, under `Ours.LaneControl`): the decision drives the levers. Each lever's owner reads it
+ * as a named input and keeps its own gates (rule 6: nobody scales another's output): the idle swing reads the mode and intent
+ * (`ModeFor`) and its `setup` lever (`Chosen`), lane aggro's feed whether the feed is in this wave's set (`Chosen`), the pull trigger whether the
+ * pull of the pulled wave is (`DecisionFor`). Commitment (s5.1b): a decision holds for its wave; a `shove` mode breaks early
+ * (`kind=break`) when an enemy laner shows up near the clash or the core drops low. With no decision for the moment (before
+ * From, after Until, or no reading) each owner falls back to its own trigger. Aggro's other draws (drag, tower, the hold's
+ * back) keep their own triggers: the controller is one input to lane aggro, not its owner.
  *
  * The pull's effect is the fight model's (lane_push WaveGoneFrom: this wave gone) against the plain forecast, scaled by
  * PullScale: on 17 banked games (138 diverted pulls) the unscaled model overshoots the move by about 1.6x at 30-45 s after
@@ -39,9 +46,18 @@ export const SETTINGS = {
     Band: 150,
     /** pulleffect.js least-squares k for diverted pulls at slot + 30 and + 45 s (0.61, 0.64; 17 games). */
     PullScale: 0.6,
+    /** Slice 2b: a pull's expected effect is the diverted one times the chance a start diverts the wave (measured 0.33-0.50
+     *  per start on the banked pulls, design s5.1c; `judgement` inside that range, retuned from the check run). */
+    DivertShare: 0.4,
+    /** A decision serves the idle swing and the feed until the next wave's read (30 s) plus a second's slack. */
+    Live: 31,
+    /** A `shove` decision's break conditions are re-read this often (s). */
+    BreakEvery: 1,
     /** Fixed lever sizes, along the lane towards our T1 (EC-078 gives the direction only; slice 2b measures them). */
     PreDenySize: 300,
     FeedSize: 300,
+    /** Slice 2b: the idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1. */
+    SetupSize: 300,
     /** A hero within this of the clash point counts in lane. */
     InLane: 2000,
     /** R2: a support departure (a rune trip or a stack) leaving within this many seconds makes this wave the reset wave;
@@ -145,12 +161,36 @@ interface Laner {
     present: boolean;
 }
 
+/** What the levers' owners read (slice 2b). */
+export interface Decision {
+    wave: number;
+    /** Game second the decision was made. */
+    at: number;
+    rule: string;
+    mode: Mode;
+    intent: Intent;
+    /** Chosen lever names (`predeny`, `feed`, `pull`, `shove`, and `hold` beside a pull). */
+    levers: string[];
+    /** Who takes each lever, by index: `both`, `core`, `sup` or a pid. */
+    who: string[];
+    /** The clash point at the read, for the break checks. */
+    cx: number;
+    cy: number;
+    core?: Unit;
+    /** Why a `shove` mode broke before its wave ended. */
+    broke?: string;
+}
+
 interface LaneMemory {
     /** Enemy pid -> last second it was seen near the clash. */
     enemies: Record<number, number>;
     wave?: number;
     /** Decided waves whose check is still to log, oldest first. */
     chks: number[];
+    /** Decisions by wave second, the last few kept. */
+    decisions: Record<number, Decision>;
+    last?: Decision;
+    breakAt?: number;
 }
 
 const memory: Record<string, LaneMemory> = {};
@@ -163,7 +203,7 @@ function memoryOf(team: number, lane: Lane): LaneMemory {
     const key = `${team}:${lane}`;
     let m = memory[key];
     if (m === undefined) {
-        m = { enemies: {}, chks: [] };
+        m = { enemies: {}, chks: [], decisions: {} };
         memory[key] = m;
     }
     return m;
@@ -284,7 +324,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const base = plain ?? r.own + r.move;
     const n45 = base - tgt;
     const intent = IntentOf(n45, s.Band, rule === "R2");
-    const pe = gone?.own !== undefined && plain !== undefined ? s.PullScale * (gone.own - plain) : undefined;
+    const pe = gone?.own !== undefined && plain !== undefined ? s.PullScale * s.DivertShare * (gone.own - plain) : undefined;
     const levers: Lever[] = [];
     const anyIn = coreIn !== undefined || supIn !== undefined;
     levers.push({ name: "predeny", effect: -s.PreDenySize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
@@ -296,14 +336,16 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         who: supBot !== undefined ? `${supBot.pid}` : "",
         why: supBot === undefined ? "no_sup" : rule === "R6" ? "r6" : pe === undefined ? "no_clash" : gone !== undefined && gone.pw === 0 ? "no_wave" : undefined,
     });
+    levers.push({ name: "setup", effect: s.SetupSize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: mode === "shove" ? "mode" : !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
     levers.push({ name: "shove", effect: s.PreDenySize, danger: 2, who: coreIn !== undefined ? "core" : "sup", why: mode !== "shove" ? "mode" : !anyIn ? "nobody" : undefined });
     // The reset wave (R2) brings the clash back to the target before the support leaves; already inside the band, a
-    // pre-deny alone (design s5.5 rule 1). `forward` takes a lever only under `shove`; otherwise the wave is let go.
+    // pre-deny alone (design s5.5 rule 1). `forward` takes the shove under `shove`, the idle swing's setup otherwise (slice 2b,
+    // user 06/11/2026: hit an enemy creep into our last-hit range while no enemy hero can deny it).
     let c: Choice;
     if (intent === "reset" && math.abs(n45) <= s.Band) {
         const pd = levers[0];
         c = pd.why === undefined ? { levers: [pd], left: n45 + pd.effect, short: false } : { levers: [], left: n45, short: true };
-    } else if (intent === "back" || intent === "reset" || (intent === "forward" && mode === "shove")) c = Choose(n45, s.Band, levers);
+    } else if (intent === "back" || intent === "reset" || intent === "forward") c = Choose(n45, s.Band, levers);
     else c = { levers: [], left: n45, short: false };
     const left = c.left;
     // The core's hold catches a pull that would leave the next clash under our tower (design s5.3: a pull and the hold go
@@ -320,6 +362,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     for (const l of levers) if (l.why !== undefined) rej.push(`${l.name}:${l.why}`);
     const ms = started !== undefined ? math.floor((clock!() - started) * 10000 + 0.5) / 10 : undefined;
     m.chks.push(ts);
+    const d: Decision = { wave: ts, at: now, rule, mode, intent, levers: chosen, who, cx, cy, core: coreIn?.unit };
+    Remember(team, lane, d);
     Telemetry.Event("lane_ctl", [
         ["team", team],
         ["lane", lane],
@@ -363,6 +407,84 @@ function check(team: number, lane: Lane, wave: number): void {
     ]);
 }
 
+/** Stores a wave's decision for the levers' owners (decide's, and the tests'); the last few waves are kept. */
+export function Remember(team: number, lane: Lane, d: Decision): void {
+    const m = memoryOf(team, lane);
+    m.decisions[d.wave] = d;
+    m.last = d;
+    for (const k in m.decisions) if (tonumber(k)! < d.wave - 120) delete m.decisions[tonumber(k)!];
+}
+
+/** Slice 2b's sub-switch: the decision drives the levers (off: shadow, 2a's behaviour). */
+export function Drives(): boolean {
+    return Ours.On("LaneControl") && Ours.On("LaneControlDrive");
+}
+
+/** The decision made for the wave that spawned at `wave` (a pull's pulled wave), while the controller drives. */
+export function DecisionFor(team: number, lane: Lane, wave: number): Decision | undefined {
+    if (!Drives()) return undefined;
+    return memory[`${team}:${lane}`]?.decisions[wave];
+}
+
+/** The lane's live decision (this wave's, until the next read), while the controller drives. */
+export function Current(team: number, lane: Lane, now: number = DotaTime()): Decision | undefined {
+    if (!Drives()) return undefined;
+    const d = memory[`${team}:${lane}`]?.last;
+    return d !== undefined && now - d.at <= SETTINGS.Live ? d : undefined;
+}
+
+/** The lane's mode for the idle swing: the live decision's, `safe` with none. */
+export function ModeFor(team: number, lane: Lane): Mode {
+    return Current(team, lane)?.mode ?? "safe";
+}
+
+/** Whether `lever` is in the lane's live decision; undefined with none (the owner's own trigger then decides). */
+export function Chosen(team: number, lane: Lane, lever: string): boolean | undefined {
+    const d = Current(team, lane);
+    return d === undefined ? undefined : d.levers.includes(lever);
+}
+
+/** An enemy hero seen (visible, alive, not an illusion) within EnemyAway of the clash: the shove's break. Vision loss is no
+ *  break (review 2026-11-06-lane-control-2b H1: every R5 shove in lctl2 broke 0-13 s in when `enemiesAway` read a hero out of
+ *  vision as near). */
+export function EnemySeenNear(heroes: { x: number; y: number }[], cx: number, cy: number, r: number): boolean {
+    for (const h of heroes) if ((h.x - cx) ** 2 + (h.y - cy) ** 2 <= r * r) return true;
+    return false;
+}
+
+function seenEnemies(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e === null || e === undefined || e.IsNull() || !e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
+        const at = e.GetLocation();
+        out.push({ x: at.x, y: at.y });
+    }
+    return out;
+}
+
+/** Commitment's breaking events for a `shove` mode (s5.1b): an enemy hero seen near the clash, or the core low or dead. */
+function breakCheck(team: number, lane: Lane, m: LaneMemory, now: number): void {
+    const d = m.last;
+    if (d === undefined || d.mode !== "shove" || now - d.at > SETTINGS.Live) return;
+    if (m.breakAt !== undefined && now - m.breakAt < SETTINGS.BreakEvery) return;
+    m.breakAt = now;
+    let why: string | undefined;
+    if (EnemySeenNear(seenEnemies(), d.cx, d.cy, SETTINGS.EnemyAway)) why = "enemy";
+    else if (d.core !== undefined && !d.core.IsNull() && (!d.core.IsAlive() || d.core.GetHealth() / math.max(1, d.core.GetMaxHealth()) < SETTINGS.CoreLowHp))
+        why = "core_low";
+    if (why === undefined) return;
+    d.mode = "safe";
+    d.broke = why;
+    d.levers = d.levers.filter((l) => l !== "shove");
+    Telemetry.Event("lane_ctl", [
+        ["team", team],
+        ["lane", lane],
+        ["kind", "break"],
+        ["wave", d.wave],
+        ["why", why],
+    ]);
+}
+
 /**
  * Called every frame by every hero of the team: the first call in a lane's read second decides that lane's wave (each lane the
  * team has a hero assigned to), and the first call Horizon s after a decision logs its check.
@@ -379,6 +501,7 @@ export function Tick(bot: Unit): void {
     const m = memoryOf(team, lane);
     const wave = math.floor(now / 30) * 30;
     while (m.chks.length > 0 && now >= m.chks[0] + s.ReadAt + s.Horizon) check(team, lane, m.chks.shift()!);
+    if (Drives()) breakCheck(team, lane, m, now);
     if (now > s.Until || now - wave < s.ReadAt || m.wave === wave) return;
     m.wave = wave;
     decide(team, lane, now, m);

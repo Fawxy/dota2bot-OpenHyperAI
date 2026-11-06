@@ -99,6 +99,13 @@ function S:GetNearbyHeroes(r, enemy)
 	end
 	return out
 end
+function S:GetNearbyTowers(r, enemy)
+	local out = {}
+	for _, t in ipairs(self.world.towers or {}) do
+		if (t.team ~= self.team) == enemy and dist(t.loc, self.loc) <= r then out[#out + 1] = t end
+	end
+	return out
+end
 local function unit(o) return setmetatable(o, S) end
 local function world(o)
 	local w = { creeps = o.creeps or {}, heroes = o.heroes or {} }
@@ -203,6 +210,60 @@ do
 	local bot = world({ creeps = { c } })
 	check("switch off: no pre-deny", Idle.Find(bot, verbs()) == nil)
 	Customize.Ours.PreDeny = true
+end
+
+-- Slice lane-control 2b: the controller's mode and its setup lever. A setup is an enemy creep our next hit does not kill, whose
+-- kill by our hits (SETUP_HITS at most) comes before any enemy hero reaches it; with none on offer, the pre-deny.
+do
+	local Ctl = require("bots/FunLib/humaniser/lane_control")
+	Customize.Ours.LaneControl = true
+	Customize.Ours.LaneControlDrive = true
+	local now = 300
+	DotaTime = function() return now end
+	local function decide(mode, intent, levers)
+		local who = {}
+		for i = 1, #levers do who[i] = "core" end
+		Ctl.Remember(TEAM_RADIANT, LANE_BOT, { wave = 300, at = 302, rule = "R1", mode = mode, intent = intent, levers = levers, who = who, cx = 0, cy = 0 })
+	end
+	check("hits to: kill on the third hit", Idle.HitsTo(3.4, 0.4, 1.5) == 3)
+	check("setup order: fewer hits first", Idle.BetterSetup({ hits = 2, ranged = false, hp = 90 }, { hits = 3, ranged = true, hp = 50 }))
+	check("setup order: ranged within the same hits", Idle.BetterSetup({ hits = 2, ranged = true, hp = 90 }, { hits = 2, ranged = false, hp = 50 }))
+	-- Their melee creep at 100 HP (our 40: 0.4 s 60 left, 1.9 s 20, 3.4 s dead: three hits) 300 away, no enemy hero near.
+	local theirs = unit({ team = TEAM_DIRE, loc = Vector(300, 0), hp = 100, name = "npc_dota_creep_badguys_melee" })
+	local ours = unit({ team = TEAM_RADIANT, loc = Vector(250, 0), hp = 200 })
+	local bot = world({ creeps = { theirs, ours } })
+	decide("safe", "forward", { "setup" })
+	local t = Idle.Find(bot, verbs())
+	check("setup: the enemy creep", t ~= nil and t.creep == theirs and Idle.Of(0, theirs) ~= nil and Idle.Of(0, theirs).kind == "setup")
+	check("setup: three hits noted", Idle.Of(0, theirs).hits == 3)
+	theirs.hp = 40
+	check("setup: in one-hit range it is the last-hit pick's, so the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	theirs.hp = 200
+	check("setup: five hits is too many, so the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	theirs.hp = 100
+	local e = unit({ team = TEAM_DIRE, loc = Vector(500, 0), range = 150 })
+	bot.world.heroes[#bot.world.heroes + 1] = e
+	-- (our creep is unsafe too: the hero reaches it in 0.73 s, so nothing is swung)
+	local r = Idle.Find(bot, verbs())
+	check("setup: an enemy hero could deny it first, no setup", r == nil or r.creep ~= theirs)
+	e.loc = Vector(3000, 0)
+	bot.world.towers = { unit({ team = TEAM_DIRE, loc = Vector(900, 0) }) }
+	check("setup: their creep inside their tower's range, so the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	bot.world.towers = nil
+	decide("safe", "back", { "predeny" })
+	check("back: no setup, the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	decide("shove", "forward", { "shove" })
+	check("controller shove: the mode is shove", Idle.ModeOf(bot) == "shove")
+	local ts = Idle.Find(bot, verbs())
+	check("controller shove: an enemy creep", ts ~= nil and ts.creep == theirs and Idle.Of(0, theirs).kind == "shove")
+	now = 340
+	check("decision expired: safe", Idle.ModeOf(bot) == "safe")
+	now = 310
+	Customize.Ours.LaneControlDrive = false
+	check("drive off: safe", Idle.ModeOf(bot) == "safe")
+	Customize.Ours.LaneControlDrive = true
+	check("drive on again: shove", Idle.ModeOf(bot) == "shove")
+	Ctl.ResetCache()
 end
 
 -- Spent swings for the later deny's `pre`.

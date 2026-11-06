@@ -681,8 +681,13 @@ local function tryFeed(bot, heroes, now)
     if ranged == nil then
         return nil, "no_ranged"
     end
+    local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+    local chosen = LaneControl.Chosen(team, lane, "feed")
+    if chosen == false then
+        return nil, "ctl"
+    end
     local r = pushRead(team, lane)
-    if not ____exports.FeedWanted(
+    if chosen == nil and not ____exports.FeedWanted(
         r,
         LanePush.TargetOf(lane)
     ) then
@@ -884,19 +889,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue135
+            local __continue136
             repeat
                 if not valid(c) then
-                    __continue135 = true
+                    __continue136 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue135 = true
+                __continue136 = true
             until true
-            if not __continue135 then
+            if not __continue136 then
                 break
             end
         end
@@ -1138,7 +1143,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue186
+                    local __continue187
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1146,16 +1151,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue186 = true
+                            __continue187 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue186 = true
+                        __continue187 = true
                     until true
-                    if not __continue186 then
+                    if not __continue187 then
                         break
                     end
                 end

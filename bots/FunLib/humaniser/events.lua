@@ -165,7 +165,8 @@ ____exports.EVENTS = {
         p3d = "num",
         p3r = "num",
         p3t = "bool",
-        p3a = "num"
+        p3a = "num",
+        cid = "num"
     },
     neutral_death = {
         team = "num",
@@ -184,7 +185,8 @@ ____exports.EVENTS = {
         x = "num",
         y = "num",
         hp = "num",
-        by = "mixed"
+        by = "mixed",
+        cid = "num"
     },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
@@ -847,6 +849,8 @@ ____exports.EVENTS = {
         kill = "num",
         reach = "num",
         focus = "bool",
+        hits = "num",
+        cid = "num",
         dn = "bool",
         lh = "bool",
         contested = "bool",

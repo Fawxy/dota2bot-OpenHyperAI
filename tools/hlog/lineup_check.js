@@ -45,7 +45,8 @@ function checkGame(text, { lineup, arm, build, until = 1200, lineups = LINEUPS, 
     const states = (text.match(/ ev=state /g) || []).length;
     if (!spec) p.push(`unknown arm ${arm}`);
     else {
-        const given = set.split(/[,\s]+/).filter(Boolean);
+        // Split only before the next Key=: a value may hold commas itself (Overrides.ForceShove=r:bot,d:top, lctl2shove).
+        const given = set.split(/[,\s]+(?=[A-Za-z_][\w.]*=)/).filter(Boolean);
         const wantSet = spec.set || [];
         const missing = wantSet.filter(k => !given.includes(k));
         if (missing.length) p.push(`${arm} arm: --set lacks ${missing.join(', ')} (set="${set}")`);
