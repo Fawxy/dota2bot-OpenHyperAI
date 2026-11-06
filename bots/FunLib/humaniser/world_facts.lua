@@ -165,6 +165,41 @@ local function __TS__ObjectKeys(obj)
     end
     return result
 end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local counted, fallback, valid, towers, fell, live
@@ -393,11 +428,25 @@ function ____exports.Probe(bot, constants)
             ),
             constant = constants.laneCreep
         }
-        rows[#rows + 1] = {
-            fact = "acquisition_lane_creep",
-            live = ____exports.AcquisitionRange(creep, constants.acquisition, "lane_creep"),
-            constant = constants.acquisition
-        }
+        local ____array_0 = __TS__SparseArrayNew(unpack(creeps))
+        __TS__SparseArrayPush(
+            ____array_0,
+            unpack(mine)
+        )
+        local melee = __TS__ArrayFind(
+            {__TS__SparseArraySpread(____array_0)},
+            function(____, c) return __TS__StringIncludes(
+                c:GetUnitName(),
+                "melee"
+            ) end
+        )
+        if melee ~= nil then
+            rows[#rows + 1] = {
+                fact = "acquisition_lane_creep",
+                live = ____exports.AcquisitionRange(melee, constants.acquisition, "lane_creep"),
+                constant = constants.acquisition
+            }
+        end
     end
     local n = bot:GetNearbyNeutralCreeps(1600, true)[1]
     if n ~= nil then

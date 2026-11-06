@@ -193,7 +193,9 @@ export function Probe(bot: Unit, constants: { tower: number; laneCreep: number; 
     const creep = creeps[0] ?? mine[0];
     if (creep !== undefined) {
         rows.push({ fact: "lane_creep_speed", live: LaneCreepSpeed(bot, creep.GetTeam(), constants.laneCreep), constant: constants.laneCreep });
-        rows.push({ fact: "acquisition_lane_creep", live: AcquisitionRange(creep, constants.acquisition, "lane_creep"), constant: constants.acquisition });
+        // The remembered value is the melee creep's (review H1/L5): log the row from a melee creep only.
+        const melee = [...creeps, ...mine].find((c) => c.GetUnitName().includes("melee"));
+        if (melee !== undefined) rows.push({ fact: "acquisition_lane_creep", live: AcquisitionRange(melee, constants.acquisition, "lane_creep"), constant: constants.acquisition });
     }
     const n = bot.GetNearbyNeutralCreeps(1600, true)[0];
     if (n !== undefined) {
