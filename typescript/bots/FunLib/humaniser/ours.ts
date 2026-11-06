@@ -112,8 +112,19 @@ export function Describe(): string {
     return names.map((n) => `${n}:${On(n as Feature) ? 1 : 0}`).join(",");
 }
 
+/**
+ * Customize.Ours.Team (head-to-head scope): "radiant" or "dire" confines every switch to that team, so the other team plays
+ * OHA's own decisions; any other value or none: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
+ */
+function OtherTeamScoped(): boolean {
+    const scope = (Customize.Ours as unknown as { Team?: unknown } | undefined)?.Team;
+    if (scope !== "radiant" && scope !== "dire") return false;
+    return GetTeam() !== (scope === "radiant" ? 2 : 3);
+}
+
 export function On(feature: Feature): boolean {
     if (Customize.Enable === false) return false;
+    if (OtherTeamScoped()) return false;
     const value = Customize.Ours?.[feature];
     if (value === undefined || value === null) return DEFAULTS[feature];
     return value === true;

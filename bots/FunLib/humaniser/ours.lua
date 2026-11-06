@@ -21,16 +21,27 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local Customize
+local OtherTeamScoped, Customize
+function OtherTeamScoped()
+    local ____opt_0 = Customize.Ours
+    local scope = ____opt_0 and ____opt_0.Team
+    if scope ~= "radiant" and scope ~= "dire" then
+        return false
+    end
+    return GetTeam() ~= (scope == "radiant" and 2 or 3)
+end
 function ____exports.On(feature)
     if Customize.Enable == false then
         return false
     end
-    local ____opt_0 = Customize.Ours
-    if ____opt_0 ~= nil then
-        ____opt_0 = ____opt_0[feature]
+    if OtherTeamScoped() then
+        return false
     end
-    local value = ____opt_0
+    local ____opt_2 = Customize.Ours
+    if ____opt_2 ~= nil then
+        ____opt_2 = ____opt_2[feature]
+    end
+    local value = ____opt_2
     if value == nil or value == nil then
         return ____exports.DEFAULTS[feature]
     end
