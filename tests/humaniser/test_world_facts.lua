@@ -6,7 +6,7 @@ local function unit(o) o.IsNull = nil return setmetatable(o, { __index = {
 	IsNull = function(s) return s.removed == true end,
 	GetAttackRange = function(s) return s.range end,
 	GetBoundingRadius = function(s) return s.radius end,
-	GetCurrentMovementSpeed = function(s) return s.speed end,
+	GetBaseMovementSpeed = function(s) return s.speed end,
 	GetAcquisitionRange = function(s) return s.acq end,
 	GetUnitName = function(s) return s.name end,
 	GetTeam = function(s) return s.team or 2 end,
@@ -49,6 +49,12 @@ do
 	T = 6
 	c.neutrals = { unit({ speed = 295 }) }
 	check("neutral speed live", WF.NeutralSpeed(c, 300) == 295)
+	T = 7
+	c.neutrals = { unit({ speed = 0 }), unit({ speed = 290 }) }
+	check("an idle camp creep reading 0 is skipped, the next one is read", WF.NeutralSpeed(c, 300) == 290)
+	T = 8
+	c.neutrals = { unit({ speed = 0 }) }
+	check("only zero readings: the last live value stands, not 0", WF.NeutralSpeed(c, 300) == 290)
 	local u = unit({ name = "npc_dota_creep_lane", acq = 600 })
 	check("acquisition live", WF.AcquisitionRange(u, 500) == 600)
 	local noacq = unit({ name = "npc_x" })

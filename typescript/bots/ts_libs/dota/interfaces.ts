@@ -170,6 +170,8 @@ export interface Unit {
     GetAbilityByName(abilityName: string): Ability;
     GetAttackRange(): number;
     GetBoundingRadius(): number;
+    /** Base movement speed, before boots and buffs (docs/BOT_API_REFERENCE.md). */
+    GetBaseMovementSpeed(): number;
     /** Range at which the unit auto-acquires targets (docs/BOT_API_REFERENCE.md). */
     GetAcquisitionRange(): number;
     GetCurrentVisionRange(): number;

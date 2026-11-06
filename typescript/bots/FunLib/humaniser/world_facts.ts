@@ -8,7 +8,7 @@
  * per second (the first bot to ask in that second reads the API, the others get the stored value).
  * No imports from telemetry or any context: telemetry reads Probe() and Fallbacks(), contexts call the readers.
  */
-import { Unit } from "bots/ts_libs/dota";
+import { Team, Tower, Unit } from "bots/ts_libs/dota";
 
 /** Seconds a per-moment value is reused for. */
 const MomentSec = 1;
@@ -48,6 +48,27 @@ function perMoment(fact: string, key: string, read: () => number | undefined): n
     return v;
 }
 
+let gameReach: number | undefined;
+
+/**
+ * The towers' attack reach for the whole game (every tier has the same range and size in 7.41; read from the first tower that
+ * answers, either team). Contexts add their own stated margin to it. `fb` is the constant it replaces.
+ */
+export function Reach(fb: number): number {
+    if (gameReach !== undefined) return gameReach;
+    for (const team of [Team.Radiant, Team.Dire]) {
+        const t = GetTower(team, Tower.Top1);
+        if (t !== null && t !== undefined && valid(t)) {
+            const r = TowerReach(t, -1);
+            if (r > 0) {
+                gameReach = r;
+                return r;
+            }
+        }
+    }
+    return fallback("tower_reach", fb);
+}
+
 /** Reach of a tower's attack to a target's centre: its attack range plus its own bounding radius. Per game, per tower. */
 export function TowerReach(tower: Unit, fb: number): number {
     const known = towers.get(tower);
@@ -65,7 +86,9 @@ export function TowerReach(tower: Unit, fb: number): number {
 function speedOf(units: Unit[] | undefined): number | undefined {
     for (const u of units ?? []) {
         if (!valid(u)) continue;
-        const s = u.GetCurrentMovementSpeed();
+        // Base speed, not current: a camp creep standing still reads a current speed of 0 and a slowed one reads less, and the
+        // pull's timing needs the speed it moves at once it starts (user 07/11/2026). A read of 0 or less is no read.
+        const s = u.GetBaseMovementSpeed();
         if (s !== undefined && s > 0) return s;
     }
     return undefined;
@@ -111,6 +134,7 @@ export function Reset(): void {
     for (const k of Object.keys(live)) delete live[k];
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
     towers = newTowers();
+    gameReach = undefined;
 }
 
 export interface ProbeRow {

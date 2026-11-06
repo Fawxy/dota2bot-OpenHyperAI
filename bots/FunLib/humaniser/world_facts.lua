@@ -167,42 +167,19 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
---- Seconds a per-moment value is reused for.
-local MomentSec = 1
---- Test hook: API reads made, by fact.
-____exports.ReadCount = {}
-local function newTowers()
-    return setmetatable({}, {__mode = "k"})
-end
-local towers = newTowers()
-local moment = {}
-local fell = {}
-local live = {}
-local function counted(fact)
+local counted, fallback, valid, towers, fell, live
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Team = ____dota.Team
+local Tower = ____dota.Tower
+function counted(fact)
     ____exports.ReadCount[fact] = (____exports.ReadCount[fact] or 0) + 1
 end
-local function fallback(fact, value)
+function fallback(fact, value)
     fell[fact] = (fell[fact] or 0) + 1
     return value
 end
-local function valid(u)
+function valid(u)
     return u ~= nil and u ~= nil and u:IsNull() ~= true
-end
---- One API read per key per second: `read` runs for the first asker, the stored result serves the rest (also a miss).
-local function perMoment(fact, key, read)
-    local now = math.floor(DotaTime() / MomentSec)
-    local k = (fact .. ":") .. key
-    local m = moment[k]
-    if m ~= nil and m.at == now then
-        return m.v
-    end
-    counted(fact)
-    local v = read()
-    moment[k] = {at = now, v = v}
-    if v ~= nil then
-        live[fact] = v
-    end
-    return v
 end
 --- Reach of a tower's attack to a target's centre: its attack range plus its own bounding radius. Per game, per tower.
 function ____exports.TowerReach(tower, fb)
@@ -223,22 +200,68 @@ function ____exports.TowerReach(tower, fb)
     live.tower_reach = reach
     return reach
 end
+--- Seconds a per-moment value is reused for.
+local MomentSec = 1
+--- Test hook: API reads made, by fact.
+____exports.ReadCount = {}
+local function newTowers()
+    return setmetatable({}, {__mode = "k"})
+end
+towers = newTowers()
+local moment = {}
+fell = {}
+live = {}
+--- One API read per key per second: `read` runs for the first asker, the stored result serves the rest (also a miss).
+local function perMoment(fact, key, read)
+    local now = math.floor(DotaTime() / MomentSec)
+    local k = (fact .. ":") .. key
+    local m = moment[k]
+    if m ~= nil and m.at == now then
+        return m.v
+    end
+    counted(fact)
+    local v = read()
+    moment[k] = {at = now, v = v}
+    if v ~= nil then
+        live[fact] = v
+    end
+    return v
+end
+local gameReach
+--- The towers' attack reach for the whole game (every tier has the same range and size in 7.41; read from the first tower that
+-- answers, either team). Contexts add their own stated margin to it. `fb` is the constant it replaces.
+function ____exports.Reach(fb)
+    if gameReach ~= nil then
+        return gameReach
+    end
+    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+        local t = GetTower(team, Tower.Top1)
+        if t ~= nil and t ~= nil and valid(t) then
+            local r = ____exports.TowerReach(t, -1)
+            if r > 0 then
+                gameReach = r
+                return r
+            end
+        end
+    end
+    return fallback("tower_reach", fb)
+end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue14
+            local __continue20
             repeat
                 if not valid(u) then
-                    __continue14 = true
+                    __continue20 = true
                     break
                 end
-                local s = u:GetCurrentMovementSpeed()
+                local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue14 = true
+                __continue20 = true
             until true
-            if not __continue14 then
+            if not __continue20 then
                 break
             end
         end
@@ -301,6 +324,7 @@ function ____exports.Reset()
         __TS__Delete(____exports.ReadCount, k)
     end
     towers = newTowers()
+    gameReach = nil
 end
 --- What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game).
 function ____exports.Probe(bot, constants)
