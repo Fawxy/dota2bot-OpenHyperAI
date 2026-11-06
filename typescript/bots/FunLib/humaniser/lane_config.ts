@@ -240,8 +240,8 @@ export const DEFAULTS = {
         AggroDanceRadius: 500,
         HarassTowerLevel: 6,
         HarassTowerTargetHP: 0.3,
-        // Fallback only: the tower's reach is read live (TowerReach(), world_facts; 844 in 7.41 = attack range 700 + radius 144).
-        EnemyTowerRange: 850,
+        // Fallback only: the tower's reach is read live (TowerReach(), world_facts; 844 in 7.41 = attack range 700 + radius 144). 844, not the old 850, so a failed read gives the margins back as 900/900/700.
+        EnemyTowerRange: 844,
         // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
         TakePullLaneCreeps: 1,
         TakePullDangerEnemies: 2,
