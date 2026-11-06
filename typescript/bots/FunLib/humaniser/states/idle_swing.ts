@@ -22,6 +22,7 @@ import { DamageType, Lane, Team, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 export type Kind = "predeny" | "setup" | "shove";
 export type Mode = "safe" | "shove";
@@ -37,8 +38,18 @@ const CREEP_RADIUS = 900;
 /** Setup: our hits to the kill, this swing and the last hit included (`judgement`: "hit a creep twice and get an easy last
  *  hit", user 06/11/2026). */
 export const SETUP_HITS = 3;
-/** Setup: no enemy creep within this of an enemy tower (tower range 700 plus a creep's width). */
-const TOWER_CLEAR = 800;
+/** Fallback only: a tower's reach to a target's centre (7.41: attack range 700 + bounding radius 144), read live by
+ *  WorldFacts.TowerReach. The setup's clearance is that reach plus the creep's own radius (slice 4; was TOWER_CLEAR 800). */
+const TOWER_REACH = 844;
+/** Fallbacks only (logged once per game through WorldFacts.Fallback): attack period and an enemy's attack point. */
+const PERIOD_FALLBACK = 1.7;
+const ATTACK_POINT_FALLBACK = 0.4;
+
+/** Our attack period from the API, the counted fallback when the read gives nothing. */
+function periodOf(me: Lib.TaskUnit): number {
+    const p = me.GetSecondsPerAttack?.();
+    return p !== undefined && p > 0 ? p : WorldFacts.Fallback("attack_period", PERIOD_FALLBACK);
+}
 
 /**
  * Seconds until our hits kill a creep: our first landing at `first`, then one every `period`, each of `mean` damage, on the
@@ -193,8 +204,11 @@ function enemyReach(bot: Unit, creep: Unit): number {
     for (const h of bot.GetNearbyHeroes(ENEMY_RADIUS, true, 0) ?? []) {
         if (!usable(h)) continue;
         const speed = math.max(100, h.GetCurrentMovementSpeed());
-        const walk = math.max(0, GetUnitToUnitDistance(h, creep) - h.GetAttackRange()) / speed;
-        const t = walk + ((h as any).GetAttackPoint?.(h) ?? 0.4);
+        // Attack range counts from edge to edge: both bounding radii come off the centre distance (slice 4).
+        const gap = GetUnitToUnitDistance(h, creep) - h.GetAttackRange() - (h.GetBoundingRadius() ?? 0) - (creep.GetBoundingRadius() ?? 0);
+        const walk = math.max(0, gap) / speed;
+        const point = (h as any).GetAttackPoint?.(h) as number | undefined;
+        const t = walk + (point !== undefined && point >= 0 ? point : WorldFacts.Fallback("attack_point", ATTACK_POINT_FALLBACK));
         if (t < best) best = t;
     }
     return best;
@@ -248,7 +262,7 @@ export function Better(
 }
 
 function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Note | undefined, Unit | undefined] {
-    const period = me.GetSecondsPerAttack?.() ?? 1.7;
+    const period = periodOf(me);
     const partner = focused(bot);
     let best: Unit | undefined;
     let bestKey: { focus: boolean; ranged: boolean; hp: number } | undefined;
@@ -283,7 +297,7 @@ function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Not
 
 function nearEnemyTower(bot: Unit, c: Unit): boolean {
     for (const tw of bot.GetNearbyTowers(1600, true) ?? []) {
-        if (usable(tw) && GetUnitToUnitDistance(tw, c) <= TOWER_CLEAR) return true;
+        if (usable(tw) && GetUnitToUnitDistance(tw, c) <= WorldFacts.TowerReach(tw, TOWER_REACH) + (c.GetBoundingRadius() ?? 0)) return true;
     }
     return false;
 }
@@ -301,7 +315,7 @@ export function BetterSetup(
 }
 
 function findSetup(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Note | undefined, Unit | undefined] {
-    const period = me.GetSecondsPerAttack?.() ?? 1.7;
+    const period = periodOf(me);
     let best: Unit | undefined;
     let bestKey: { hits: number; ranged: boolean; hp: number } | undefined;
     let bestNote: Note | undefined;
@@ -377,7 +391,7 @@ export function Find(
     if (note === undefined && mode !== "shove") [note, creep] = findPreDeny(bot, me, verbs);
     if (note === undefined || creep === undefined) return undefined;
     const t = target(bot, creep);
-    const busy = t.walk + verbs.ownHitTime(me, t.creep) + (me.GetSecondsPerAttack?.() ?? 1.7);
+    const busy = t.walk + verbs.ownHitTime(me, t.creep) + periodOf(me);
     if (needed(me, verbs, busy, t.creep, mine)) return undefined;
     note.denies = Count(bot, "GetDenies");
     note.lastHits = Count(bot, "GetLastHits");

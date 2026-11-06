@@ -10,6 +10,16 @@ local function __TS__StringIncludes(self, searchString, position)
     return index ~= nil
 end
 
+local function __TS__ObjectEntries(obj)
+    local result = {}
+    local len = 0
+    for key in pairs(obj) do
+        len = len + 1
+        result[len] = {key, obj[key]}
+    end
+    return result
+end
+
 local function __TS__New(target, ...)
     local instance = setmetatable({}, target.prototype)
     instance:____constructor(...)
@@ -202,7 +212,7 @@ local function __TS__ArrayFind(self, predicate, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local counted, fallback, valid, towers, fell, live
+local counted, fallback, valid, towers, fell, fellValue, live
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -211,6 +221,7 @@ function counted(fact)
 end
 function fallback(fact, value)
     fell[fact] = (fell[fact] or 0) + 1
+    fellValue[fact] = value
     return value
 end
 function valid(u)
@@ -245,7 +256,13 @@ end
 towers = newTowers()
 local moment = {}
 fell = {}
+fellValue = {}
 live = {}
+--- A caller's own API read gave nothing and it used the constant `fb` (a per-unit fact such as a hero's attack period, read
+-- where the unit is in hand). Counted like the readers' fallbacks, so telemetry logs the first one of each fact.
+function ____exports.Fallback(fact, fb)
+    return fallback(fact, fb)
+end
 --- One API read per key per second: `read` runs for the first asker, the stored result serves the rest (also a miss).
 local function perMoment(fact, key, read)
     local now = math.floor(DotaTime() / MomentSec)
@@ -262,6 +279,11 @@ local function perMoment(fact, key, read)
     end
     return v
 end
+--- The script's own team first: each team's bots run in their own VM, and a fogged enemy tower answers with a wrong attack range
+-- (lctl6 smoke, Dire reading Radiant's top T1 at the start: 200, not 700), so only a tower the team sees is read.
+local function teamsOwnFirst()
+    return GetTeam() == Team.Dire and ({Team.Dire, Team.Radiant}) or ({Team.Radiant, Team.Dire})
+end
 local gameReach
 local gameRange
 --- The towers' attack range itself (700 in 7.41), the distance a hit reaches from the tower's edge. Per game, from the first tower that answers.
@@ -269,9 +291,9 @@ function ____exports.TowerAttackRange(fb)
     if gameRange ~= nil then
         return gameRange
     end
-    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+    for ____, team in ipairs(teamsOwnFirst()) do
         local t = GetTower(team, Tower.Top1)
-        if t ~= nil and t ~= nil and valid(t) then
+        if t ~= nil and t ~= nil and valid(t) and t:CanBeSeen() then
             local r = t:GetAttackRange()
             if r ~= nil and r > 0 then
                 gameRange = r
@@ -287,9 +309,9 @@ function ____exports.Reach(fb)
     if gameReach ~= nil then
         return gameReach
     end
-    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+    for ____, team in ipairs(teamsOwnFirst()) do
         local t = GetTower(team, Tower.Top1)
-        if t ~= nil and t ~= nil and valid(t) then
+        if t ~= nil and t ~= nil and valid(t) and t:CanBeSeen() then
             local r = ____exports.TowerReach(t, -1)
             if r > 0 then
                 gameReach = r
@@ -302,19 +324,19 @@ end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue26
+            local __continue28
             repeat
                 if not valid(u) then
-                    __continue26 = true
+                    __continue28 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue26 = true
+                __continue28 = true
             until true
-            if not __continue26 then
+            if not __continue28 then
                 break
             end
         end
@@ -383,6 +405,27 @@ end
 function ____exports.Fallbacks()
     return fell
 end
+--- Facts the probe has a row for: telemetry logs those from the probe, never from the fallback list (review M1).
+local PROBED = {
+    tower_reach = true,
+    tower_range = true,
+    lane_creep_speed = true,
+    acquisition_lane_creep = true,
+    neutral_speed = true,
+    acquisition_neutral = true
+}
+--- Fallbacks taken for facts the probe has no row for (a caller's own read, `Fallback`): fact, count so far, value used.
+function ____exports.UnprobedFallbacks()
+    local out = {}
+    for ____, ____value in ipairs(__TS__ObjectEntries(fell)) do
+        local fact = ____value[1]
+        local n = ____value[2]
+        if n > 0 and PROBED[fact] ~= true then
+            out[#out + 1] = {fact = fact, n = n, value = fellValue[fact] or -1}
+        end
+    end
+    return out
+end
 --- Test hook: forget everything.
 function ____exports.Reset()
     for ____, k in ipairs(__TS__ObjectKeys(moment)) do
@@ -390,6 +433,9 @@ function ____exports.Reset()
     end
     for ____, k in ipairs(__TS__ObjectKeys(fell)) do
         __TS__Delete(fell, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(fellValue)) do
+        __TS__Delete(fellValue, k)
     end
     for ____, k in ipairs(__TS__ObjectKeys(live)) do
         __TS__Delete(live, k)
@@ -413,6 +459,11 @@ function ____exports.Probe(bot, constants)
             fact = "tower_reach",
             live = ____exports.TowerReach(tower, constants.tower),
             constant = constants.tower
+        }
+        rows[#rows + 1] = {
+            fact = "tower_range",
+            live = ____exports.TowerAttackRange(constants.towerRange),
+            constant = constants.towerRange
         }
     end
     local creeps = bot:GetNearbyLaneCreeps(1600, true)

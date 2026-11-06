@@ -811,6 +811,7 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
     const lc = LaneConfig.Settings();
     const rows = WorldFacts.Probe(bot, {
         tower: lc.Thresholds.EnemyTowerRange,
+        towerRange: 700,
         laneCreep: lc.PullTiming.CreepSpeed,
         neutral: lc.PullTiming.NeutralSpeed.medium,
         acquisition: 500,
@@ -826,6 +827,19 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
             ["live", r.live],
             ["constant", r.constant],
             ["fell", fell[r.fact] ?? 0],
+        ]);
+    }
+    // A fallback of a fact the probe has no row for (a caller's own read, WorldFacts.Fallback): its first use, once per game.
+    for (const f of WorldFacts.UnprobedFallbacks()) {
+        const key = `${team}:fell:${f.fact}`;
+        if (worldFactSeen[key]) continue;
+        worldFactSeen[key] = true;
+        Event("world_fact", [
+            ["team", team],
+            ["fact", f.fact],
+            ["live", -1],
+            ["constant", f.value],
+            ["fell", f.n],
         ]);
     }
 }
