@@ -229,6 +229,7 @@ local BotMode = ____dota.BotMode
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
@@ -729,7 +730,7 @@ function ____exports.DoubleGeometry(small, hard, speed)
         speed
     )
     local before = gap + cfg.Timing.DoublePullHitGap
-    local hardSpeed = cfg.PullTiming.NeutralSpeed[hard.type] or 300
+    local hardSpeed = WorldFacts.NeutralSpeedFor(hard.type, cfg.PullTiming.NeutralSpeed[hard.type] or 300, hard.campIdx)
     local late = PullTiming.WalkLength(
         hardSp.location,
         {

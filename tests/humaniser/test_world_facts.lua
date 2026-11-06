@@ -60,6 +60,36 @@ do
 	check("acquisition live", WF.AcquisitionRange(u, 500, "lane_creep") == 600 and WF.Latest("acquisition_lane_creep", 500) == 600)
 	local ranged = unit({ name = "npc_dota_creep_badguys_ranged", acq = 800 })
 	check("a ranged creep reads its own range and leaves the remembered melee value", WF.AcquisitionRange(ranged, 500, "lane_creep") == 800 and WF.Latest("acquisition_lane_creep", 500) == 600)
+	WF.Reset()
+	check("a type never sighted falls back, counted once", WF.NeutralSpeedFor("large", 300) == 300 and WF.NeutralSpeedFor("large", 300) == 300 and WF.Fallbacks().neutral_speed_large == 1)
+	check("the feeder is due once a second", WF.FeedDue() == true and WF.FeedDue() == false)
+	WF.FeedNeutral("large", { unit({ speed = 350 }), unit({ speed = 310 }), unit({ speed = 0 }) })
+	check("a camp type's speed is the mean of its creeps, zeros skipped", WF.NeutralSpeedFor("large", 300) == 330)
+	check("another type keeps its own fallback", WF.NeutralSpeedFor("small", 290) == 290)
+	WF.FeedNeutral("large", { unit({ speed = 0 }) })
+	check("only zero readings leave the last value", WF.NeutralSpeedFor("large", 300) == 330)
+	do
+		local camps = require("bots/FunLib/humaniser/camps")
+		local savedSp, savedList = GetNeutralSpawners, GetUnitList
+		GetNeutralSpawners = function()
+			return {
+				[1] = { team = 2, type = "large", location = Vector(0, 0, 0), min = Vector(-150, -150, 0), max = Vector(150, 150, 0) },
+				[2] = { team = 3, type = "large", location = Vector(5000, 0, 0), min = Vector(4850, -150, 0), max = Vector(5150, 150, 0) },
+			}
+		end
+		camps.ResetCache()
+		local function at(x, speed) local u = unit({ speed = speed }); u.GetLocation = function() return Vector(x, 0, 0) end; return u end
+		local ghost = unit({ speed = 300 }); ghost.GetLocation = function() return nil end
+		GetUnitList = function() return { ghost, at(10, 270), at(-20, 270), at(5010, 295), at(2500, 999) } end
+		WF.Reset(); T = 50
+		local seer = unit({ team = 2 })
+		check("a neutral with no location is skipped, not a crash", pcall(camps.FeedNeutralSpeeds, seer))
+		check("each camp keeps its own speed", WF.NeutralSpeedFor("large", 300, 1) == 270 and WF.NeutralSpeedFor("large", 300, 2) == 295)
+		check("a neutral between camps (beyond the range) is ignored", WF.NeutralSpeedFor("large", 300) ~= 999)
+		check("a camp never seen uses its type's last sighting", WF.NeutralSpeedFor("large", 300, 7) == 295)
+		GetNeutralSpawners, GetUnitList = savedSp, savedList
+		camps.ResetCache()
+	end
 	local noacq = unit({ name = "npc_x" })
 	check("acquisition missing falls back", WF.AcquisitionRange(noacq, 500, "neutral") == 500 and WF.Fallbacks().acquisition_neutral == 1)
 end

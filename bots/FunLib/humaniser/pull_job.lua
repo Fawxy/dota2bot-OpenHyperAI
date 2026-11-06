@@ -1782,6 +1782,10 @@ local function finish(bot, p, r, label)
             p.timer.first ~= nil and math.floor(p.timer.first * 10 + 0.5) / 10 or nil
         },
         {"lv", p.timer.reads},
+        {
+            "nsp",
+            p.plan.timing.neutralSpeed ~= nil and math.floor(p.plan.timing.neutralSpeed + 0.5) or nil
+        },
         {"hr", p.timer.hit ~= nil and "geo" or "plan"},
         {"hc", p.timer.n},
         {"hn", p.timer.next},

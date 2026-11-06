@@ -143,6 +143,55 @@ export function NeutralSpeed(bot: Unit, fb: number): number {
     return v ?? live.neutral_speed ?? fallback("neutral_speed", fb);
 }
 
+const neutralByType: Record<string, number> = {};
+const neutralByCamp: Record<number, number> = {};
+const neutralNoRead: Record<string, boolean> = {};
+let neutralFedAt: number | undefined;
+
+/** True at most once per second per script: the behaviour-side feeder asks before scanning (one scan serves every bot). */
+export function FeedDue(): boolean {
+    const now = math.floor(DotaTime() / MomentSec);
+    if (neutralFedAt === now) return false;
+    neutralFedAt = now;
+    return true;
+}
+
+/**
+ * Remember the speed `units` (creeps of the camp `camp`, of `type`) move at: the mean of their base speeds (a camp's creeps
+ * differ a little and the pull's timing needs the pack, so the mean), readings of 0 or less skipped. Camps of one type differ
+ * (large 270 and 295 in the step 6 smoke), so the camp's own value is kept beside the type's.
+ */
+export function FeedNeutral(type: string, units: Unit[], camp?: number): void {
+    let sum = 0;
+    let n = 0;
+    for (const u of units) {
+        if (!valid(u)) continue;
+        const s = u.GetBaseMovementSpeed();
+        if (s !== undefined && s > 0) {
+            sum += s;
+            n++;
+        }
+    }
+    if (n === 0) return;
+    counted("neutral_speed_type");
+    neutralByType[type] = sum / n;
+    if (camp !== undefined) neutralByCamp[camp] = sum / n;
+    live["neutral_speed_" + type] = sum / n;
+}
+
+/** The speed the neutrals of camp `camp` (of `type`) move at: that camp's last sighting, else the last of its type, else `fb` (counted once per type). */
+export function NeutralSpeedFor(type: string, fb: number, camp?: number): number {
+    const own = camp !== undefined ? neutralByCamp[camp] : undefined;
+    if (own !== undefined) return own;
+    const v = neutralByType[type];
+    if (v !== undefined) return v;
+    if (neutralNoRead[type] !== true) {
+        neutralNoRead[type] = true;
+        fallback("neutral_speed_" + type, fb);
+    }
+    return fb;
+}
+
 /** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
 export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
     // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
@@ -210,6 +259,10 @@ export function Reset(): void {
     for (const k of Object.keys(live)) delete live[k];
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
     for (const k of Object.keys(noReadYet)) delete noReadYet[k];
+    for (const k of Object.keys(neutralByType)) delete neutralByType[k];
+    for (const k of Object.keys(neutralNoRead)) delete neutralNoRead[k];
+    for (const k of Object.keys(neutralByCamp)) delete neutralByCamp[tonumber(k) as number];
+    neutralFedAt = undefined;
     towers = newTowers();
     gameReach = undefined;
     gameRange = undefined;
@@ -224,7 +277,7 @@ export interface ProbeRow {
 /** What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game). */
 export function Probe(
     bot: Unit,
-    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number },
+    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number; neutralSeeds?: Record<string, number> },
 ): ProbeRow[] {
     const rows: ProbeRow[] = [];
     const tower = bot.GetNearbyTowers(1600, true)[0] ?? bot.GetNearbyTowers(1600, false)[0];
@@ -245,6 +298,9 @@ export function Probe(
     if (n !== undefined) {
         rows.push({ fact: "neutral_speed", live: NeutralSpeed(bot, constants.neutral), constant: constants.neutral });
         rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition, "neutral"), constant: constants.acquisition });
+    }
+    for (const type of Object.keys(neutralByType)) {
+        rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutralSeeds?.[type] ?? constants.neutral });
     }
     return rows;
 }

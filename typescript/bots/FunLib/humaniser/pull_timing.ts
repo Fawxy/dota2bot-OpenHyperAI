@@ -113,11 +113,12 @@ function normalise(s: number, period: number): number {
  * Wave-derived aggro seconds for `team`'s wave on `lane` and a camp whose neutrals walk `leadPath` (ending at the
  * meet point) from `origin`; `seed` when an input is missing or the meet point is off the lane path.
  */
-export function For(team: number, lane: Lane | undefined, origin: Vector | undefined, type: Camps.CampType, leadPath: Vector[], half: boolean, seed: number[]): PullTiming {
+export function For(team: number, lane: Lane | undefined, origin: Vector | undefined, type: Camps.CampType, leadPath: Vector[], half: boolean, seed: number[], campIdx?: number): PullTiming {
     const cfg = settings();
     const fallback: PullTiming = { seconds: seed, source: "seed" };
     const meet = leadPath[leadPath.length - 1];
-    const neutralSpeed = (cfg.NeutralSpeed as Record<string, number>)[type];
+    const seedSpeed = (cfg.NeutralSpeed as Record<string, number>)[type];
+    const neutralSpeed = seedSpeed === undefined ? undefined : WorldFacts.NeutralSpeedFor(type, seedSpeed, campIdx);
     if (cfg.FromWave !== true || lane === undefined || origin === undefined || meet === undefined || neutralSpeed === undefined) return fallback;
     const path = LanePath(team, lane);
     if (path === undefined || path.length < 2) return fallback;
@@ -173,7 +174,7 @@ export function ForCamp(data: Camps.CampJobData, half: boolean, meet?: Vector): 
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (data.source !== "seed" || spawner === undefined) return { seconds: seed, source: "seed" };
     const target = meet ?? (half ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint);
-    return For(data.team, data.lane, spawner.location, data.type, LeadPath(data.pull, target), half, seed);
+    return For(data.team, data.lane, spawner.location, data.type, LeadPath(data.pull, target), half, seed, data.campIdx);
 }
 
 /**

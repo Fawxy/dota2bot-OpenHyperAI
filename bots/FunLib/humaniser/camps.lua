@@ -12,6 +12,16 @@ local function __TS__ArraySort(self, compareFn)
     return self
 end
 
+local function __TS__ObjectEntries(obj)
+    local result = {}
+    local len = 0
+    for key in pairs(obj) do
+        len = len + 1
+        result[len] = {key, obj[key]}
+    end
+    return result
+end
+
 local function __TS__ArrayReverse(self)
     local i = 1
     local j = #self
@@ -31,6 +41,8 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local ____camps_data = require(GetScriptDirectory().."/FunLib/humaniser/camps_data")
 local CAMP_DATA = ____camps_data.CAMP_DATA
@@ -195,21 +207,71 @@ function ____exports.NearestSpawner(loc)
     end
     return best, bestDist
 end
+--- A neutral belongs to the camp whose spawner is nearest, if within this (the box is about 300 across).
+local FeedSpawnerRange = 600
+--- Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups every neutral the API lists (GetUnitList) by its nearest
+-- spawner and remembers each camp's speed, and its type's. One scan per second serves every bot of the team (not
+-- telemetry's tick, so it runs with telemetry off).
+function ____exports.FeedNeutralSpeeds(_bot)
+    if not WorldFacts.FeedDue() then
+        return
+    end
+    local bySpawner = {}
+    for ____, n in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        do
+            local __continue21
+            repeat
+                if n == nil or n:IsNull() then
+                    __continue21 = true
+                    break
+                end
+                local loc = n:GetLocation()
+                if loc == nil or loc == nil then
+                    __continue21 = true
+                    break
+                end
+                local sp, d = ____exports.NearestSpawner(loc)
+                if sp == nil or d > FeedSpawnerRange then
+                    __continue21 = true
+                    break
+                end
+                local ____temp_0 = bySpawner[sp.idx] or ({type = sp.type, units = {}})
+                bySpawner[sp.idx] = ____temp_0
+                local e = ____temp_0
+                local ____e_units_1 = e.units
+                ____e_units_1[#____e_units_1 + 1] = n
+                __continue21 = true
+            until true
+            if not __continue21 then
+                break
+            end
+        end
+    end
+    for ____, ____value in ipairs(__TS__ObjectEntries(bySpawner)) do
+        local idx = ____value[1]
+        local e = ____value[2]
+        WorldFacts.FeedNeutral(
+            e.type,
+            e.units,
+            tonumber(idx)
+        )
+    end
+end
 function ____exports.InBox(idx, loc, margin)
     if margin == nil then
         margin = 0
     end
     for ____, s in ipairs(____exports.Spawners()) do
         do
-            local __continue20
+            local __continue29
             repeat
                 if s.idx ~= idx then
-                    __continue20 = true
+                    __continue29 = true
                     break
                 end
                 return loc.x >= s.min.x - margin and loc.x <= s.max.x + margin and loc.y >= s.min.y - margin and loc.y <= s.max.y + margin
             until true
-            if not __continue20 then
+            if not __continue29 then
                 break
             end
         end
@@ -371,18 +433,18 @@ local function matchReplay(s)
     local radius = camps().ReplayMatchRadius
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue68
+            local __continue77
             repeat
                 if entry.near == nil or campTeamOf(entry) ~= s.team or entry.type ~= s.type then
-                    __continue68 = true
+                    __continue77 = true
                     break
                 end
                 if dist2D(entry.near, s.location) <= radius then
                     return entry
                 end
-                __continue68 = true
+                __continue77 = true
             until true
-            if not __continue68 then
+            if not __continue77 then
                 break
             end
         end
@@ -403,11 +465,11 @@ function ____exports.Resolve()
     local jobs = {[Team.Radiant] = {}, [Team.Dire] = {}}
     for ____, s in ipairs(spawners) do
         do
-            local __continue75
+            local __continue84
             repeat
                 local entry = matchReplay(s)
                 if entry == nil then
-                    __continue75 = true
+                    __continue84 = true
                     break
                 end
                 local lane = entry.laneKind ~= nil and ____exports.LaneOfKind(entry.team, entry.laneKind) or nil
@@ -432,25 +494,25 @@ function ____exports.Resolve()
                     }
                 end
                 jobs[entry.team][s.idx] = job
-                __continue75 = true
+                __continue84 = true
             until true
-            if not __continue75 then
+            if not __continue84 then
                 break
             end
         end
     end
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue79
+            local __continue88
             repeat
                 if entry.near ~= nil or entry.laneKind == nil or entry.pullAggroSec == nil then
-                    __continue79 = true
+                    __continue88 = true
                     break
                 end
                 local lane = ____exports.LaneOfKind(entry.team, entry.laneKind)
                 local tower = laneTower(entry.team, lane)
                 if tower == nil then
-                    __continue79 = true
+                    __continue88 = true
                     break
                 end
                 local maxTowerDist = entry.maxTowerDist or camps().PullCampMaxTowerDist
@@ -460,35 +522,35 @@ function ____exports.Resolve()
                 local bestDist = math.huge
                 for ____, s in ipairs(spawners) do
                     do
-                        local __continue82
+                        local __continue91
                         repeat
                             if own[s.idx] ~= nil or s.team ~= campTeam or s.type ~= entry.type then
-                                __continue82 = true
+                                __continue91 = true
                                 break
                             end
                             local d = dist2D(s.location, tower)
                             if d >= bestDist or d > maxTowerDist then
-                                __continue82 = true
+                                __continue91 = true
                                 break
                             end
                             if dist2D(
                                 s.location,
                                 ____exports.DeriveMeetPoint(entry.team, lane, s.location)
                             ) > camps().PullCampMaxLaneDist then
-                                __continue82 = true
+                                __continue91 = true
                                 break
                             end
                             bestDist = d
                             best = s
-                            __continue82 = true
+                            __continue91 = true
                         until true
-                        if not __continue82 then
+                        if not __continue91 then
                             break
                         end
                     end
                 end
                 if best == nil then
-                    __continue79 = true
+                    __continue88 = true
                     break
                 end
                 local nearest = ____exports.DeriveMeetPoint(entry.team, lane, best.location)
@@ -511,17 +573,17 @@ function ____exports.Resolve()
                     derived = true,
                     unverified = entry.unverified
                 }
-                __continue79 = true
+                __continue88 = true
             until true
-            if not __continue79 then
+            if not __continue88 then
                 break
             end
         end
     end
     local result = {}
     for ____, s in ipairs(spawners) do
-        local ____opt_4 = jobs[s.team]
-        local job = ____opt_4 and ____opt_4[s.idx] or ({
+        local ____opt_6 = jobs[s.team]
+        local job = ____opt_6 and ____opt_6[s.idx] or ({
             campIdx = s.idx,
             team = s.team,
             stack = stackFor(s, nil),
@@ -545,14 +607,14 @@ end
 --- `team`'s job on the camp, else the job of the spawner's own team (every spawner has one).
 function ____exports.ByIdx(idx, team)
     ____exports.Resolve()
-    local ____temp_8
+    local ____temp_10
     if team ~= nil then
-        local ____opt_6 = byTeam[team]
-        ____temp_8 = ____opt_6 and ____opt_6[idx]
+        local ____opt_8 = byTeam[team]
+        ____temp_10 = ____opt_8 and ____opt_8[idx]
     else
-        ____temp_8 = nil
+        ____temp_10 = nil
     end
-    return ____temp_8 or byIdx[idx]
+    return ____temp_10 or byIdx[idx]
 end
 function ____exports.PullCampsFor(team, lane)
     local found = {}

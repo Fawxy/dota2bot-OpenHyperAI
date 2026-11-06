@@ -814,6 +814,7 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
         towerRange: 700,
         laneCreep: lc.PullTiming.CreepSpeed,
         neutral: lc.PullTiming.NeutralSpeed.medium,
+        neutralSeeds: lc.PullTiming.NeutralSpeed as Record<string, number>,
         acquisition: 500,
     });
     const fell = WorldFacts.Fallbacks();
