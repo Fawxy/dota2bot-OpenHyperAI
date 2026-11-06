@@ -127,6 +127,12 @@ export function NeutralSpeed(bot: Unit, fb: number): number {
 
 /** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
 export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
+    // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
+    // melee creep's, the one the pull timing's clearance is written for (review H1). Other types read directly and are not stored.
+    if (kind === "lane_creep" && !unit.GetUnitName().includes("melee")) {
+        const r = unit.GetAcquisitionRange();
+        return r !== undefined && r > 0 ? r : fb;
+    }
     const v = perMoment("acquisition_" + kind, unit.GetUnitName(), () => {
         const r = unit.GetAcquisitionRange();
         return r !== undefined && r > 0 ? r : undefined;

@@ -309,6 +309,13 @@ function ____exports.NeutralSpeed(bot, fb)
 end
 --- Acquisition range of `unit`, keyed by its name (one read per unit type per second).
 function ____exports.AcquisitionRange(unit, fb, kind)
+    if kind == "lane_creep" and not __TS__StringIncludes(
+        unit:GetUnitName(),
+        "melee"
+    ) then
+        local r = unit:GetAcquisitionRange()
+        return r ~= nil and r > 0 and r or fb
+    end
     local v = perMoment(
         "acquisition_" .. kind,
         unit:GetUnitName(),
