@@ -135,7 +135,10 @@ function ____exports.WaveCreeps(timing, aggroAt, now)
                 if off <= cfg.LiveMaxOffset and math.abs(along - expected) <= window then
                     out[#out + 1] = {
                         along = along,
-                        acq = c:GetAcquisitionRange()
+                        acq = math.min(
+                            c:GetAcquisitionRange(),
+                            cfg.HeroTurnRange
+                        )
                     }
                 end
                 __continue46 = true
@@ -506,10 +509,11 @@ function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_1 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_1 and ____opt_1.shift
 end
---- Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error plus both hulls.
-function ____exports.HeroMargin(heroHull, creepHull)
+--- Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error (centre distances, as
+-- the turn radius was fitted: no hulls).
+function ____exports.HeroMargin()
     local cfg = settings()
-    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr + heroHull + creepHull
+    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr
 end
 --- The point `off` from the lane path on the line from `stand` to its nearest lane point (`stand` itself when nearer).
 local function TowardLane(path, stand, off)
@@ -522,7 +526,7 @@ local function TowardLane(path, stand, off)
     return Vector(lx + (stand.x - lx) * f, ly + (stand.y - ly) * f, stand.z)
 end
 --- Read's on-hero branch: the hit second for `h`, or undefined until the aimed creep and one behind it are read.
-local function ReadOnHero(c, now, h, heroHull, creepHull)
+local function ReadOnHero(c, now, h)
     local t = c.timing
     local path = t.lanePath
     local meet = h.route[#h.route]
@@ -534,7 +538,7 @@ local function ReadOnHero(c, now, h, heroHull, creepHull)
     c.n = #creeps
     local aim = c.keep > 0 and c.keep or c.index
     local v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
-    local margin = ____exports.HeroMargin(heroHull, creepHull)
+    local margin = ____exports.HeroMargin()
     local route = h.route
     local trigger = meet
     local step = 0
@@ -580,13 +584,7 @@ end
 local STEP_TRIES = 8
 --- Seconds a stepping puller may stand at its point before the landing it steps for (above a bot's think interval at 8x).
 local STEP_SLACK = 0.4
-function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, heroHull, creepHull)
-    if heroHull == nil then
-        heroHull = 24
-    end
-    if creepHull == nil then
-        creepHull = 16
-    end
+function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged)
     if engaged then
         return c.stepTo or here
     end
@@ -605,7 +603,7 @@ function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, h
         "lane_creep_speed",
         settings().CreepSpeed
     )
-    local margin = ____exports.HeroMargin(heroHull, creepHull)
+    local margin = ____exports.HeroMargin()
     local near
     do
         local j = c.keep
@@ -987,13 +985,7 @@ function ____exports.Read(c, now)
     if (c.readAt == nil or now - c.readAt >= settings().LiveEvery) and meet ~= nil and walk ~= nil then
         c.readAt = now
         if c.hero ~= nil then
-            local hit = ReadOnHero(
-                c,
-                now,
-                c.hero,
-                c.heroHull or 24,
-                c.creepHull or 16
-            )
+            local hit = ReadOnHero(c, now, c.hero)
             if hit ~= nil then
                 c.hit = hit
                 c.reads = c.reads + 1

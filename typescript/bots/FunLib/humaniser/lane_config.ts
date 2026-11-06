@@ -411,13 +411,15 @@ export const DEFAULTS = {
         // error in seconds; the stand and step-in margins are lane creep speed x it plus both hulls (`judgement` until the
         // per-step-in `se` is measured). LockFor: seconds after the confirmed hit to wait for the first landing before the
         // lead (`judgement`). Fallbacks while the camp is unseen (logged as `hf` sources on pull_job): HeroLockMelee the melee
-        // camp's first landing, HeroArrive one neutral attack period, HeroStandAcq the largest lane creep acquisition range
-        // until the wave is read (ranged 600, phagg1).
+        // camp's first landing, HeroArrive one neutral attack period, HeroStandAcq the largest turn radius until the wave
+        // is read. HeroTurnRange caps each creep's GetAcquisitionRange as the radius it turns in on hits landing on its
+        // hero (fitted: a melee creep turned at 231, ranged ones at 586-593 and a siege one at 692 did not; phagg1, phagg5).
         HeroLandErr: 0.2,
         LockFor: 2,
         HeroLockMelee: 1,
         HeroArrive: 1.5,
-        HeroStandAcq: 600,
+        HeroStandAcq: 500,
+        HeroTurnRange: 500,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

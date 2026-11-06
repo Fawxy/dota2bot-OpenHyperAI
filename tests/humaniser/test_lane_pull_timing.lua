@@ -370,7 +370,9 @@ do
 	-- Slice pull-aggro (Ours.PullOnHero): with the puller's side set (timer.hero) the hit second is the aimed creep's entry
 	-- into its own acquisition range of where the puller is hit, less one neutral attack (arrive), the walk to the stand at
 	-- the puller's speed, a half's step from it and the lock. The lane runs along y = -5000; the camp straight below the meet.
-	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	-- Geometry below keeps the acquisition ranges uncapped (HeroTurnRange 1000) and a margin of 105 (HeroLandErr 105 / 325).
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 },
+		HeroTurnRange = 1000, HeroLandErr = 105 / 325 } }).Lane.PullTiming
 	CURRENT_TEAM = 2
 	CREEPS[2], CREEPS[3] = {}, {}
 	local meet = Vector(-1600, -5000)
@@ -445,6 +447,16 @@ do
 	local mAt = Vector(meet.x - 260 + 325 * li, -5000)
 	check("step-in on hero: melee 130 apart, ranged last: steps within 495 of the ranged creep, the third melee beyond 605",
 		c3.stepTo ~= nil and dist(cut, rAt) <= 495 + 1e-3 and dist(cut, mAt) > 605 and (c3.stepHeld or 0) == 0, dist(cut, rAt) .. " " .. dist(cut, mAt))
+	CREEPS[2], CREEPS[3] = {}, {}
+	-- The default HeroTurnRange (500) caps a ranged creep's 600.
+	local PD = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	local td = PD.For(2, Lane.Bot, origin, "small", { meet }, false, { 15, 45 })
+	CURRENT_TEAM = 2
+	T = slot + td.waveAfter - td.waveTravel - AHEAD + (td.meetAlong - 1000) / 325
+	local u = MakeCreep({ team = 2, x = PATH[1][1] + td.meetAlong - 1000, y = -5000 })
+	u.acq = 600
+	local wc = PD.WaveCreeps(td, slot, T)
+	check("turn radius: a ranged creep's 600 read as 500 (HeroTurnRange)", #wc == 1 and wc[1].acq == 500, tostring(#wc) .. " " .. tostring(wc[1] and wc[1].acq) .. " " .. tostring(td.source))
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 

@@ -1474,7 +1474,6 @@ local function heroFor(bot, p, timer)
         lock = ranged == true and 0 or (lock or cfg.HeroLockMelee),
         arrive = spa or cfg.HeroArrive
     }
-    timer.heroHull = bot:GetBoundingRadius()
 end
 --- Slice pull-aggro: seconds to the next landing of a tagged neutral's attack on `bot`: a ranged attack in flight from
 -- GetIncomingTrackingProjectiles (distance over the caster's projectile speed), else each neutral attacking it from its
@@ -2362,8 +2361,7 @@ local function verbPlan(bot, pull, aggroAt)
             DotaTime(),
             landIn,
             bot:GetCurrentMovementSpeed(),
-            engaged,
-            bot:GetBoundingRadius()
+            engaged
         )
         if before == nil and pull.timer.stepTo ~= nil and landIn ~= nil then
             pull.stepPred = DotaTime() + landIn

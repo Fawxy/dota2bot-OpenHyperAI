@@ -465,7 +465,6 @@ function heroFor(bot: Unit, p: Plan, timer: PullTiming.CreepTimer): void {
         lock: ranged === true ? 0 : lock ?? cfg.HeroLockMelee,
         arrive: spa ?? cfg.HeroArrive,
     };
-    timer.heroHull = bot.GetBoundingRadius();
 }
 
 /**
@@ -1344,7 +1343,7 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
                   const here = bot.GetLocation();
                   const landIn = nextLanding(bot, pull);
                   const before = pull.timer.stepTo;
-                  const at = PullTiming.StepInOnHero(pull.timer, end, here, DotaTime(), landIn, bot.GetCurrentMovementSpeed(), engaged, bot.GetBoundingRadius());
+                  const at = PullTiming.StepInOnHero(pull.timer, end, here, DotaTime(), landIn, bot.GetCurrentMovementSpeed(), engaged);
                   if (before === undefined && pull.timer.stepTo !== undefined && landIn !== undefined) pull.stepPred = DotaTime() + landIn;
                   if (engaged && pull.stepIn === undefined) {
                       const path = p.timing.lanePath;

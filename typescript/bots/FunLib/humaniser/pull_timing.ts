@@ -238,7 +238,10 @@ export function WaveCreeps(timing: PullTiming, aggroAt: number, now: number): Wa
     for (const c of GetUnitList(kind) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
-        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push({ along, acq: c.GetAcquisitionRange() });
+        // The radius a creep turns in on hits landing on its hero: GetAcquisitionRange capped at HeroTurnRange (ranged at
+        // 586-593 and siege at 692 inside their 600 and 800 did not turn, phagg1 and phagg5).
+        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window)
+            out.push({ along, acq: math.min(c.GetAcquisitionRange(), cfg.HeroTurnRange) });
     }
     out.sort((a, b) => b.along - a.along);
     return out;
@@ -300,9 +303,6 @@ export interface CreepTimer {
     stepTo?: Vector;
     /** Frames a due step-in was held because a front creep would be in its range of the step point too. */
     stepHeld?: number;
-    /** The puller's and a lane creep's GetBoundingRadius, for HeroMargin (defaults 24 and 16). */
-    heroHull?: number;
-    creepHull?: number;
 }
 
 /**
@@ -321,10 +321,13 @@ export interface OnHero {
     arrive: number;
 }
 
-/** Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error plus both hulls. */
-export function HeroMargin(heroHull: number, creepHull: number): number {
+/**
+ * Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error (centre distances, as
+ * the turn radius was fitted: no hulls).
+ */
+export function HeroMargin(): number {
     const cfg = settings();
-    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr + heroHull + creepHull;
+    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr;
 }
 
 /** The point `off` from the lane path on the line from `stand` to its nearest lane point (`stand` itself when nearer). */
@@ -337,7 +340,7 @@ function TowardLane(path: number[][], stand: Vector, off: number): Vector {
 }
 
 /** Read's on-hero branch: the hit second for `h`, or undefined until the aimed creep and one behind it are read. */
-function ReadOnHero(c: CreepTimer, now: number, h: OnHero, heroHull: number, creepHull: number): number | undefined {
+function ReadOnHero(c: CreepTimer, now: number, h: OnHero): number | undefined {
     const t = c.timing;
     const path = t.lanePath;
     const meet = h.route[h.route.length - 1];
@@ -349,7 +352,7 @@ function ReadOnHero(c: CreepTimer, now: number, h: OnHero, heroHull: number, cre
     const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
     // A half pull stands farther from the lane than any of the wave's creeps reaches (plus the margin) and is hit at the
     // point on its way to the lane within the aimed creep's range less the margin.
-    const margin = HeroMargin(heroHull, creepHull);
+    const margin = HeroMargin();
     let route = h.route;
     let trigger = meet;
     let step = 0;
@@ -390,7 +393,7 @@ const STEP_TRIES = 8;
 /** Seconds a stepping puller may stand at its point before the landing it steps for (above a bot's think interval at 8x). */
 const STEP_SLACK = 0.4;
 
-export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean, heroHull = 24, creepHull = 16): Vector {
+export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean): Vector {
     if (engaged) return c.stepTo ?? here;
     if (c.stepTo !== undefined) return c.stepTo;
     const path = c.timing.lanePath;
@@ -398,7 +401,7 @@ export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: nu
     const creeps = WaveCreeps(c.timing, c.slot, now);
     if (creeps.length < c.keep + 1) return stand;
     const v = WorldFacts.Latest("lane_creep_speed", settings().CreepSpeed);
-    const margin = HeroMargin(heroHull, creepHull);
+    const margin = HeroMargin();
     let near: number | undefined;
     // Each cut j (the first creep drawn, from `keep` back to the last): candidates within creep j's range less the margin of
     // where it is at the landing, blended from the stand's side round to behind it (up the lane), nearest the stand first;
@@ -680,7 +683,7 @@ export function Read(c: CreepTimer, now: number): number {
     if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && walk !== undefined) {
         c.readAt = now;
         if (c.hero !== undefined) {
-            const hit = ReadOnHero(c, now, c.hero, c.heroHull ?? 24, c.creepHull ?? 16);
+            const hit = ReadOnHero(c, now, c.hero);
             if (hit !== undefined) {
                 c.hit = hit;
                 c.reads += 1;
