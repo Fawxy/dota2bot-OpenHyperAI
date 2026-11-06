@@ -1049,6 +1049,8 @@ export const EVENTS = {
         core: "num",
         sup: "num",
         dep: "num",
+        fit: "str",
+        yld: "num",
         away: "bool",
         why: "str",
         ms: "num",

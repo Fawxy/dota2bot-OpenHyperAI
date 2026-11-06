@@ -946,6 +946,8 @@
    "core": "num",
    "sup": "num",
    "dep": "num",
+   "fit": "str",
+   "yld": "num",
    "away": "bool",
    "why": "str",
    "ms": "num"
@@ -1740,6 +1742,7 @@
    "lever": "text",
    "who": "text",
    "rej": "text",
+   "fit": "text",
    "why": "text"
   },
   "ev_idle_swing": {

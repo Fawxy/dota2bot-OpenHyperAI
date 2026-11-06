@@ -24,8 +24,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as RuneJob from "bots/FunLib/humaniser/rune_job";
-import * as StackJob from "bots/FunLib/humaniser/stack_job";
+import * as Calendar from "bots/FunLib/humaniser/calendar";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 declare function RealTime(this: void): number;
@@ -60,10 +59,15 @@ export const SETTINGS = {
     SetupSize: 300,
     /** A hero within this of the clash point counts in lane. */
     InLane: 2000,
-    /** R2: a support departure (a rune trip or a stack) leaving within this many seconds makes this wave the reset wave;
-     *  a departure leaves DepartLead s before its event second. */
+    /** R2: a support departure (a rune trip or a stack on its calendar, slice 3) leaving within this many seconds makes this
+     *  wave the reset wave. */
     DepartWithin: 60,
-    DepartLead: 25,
+    /** Slice 3 (design s5.4, s5.5 rule 2): a support's pull that does not fit before a stack on its calendar takes the
+     *  stack's minute when the lane's predicted need (n45) is past YieldBase + YieldPerMin a minute after 3:00 (the stack
+     *  weighted up as the game goes on, user 06/11/2026); else the stack keeps it. `judgement`: on the banked :30 waves of
+     *  stack minutes (lctl2, lctl3) this yields about two stacks in three at 3:30 and one in two at 7:30. */
+    YieldBase: 800,
+    YieldPerMin: 200,
     /** ...and not sooner than this: a support leaving before this wave's pull slot (about 16 s after the spawn, 14 after
      *  the read) has no time to reset it (review 2026-11-06-lane-control-3115b32 M2: lctl1 read at 5:32, departure 5:35). */
     DepartAfter: 15,
@@ -179,6 +183,8 @@ export interface Decision {
     core?: Unit;
     /** Why a `shove` mode broke before its wave ended. */
     broke?: string;
+    /** Slice 3: the stack minute this decision's pull takes from its support (`YieldsStack`). */
+    yields?: number;
 }
 
 interface LaneMemory {
@@ -225,16 +231,21 @@ function lanersOf(lane: Lane, cx: number, cy: number): Laner[] {
     return out;
 }
 
-/** Seconds until the support's next departure (rune trip or stack slot) leaves, or undefined with none in reach. */
-export function NextDeparture(pos: number, now: number): number | undefined {
-    let best: number | undefined;
-    const consider = (eventAt: number) => {
-        const leave = eventAt - SETTINGS.DepartLead;
-        if (leave >= now && (best === undefined || leave - now < best)) best = leave - now;
-    };
-    for (const [, at] of RuneJob.SETTINGS.Trips[pos] ?? []) consider(at);
-    if (pos === 4 || pos === 5) for (const m of StackJob.Minutes()) consider(m * 60 + 52);
-    return best;
+/** The need past which a support's pull takes a stack's minute (slice 3). */
+export function YieldPast(now: number): number {
+    return SETTINGS.YieldBase + SETTINGS.YieldPerMin * math.max(0, now / 60 - 3);
+}
+
+/**
+ * The pull lever's calendar check (slice 3): `fit` the calendar's answer for the support's next pull window; `why` the
+ * refusal (`away`: it does not fit before a rune trip; `stack`: nor before a stack the lane does not need more); `yld` the
+ * stack minute the pull may take.
+ */
+export function PullCalendar(fit: Calendar.Fit, e: Calendar.Entry | undefined, n45: number, now: number): { fit: string; why?: string; yld?: number } {
+    if (fit !== "clash" || e === undefined) return { fit };
+    const tag = `clash:${e.kind}`;
+    if (e.fixed || e.running) return { fit: tag, why: "away" };
+    return n45 > YieldPast(now) ? { fit: tag, yld: e.key } : { fit: tag, why: "stack" };
 }
 
 /** R5: their laners are known: every enemy hero seen near the lane lately is dead or seen far from the clash. */
@@ -297,7 +308,9 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const coreIn = cores.find((l) => l.present);
     const supIn = sups.find((l) => l.present);
     const supBot = sups.find((l) => l.present && l.bot);
-    const dep = supIn !== undefined ? NextDeparture(supIn.pos, now) : undefined;
+    // Each hero's own calendar (user 07/11/2026); a human support has none.
+    const cal = supIn !== undefined && supIn.bot ? Calendar.Of(supIn.unit, now) : undefined;
+    const dep = cal !== undefined ? Calendar.NextLeave(cal, now) : undefined;
     // The ruleset (design s5.1), most binding first.
     let rule = "R1";
     let mode: Mode = "safe";
@@ -325,6 +338,17 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const n45 = base - tgt;
     const intent = IntentOf(n45, s.Band, rule === "R2");
     const pe = gone?.own !== undefined && plain !== undefined ? s.PullScale * s.DivertShare * (gone.own - plain) : undefined;
+    // The pull's window against the puller's calendar (slice 3).
+    let pc: { fit: string; why?: string; yld?: number } | undefined;
+    if (supBot !== undefined) {
+        // Lazy: pull_job's imports reach this module (its own require of lane_control is lazy for the same reason).
+        const PullJob = require("bots/FunLib/humaniser/pull_job") as typeof import("bots/FunLib/humaniser/pull_job");
+        const w = PullJob.Window(supBot.unit, now);
+        if (w !== undefined) {
+            const [fit, e] = Calendar.FitOf(Calendar.Of(supBot.unit, now), w.start, w.end);
+            pc = PullCalendar(fit, e, n45, now);
+        }
+    }
     const levers: Lever[] = [];
     const anyIn = coreIn !== undefined || supIn !== undefined;
     levers.push({ name: "predeny", effect: -s.PreDenySize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
@@ -334,7 +358,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         effect: pe ?? 0,
         danger: 3,
         who: supBot !== undefined ? `${supBot.pid}` : "",
-        why: supBot === undefined ? "no_sup" : rule === "R6" ? "r6" : pe === undefined ? "no_clash" : gone !== undefined && gone.pw === 0 ? "no_wave" : undefined,
+        why: supBot === undefined ? "no_sup" : rule === "R6" ? "r6" : pe === undefined ? "no_clash" : gone !== undefined && gone.pw === 0 ? "no_wave" : pc?.why,
     });
     levers.push({ name: "setup", effect: s.SetupSize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: mode === "shove" ? "mode" : !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
     levers.push({ name: "shove", effect: s.PreDenySize, danger: 2, who: coreIn !== undefined ? "core" : "sup", why: mode !== "shove" ? "mode" : !anyIn ? "nobody" : undefined });
@@ -362,7 +386,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     for (const l of levers) if (l.why !== undefined) rej.push(`${l.name}:${l.why}`);
     const ms = started !== undefined ? math.floor((clock!() - started) * 10000 + 0.5) / 10 : undefined;
     m.chks.push(ts);
-    const d: Decision = { wave: ts, at: now, rule, mode, intent, levers: chosen, who, cx, cy, core: coreIn?.unit };
+    const yields = chosen.includes("pull") ? pc?.yld : undefined;
+    const d: Decision = { wave: ts, at: now, rule, mode, intent, levers: chosen, who, cx, cy, core: coreIn?.unit, yields };
     Remember(team, lane, d);
     Telemetry.Event("lane_ctl", [
         ["team", team],
@@ -389,6 +414,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         ["core", coreIn !== undefined ? coreIn.pid : undefined],
         ["sup", supIn !== undefined ? supIn.pid : undefined],
         ["dep", round(dep)],
+        ["fit", pc?.fit],
+        ["yld", yields],
         ["away", away ? true : undefined],
         ["ms", ms],
     ]);
@@ -413,6 +440,14 @@ export function Remember(team: number, lane: Lane, d: Decision): void {
     m.decisions[d.wave] = d;
     m.last = d;
     for (const k in m.decisions) if (tonumber(k)! < d.wave - 120) delete m.decisions[tonumber(k)!];
+}
+
+/** Slice 3: the live decision's pull takes this support's stack minute `minute`. */
+export function YieldsStack(team: number, lane: Lane, pid: number, minute: number): boolean {
+    const d = Current(team, lane);
+    if (d === undefined || d.yields !== minute) return false;
+    for (let i = 0; i < d.levers.length; i++) if (d.levers[i] === "pull" && d.who[i] === `${pid}`) return true;
+    return false;
 }
 
 /** Slice 2b's sub-switch: the decision drives the levers (off: shadow, 2a's behaviour). */

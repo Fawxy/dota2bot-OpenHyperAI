@@ -44,12 +44,23 @@ do
 	check("reset: a lane well short of the target is let go", Ctl.IntentOf(-400, 150, true) == "forward")
 end
 
--- NextDeparture: pos 4 leaves for the 6:00 power rune at 335 (DepartLead 25) and for the 5:52 stack at 327.
+-- Slice 3: the pull against the puller's calendar (YieldPast 800 at 3:00, +200 a minute).
 do
-	check("pos 4 at 5:00: the stack slot first", Ctl.NextDeparture(4, 300) == 27)
-	check("pos 5 at 5:30: the power rune", Ctl.NextDeparture(5, 330) == 5)
-	check("pos 4 after 7:52 trips: none", Ctl.NextDeparture(4, 7 * 60 + 52) == nil)
-	check("a core has no departures", Ctl.NextDeparture(1, 300) == nil)
+	check("yield past: 800 at 3:00", Ctl.YieldPast(180) == 800)
+	check("yield past: 1,600 at 7:00", Ctl.YieldPast(420) == 1600)
+	check("yield past: no less before 3:00", Ctl.YieldPast(60) == 800)
+	local stack = { kind = "stack", key = 3, claim = 195, leave = 215, back = 250, fixed = false }
+	local rune = { kind = "rune", key = 360, claim = 300, leave = 345, back = 375, fixed = true }
+	check("free: no refusal", Ctl.PullCalendar("free", nil, 2000, 212).why == nil and Ctl.PullCalendar("free", nil, 2000, 212).fit == "free")
+	check("fits: no refusal", Ctl.PullCalendar("fits", rune, 2000, 302).why == nil)
+	local r = Ctl.PullCalendar("clash", rune, 5000, 332)
+	check("a rune trip is never traded", r.why == "away" and r.yld == nil and r.fit == "clash:rune")
+	local y = Ctl.PullCalendar("clash", stack, 1100, 212)
+	check("the lane needs it more: the pull takes the stack minute", y.why == nil and y.yld == 3)
+	local k = Ctl.PullCalendar("clash", stack, 700, 212)
+	check("the stack keeps its minute", k.why == "stack" and k.yld == nil)
+	stack.running = true
+	check("a running stack is never taken", Ctl.PullCalendar("clash", stack, 5000, 212).why == "away")
 end
 
 -- The switch: off, Tick reads nothing (no LanePush call on a stub bot with no lane path).
@@ -92,6 +103,19 @@ do
 	check("break: a seen enemy near", Ctl.EnemySeenNear({ { x = 2000, y = 0 } }, 0, 0, 3000))
 	check("break: a seen enemy far", not Ctl.EnemySeenNear({ { x = 3500, y = 0 } }, 0, 0, 3000))
 	check("break: none seen, no break", not Ctl.EnemySeenNear({}, 0, 0, 3000))
+	-- Slice 3: the stack minute the live decision's pull takes.
+	now = 212
+	Ctl.Remember(TEAM_RADIANT, LANE_BOT, { wave = 210, at = 212, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "4" }, cx = 0, cy = 0, yields = 3 })
+	check("yields: this support's minute", Ctl.YieldsStack(TEAM_RADIANT, LANE_BOT, 4, 3))
+	check("yields: not another minute", not Ctl.YieldsStack(TEAM_RADIANT, LANE_BOT, 4, 5))
+	check("yields: not another support", not Ctl.YieldsStack(TEAM_RADIANT, LANE_BOT, 3, 3))
+	Ctl.Remember(TEAM_RADIANT, LANE_BOT, { wave = 240, at = 242, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "4" }, cx = 0, cy = 0 })
+	now = 242
+	check("yields: a later decision with no yield", not Ctl.YieldsStack(TEAM_RADIANT, LANE_BOT, 4, 3))
+	Customize.Ours.LaneControlDrive = false
+	check("yields: drive off, never", not Ctl.YieldsStack(TEAM_RADIANT, LANE_BOT, 4, 3))
+	Customize.Ours.LaneControlDrive = true
+	Ctl.ResetCache()
 end
 
 finish()

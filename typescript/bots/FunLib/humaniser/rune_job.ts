@@ -29,6 +29,9 @@ export const SETTINGS = {
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
     ClaimFrom: 60,
+    /** The calendar's estimate of a trip's end: this long after the spawn (banked trips are away about 14 s, `away`), then
+     *  the walk back (slice lane-control 3; `judgement`). */
+    CalendarBack: 10,
     /** A start held back (gate or another job) past its leave time by this much is skipped: it would arrive late. */
     StartSlack: 3,
     /** Walking paths run longer than the straight line (states/rotate's PATH_FACTOR). */
@@ -154,6 +157,32 @@ function open(bot: Unit): [Kind, number][] {
     for (const [kind, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
         if (kind === "contest" && !RunePlan.On()) continue;
         if (handled[pid]?.[key(kind, spawn)] !== true && now >= spawn - SETTINGS.ClaimFrom && now < spawn + SETTINGS.LateBy[kind]) out.push([kind, spawn]);
+    }
+    return out;
+}
+
+/**
+ * This bot's rune trips still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from ClaimFrom
+ * before the spawn, leaving at the spawn less the walk to the nearer power spot (PathFactor on the straight line; the shrine
+ * trips are planned later and sit about as far, so the same estimate), back CalendarBack after the spawn plus the same walk.
+ * Fixed: a rune trip is never traded for lane control (design s5.5 rule 1).
+ */
+export function CalendarEntries(bot: Unit, now: number): { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] {
+    if (!Applies(bot)) return [];
+    const pid = bot.GetPlayerID();
+    const out: { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] = [];
+    let walk = math.huge;
+    for (const [, at] of powerRunes()) walk = math.min(walk, (GetUnitToLocationDistance(bot, at) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed()));
+    const r = running[pid];
+    for (const [kind, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
+        if (kind === "contest" && !RunePlan.On()) continue;
+        const back = spawn + SETTINGS.CalendarBack + walk;
+        if (r !== undefined && r.kind === kind && r.spawn === spawn) {
+            out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: r.left, back, fixed: true, running: true });
+            continue;
+        }
+        if (handled[pid]?.[key(kind, spawn)] === true || now >= spawn + SETTINGS.LateBy[kind]) continue;
+        out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: spawn - walk, back, fixed: true });
     }
     return out;
 }

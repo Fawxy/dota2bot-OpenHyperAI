@@ -706,4 +706,33 @@ do
 	check("shed: no creep on the neutral, no shed", plain ~= nil and field(plain, "shs") == nil, plain)
 end
 
+-- Slice lane-control 3: the pull's rank. With the lane controller's decision for the pulled wave naming this support's pull
+-- and the pull ending FitMargin (5) or more before the next rune trip's leave (claimed from 5:00 for the 6:00 spawn), the
+-- pull ranks FitPriority 0.96, above the trip (pos4 0.95) and the stack (0.92); otherwise its usual 0.9.
+do
+	local cust = package.loaded["bots/FunLib/custom_loader"]
+	local function rank(o)
+		local w = world({ reading = OUT, t = 301 })
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.RuneRotation = true, true, true
+		local far = o.runeFar or 0
+		GetRuneSpawnLocation = function() return Vector(w.sup.loc.x + far, w.sup.loc.y) end
+		local win = w.H.PullJob.Window(w.sup, T)
+		w.H.LaneControl.ResetCache()
+		if o.decide ~= false then
+			w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 })
+		end
+		local p = w.H.PullJob.Priority(w.sup)
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
+		return p, win
+	end
+	local p, win = rank({})
+	check("fits before the rune trip: ranks above it", p == 0.96, tostring(p) .. " key " .. tostring(win and win.key))
+	check("no decision: the usual rank", rank({ decide = false }) == 0.9)
+	check("another support's pull: the usual rank", rank({ who = "9" }) == 0.9)
+	-- 12,000 away the trip leaves about 48 s before its spawn, inside the pull.
+	check("does not fit before the trip: the usual rank", rank({ runeFar = 12000 }) == 0.9)
+	GetRuneSpawnLocation = nil
+end
+
 finish()
