@@ -68,11 +68,17 @@ export type Fit = "free" | "fits" | "clash";
  */
 export function FitOf(entries: Entry[], start: number, end: number): LuaMultiReturn<[Fit, Entry | undefined]> {
     let fits: Entry | undefined;
+    let clash: Entry | undefined;
     for (const e of entries) {
         if (e.claim > end || e.back <= start) continue;
-        if (e.running || e.leave < end + SETTINGS.FitMargin) return $multi("clash", e);
-        fits = fits ?? e;
+        if (e.running || e.leave < end + SETTINGS.FitMargin) {
+            // A fixed or running clash is the one that decides (the pull cannot take its time); a tentative one only
+            // when no other clashes (lctl4: a stack reported first hid the rune trip that then took the support).
+            if (e.running || e.fixed) return $multi("clash", e);
+            clash = clash ?? e;
+        } else fits = fits ?? e;
     }
+    if (clash !== undefined) return $multi("clash", clash);
     if (fits !== undefined) return $multi("fits", fits);
     return $multi("free", undefined);
 }

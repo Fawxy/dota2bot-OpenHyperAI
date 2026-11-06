@@ -35,6 +35,13 @@ do
 	check("clash: a running job", f == "clash")
 	f, e = Cal.FitOf({ stack, { kind = "rune", key = 240, claim = 200, leave = 208, back = 260, fixed = true } }, 190, 205)
 	check("clash: one of two claims does not fit", f == "clash" and e.kind == "rune")
+	-- lctl4_B_on_2 (2026-11-06T17-16-31) t=332 pid 8 and lctl4_B_on_5 t=302, 332: the stack (earlier leave) and the rune trip
+	-- both clashed; the stack was reported, the pull kept its minute and the rune trip took the support (choice why=rune).
+	local early = { kind = "stack", key = 5, claim = 315, leave = 340, back = 380, fixed = false }
+	f, e = Cal.FitOf({ early, { kind = "rune", key = 360, claim = 300, leave = 342, back = 375, fixed = true } }, 330, 350)
+	check("clash: a fixed clash wins over an earlier tentative one", f == "clash" and e.kind == "rune")
+	f, e = Cal.FitOf({ early }, 330, 350)
+	check("clash: a tentative clash alone is reported", f == "clash" and e == early)
 end
 
 finish()

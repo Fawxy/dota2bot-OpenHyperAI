@@ -83,6 +83,7 @@ end
 -- the first entry that does not (a running job always clashes).
 function ____exports.FitOf(entries, start, ____end)
     local fits
+    local clash
     for ____, e in ipairs(entries) do
         do
             local __continue12
@@ -92,15 +93,22 @@ function ____exports.FitOf(entries, start, ____end)
                     break
                 end
                 if e.running or e.leave < ____end + ____exports.SETTINGS.FitMargin then
-                    return "clash", e
+                    if e.running or e.fixed then
+                        return "clash", e
+                    end
+                    clash = clash or e
+                else
+                    fits = fits or e
                 end
-                fits = fits or e
                 __continue12 = true
             until true
             if not __continue12 then
                 break
             end
         end
+    end
+    if clash ~= nil then
+        return "clash", clash
     end
     if fits ~= nil then
         return "fits", fits
