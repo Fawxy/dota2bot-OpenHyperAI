@@ -380,10 +380,14 @@ function ReadOnHero(c: CreepTimer, now: number, h: OnHero, heroHull: number, cre
 
 /**
  * Slice pull-aggro: a half pull's step-in on the puller's hits. The puller waits at `stand` (out of every creep's range) and
- * steps to within creep `keep`'s acquisition range (less HeroMargin) of where that creep will be at the next landing, once
- * that landing is due within the step's walk (`landIn` s from now); it holds while a front creep would be within its own
- * range plus the margin of the step point at the landing. Once it steps it keeps to that point; once `engaged`, where it is.
+ * steps to a point (user 07/11/2026: the aim is a point, not a creep) within some creep's acquisition range (less HeroMargin)
+ * at the next landing with every creep ahead of it outside its own range plus the margin, once that landing is due within the
+ * step's walk (`landIn` s from now). The cut is tried from creep `keep` back to the last; it holds while no cut has such a
+ * point. Once it steps it keeps to that point; once `engaged`, where it is.
  */
+/** Step-in candidates per cut from the stand's side of its creep round to behind it, beyond the first. */
+const STEP_TRIES = 8;
+
 export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean, heroHull = 24, creepHull = 16): Vector {
     if (engaged) return c.stepTo ?? here;
     if (c.stepTo !== undefined) return c.stepTo;
@@ -393,22 +397,47 @@ export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: nu
     if (creeps.length < c.keep + 1) return stand;
     const v = WorldFacts.Latest("lane_creep_speed", settings().CreepSpeed);
     const margin = HeroMargin(heroHull, creepHull);
-    const [bx, by] = PathPoint(path, creeps[c.keep].along + v * landIn);
-    const r = math.max(0, creeps[c.keep].acq - margin);
-    const d = hypot(stand.x, stand.y, bx, by);
-    const f = d > r ? r / d : 1;
-    const to = Vector(bx + (stand.x - bx) * f, by + (stand.y - by) * f, stand.z);
-    if (landIn > hypot(here.x, here.y, to.x, to.y) / math.max(1, speed)) return stand;
-    for (let k = 0; k < c.keep; k++) {
-        const [fx, fy] = PathPoint(path, creeps[k].along + v * landIn);
-        if (hypot(to.x, to.y, fx, fy) <= creeps[k].acq + margin) {
-            // A due landing passed up because a front creep would turn too (pull_job shd).
-            c.stepHeld = (c.stepHeld ?? 0) + 1;
-            return stand;
+    let near: number | undefined;
+    // Each cut j (the first creep drawn, from `keep` back to the last): candidates within creep j's range less the margin of
+    // where it is at the landing, blended from the stand's side round to behind it (up the lane), nearest the stand first;
+    // the first with every creep ahead of j beyond its own range plus the margin is the step point.
+    for (let j = c.keep; j < creeps.length; j++) {
+        const at = creeps[j].along + v * landIn;
+        const [bx, by] = PathPoint(path, at);
+        const [ux, uy] = PathPoint(path, at - 100);
+        const r = math.max(0, creeps[j].acq - margin);
+        const d = hypot(stand.x, stand.y, bx, by);
+        const sx = (stand.x - bx) / math.max(1, d);
+        const sy = (stand.y - by) / math.max(1, d);
+        const ul = math.max(1, hypot(ux, uy, bx, by));
+        const qx = (ux - bx) / ul;
+        const qy = (uy - by) / ul;
+        for (let i = 0; i <= STEP_TRIES; i++) {
+            const f = i / STEP_TRIES;
+            let dx = sx * (1 - f) + qx * f;
+            let dy = sy * (1 - f) + qy * f;
+            const dl = math.sqrt(dx * dx + dy * dy);
+            if (dl < 0.05) continue;
+            dx /= dl;
+            dy /= dl;
+            const rr = i === 0 ? math.min(r, d) : r;
+            const to = Vector(bx + dx * rr, by + dy * rr, stand.z);
+            const walk = hypot(here.x, here.y, to.x, to.y) / math.max(1, speed);
+            if (near === undefined || walk < near) near = walk;
+            let clear = true;
+            for (let k = 0; k < j && clear; k++) {
+                const [fx, fy] = PathPoint(path, creeps[k].along + v * landIn);
+                if (hypot(to.x, to.y, fx, fy) <= creeps[k].acq + margin) clear = false;
+            }
+            if (!clear) continue;
+            if (landIn > walk) return stand;
+            c.stepTo = to;
+            return to;
         }
     }
-    c.stepTo = to;
-    return to;
+    // A due landing passed up because a creep ahead of every cut would turn too (pull_job shd).
+    if (near !== undefined && landIn <= near) c.stepHeld = (c.stepHeld ?? 0) + 1;
+    return stand;
 }
 
 export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0, heroSpeed?: number): CreepTimer {

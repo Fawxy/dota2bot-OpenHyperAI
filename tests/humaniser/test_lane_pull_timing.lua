@@ -424,6 +424,20 @@ do
 	local c2 = PT.Timer(ht, slot, 1, 500, 2, 300)
 	local held = stepAt(c2, 0.3)
 	check("step-in on hero: creeps 100 apart, the second would turn too: holds and counts it", dist(held, half.stand) < 1 and c2.stepHeld == 1, c2.stepHeld)
+	-- The wave as it walks (phagg3): three melee 130 apart, the ranged creep (600) last. No point near the third keeps the
+	-- second out; the cut moves to the ranged creep and the point swings behind it, the third melee beyond 500 + 105.
+	CREEPS[2] = {}
+	local rc
+	for k = 0, 3 do
+		local u = MakeCreep({ team = 2, x = meet.x - 130 * k, y = -5000 })
+		if k == 3 then u.acq = 600; rc = u end
+	end
+	local c3 = PT.Timer(ht, slot, 1, 500, 2, 300)
+	local cut = stepAt(c3, 0.3)
+	local rAt = Vector(meet.x - 390 + 325 * 0.3, -5000)
+	local mAt = Vector(meet.x - 260 + 325 * 0.3, -5000)
+	check("step-in on hero: melee 130 apart, ranged last: steps within 495 of the ranged creep, the third melee beyond 605",
+		c3.stepTo ~= nil and dist(cut, rAt) <= 495 + 1e-3 and dist(cut, mAt) > 605 and (c3.stepHeld or 0) == 0, dist(cut, rAt) .. " " .. dist(cut, mAt))
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 

@@ -576,10 +576,8 @@ local function ReadOnHero(c, now, h, heroHull, creepHull)
     c.waveAt = now + ((____exports.Along(path, meet)) - creeps[#creeps].along) / v
     return enter - h.arrive - step - walk - h.lock
 end
---- Slice pull-aggro: a half pull's step-in on the puller's hits. The puller waits at `stand` (out of every creep's range) and
--- steps to within creep `keep`'s acquisition range (less HeroMargin) of where that creep will be at the next landing, once
--- that landing is due within the step's walk (`landIn` s from now); it holds while a front creep would be within its own
--- range plus the margin of the step point at the landing. Once it steps it keeps to that point; once `engaged`, where it is.
+--- Step-in candidates per cut from the stand's side of its creep round to behind it, beyond the first.
+local STEP_TRIES = 8
 function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, heroHull, creepHull)
     if heroHull == nil then
         heroHull = 24
@@ -606,27 +604,80 @@ function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, h
         settings().CreepSpeed
     )
     local margin = ____exports.HeroMargin(heroHull, creepHull)
-    local bx, by = unpack(PathPoint(path, creeps[c.keep + 1].along + v * landIn))
-    local r = math.max(0, creeps[c.keep + 1].acq - margin)
-    local d = hypot(stand.x, stand.y, bx, by)
-    local f = d > r and r / d or 1
-    local to = Vector(bx + (stand.x - bx) * f, by + (stand.y - by) * f, stand.z)
-    if landIn > hypot(here.x, here.y, to.x, to.y) / math.max(1, speed) then
-        return stand
-    end
+    local near
     do
-        local k = 0
-        while k < c.keep do
-            local fx, fy = unpack(PathPoint(path, creeps[k + 1].along + v * landIn))
-            if hypot(to.x, to.y, fx, fy) <= creeps[k + 1].acq + margin then
-                c.stepHeld = (c.stepHeld or 0) + 1
-                return stand
+        local j = c.keep
+        while j < #creeps do
+            local at = creeps[j + 1].along + v * landIn
+            local bx, by = unpack(PathPoint(path, at))
+            local ux, uy = unpack(PathPoint(path, at - 100))
+            local r = math.max(0, creeps[j + 1].acq - margin)
+            local d = hypot(stand.x, stand.y, bx, by)
+            local sx = (stand.x - bx) / math.max(1, d)
+            local sy = (stand.y - by) / math.max(1, d)
+            local ul = math.max(
+                1,
+                hypot(ux, uy, bx, by)
+            )
+            local qx = (ux - bx) / ul
+            local qy = (uy - by) / ul
+            do
+                local i = 0
+                while i <= STEP_TRIES do
+                    do
+                        local __continue68
+                        repeat
+                            local f = i / STEP_TRIES
+                            local dx = sx * (1 - f) + qx * f
+                            local dy = sy * (1 - f) + qy * f
+                            local dl = math.sqrt(dx * dx + dy * dy)
+                            if dl < 0.05 then
+                                __continue68 = true
+                                break
+                            end
+                            dx = dx / dl
+                            dy = dy / dl
+                            local rr = i == 0 and math.min(r, d) or r
+                            local to = Vector(bx + dx * rr, by + dy * rr, stand.z)
+                            local walk = hypot(here.x, here.y, to.x, to.y) / math.max(1, speed)
+                            if near == nil or walk < near then
+                                near = walk
+                            end
+                            local clear = true
+                            do
+                                local k = 0
+                                while k < j and clear do
+                                    local fx, fy = unpack(PathPoint(path, creeps[k + 1].along + v * landIn))
+                                    if hypot(to.x, to.y, fx, fy) <= creeps[k + 1].acq + margin then
+                                        clear = false
+                                    end
+                                    k = k + 1
+                                end
+                            end
+                            if not clear then
+                                __continue68 = true
+                                break
+                            end
+                            if landIn > walk then
+                                return stand
+                            end
+                            c.stepTo = to
+                            return to
+                        until true
+                        if not __continue68 then
+                            break
+                        end
+                    end
+                    i = i + 1
+                end
             end
-            k = k + 1
+            j = j + 1
         end
     end
-    c.stepTo = to
-    return to
+    if near ~= nil and landIn <= near then
+        c.stepHeld = (c.stepHeld or 0) + 1
+    end
+    return stand
 end
 function ____exports.Timer(timing, slot, index, past, keep, heroSpeed)
     if keep == nil then
@@ -871,7 +922,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         local i = n
         while i >= 0 do
             do
-                local __continue113
+                local __continue119
                 repeat
                     local x = back.x + ux * (full * i / n)
                     local y = back.y + uy * (full * i / n)
@@ -885,7 +936,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                         ) >= pin then
                             return Vector(x, y, stand.z)
                         end
-                        __continue113 = true
+                        __continue119 = true
                         break
                     end
                     local clear = true
@@ -911,9 +962,9 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                     if clear then
                         return Vector(x, y, stand.z)
                     end
-                    __continue113 = true
+                    __continue119 = true
                 until true
-                if not __continue113 then
+                if not __continue119 then
                     break
                 end
             end
