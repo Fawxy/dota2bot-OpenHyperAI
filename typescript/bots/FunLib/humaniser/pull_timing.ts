@@ -381,12 +381,14 @@ function ReadOnHero(c: CreepTimer, now: number, h: OnHero, heroHull: number, cre
 /**
  * Slice pull-aggro: a half pull's step-in on the puller's hits. The puller waits at `stand` (out of every creep's range) and
  * steps to a point (user 07/11/2026: the aim is a point, not a creep) within some creep's acquisition range (less HeroMargin)
- * at the next landing with every creep ahead of it outside its own range plus the margin, once that landing is due within the
- * step's walk (`landIn` s from now). The cut is tried from creep `keep` back to the last; it holds while no cut has such a
+ * at the next landing with every creep ahead of it outside its own range plus the margin, leaving when that landing (`landIn` s from
+ * now) comes after its walk there by at most STEP_SLACK. The cut is tried from creep `keep` back to the last; it holds while no cut has such a
  * point. Once it steps it keeps to that point; once `engaged`, where it is.
  */
 /** Step-in candidates per cut from the stand's side of its creep round to behind it, beyond the first. */
 const STEP_TRIES = 8;
+/** Seconds a stepping puller may stand at its point before the landing it steps for (above a bot's think interval at 8x). */
+const STEP_SLACK = 0.4;
 
 export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean, heroHull = 24, creepHull = 16): Vector {
     if (engaged) return c.stepTo ?? here;
@@ -423,6 +425,9 @@ export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: nu
             const rr = i === 0 ? math.min(r, d) : r;
             const to = Vector(bx + dx * rr, by + dy * rr, stand.z);
             const walk = hypot(here.x, here.y, to.x, to.y) / math.max(1, speed);
+            // The landing must come after the puller is there (else the next one, an attack later, finds the creeps
+            // elsewhere: phagg4, lr 0 at each step) and not more than STEP_SLACK after.
+            if (landIn < walk) continue;
             if (near === undefined || walk < near) near = walk;
             let clear = true;
             for (let k = 0; k < j && clear; k++) {
@@ -430,13 +435,13 @@ export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: nu
                 if (hypot(to.x, to.y, fx, fy) <= creeps[k].acq + margin) clear = false;
             }
             if (!clear) continue;
-            if (landIn > walk) return stand;
+            if (landIn > walk + STEP_SLACK) return stand;
             c.stepTo = to;
             return to;
         }
     }
     // A due landing passed up because a creep ahead of every cut would turn too (pull_job shd).
-    if (near !== undefined && landIn <= near) c.stepHeld = (c.stepHeld ?? 0) + 1;
+    if (near !== undefined && landIn <= near + STEP_SLACK) c.stepHeld = (c.stepHeld ?? 0) + 1;
     return stand;
 }
 

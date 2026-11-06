@@ -412,17 +412,18 @@ do
 	local function stepAt(c, landIn) return PT.StepInOnHero(c, half.stand, here, T2, landIn, 300, false) end
 	local c1 = PT.Timer(ht, slot, 1, 500, 2, 300)
 	local hold = stepAt(c1, 2)
-	check("step-in on hero: a landing 2 s off (beyond the step's 1.6 s walk) holds at the stand", dist(hold, half.stand) < 1 and c1.stepTo == nil, dist(hold, half.stand))
+	check("step-in on hero: a landing 2 s off (beyond the step's 1.4 s walk plus 0.4) holds at the stand", dist(hold, half.stand) < 1 and c1.stepTo == nil, dist(hold, half.stand))
+	check("step-in on hero: a landing before the puller could get there holds", dist(stepAt(c1, 0.3), half.stand) < 1 and c1.stepTo == nil)
 	check("step-in on hero: no landing known holds too", dist(stepAt(c1, nil), half.stand) < 1)
-	local go = stepAt(c1, 0.3)
-	local back = Vector(meet.x - 200 + 325 * 0.3, -5000)
-	check("step-in on hero: a landing due within the step goes to 395 from where the third creep will be", within(dist(go, back), 395, 1e-3) and c1.stepTo ~= nil,
+	local go = stepAt(c1, 1.5)
+	local back = Vector(meet.x - 200 + 325 * 1.5, -5000)
+	check("step-in on hero: a landing just after the step's walk goes to 395 from where the third creep will be", within(dist(go, back), 395, 1e-3) and c1.stepTo ~= nil,
 		dist(go, back))
 	check("step-in on hero: once stepped it keeps to that point", dist(stepAt(c1, 2), go) < 1)
 	CREEPS[2] = {}
 	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x - 100 * k, y = -5000 }) end
 	local c2 = PT.Timer(ht, slot, 1, 500, 2, 300)
-	local held = stepAt(c2, 0.3)
+	local held = stepAt(c2, 1.5)
 	check("step-in on hero: creeps 100 apart, the second would turn too: holds and counts it", dist(held, half.stand) < 1 and c2.stepHeld == 1, c2.stepHeld)
 	-- The wave as it walks (phagg3): three melee 130 apart, the ranged creep (600) last. No point near the third keeps the
 	-- second out; the cut moves to the ranged creep and the point swings behind it, the third melee beyond 500 + 105.
@@ -432,10 +433,16 @@ do
 		local u = MakeCreep({ team = 2, x = meet.x - 130 * k, y = -5000 })
 		if k == 3 then u.acq = 600; rc = u end
 	end
-	local c3 = PT.Timer(ht, slot, 1, 500, 2, 300)
-	local cut = stepAt(c3, 0.3)
-	local rAt = Vector(meet.x - 390 + 325 * 0.3, -5000)
-	local mAt = Vector(meet.x - 260 + 325 * 0.3, -5000)
+	-- The landing counts down at the stand until a point clears and the walk fits.
+	local c3, cut, li = nil, nil, nil
+	for k = 40, 1, -1 do
+		c3 = PT.Timer(ht, slot, 1, 500, 2, 300)
+		li = k / 10
+		cut = stepAt(c3, li)
+		if c3.stepTo ~= nil then break end
+	end
+	local rAt = Vector(meet.x - 390 + 325 * li, -5000)
+	local mAt = Vector(meet.x - 260 + 325 * li, -5000)
 	check("step-in on hero: melee 130 apart, ranged last: steps within 495 of the ranged creep, the third melee beyond 605",
 		c3.stepTo ~= nil and dist(cut, rAt) <= 495 + 1e-3 and dist(cut, mAt) > 605 and (c3.stepHeld or 0) == 0, dist(cut, rAt) .. " " .. dist(cut, mAt))
 	CREEPS[2], CREEPS[3] = {}, {}

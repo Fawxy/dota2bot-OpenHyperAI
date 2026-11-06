@@ -578,6 +578,8 @@ local function ReadOnHero(c, now, h, heroHull, creepHull)
 end
 --- Step-in candidates per cut from the stand's side of its creep round to behind it, beyond the first.
 local STEP_TRIES = 8
+--- Seconds a stepping puller may stand at its point before the landing it steps for (above a bot's think interval at 8x).
+local STEP_SLACK = 0.4
 function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, heroHull, creepHull)
     if heroHull == nil then
         heroHull = 24
@@ -640,6 +642,10 @@ function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, h
                             local rr = i == 0 and math.min(r, d) or r
                             local to = Vector(bx + dx * rr, by + dy * rr, stand.z)
                             local walk = hypot(here.x, here.y, to.x, to.y) / math.max(1, speed)
+                            if landIn < walk then
+                                __continue68 = true
+                                break
+                            end
                             if near == nil or walk < near then
                                 near = walk
                             end
@@ -658,7 +664,7 @@ function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, h
                                 __continue68 = true
                                 break
                             end
-                            if landIn > walk then
+                            if landIn > walk + STEP_SLACK then
                                 return stand
                             end
                             c.stepTo = to
@@ -674,7 +680,7 @@ function ____exports.StepInOnHero(c, stand, here, now, landIn, speed, engaged, h
             j = j + 1
         end
     end
-    if near ~= nil and landIn <= near then
+    if near ~= nil and landIn <= near + STEP_SLACK then
         c.stepHeld = (c.stepHeld or 0) + 1
     end
     return stand
@@ -922,7 +928,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         local i = n
         while i >= 0 do
             do
-                local __continue119
+                local __continue120
                 repeat
                     local x = back.x + ux * (full * i / n)
                     local y = back.y + uy * (full * i / n)
@@ -936,7 +942,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                         ) >= pin then
                             return Vector(x, y, stand.z)
                         end
-                        __continue119 = true
+                        __continue120 = true
                         break
                     end
                     local clear = true
@@ -962,9 +968,9 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                     if clear then
                         return Vector(x, y, stand.z)
                     end
-                    __continue119 = true
+                    __continue120 = true
                 until true
-                if not __continue119 then
+                if not __continue120 then
                     break
                 end
             end
