@@ -1016,6 +1016,47 @@ export const EVENTS = {
      * nearest enemy hero's reach `reach` (s, -1 none near), `focus` 1 when an allied hero was already hitting it. `dn` / `lh` 1
      * when this bot's deny / last-hit count rose during the swing (the swing took the creep itself).
      */
+    /**
+     * Slice lane-control 2a (shadow; design 2026-11-06-lane-controller s5.9): kind=wave once per wave per team and lane at
+     * cycle second LaneControl ReadAt, kind=chk LaneControl Horizon s after it. wave the 30 s cycle's spawn second (joins a
+     * chk to its decision); mode safe|shove; rule R1-R6 (s5.1); tgt the target point (from our T1 along the lane); own mv st
+     * the lane push reading now (st OUT|HOLD|IN); need own + mv - tgt (the design's 30 s need); m45 the plain forecast's clash
+     * at Horizon (from our T1), p45 the same with this wave pulled (lane_push WaveGoneFrom), pe the pull's predicted effect
+     * PullScale x (p45 - m45), n45 m45 - tgt (the need the levers are chosen on); intent back|hold|forward|reset; lever the
+     * chosen set joined by + (none), who each one's owner (pid, core, sup, both), left the chosen set's predicted clash past
+     * the target, short 1 when no set reached the band; rej lever:why for each unusable lever; core sup the present laners'
+     * pids; dep seconds to the support's next departure; away 1 when their laners are known dead or elsewhere (R5); why a
+     * decision with no reading; ms the reading's cost.
+     */
+    lane_ctl: {
+        team: "num",
+        lane: "num",
+        kind: "str",
+        wave: "num",
+        mode: "str",
+        rule: "str",
+        tgt: "num",
+        own: "num",
+        mv: "num",
+        st: "str",
+        need: "num",
+        m45: "num",
+        p45: "num",
+        pe: "num",
+        n45: "num",
+        intent: "str",
+        lever: "str",
+        who: "str",
+        left: "num",
+        short: "bool",
+        rej: "str",
+        core: "num",
+        sup: "num",
+        dep: "num",
+        away: "bool",
+        why: "str",
+        ms: "num",
+    },
     idle_swing: {
         pid: "num",
         kind: "str",
