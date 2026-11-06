@@ -43,6 +43,7 @@ export const DEFAULTS = {
     HarassWindow: 1.2,
     HarassExtraRange: 300,
     HarassMinHP: 0.5,
+    /** OHA's mode_laning_generic HarassThink reads this (OFF arm); our harass reads the live tower reach instead. */
     TowerAvoidRange: 850,
 };
 

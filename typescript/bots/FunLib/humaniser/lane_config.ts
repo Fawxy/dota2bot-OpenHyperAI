@@ -6,6 +6,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 export type LaneFlag =
     | "Plan"
@@ -239,6 +240,7 @@ export const DEFAULTS = {
         AggroDanceRadius: 500,
         HarassTowerLevel: 6,
         HarassTowerTargetHP: 0.3,
+        // Fallback only: the tower's reach is read live (TowerReach(), world_facts; 844 in 7.41 = attack range 700 + radius 144).
         EnemyTowerRange: 850,
         // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
         TakePullLaneCreeps: 1,
@@ -273,7 +275,8 @@ export const DEFAULTS = {
         BlockStart: 1500,
         BlockLost: 400,
         BlockContact: 700,
-        TowerAggro: 900,
+        // Added to the tower's reach: the radius within which a tower turns on a unit we order near it (judgement; was 900 = 844 + 56).
+        TowerAggroMargin: 56,
         PreContestStand: 400,
         TowerExitMargin: 100,
         Zone: 900,
@@ -415,7 +418,7 @@ export const DEFAULTS = {
     },
     Orders: { FreezeShove: 90, PullNoPull: 120, Stack: 60 },
     // Idle-poke gates for bots 04 does not own; 04-owned bots read AllyLastHit.Settings() instead.
-    HarassIdle: { IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5, TowerAvoidRange: 850 },
+    HarassIdle: { IdleWindow: 1.2, IdleExtraRange: 300, IdleMinHP: 0.5 },
 };
 
 export type LaneSettings = typeof DEFAULTS;
@@ -475,6 +478,16 @@ function merge(defaults: any, overrides: any): any {
 }
 
 let cached: LaneSettings | undefined;
+
+/** The enemy tower's attack reach: read from the game (world_facts), the Thresholds.EnemyTowerRange constant when the read fails. */
+export function TowerReach(): number {
+    return WorldFacts.Reach(Settings().Thresholds.EnemyTowerRange);
+}
+
+/** The enemy tower's attack range alone (read from the game; 700 when the read fails). */
+export function TowerAttackRange(): number {
+    return WorldFacts.TowerAttackRange(700);
+}
 
 export function Settings(): LaneSettings {
     if (cached === undefined) cached = merge(DEFAULTS, Config.Get().Lane) as LaneSettings;

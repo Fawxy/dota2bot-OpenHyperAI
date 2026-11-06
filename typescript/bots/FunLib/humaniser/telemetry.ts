@@ -15,6 +15,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
@@ -804,6 +805,32 @@ function trackBuilding(team: number, w: WorldState, kind: string, id: number, u:
         ]);
 }
 
+const worldFactSeen: Record<string, boolean> = {};
+/** Slice world-facts probe: each fact's live value beside the constant, once per fact and team per game; the first fallback of a fact is logged too. */
+function trackWorldFacts(this: void, team: number, bot: Unit): void {
+    const lc = LaneConfig.Settings();
+    const rows = WorldFacts.Probe(bot, {
+        tower: lc.Thresholds.EnemyTowerRange,
+        laneCreep: lc.PullTiming.CreepSpeed,
+        neutral: lc.PullTiming.NeutralSpeed.medium,
+        acquisition: 500,
+    });
+    const fell = WorldFacts.Fallbacks();
+    for (const r of rows) {
+        const key = `${team}:${r.fact}`;
+        if (worldFactSeen[key]) continue;
+        worldFactSeen[key] = true;
+        Event("world_fact", [
+            ["team", team],
+            ["fact", r.fact],
+            ["live", r.live],
+            ["constant", r.constant],
+            ["fell", fell[r.fact] ?? 0],
+        ]);
+    }
+}
+const guardedWorldFacts = Guard("Telemetry.WorldFacts", trackWorldFacts);
+
 function trackWorld(this: void, bot: Unit, now: number): void {
     const team = bot.GetTeam();
     if (!firstThisFrame("world", team, now)) return;
@@ -828,6 +855,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
     w.roshanAt = killedAt;
     guardedFront(team);
     guardedLaneRead(team, now);
+    guardedWorldFacts(team, bot);
 }
 
 /** Smoke, teleport and aegis edges for one hero (bot or human). */

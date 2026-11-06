@@ -47,8 +47,8 @@ export const SETTINGS = {
     HeroMargin: 250,
     /** No feed or drag approach this close to an enemy tower (an attack order near it can turn the tower). */
     TowerR: 1000,
-    /** The bot never orders this close to an enemy tower (its 700 range plus a margin); the tower move orders from here out. */
-    TowerOrderR: 900,
+    /** The bot never orders within the tower's reach plus this margin of an enemy tower (judgement; was 900 = 844 + 56); the tower move orders from there out. */
+    TowerOrderMargin: 56,
     /** Feed: our ranged creep at this HP fraction or more (below it the body's deny already wants it). */
     FeedCreepHp: 0.25,
     /** Feed when the clash sits, or is forecast, more than this beyond the target point. */
@@ -56,8 +56,7 @@ export const SETTINGS = {
     /** No feed with our ranged creep this close to one of our towers (their wave would die to it). */
     OwnTowerR: 800,
     /** Tower: our wave within this of their tower, their creeps within TowerSeek of it; the order point sits TowerPast beyond
-     *  their creeps (from the tower), at least TowerOrderR out; walk TowerBack back for TowerWalk; read TowerWatch later. */
-    TowerHit: 850,
+     *  their creeps (from the tower), at least TowerOrderR() out; walk TowerBack back for TowerWalk; read TowerWatch later. */
     TowerSeek: 1000,
     TowerPast: 250,
     TowerApproachMax: 900,
@@ -284,13 +283,13 @@ export function FeedWanted(r: { own: number; move: number } | undefined, target:
 
 /**
  * Pure: the tower move's order point, on the line from their tower `(tx, ty)` through their creeps' centre `(cx, cy)`:
- * TowerPast beyond the creeps, never inside TowerOrderR of the tower.
+ * TowerPast beyond the creeps, never inside TowerOrderR() of the tower.
  */
 export function TowerPoint(tx: number, ty: number, cx: number, cy: number): LuaMultiReturn<[number, number]> {
     const dx = cx - tx;
     const dy = cy - ty;
     const len = math.max(1, math.sqrt(dx * dx + dy * dy));
-    const r = math.max(len + SETTINGS.TowerPast, SETTINGS.TowerOrderR);
+    const r = math.max(len + SETTINGS.TowerPast, TowerOrderR());
     return $multi(tx + (dx / len) * r, ty + (dy / len) * r);
 }
 
@@ -393,6 +392,11 @@ function towerNear(at: Vector, team: number, r: number): Unit | undefined {
     return best;
 }
 
+/** The radius inside which the bot never orders near an enemy tower: its live reach plus TowerOrderMargin. */
+function TowerOrderR(): number {
+    return LaneConfig.TowerReach() + SETTINGS.TowerOrderMargin;
+}
+
 function nearTower(at: Vector, team: number, r: number = SETTINGS.TowerR): boolean {
     return towerNear(at, enemyOf(team), r) !== undefined;
 }
@@ -444,7 +448,7 @@ function gate(bot: Unit, now: number): string | undefined {
     if (frac(bot) < SETTINGS.MinHp) return "hp";
     const t = bot.GetAttackTarget();
     if (t !== undefined && t !== null && !t.IsNull() && t.IsHero()) return "trading";
-    if (nearTower(bot.GetLocation(), bot.GetTeam(), SETTINGS.TowerOrderR)) return "tower";
+    if (nearTower(bot.GetLocation(), bot.GetTeam(), TowerOrderR())) return "tower";
     if (allyPullOut(bot)) return "pull";
     return undefined;
 }
@@ -482,7 +486,7 @@ function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
     if (tw === undefined) return $multi(undefined, "none");
     const tl = tw.GetLocation();
     let ours = 0;
-    for (const c of bot.GetNearbyLaneCreeps(1600, false)) if (valid(c) && isLaneCreep(c) && d2(c.GetLocation(), tl) <= SETTINGS.TowerHit) ours++;
+    for (const c of bot.GetNearbyLaneCreeps(1600, false)) if (valid(c) && isLaneCreep(c) && d2(c.GetLocation(), tl) <= LaneConfig.TowerReach()) ours++;
     const theirs = enemyCreepsNear(bot, tl, SETTINGS.TowerSeek);
     if (ours === 0 || theirs.length === 0) return $multi(undefined, "none");
     let cx = 0;
@@ -700,7 +704,7 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         for (const s0 of a.start ?? []) {
             const u = s0.unit;
             const l = seenAt(u);
-            if (l !== undefined && d2(l, tl) >= SETTINGS.TowerOrderR) out++;
+            if (l !== undefined && d2(l, tl) >= TowerOrderR()) out++;
         }
         a.out = out;
         return finish(bot, a, out > 0 ? "ok" : "stayed", now);

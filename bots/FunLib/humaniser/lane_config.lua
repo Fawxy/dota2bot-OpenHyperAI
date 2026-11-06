@@ -1,7 +1,42 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local isArray, merge, cached
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
+function isArray(t)
+    return t[1] ~= nil
+end
+function merge(defaults, overrides)
+    if overrides == nil or overrides == nil or type(overrides) ~= "table" then
+        return defaults
+    end
+    local result = {}
+    for k, v in pairs(defaults) do
+        result[k] = v
+    end
+    for k, v in pairs(overrides) do
+        local d = defaults[k]
+        local ____k_1 = k
+        local ____temp_0
+        if d ~= nil and type(d) == "table" and type(v) == "table" and not isArray(d) then
+            ____temp_0 = merge(d, v)
+        else
+            ____temp_0 = v
+        end
+        result[____k_1] = ____temp_0
+    end
+    return result
+end
+function ____exports.Settings()
+    if cached == nil then
+        cached = merge(
+            ____exports.DEFAULTS,
+            Config.Get().Lane
+        )
+    end
+    return cached
+end
 ____exports.DEFAULTS = {
     Enable = true,
     OwnLaningThink = "allies",
@@ -226,7 +261,7 @@ ____exports.DEFAULTS = {
         BlockStart = 1500,
         BlockLost = 400,
         BlockContact = 700,
-        TowerAggro = 900,
+        TowerAggroMargin = 56,
         PreContestStand = 400,
         TowerExitMargin = 100,
         Zone = 900,
@@ -326,7 +361,7 @@ ____exports.DEFAULTS = {
         LanePaths = {}
     },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
-    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5, TowerAvoidRange = 850}
+    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5}
 }
 local FLAG_OF = {
     block = "Block",
@@ -363,39 +398,13 @@ local CONSUMER_FLAGS = {
     "CounterPlay",
     "CampBlock"
 }
-local function isArray(t)
-    return t[1] ~= nil
+--- The enemy tower's attack reach: read from the game (world_facts), the Thresholds.EnemyTowerRange constant when the read fails.
+function ____exports.TowerReach()
+    return WorldFacts.Reach(____exports.Settings().Thresholds.EnemyTowerRange)
 end
-local function merge(defaults, overrides)
-    if overrides == nil or overrides == nil or type(overrides) ~= "table" then
-        return defaults
-    end
-    local result = {}
-    for k, v in pairs(defaults) do
-        result[k] = v
-    end
-    for k, v in pairs(overrides) do
-        local d = defaults[k]
-        local ____k_1 = k
-        local ____temp_0
-        if d ~= nil and type(d) == "table" and type(v) == "table" and not isArray(d) then
-            ____temp_0 = merge(d, v)
-        else
-            ____temp_0 = v
-        end
-        result[____k_1] = ____temp_0
-    end
-    return result
-end
-local cached
-function ____exports.Settings()
-    if cached == nil then
-        cached = merge(
-            ____exports.DEFAULTS,
-            Config.Get().Lane
-        )
-    end
-    return cached
+--- The enemy tower's attack range alone (read from the game; 700 when the read fails).
+function ____exports.TowerAttackRange()
+    return WorldFacts.TowerAttackRange(700)
 end
 function ____exports.ResetSettings()
     cached = nil

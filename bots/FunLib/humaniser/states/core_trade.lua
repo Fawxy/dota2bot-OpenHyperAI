@@ -46,10 +46,11 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, inLane, frac, valid, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, TOWER_REACH, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, episodes, primedAt, rolledAt
+local killHpFor, isSupport, reachOf, inLane, frac, valid, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, episodes, primedAt, rolledAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -160,7 +161,8 @@ function ____exports.Gather(bot, target)
         end
     end
     local tower = false
-    for ____, t in ipairs(bot:GetNearbyTowers(TOWER_REACH + 1000, true)) do
+    local reach = LaneConfig.TowerReach()
+    for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
             local __continue41
             repeat
@@ -168,7 +170,7 @@ function ____exports.Gather(bot, target)
                     __continue41 = true
                     break
                 end
-                if GetUnitToUnitDistance(bot, t) <= TOWER_REACH or GetUnitToUnitDistance(target, t) <= TOWER_REACH then
+                if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
                     tower = true
                 end
                 if t:GetAttackTarget() == bot then
@@ -421,7 +423,6 @@ HARASS_REACH = 300
 local PUNISH_BONUS = 300
 NEAR = 1200
 CREEP_AGGRO = 500
-TOWER_REACH = 850
 LANE_WIDTH = 1200
 AGGRO_CLEAR = 550
 AGGRO_COOLDOWN = 3

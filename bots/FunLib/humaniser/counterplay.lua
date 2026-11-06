@@ -1047,7 +1047,7 @@ function ____exports.Signals(bot)
     )
 end
 local function towerProtects(bot, target)
-    local range = settings().Thresholds.EnemyTowerRange
+    local range = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(1600, true) or ({})) do
         if t ~= nil and t ~= nil and dist2D(
             t:GetLocation(),
@@ -1188,7 +1188,7 @@ local function preContest(bot, s, sig, enemies, now)
     return CampJobs.Start(bot, {kind = "contest", campIdx = sig.campIdx, targetPid = sig.enemyPid, preAggroAt = sig.aggroAt})
 end
 local function towerGuards(team, loc)
-    local range = settings().Thresholds.EnemyTowerRange
+    local range = LaneConfig.TowerReach()
     for ____, id in ipairs(LaneTech.TOWER_IDS) do
         local t = GetTower(team, id)
         if t ~= nil and t ~= nil and t:IsAlive() and dist2D(

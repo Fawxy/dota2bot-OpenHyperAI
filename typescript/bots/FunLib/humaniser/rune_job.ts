@@ -72,7 +72,7 @@ export const SETTINGS = {
     /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
     FightNear: 700,
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
-    StopTower: 700,
+    /** Added to the tower's reach: the gank stops with its target this near its own tower. -144 is the tower's radius, so the distance is its attack range, 700 (judgement; was 700). */
     StopHp: 0.3,
     /** The mid's trip does not start under this HP fraction (the chooser's MinHpFraction for supports' jobs; rspchk2 game 1
      *  started one at 2% HP). */
@@ -590,7 +590,7 @@ function* playFight(bot: Unit, play: Plays.Play, hooks: JobVerbs.JobHooks): Lib.
             commit: () =>
                 FR.HpFraction(bot) < SETTINGS.StopHp
                     ? "hp"
-                    : FR.Alive(target) && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < SETTINGS.StopTower
+                    : FR.Alive(target) && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < LaneConfig.TowerAttackRange()
                       ? "tower"
                       : undefined,
         },

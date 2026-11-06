@@ -573,7 +573,7 @@ playFight = __TS__Generator(function(bot, play, hooks)
             commit = function() return FR.HpFraction(bot) < ____exports.SETTINGS.StopHp and "hp" or (FR.Alive(target) and FR.TowerDistance(
                 target:GetTeam(),
                 target:GetLocation()
-            ) < ____exports.SETTINGS.StopTower and "tower" or nil) end
+            ) < LaneConfig.TowerAttackRange() and "tower" or nil) end
         },
         hooks
     ))
@@ -648,7 +648,6 @@ ____exports.SETTINGS = {
     RouteWait = 1.5,
     RouteEnds = 300,
     FightNear = 700,
-    StopTower = 700,
     StopHp = 0.3,
     MidMinHp = 0.5
 }

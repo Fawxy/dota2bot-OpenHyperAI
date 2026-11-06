@@ -317,7 +317,7 @@ function ____exports.GatesFor(bot, etiquette)
             window = s.HarassWindow,
             idleExtraRange = s.HarassExtraRange,
             minHP = s.HarassMinHP,
-            towerAvoidRange = s.TowerAvoidRange,
+            towerAvoidRange = LaneConfig.TowerReach(),
             needProtectedHuman = true,
             needStronger = true
         }
@@ -351,7 +351,7 @@ function ____exports.GatesFor(bot, etiquette)
         window = h.IdleWindow,
         idleExtraRange = h.IdleExtraRange,
         minHP = h.IdleMinHP,
-        towerAvoidRange = h.TowerAvoidRange,
+        towerAvoidRange = LaneConfig.TowerReach(),
         needProtectedHuman = false,
         needStronger = true
     }
@@ -468,7 +468,7 @@ function ____exports.StandPoint(bot, enemy, ourCreeps)
         if isValidBuilding(tower) and dist2D(
             tower:GetLocation(),
             point
-        ) <= cfg.Thresholds.EnemyTowerRange then
+        ) <= LaneConfig.TowerReach() then
             return nil
         end
     end
@@ -537,8 +537,12 @@ local function noteIdleHit(pid, now)
 end
 --- Manners at fire time; true when the punish may go ahead.
 local function mannersAllow(bot, enemy, towers, etiquette)
-    local t = settings().Thresholds
-    local near = towerWithin(towers, t.EnemyTowerRange, bot, enemy)
+    local near = towerWithin(
+        towers,
+        LaneConfig.TowerReach(),
+        bot,
+        enemy
+    )
     if ____exports.TowerForbids(
         bot:GetLevel(),
         near,
