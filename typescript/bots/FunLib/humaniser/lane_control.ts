@@ -26,6 +26,7 @@ import { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Calendar from "bots/FunLib/humaniser/calendar";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 declare function RealTime(this: void): number;
 
@@ -84,8 +85,9 @@ export const SETTINGS = {
     EnemyLaneR: 2500,
     EnemyMemory: 90,
     EnemyAway: 3000,
-    /** `shove` targets their T1's range edge: this far short of their T1 along the lane. */
-    TowerRange: 700,
+    /** Fallback only: a tower's reach from its centre along the lane, read live by WorldFacts.Reach (7.41: attack range 700 +
+     *  bounding radius 144). `shove` targets their T1's range edge this far short of it; a pull's hold floor is our T1's. */
+    TowerRange: 844,
 };
 
 export interface Lever {
@@ -330,12 +332,14 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const [ourT1, dir] = LanePush.OwnT1(path, team);
     const theirT1 = path.towers.find((tw) => tw.team !== team)!.s;
     const span = dir * (theirT1 - ourT1);
-    const tgt = mode === "shove" ? span - s.TowerRange : LanePush.TargetOf(lane);
+    const reach = WorldFacts.Reach(s.TowerRange);
+    const tgt = mode === "shove" ? span - reach : LanePush.TargetOf(lane);
     // The plain forecast and the lane with this wave pulled, both to the horizon.
     const at = math.floor(now) + s.Horizon;
     const [samples] = LanePush.Forecast(team, lane, s.Horizon + 3);
     const plain = ownAt(samples, path, team, at);
-    const ts = math.floor(now / 30) * 30;
+    const cycle = LaneConfig.Settings().Timing.WaveCycle;
+    const ts = math.floor(now / cycle) * cycle;
     const gone = LanePush.WaveGoneNow(team, lane, ts, at);
     const need = r.own + r.move - tgt;
     const base = plain ?? r.own + r.move;
@@ -381,10 +385,10 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const chosen = c.levers.map((l) => l.name);
     const who = c.levers.map((l) => l.who);
     let after = tgt + left;
-    if (chosen.includes("pull") && after < s.TowerRange && coreIn !== undefined) {
+    if (chosen.includes("pull") && after < reach && coreIn !== undefined) {
         chosen.push("hold");
         who.push(`${coreIn.pid}`);
-        after = math.max(after, s.TowerRange);
+        after = math.max(after, reach);
     }
     const rej: string[] = [];
     for (const l of levers) if (l.why !== undefined) rej.push(`${l.name}:${l.why}`);
@@ -538,7 +542,8 @@ export function Tick(bot: Unit): void {
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Mid && lane !== Lane.Bot) return;
     const m = memoryOf(team, lane);
-    const wave = math.floor(now / 30) * 30;
+    const cycle = LaneConfig.Settings().Timing.WaveCycle;
+    const wave = math.floor(now / cycle) * cycle;
     while (m.chks.length > 0 && now >= m.chks[0] + s.ReadAt + s.Horizon) check(team, lane, m.chks.shift()!);
     if (Drives()) breakCheck(team, lane, m, now);
     if (now > s.Until || now - wave < s.ReadAt || m.wave === wave) return;

@@ -20,6 +20,7 @@ const newTowers = () => setmetatable(new LuaTable<Unit, number>(), { __mode: "k"
 let towers = newTowers();
 const moment: Record<string, { at: number; v: number | undefined }> = {};
 const fell: Record<string, number> = {};
+const fellValue: Record<string, number> = {};
 const live: Record<string, number> = {};
 
 function counted(fact: string): void {
@@ -28,7 +29,16 @@ function counted(fact: string): void {
 
 function fallback(fact: string, value: number): number {
     fell[fact] = (fell[fact] ?? 0) + 1;
+    fellValue[fact] = value;
     return value;
+}
+
+/**
+ * A caller's own API read gave nothing and it used the constant `fb` (a per-unit fact such as a hero's attack period, read
+ * where the unit is in hand). Counted like the readers' fallbacks, so telemetry logs the first one of each fact.
+ */
+export function Fallback(fact: string, fb: number): number {
+    return fallback(fact, fb);
 }
 
 function valid(u: Unit | undefined): u is Unit {
@@ -165,10 +175,16 @@ export function Fallbacks(): Record<string, number> {
     return fell;
 }
 
+/** The last fallback value returned per fact (read by telemetry beside the count). */
+export function FallbackValues(): Record<string, number> {
+    return fellValue;
+}
+
 /** Test hook: forget everything. */
 export function Reset(): void {
     for (const k of Object.keys(moment)) delete moment[k];
     for (const k of Object.keys(fell)) delete fell[k];
+    for (const k of Object.keys(fellValue)) delete fellValue[k];
     for (const k of Object.keys(live)) delete live[k];
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
     for (const k of Object.keys(noReadYet)) delete noReadYet[k];
@@ -184,10 +200,16 @@ export interface ProbeRow {
 }
 
 /** What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game). */
-export function Probe(bot: Unit, constants: { tower: number; laneCreep: number; neutral: number; acquisition: number }): ProbeRow[] {
+export function Probe(
+    bot: Unit,
+    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number },
+): ProbeRow[] {
     const rows: ProbeRow[] = [];
     const tower = bot.GetNearbyTowers(1600, true)[0] ?? bot.GetNearbyTowers(1600, false)[0];
-    if (tower !== undefined) rows.push({ fact: "tower_reach", live: TowerReach(tower, constants.tower), constant: constants.tower });
+    if (tower !== undefined) {
+        rows.push({ fact: "tower_reach", live: TowerReach(tower, constants.tower), constant: constants.tower });
+        rows.push({ fact: "tower_range", live: TowerAttackRange(constants.towerRange), constant: constants.towerRange });
+    }
     const creeps = bot.GetNearbyLaneCreeps(1600, true);
     const mine = bot.GetNearbyLaneCreeps(1600, false);
     const creep = creeps[0] ?? mine[0];

@@ -79,9 +79,10 @@ function S:GetActualIncomingDamage(d) return d end
 function S:GetAttackTarget() return self.target end
 function S:GetAttackRange() return self.range or 150 end
 function S:GetCurrentMovementSpeed() return 300 end
-function S:GetAttackPoint() return 0.4 end
+function S:GetAttackPoint() return self.point or 0.4 end
+function S:GetBoundingRadius() return self.radius or 0 end
 function S:GetAttackDamage() return 40 end
-function S:GetSecondsPerAttack() return 1.5 end
+function S:GetSecondsPerAttack() return self.spa or 1.5 end
 function S:GetPlayerID() return self.pid or 0 end
 function S:GetDenies() return 0 end
 function S:GetLastHits() return 0 end
@@ -163,6 +164,13 @@ do
 	local e = unit({ team = TEAM_DIRE, loc = Vector(500, 0), range = 150 })
 	local bot = world({ creeps = { c }, heroes = { e } })
 	check("find: an enemy hero reaches it first, none", Idle.Find(bot, verbs()) == nil)
+	-- Slice 4: attack range is edge to edge. The enemy 620 from the creep (range 150, 300 speed, point 0.4; our kill at 1.9 s):
+	-- centre to centre it swings at 1.97 s (safe); with radii 24 and 16 it walks 430, swings at 1.83 s (unsafe).
+	e.loc = Vector(920, 0)
+	check("reach: centre to centre the enemy is late, pre-deny", Idle.Find(bot, verbs()) ~= nil)
+	e.radius, c.radius = 24, 16
+	check("reach: edge to edge it is in time, none", Idle.Find(bot, verbs()) == nil)
+	e.radius, c.radius = nil, nil
 	-- The same enemy 1,400 away (reach about 4.3 s): safe.
 	e.loc = Vector(1700, 0)
 	check("find: the enemy far, pre-deny", Idle.Find(bot, verbs()) ~= nil)
@@ -247,9 +255,17 @@ do
 	local r = Idle.Find(bot, verbs())
 	check("setup: an enemy hero could deny it first, no setup", r == nil or r.creep ~= theirs)
 	e.loc = Vector(3000, 0)
-	bot.world.towers = { unit({ team = TEAM_DIRE, loc = Vector(900, 0) }) }
-	check("setup: their creep inside their tower's range, so the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	-- Slice 4: the clearance is the tower's reach (range 700 + radius 144, read live) plus the creep's radius 16: 860. The
+	-- old constant 800 let a creep 850 from the tower through, inside its fire.
+	theirs.radius = 16
+	local tw = unit({ team = TEAM_DIRE, loc = Vector(1150, 0), range = 700, radius = 144 })
+	bot.world.towers = { tw }
+	check("setup: their creep 850 from their tower, inside reach + radius 860, so the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
+	local tw2 = unit({ team = TEAM_DIRE, loc = Vector(1170, 0), range = 700, radius = 144 })
+	bot.world.towers = { tw2 }
+	check("setup: 870 from their tower, outside 860, the setup", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, theirs) ~= nil)
 	bot.world.towers = nil
+	theirs.radius = nil
 	decide("safe", "back", { "predeny" })
 	check("back: no setup, the pre-deny", Idle.Find(bot, verbs()) ~= nil and Idle.Of(0, ours) ~= nil)
 	decide("shove", "forward", { "shove" })
@@ -273,6 +289,20 @@ do
 	Idle.NoteSwing(7, c)
 	Idle.NoteSwing(7, c)
 	check("spent: two swings", Idle.SpentOn(7, c) == 2)
+end
+
+-- Slice 4: a missing attack period or attack point uses the constant and is counted for the once-per-game world_fact line.
+do
+	local WF = require("bots/FunLib/humaniser/world_facts")
+	WF.Reset()
+	local c = unit({ team = TEAM_RADIANT, loc = Vector(300, 0), hp = 70 })
+	local e = unit({ team = TEAM_DIRE, loc = Vector(1500, 0), range = 150, point = -1 })
+	local bot = world({ creeps = { c }, heroes = { e } })
+	bot.spa = 0
+	check("fallbacks: the swing still goes", Idle.Find(bot, verbs()) ~= nil)
+	check("fallbacks: the attack period's is counted", (WF.Fallbacks().attack_period or 0) > 0 and WF.FallbackValues().attack_period == 1.7)
+	check("fallbacks: the attack point's is counted", (WF.Fallbacks().attack_point or 0) > 0 and WF.FallbackValues().attack_point == 0.4)
+	WF.Reset()
 end
 
 finish()

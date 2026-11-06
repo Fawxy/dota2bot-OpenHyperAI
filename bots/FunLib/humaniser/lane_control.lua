@@ -242,6 +242,7 @@ local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Calendar = require(GetScriptDirectory().."/FunLib/humaniser/calendar")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function memoryOf(team, lane)
     local key = (tostring(team) .. ":") .. tostring(lane)
     local m = memory[key]
@@ -307,7 +308,7 @@ ____exports.SETTINGS = {
     EnemyLaneR = 2500,
     EnemyMemory = 90,
     EnemyAway = 3000,
-    TowerRange = 700
+    TowerRange = 844
 }
 --- Levers that cannot be taken together (a pull resets our wave, a shove spends it).
 local function clash(a, b)
@@ -637,11 +638,13 @@ local function decide(team, lane, now, m)
         function(____, tw) return tw.team ~= team end
     ).s
     local span = dir * (theirT1 - ourT1)
-    local tgt = mode == "shove" and span - s.TowerRange or LanePush.TargetOf(lane)
+    local reach = WorldFacts.Reach(s.TowerRange)
+    local tgt = mode == "shove" and span - reach or LanePush.TargetOf(lane)
     local at = math.floor(now) + s.Horizon
     local samples = LanePush.Forecast(team, lane, s.Horizon + 3)
     local plain = ownAt(samples, path, team, at)
-    local ts = math.floor(now / 30) * 30
+    local cycle = LaneConfig.Settings().Timing.WaveCycle
+    local ts = math.floor(now / cycle) * cycle
     local gone = LanePush.WaveGoneNow(team, lane, ts, at)
     local need = r.own + r.move - tgt
     local base = plain or r.own + r.move
@@ -717,10 +720,10 @@ local function decide(team, lane, now, m)
         function(____, l) return l.who end
     )
     local after = tgt + left
-    if __TS__ArrayIncludes(chosen, "pull") and after < s.TowerRange and coreIn ~= nil then
+    if __TS__ArrayIncludes(chosen, "pull") and after < reach and coreIn ~= nil then
         chosen[#chosen + 1] = "hold"
         who[#who + 1] = tostring(coreIn.pid)
-        after = math.max(after, s.TowerRange)
+        after = math.max(after, reach)
     end
     local rej = {}
     for ____, l in ipairs(levers) do
@@ -996,7 +999,8 @@ function ____exports.Tick(bot)
         return
     end
     local m = memoryOf(team, lane)
-    local wave = math.floor(now / 30) * 30
+    local cycle = LaneConfig.Settings().Timing.WaveCycle
+    local wave = math.floor(now / cycle) * cycle
     while #m.chks > 0 and now >= m.chks[1] + s.ReadAt + s.Horizon do
         check(
             team,

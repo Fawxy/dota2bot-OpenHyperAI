@@ -202,7 +202,7 @@ local function __TS__ArrayFind(self, predicate, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local counted, fallback, valid, towers, fell, live
+local counted, fallback, valid, towers, fell, fellValue, live
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -211,6 +211,7 @@ function counted(fact)
 end
 function fallback(fact, value)
     fell[fact] = (fell[fact] or 0) + 1
+    fellValue[fact] = value
     return value
 end
 function valid(u)
@@ -245,7 +246,13 @@ end
 towers = newTowers()
 local moment = {}
 fell = {}
+fellValue = {}
 live = {}
+--- A caller's own API read gave nothing and it used the constant `fb` (a per-unit fact such as a hero's attack period, read
+-- where the unit is in hand). Counted like the readers' fallbacks, so telemetry logs the first one of each fact.
+function ____exports.Fallback(fact, fb)
+    return fallback(fact, fb)
+end
 --- One API read per key per second: `read` runs for the first asker, the stored result serves the rest (also a miss).
 local function perMoment(fact, key, read)
     local now = math.floor(DotaTime() / MomentSec)
@@ -302,19 +309,19 @@ end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue26
+            local __continue27
             repeat
                 if not valid(u) then
-                    __continue26 = true
+                    __continue27 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue26 = true
+                __continue27 = true
             until true
-            if not __continue26 then
+            if not __continue27 then
                 break
             end
         end
@@ -383,6 +390,10 @@ end
 function ____exports.Fallbacks()
     return fell
 end
+--- The last fallback value returned per fact (read by telemetry beside the count).
+function ____exports.FallbackValues()
+    return fellValue
+end
 --- Test hook: forget everything.
 function ____exports.Reset()
     for ____, k in ipairs(__TS__ObjectKeys(moment)) do
@@ -390,6 +401,9 @@ function ____exports.Reset()
     end
     for ____, k in ipairs(__TS__ObjectKeys(fell)) do
         __TS__Delete(fell, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(fellValue)) do
+        __TS__Delete(fellValue, k)
     end
     for ____, k in ipairs(__TS__ObjectKeys(live)) do
         __TS__Delete(live, k)
@@ -413,6 +427,11 @@ function ____exports.Probe(bot, constants)
             fact = "tower_reach",
             live = ____exports.TowerReach(tower, constants.tower),
             constant = constants.tower
+        }
+        rows[#rows + 1] = {
+            fact = "tower_range",
+            live = ____exports.TowerAttackRange(constants.towerRange),
+            constant = constants.towerRange
         }
     end
     local creeps = bot:GetNearbyLaneCreeps(1600, true)
