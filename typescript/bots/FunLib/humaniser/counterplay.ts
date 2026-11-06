@@ -555,7 +555,7 @@ export function Signals(bot: Unit): Signal[] {
 // ---------------------------------------------------------------------------------------------- responses
 
 function towerProtects(bot: Unit, target: LaneState.LaneEnemy): boolean {
-    const range = settings().Thresholds.EnemyTowerRange;
+    const range = LaneConfig.TowerReach();
     for (const t of bot.GetNearbyTowers(1600, true) ?? []) {
         if (t !== null && t !== undefined && dist2D(t.GetLocation(), target.location) <= range) return true;
     }
@@ -643,7 +643,7 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
 }
 
 function towerGuards(team: number, loc: Vector): boolean {
-    const range = settings().Thresholds.EnemyTowerRange;
+    const range = LaneConfig.TowerReach();
     for (const id of LaneTech.TOWER_IDS) {
         const t = GetTower(team, id);
         if (t !== null && t !== undefined && t.IsAlive() && dist2D(t.GetLocation(), loc) <= range) return true;

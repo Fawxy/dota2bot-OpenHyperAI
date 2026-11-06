@@ -143,6 +143,7 @@ function MakeLaneTowers()
 			local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {},
 				loc = absLoc(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
 			t.GetUnitName = function() return "tower_t1" end
+			t.range, t.hull = 700, 144 -- 7.41 tower: attack range 700, radius 144 (reach 844)
 			t.dmg = 0
 			w[team][id] = t
 		end

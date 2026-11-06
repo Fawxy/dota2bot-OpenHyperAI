@@ -161,7 +161,7 @@ function enemyTowers(team: number): Unit[] {
 }
 
 function underEnemyTower(team: number, loc: Vector): boolean {
-    const range = settings().Thresholds.EnemyTowerRange;
+    const range = LaneConfig.TowerReach();
     for (const tower of enemyTowers(team)) if (dist2D(tower.GetLocation(), loc) <= range) return true;
     return false;
 }
@@ -285,7 +285,7 @@ function towerDrop(bot: Unit, s: LaneState.LaneSnapshot, allyCreeps: Unit[]): bo
     let drop = drops[pid];
     if (drop === undefined) {
         if (!LaneConfig.Knows("aggro_pull", LaneConfig.SkillOf(bot))) return false;
-        const tower = towerTargeting(bot, bot, radii.TowerAggro);
+        const tower = towerTargeting(bot, bot, LaneConfig.TowerReach() + radii.TowerAggroMargin);
         if (tower === undefined) return false;
         drop = { tower, dropped: false };
         drops[pid] = drop;
@@ -297,7 +297,7 @@ function towerDrop(bot: Unit, s: LaneState.LaneSnapshot, allyCreeps: Unit[]): bo
         delete drops[pid];
         return false;
     }
-    const exit = radii.TowerAggro + radii.TowerExitMargin;
+    const exit = LaneConfig.TowerReach() + radii.TowerAggroMargin + radii.TowerExitMargin;
     const towerLoc = drop.tower.GetLocation();
     const here = bot.GetLocation();
     if (!drop.dropped) {
@@ -425,11 +425,11 @@ function trySwap(bot: Unit, s: LaneState.LaneSnapshot, enemies: Unit[], reason: 
     const pid = bot.GetPlayerID();
     for (const h of s.allies) {
         if (!h.alive || h.pid === pid || h.position === undefined || h.position < 1 || h.position > 3 || h.hp >= t.TowerSwapAllyHP) continue;
-        const tower = towerTargeting(bot, h.unit, settings().Radii.TowerAggro);
+        const tower = towerTargeting(bot, h.unit, LaneConfig.TowerReach() + settings().Radii.TowerAggroMargin);
         if (tower === undefined) continue;
         const candidates: Unit[] = [];
         for (const e of enemies ?? []) if (isUsable(e) && e.GetTeam() !== s.team) candidates.push(e);
-        const hero = nearest(tower.GetLocation(), candidates, t.EnemyTowerRange);
+        const hero = nearest(tower.GetLocation(), candidates, LaneConfig.TowerReach());
         if (hero === undefined) continue;
         bot.Action_AttackUnit(hero, true);
         beginDrop(bot, s, "swap", `${reason}: tower swap`, lastHit);

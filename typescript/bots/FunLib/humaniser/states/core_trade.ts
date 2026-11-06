@@ -10,6 +10,7 @@
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -91,7 +92,6 @@ const HARASS_REACH = 300;
 const PUNISH_BONUS = 300;
 const NEAR = 1200;
 const CREEP_AGGRO = 500;
-const TOWER_REACH = 850;
 /** Within this of its assigned lane's path the core is in lane (fight_read's LANE_WIDTH). */
 const LANE_WIDTH = 1200;
 /**
@@ -272,9 +272,10 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         if (c.GetAttackTarget() === bot) hitByCreeps++;
     }
     let tower = false;
-    for (const t of bot.GetNearbyTowers(TOWER_REACH + 1000, true)) {
+    const reach = LaneConfig.TowerReach();
+    for (const t of bot.GetNearbyTowers(reach + 1000, true)) {
         if (!t.IsAlive()) continue;
-        if (GetUnitToUnitDistance(bot, t) <= TOWER_REACH || GetUnitToUnitDistance(target, t) <= TOWER_REACH) tower = true;
+        if (GetUnitToUnitDistance(bot, t) <= reach || GetUnitToUnitDistance(target, t) <= reach) tower = true;
         if (t.GetAttackTarget() === bot) hitByCreeps += MAX_CREEPS_ON_ME;
     }
     return {
