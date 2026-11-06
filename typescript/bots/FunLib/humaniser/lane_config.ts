@@ -240,8 +240,10 @@ export const DEFAULTS = {
         AggroDanceRadius: 500,
         HarassTowerLevel: 6,
         HarassTowerTargetHP: 0.3,
-        // Fallback only: the tower's reach is read live (TowerReach(), world_facts; 844 in 7.41 = attack range 700 + radius 144). 844, not the old 850, so a failed read gives the margins back as 900/900/700.
+        // Fallback only: the tower's reach to a point is read live (world_facts; 844 in 7.41 = attack range 700 + tower radius 144).
         EnemyTowerRange: 844,
+        // Fallback only: a hero's bounding radius (24), added to the tower's reach for a hero's centre (edges meet, user 08/11/2026).
+        HeroRadius: 24,
         // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
         TakePullLaneCreeps: 1,
         TakePullDangerEnemies: 2,
@@ -479,9 +481,13 @@ function merge(defaults: any, overrides: any): any {
 
 let cached: LaneSettings | undefined;
 
-/** The enemy tower's attack reach: read from the game (world_facts), the Thresholds.EnemyTowerRange constant when the read fails. */
+/**
+ * How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
+ * (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
+ */
 export function TowerReach(): number {
-    return WorldFacts.Reach(Settings().Thresholds.EnemyTowerRange);
+    const t = Settings().Thresholds;
+    return WorldFacts.Reach(t.EnemyTowerRange) + WorldFacts.HeroRadius(t.HeroRadius);
 }
 
 /** The enemy tower's attack range alone (read from the game; 700 when the read fails). */

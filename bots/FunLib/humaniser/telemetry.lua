@@ -1235,6 +1235,7 @@ local function trackWorldFacts(team, bot)
     local rows = WorldFacts.Probe(bot, {
         tower = lc.Thresholds.EnemyTowerRange,
         towerRange = 700,
+        hero = lc.Thresholds.HeroRadius,
         laneCreep = lc.PullTiming.CreepSpeed,
         neutral = lc.PullTiming.NeutralSpeed.medium,
         neutralSeeds = lc.PullTiming.NeutralSpeed,

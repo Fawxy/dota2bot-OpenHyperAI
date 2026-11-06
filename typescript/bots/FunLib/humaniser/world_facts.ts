@@ -104,7 +104,29 @@ export function Reach(fb: number): number {
     return fallback("tower_reach", fb);
 }
 
-/** Reach of a tower's attack to a target's centre: its attack range plus its own bounding radius. Per game, per tower. */
+let gameHero: number | undefined;
+
+/**
+ * A hero's bounding radius (24 for most heroes), read once per game from the script's own team. Attack range is where the two
+ * edges meet (user 08/11/2026), so a hero's centre is hit from the tower's reach (range + tower radius) plus this.
+ */
+export function HeroRadius(fb: number): number {
+    if (gameHero !== undefined) return gameHero;
+    for (let i = 1; i <= 5; i++) {
+        const h = GetTeamMember(i);
+        if (h !== null && h !== undefined && valid(h)) {
+            const r = h.GetBoundingRadius();
+            if (r !== undefined && r > 0) {
+                gameHero = r;
+                live.hero_radius = r;
+                return r;
+            }
+        }
+    }
+    return fallback("hero_radius", fb);
+}
+
+/** Reach of a tower's attack to a point (a target of no size): its attack range plus its own bounding radius. Per game, per tower. */
 export function TowerReach(tower: Unit, fb: number): number {
     const known = towers.get(tower);
     if (known !== undefined) return known;
@@ -236,6 +258,7 @@ export function Fallbacks(): Record<string, number> {
 const PROBED: Record<string, boolean> = {
     tower_reach: true,
     tower_range: true,
+    hero_radius: true,
     lane_creep_speed: true,
     acquisition_lane_creep: true,
     neutral_speed: true,
@@ -266,6 +289,7 @@ export function Reset(): void {
     towers = newTowers();
     gameReach = undefined;
     gameRange = undefined;
+    gameHero = undefined;
 }
 
 export interface ProbeRow {
@@ -277,7 +301,7 @@ export interface ProbeRow {
 /** What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game). */
 export function Probe(
     bot: Unit,
-    constants: { tower: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number; neutralSeeds?: Record<string, number> },
+    constants: { tower: number; hero?: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number; neutralSeeds?: Record<string, number> },
 ): ProbeRow[] {
     const rows: ProbeRow[] = [];
     const tower = bot.GetNearbyTowers(1600, true)[0] ?? bot.GetNearbyTowers(1600, false)[0];
@@ -285,6 +309,7 @@ export function Probe(
         rows.push({ fact: "tower_reach", live: TowerReach(tower, constants.tower), constant: constants.tower });
         rows.push({ fact: "tower_range", live: TowerAttackRange(constants.towerRange), constant: constants.towerRange });
     }
+    if (constants.hero !== undefined) rows.push({ fact: "hero_radius", live: HeroRadius(constants.hero), constant: constants.hero });
     const creeps = bot.GetNearbyLaneCreeps(1600, true);
     const mine = bot.GetNearbyLaneCreeps(1600, false);
     const creep = creeps[0] ?? mine[0];
