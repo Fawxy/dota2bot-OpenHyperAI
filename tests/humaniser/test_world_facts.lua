@@ -108,4 +108,15 @@ do
 	WF.Reset()
 end
 
+do
+	-- Review M1 (lctl6, lctl7: lane_creep_speed logged twice a team): only facts the probe has no row for are listed.
+	WF.Reset()
+	WF.Latest("lane_creep_speed", 325)
+	WF.Fallback("attack_point", 0.4)
+	WF.Fallback("attack_point", 0.4)
+	local list = WF.UnprobedFallbacks()
+	check("unprobed fallbacks: the caller's own fact only", #list == 1 and list[1].fact == "attack_point" and list[1].n == 2 and list[1].value == 0.4)
+	WF.Reset()
+end
+
 finish()

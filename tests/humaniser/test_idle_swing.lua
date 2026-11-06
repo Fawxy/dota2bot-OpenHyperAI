@@ -300,8 +300,10 @@ do
 	local bot = world({ creeps = { c }, heroes = { e } })
 	bot.spa = 0
 	check("fallbacks: the swing still goes", Idle.Find(bot, verbs()) ~= nil)
-	check("fallbacks: the attack period's is counted", (WF.Fallbacks().attack_period or 0) > 0 and WF.FallbackValues().attack_period == 1.7)
-	check("fallbacks: the attack point's is counted", (WF.Fallbacks().attack_point or 0) > 0 and WF.FallbackValues().attack_point == 0.4)
+	local used = {}
+	for _, f in ipairs(WF.UnprobedFallbacks()) do used[f.fact] = f.value end
+	check("fallbacks: the attack period's is counted", (WF.Fallbacks().attack_period or 0) > 0 and used.attack_period == 1.7)
+	check("fallbacks: the attack point's is counted", (WF.Fallbacks().attack_point or 0) > 0 and used.attack_point == 0.4)
 	WF.Reset()
 end
 

@@ -830,17 +830,16 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
         ]);
     }
     // A fallback of a fact the probe has no row for (a caller's own read, WorldFacts.Fallback): its first use, once per game.
-    const fellAt = WorldFacts.FallbackValues();
-    for (const [fact, n] of Object.entries(fell)) {
-        const key = `fell:${fact}`;
-        if (n <= 0 || worldFactSeen[key] || worldFactSeen[`${team}:${fact}`]) continue;
+    for (const f of WorldFacts.UnprobedFallbacks()) {
+        const key = `${team}:fell:${f.fact}`;
+        if (worldFactSeen[key]) continue;
         worldFactSeen[key] = true;
         Event("world_fact", [
             ["team", team],
-            ["fact", fact],
+            ["fact", f.fact],
             ["live", -1],
-            ["constant", fellAt[fact] ?? -1],
-            ["fell", n],
+            ["constant", f.value],
+            ["fell", f.n],
         ]);
     }
 }

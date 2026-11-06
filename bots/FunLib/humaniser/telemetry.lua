@@ -1,15 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__ObjectEntries(obj)
-    local result = {}
-    local len = 0
-    for key in pairs(obj) do
-        len = len + 1
-        result[len] = {key, obj[key]}
-    end
-    return result
-end
-
 local function __TS__ArraySetLength(self, length)
     if length < 0 or length ~= length or length == math.huge or math.floor(length) ~= length then
         error(
@@ -1274,25 +1264,22 @@ local function trackWorldFacts(team, bot)
             end
         end
     end
-    local fellAt = WorldFacts.FallbackValues()
-    for ____, ____value in ipairs(__TS__ObjectEntries(fell)) do
-        local fact = ____value[1]
-        local n = ____value[2]
+    for ____, f in ipairs(WorldFacts.UnprobedFallbacks()) do
         do
             local __continue150
             repeat
-                local key = "fell:" .. fact
-                if n <= 0 or worldFactSeen[key] or worldFactSeen[(tostring(team) .. ":") .. fact] then
+                local key = (tostring(team) .. ":fell:") .. f.fact
+                if worldFactSeen[key] then
                     __continue150 = true
                     break
                 end
                 worldFactSeen[key] = true
                 ____exports.Event("world_fact", {
                     {"team", team},
-                    {"fact", fact},
+                    {"fact", f.fact},
                     {"live", -1},
-                    {"constant", fellAt[fact] or -1},
-                    {"fell", n}
+                    {"constant", f.value},
+                    {"fell", f.n}
                 })
                 __continue150 = true
             until true

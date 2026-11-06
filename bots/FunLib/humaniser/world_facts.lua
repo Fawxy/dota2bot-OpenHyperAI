@@ -10,6 +10,16 @@ local function __TS__StringIncludes(self, searchString, position)
     return index ~= nil
 end
 
+local function __TS__ObjectEntries(obj)
+    local result = {}
+    local len = 0
+    for key in pairs(obj) do
+        len = len + 1
+        result[len] = {key, obj[key]}
+    end
+    return result
+end
+
 local function __TS__New(target, ...)
     local instance = setmetatable({}, target.prototype)
     instance:____constructor(...)
@@ -395,9 +405,26 @@ end
 function ____exports.Fallbacks()
     return fell
 end
---- The last fallback value returned per fact (read by telemetry beside the count).
-function ____exports.FallbackValues()
-    return fellValue
+--- Facts the probe has a row for: telemetry logs those from the probe, never from the fallback list (review M1).
+local PROBED = {
+    tower_reach = true,
+    tower_range = true,
+    lane_creep_speed = true,
+    acquisition_lane_creep = true,
+    neutral_speed = true,
+    acquisition_neutral = true
+}
+--- Fallbacks taken for facts the probe has no row for (a caller's own read, `Fallback`): fact, count so far, value used.
+function ____exports.UnprobedFallbacks()
+    local out = {}
+    for ____, ____value in ipairs(__TS__ObjectEntries(fell)) do
+        local fact = ____value[1]
+        local n = ____value[2]
+        if n > 0 and PROBED[fact] ~= true then
+            out[#out + 1] = {fact = fact, n = n, value = fellValue[fact] or -1}
+        end
+    end
+    return out
 end
 --- Test hook: forget everything.
 function ____exports.Reset()

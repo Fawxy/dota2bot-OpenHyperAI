@@ -183,9 +183,23 @@ export function Fallbacks(): Record<string, number> {
     return fell;
 }
 
-/** The last fallback value returned per fact (read by telemetry beside the count). */
-export function FallbackValues(): Record<string, number> {
-    return fellValue;
+/** Facts the probe has a row for: telemetry logs those from the probe, never from the fallback list (review M1). */
+const PROBED: Record<string, boolean> = {
+    tower_reach: true,
+    tower_range: true,
+    lane_creep_speed: true,
+    acquisition_lane_creep: true,
+    neutral_speed: true,
+    acquisition_neutral: true,
+};
+
+/** Fallbacks taken for facts the probe has no row for (a caller's own read, `Fallback`): fact, count so far, value used. */
+export function UnprobedFallbacks(): { fact: string; n: number; value: number }[] {
+    const out: { fact: string; n: number; value: number }[] = [];
+    for (const [fact, n] of Object.entries(fell)) {
+        if (n > 0 && PROBED[fact] !== true) out.push({ fact, n, value: fellValue[fact] ?? -1 });
+    }
+    return out;
 }
 
 /** Test hook: forget everything. */
