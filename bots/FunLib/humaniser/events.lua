@@ -986,6 +986,13 @@ ____exports.EVENTS = {
         join = "num",
         dur = "num"
     },
+    world_fact = {
+        team = "num",
+        fact = "str",
+        live = "num",
+        constant = "num",
+        fell = "num"
+    },
     rune_plan = {
         team = "num",
         mid = "num",

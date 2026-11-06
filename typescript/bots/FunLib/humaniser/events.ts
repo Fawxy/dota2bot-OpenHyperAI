@@ -1268,6 +1268,14 @@ export const EVENTS = {
     // Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt and again each time a planned support's start
     // gate drops it: mid / sup the planned heroes' pids, ms / ss their spots' rune ids; why no-free-support, no-near-support (a free support is nearer the mid's spot) or no-mid when a
     // side is empty, swap:<gate> when the spot went to the other support, drop:<gate> when no support was free for it.
+    /** Probe (slice world-facts): the live API value beside the constant a context still holds; once per fact and team per game. */
+    world_fact: {
+        team: "num",
+        fact: "str",
+        live: "num",
+        constant: "num",
+        fell: "num",
+    },
     rune_plan: {
         team: "num",
         mid: "num",
