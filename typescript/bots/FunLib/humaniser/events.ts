@@ -1009,14 +1009,6 @@ export const EVENTS = {
         msg: "str",
     },
     /**
-     * An owned laner's idle swing (states/idle_swing): one attack when the picker had no last hit, deny or pre-hit to offer.
-     * `kind` predeny (our creep under half HP that no enemy hero reaches before our hits kill it) or shove (an enemy creep outside
-     * their tower), `mode` the lane's mode (`safe`, or `shove` forced by Overrides.ForceShove). `result` ok once the attack fired.
-     * At the pick: `walk` (s), the creep's `hp` and fraction `hf`; predeny: our kill time `kill` (s, absent past the horizon), the
-     * nearest enemy hero's reach `reach` (s, -1 none near), `focus` 1 when an allied hero was already hitting it. `dn` / `lh` 1
-     * when this bot's deny / last-hit count rose during the swing (the swing took the creep itself).
-     */
-    /**
      * Slice lane-control 2a (shadow; design 2026-11-06-lane-controller s5.9): kind=wave once per wave per team and lane at
      * cycle second LaneControl ReadAt, kind=chk LaneControl Horizon s after it. wave the 30 s cycle's spawn second (joins a
      * chk to its decision); mode safe|shove; rule R1-R6 (s5.1); tgt the target point (from our T1 along the lane); own mv st
@@ -1057,6 +1049,14 @@ export const EVENTS = {
         why: "str",
         ms: "num",
     },
+    /**
+     * An owned laner's idle swing (states/idle_swing): one attack when the picker had no last hit, deny or pre-hit to offer.
+     * `kind` predeny (our creep under half HP that no enemy hero reaches before our hits kill it) or shove (an enemy creep outside
+     * their tower), `mode` the lane's mode (`safe`, or `shove` forced by Overrides.ForceShove). `result` ok once the attack fired.
+     * At the pick: `walk` (s), the creep's `hp` and fraction `hf`; predeny: our kill time `kill` (s, absent past the horizon), the
+     * nearest enemy hero's reach `reach` (s, -1 none near), `focus` 1 when an allied hero was already hitting it. `dn` / `lh` 1
+     * when this bot's deny / last-hit count rose during the swing (the swing took the creep itself).
+     */
     idle_swing: {
         pid: "num",
         kind: "str",

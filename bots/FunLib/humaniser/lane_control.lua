@@ -255,6 +255,7 @@ ____exports.SETTINGS = {
     InLane = 2000,
     DepartWithin = 60,
     DepartLead = 25,
+    DepartAfter = 15,
     CoreLowHp = 0.4,
     CoreThreat = 2,
     CoreThreatR = 1200,
@@ -591,7 +592,7 @@ local function decide(team, lane, now, m)
     elseif away and (coreIn ~= nil or supIn ~= nil) then
         rule = "R5"
         mode = "shove"
-    elseif supIn ~= nil and dep ~= nil and dep <= s.DepartWithin then
+    elseif supIn ~= nil and dep ~= nil and dep >= s.DepartAfter and dep <= s.DepartWithin then
         rule = "R2"
     elseif coreIn ~= nil and supIn == nil then
         rule = "R3"

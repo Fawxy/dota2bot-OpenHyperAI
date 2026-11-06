@@ -8,8 +8,9 @@
  *
  * The pull's effect is the fight model's (lane_push WaveGoneFrom: this wave gone) against the plain forecast, scaled by
  * PullScale: on 17 banked games (138 diverted pulls) the unscaled model overshoots the move by about 1.6x at 30-45 s after
- * the slot; scaled by 0.61 it had the lowest error of every arm at +30 and +45 s (median 788 and 761 against 1,014-2,020 for
- * no change, a fixed size and the raw model; `docs/proposals/lane-forecast/pulleffect.js`).
+ * the slot; scaled by 0.61 it had the lowest error of every arm at +30 and +45 s (median 788 and 684, read 8 s before the
+ * slot; design s5.1c has the table; `docs/proposals/lane-forecast/pulleffect.js`). The check falls about 31 s after a pull
+ * slot (read at wave + 2, slots near wave + 16), so the +30 s row is its offline before value.
  */
 import { Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -47,6 +48,9 @@ export const SETTINGS = {
      *  a departure leaves DepartLead s before its event second. */
     DepartWithin: 60,
     DepartLead: 25,
+    /** ...and not sooner than this: a support leaving before this wave's pull slot (about 16 s after the spawn, 14 after
+     *  the read) has no time to reset it (review 2026-11-06-lane-control-3115b32 M2: lctl1 read at 5:32, departure 5:35). */
+    DepartAfter: 15,
     /** R6: the core below this HP share, or this many enemy heroes within CoreThreatR of it with no support in lane. */
     CoreLowHp: 0.4,
     CoreThreat: 2,
@@ -262,7 +266,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     else if (away && (coreIn !== undefined || supIn !== undefined)) {
         rule = "R5";
         mode = "shove";
-    } else if (supIn !== undefined && dep !== undefined && dep <= s.DepartWithin) rule = "R2";
+    } else if (supIn !== undefined && dep !== undefined && dep >= s.DepartAfter && dep <= s.DepartWithin) rule = "R2";
     else if (coreIn !== undefined && supIn === undefined) rule = "R3";
     // R4 (a core alone with a use for the time) needs the camp trip's shove-then-camp price, not built yet (ROADMAP Core next
     // gold): never chosen in slice 2a.
