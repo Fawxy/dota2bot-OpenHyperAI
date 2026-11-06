@@ -126,12 +126,33 @@ export function NeutralSpeed(bot: Unit, fb: number): number {
 }
 
 /** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
-export function AcquisitionRange(unit: Unit, fb: number): number {
-    const v = perMoment("acquisition", unit.GetUnitName(), () => {
+export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
+    // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
+    // melee creep's, the one the pull timing's clearance is written for (review H1). Other types read directly and are not stored.
+    if (kind === "lane_creep" && !unit.GetUnitName().includes("melee")) {
+        const r = unit.GetAcquisitionRange();
+        return r !== undefined && r > 0 ? r : fb;
+    }
+    const v = perMoment("acquisition_" + kind, unit.GetUnitName(), () => {
         const r = unit.GetAcquisitionRange();
         return r !== undefined && r > 0 ? r : undefined;
     });
-    return v ?? fallback("acquisition", fb);
+    return v ?? live["acquisition_" + kind] ?? fallback("acquisition_" + kind, fb);
+}
+
+const noReadYet: Record<string, boolean> = {};
+/**
+ * The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
+ * (telemetry's world-facts tick reads each moment); before the first read, or with telemetry off, it returns `fb`, counted once.
+ */
+export function Latest(fact: "lane_creep_speed" | "acquisition_lane_creep", fb: number): number {
+    const v = live[fact];
+    if (v !== undefined) return v;
+    if (noReadYet[fact] !== true) {
+        noReadYet[fact] = true;
+        fallback(fact, fb);
+    }
+    return fb;
 }
 
 /** Latest live value per fact, for the probe's ev=world_fact line. */
@@ -150,6 +171,7 @@ export function Reset(): void {
     for (const k of Object.keys(fell)) delete fell[k];
     for (const k of Object.keys(live)) delete live[k];
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
+    for (const k of Object.keys(noReadYet)) delete noReadYet[k];
     towers = newTowers();
     gameReach = undefined;
     gameRange = undefined;
@@ -171,12 +193,14 @@ export function Probe(bot: Unit, constants: { tower: number; laneCreep: number; 
     const creep = creeps[0] ?? mine[0];
     if (creep !== undefined) {
         rows.push({ fact: "lane_creep_speed", live: LaneCreepSpeed(bot, creep.GetTeam(), constants.laneCreep), constant: constants.laneCreep });
-        rows.push({ fact: "acquisition_lane_creep", live: AcquisitionRange(creep, constants.acquisition), constant: constants.acquisition });
+        // The remembered value is the melee creep's (review H1/L5): log the row from a melee creep only.
+        const melee = [...creeps, ...mine].find((c) => c.GetUnitName().includes("melee"));
+        if (melee !== undefined) rows.push({ fact: "acquisition_lane_creep", live: AcquisitionRange(melee, constants.acquisition, "lane_creep"), constant: constants.acquisition });
     }
     const n = bot.GetNearbyNeutralCreeps(1600, true)[0];
     if (n !== undefined) {
         rows.push({ fact: "neutral_speed", live: NeutralSpeed(bot, constants.neutral), constant: constants.neutral });
-        rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition), constant: constants.acquisition });
+        rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition, "neutral"), constant: constants.acquisition });
     }
     return rows;
 }

@@ -19,6 +19,7 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
@@ -231,7 +232,7 @@ export function NextWaveAt(team: number, lane: Lane, front: Vector, now: number)
     const path = PullTiming.LanePath(enemy, lane);
     if (path === undefined || path.length < 2) return undefined;
     const [along] = PullTiming.Along(path, front);
-    const travel = along / LaneConfig.Settings().PullTiming.CreepSpeed;
+    const travel = along / WorldFacts.Latest("lane_creep_speed", LaneConfig.Settings().PullTiming.CreepSpeed);
     const period = Settings().WavePeriod;
     const k = math.max(0, math.ceil((now - travel) / period));
     return k * period + travel;

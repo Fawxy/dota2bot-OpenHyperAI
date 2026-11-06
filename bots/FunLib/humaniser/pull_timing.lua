@@ -62,6 +62,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local UnitType = ____dota.UnitType
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
@@ -233,7 +234,7 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
     end
     local t = LaneConfig.Settings().Timing
     local ahead = LaneAhead(team, lane)
-    local waveTravel = meetAlong / cfg.CreepSpeed - ahead
+    local waveTravel = meetAlong / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) - ahead
     local walk = ____exports.WalkLength(origin, leadPath) / neutralSpeed
     local waveAfter = walk + cfg.Lead - (half and t.HalfPullLater or 0)
     local seconds = __TS__ArrayMap(
@@ -338,11 +339,11 @@ function ____exports.LiveRead(timing, aggroAt, now)
     if now < spawnAt + cfg.LiveFrom then
         return nil
     end
-    local expected = (now - spawnAt + (timing.ahead or 0)) * cfg.CreepSpeed
+    local expected = (now - spawnAt + (timing.ahead or 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
     if expected >= timing.meetAlong then
         return nil
     end
-    local window = cfg.LiveWindow * cfg.CreepSpeed
+    local window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
     local front
     local sum = 0
     local n = 0
@@ -381,7 +382,10 @@ function ____exports.LiveRead(timing, aggroAt, now)
     local function clamp(d)
         return math.max(
             -cfg.LiveMaxShift,
-            math.min(cfg.LiveMaxShift, (expected - d) / cfg.CreepSpeed)
+            math.min(
+                cfg.LiveMaxShift,
+                (expected - d) / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
+            )
         )
     end
     return {
@@ -399,8 +403,8 @@ function ____exports.WaveAlongs(timing, aggroAt, now)
     end
     local cfg = settings()
     local spawnAt = aggroAt + timing.waveAfter - timing.waveTravel
-    local expected = (now - spawnAt + (timing.ahead or 0)) * cfg.CreepSpeed
-    local window = cfg.LiveWindow * cfg.CreepSpeed
+    local expected = (now - spawnAt + (timing.ahead or 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
+    local window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
     local kind = (timing.team == nil or timing.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
     for ____, c in ipairs(GetUnitList(kind) or ({})) do
         do
@@ -523,9 +527,9 @@ local function Clearance(t, alongs, keep, now, centre, heroSpeed)
         return nil
     end
     local step = cfg.HalfStep
-    local r = cfg.HalfAcquire
+    local r = WorldFacts.Latest("acquisition_lane_creep", cfg.HalfAcquire)
     local rh = cfg.HalfHeroAggro
-    local v = cfg.CreepSpeed
+    local v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
     local lo, hi = unpack(cfg.HalfSearch)
     local first = math.max(
         0,
@@ -690,7 +694,10 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         local k = 0
         while k < c.keep do
             fronts[#fronts + 1] = PathPoint(path, alongs[k + 1])
-            fronts[#fronts + 1] = PathPoint(path, alongs[k + 1] + cfg.CreepSpeed * cfg.HalfStepAhead)
+            fronts[#fronts + 1] = PathPoint(
+                path,
+                alongs[k + 1] + WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HalfStepAhead
+            )
             k = k + 1
         end
     end
@@ -700,7 +707,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         hypot(back.x, back.y, meet.x, meet.y)
     )
     local offs = neutrals ~= nil and #neutrals > 0 and neutrals or nil
-    local reach = (offs ~= nil and cfg.HalfAcquire or cfg.HalfHeroAggro) + cfg.HalfStepBuffer
+    local reach = (offs ~= nil and WorldFacts.Latest("acquisition_lane_creep", cfg.HalfAcquire) or cfg.HalfHeroAggro) + cfg.HalfStepBuffer
     local ux = (meet.x - back.x) / len
     local uy = (meet.y - back.y) / len
     local crossClear = offs ~= nil and ranged
@@ -785,7 +792,10 @@ function ____exports.Read(c, now)
         local alongs = ____exports.WaveAlongs(t, c.slot, now)
         c.n = #alongs
         if #alongs >= math.max(c.index, c.keep) + 2 then
-            local v = settings().CreepSpeed
+            local v = WorldFacts.Latest(
+                "lane_creep_speed",
+                settings().CreepSpeed
+            )
             local hit = now + (meet + c.past - alongs[c.index + 1]) / v - walk
             if c.keep > 0 and settings().HalfStepIn == true then
                 hit = hit - (settings().HalfNeutralDelay + settings().HalfStepEarly)

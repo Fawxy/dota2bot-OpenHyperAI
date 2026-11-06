@@ -7,6 +7,7 @@
  * spawn schedule where none is seen (push.js `initView`). Offline at 30 s: right 65% of the time, the best simple rule 43%.
  */
 import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import { LANE_PATHS, LanePath } from "bots/FunLib/humaniser/lane_push_data";
 
 declare function RealTime(this: void): number;
@@ -37,7 +38,9 @@ export const SETTINGS = {
 
 const R = Team.Radiant;
 const D = Team.Dire;
-const SPEED = 325;
+/** Fallback only: the lane creeps' speed is read live (WorldFacts.Latest). */
+const SPEED_FALLBACK = 325;
+const speed = (): number => WorldFacts.Latest("lane_creep_speed", SPEED_FALLBACK);
 const REACH = 50;
 const FLAG_REGEN = 3;
 const FLAG_RADIUS = 700;
@@ -251,7 +254,7 @@ export function Run(
             } else if (u.building !== true) {
                 u.swingAt = undefined;
                 const goal = v !== undefined ? (v.s > u.s ? 1 : v.s < u.s ? -1 : 0) : dirOf(u.team);
-                u.s += goal * SPEED * dt;
+                u.s += goal * speed() * dt;
             }
         }
         for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -327,7 +330,7 @@ export function ViewStart(lane: LanePath, v: number, t0: number, own: StartCreep
     for (const c of enemy) init.push({ team: e, kind: c.kind, s: c.s, hp: math.min(c.hp, maxHp(c.kind, t0)), maxhp: maxHp(c.kind, t0) });
     const spawnE = e === R ? lane.spawnR : lane.spawnD;
     for (let ts = math.floor(t0 / 30) * 30; ts >= t0 - 90 && ts >= 0; ts -= 30) {
-        const pos = spawnE + de * SPEED * (t0 - ts);
+        const pos = spawnE + de * speed() * (t0 - ts);
         let seen = false;
         for (const c of enemy) if (math.abs(c.s - pos) <= SETTINGS.SeenR) seen = true;
         if (seen) continue;
@@ -394,7 +397,7 @@ export interface WaveGone {
 
 /** Where the schedule puts `team`'s wave spawned at `ts` at second `t0`. */
 function waveSpot(lane: LanePath, team: number, ts: number, t0: number): number {
-    return (team === R ? lane.spawnR : lane.spawnD) + dirOf(team) * SPEED * (t0 - ts);
+    return (team === R ? lane.spawnR : lane.spawnD) + dirOf(team) * speed() * (t0 - ts);
 }
 
 /**
@@ -468,7 +471,7 @@ export function OwnT1(lane: LanePath, team: number): LuaMultiReturn<[number, num
  */
 export function NextArrival(lane: LanePath, team: number, s: number, now: number): number {
     const spawn = team === R ? lane.spawnR : lane.spawnD;
-    const travel = math.abs(s - spawn) / SPEED;
+    const travel = math.abs(s - spawn) / speed();
     const k = math.max(0, math.ceil((now - travel) / 30));
     return k * 30 + travel;
 }

@@ -45,6 +45,7 @@ function Unit:CanBeSeen() return true end
 function Unit:IsNull() return self.removed == true end
 function Unit:GetLocation() return self.loc end
 function Unit:GetUnitName() return self.name or ("npc_dota_hero_" .. self.pid) end
+function Unit:GetAcquisitionRange() return self.acq or 500 end
 function Unit:GetDifficulty() return self.difficulty end
 function Unit:GetLevel() return self.level end
 function Unit:HasModifier(name) return self.modifiers[name] ~= nil end

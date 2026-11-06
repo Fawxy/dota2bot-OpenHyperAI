@@ -165,6 +165,41 @@ local function __TS__ObjectKeys(obj)
     end
     return result
 end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local counted, fallback, valid, towers, fell, live
@@ -308,16 +343,37 @@ function ____exports.NeutralSpeed(bot, fb)
     return v or live.neutral_speed or fallback("neutral_speed", fb)
 end
 --- Acquisition range of `unit`, keyed by its name (one read per unit type per second).
-function ____exports.AcquisitionRange(unit, fb)
+function ____exports.AcquisitionRange(unit, fb, kind)
+    if kind == "lane_creep" and not __TS__StringIncludes(
+        unit:GetUnitName(),
+        "melee"
+    ) then
+        local r = unit:GetAcquisitionRange()
+        return r ~= nil and r > 0 and r or fb
+    end
     local v = perMoment(
-        "acquisition",
+        "acquisition_" .. kind,
         unit:GetUnitName(),
         function()
             local r = unit:GetAcquisitionRange()
             return r ~= nil and r > 0 and r or nil
         end
     )
-    return v or fallback("acquisition", fb)
+    return v or live["acquisition_" .. kind] or fallback("acquisition_" .. kind, fb)
+end
+local noReadYet = {}
+--- The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
+-- (telemetry's world-facts tick reads each moment); before the first read, or with telemetry off, it returns `fb`, counted once.
+function ____exports.Latest(fact, fb)
+    local v = live[fact]
+    if v ~= nil then
+        return v
+    end
+    if noReadYet[fact] ~= true then
+        noReadYet[fact] = true
+        fallback(fact, fb)
+    end
+    return fb
 end
 --- Latest live value per fact, for the probe's ev=world_fact line.
 function ____exports.Live()
@@ -340,6 +396,9 @@ function ____exports.Reset()
     end
     for ____, k in ipairs(__TS__ObjectKeys(____exports.ReadCount)) do
         __TS__Delete(____exports.ReadCount, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(noReadYet)) do
+        __TS__Delete(noReadYet, k)
     end
     towers = newTowers()
     gameReach = nil
@@ -369,11 +428,25 @@ function ____exports.Probe(bot, constants)
             ),
             constant = constants.laneCreep
         }
-        rows[#rows + 1] = {
-            fact = "acquisition_lane_creep",
-            live = ____exports.AcquisitionRange(creep, constants.acquisition),
-            constant = constants.acquisition
-        }
+        local ____array_0 = __TS__SparseArrayNew(unpack(creeps))
+        __TS__SparseArrayPush(
+            ____array_0,
+            unpack(mine)
+        )
+        local melee = __TS__ArrayFind(
+            {__TS__SparseArraySpread(____array_0)},
+            function(____, c) return __TS__StringIncludes(
+                c:GetUnitName(),
+                "melee"
+            ) end
+        )
+        if melee ~= nil then
+            rows[#rows + 1] = {
+                fact = "acquisition_lane_creep",
+                live = ____exports.AcquisitionRange(melee, constants.acquisition, "lane_creep"),
+                constant = constants.acquisition
+            }
+        end
     end
     local n = bot:GetNearbyNeutralCreeps(1600, true)[1]
     if n ~= nil then
@@ -384,7 +457,7 @@ function ____exports.Probe(bot, constants)
         }
         rows[#rows + 1] = {
             fact = "acquisition_neutral",
-            live = ____exports.AcquisitionRange(n, constants.acquisition),
+            live = ____exports.AcquisitionRange(n, constants.acquisition, "neutral"),
             constant = constants.acquisition
         }
     end
