@@ -53,6 +53,11 @@ export const DEFAULTS = {
      *  body, so only its back creeps turn) when the lane holds on their half, and full-pulls when it pushes out; false: full
      *  pulls only. */
     SupportHalfPull: true,
+    /** Slice pull-aggro: with SupportPull on, every pull is timed on the camp's hits landing on the puller near the wave (lock
+     *  on, walk to the stand at its own speed, arrive one neutral attack before the aimed creep is in its acquisition range;
+     *  half pulls from ranged spawns only, stepping in on the back creeps as a hit lands); off: the neutrals' walk to the
+     *  meet point. */
+    PullOnHero: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with

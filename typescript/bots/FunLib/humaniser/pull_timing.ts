@@ -217,7 +217,18 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
  * meet point. Empty without a wave model.
  */
 export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): number[] {
-    const out: number[] = [];
+    return WaveCreeps(timing, aggroAt, now).map((c) => c.along);
+}
+
+/** One creep of the timed wave: its distance along the lane path and its own acquisition range (GetAcquisitionRange). */
+export interface WaveCreep {
+    along: number;
+    acq: number;
+}
+
+/** WaveAlongs with each creep's acquisition range (slice pull-aggro: the trigger radius is the creep's own). */
+export function WaveCreeps(timing: PullTiming, aggroAt: number, now: number): WaveCreep[] {
+    const out: WaveCreep[] = [];
     if (timing.source !== "wave" || timing.waveAfter === undefined || timing.waveTravel === undefined || timing.lanePath === undefined) return out;
     const cfg = settings();
     const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
@@ -227,9 +238,9 @@ export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): nu
     for (const c of GetUnitList(kind) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
-        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push(along);
+        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push({ along, acq: c.GetAcquisitionRange() });
     }
-    out.sort((a, b) => b - a);
+    out.sort((a, b) => b.along - a.along);
     return out;
 }
 
@@ -278,6 +289,126 @@ export interface CreepTimer {
     first?: number;
     readAt?: number;
     reads: number;
+    /** Slice pull-aggro (Ours.PullOnHero): the puller's side of the timing; set, Read times the hit on the hits landing on it. */
+    hero?: OnHero;
+    /** At the last on-hero read: when the aimed creep comes within its acquisition range of the point where the puller is
+     *  hit (`ent`), the puller's walk from the hit point to the stand (s), and a half pull's step from the stand (s). */
+    ent?: number;
+    heroWalk?: number;
+    heroStep?: number;
+    /** A half pull's step-in point, once the step has begun (it keeps to it). */
+    stepTo?: Vector;
+    /** Frames a due step-in was held because a front creep would be in its range of the step point too. */
+    stepHeld?: number;
+    /** The puller's and a lane creep's GetBoundingRadius, for HeroMargin (defaults 24 and 16). */
+    heroHull?: number;
+    creepHull?: number;
+}
+
+/**
+ * Slice pull-aggro: what the puller brings to the hit second. The hit goes out so the puller, locked on `lock` s after it,
+ * walks from `from` along `route` (ending at the meet point; a half pull's end is replaced by its stand off the lane) at
+ * `speed` and stands there `arrive` s (one attack of the camp's neutrals: the next landing) before the aimed creep is within
+ * its own acquisition range of where the puller is hit: full pulls the meet point and the front creep, half pulls the
+ * step-in point and creep `keep`.
+ */
+export interface OnHero {
+    from: Vector;
+    route: Vector[];
+    speed: number;
+    /** Seconds from the hit to the first landing on the puller (a ranged spawn: 0, it lands during the walk). */
+    lock: number;
+    arrive: number;
+}
+
+/** Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error plus both hulls. */
+export function HeroMargin(heroHull: number, creepHull: number): number {
+    const cfg = settings();
+    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr + heroHull + creepHull;
+}
+
+/** The point `off` from the lane path on the line from `stand` to its nearest lane point (`stand` itself when nearer). */
+function TowardLane(path: number[][], stand: Vector, off: number): Vector {
+    const [a, o] = Along(path, stand);
+    if (o <= off) return stand;
+    const [lx, ly] = PathPoint(path, a);
+    const f = off / math.max(1, o);
+    return Vector(lx + (stand.x - lx) * f, ly + (stand.y - ly) * f, stand.z);
+}
+
+/** Read's on-hero branch: the hit second for `h`, or undefined until the aimed creep and one behind it are read. */
+function ReadOnHero(c: CreepTimer, now: number, h: OnHero, heroHull: number, creepHull: number): number | undefined {
+    const t = c.timing;
+    const path = t.lanePath;
+    const meet = h.route[h.route.length - 1];
+    if (path === undefined || meet === undefined) return undefined;
+    const cfg = settings();
+    const creeps = WaveCreeps(t, c.slot, now);
+    c.n = creeps.length;
+    const aim = c.keep > 0 ? c.keep : c.index;
+    const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
+    // A half pull stands farther from the lane than any of the wave's creeps reaches (plus the margin) and is hit at the
+    // point on its way to the lane within the aimed creep's range less the margin.
+    const margin = HeroMargin(heroHull, creepHull);
+    let route = h.route;
+    let trigger = meet;
+    let step = 0;
+    if (c.keep > 0 && t.origin !== undefined) {
+        let reach = creeps.length > 0 ? 0 : cfg.HeroStandAcq;
+        for (const k of creeps) reach = math.max(reach, k.acq);
+        const stand = StepBackPoint(t.origin, meet, path, 0, reach + margin);
+        c.stand = stand;
+        route = [...h.route];
+        route[route.length - 1] = stand;
+        if (creeps.length > aim) {
+            trigger = TowardLane(path, stand, math.max(0, creeps[aim].acq - margin));
+            step = hypot(stand.x, stand.y, trigger.x, trigger.y) / math.max(1, h.speed);
+        }
+    }
+    if (creeps.length < aim + 2) return undefined;
+    const [ta, to] = Along(path, trigger);
+    const r = creeps[aim].acq;
+    const inside = to < r ? math.sqrt(r * r - to * to) : 0;
+    const enter = now + (ta - inside - creeps[aim].along) / v;
+    const walk = WalkLength(h.from, route) / math.max(1, h.speed);
+    c.ent = enter;
+    c.heroWalk = walk;
+    c.heroStep = step;
+    c.waveAt = now + (Along(path, meet)[0] - creeps[creeps.length - 1].along) / v;
+    return enter - h.arrive - step - walk - h.lock;
+}
+
+/**
+ * Slice pull-aggro: a half pull's step-in on the puller's hits. The puller waits at `stand` (out of every creep's range) and
+ * steps to within creep `keep`'s acquisition range (less HeroMargin) of where that creep will be at the next landing, once
+ * that landing is due within the step's walk (`landIn` s from now); it holds while a front creep would be within its own
+ * range plus the margin of the step point at the landing. Once it steps it keeps to that point; once `engaged`, where it is.
+ */
+export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean, heroHull = 24, creepHull = 16): Vector {
+    if (engaged) return c.stepTo ?? here;
+    if (c.stepTo !== undefined) return c.stepTo;
+    const path = c.timing.lanePath;
+    if (path === undefined || landIn === undefined) return stand;
+    const creeps = WaveCreeps(c.timing, c.slot, now);
+    if (creeps.length < c.keep + 1) return stand;
+    const v = WorldFacts.Latest("lane_creep_speed", settings().CreepSpeed);
+    const margin = HeroMargin(heroHull, creepHull);
+    const [bx, by] = PathPoint(path, creeps[c.keep].along + v * landIn);
+    const r = math.max(0, creeps[c.keep].acq - margin);
+    const d = hypot(stand.x, stand.y, bx, by);
+    const f = d > r ? r / d : 1;
+    const to = Vector(bx + (stand.x - bx) * f, by + (stand.y - by) * f, stand.z);
+    if (landIn > hypot(here.x, here.y, to.x, to.y) / math.max(1, speed)) return stand;
+    for (let k = 0; k < c.keep; k++) {
+        const [fx, fy] = PathPoint(path, creeps[k].along + v * landIn);
+        if (hypot(to.x, to.y, fx, fy) <= creeps[k].acq + margin) {
+            // A due landing passed up because a front creep would turn too (pull_job shd).
+            c.stepHeld = (c.stepHeld ?? 0) + 1;
+            return stand;
+        }
+    }
+    c.stepTo = to;
+    return to;
 }
 
 export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0, heroSpeed?: number): CreepTimer {
@@ -431,14 +562,15 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
  * from the lane path, so the wave walks past out of reach of the puller and the neutrals hitting it (phhar4: 300 behind a
  * meet point on the lane, camp 1 took the whole wave 5 of 5 while the puller waited). At most the origin.
  */
-export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | undefined): Vector {
+export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | undefined, minBack?: number, holdOff?: number): Vector {
     const cfg = settings();
     const ox = stand.x - origin.x;
     const oy = stand.y - origin.y;
     const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
-    let b = math.min(cfg.HalfStepBack, ol);
+    let b = math.min(minBack ?? cfg.HalfStepBack, ol);
+    const off = holdOff ?? cfg.HalfHoldOff;
     const at = (d: number) => Vector(stand.x - (ox / ol) * d, stand.y - (oy / ol) * d, stand.z);
-    if (path !== undefined) while (b < ol && Along(path, at(b))[1] < cfg.HalfHoldOff) b = math.min(ol, b + 50);
+    if (path !== undefined) while (b < ol && Along(path, at(b))[1] < off) b = math.min(ol, b + 50);
     return at(b);
 }
 
@@ -513,6 +645,15 @@ export function Read(c: CreepTimer, now: number): number {
     const walk = t.walk;
     if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && walk !== undefined) {
         c.readAt = now;
+        if (c.hero !== undefined) {
+            const hit = ReadOnHero(c, now, c.hero, c.heroHull ?? 24, c.creepHull ?? 16);
+            if (hit !== undefined) {
+                c.hit = hit;
+                c.reads += 1;
+                if (c.first === undefined) c.first = hit - c.slot;
+            }
+            return c.hit ?? c.slot;
+        }
         const alongs = WaveAlongs(t, c.slot, now);
         c.n = alongs.length;
         if (alongs.length >= math.max(c.index, c.keep) + 2) {

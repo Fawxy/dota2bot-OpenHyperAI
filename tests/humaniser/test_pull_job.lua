@@ -44,6 +44,8 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.PullJob.ResetCache()
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportHalfPull = o.half
+	-- Slice pull-aggro: these worlds test the job's flow on the switch-off timing (the neutrals' walk); `onHero` worlds test Ours.PullOnHero.
+	package.loaded["bots/FunLib/custom_loader"].Ours.PullOnHero = o.onHero == true
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
@@ -280,12 +282,22 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro, holdOff = o.holdOff })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro, holdOff = o.holdOff, onHero = o.onHero })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local out = stubAlongs(o.alongs or waveBehind(function() return 0 end), function()
+	kobold.range = o.neutralRange
+	local fn = o.alongs or waveBehind(function() return 0 end)
+	-- The on-hero timing reads WaveCreeps (alongs with each creep's acquisition range, here 500).
+	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
+	local creeps = PT.WaveCreeps
+	PT.WaveCreeps = function(t, a, now)
+		local r = {}
+		for i, x in ipairs(fn(t, a, now)) do r[i] = { along = x, acq = 500 } end
+		return r
+	end
+	local ok, out = pcall(stubAlongs, fn, function()
 		return capture(function()
 			while T < 120 do
 				frame(w)
@@ -293,6 +305,8 @@ local function livePull(o)
 			end
 		end)
 	end)
+	PT.WaveCreeps = creeps
+	if not ok then error(out, 0) end
 	return lines(out, "pull_job")[1], out
 end
 
@@ -313,6 +327,39 @@ do
 		and field(steady, "hb") == "-350", steady)
 	local plan = livePull({ alongs = function() return {} end })
 	check("creep hit: no creeps read, the plan's slot (hr=plan)", field(plan, "hr") == "plan" and field(plan, "sh") == "0", plan)
+end
+
+-- Slice pull-aggro (Ours.PullOnHero): a ranged spawn locks on at once and the line carries the on-hero plan (ent, hlk 0); a
+-- melee spawn that never lands a hit on the puller fails `lock`; one that does (its HP falls while the neutral targets it)
+-- leads from that landing, with the melee lock in the plan.
+do
+	local ranged = livePull({ onHero = true, neutralRange = 500 })
+	check("on hero: a ranged spawn's pull logs ent and a lock of 0", ranged ~= nil and field(ranged, "ent") ~= nil and field(ranged, "hlk") == "0"
+		and tonumber(field(ranged, "lk")) ~= nil and tonumber(field(ranged, "lk")) <= 0.5, ranged)
+	local never = livePull({ onHero = true })
+	check("on hero: a melee spawn with no landing fails timeout:lock", never ~= nil and field(never, "why") == "timeout:lock", never)
+	local landed = livePull({ onHero = true, onFrame = function(w)
+		if w.H.PullJob.Running(w.sup) then w.sup.hp = w.sup.hp - 1 end
+	end })
+	check("on hero: a melee spawn landing on the puller locks on and leads (lk set, plan lock > 0)", landed ~= nil and field(landed, "why") ~= "timeout:lock"
+		and tonumber(field(landed, "lk")) ~= nil and tonumber(field(landed, "hlk")) > 0, landed)
+	local off = livePull({ neutralRange = 500 })
+	check("on hero off: no on-hero fields", off ~= nil and field(off, "ent") == nil and field(off, "hlk") == nil, off)
+end
+
+-- A half pull only from a ranged spawn (user 07/11/2026): seen melee, the safe-lane pos5 full-pulls a HOLD; ranged, it halves.
+do
+	local HOLDR = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
+	local w = world({ reading = HOLDR, onHero = true, visible = true })
+	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	check("on hero: a melee spawn refuses the half", w.H.PullJob.KindFor(w.sup, HOLDR) == "full")
+	kobold.range = 500
+	check("on hero: a ranged spawn half-pulls", w.H.PullJob.KindFor(w.sup, HOLDR) == "half")
+	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
+	check("on hero: the camp unseen keeps the last seen spawn's kind", w.H.PullJob.KindFor(w.sup, HOLDR) == "half")
+	local w2 = world({ reading = HOLDR, visible = true })
+	MakeNeutral({ x = SMALL.x, y = SMALL.y })
+	check("on hero off: a melee spawn still half-pulls", w2.H.PullJob.KindFor(w2.sup, HOLDR) == "half")
 end
 
 -- The lane comes in (or holds short of the target): no pull; the slot is decided once, not re-read every frame.

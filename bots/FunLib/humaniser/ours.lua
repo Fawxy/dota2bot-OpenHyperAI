@@ -54,6 +54,7 @@ ____exports.DEFAULTS = {
     RuneSpawn = true,
     SupportPull = true,
     SupportHalfPull = true,
+    PullOnHero = true,
     LaneSpot = true,
     SupportHarass = true,
     LaneSpotTower = true,

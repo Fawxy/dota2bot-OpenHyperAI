@@ -198,6 +198,19 @@ interface Pull {
     lc?: number;
     la?: number;
     nar?: number;
+    /** Slice pull-aggro (Ours.PullOnHero): the tagged neutrals hold a ranged unit (from `nar`; undefined none tagged); the
+     *  lock-on's seconds after the hit (lk); arrival at the stand, the first landing after it and the first creep turned
+     *  (arr, tk); a half pull's step-in: its predicted landing, the error at the next landing and our creeps within their
+     *  own acquisition range of the puller then (le, lr); mk 1 when a half found its spawn melee after the hit. */
+    ranged?: boolean;
+    lk?: number;
+    arrAt?: number;
+    standLand?: number;
+    turnAt?: number;
+    stepPred?: number;
+    le?: number;
+    lr?: number;
+    mk?: number;
 }
 
 /** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
@@ -243,6 +256,8 @@ interface Decision {
     ctl?: boolean;
     /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
     hm?: number;
+    /** Slice pull-aggro: 1 when a wanted half pull was refused for a melee spawn (choice pm). */
+    pm?: number;
 }
 
 interface Trail {
@@ -259,6 +274,8 @@ const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 const ended: Record<number, Ended | undefined> = {};
 const priorities: Record<number, { at: number; p: number } | undefined> = {};
+/** Slice pull-aggro: per camp, whether its last seen spawn held a ranged unit (CampRanged). */
+const campKinds: Record<number, { spawn: number; ranged: boolean } | undefined> = {};
 
 /** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
 interface Ended {
@@ -268,7 +285,7 @@ interface Ended {
 }
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities, campKinds] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
     Calendar.ResetCache();
 }
 
@@ -383,9 +400,105 @@ function safeLane(bot: Unit): boolean {
  * in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
  */
 export function KindFor(bot: Unit, r: LanePush.Reading | undefined): Kind {
-    if (!Ours.On("SupportHalfPull") || LaneConfig.PositionOf(bot) !== 5 || !safeLane(bot)) return "full";
-    if (LaneConfig.Settings().PullTiming.HalfAll === true) return "half";
-    return r !== undefined && r.state === "HOLD" ? "half" : "full";
+    return halfWanted(bot, r) && !MeleeSpawn(bot) ? "half" : "full";
+}
+
+function halfWanted(bot: Unit, r: LanePush.Reading | undefined): boolean {
+    if (!Ours.On("SupportHalfPull") || LaneConfig.PositionOf(bot) !== 5 || !safeLane(bot)) return false;
+    if (LaneConfig.Settings().PullTiming.HalfAll === true) return true;
+    return r !== undefined && r.state === "HOLD";
+}
+
+/**
+ * Slice pull-aggro (user 07/11/2026: no half pulls from melee-only camps): whether `camp`'s spawn holds a ranged unit
+ * (GetAttackRange >= HalfRangedFrom), read per spawn from the units seen in its box (camp 1 spawned melee and ranged sets,
+ * phagg1); unseen, the last seen spawn's; undefined never seen.
+ */
+export function CampRanged(camp: Camps.CampJobData, spawner: Camps.Spawner, now: number): boolean | undefined {
+    const s = CampStateOf(spawner);
+    if (s.units.length > 0) {
+        const from = LaneConfig.Settings().PullTiming.HalfRangedFrom;
+        let ranged = false;
+        for (const u of s.units) if (u.GetAttackRange() >= from) ranged = true;
+        campKinds[camp.campIdx] = { spawn: math.floor(now / LaneConfig.Settings().Timing.PullPeriod), ranged };
+    }
+    return campKinds[camp.campIdx]?.ranged;
+}
+
+/** With Ours.PullOnHero: `bot`'s pull camp's spawn is known melee only. */
+function MeleeSpawn(bot: Unit): boolean {
+    if (!Ours.On("PullOnHero")) return false;
+    const camp = campFor(bot);
+    const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
+    return camp !== undefined && spawner !== undefined && CampRanged(camp, spawner, DotaTime()) === false;
+}
+
+type Attacker = Unit & { GetAttackPoint(): number; GetSecondsPerAttack(): number; GetAttackProjectileSpeed(): number };
+
+/**
+ * Slice pull-aggro: with Ours.PullOnHero, the puller's side of `timer` (PullTiming.OnHero): from the camp stand along the
+ * lead at the puller's own speed; `lock` 0 for a ranged spawn, else the slowest melee neutral's walk into reach plus its
+ * wind-up; `arrive` the camp's slowest attack period (fallbacks HeroLockMelee, HeroArrive while the camp is unseen).
+ */
+function heroFor(bot: Unit, p: Plan, timer: PullTiming.CreepTimer): void {
+    if (!Ours.On("PullOnHero")) {
+        timer.hero = undefined;
+        return;
+    }
+    const cfg = LaneConfig.Settings().PullTiming;
+    const units = CampStateOf(p.spawner).units;
+    const ranged = CampRanged(p.camp, p.spawner, DotaTime());
+    let spa: number | undefined;
+    let lock: number | undefined;
+    for (const u of units) {
+        const a = u as Attacker;
+        spa = math.max(spa ?? 0, a.GetSecondsPerAttack());
+        if (u.GetAttackRange() >= cfg.HalfRangedFrom) continue;
+        const gap = math.max(0, GetUnitToLocationDistance(u, p.stand) - u.GetAttackRange() - u.GetBoundingRadius() - bot.GetBoundingRadius());
+        const l = gap / math.max(1, u.GetCurrentMovementSpeed()) + a.GetAttackPoint() / math.max(0.1, u.GetAttackSpeed());
+        lock = math.max(lock ?? 0, l);
+    }
+    timer.hero = {
+        from: p.stand,
+        route: p.lead,
+        speed: bot.GetCurrentMovementSpeed(),
+        lock: ranged === true ? 0 : lock ?? cfg.HeroLockMelee,
+        arrive: spa ?? cfg.HeroArrive,
+    };
+    timer.heroHull = bot.GetBoundingRadius();
+}
+
+/**
+ * Slice pull-aggro: seconds to the next landing of a tagged neutral's attack on `bot`: a ranged attack in flight from
+ * GetIncomingTrackingProjectiles (distance over the caster's projectile speed), else each neutral attacking it from its
+ * GetLastAttackTime + GetSecondsPerAttack (GameTime's clock) plus a ranged one's flight. Undefined when none attacks it.
+ */
+function nextLanding(bot: Unit, p: Pull): number | undefined {
+    const tagged = p.tagged ?? [];
+    const from = LaneConfig.Settings().PullTiming.HalfRangedFrom;
+    let best: number | undefined;
+    const take = (t: number) => {
+        if (best === undefined || t < best) best = t;
+    };
+    const b = bot as Unit & { GetIncomingTrackingProjectiles(): { location: Vector; caster?: Unit; is_attack?: boolean }[] };
+    for (const pr of b.GetIncomingTrackingProjectiles() ?? []) {
+        const c = pr.caster;
+        if (pr.is_attack !== true || c === undefined || c === null || tagged.indexOf(c) < 0) continue;
+        const sp = (c as Attacker).GetAttackProjectileSpeed();
+        if (sp > 0) take(GetUnitToLocationDistance(bot, pr.location) / sp);
+    }
+    const clock = GameTime();
+    for (const u of tagged) {
+        if (stale(u) || u.GetAttackTarget() !== bot) continue;
+        const a = u as Attacker;
+        let flight = 0;
+        if (u.GetAttackRange() >= from) {
+            const sp = a.GetAttackProjectileSpeed();
+            flight = sp > 0 ? GetUnitToUnitDistance(u, bot) / sp : 0;
+        }
+        take(math.max(0, u.GetLastAttackTime() + a.GetSecondsPerAttack() - clock) + flight);
+    }
+    return best;
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -651,8 +764,32 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["ms", r?.ms],
         ["pk", d.want ? d.kind : undefined],
         ["hm", d.hm],
+        ["pm", d.pm],
         ...campFields(camp),
     ]);
+}
+
+/** Slice pull-aggro's pull_job fields (LOGGING "Pulls"); none without Ours.PullOnHero. */
+function heroFields(p: Pull): Telemetry.Fields<"pull_job"> {
+    const h = p.timer.hero;
+    if (h === undefined) return [];
+    const r2 = (x: number | undefined) => (x !== undefined ? math.floor(x * 100 + 0.5) / 100 : undefined);
+    const ent = p.timer.ent;
+    return [
+        ["ent", r2(ent)],
+        ["arr", p.arrAt !== undefined && ent !== undefined ? r2(p.arrAt - (ent - h.arrive)) : undefined],
+        ["tk", p.standLand !== undefined && p.turnAt !== undefined ? r2(p.turnAt - p.standLand) : undefined],
+        ["hlk", r2(h.lock)],
+        ["har", r2(h.arrive)],
+        ["hws", r2(p.timer.heroWalk)],
+        ["hst", r2(p.timer.heroStep)],
+        ["hsp", math.floor(h.speed + 0.5)],
+        ["lk", r2(p.lk)],
+        ["le", r2(p.le)],
+        ["lr", p.lr],
+        ["mk", p.mk],
+        ["shd", p.timer.stepHeld],
+    ];
 }
 
 function jobLine(bot: Unit, p: Pull, phase: string, why: string): void {
@@ -718,6 +855,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["lc", p.lc],
         ["la", p.la !== undefined ? math.floor(p.la * 100 + 0.5) / 100 : undefined],
         ["nar", p.nar],
+        ...heroFields(p),
     ];
     if (!r.success) {
         creepLines(bot, p);
@@ -850,6 +988,7 @@ function trackCreeps(bot: Unit, p: Pull): void {
             }
         }
         const turned = onNeutral(c);
+        if (turned && p.turnAt === undefined) p.turnAt = now;
         if (!turned && t.dp !== undefined && dp >= t.dp) continue;
         const dn = nearest();
         t.tr = turned ? 1 : 0;
@@ -882,6 +1021,13 @@ function landing(bot: Unit, p: Pull, onPuller: boolean): boolean {
     const now = DotaTime();
     if (p.fl === undefined) p.fl = now;
     p.lc = (p.lc ?? 0) + 1;
+    if (p.arrAt !== undefined && p.standLand === undefined) p.standLand = now;
+    if (p.stepPred !== undefined && p.le === undefined) {
+        p.le = now - p.stepPred;
+        let n = 0;
+        for (const c of laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch)) if (GetUnitToUnitDistance(c, bot) <= c.GetAcquisitionRange()) n++;
+        p.lr = n;
+    }
     return true;
 }
 
@@ -966,6 +1112,7 @@ function tagCamp(bot: Unit, p: Pull): void {
         const r = u.GetAttackRange();
         if (p.nar === undefined || r > p.nar) p.nar = r;
     }
+    if (p.nar !== undefined) p.ranged = p.nar >= LaneConfig.Settings().PullTiming.HalfRangedFrom;
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c.IsAlive() && LanePush.IsLaneCreep(c.GetUnitName()) && GetUnitToLocationDistance(c, p.plan.meet) <= SETTINGS.ArriveR) p.early.push(c);
@@ -1170,16 +1317,43 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit (with the
     // step-in, HalfStepBack behind it, stepping in during the watch).
     const lead = [...p.lead];
-    const stepIn = pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true;
+    // Slice pull-aggro: timed on the puller's hits (PullTiming.OnHero); a half pull's lead ends at its stand off the lane.
+    const onHero = pull.timer.hero !== undefined;
+    const half = pull.timer.keep > 0;
+    const stepIn = !onHero && half && s.PullTiming.HalfStepIn === true;
     if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet, p.timing.lanePath);
+    if (onHero && half && pull.timer.stand !== undefined && lead.length > 0) lead[lead.length - 1] = pull.timer.stand;
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
+        if (onHero) heroFor(bot, p, pull.timer);
         pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
         if (pull.timer.stand !== undefined && lead.length > 0)
             lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
-    const stepAt = stepIn
+    const heroStep =
+        onHero && half
+            ? () => {
+                  // A spawn found melee at the hit: no half from it (user 07/11/2026), the puller takes the wave on the lane.
+                  if (pull.ranged === false) {
+                      pull.mk = 1;
+                      return p.meet as unknown as Lib.Vec;
+                  }
+                  const end = pull.timer.stand ?? p.meet;
+                  const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
+                  const here = bot.GetLocation();
+                  const landIn = nextLanding(bot, pull);
+                  const before = pull.timer.stepTo;
+                  const at = PullTiming.StepInOnHero(pull.timer, end, here, DotaTime(), landIn, bot.GetCurrentMovementSpeed(), engaged, bot.GetBoundingRadius());
+                  if (before === undefined && pull.timer.stepTo !== undefined && landIn !== undefined) pull.stepPred = DotaTime() + landIn;
+                  if (engaged && pull.stepIn === undefined) {
+                      const path = p.timing.lanePath;
+                      pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
+                  }
+                  return at as unknown as Lib.Vec;
+              }
+            : undefined;
+    const stepAt = heroStep ?? (stepIn
         ? () => {
               const end = pull.timer.stand ?? p.meet;
               const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
@@ -1205,8 +1379,24 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
               }
               return at as unknown as Lib.Vec;
               }
+        : undefined);
+    // Slice pull-aggro: the lead starts once the camp has locked on: at once for a ranged spawn (its hits land during the
+    // walk), at the first landing on the puller for a melee one.
+    const lockOn = onHero
+        ? () => {
+              let landed = pull.ranged !== false;
+              if (!landed) {
+                  let on = false;
+                  for (const u of pull.tagged ?? []) if (!stale(u) && u.GetAttackTarget() === bot) on = true;
+                  landed = landing(bot, pull, on);
+              }
+              if (landed && pull.lk === undefined) pull.lk = DotaTime() - (pull.hat ?? DotaTime());
+              return landed;
+          }
         : undefined;
     return {
+        lockOn,
+        lockFor: s.PullTiming.LockFor,
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
         camp,
@@ -1237,7 +1427,8 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
             ctx.label(l);
             p.label = l;
             // Diagnostics only: an error here must not end the pull (review 2026-11-04-pull-diag L3).
-            if (l === "lead" && p.hat === undefined) diag(bot, p, tagCamp);
+            if ((l === "lock" || l === "lead") && p.hat === undefined) diag(bot, p, tagCamp);
+            if (l === "watch" && p.arrAt === undefined) p.arrAt = DotaTime();
         },
         urgent: ctx.urgent,
     };
@@ -1277,6 +1468,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
                 : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
         timers[pid] = timer;
     }
+    heroFor(bot, p, timer);
     const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
@@ -1298,6 +1490,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
         const want = rule !== undefined || harness;
         d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone, hold, rule, ctl: ctl !== undefined };
+        if (want && d.kind === "full" && halfWanted(bot, reading) && MeleeSpawn(bot)) d.pm = 1;
         decided[pid] = d;
         gateWhy[pid] = undefined;
         if (d.kind === "half") return false;
@@ -1308,6 +1501,17 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         gateWhy[pid] = undefined;
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
+    // Slice pull-aggro: a half whose spawn is seen melee before the hit becomes the full pull while its second is still
+    // ahead, else stays (half-melee: a coverage count, not a miss).
+    if (d.want && d.kind === "half" && MeleeSpawn(bot)) {
+        d.pm = 1;
+        if (now < full.slot - travel(bot, full)) {
+            d.kind = "full";
+            return false;
+        }
+        done(false, "half-melee");
+        return false;
+    }
     if (!d.want) {
         done(false, d.ctl === true ? "ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;

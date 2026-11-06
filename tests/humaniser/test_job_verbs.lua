@@ -278,6 +278,30 @@ do
 end
 
 do
+    -- Lock on (slice pull-aggro): after the confirmed hit the lead waits for the host's lockOn (here true from 6.5 s on),
+    -- holding meanwhile; a lock that never comes fails `timeout` "lock" after lockFor s.
+    local sim, bot = world()
+    local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
+    local leadAt
+    start(bot, function(ctx)
+        return job.pull(ctx, pullPlan{ watchSec = 0.5, lockFor = 3, lockOn = function()
+            if sim.t >= 6.5 and leadAt == nil then leadAt = sim.t end
+            return sim.t >= 6.5
+        end })
+    end)
+    local r, _, labels = run(sim, bot, { n })
+    T.eq("pull lock: ok", r.reason, "ok")
+    T.eq("pull lock: phases", table.concat(labels, ","), "travel,wait,aggro,lock,lead,watch")
+    T.check("pull lock: the lead starts once locked on (6.5 s)", leadAt ~= nil and leadAt >= 6.5 - 1e-9 and leadAt <= 6.5 + 2 * DT, leadAt)
+    T.check("pull lock: the wait posted a hold", holdsOf(sim).job_lock)
+    local sim2, bot2 = world()
+    local n2 = sim2:addNeutral{ x = 700, y = 0, hp = 500 }
+    start(bot2, function(ctx) return job.pull(ctx, pullPlan{ lockFor = 1, lockOn = function() return false end }) end)
+    local r2 = run(sim2, bot2, { n2 })
+    T.check("pull lock never: fails timeout lock", not r2.success and r2.reason == "timeout" and r2.message == "lock", tostring(r2.reason) .. ":" .. tostring(r2.message))
+end
+
+do
     -- Lead blocked: the camp is chasing a bot that cannot reach the meet point -> fails with message "lead".
     local sim, bot = world()
     sim:addNeutral{ x = 700, y = 0, hp = 500 }

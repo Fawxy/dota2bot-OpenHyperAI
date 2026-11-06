@@ -366,4 +366,65 @@ do
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 
+do
+	-- Slice pull-aggro (Ours.PullOnHero): with the puller's side set (timer.hero) the hit second is the aimed creep's entry
+	-- into its own acquisition range of where the puller is hit, less one neutral attack (arrive), the walk to the stand at
+	-- the puller's speed, a half's step from it and the lock. The lane runs along y = -5000; the camp straight below the meet.
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	CURRENT_TEAM = 2
+	CREEPS[2], CREEPS[3] = {}, {}
+	local meet = Vector(-1600, -5000)
+	local origin = Vector(-1600, -6200)
+	local from = Vector(-1600, -6000)
+	local timing = PT.For(2, Lane.Bot, origin, "small", { meet }, false, { 15, 45 })
+	local slot = timing.seconds[1] + 60
+	local m = timing.meetAlong
+	T = slot + timing.waveAfter - timing.waveTravel - AHEAD + (m - 1000) / 325
+	local wave = {}
+	for k = 0, 3 do wave[k + 1] = MakeCreep({ team = 2, x = PATH[1][1] + m - 1000 - 150 * k, y = -5000 }) end
+	local full = PT.Timer(timing, slot, 0, 100)
+	full.hero = { from = from, route = { meet }, speed = 300, lock = 0.4, arrive = 1 }
+	local want = T + 500 / 325 - 1 - 1000 / 300 - 0.4
+	check("on hero, full: the front creep within 500 of the meet point, less arrive, walk and lock", within(PT.Read(full, T), want, 1e-6), PT.Read(full, T) - want)
+	check("on hero, full: ent logged and the neutrals' walk not used", within(full.ent, T + 500 / 325, 1e-6) and full.clear == nil, full.ent)
+	wave[1].acq = 600
+	full.readAt = nil
+	check("on hero, full: a front creep with 600 acquisition enters 100 sooner", within(PT.Read(full, T), want - 100 / 325, 1e-6), PT.Read(full, T) - want)
+	wave[1].acq = nil
+	-- Half: the stand is beyond every creep's range plus the margin (325 x 0.2 + 24 + 16 = 105) from the lane, on the way back
+	-- to the camp in 50 steps: the back creep's 600 puts it 750 off; the third creep (500) is hit 395 off the lane.
+	wave[4].acq = 600
+	local ht = PT.For(2, Lane.Bot, origin, "small", { meet }, true, { 15, 45 })
+	local half = PT.Timer(ht, slot, 1, 500, 2, 300)
+	half.hero = { from = from, route = { meet }, speed = 300, lock = 0, arrive = 1 }
+	local hit = PT.Read(half, T)
+	check("on hero, half: the stand 750 off the lane", half.stand ~= nil and within(half.stand.y, -5750, 1e-6) and within(half.stand.x, -1600, 1e-6),
+		half.stand and (half.stand.x .. "," .. half.stand.y))
+	local inside = math.sqrt(500 * 500 - 395 * 395)
+	local hwant = T + (1300 - inside) / 325 - 1 - 355 / 300 - 250 / 300
+	check("on hero, half: the third creep within 500 of the step point 395 off, less arrive, step and walk", within(hit, hwant, 1e-6), hit - hwant)
+	-- The step-in, the wave walking in with its expected place at the meet point (T2): gaps of 600 so the front two stay out
+	-- of their range plus the margin of the step point; the third creep 200 short of the meet point.
+	local T2 = T + 1000 / 325
+	CREEPS[2] = {}
+	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + 1000 - 600 * k, y = -5000 }) end
+	local here = half.stand
+	local function stepAt(c, landIn) return PT.StepInOnHero(c, half.stand, here, T2, landIn, 300, false) end
+	local c1 = PT.Timer(ht, slot, 1, 500, 2, 300)
+	local hold = stepAt(c1, 2)
+	check("step-in on hero: a landing 2 s off (beyond the step's 1.6 s walk) holds at the stand", dist(hold, half.stand) < 1 and c1.stepTo == nil, dist(hold, half.stand))
+	check("step-in on hero: no landing known holds too", dist(stepAt(c1, nil), half.stand) < 1)
+	local go = stepAt(c1, 0.3)
+	local back = Vector(meet.x - 200 + 325 * 0.3, -5000)
+	check("step-in on hero: a landing due within the step goes to 395 from where the third creep will be", within(dist(go, back), 395, 1e-3) and c1.stepTo ~= nil,
+		dist(go, back))
+	check("step-in on hero: once stepped it keeps to that point", dist(stepAt(c1, 2), go) < 1)
+	CREEPS[2] = {}
+	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x - 100 * k, y = -5000 }) end
+	local c2 = PT.Timer(ht, slot, 1, 500, 2, 300)
+	local held = stepAt(c2, 0.3)
+	check("step-in on hero: creeps 100 apart, the second would turn too: holds and counts it", dist(held, half.stand) < 1 and c2.stepHeld == 1, c2.stepHeld)
+	CREEPS[2], CREEPS[3] = {}, {}
+end
+
 finish()

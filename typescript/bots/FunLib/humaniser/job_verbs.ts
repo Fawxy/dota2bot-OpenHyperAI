@@ -57,6 +57,8 @@ const RUNE_LATE_BY = 5;
 const RUNE_GRACE = 2;
 const RUNE_PICKUP_FOR = 10;
 const SHRINE_RADIUS = 300;
+/** Seconds a pull waits after its hit for the camp to lock on (PullPlan lockOn). */
+const LOCK_FOR = 2;
 
 function ok(): Result {
     return { success: true, reason: "ok" };
@@ -358,6 +360,10 @@ export interface PullPlan extends AggroOpts {
     bailFor?: number;
     /** Read every frame of the watch: where to stand now instead of the lead's end (a half pull's step-in), within 30. */
     watchAt?: (this: void) => Vec | undefined;
+    /** Read every frame after the confirmed hit: the lead starts once it returns true (the camp has locked on to the bot,
+     *  slice pull-aggro), the bot holding meanwhile; after `lockFor` s (default 2) the verb fails `timeout` "lock". */
+    lockOn?: (this: void) => boolean;
+    lockFor?: number;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -375,8 +381,9 @@ function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
 
 /**
  * Pull (full, half, double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
- * error for the whole job), lead it along `lead` to the meet point, then watch there. Labels `travel`, `wait`,
- * `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done. Grading the divert is the host's.
+ * error for the whole job), with `lockOn` wait for the camp to lock on, lead it along `lead` to the meet point, then watch
+ * there. Labels `travel`, `wait`, `aggro` (twice for a double), `lock`, `lead`, `watch`; urgent until the lead is done.
+ * Grading the divert is the host's.
  */
 export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     const err = p.timingError ?? E().Skill.timingError(bot);
@@ -387,6 +394,17 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     }
     const r = yield* aggroCamp(bot, p.camp, p.aggroAt, err, p, h);
     if (!r.success) return r;
+
+    if (p.lockOn !== undefined) {
+        h.label?.("lock");
+        const until = now() + (p.lockFor ?? LOCK_FOR);
+        while (!p.lockOn()) {
+            if (!bot.IsAlive()) return fail("dead");
+            if (now() >= until) return fail("timeout", "lock");
+            hold(bot, "job_lock");
+            yield;
+        }
+    }
 
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;

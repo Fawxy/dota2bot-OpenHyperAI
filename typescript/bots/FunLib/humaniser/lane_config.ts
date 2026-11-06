@@ -407,6 +407,17 @@ export const DEFAULTS = {
         // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
         // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
         HalfStepNeutrals: false,
+        // Slice pull-aggro (Ours.PullOnHero; slice file "Facts the behaviour needs"). HeroLandErr: the landing prediction's
+        // error in seconds; the stand and step-in margins are lane creep speed x it plus both hulls (`judgement` until the
+        // per-step-in `se` is measured). LockFor: seconds after the confirmed hit to wait for the first landing before the
+        // lead (`judgement`). Fallbacks while the camp is unseen (logged as `hf` sources on pull_job): HeroLockMelee the melee
+        // camp's first landing, HeroArrive one neutral attack period, HeroStandAcq the largest lane creep acquisition range
+        // until the wave is read (ranged 600, phagg1).
+        HeroLandErr: 0.2,
+        LockFor: 2,
+        HeroLockMelee: 1,
+        HeroArrive: 1.5,
+        HeroStandAcq: 600,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

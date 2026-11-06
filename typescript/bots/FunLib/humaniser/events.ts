@@ -1529,6 +1529,29 @@ export const EVENTS = {
         lc: "num",
         la: "num",
         nar: "num",
+        // Slice pull-aggro (Ours.PullOnHero; unset with it off): ent the predicted game time the aimed creep (full: the front
+        // one; half: the third) comes within its own GetAcquisitionRange of where the puller is hit (the meet point; a half's
+        // step-in point), at the order's last read; arr the puller's arrival at the stand against ent - har (s, positive
+        // late); tk tank seconds, the first landing after that arrival to the first creep of ours turned; the plan's parts:
+        // hlk the lock (s from the hit to the first landing; 0 a ranged spawn), har one neutral attack period, hws the
+        // walk to the stand, hst a half's step from it, hsp the puller's speed; lk the measured lock (s from the hit to the
+        // lead's start); a half's step-in: le the landing error (s, actual first landing after the step minus its
+        // prediction), lr our creeps within their own acquisition range of the puller at that landing; mk 1 when the spawn
+        // was found melee at the hit and the half took the wave on the lane; shd frames a due step-in was held because a
+        // front creep would have been within its range plus the margin of the step point too.
+        ent: "num",
+        arr: "num",
+        tk: "num",
+        hlk: "num",
+        har: "num",
+        hws: "num",
+        hst: "num",
+        hsp: "num",
+        lk: "num",
+        le: "num",
+        lr: "num",
+        mk: "num",
+        shd: "num",
     },
     // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
     // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
@@ -1639,6 +1662,8 @@ export const EVENTS = {
         // want of one (why=half-geo; pull_job hm).
         pk: "str",
         hm: "num",
+        // Slice pull-aggro: pm 1 when a wanted half pull was refused (or turned into the full one) for a melee spawn.
+        pm: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).

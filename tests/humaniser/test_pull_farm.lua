@@ -46,6 +46,8 @@ local function world(o)
 	H.PullFarm.ResetCache()
 	H.CampClaims.ResetCache()
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullFarm = o.farm ~= false
+	-- The farm follows the pull; the pull's own timing (Ours.PullOnHero) is test_pull_job's.
+	package.loaded["bots/FunLib/custom_loader"].Ours.PullOnHero = false
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
