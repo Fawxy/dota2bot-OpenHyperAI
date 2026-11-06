@@ -1520,6 +1520,15 @@ export const EVENTS = {
         // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
         shs: "num",
         shh: "num",
+        // Slice pull-aggro (EC-064: a lane creep turns when a neutral's attack lands on its hero within the creep's aggro
+        // range): a landing is a frame after the hit where the puller's HP fell while a tagged neutral had it as its attack
+        // target and no enemy hero or lane creep did. fl the first landing (game time), lc landings to the trail's end, la
+        // the first landing with one of our lane creeps within its own acquisition range (GetAcquisitionRange) of the
+        // puller, nar the largest attack range among the tagged neutrals at the hit.
+        fl: "num",
+        lc: "num",
+        la: "num",
+        nar: "num",
     },
     // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
     // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
@@ -1548,6 +1557,15 @@ export const EVENTS = {
         lt: "num",
         ld: "num",
         ln: "num",
+        // Slice pull-aggro, at the neutral landings on the puller (pull_job fl): ar the creep's own acquisition range, hk
+        // landings while it was within ar of the puller (to its turn for tr 1), hl seconds from the last landing to its turn
+        // (tr 1 only), hd its distance to the puller and hn to the nearest tagged neutral at that landing (tr 1) or at the
+        // landing it was nearest the puller (tr 0); unset when no landing came while it was tracked.
+        ar: "num",
+        hk: "num",
+        hl: "num",
+        hd: "num",
+        hn: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything

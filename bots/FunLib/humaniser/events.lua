@@ -1181,7 +1181,11 @@ ____exports.EVENTS = {
         wa = "num",
         nm = "num",
         shs = "num",
-        shh = "num"
+        shh = "num",
+        fl = "num",
+        lc = "num",
+        la = "num",
+        nar = "num"
     },
     pull_creep = {
         pid = "num",
@@ -1199,7 +1203,12 @@ ____exports.EVENTS = {
         ca = "num",
         lt = "num",
         ld = "num",
-        ln = "num"
+        ln = "num",
+        ar = "num",
+        hk = "num",
+        hl = "num",
+        hd = "num",
+        hn = "num"
     },
     pull_watch = {
         pid = "num",

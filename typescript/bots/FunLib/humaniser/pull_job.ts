@@ -192,6 +192,12 @@ interface Pull {
     shs?: number;
     shh?: number;
     shedTo?: Vector;
+    /** Slice pull-aggro: the neutrals' landings on the puller (pull_job fl lc la nar), from its HP each frame. */
+    lastHp?: number;
+    fl?: number;
+    lc?: number;
+    la?: number;
+    nar?: number;
 }
 
 /** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
@@ -212,6 +218,15 @@ interface CreepTrack {
     lt?: number;
     ld?: number;
     ln?: number;
+    /** Slice pull-aggro: its acquisition range, landings on the puller within it, and the landing kept (pull_creep ar..hn). */
+    ar?: number;
+    hk?: number;
+    hAt?: number;
+    lastD?: number;
+    lastN?: number;
+    bestD?: number;
+    bestN?: number;
+    hl?: number;
 }
 
 interface Decision {
@@ -699,6 +714,10 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nm", p.nm],
         ["shs", p.shs !== undefined ? math.floor(p.shs * 10 + 0.5) / 10 : undefined],
         ["shh", p.shh !== undefined ? math.floor(p.shh * 100 + 0.5) / 100 : undefined],
+        ["fl", p.fl !== undefined ? math.floor(p.fl * 100 + 0.5) / 100 : undefined],
+        ["lc", p.lc],
+        ["la", p.la !== undefined ? math.floor(p.la * 100 + 0.5) / 100 : undefined],
+        ["nar", p.nar],
     ];
     if (!r.success) {
         creepLines(bot, p);
@@ -752,6 +771,11 @@ function creepLines(bot: Unit, p: Pull): void {
             ["lt", r1(c.lt)],
             ["ld", r0(c.ld)],
             ["ln", r0(c.ln)],
+            ["ar", r0(c.ar)],
+            ["hk", c.hk],
+            ["hl", c.hl !== undefined ? math.floor(c.hl * 100 + 0.5) / 100 : undefined],
+            ["hd", r0(c.tr === 1 ? c.lastD : c.bestD)],
+            ["hn", r0(c.tr === 1 ? c.lastN : c.bestN)],
         ]);
     }
     p.creeps = undefined;
@@ -781,6 +805,7 @@ function trackCreeps(bot: Unit, p: Pull): void {
         if (u.GetAttackTarget() === bot) ph = 1;
     }
     const po = path !== undefined ? PullTiming.Along(path, at)[1] : undefined;
+    const landed = landing(bot, p, ph === 1);
     for (const c of laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch)) {
         let t = p.creeps.get(c);
         if (t === undefined) {
@@ -798,6 +823,23 @@ function trackCreeps(bot: Unit, p: Pull): void {
             }
             return dn;
         };
+        if (landed) {
+            if (t.ar === undefined) t.ar = c.GetAcquisitionRange();
+            const ar = t.ar ?? 0;
+            if (dp <= ar) {
+                t.hk = (t.hk ?? 0) + 1;
+                if (p.la === undefined) p.la = now;
+            }
+            // The latest landing (written for a turn) and the one nearest the puller (written for a creep that never turns).
+            const dn = nearest();
+            t.hAt = now;
+            t.lastD = dp;
+            t.lastN = dn;
+            if (t.bestD === undefined || dp < t.bestD) {
+                t.bestD = dp;
+                t.bestN = dn;
+            }
+        }
         if (path !== undefined && t.lt === undefined) {
             const off = PullTiming.Along(path, c.GetLocation())[1];
             if (t.off0 === undefined || off < t.off0) t.off0 = off;
@@ -811,6 +853,7 @@ function trackCreeps(bot: Unit, p: Pull): void {
         if (!turned && t.dp !== undefined && dp >= t.dp) continue;
         const dn = nearest();
         t.tr = turned ? 1 : 0;
+        if (turned && t.hAt !== undefined) t.hl = now - t.hAt;
         t.tt = now - p.hat;
         t.dp = dp;
         t.dn = dn;
@@ -819,6 +862,27 @@ function trackCreeps(bot: Unit, p: Pull): void {
         t.po = po;
         if (path !== undefined && meetAlong !== undefined) t.ca = PullTiming.Along(path, c.GetLocation())[0] - meetAlong;
     }
+}
+
+/**
+ * Slice pull-aggro: true on a frame where a tagged neutral's attack landed on the puller: its HP fell since the last frame
+ * while a tagged neutral had it as its attack target (`onPuller`) and no enemy hero or lane creep within 1,600 did (their
+ * damage would look the same). Counts fl, lc for the pull line.
+ */
+function landing(bot: Unit, p: Pull, onPuller: boolean): boolean {
+    const hp = bot.GetHealth();
+    const prev = p.lastHp;
+    p.lastHp = hp;
+    if (prev === undefined || hp >= prev || !onPuller) return false;
+    for (const kind of [UnitType.EnemyHeroes, UnitType.EnemyCreeps]) {
+        for (const e of GetUnitList(kind)) {
+            if (e.IsAlive() && GetUnitToUnitDistance(e, bot) <= 1600 && e.GetAttackTarget() === bot) return false;
+        }
+    }
+    const now = DotaTime();
+    if (p.fl === undefined) p.fl = now;
+    p.lc = (p.lc ?? 0) + 1;
+    return true;
 }
 
 /** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
@@ -899,6 +963,8 @@ function tagCamp(bot: Unit, p: Pull): void {
     for (const u of tagged) {
         const l = u.GetLocation();
         if (l !== undefined && l !== null) p.starts.set(u, l);
+        const r = u.GetAttackRange();
+        if (p.nar === undefined || r > p.nar) p.nar = r;
     }
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
