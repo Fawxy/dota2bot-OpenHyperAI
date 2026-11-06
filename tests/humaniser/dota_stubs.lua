@@ -40,6 +40,7 @@ function Unit:GetTeam() return self.team end
 function Unit:IsBot() return self.bot end
 function Unit:IsIllusion() return false end
 function Unit:IsHero() return true end
+function Unit:GetNearbyNeutralCreeps() return self.neutrals or {} end
 function Unit:IsAlive() return self.alive end
 function Unit:CanBeSeen() return true end
 function Unit:IsNull() return self.removed == true end

@@ -364,6 +364,61 @@ function ____exports.NeutralSpeed(bot, fb)
     )
     return v or live.neutral_speed or fallback("neutral_speed", fb)
 end
+local neutralByType = {}
+local neutralNoRead = {}
+local neutralFedAt
+--- True at most once per second per script: the behaviour-side feeder asks before scanning (one scan serves every bot).
+function ____exports.FeedDue()
+    local now = math.floor(DotaTime() / MomentSec)
+    if neutralFedAt == now then
+        return false
+    end
+    neutralFedAt = now
+    return true
+end
+--- Remember the speed `units` (creeps of one camp of `type`) move at: the mean of their base speeds, readings of 0 or less skipped.
+function ____exports.FeedNeutral(____type, units)
+    local sum = 0
+    local n = 0
+    for ____, u in ipairs(units) do
+        do
+            local __continue37
+            repeat
+                if not valid(u) then
+                    __continue37 = true
+                    break
+                end
+                local s = u:GetBaseMovementSpeed()
+                if s ~= nil and s > 0 then
+                    sum = sum + s
+                    n = n + 1
+                end
+                __continue37 = true
+            until true
+            if not __continue37 then
+                break
+            end
+        end
+    end
+    if n == 0 then
+        return
+    end
+    counted("neutral_speed_type")
+    neutralByType[____type] = sum / n
+    live["neutral_speed_" .. ____type] = sum / n
+end
+--- The speed the neutrals of a camp of `type` move at (camp creeps differ by camp: 310-350 against 290/300 in the smoke games); the last sighting, else `fb` (counted once per type).
+function ____exports.NeutralSpeedFor(____type, fb)
+    local v = neutralByType[____type]
+    if v ~= nil then
+        return v
+    end
+    if neutralNoRead[____type] ~= true then
+        neutralNoRead[____type] = true
+        fallback("neutral_speed_" .. ____type, fb)
+    end
+    return fb
+end
 --- Acquisition range of `unit`, keyed by its name (one read per unit type per second).
 function ____exports.AcquisitionRange(unit, fb, kind)
     if kind == "lane_creep" and not __TS__StringIncludes(
@@ -446,6 +501,13 @@ function ____exports.Reset()
     for ____, k in ipairs(__TS__ObjectKeys(noReadYet)) do
         __TS__Delete(noReadYet, k)
     end
+    for ____, k in ipairs(__TS__ObjectKeys(neutralByType)) do
+        __TS__Delete(neutralByType, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(neutralNoRead)) do
+        __TS__Delete(neutralNoRead, k)
+    end
+    neutralFedAt = nil
     towers = newTowers()
     gameReach = nil
     gameRange = nil
@@ -511,6 +573,9 @@ function ____exports.Probe(bot, constants)
             live = ____exports.AcquisitionRange(n, constants.acquisition, "neutral"),
             constant = constants.acquisition
         }
+    end
+    for ____, ____type in ipairs(__TS__ObjectKeys(neutralByType)) do
+        rows[#rows + 1] = {fact = "neutral_speed_" .. ____type, live = neutralByType[____type], constant = constants.neutral}
     end
     return rows
 end

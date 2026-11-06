@@ -220,7 +220,14 @@ function ____exports.For(team, lane, origin, ____type, leadPath, half, seed)
     local cfg = settings()
     local fallback = {seconds = seed, source = "seed"}
     local meet = leadPath[#leadPath]
-    local neutralSpeed = cfg.NeutralSpeed[____type]
+    local seedSpeed = cfg.NeutralSpeed[____type]
+    local ____temp_0
+    if seedSpeed == nil then
+        ____temp_0 = nil
+    else
+        ____temp_0 = WorldFacts.NeutralSpeedFor(____type, seedSpeed)
+    end
+    local neutralSpeed = ____temp_0
     if cfg.FromWave ~= true or lane == nil or origin == nil or meet == nil or neutralSpeed == nil then
         return fallback
     end
@@ -435,8 +442,8 @@ function ____exports.WaveAlongs(timing, aggroAt, now)
     return out
 end
 function ____exports.LiveShift(timing, aggroAt, now)
-    local ____opt_0 = ____exports.LiveRead(timing, aggroAt, now)
-    return ____opt_0 and ____opt_0.shift
+    local ____opt_1 = ____exports.LiveRead(timing, aggroAt, now)
+    return ____opt_1 and ____opt_1.shift
 end
 function ____exports.Timer(timing, slot, index, past, keep, heroSpeed)
     if keep == nil then

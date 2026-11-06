@@ -4,6 +4,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local GameState = ____dota.GameState
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -242,6 +243,7 @@ local function tick(bot)
     if not bot:IsHero() or bot:IsIllusion() then
         return
     end
+    Camps.FeedNeutralSpeeds(bot)
     Chat.EnsureInstalled(bot)
     Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
     Difficulty.Init()

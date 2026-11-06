@@ -5,6 +5,7 @@
 import { GameState, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -143,6 +144,7 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    Camps.FeedNeutralSpeeds(bot);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
     Difficulty.Init();

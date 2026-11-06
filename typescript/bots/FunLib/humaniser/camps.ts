@@ -3,7 +3,8 @@
  * (meet points, pull paths, stack exits) for seeds that carry no explicit vectors.
  * Spawn boxes always come from GetNeutralSpawners(), never from data.
  */
-import { Lane, Team, Tower, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import { CAMP_DATA, CampDataEntry, DEFAULT_STACK_SEC } from "bots/FunLib/humaniser/camps_data";
 
@@ -120,6 +121,26 @@ export function NearestSpawner(loc: Vector): LuaMultiReturn<[Spawner | undefined
         }
     }
     return $multi(best, bestDist);
+}
+
+/** A neutral belongs to the camp whose spawner is nearest, if within this (the box is about 300 across). */
+const FeedSpawnerRange = 600;
+
+/**
+ * Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups the neutrals `bot` sees by the camp type of their nearest
+ * spawner and remembers each type's speed. One scan per second serves every bot of the team (not telemetry's tick, so it
+ * runs with telemetry off).
+ */
+export function FeedNeutralSpeeds(bot: Unit): void {
+    if (!WorldFacts.FeedDue()) return;
+    const byType: Record<string, Unit[]> = {};
+    for (const n of bot.GetNearbyNeutralCreeps(1600, true) ?? []) {
+        if (n === undefined || n.IsNull()) continue;
+        const [sp, d] = NearestSpawner(n.GetLocation());
+        if (sp === undefined || d > FeedSpawnerRange) continue;
+        (byType[sp.type] = byType[sp.type] ?? []).push(n);
+    }
+    for (const [type, units] of Object.entries(byType)) WorldFacts.FeedNeutral(type, units);
 }
 
 export function InBox(idx: number, loc: Vector, margin: number = 0): boolean {

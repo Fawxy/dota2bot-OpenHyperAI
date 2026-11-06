@@ -117,7 +117,8 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const cfg = settings();
     const fallback: PullTiming = { seconds: seed, source: "seed" };
     const meet = leadPath[leadPath.length - 1];
-    const neutralSpeed = (cfg.NeutralSpeed as Record<string, number>)[type];
+    const seedSpeed = (cfg.NeutralSpeed as Record<string, number>)[type];
+    const neutralSpeed = seedSpeed === undefined ? undefined : WorldFacts.NeutralSpeedFor(type, seedSpeed);
     if (cfg.FromWave !== true || lane === undefined || origin === undefined || meet === undefined || neutralSpeed === undefined) return fallback;
     const path = LanePath(team, lane);
     if (path === undefined || path.length < 2) return fallback;

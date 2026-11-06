@@ -143,6 +143,47 @@ export function NeutralSpeed(bot: Unit, fb: number): number {
     return v ?? live.neutral_speed ?? fallback("neutral_speed", fb);
 }
 
+const neutralByType: Record<string, number> = {};
+const neutralNoRead: Record<string, boolean> = {};
+let neutralFedAt: number | undefined;
+
+/** True at most once per second per script: the behaviour-side feeder asks before scanning (one scan serves every bot). */
+export function FeedDue(): boolean {
+    const now = math.floor(DotaTime() / MomentSec);
+    if (neutralFedAt === now) return false;
+    neutralFedAt = now;
+    return true;
+}
+
+/** Remember the speed `units` (creeps of one camp of `type`) move at: the mean of their base speeds, readings of 0 or less skipped. */
+export function FeedNeutral(type: string, units: Unit[]): void {
+    let sum = 0;
+    let n = 0;
+    for (const u of units) {
+        if (!valid(u)) continue;
+        const s = u.GetBaseMovementSpeed();
+        if (s !== undefined && s > 0) {
+            sum += s;
+            n++;
+        }
+    }
+    if (n === 0) return;
+    counted("neutral_speed_type");
+    neutralByType[type] = sum / n;
+    live["neutral_speed_" + type] = sum / n;
+}
+
+/** The speed the neutrals of a camp of `type` move at (camp creeps differ by camp: 310-350 against 290/300 in the smoke games); the last sighting, else `fb` (counted once per type). */
+export function NeutralSpeedFor(type: string, fb: number): number {
+    const v = neutralByType[type];
+    if (v !== undefined) return v;
+    if (neutralNoRead[type] !== true) {
+        neutralNoRead[type] = true;
+        fallback("neutral_speed_" + type, fb);
+    }
+    return fb;
+}
+
 /** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
 export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
     // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
@@ -210,6 +251,9 @@ export function Reset(): void {
     for (const k of Object.keys(live)) delete live[k];
     for (const k of Object.keys(ReadCount)) delete ReadCount[k];
     for (const k of Object.keys(noReadYet)) delete noReadYet[k];
+    for (const k of Object.keys(neutralByType)) delete neutralByType[k];
+    for (const k of Object.keys(neutralNoRead)) delete neutralNoRead[k];
+    neutralFedAt = undefined;
     towers = newTowers();
     gameReach = undefined;
     gameRange = undefined;
@@ -245,6 +289,9 @@ export function Probe(
     if (n !== undefined) {
         rows.push({ fact: "neutral_speed", live: NeutralSpeed(bot, constants.neutral), constant: constants.neutral });
         rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition, "neutral"), constant: constants.acquisition });
+    }
+    for (const type of Object.keys(neutralByType)) {
+        rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutral });
     }
     return rows;
 }

@@ -8,6 +8,7 @@
 import { BotMode, Item, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
@@ -334,7 +335,7 @@ export function DoubleGeometry(small: Camps.CampJobData, hard: Camps.CampJobData
     const hardStand = Camps.StandPoint(hardSp, smallStand, cfg.Radii.StandOffset);
     const gap = TravelTime(dist2D(hardStand, smallStand), speed);
     const before = gap + cfg.Timing.DoublePullHitGap;
-    const hardSpeed = (cfg.PullTiming.NeutralSpeed as Record<string, number>)[hard.type] ?? 300;
+    const hardSpeed = WorldFacts.NeutralSpeedFor(hard.type, (cfg.PullTiming.NeutralSpeed as Record<string, number>)[hard.type] ?? 300);
     const late = PullTiming.WalkLength(hardSp.location, [smallStand, ...exact]) / hardSpeed - before - timing.waveAfter;
     let why: string | undefined;
     if (gap > cfg.Timing.DoublePullMaxGap) why = "far";
