@@ -136,7 +136,9 @@ export function FeedNeutralSpeeds(bot: Unit): void {
     const byType: Record<string, Unit[]> = {};
     for (const n of bot.GetNearbyNeutralCreeps(1600, true) ?? []) {
         if (n === undefined || n.IsNull()) continue;
-        const [sp, d] = NearestSpawner(n.GetLocation());
+        const loc = n.GetLocation();
+        if (loc === undefined || loc === null) continue;
+        const [sp, d] = NearestSpawner(loc);
         if (sp === undefined || d > FeedSpawnerRange) continue;
         (byType[sp.type] = byType[sp.type] ?? []).push(n);
     }

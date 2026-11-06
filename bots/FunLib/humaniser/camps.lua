@@ -224,7 +224,12 @@ function ____exports.FeedNeutralSpeeds(bot)
                     __continue21 = true
                     break
                 end
-                local sp, d = ____exports.NearestSpawner(n:GetLocation())
+                local loc = n:GetLocation()
+                if loc == nil or loc == nil then
+                    __continue21 = true
+                    break
+                end
+                local sp, d = ____exports.NearestSpawner(loc)
                 if sp == nil or d > FeedSpawnerRange then
                     __continue21 = true
                     break
@@ -251,15 +256,15 @@ function ____exports.InBox(idx, loc, margin)
     end
     for ____, s in ipairs(____exports.Spawners()) do
         do
-            local __continue28
+            local __continue29
             repeat
                 if s.idx ~= idx then
-                    __continue28 = true
+                    __continue29 = true
                     break
                 end
                 return loc.x >= s.min.x - margin and loc.x <= s.max.x + margin and loc.y >= s.min.y - margin and loc.y <= s.max.y + margin
             until true
-            if not __continue28 then
+            if not __continue29 then
                 break
             end
         end
@@ -421,18 +426,18 @@ local function matchReplay(s)
     local radius = camps().ReplayMatchRadius
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue76
+            local __continue77
             repeat
                 if entry.near == nil or campTeamOf(entry) ~= s.team or entry.type ~= s.type then
-                    __continue76 = true
+                    __continue77 = true
                     break
                 end
                 if dist2D(entry.near, s.location) <= radius then
                     return entry
                 end
-                __continue76 = true
+                __continue77 = true
             until true
-            if not __continue76 then
+            if not __continue77 then
                 break
             end
         end
@@ -453,11 +458,11 @@ function ____exports.Resolve()
     local jobs = {[Team.Radiant] = {}, [Team.Dire] = {}}
     for ____, s in ipairs(spawners) do
         do
-            local __continue83
+            local __continue84
             repeat
                 local entry = matchReplay(s)
                 if entry == nil then
-                    __continue83 = true
+                    __continue84 = true
                     break
                 end
                 local lane = entry.laneKind ~= nil and ____exports.LaneOfKind(entry.team, entry.laneKind) or nil
@@ -482,25 +487,25 @@ function ____exports.Resolve()
                     }
                 end
                 jobs[entry.team][s.idx] = job
-                __continue83 = true
+                __continue84 = true
             until true
-            if not __continue83 then
+            if not __continue84 then
                 break
             end
         end
     end
     for ____, entry in ipairs(CAMP_DATA) do
         do
-            local __continue87
+            local __continue88
             repeat
                 if entry.near ~= nil or entry.laneKind == nil or entry.pullAggroSec == nil then
-                    __continue87 = true
+                    __continue88 = true
                     break
                 end
                 local lane = ____exports.LaneOfKind(entry.team, entry.laneKind)
                 local tower = laneTower(entry.team, lane)
                 if tower == nil then
-                    __continue87 = true
+                    __continue88 = true
                     break
                 end
                 local maxTowerDist = entry.maxTowerDist or camps().PullCampMaxTowerDist
@@ -510,35 +515,35 @@ function ____exports.Resolve()
                 local bestDist = math.huge
                 for ____, s in ipairs(spawners) do
                     do
-                        local __continue90
+                        local __continue91
                         repeat
                             if own[s.idx] ~= nil or s.team ~= campTeam or s.type ~= entry.type then
-                                __continue90 = true
+                                __continue91 = true
                                 break
                             end
                             local d = dist2D(s.location, tower)
                             if d >= bestDist or d > maxTowerDist then
-                                __continue90 = true
+                                __continue91 = true
                                 break
                             end
                             if dist2D(
                                 s.location,
                                 ____exports.DeriveMeetPoint(entry.team, lane, s.location)
                             ) > camps().PullCampMaxLaneDist then
-                                __continue90 = true
+                                __continue91 = true
                                 break
                             end
                             bestDist = d
                             best = s
-                            __continue90 = true
+                            __continue91 = true
                         until true
-                        if not __continue90 then
+                        if not __continue91 then
                             break
                         end
                     end
                 end
                 if best == nil then
-                    __continue87 = true
+                    __continue88 = true
                     break
                 end
                 local nearest = ____exports.DeriveMeetPoint(entry.team, lane, best.location)
@@ -561,9 +566,9 @@ function ____exports.Resolve()
                     derived = true,
                     unverified = entry.unverified
                 }
-                __continue87 = true
+                __continue88 = true
             until true
-            if not __continue87 then
+            if not __continue88 then
                 break
             end
         end

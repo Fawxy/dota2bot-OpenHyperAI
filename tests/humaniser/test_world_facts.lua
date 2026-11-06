@@ -68,6 +68,13 @@ do
 	check("another type keeps its own fallback", WF.NeutralSpeedFor("small", 290) == 290)
 	WF.FeedNeutral("large", { unit({ speed = 0 }) })
 	check("only zero readings leave the last value", WF.NeutralSpeedFor("large", 300) == 330)
+	do
+		local camps = require("bots/FunLib/humaniser/camps")
+		local ghost = unit({ speed = 300 }); ghost.GetLocation = function() return nil end
+		local seer = unit({ team = 2 }); seer.neutrals = { ghost }
+		WF.Reset(); T = 50
+		check("a neutral with no location is skipped, not a crash", pcall(camps.FeedNeutralSpeeds, seer))
+	end
 	local noacq = unit({ name = "npc_x" })
 	check("acquisition missing falls back", WF.AcquisitionRange(noacq, 500, "neutral") == 500 and WF.Fallbacks().acquisition_neutral == 1)
 end
