@@ -33,8 +33,12 @@ export const DENY_FRACTION = 0.5;
 export const HORIZON = 6;
 /** Enemy heroes farther than this from the creep are not read (no threat within the horizon at lane speeds). */
 const ENEMY_RADIUS = 1600;
-/** Own lane creeps within this of the bot are pre-deny candidates (attack range plus a MAX_WALK walk is the real bound). */
-const CREEP_RADIUS = 900;
+/** Lane creeps the idle swing can reach: the bot's attack range plus the walk it allows (`LanePick.MAX_WALK` at its current speed),
+ *  the same distance the per-creep `walk` test uses, capped at the old fixed 900 so the scan only ever shrinks. */
+const CREEP_RADIUS_CAP = 900;
+function creepRadius(bot: Unit): number {
+    return math.min(CREEP_RADIUS_CAP, bot.GetAttackRange() + LanePick.MAX_WALK * math.max(100, bot.GetCurrentMovementSpeed()));
+}
 /** Setup: our hits to the kill, this swing and the last hit included (`judgement`: "hit a creep twice and get an easy last
  *  hit", user 06/11/2026). */
 export const SETUP_HITS = 3;
@@ -267,7 +271,7 @@ function findPreDeny(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Not
     let best: Unit | undefined;
     let bestKey: { focus: boolean; ranged: boolean; hp: number } | undefined;
     let bestNote: Note | undefined;
-    for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, false) ?? []) {
+    for (const c of bot.GetNearbyLaneCreeps(creepRadius(bot), false) ?? []) {
         if (!usable(c) || c.GetTeam() !== bot.GetTeam()) continue;
         const max = c.GetMaxHealth();
         const hp = c.GetHealth();
@@ -319,7 +323,7 @@ function findSetup(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Note 
     let best: Unit | undefined;
     let bestKey: { hits: number; ranged: boolean; hp: number } | undefined;
     let bestNote: Note | undefined;
-    for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true) ?? []) {
+    for (const c of bot.GetNearbyLaneCreeps(creepRadius(bot), true) ?? []) {
         if (!usable(c)) continue;
         const max = c.GetMaxHealth();
         const hp = c.GetHealth();
@@ -356,7 +360,7 @@ function findShove(bot: Unit): [Note | undefined, Unit | undefined] {
     const LaneTech = require("bots/FunLib/humaniser/lane_tech") as LaneTechModule;
     const near: Unit[] = [];
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
-    for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true) ?? []) {
+    for (const c of bot.GetNearbyLaneCreeps(creepRadius(bot), true) ?? []) {
         if (!usable(c)) continue;
         if (math.max(0, GetUnitToUnitDistance(bot, c) - bot.GetAttackRange()) / speed <= LanePick.MAX_WALK) near.push(c);
     }
