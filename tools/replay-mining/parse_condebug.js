@@ -22,9 +22,8 @@ function suggest(g, okAggro) {
     const round = (v) => Number(v.toFixed(1));
     if (g.kind === 'stack') return `{ stackAggroSec: ${round(a)}, source: "measured" }  // camp ${g.camp}`;
     const s = ((a % 30) + 30) % 30;
-    const field = g.kind === 'half' ? 'halfAggroSec' : 'pullAggroSec';
     const key = g.key ? `key: "${g.key}", ` : '';
-    return `{ ${key}${field}: [${round(s)}, ${round(s + 30)}], source: "measured" }  // camp ${g.camp}, kind ${g.kind}`;
+    return `{ ${key}pullAggroSec: [${round(s)}, ${round(s + 30)}], source: "measured" }  // camp ${g.camp}, kind ${g.kind}`;
 }
 
 function summarise(lines) {

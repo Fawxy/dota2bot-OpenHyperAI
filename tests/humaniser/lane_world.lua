@@ -58,6 +58,11 @@ function CreepMeta:CanBeSeen() return not self.unseen end
 function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:GetBoundingRadius() return self.hull or 16 end
+function CreepMeta:GetAcquisitionRange() return self.acq or 500 end
+function CreepMeta:GetCurrentMovementSpeed() return self.speed or 325 end
+function CreepMeta:GetAttackPoint() return self.attackPoint or 0.5 end
+function CreepMeta:GetAttackProjectileSpeed() return self.projSpeed or 900 end
+function CreepMeta:GetLastAttackTime() return self.lastAttack or -1000 end
 -- Creep and tower damage default to 0 so worlds that do not set it keep the kill check's incoming damage at 0.
 function CreepMeta:GetAttackDamage() return self.dmg or 0 end
 function CreepMeta:GetAttackSpeed() return self.aspd or 1 end
@@ -143,6 +148,7 @@ function MakeLaneTowers()
 			local t = setmetatable({ pid = -1, team = team, bot = true, alive = true, hp = 1300, modifiers = {},
 				loc = absLoc(lane, T1_AMOUNT[team]) }, { __index = UnitMeta })
 			t.GetUnitName = function() return "tower_t1" end
+			t.range, t.hull = 700, 144 -- 7.41 tower: attack range 700, radius 144 (reach 844)
 			t.dmg = 0
 			w[team][id] = t
 		end
@@ -206,7 +212,7 @@ function UnitMeta:GetNearbyHeroes(r, enemy)
 	return out
 end
 -- Like GetUnitToLocationDistance, on the raw position: in the game the call returns a number for a unit out of vision whose
--- GetLocation is nil (phhar8: pull_creep dn to a tagged neutral in the frame the watch's GetLocation read errored); whether
+-- GetLocation is nil (phhar8: a creep's distance to a tagged neutral in the frame the watch's GetLocation read errored); whether
 -- that number is the true distance the log does not show.
 function GetUnitToUnitDistance(a, b)
 	local dx, dy = a.loc.x - b.loc.x, a.loc.y - b.loc.y

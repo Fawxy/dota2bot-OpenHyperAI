@@ -8,6 +8,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneStatus(this: void, rune: number): number;
 declare function GetRuneSpawnLocation(this: void, rune: number): { x: number; y: number; z: number };
@@ -20,7 +21,7 @@ export const SETTINGS = {
     /** A try ends `left` once the hero is this far from the spot. */
     LeftAt: 400,
     /** River runes respawn every 2 minutes: a given-up rune stays given up until the next spawn. */
-    SpawnEvery: 120,
+    SpawnEvery: Runes.RUNE_RULES.power.every,
 };
 
 interface Try {

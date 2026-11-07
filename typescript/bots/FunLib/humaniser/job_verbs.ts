@@ -1,5 +1,5 @@
 /**
- * Job verbs: camp stack, pull (full, half, double), rune or shrine run, camp clear and gank, each one task body that
+ * Job verbs: camp stack, pull (full, double), rune or shrine run, camp clear and gank, each one task body that
  * executes a plan the caller made. Bot code since slice 0b (moved out of the engine's `jobs`, unchanged): the engine
  * keeps the atomic verbs, `Skill` and the hit-timing facts these bodies are built from. The engine is reached through
  * the loaded bundle (`Bind`, from humaniser/tasks), never a static require, so a bundle that fails to load cannot
@@ -338,7 +338,7 @@ export function* stack(bot: TaskUnit, p: StackPlan, h: JobHooks = {}): TaskBody 
 export interface PullPlan extends AggroOpts {
     /** The camp whose hit is graded (a double's small camp). */
     camp: Camp;
-    /** When its hit should land (the camp's full or half pull second, e.g. :15/:45 or :17/:47). */
+    /** When its hit should land (the camp's pull second, e.g. :15/:45). */
     aggroAt: number;
     /** Walked after the hit, to the meet point with the wave (last point). */
     lead: Vec[];
@@ -356,7 +356,7 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
-    /** Read every frame of the watch: where to stand now instead of the lead's end (a half pull's step-in), within 30. */
+    /** Read every frame of the watch: where to stand now instead of the lead's end (the pull job's shed), within 30. */
     watchAt?: (this: void) => Vec | undefined;
 }
 
@@ -374,9 +374,10 @@ function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
 }
 
 /**
- * Pull (full, half, double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
- * error for the whole job), lead it along `lead` to the meet point, then watch there. Labels `travel`, `wait`,
- * `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done. Grading the divert is the host's.
+ * Pull (full or double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
+ * error for the whole job), lead it along `lead` to the meet point as soon as the hit is confirmed, then watch there.
+ * Labels `travel`, `wait`, `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done.
+ * Grading the divert is the host's.
  */
 export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     const err = p.timingError ?? E().Skill.timingError(bot);

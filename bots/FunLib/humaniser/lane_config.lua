@@ -1,14 +1,49 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local isArray, merge, cached
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
+function isArray(t)
+    return t[1] ~= nil
+end
+function merge(defaults, overrides)
+    if overrides == nil or overrides == nil or type(overrides) ~= "table" then
+        return defaults
+    end
+    local result = {}
+    for k, v in pairs(defaults) do
+        result[k] = v
+    end
+    for k, v in pairs(overrides) do
+        local d = defaults[k]
+        local ____k_1 = k
+        local ____temp_0
+        if d ~= nil and type(d) == "table" and type(v) == "table" and not isArray(d) then
+            ____temp_0 = merge(d, v)
+        else
+            ____temp_0 = v
+        end
+        result[____k_1] = ____temp_0
+    end
+    return result
+end
+function ____exports.Settings()
+    if cached == nil then
+        cached = merge(
+            ____exports.DEFAULTS,
+            Config.Get().Lane
+        )
+    end
+    return cached
+end
 ____exports.DEFAULTS = {
     Enable = true,
     OwnLaningThink = "allies",
     Plan = true,
     Block = true,
     FullPull = true,
-    HalfPull = true,
     StackPull = true,
     AggroPull = true,
     Freeze = true,
@@ -26,7 +61,6 @@ ____exports.DEFAULTS = {
     Gates = {
         Block = 0.3,
         FullPull = 0.3,
-        HalfPull = 0.6,
         StackPull = 0.75,
         AggroPull = 0.5,
         Freeze = 0.7,
@@ -59,16 +93,10 @@ ____exports.DEFAULTS = {
         MidPreRune = 0.15,
         XpDenyWeight = 0.2
     },
-    Planner = {
-        FullPullBelow = -0.5,
-        SmallDriftBelow = -0.2,
-        AggroCorrectBelow = -0.15,
-        LargeWaveMargin = 2,
-        AggroStepEq = 0.15
-    },
+    Planner = {FullPullBelow = -0.5, AggroCorrectBelow = -0.15, AggroStepEq = 0.15},
     Timing = {
         SnapshotRefresh = 0.5,
-        WaveCycle = 30,
+        WaveCycle = GameRules.WAVE_EVERY,
         AggroWindow = 3,
         AggroCooldown = 2.3,
         WalkBack = 1.5,
@@ -112,9 +140,8 @@ ____exports.DEFAULTS = {
         EqSampleAt = 10,
         WatchSec = 8,
         WatchEvery = 0.25,
-        PullPeriod = 60,
-        NeutralFirstSpawn = 60,
-        HalfPullLater = 2,
+        PullPeriod = GameRules.NEUTRAL_EVERY,
+        NeutralFirstSpawn = GameRules.NEUTRAL_FIRST,
         NoCampAfter = 1,
         AggroConfirm = 2,
         AggroLeadDefault = 0.4,
@@ -186,14 +213,13 @@ ____exports.DEFAULTS = {
         StableSeenWithin = 3,
         StableMinHP = 0.5,
         FullPullMin = 0.8,
-        HalfPullMin = 0.3,
-        HalfPullMax = 0.6,
         HarassExtraRange = 100,
         AggroDanceCreeps = 3,
         AggroDanceRadius = 500,
         HarassTowerLevel = 6,
         HarassTowerTargetHP = 0.3,
-        EnemyTowerRange = 850,
+        EnemyTowerRange = 844,
+        HeroRadius = 24,
         TakePullLaneCreeps = 1,
         TakePullDangerEnemies = 2,
         ShoveMinHP = 0.5,
@@ -226,7 +252,7 @@ ____exports.DEFAULTS = {
         BlockStart = 1500,
         BlockLost = 400,
         BlockContact = 700,
-        TowerAggro = 900,
+        TowerAggroMargin = 56,
         PreContestStand = 400,
         TowerExitMargin = 100,
         Zone = 900,
@@ -280,13 +306,7 @@ ____exports.DEFAULTS = {
         HoldSignals = 2,
         ShoveHitDamageMult = 1.3
     },
-    Camps = {
-        HalfMeetOffset = 500,
-        PullCampMaxTowerDist = 2500,
-        PullCampMaxLaneDist = 2400,
-        ReplayMatchRadius = 600,
-        LaneSampleStep = 0.005
-    },
+    Camps = {PullCampMaxTowerDist = 2500, PullCampMaxLaneDist = 2400, ReplayMatchRadius = 600, LaneSampleStep = 0.005},
     PullTiming = {
         FromWave = true,
         CreepSpeed = 325,
@@ -302,36 +322,14 @@ ____exports.DEFAULTS = {
         LiveEvery = 0.25,
         WatchAfterWave = 3,
         FullPast = 100,
-        HalfClear = 500,
-        HalfAcquire = 500,
-        HalfSearch = {-3, 6},
-        HalfStep = 0.2,
-        HalfHold = 2,
-        HalfHeroAggro = 450,
-        HalfHeroStart = 400,
-        HalfHitReach = 350,
-        HalfNeutralDelay = 1,
-        HalfStandBack = {0, 150, 300, 450},
-        HalfStepIn = true,
-        HalfStepBack = 300,
-        HalfStepAhead = 0.5,
-        HalfStepBuffer = 50,
-        HalfStepEarly = 0.5,
-        HalfHoldOff = 550,
-        HalfStepOver = 400,
-        HalfRangedFrom = 250,
-        HalfStepNeutrals = false,
-        HalfAll = false,
-        HalfStand = {},
         LanePaths = {}
     },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
-    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5, TowerAvoidRange = 850}
+    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5}
 }
 local FLAG_OF = {
     block = "Block",
     full_pull = "FullPull",
-    half_pull = "HalfPull",
     stack_pull = "StackPull",
     aggro_pull = "AggroPull",
     freeze = "Freeze",
@@ -341,7 +339,6 @@ local FLAG_OF = {
 local GATE_OF = {
     block = "Block",
     full_pull = "FullPull",
-    half_pull = "HalfPull",
     stack_pull = "StackPull",
     aggro_pull = "AggroPull",
     freeze = "Freeze",
@@ -352,7 +349,6 @@ local CONSUMER_FLAGS = {
     "Plan",
     "Block",
     "FullPull",
-    "HalfPull",
     "StackPull",
     "AggroPull",
     "Freeze",
@@ -363,39 +359,15 @@ local CONSUMER_FLAGS = {
     "CounterPlay",
     "CampBlock"
 }
-local function isArray(t)
-    return t[1] ~= nil
+--- How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
+-- (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
+function ____exports.TowerReach()
+    local t = ____exports.Settings().Thresholds
+    return WorldFacts.Reach(t.EnemyTowerRange) + WorldFacts.HeroRadius(t.HeroRadius)
 end
-local function merge(defaults, overrides)
-    if overrides == nil or overrides == nil or type(overrides) ~= "table" then
-        return defaults
-    end
-    local result = {}
-    for k, v in pairs(defaults) do
-        result[k] = v
-    end
-    for k, v in pairs(overrides) do
-        local d = defaults[k]
-        local ____k_1 = k
-        local ____temp_0
-        if d ~= nil and type(d) == "table" and type(v) == "table" and not isArray(d) then
-            ____temp_0 = merge(d, v)
-        else
-            ____temp_0 = v
-        end
-        result[____k_1] = ____temp_0
-    end
-    return result
-end
-local cached
-function ____exports.Settings()
-    if cached == nil then
-        cached = merge(
-            ____exports.DEFAULTS,
-            Config.Get().Lane
-        )
-    end
-    return cached
+--- The enemy tower's attack range alone (read from the game; 700 when the read fails).
+function ____exports.TowerAttackRange()
+    return WorldFacts.TowerAttackRange(700)
 end
 function ____exports.ResetSettings()
     cached = nil

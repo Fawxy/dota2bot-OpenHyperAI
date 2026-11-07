@@ -4,6 +4,7 @@
  * module (never the other way round). Stacked state is observed (neutral counts before the aggro and after the
  * minute) or assumed from the aggro timing when the box was out of sight.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
@@ -50,7 +51,7 @@ function dist2D(a: Vector, b: Vector): number {
 }
 
 function currentMinute(): number {
-    return math.floor(DotaTime() / 60);
+    return math.floor(DotaTime() / GameRules.NEUTRAL_EVERY);
 }
 
 /**

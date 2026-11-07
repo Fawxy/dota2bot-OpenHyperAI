@@ -154,7 +154,7 @@ Customize.Humaniser = {
         Enable = true,
         -- Who gets OHA's laning Think() for in-lane techniques: 'allies' (allies of humans), 'all' (every bot), 'off'.
         OwnLaningThink = 'allies',
-        Plan = true, Block = true, FullPull = true, HalfPull = true, StackPull = true,
+        Plan = true, Block = true, FullPull = true, StackPull = true,
         AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
@@ -255,8 +255,6 @@ Customize.Humaniser = {
 -- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode and its own pickup guard.
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
 -- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
--- SupportHalfPull (slice pull-half): with SupportPull on, the safe-lane pos5 half-pulls when the lane holds on their half (the
--- neutrals reach the meet point after the wave's body, Lane.PullTiming.HalfLag) and full-pulls when it pushes out. Off: full pulls only.
 -- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: enemy heroes' reach and creep
 -- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny and SupportHarass on pos4-5 too.
 -- Off: OHA's PositionTarget (cores) and PositionThink (supports).
@@ -280,7 +278,12 @@ Customize.Humaniser = {
 -- wave left on the camp when the site is safe, and gives the camp up to a core whose camp trip comes. Off: it walks back to lane.
 -- PreDeny (slice idle-swing): an owned laner with no last hit, deny or pre-hit on offer hits our lane creep below half HP that
 -- no enemy hero reaches before our hits kill it, both laners on one creep (states/idle_swing). Off: it stands.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true, PreDeny = true }
+-- LaneControl (slice lane-control 2a): the lane controller's per-wave reading, mode, intent and chosen levers, logged as
+-- ev=lane_ctl. Off: no reading and no line.
+-- LaneControlDrive (slice lane-control 2b): under LaneControl, the decision drives the levers (the idle swing's mode and setup,
+-- lane aggro's feed, the support's pull), each keeping its own gates. Off: shadow, each lever on its own trigger.
+-- CorePull (slice lane-control 4a): the offlane pos3 pulls its hard camp when the lane controller names it. Off: supports only.
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

@@ -192,6 +192,8 @@ export const EVENTS = {
         p3r: "num",
         p3t: "bool",
         p3a: "num",
+        /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
+        cid: "num",
     },
     /** Slice lane-farm-logs: a neutral creep that died within 1,500 of one of the logging team's heroes. `by` the hero whose
      *  last hits rose (a pid) or `none`; `camp` the nearest camp's spawner index within 1,200; `np`/`nd` the nearest own hero. */
@@ -213,6 +215,8 @@ export const EVENTS = {
         y: "num",
         hp: "num",
         by: "mixed",
+        /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
+        cid: "num",
     },
     player: {
         pid: "num",
@@ -1009,6 +1013,55 @@ export const EVENTS = {
         msg: "str",
     },
     /**
+     * Slice lane-control 2a (shadow; design 2026-11-06-lane-controller s5.9): kind=wave once per wave per team and lane at
+     * cycle second LaneControl ReadAt, kind=chk LaneControl Horizon s after it. wave the 30 s cycle's spawn second (joins a
+     * chk to its decision); mode safe|shove; rule R1-R6 (s5.1); tgt the target point (from our T1 along the lane); own mv st
+     * the lane push reading now (st OUT|HOLD|IN); need own + mv - tgt (the design's 30 s need); m45 the plain forecast's clash
+     * at Horizon (from our T1), p45 the same with this wave pulled (lane_push WaveGoneFrom), pe the pull's predicted effect
+     * PullScale x (p45 - m45), n45 m45 - tgt (the need the levers are chosen on); intent back|hold|forward|reset; lever the
+     * chosen set joined by + (none), who each one's owner (pid, core, sup, both), left the chosen set's predicted clash past
+     * the target, short 1 when no set reached the band; rej lever:why for each unusable lever; core sup the present laners'
+     * pids; dep seconds to the support's next departure; away 1 when their laners are known dead or elsewhere (R5); why a
+     * decision with no reading; ms the reading's cost. Slice 4a: pby who the pull lever went to (sup|core; absent with no
+     * puller), cwhy why the offlane pos3 did not take it (missing|loss|no_plan), cmiss the enemy heroes missing near its walk
+     * to the hard camp (CoreCamp MissingOf), closs the lane gold it would lose while away (CoreCamp LossBetween).
+     */
+    lane_ctl: {
+        team: "num",
+        lane: "num",
+        kind: "str",
+        wave: "num",
+        mode: "str",
+        rule: "str",
+        tgt: "num",
+        own: "num",
+        mv: "num",
+        st: "str",
+        need: "num",
+        m45: "num",
+        p45: "num",
+        pe: "num",
+        n45: "num",
+        intent: "str",
+        lever: "str",
+        who: "str",
+        left: "num",
+        short: "bool",
+        rej: "str",
+        core: "num",
+        sup: "num",
+        dep: "num",
+        fit: "str",
+        yld: "num",
+        pby: "str",
+        cwhy: "str",
+        cmiss: "num",
+        closs: "num",
+        away: "bool",
+        why: "str",
+        ms: "num",
+    },
+    /**
      * An owned laner's idle swing (states/idle_swing): one attack when the picker had no last hit, deny or pre-hit to offer.
      * `kind` predeny (our creep under half HP that no enemy hero reaches before our hits kill it) or shove (an enemy creep outside
      * their tower), `mode` the lane's mode (`safe`, or `shove` forced by Overrides.ForceShove). `result` ok once the attack fired.
@@ -1019,7 +1072,7 @@ export const EVENTS = {
     idle_swing: {
         pid: "num",
         kind: "str",
-        /** predeny: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
+        /** predeny and setup: this bot's ok swings on the creep before this one (0: its first; a new creep starts at 0). */
         n: "num",
         /** The creep's place at the pick. */
         cx: "num",
@@ -1034,6 +1087,10 @@ export const EVENTS = {
         kill: "num",
         reach: "num",
         focus: "bool",
+        /** setup: our hits to the kill at the pick, this swing included. */
+        hits: "num",
+        /** The creep's id (Telemetry CreepId), the same as on its ev=creep_death or ev=own_creep_death. */
+        cid: "num",
         dn: "bool",
         lh: "bool",
         contested: "bool",
@@ -1219,6 +1276,14 @@ export const EVENTS = {
     // Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt and again each time a planned support's start
     // gate drops it: mid / sup the planned heroes' pids, ms / ss their spots' rune ids; why no-free-support, no-near-support (a free support is nearer the mid's spot) or no-mid when a
     // side is empty, swap:<gate> when the spot went to the other support, drop:<gate> when no support was free for it.
+    /** Probe (slice world-facts): the live API value beside the constant a context still holds; once per fact and team per game. */
+    world_fact: {
+        team: "num",
+        fact: "str",
+        live: "num",
+        constant: "num",
+        fell: "num",
+    },
     rune_plan: {
         team: "num",
         mid: "num",
@@ -1423,29 +1488,18 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
-        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads (slice pull-half;
-        // before it, the wave body's shift and LiveRead's readings).
+        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads. The hit is
+        // timed on the wave's front creep (pull_timing CreepTimer): hr geo (timed on it) or plan (never read), hc creeps
+        // read, hn the creep after the front one and hb the back creep: predicted distance past the meet point at the
+        // neutrals' arrival.
         sh: "num",
         lv: "num",
         s0: "num",
-        // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
-        // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
-        // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
-        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
-        // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
-        // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
-        // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
-        // engaged (negative: back towards the camp).
-        pk: "str",
+        nsp: "num",
         hr: "str",
         hc: "num",
         hn: "num",
         hb: "num",
-        hf: "num",
-        hu: "num",
-        hm: "num",
-        hs: "num",
-        hi: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1460,34 +1514,6 @@ export const EVENTS = {
         // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
         shs: "num",
         shh: "num",
-    },
-    // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
-    // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
-    // attack target became one of the camp's neutrals before the line was written, else 0. The rest are read at the turn
-    // (tr 1) or at its nearest approach to the puller (tr 0): tt seconds after the hit (ht), dp its distance to the puller,
-    // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
-    // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
-    // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
-    // The creep's decision frame, before its target shows: lt seconds after the hit its distance off the lane path first
-    // rose PullJob Leave above its own least so far (it left the lane), ld its distance to the puller and ln to the nearest
-    // tagged neutral then; unset when it never left.
-    pull_creep: {
-        pid: "num",
-        slot: "num",
-        camp: "num",
-        ci: "num",
-        rg: "num",
-        tr: "num",
-        tt: "num",
-        dp: "num",
-        dn: "num",
-        ph: "num",
-        pv: "num",
-        po: "num",
-        ca: "num",
-        lt: "num",
-        ld: "num",
-        ln: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -1557,10 +1583,6 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
-        // Slice pull-half: the pull's kind for kind=pull (full or half); hm a half pull's clearance margin when it stayed for
-        // want of one (why=half-geo; pull_job hm).
-        pk: "str",
-        hm: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).

@@ -6,16 +6,9 @@ import { Rune, Vector } from "bots/ts_libs/dota";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
-export type RuneKind = "power" | "water" | "bounty" | "wisdom";
+import { RUNE_RULES, RuneKind } from "bots/FunLib/humaniser/game_rules";
 
-// Checked against the Valve datafeed (patchnoteslist and patchnotes for 7.41 through 7.41f, latest 7.41f, 15/09/2026):
-// no spawn-timing changes since 7.41, so these are the 7.41f rules. Bounty every 240 s since 7.38 (datafeed 7.38).
-export const RUNE_RULES: Record<RuneKind, { first: number; every: number; last?: number }> = {
-    power: { first: 360, every: 120 },
-    water: { first: 120, every: 120, last: 240 },
-    bounty: { first: 0, every: 240 },
-    wisdom: { first: 420, every: 420 },
-};
+export { RUNE_RULES, RuneKind };
 
 /** The first spawn time at or after `now`, or math.huge once the rune has stopped spawning. */
 export function NextSpawn(kind: RuneKind, now: number): number {

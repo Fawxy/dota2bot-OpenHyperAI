@@ -12,6 +12,7 @@ import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRuneStatus(this: void, rune: number): number;
@@ -22,9 +23,10 @@ declare const RUNE_STATUS_AVAILABLE: number;
 
 // All judgement (slice rune-spawn, Decisions).
 export const SETTINGS = {
-    Spawn: 360,
+    /** RUNE_RULES power.first: the one source of rune spawn times (slice timer-facts). */
+    Spawn: Runes.RUNE_RULES.power.first,
     /** The plan is made this long before the spawn. */
-    PlanAt: 360 - 40,
+    PlanAt: Runes.RUNE_RULES.power.first - 40,
     /** Stand-point rings around the spot and the angles sampled on each. */
     StandRadii: [550, 750, 950],
     StandAngles: 16,

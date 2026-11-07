@@ -46,32 +46,26 @@ test('pull on wrong team creeps ignored', () => {
     assert.strictEqual(detectPulls(events, campsOf(events)).length, 0);
 });
 
-test('half pull classification', () => {
+test('pull divert', () => {
     const events = load('pull_events.ndjson');
-    const full = detectPulls(events, campsOf(events))[0];
-    assert.strictEqual(full.half, false);
-    assert.strictEqual(full.divert, 1);
+    assert.strictEqual(detectPulls(events, campsOf(events))[0].divert, 1);
 
     const two = events.filter((e) => !(e.k === 'dmg' && e.srcEnt > 102));
-    const half = detectPulls(two, campsOf(two))[0];
-    assert.strictEqual(half.divert, 0.4);
-    assert.strictEqual(half.half, true);
+    assert.strictEqual(detectPulls(two, campsOf(two))[0].divert, 0.4);
 });
 
 test('aggregate medians', () => {
     const camp = { x: 1020, y: 990, type: 'large' };
     const meet = { x: 2000, y: 2000 };
-    const pull = (aggroSec, half = false) => ({ camp, team: 2, aggroSec, meet, path: [{ x: 1, y: 1 }, meet], divert: half ? 0.4 : 1, half });
+    const pull = (aggroSec) => ({ camp, team: 2, aggroSec, meet, path: [{ x: 1, y: 1 }, meet], divert: 1 });
     const stack = (aggroSec) => ({ camp, team: 2, minute: 3, aggroSec, path: [{ x: 5, y: 5 }] });
-    const [agg] = aggregate([53, 54, 55].map(stack), [15, 16, 14, 45, 46].map((s) => pull(s)).concat([17, 18].map((s) => pull(s, true))));
+    const [agg] = aggregate([53, 54, 55].map(stack), [15, 16, 14, 45, 46].map((s) => pull(s)));
     assert.strictEqual(agg.aggroSec, 15);
-    assert.strictEqual(agg.halfAggroSec, 17.5);
     assert.strictEqual(agg.stackAggroSec, 54);
-    assert.deepStrictEqual(agg.samples, { stacks: 3, pulls: 5, half: 2 });
+    assert.deepStrictEqual(agg.samples, { stacks: 3, pulls: 5 });
 
     const line = gen.buildEntry(agg);
     assert.match(line, /pullAggroSec: \[15, 45\]/);
-    assert.match(line, /halfAggroSec: \[17\.5, 47\.5\]/);
     assert.match(line, /stackAggroSec: 54[,\s]/);
 });
 
@@ -98,7 +92,7 @@ test('gen_camps preserves seeds', () => {
         const camp = { x: -3100, y: -4200, type: 'large' };
         const agg = aggregate(
             [{ camp, team: 2, minute: 2, aggroSec: 54, path: [{ x: 0, y: 0 }] }],
-            [{ camp, team: 2, aggroSec: 18, meet: { x: -2000, y: -6000 }, path: [{ x: -3000, y: -4300 }, { x: -2000, y: -6000 }], divert: 1, half: false }]
+            [{ camp, team: 2, aggroSec: 18, meet: { x: -2000, y: -6000 }, path: [{ x: -3000, y: -4300 }, { x: -2000, y: -6000 }], divert: 1 }]
         );
         fs.writeFileSync(aggPath, JSON.stringify(agg));
         const summary = gen.run(aggPath, data);
@@ -127,12 +121,12 @@ test('condebug summary', () => {
     const rows = summarise(fs.readFileSync(fixture('console.log'), 'utf8').split(/\r?\n/));
     const find = (camp, kind) => rows.find((r) => r.camp === camp && r.kind === kind);
 
-    const half = find(12, 'half');
+    const pull = find(12, 'full');
     // The two job-abort lines (and job-start) are not attempts; counted, 6/9 ok would drop the suggestion.
-    assert.strictEqual(half.attempts, 7);
-    assert.strictEqual(half.ok, 6);
-    assert.ok(half.suggestion.includes('halfAggroSec: [17.9, 47.9]') && half.suggestion.includes('radiant_safe_large'));
-    assert.ok(Math.abs(half.medianAggroError - 1.0) < 1e-9);
+    assert.strictEqual(pull.attempts, 7);
+    assert.strictEqual(pull.ok, 6);
+    assert.ok(pull.suggestion.includes('pullAggroSec: [17.9, 47.9]') && pull.suggestion.includes('radiant_safe_large'));
+    assert.ok(Math.abs(pull.medianAggroError - 1.0) < 1e-9);
 
     const few = find(7, 'full');
     assert.strictEqual(few.attempts, 3);

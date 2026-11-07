@@ -545,9 +545,10 @@ local stepBack = __TS__Generator(function(bot, p, h)
     end
     return fail("interrupted", "bail")
 end)
---- Pull (full, half, double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
--- error for the whole job), lead it along `lead` to the meet point, then watch there. Labels `travel`, `wait`,
--- `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done. Grading the divert is the host's.
+--- Pull (full or double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
+-- error for the whole job), lead it along `lead` to the meet point as soon as the hit is confirmed, then watch there.
+-- Labels `travel`, `wait`, `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done.
+-- Grading the divert is the host's.
 ____exports.pull = __TS__Generator(function(bot, p, h)
     if h == nil then
         h = {}

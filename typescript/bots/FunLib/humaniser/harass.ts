@@ -138,7 +138,7 @@ export function GatesFor(bot: Unit, etiquette: boolean): HarassGates {
             window: s.HarassWindow,
             idleExtraRange: s.HarassExtraRange,
             minHP: s.HarassMinHP,
-            towerAvoidRange: s.TowerAvoidRange,
+            towerAvoidRange: LaneConfig.TowerReach(),
             needProtectedHuman: true,
             needStronger: true,
         };
@@ -168,7 +168,7 @@ export function GatesFor(bot: Unit, etiquette: boolean): HarassGates {
         window: h.IdleWindow,
         idleExtraRange: h.IdleExtraRange,
         minHP: h.IdleMinHP,
-        towerAvoidRange: h.TowerAvoidRange,
+        towerAvoidRange: LaneConfig.TowerReach(),
         needProtectedHuman: false,
         needStronger: true,
     };
@@ -243,7 +243,7 @@ export function StandPoint(bot: Unit, enemy: Unit, ourCreeps: Unit[]): Vector | 
     const behind = GetLocationAlongLane(lane, clamp01(Camps.ToAbsAmount(team, a - cfg.Camps.LaneSampleStep)));
     const point = toward(loc, behind, math.max(0, bot.GetAttackRange() - cfg.Radii.HarassStandBack));
     for (const tower of bot.GetNearbyTowers(TOWER_SCAN, true)) {
-        if (isValidBuilding(tower) && dist2D(tower.GetLocation(), point) <= cfg.Thresholds.EnemyTowerRange) return undefined;
+        if (isValidBuilding(tower) && dist2D(tower.GetLocation(), point) <= LaneConfig.TowerReach()) return undefined;
     }
     return point;
 }
@@ -300,8 +300,7 @@ function noteIdleHit(pid: number, now: number): void {
 
 /** Manners at fire time; true when the punish may go ahead. */
 function mannersAllow(bot: Unit, enemy: Unit, towers: Unit[], etiquette: boolean): boolean {
-    const t = settings().Thresholds;
-    const near = towerWithin(towers, t.EnemyTowerRange, bot, enemy);
+    const near = towerWithin(towers, LaneConfig.TowerReach(), bot, enemy);
     if (TowerForbids(bot.GetLevel(), near, hpOf(enemy))) return false;
     if (etiquette) {
         const g = GatesFor(bot, true);

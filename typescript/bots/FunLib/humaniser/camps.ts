@@ -3,7 +3,8 @@
  * (meet points, pull paths, stack exits) for seeds that carry no explicit vectors.
  * Spawn boxes always come from GetNeutralSpawners(), never from data.
  */
-import { Lane, Team, Tower, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import { CAMP_DATA, CampDataEntry, DEFAULT_STACK_SEC } from "bots/FunLib/humaniser/camps_data";
 
@@ -12,10 +13,8 @@ export type LaneKind = "safe" | "off" | "mid";
 
 export interface PullData {
     aggroSec: number[];
-    halfAggroSec?: number[];
     path: Vector[];
     meetPoint: Vector;
-    halfMeetPoint?: Vector;
 }
 
 export interface CampJobData {
@@ -122,6 +121,30 @@ export function NearestSpawner(loc: Vector): LuaMultiReturn<[Spawner | undefined
     return $multi(best, bestDist);
 }
 
+/** A neutral belongs to the camp whose spawner is nearest, if within this (the box is about 300 across). */
+const FeedSpawnerRange = 600;
+
+/**
+ * Behaviour-side feeder for WorldFacts.NeutralSpeedFor: groups every neutral the API lists (GetUnitList) by its nearest
+ * spawner and remembers each camp's speed, and its type's. One scan per second serves every bot of the team (not
+ * telemetry's tick, so it runs with telemetry off).
+ */
+export function FeedNeutralSpeeds(_bot: Unit): void {
+    if (!WorldFacts.FeedDue()) return;
+    // Every neutral the API lists (visible or not is the API's business): the puller's own camp is read whoever ticks first.
+    const bySpawner: Record<number, { type: string; units: Unit[] }> = {};
+    for (const n of GetUnitList(UnitType.NeutralCreeps) ?? []) {
+        if (n === undefined || n.IsNull()) continue;
+        const loc = n.GetLocation();
+        if (loc === undefined || loc === null) continue;
+        const [sp, d] = NearestSpawner(loc);
+        if (sp === undefined || d > FeedSpawnerRange) continue;
+        const e = (bySpawner[sp.idx] = bySpawner[sp.idx] ?? { type: sp.type, units: [] });
+        e.units.push(n);
+    }
+    for (const [idx, e] of Object.entries(bySpawner)) WorldFacts.FeedNeutral(e.type, e.units, tonumber(idx));
+}
+
 export function InBox(idx: number, loc: Vector, margin: number = 0): boolean {
     for (const s of Spawners()) {
         if (s.idx !== idx) continue;
@@ -165,10 +188,6 @@ export function NearestLaneAmount(lane: Lane, loc: Vector): number {
 
 export function DeriveMeetPoint(_team: number, lane: Lane, campLoc: Vector): Vector {
     return GetLocationAlongLane(lane, NearestLaneAmount(lane, campLoc));
-}
-
-export function DeriveHalfMeetPoint(team: number, lane: Lane, meet: Vector): Vector {
-    return ShiftAlongLane(team, lane, meet, camps().HalfMeetOffset);
 }
 
 /** The lane point `offset` along the lane from `meet` the way `team`'s wave walks (negative: back towards its base). */
@@ -352,7 +371,7 @@ export function Resolve(): CampJobData[] {
             unverified: entry.unverified,
         };
         if (lane !== undefined && entry.pullAggroSec !== undefined && entry.pullPath !== undefined && entry.meetPoint !== undefined) {
-            job.pull = { aggroSec: entry.pullAggroSec, halfAggroSec: entry.halfAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint, halfMeetPoint: entry.halfMeetPoint };
+            job.pull = { aggroSec: entry.pullAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint };
         }
         jobs[entry.team][s.idx] = job;
     }
@@ -386,10 +405,8 @@ export function Resolve(): CampJobData[] {
             stack: stackFor(best, entry),
             pull: {
                 aggroSec: entry.pullAggroSec,
-                halfAggroSec: entry.halfAggroSec,
                 path: DerivePullPath(best, meet),
                 meetPoint: meet,
-                halfMeetPoint: DeriveHalfMeetPoint(entry.team, lane, meet),
             },
             source: entry.source,
             type: best.type,

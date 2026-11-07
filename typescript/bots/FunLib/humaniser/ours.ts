@@ -49,10 +49,6 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,
-    /** Slice pull-half: with SupportPull on, the safe-lane pos5 half-pulls (the neutrals reach the meet point after the wave's
-     *  body, so only its back creeps turn) when the lane holds on their half, and full-pulls when it pushes out; false: full
-     *  pulls only. */
-    SupportHalfPull: true,
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
@@ -100,6 +96,18 @@ export const DEFAULTS = {
      *  creep below half HP that no enemy hero reaches before our hits kill it (states/idle_swing), both laners on one creep.
      *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
     PreDeny: true,
+    /** Slice lane-control 2a (lane controller design s5.1-s5.3): once per wave per team and lane, the controller's reading,
+     *  mode, intent and chosen levers as ev=lane_ctl (lane_control); LaneControlDrive decides whether bots act on it. Off: no reading,
+     *  no line and no driving. */
+    LaneControl: true,
+    /** Slice lane-control 2b (design s7 step 2b): under LaneControl, the controller's decision drives the levers: the idle
+     *  swing's mode and setup, lane aggro's feed and the support's pull read it, each keeping its own gates. Off: shadow
+     *  (2a), each lever on its own trigger. */
+    LaneControlDrive: true,
+    /** Slice lane-control 4a (design s5.7): the offlane pos3 may pull its hard camp when the controller names it (from 6:00
+     *  first, before it only with the pos4 away or unable), with no enemy hero missing near the walk and the lane gold lost
+     *  while away at most LaneControl CorePullWorth. Needs SupportPull and LaneControlDrive. Off: only supports pull. */
+    CorePull: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

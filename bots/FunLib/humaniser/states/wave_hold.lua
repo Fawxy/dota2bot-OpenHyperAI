@@ -43,6 +43,7 @@ local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 --- Pure: our T1's fire reach to a creep's centre (`reach` in the docs), from the API's values or the fallbacks.
 function ____exports.EffReach(range, towerHull, creepHull)
@@ -50,6 +51,9 @@ function ____exports.EffReach(range, towerHull, creepHull)
         return x ~= nil and x > 0 and x or d
     end
     return ok(range, ____exports.SETTINGS.TowerR) + ok(towerHull, ____exports.SETTINGS.TowerHull) + ok(creepHull, ____exports.SETTINGS.CreepHull)
+end
+local function creepSpeed()
+    return WorldFacts.Latest("lane_creep_speed", ____exports.SETTINGS.CreepSpeed)
 end
 ____exports.SETTINGS = {
     Every = 0.25,
@@ -93,18 +97,18 @@ function ____exports.Stretch(theirs, target)
     local rear = -math.huge
     for ____, o in ipairs(theirs) do
         do
-            local __continue3
+            local __continue4
             repeat
                 if o < -____exports.SETTINGS.OursBehind or o > target + ____exports.SETTINGS.StartAhead then
-                    __continue3 = true
+                    __continue4 = true
                     break
                 end
                 n = n + 1
                 front = math.min(front, o)
                 rear = math.max(rear, o)
-                __continue3 = true
+                __continue4 = true
             until true
-            if not __continue3 then
+            if not __continue4 then
                 break
             end
         end
@@ -128,19 +132,19 @@ function ____exports.Read(theirs, ours, target, busy, reach)
         local i = 0
         while i < #ours do
             do
-                local __continue8
+                local __continue9
                 repeat
                     local o = ours[i + 1]
                     if o < ____exports.SETTINGS.TowerR and busy[i + 1] == true then
-                        __continue8 = true
+                        __continue9 = true
                         break
                     end
                     if o >= -____exports.SETTINGS.OursBehind and o <= w.rear + ____exports.SETTINGS.OursAhead then
                         return "ours"
                     end
-                    __continue8 = true
+                    __continue9 = true
                 until true
-                if not __continue8 then
+                if not __continue9 then
                     break
                 end
             end
@@ -200,12 +204,15 @@ function ____exports.Near(schedule, live)
     for ____, x in ipairs(live) do
         d = math.min(d, x)
     end
-    return math.min(schedule, d / ____exports.SETTINGS.CreepSpeed)
+    return math.min(
+        schedule,
+        d / creepSpeed()
+    )
 end
 --- Pure: whether the hold draws their wave now: their front (from our T1) within the lead of the hold point `hd`, the core
 -- `at` from it, `on` their creeps already on the core.
 function ____exports.DrawNow(front, hd, at, on)
-    return on == 0 and at <= ____exports.SETTINGS.HoldNear and front <= hd + ____exports.SETTINGS.HoldDrawLead * ____exports.SETTINGS.CreepSpeed
+    return on == 0 and at <= ____exports.SETTINGS.HoldNear and front <= hd + ____exports.SETTINGS.HoldDrawLead * creepSpeed()
 end
 --- Pure: lane_spot pushed the held spot back inside the hold point's floor for an enemy hero (`why` hero, spot `own` from our
 -- T1) while their front is within HoldDrawLead seconds' walk of the floor: the hold cannot stand where it keeps their wave out
@@ -214,7 +221,7 @@ end
 -- is right, the hold point would give Sniper free harass).
 function ____exports.Unsafe(anchor, why, own, reach, front)
     local floor = reach + ____exports.SETTINGS.LateMargin
-    return anchor == "hold" and why == "hero" and own < floor and front <= floor + ____exports.SETTINGS.HoldDrawLead * ____exports.SETTINGS.CreepSpeed
+    return anchor == "hold" and why == "hero" and own < floor and front <= floor + ____exports.SETTINGS.HoldDrawLead * creepSpeed()
 end
 --- Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin).
 function ____exports.BehindAt(reach)
@@ -228,7 +235,7 @@ function ____exports.DragSecs(front, bd)
     if bd == nil then
         bd = ____exports.SETTINGS.Behind
     end
-    return (front + bd) / ____exports.SETTINGS.CreepSpeed + ____exports.SETTINGS.DrawSecs
+    return (front + bd) / creepSpeed() + ____exports.SETTINGS.DrawSecs
 end
 --- Pure: seconds until a creep of ours on the lane (our T1 distances) reaches the drag point `bd` behind our T1; 0 when one
 -- already stands between it and their front, where it would meet their dragged wave inside our T1's fire.
@@ -236,16 +243,19 @@ function ____exports.OursAtBehind(ours, bd, front)
     local s = math.huge
     for ____, o in ipairs(ours) do
         do
-            local __continue31
+            local __continue32
             repeat
                 if o > front then
-                    __continue31 = true
+                    __continue32 = true
                     break
                 end
-                s = math.min(s, o >= -bd and 0 or (-bd - o) / ____exports.SETTINGS.CreepSpeed)
-                __continue31 = true
+                s = math.min(
+                    s,
+                    o >= -bd and 0 or (-bd - o) / creepSpeed()
+                )
+                __continue32 = true
             until true
-            if not __continue31 then
+            if not __continue32 then
                 break
             end
         end
@@ -297,20 +307,20 @@ local function viewOf(team, lane)
         local out = {}
         for ____, c in ipairs(list) do
             do
-                local __continue42
+                local __continue43
                 repeat
                     if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                        __continue42 = true
+                        __continue43 = true
                         break
                     end
                     local l = c:GetLocation()
                     if l == nil then
-                        __continue42 = true
+                        __continue43 = true
                         break
                     end
                     local s, d = LanePush.Project(path, l.x, l.y)
                     if d > ____exports.SETTINGS.PathR then
-                        __continue42 = true
+                        __continue43 = true
                         break
                     end
                     local own = dir * (s - t1)
@@ -319,9 +329,9 @@ local function viewOf(team, lane)
                     if ____opt_0 ~= nil then
                         keep[#keep + 1] = {u = c, own = own}
                     end
-                    __continue42 = true
+                    __continue43 = true
                 until true
-                if not __continue42 then
+                if not __continue43 then
                     break
                 end
             end
@@ -360,27 +370,27 @@ end
 --- Distances to the hold point of our lane creeps within NearSecs' walk of it that have no attack target.
 local function walkingTo(hold)
     local out = {}
-    local r = ____exports.SETTINGS.NearSecs * ____exports.SETTINGS.CreepSpeed
+    local r = ____exports.SETTINGS.NearSecs * creepSpeed()
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue50
+            local __continue51
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, hold)
                 if d <= r then
                     out[#out + 1] = d
                 end
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
@@ -393,19 +403,19 @@ local function whyGone(bot, now)
         local i = 1
         while i <= 5 do
             do
-                local __continue56
+                local __continue57
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue56 = true
+                        __continue57 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return "pull"
                     end
-                    __continue56 = true
+                    __continue57 = true
                 until true
-                if not __continue56 then
+                if not __continue57 then
                     break
                 end
             end
@@ -422,19 +432,19 @@ end
 local function threatOf(bot, hold)
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None)) do
         do
-            local __continue61
+            local __continue62
             repeat
                 if h == nil or h == nil or h:IsNull() or not h:IsAlive() or h:IsIllusion() then
-                    __continue61 = true
+                    __continue62 = true
                     break
                 end
                 local r = LaneSpot.HeroReach(bot, h) + ____exports.SETTINGS.ThreatMargin
                 if GetUnitToUnitDistance(bot, h) <= r or GetUnitToLocationDistance(h, hold) <= r then
                     return h
                 end
-                __continue61 = true
+                __continue62 = true
             until true
-            if not __continue61 then
+            if not __continue62 then
                 break
             end
         end
@@ -623,10 +633,10 @@ local function skip(bot, v, why, front, n, reach, now, fc)
     local oin = 0
     for ____, o in ipairs(v.ours) do
         do
-            local __continue79
+            local __continue80
             repeat
                 if o < -____exports.SETTINGS.OursBehind then
-                    __continue79 = true
+                    __continue80 = true
                     break
                 end
                 if o < ____exports.SETTINGS.TowerR then
@@ -634,9 +644,9 @@ local function skip(bot, v, why, front, n, reach, now, fc)
                 else
                     on = on + 1
                 end
-                __continue79 = true
+                __continue80 = true
             until true
-            if not __continue79 then
+            if not __continue80 then
                 break
             end
         end
@@ -886,19 +896,19 @@ function ____exports.Step(bot)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue110
+            local __continue111
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - a.bd or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue110 = true
+                    __continue111 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue110 = true
+                __continue111 = true
             until true
-            if not __continue110 then
+            if not __continue111 then
                 break
             end
         end
@@ -912,23 +922,23 @@ function ____exports.Step(bot)
     end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue116
+            local __continue117
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue116 = true
+                    __continue117 = true
                     break
                 end
                 if __TS__ArrayIncludes(a.old, c) then
-                    __continue116 = true
+                    __continue117 = true
                     break
                 end
                 if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
                     a.mo = front
                     return finish(bot, a, "met", now)
                 end
-                __continue116 = true
+                __continue117 = true
             until true
-            if not __continue116 then
+            if not __continue117 then
                 break
             end
         end

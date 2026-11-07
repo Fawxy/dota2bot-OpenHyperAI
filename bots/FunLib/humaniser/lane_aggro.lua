@@ -44,7 +44,7 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local counter, roleOf, newAttempt
+local counter, roleOf, TowerOrderR, newAttempt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -73,6 +73,9 @@ function roleOf(bot)
         return "support"
     end
     return nil
+end
+function TowerOrderR()
+    return LaneConfig.TowerReach() + ____exports.SETTINGS.TowerOrderMargin
 end
 function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
     return {
@@ -105,11 +108,10 @@ ____exports.SETTINGS = {
     MinHp = 0.45,
     HeroMargin = 250,
     TowerR = 1000,
-    TowerOrderR = 900,
+    TowerOrderMargin = 56,
     FeedCreepHp = 0.25,
     FeedMargin = 150,
     OwnTowerR = 800,
-    TowerHit = 850,
     TowerSeek = 1000,
     TowerPast = 250,
     TowerApproachMax = 900,
@@ -247,7 +249,7 @@ function ____exports.FeedWanted(r, target)
     return math.max(r.own, r.own + r.move) > target + ____exports.SETTINGS.FeedMargin
 end
 --- Pure: the tower move's order point, on the line from their tower `(tx, ty)` through their creeps' centre `(cx, cy)`:
--- TowerPast beyond the creeps, never inside TowerOrderR of the tower.
+-- TowerPast beyond the creeps, never inside TowerOrderR() of the tower.
 function ____exports.TowerPoint(tx, ty, cx, cy)
     local dx = cx - tx
     local dy = cy - ty
@@ -255,7 +257,10 @@ function ____exports.TowerPoint(tx, ty, cx, cy)
         1,
         math.sqrt(dx * dx + dy * dy)
     )
-    local r = math.max(len + ____exports.SETTINGS.TowerPast, ____exports.SETTINGS.TowerOrderR)
+    local r = math.max(
+        len + ____exports.SETTINGS.TowerPast,
+        TowerOrderR()
+    )
     return tx + dx / len * r, ty + dy / len * r
 end
 --- Pure: seconds the bot gets to walk `dist` to the approach point at `speed` before it orders from where it stands.
@@ -422,10 +427,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue57
+            local __continue58
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue57 = true
+                    __continue58 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -433,9 +438,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue57 = true
+                __continue58 = true
             until true
-            if not __continue57 then
+            if not __continue58 then
                 break
             end
         end
@@ -448,19 +453,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue62
+                local __continue63
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue62 = true
+                        __continue63 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue62 = true
+                    __continue63 = true
                 until true
-                if not __continue62 then
+                if not __continue63 then
                     break
                 end
             end
@@ -518,7 +523,7 @@ local function gate(bot, now)
     if nearTower(
         bot:GetLocation(),
         bot:GetTeam(),
-        ____exports.SETTINGS.TowerOrderR
+        TowerOrderR()
     ) then
         return "tower"
     end
@@ -534,15 +539,15 @@ local function tryDrag(bot, heroes, now)
     local here = bot:GetLocation()
     for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
         do
-            local __continue80
+            local __continue81
             repeat
                 if t.kind ~= "lasthit" or t.due < ____exports.SETTINGS.DragDueMin or t.due > ____exports.SETTINGS.DragDueMax then
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 local creep = t.creep
                 if not valid(creep) or GetUnitToUnitDistance(bot, creep) > ____exports.SETTINGS.DrawR then
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 local contester
@@ -552,7 +557,7 @@ local function tryDrag(bot, heroes, now)
                     end
                 end
                 if contester == nil then
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 local hero = orderTarget(bot)
@@ -582,7 +587,7 @@ local function tryDrag(bot, heroes, now)
                     now
                 )
             until true
-            if not __continue80 then
+            if not __continue81 then
                 break
             end
         end
@@ -605,7 +610,7 @@ local function tryTower(bot, heroes, now)
         if valid(c) and isLaneCreep(c) and d2(
             c:GetLocation(),
             tl
-        ) <= ____exports.SETTINGS.TowerHit then
+        ) <= LaneConfig.TowerReach() then
             ours = ours + 1
         end
     end
@@ -681,8 +686,13 @@ local function tryFeed(bot, heroes, now)
     if ranged == nil then
         return nil, "no_ranged"
     end
+    local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+    local chosen = LaneControl.Chosen(team, lane, "feed")
+    if chosen == false then
+        return nil, "ctl"
+    end
     local r = pushRead(team, lane)
-    if not ____exports.FeedWanted(
+    if chosen == nil and not ____exports.FeedWanted(
         r,
         LanePush.TargetOf(lane)
     ) then
@@ -884,19 +894,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue135
+            local __continue137
             repeat
                 if not valid(c) then
-                    __continue135 = true
+                    __continue137 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue135 = true
+                __continue137 = true
             until true
-            if not __continue135 then
+            if not __continue137 then
                 break
             end
         end
@@ -1005,7 +1015,7 @@ local function watch(bot, a, now)
         for ____, s0 in ipairs(a.start or ({})) do
             local u = s0.unit
             local l = seenAt(u)
-            if l ~= nil and d2(l, tl) >= ____exports.SETTINGS.TowerOrderR then
+            if l ~= nil and d2(l, tl) >= TowerOrderR() then
                 out = out + 1
             end
         end
@@ -1138,7 +1148,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue186
+                    local __continue188
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1146,16 +1156,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue186 = true
+                            __continue188 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue186 = true
+                        __continue188 = true
                     until true
-                    if not __continue186 then
+                    if not __continue188 then
                         break
                     end
                 end

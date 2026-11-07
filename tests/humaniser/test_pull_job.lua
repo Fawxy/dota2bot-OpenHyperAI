@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro, HalfHoldOff = o.holdOff } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -43,11 +43,13 @@ local function world(o)
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	H.Lane.Camps.ResetCache()
 	H.PullJob.ResetCache()
-	package.loaded["bots/FunLib/custom_loader"].Ours.SupportHalfPull = o.half
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
+	-- The pull verb's hit lead reads the puller's wind-up (GetAttackPoint, on this unit only: the shared stub's absence
+	-- keeps the stack verb's default aggro lead in test_stack_job).
+	sup.GetAttackPoint = function() return 0.4 end
 	local core = MakeUnit({ pid = 1, team = 2, loc = Vector(0, -5000), hp = o.coreHp })
 	core.lane, core.pos = Lane.Bot, 1
 	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
@@ -280,12 +282,13 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro, holdOff = o.holdOff })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0 })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
-	kobold.target = w.sup
-	local out = stubAlongs(o.alongs or waveBehind(function() return 0 end), function()
+	kobold.target = o.noTarget ~= true and w.sup or nil
+	local fn = o.alongs or waveBehind(function() return 0 end)
+	local ok, out = pcall(stubAlongs, fn, function()
 		return capture(function()
 			while T < 120 do
 				frame(w)
@@ -293,6 +296,7 @@ local function livePull(o)
 			end
 		end)
 	end)
+	if not ok then error(out, 0) end
 	return lines(out, "pull_job")[1], out
 end
 
@@ -412,112 +416,6 @@ do
 	check("Wants: WaveGoneNow gets our team, the lane, the pulled wave's spawn and slot + 12", args ~= nil and args[1] == 2
 		and args[2] == Lane.Bot and args[3] == math.floor((slot - 1) / 30) * 30 and math.abs(args[4] - slot - 12) < 0.01
 		and field(c, "pw") == "1", c)
-end
-
--- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full
--- pull's leave time, hit HalfPullLater (2 s) later; with the switch off it full-pulls. A pushing lane is still a full pull.
-local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
-do
-	local function pull(o)
-		local w = world(o)
-		local out = run(w, 80)
-		return lines(out, "choice")[1], lines(out, "job")[1], w
-	end
-	local full = pull({ reading = OUT })
-	local half, job, w = pull({ reading = HOLD })
-	local off = pull({ reading = HOLD, half = false })
-	local d = tonumber(field(half, "slot")) - tonumber(field(full, "slot"))
-	check("half: HOLD on their half gets pk=half, its slot 2 s after the full pull's", field(half, "pk") == "half" and field(half, "go") == "1"
-		and math.abs(d - 2) < 0.01 and job ~= nil, half)
-	check("half: the lane read once for the wave", w.reads == 1, w.reads)
-	check("half: OUT gets a full pull", field(full, "pk") == "full", full)
-	check("half: switch off, HOLD gets a full pull on the full slot", field(off, "pk") == "full" and field(off, "slot") == field(full, "slot"), off)
-end
-
--- The half-pull harness (HalfAll): a lane that wants no pull (IN on our half) still gets a half pull from the safe-lane
--- pos5, so the hit and the step-in are read every slot; without it the slot stays (why=lane).
-do
-	local IN = { state = "IN", clash = 7000, move = -350, q = 0.3, own = 1350, tower = false }
-	local function first(o)
-		local out = run(world(o), 80)
-		return lines(out, "choice")[1], lines(out, "job")[1]
-	end
-	local harness, hjob = first({ reading = IN, halfAll = true })
-	local plain, pjob = first({ reading = IN })
-	check("harness: IN still half-pulls", field(harness, "go") == "1" and field(harness, "pk") == "half" and hjob ~= nil, harness)
-	check("harness: off, IN stays", field(plain, "go") == "0" and field(plain, "why") == "lane" and pjob == nil, plain)
-end
-
--- Only the safe-lane pos5: an off-lane support (Radiant top) or a pos4 full-pulls the same reading.
-do
-	local w = world({ reading = HOLD })
-	check("half: safe-lane pos5 half-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "half")
-	w.sup.lane = Lane.Top
-	check("half: off-lane pos5 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
-	w.sup.lane, w.sup.pos = Lane.Bot, 4
-	check("half: pos4 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
-end
-
--- The half pull's hit is timed on the creeps by the clearance search (pull_timing CreepTimer): with four creeps read it is
--- creep-timed and logs the search (hf, hu, hm); with none read the plan's second stands.
-do
-	local function wave(t, aggroAt, now)
-		if t.meetAlong == nil or t.walk == nil then return {} end
-		local a2 = t.meetAlong + 500 - 325 * (aggroAt + 1.5 + t.walk - now)
-		return { a2 + 150, a2, a2 - 150, a2 - 300 }
-	end
-	-- The clearance search runs without the live step-in; the puller's own aggro is left out (HalfHeroAggro 0) so this
-	-- wave has a clean hit to log.
-	local function half(o)
-		o.reading = HOLD
-		o.stepIn = false
-		o.heroAggro = 0
-		return livePull(o)
-	end
-	local near = half({ alongs = wave })
-	local plan = half({ alongs = function() return {} end })
-	check("half hit: pk=half, timed on the creeps (hr=geo, hc=4) with the search logged", field(near, "pk") == "half" and field(near, "hr") == "geo"
-		and field(near, "hc") == "4" and field(near, "hm") ~= nil and field(near, "hf") ~= nil and field(near, "hu") ~= nil, near)
-	check("half hit: the creep hit moves off the plan's", math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht"))) >= 0.2, near)
-	check("half hit: no creeps read, the plan's second (hr=plan, no search)", field(plan, "hr") == "plan" and field(plan, "hm") == nil, plan)
-	-- With the step-in on, the tagged neutral drops out of vision after the hit: alive with no location (phhar8 05/11/2026,
-	-- every watch errored in watchAt reading it). The watch goes on without it.
-	local hitAt
-	local fogged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
-		if hitAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
-		if hitAt ~= nil and T >= hitAt + 0.5 then for _, u in ipairs(NEUTRALS) do u.unseen = true end end
-	end })
-	check("half step-in: a tagged neutral out of vision mid-watch raises no error", hitAt ~= nil and fogged ~= nil
-		and field(fogged, "why") ~= nil and not field(fogged, "why"):find("error", 1, true), fogged)
-	-- hi: the puller's offset off the lane path when a creep engages the neutrals (review 2026-11-05-pull-half M1: it
-	-- measured along a zero vector and logged 0 always). A creep engages while the puller is still 300 out of the camp,
-	-- well off the lane: hi is that frame's offset, read from the same path.
-	local offAt
-	local engaged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
-		if offAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then
-			local _, off = w.H.Lane.PullTiming.Along(PATH, w.sup.loc)
-			offAt = off
-			local meetAt = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
-			MakeCreep({ team = 2, x = meetAt.x, y = meetAt.y, target = NEUTRALS[1] })
-		end
-	end })
-	local hi = tonumber(field(engaged, "hi"))
-	check("half step-in: hi is the puller's offset off the lane path at engagement (not 0 along a zero vector)", offAt ~= nil
-		and hi ~= nil and hi > 200 and math.abs(hi - offAt) <= 60, tostring(hi) .. " at " .. tostring(offAt))
-end
-
--- A wave bunched on one point has no hit that keeps the front two out and turns the third: the half stays (why=half-geo,
--- the margin logged) rather than starting what would be a full pull from a lane that wanted none.
-do
-	local function bunched(t, aggroAt, now)
-		if t.meetAlong == nil or t.walk == nil then return {} end
-		local a = t.meetAlong - 325 * (aggroAt + t.walk - now)
-		return { a, a, a, a }
-	end
-	local job, out = livePull({ reading = HOLD, alongs = bunched, stepIn = false })
-	local stay = lines(out, "choice")[1]
-	check("half geo: no split, no pull started, why=half-geo with hm <= 0", job == nil and stay ~= nil and field(stay, "go") == "0"
-		and field(stay, "why") == "half-geo" and field(stay, "hm") ~= nil and tonumber(field(stay, "hm")) <= 0, stay)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.
@@ -704,6 +602,102 @@ do
 		and field(pull, "shs") ~= nil and field(pull, "shh") ~= nil, pull)
 	local plain = shedPull(false)
 	check("shed: no creep on the neutral, no shed", plain ~= nil and field(plain, "shs") == nil, plain)
+end
+
+-- Slice lane-control 3: the pull's rank. With the lane controller's decision for the pulled wave naming this support's pull
+-- and the pull ending FitMargin (5) or more before the next rune trip's leave (claimed from 5:00 for the 6:00 spawn), the
+-- pull ranks FitPriority 0.96, above the trip (pos4 0.95) and the stack (0.92); otherwise its usual 0.9.
+do
+	local cust = package.loaded["bots/FunLib/custom_loader"]
+	local function rank(o)
+		local w = world({ reading = OUT, t = 301 })
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.RuneRotation = true, true, true
+		local far = o.runeFar or 0
+		GetRuneSpawnLocation = function() return Vector(w.sup.loc.x + far, w.sup.loc.y) end
+		local win = w.H.PullJob.Window(w.sup, T)
+		w.H.LaneControl.ResetCache()
+		if o.decide ~= false then
+			w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 })
+		end
+		local p = w.H.PullJob.Priority(w.sup)
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
+		return p, win
+	end
+	local p, win = rank({})
+	check("fits before the rune trip: ranks above it", p == 0.96, tostring(p) .. " key " .. tostring(win and win.key))
+	check("no decision: the usual rank", rank({ decide = false }) == 0.9)
+	check("another support's pull: the usual rank", rank({ who = "9" }) == 0.9)
+	-- 12,000 away the trip leaves about 48 s before its spawn, inside the pull.
+	check("does not fit before the trip: the usual rank", rank({ runeFar = 12000 }) == 0.9)
+	GetRuneSpawnLocation = nil
+end
+
+-- Slice lane-control 4a: the offlane pos3 pulls its hard camp only when the lane controller's decision names it (rule ctl);
+-- it never pulls on the support's own triggers, and with CorePull off it is no puller. This world's lane stands in for the
+-- offlane (LaneOfKind stubbed), the pulling unit is the pos3.
+do
+	local function corePull(o)
+		local w = world({ reading = OUT })
+		local Camps = w.H.Lane.Camps
+		local cust = package.loaded["bots/FunLib/custom_loader"]
+		local kind = Camps.LaneOfKind
+		Camps.LaneOfKind = function(team, k) if k == "off" then return Lane.Bot end return kind(team, k) end
+		w.sup.pos = 3
+		-- 3,250 out (a 13 s walk at 300): the leave falls before the pulled wave's read at 62, the start still in time.
+		if o.decide == "late" then w.sup.loc = Vector(w.stand.x + 3250, w.stand.y) end
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = true, true, o.on ~= false
+		w.H.LaneControl.ResetCache()
+		local win = w.H.PullJob.Window(w.sup, T)
+		local d = { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R3", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 }
+		if o.decide == true then w.H.LaneControl.Remember(2, Lane.Bot, d) end
+		local applies = w.H.PullJob.Applies(w.sup)
+		local out
+		if o.decide == "late" then
+			-- No decision until the pulled wave's read second (its spawn + ReadAt 2), as in game.
+			local readAt = d.wave + w.H.LaneControl.SETTINGS.ReadAt
+			out = capture(function()
+				while T < 75 do
+					if T >= readAt and w.H.LaneControl.DecisionFor(2, Lane.Bot, d.wave) == nil then w.H.LaneControl.Remember(2, Lane.Bot, d) end
+					frame(w)
+				end
+			end)
+		else
+			out = run(w, 75)
+		end
+		Camps.LaneOfKind = kind
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = nil, nil, nil
+		return applies, lines(out, "choice")[1], lines(out, "job")[1]
+	end
+	local applies, choice, job = corePull({ decide = true })
+	check("core pull: named by the decision, the pos3 starts the pull", applies and choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl"
+		and job ~= nil and field(job, "phase") == "start", choice)
+	applies, choice, job = corePull({})
+	check("core pull: no decision, no pull on the support's triggers", applies and choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "no_ctl" and job == nil, choice)
+	-- lctl8 (~/.dotactl/logs/2026-11-07T03-58-22-lctl8_A_on_1.log, pid 9 from t=449): the pos3's leave falls before the pulled
+	-- wave's read (cycle second 2); it waits for the read and, the decision naming it, still pulls.
+	applies, choice, job = corePull({ decide = "late" })
+	check("core pull: the decision read after the leave time still starts the pull", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl" and job ~= nil, choice)
+	applies, choice, job = corePull({ decide = true, who = "9" })
+	check("core pull: the decision names another puller", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "ctl" and job == nil, choice)
+	applies = corePull({ decide = true, on = false })
+	check("core pull: CorePull off, the pos3 is no puller", not applies)
+	-- The pos3 off the offlane (this world's lane as the safe lane) is no puller.
+	local w = world({ reading = OUT })
+	w.sup.pos = 3
+	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
+end
+
+-- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
+-- pulled wave, so a cancelled pull does not restart on its own slot (lctl10, ~/.dotactl/logs lctl10_A_on_1, pid 9 slot 376.424
+-- cancelled:one at t=375.3, then slot 376.359 started again and ended ok at t=400.3).
+do
+	local w = world({ reading = OUT })
+	local P = w.H.PullJob
+	check("same wave: a drifted slot", P.SameWave(376.424, 376.359))
+	check("same wave: the camp's other slot is another wave", not P.SameWave(376.4, 346.4))
+	check("same wave: nothing handled yet", not P.SameWave(nil, 376.4))
 end
 
 finish()

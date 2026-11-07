@@ -40,11 +40,14 @@ function Unit:GetTeam() return self.team end
 function Unit:IsBot() return self.bot end
 function Unit:IsIllusion() return false end
 function Unit:IsHero() return true end
+function Unit:GetNearbyNeutralCreeps() return self.neutrals or {} end
+if GetUnitList == nil then function GetUnitList() return {} end end
 function Unit:IsAlive() return self.alive end
 function Unit:CanBeSeen() return true end
 function Unit:IsNull() return self.removed == true end
 function Unit:GetLocation() return self.loc end
 function Unit:GetUnitName() return self.name or ("npc_dota_hero_" .. self.pid) end
+function Unit:GetAcquisitionRange() return self.acq or 500 end
 function Unit:GetDifficulty() return self.difficulty end
 function Unit:GetLevel() return self.level end
 function Unit:HasModifier(name) return self.modifiers[name] ~= nil end
@@ -74,6 +77,12 @@ function Unit:DistanceFromFountain() return self.fountainDist or 8000 end
 -- tasks: unit API used by the lua-tasks verbs. Moves are recorded per unit.
 function Unit:GetLastHits() return self.lastHits or 0 end
 function Unit:GetAttackRange() return self.range or 150 end
+function Unit:GetBoundingRadius() return self.hull or 24 end
+-- A tower for world_facts when a test loads no lane model: 7.41 attack range 700, radius 144.
+if GetTower == nil then
+	local STUB_TOWER = setmetatable({ pid = -1, team = 2, range = 700, hull = 144 }, Unit)
+	function GetTower() return STUB_TOWER end
+end
 function Unit:Action_MoveToLocation(loc) self.moves = self.moves or {} table.insert(self.moves, loc) end
 ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
 function GetAncient() return ANCIENT end

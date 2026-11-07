@@ -421,6 +421,30 @@ do
 	check("CheckBotIdleState logs ev=oha_idle", body ~= nil and body:find("J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)", 1, true) ~= nil)
 end
 
+-- Slice lane-control 3: the lane controller's live decision gives this support's pull the stack minute (yields 3): the
+-- minute is skipped why=lane before the walk; a decision without the yield, or for another support, leaves it alone.
+do
+	local function yielded(yields, who)
+		local H, bot = world({ t = 3 * 60 + 15 })
+		local Ctl = H.LaneControl
+		local Cust = package.loaded["bots/FunLib/custom_loader"]
+		Cust.Ours.LaneControl, Cust.Ours.LaneControlDrive = true, true
+		Ctl.ResetCache()
+		Ctl.Remember(bot:GetTeam(), bot:GetAssignedLane(), { wave = 210, at = 3 * 60 + 15, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { who or tostring(bot:GetPlayerID()) }, cx = 0, cy = 0, yields = yields })
+		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+		local lines = stackLines(capture(function() while T < 3 * 60 + 40 do frame(H, bot) end end))
+		Ctl.ResetCache()
+		Cust.Ours.LaneControl, Cust.Ours.LaneControlDrive = nil, nil
+		return lines
+	end
+	local l = yielded(3)
+	check("lane yield: one skip why=lane", #l == 1 and field(l[1], "res") == "skip" and field(l[1], "why") == "lane", l[1])
+	l = yielded(nil)
+	check("no yield: no lane skip", #l == 0 or field(l[1], "why") ~= "lane", l[1])
+	l = yielded(3, "99")
+	check("another support's pull: no lane skip", #l == 0 or field(l[1], "why") ~= "lane", l[1])
+end
+
 -- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
 do
 	local H, bot = world({ t = 3 * 60 + 15 })
@@ -518,13 +542,6 @@ do
 	check("solo list: an unlisted one is benched", H.Chooser.Benched(other))
 	Customize.Overrides = { Solo = "50," }
 	check("solo list: pid 5 is not 50's 5", H.Chooser.Benched(bot))
-	-- The half-pull harness (slice pull-half): only position 5s play.
-	Customize.Overrides = { Solo = "pos5" }
-	local core = MakeUnit({ pid = 7, team = 3, loc = Vector(0, 0, 0) })
-	local five = MakeUnit({ pid = 8, team = 3, loc = Vector(0, 0, 0) })
-	core.pos, five.pos = 1, 5
-	check("solo pos5: a pos 5 plays, a pos 1 is benched", not H.Chooser.Benched(five) and H.Chooser.Benched(core),
-		tostring(H.Chooser.Benched(five)) .. " " .. tostring(H.Chooser.Benched(core)))
 	Customize.Overrides = nil
 end
 

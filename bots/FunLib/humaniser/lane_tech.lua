@@ -310,7 +310,7 @@ local function enemyTowers(team)
     return list
 end
 local function underEnemyTower(team, loc)
-    local range = settings().Thresholds.EnemyTowerRange
+    local range = LaneConfig.TowerReach()
     for ____, tower in ipairs(enemyTowers(team)) do
         if dist2D(
             tower:GetLocation(),
@@ -485,7 +485,11 @@ local function towerDrop(bot, s, allyCreeps)
         ) then
             return false
         end
-        local tower = towerTargeting(bot, bot, radii.TowerAggro)
+        local tower = towerTargeting(
+            bot,
+            bot,
+            LaneConfig.TowerReach() + radii.TowerAggroMargin
+        )
         if tower == nil then
             return false
         end
@@ -497,7 +501,7 @@ local function towerDrop(bot, s, allyCreeps)
         __TS__Delete(drops, pid)
         return false
     end
-    local exit = radii.TowerAggro + radii.TowerExitMargin
+    local exit = LaneConfig.TowerReach() + radii.TowerAggroMargin + radii.TowerExitMargin
     local towerLoc = drop.tower:GetLocation()
     local here = bot:GetLocation()
     if not drop.dropped then
@@ -721,7 +725,7 @@ local function trySwap(bot, s, enemies, reason, lastHit)
                 local tower = towerTargeting(
                     bot,
                     h.unit,
-                    settings().Radii.TowerAggro
+                    LaneConfig.TowerReach() + settings().Radii.TowerAggroMargin
                 )
                 if tower == nil then
                     __continue104 = true
@@ -736,7 +740,7 @@ local function trySwap(bot, s, enemies, reason, lastHit)
                 local hero = nearest(
                     tower:GetLocation(),
                     candidates,
-                    t.EnemyTowerRange
+                    LaneConfig.TowerReach()
                 )
                 if hero == nil then
                     __continue104 = true

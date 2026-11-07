@@ -127,7 +127,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local key, planFor, closestOn, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, body, playFight
+local planned, key, calendarLeave, powerRunes, takenSpots, powerSpot, planFor, leaveAt, edgeVia, pathAge, closestOn, tripFor, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, paths, rejected, body, playFight
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
@@ -142,12 +142,104 @@ local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
 end
+function planned(kind, spawn)
+    return kind == "power" and spawn == RunePlan.SETTINGS.Spawn and RunePlan.On()
+end
 function key(kind, spawn)
     return (kind .. ":") .. tostring(spawn)
+end
+function calendarLeave(bot, kind, spawn, now)
+    if kind == "contest" then
+        local enemy = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
+        return leaveAt(
+            bot,
+            {
+                kind = kind,
+                spawn = spawn,
+                at = Rotate.ShrineFor(enemy),
+                via = edgeVia(enemy),
+                left = now,
+                host = 0
+            }
+        )
+    end
+    if planned(kind, spawn) then
+        if now < RunePlan.SETTINGS.PlanAt then
+            return nil
+        end
+        local mine = RunePlan.SpotOf(bot, ____exports.Busy, now)
+        if mine == nil then
+            return false
+        end
+        return leaveAt(
+            bot,
+            tripFor(
+                bot,
+                kind,
+                spawn,
+                0,
+                mine
+            )
+        )
+    end
+    return leaveAt(
+        bot,
+        tripFor(bot, kind, spawn, 0)
+    )
+end
+function powerRunes()
+    return __TS__ArrayMap(
+        {Rune.Power1, Rune.Power2},
+        function(____, r) return {
+            r,
+            GetRuneSpawnLocation(r)
+        } end
+    )
+end
+function takenSpots(bot)
+    local out = {}
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue35
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m == bot then
+                        __continue35 = true
+                        break
+                    end
+                    local t = running[m:GetPlayerID()]
+                    if t ~= nil and t.rune ~= nil then
+                        out[t.rune] = true
+                    end
+                    __continue35 = true
+                until true
+                if not __continue35 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return out
+end
+function powerSpot(bot)
+    local taken = LaneConfig.PositionOf(bot) == 4 and ({}) or takenSpots(bot)
+    local best
+    local bestCost = math.huge
+    for ____, spot in ipairs(powerRunes()) do
+        local cost = GetUnitToLocationDistance(bot, spot[2]) + (taken[spot[1]] and 1000000 or 0)
+        if cost < bestCost then
+            best, bestCost = spot, cost
+        end
+    end
+    return best
 end
 function planFor(t)
     if t.kind == "wisdom" or t.kind == "contest" then
@@ -163,6 +255,106 @@ function planFor(t)
         }
     end
     return {at = t.at, spawnAt = t.spawn, rune = t.rune, lateBy = ____exports.SETTINGS.LateBy.power}
+end
+function leaveAt(bot, t)
+    if t.stand ~= nil then
+        return RunePlan.LeaveAt(bot, t.stand.at, t.at)
+    end
+    local u = bot
+    local arrive = Tasks.Jobs().runeArriveBy(
+        u,
+        planFor(t)
+    )
+    local walk = 0
+    local from = bot:GetLocation()
+    local ____array_5 = __TS__SparseArrayNew(unpack(t.via or ({})))
+    __TS__SparseArrayPush(____array_5, t.at)
+    for ____, to in ipairs({__TS__SparseArraySpread(____array_5)}) do
+        walk, from = walk + FR.Dist(from, to), to
+    end
+    return arrive - walk * ____exports.SETTINGS.PathFactor / math.max(
+        1,
+        bot:GetCurrentMovementSpeed()
+    )
+end
+function edgeVia(team)
+    return __TS__ArrayMap(
+        ____exports.SETTINGS.Edge[team] or ({}),
+        function(____, ____bindingPattern0)
+            local y
+            local x
+            x = ____bindingPattern0[1]
+            y = ____bindingPattern0[2]
+            return Vector(x, y, 256)
+        end
+    )
+end
+--- CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
+-- until an answer asked within RouteMoved of where the hero is now and at most RouteFresh s ago arrives (an older answer
+-- starts from somewhere else: its first leg is a straight line that can cross the lane by a tower). A request that has not
+-- answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
+-- waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
+-- called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
+-- Valve's path is the shortest walk, which passes enemy towers: drill2 (05/11/2026) logged 10 contest paths from lane
+-- starts keeping 519-596 from the safe-lane tier-1, inside OHA retreat's 898 (`X.ShouldRun`). An answer that does not run
+-- from where it was asked to `to` is dropped (`vbad`; probe v8: 1 of 70 same-frame answers was another hero's).
+function ____exports.PathVia(bot, to)
+    if type(GeneratePath) == "nil" then
+        return nil
+    end
+    local pid = bot:GetPlayerID()
+    local here = bot:GetLocation()
+    local c = paths[pid]
+    local fits = c ~= nil and FR.Dist(c.to, to) <= 1 and FR.Dist(c.from, here) <= ____exports.SETTINGS.RouteMoved and DotaTime() - c.asked <= ____exports.SETTINGS.RouteFresh
+    if not fits or c.via == nil and DotaTime() - c.asked > 1 then
+        local entry = {
+            from = here,
+            asked = DotaTime(),
+            to = to
+        }
+        paths[pid] = entry
+        GeneratePath(
+            here,
+            to,
+            {},
+            function(...)
+                local args = {...}
+                for ____, a in ipairs(args) do
+                    do
+                        local __continue54
+                        repeat
+                            if type(a) ~= "table" then
+                                __continue54 = true
+                                break
+                            end
+                            local wp = a
+                            if #wp > 0 and FR.Dist(wp[1], entry.from) <= ____exports.SETTINGS.RouteEnds and FR.Dist(wp[#wp], to) <= ____exports.SETTINGS.RouteEnds then
+                                entry.via = ____exports.Thin(wp, to)
+                            else
+                                rejected[pid] = (rejected[pid] or 0) + 1
+                            end
+                            __continue54 = true
+                        until true
+                        if not __continue54 then
+                            break
+                        end
+                    end
+                end
+            end
+        )
+        return entry.via
+    end
+    return c.via
+end
+function pathAge(bot)
+    local c = paths[bot:GetPlayerID()]
+    return (c and c.via) ~= nil and ({
+        DotaTime() - c.asked,
+        FR.Dist(
+            c.from,
+            bot:GetLocation()
+        )
+    }) or nil
 end
 --- Valve's waypoints (the first is the start) with a point kept only where skipping it would make a leg longer than RouteStep.
 function ____exports.Thin(wp, to)
@@ -180,6 +372,24 @@ function ____exports.Thin(wp, to)
     end
     return out
 end
+--- The least distance from any tower to the walk from `from` through `legs`.
+function ____exports.Clearance(from, legs, towers)
+    local min = math.huge
+    local a = from
+    for ____, b in ipairs(legs) do
+        for ____, tw in ipairs(towers) do
+            min = math.min(
+                min,
+                FR.Dist(
+                    closestOn(a, b, tw),
+                    tw
+                )
+            )
+        end
+        a = b
+    end
+    return min
+end
 function closestOn(a, b, p)
     local dx = b.x - a.x
     local dy = b.y - a.y
@@ -189,6 +399,94 @@ function closestOn(a, b, p)
         math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)
     ) or 0
     return Vector(a.x + k * dx, a.y + k * dy, a.z)
+end
+function tripFor(bot, kind, spawn, host, mine)
+    if kind == "wisdom" then
+        return {
+            kind = kind,
+            spawn = spawn,
+            at = Rotate.ShrineFor(bot:GetTeam()),
+            left = DotaTime(),
+            host = host
+        }
+    end
+    if kind == "contest" then
+        local enemy = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
+        local at = Rotate.ShrineFor(enemy)
+        local towers = FR.TowerSpots(enemy)
+        local here = bot:GetLocation()
+        local path = ____exports.PathVia(bot, at)
+        local edge = edgeVia(enemy)
+        local ____temp_10
+        if path ~= nil then
+            local ____exports_Clearance_9 = ____exports.Clearance
+            local ____array_8 = __TS__SparseArrayNew(unpack(path))
+            __TS__SparseArrayPush(____array_8, at)
+            ____temp_10 = ____exports_Clearance_9(
+                here,
+                {__TS__SparseArraySpread(____array_8)},
+                towers
+            )
+        else
+            ____temp_10 = -1
+        end
+        local pathClear = ____temp_10
+        local ____exports_Clearance_12 = ____exports.Clearance
+        local ____array_11 = __TS__SparseArrayNew(unpack(edge))
+        __TS__SparseArrayPush(____array_11, at)
+        local edgeClear = ____exports_Clearance_12(
+            here,
+            {__TS__SparseArraySpread(____array_11)},
+            towers
+        )
+        local usePath = path ~= nil and (pathClear >= ____exports.SETTINGS.TowerAvoid or pathClear >= edgeClear)
+        local ____kind_14 = kind
+        local ____spawn_15 = spawn
+        local ____at_16 = at
+        local ____temp_17 = usePath and path or edge
+        local ____temp_18 = usePath and "path" or "edge"
+        local ____temp_19 = usePath and pathClear or edgeClear
+        local ____temp_13
+        if path ~= nil then
+            ____temp_13 = pathAge(bot)
+        else
+            ____temp_13 = nil
+        end
+        return {
+            kind = ____kind_14,
+            spawn = ____spawn_15,
+            at = ____at_16,
+            via = ____temp_17,
+            route = ____temp_18,
+            clear = ____temp_19,
+            pathAge = ____temp_13,
+            left = DotaTime(),
+            host = host
+        }
+    end
+    if mine ~= nil then
+        local at = RunePlan.SpotAt(mine)
+        return {
+            kind = kind,
+            spawn = spawn,
+            at = at,
+            rune = mine,
+            side = at.y > 0 and "top" or "bot",
+            left = DotaTime(),
+            host = host,
+            stand = RunePlan.StandFor(bot, at)
+        }
+    end
+    local rune, at = unpack(powerSpot(bot))
+    return {
+        kind = kind,
+        spawn = spawn,
+        at = at,
+        rune = rune,
+        side = at.y > 0 and "top" or "bot",
+        left = DotaTime(),
+        host = host
+    }
 end
 body = __TS__Generator(function(bot, t, ctx)
     local hooks = {
@@ -276,7 +574,7 @@ playFight = __TS__Generator(function(bot, play, hooks)
             commit = function() return FR.HpFraction(bot) < ____exports.SETTINGS.StopHp and "hp" or (FR.Alive(target) and FR.TowerDistance(
                 target:GetTeam(),
                 target:GetLocation()
-            ) < ____exports.SETTINGS.StopTower and "tower" or nil) end
+            ) < LaneConfig.TowerAttackRange() and "tower" or nil) end
         },
         hooks
     ))
@@ -330,13 +628,14 @@ function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
 ____exports.SETTINGS = {
-    Trips = {[4] = {{"power", 360}, {"wisdom", 420}}, [5] = {{"power", 360}, {"contest", 420}}},
+    Trips = {[4] = {{"power", Runes.RUNE_RULES.power.first}, {"wisdom", Runes.RUNE_RULES.wisdom.first}}, [5] = {{"power", Runes.RUNE_RULES.power.first}, {"contest", Runes.RUNE_RULES.wisdom.first}}},
     Priority = {[4] = 0.95, [5] = 0.85},
     ClaimFrom = 60,
+    CalendarBack = 10,
     StartSlack = 3,
     PathFactor = 1.2,
     LateBy = {power = 5, wisdom = 15, contest = 15},
-    OwnFor = {power = 120, wisdom = 420, contest = 0},
+    OwnFor = {power = Runes.RUNE_RULES.power.every, wisdom = Runes.RUNE_RULES.wisdom.every, contest = 0},
     ShrineChannel = 3,
     ShrineRadius = 300,
     GankReach = 4000,
@@ -350,7 +649,6 @@ ____exports.SETTINGS = {
     RouteWait = 1.5,
     RouteEnds = 300,
     FightNear = 700,
-    StopTower = 700,
     StopHp = 0.3,
     MidMinHp = 0.5
 }
@@ -365,10 +663,6 @@ Plays.Define(
     }
 )
 Plays.Define("shrine", {base = 0.4, timeout = 60, chases = false})
---- The 6:00 power trip runs as rune_spawn's plan (spot plan, stand, timed walk) rather than the plain trip.
-local function planned(kind, spawn)
-    return kind == "power" and spawn == RunePlan.SETTINGS.Spawn and RunePlan.On()
-end
 running = {}
 handled = {}
 local gateWhy = {}
@@ -418,284 +712,102 @@ local function open(bot)
     end
     return out
 end
---- True while a trip runs or is pending for this bot: lower-ranked jobs wait.
-function ____exports.Claims(bot)
-    return ____exports.Applies(bot) and (____exports.Running(bot) or #open(bot) > 0)
-end
-local function powerRunes()
-    return __TS__ArrayMap(
-        {Rune.Power1, Rune.Power2},
-        function(____, r) return {
-            r,
-            GetRuneSpawnLocation(r)
-        } end
-    )
-end
---- The power spot a teammate's trip already has, by rune id.
-local function takenSpots(bot)
+--- This bot's rune trips still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from ClaimFrom
+-- before the spawn, leaving at the spawn less the walk to the nearer power spot (PathFactor on the straight line; the shrine
+-- trips are planned later and sit about as far, so the same estimate), back CalendarBack after the spawn plus the same walk.
+-- Fixed: a rune trip is never traded for lane control (design s5.5 rule 1).
+function ____exports.CalendarEntries(bot, now)
+    if not ____exports.Applies(bot) then
+        return {}
+    end
+    local pid = bot:GetPlayerID()
     local out = {}
-    do
-        local i = 1
-        while i <= 5 do
-            do
-                local __continue20
-                repeat
-                    local m = GetTeamMember(i)
-                    if m == nil or m == nil or m == bot then
-                        __continue20 = true
-                        break
-                    end
-                    local t = running[m:GetPlayerID()]
-                    if t ~= nil and t.rune ~= nil then
-                        out[t.rune] = true
-                    end
+    local walk = math.huge
+    for ____, ____value in ipairs(powerRunes()) do
+        local at = ____value[2]
+        walk = math.min(
+            walk,
+            GetUnitToLocationDistance(bot, at) * ____exports.SETTINGS.PathFactor / math.max(
+                1,
+                bot:GetCurrentMovementSpeed()
+            )
+        )
+    end
+    local r = running[pid]
+    for ____, ____value in ipairs(____exports.SETTINGS.Trips[LaneConfig.PositionOf(bot) or 0] or ({})) do
+        local kind = ____value[1]
+        local spawn = ____value[2]
+        do
+            local __continue20
+            repeat
+                if kind == "contest" and not RunePlan.On() then
                     __continue20 = true
-                until true
-                if not __continue20 then
                     break
                 end
+                local back = spawn + ____exports.SETTINGS.CalendarBack + walk
+                if r ~= nil and r.kind == kind and r.spawn == spawn then
+                    out[#out + 1] = {
+                        kind = "rune",
+                        key = spawn,
+                        claim = spawn - ____exports.SETTINGS.ClaimFrom,
+                        leave = r.left,
+                        back = back,
+                        fixed = true,
+                        running = true
+                    }
+                    __continue20 = true
+                    break
+                end
+                local ____opt_2 = handled[pid]
+                if (____opt_2 and ____opt_2[key(kind, spawn)]) == true or now >= spawn + ____exports.SETTINGS.LateBy[kind] then
+                    __continue20 = true
+                    break
+                end
+                local ____temp_4
+                if Tasks.Jobs() ~= nil then
+                    ____temp_4 = calendarLeave(bot, kind, spawn, now)
+                else
+                    ____temp_4 = spawn - walk
+                end
+                local leave = ____temp_4
+                if leave == false then
+                    __continue20 = true
+                    break
+                end
+                out[#out + 1] = {
+                    kind = "rune",
+                    key = spawn,
+                    claim = spawn - ____exports.SETTINGS.ClaimFrom,
+                    leave = leave or spawn - walk,
+                    back = back,
+                    fixed = true
+                }
+                __continue20 = true
+            until true
+            if not __continue20 then
+                break
             end
-            i = i + 1
         end
     end
     return out
 end
---- Pos4: the power spot nearest it. Others: the nearest spot no teammate's trip has, else the nearest.
-local function powerSpot(bot)
-    local taken = LaneConfig.PositionOf(bot) == 4 and ({}) or takenSpots(bot)
-    local best
-    local bestCost = math.huge
-    for ____, spot in ipairs(powerRunes()) do
-        local cost = GetUnitToLocationDistance(bot, spot[2]) + (taken[spot[1]] and 1000000 or 0)
-        if cost < bestCost then
-            best, bestCost = spot, cost
-        end
-    end
-    return best
+--- True while a trip runs or is pending for this bot: lower-ranked jobs wait.
+function ____exports.Claims(bot)
+    return ____exports.Applies(bot) and (____exports.Running(bot) or #open(bot) > 0)
 end
---- When to leave for the trip: the verb's skill-scaled arrival less the walk (path factor on the straight line).
-local function leaveAt(bot, t)
-    if t.stand ~= nil then
-        return RunePlan.LeaveAt(bot, t.stand.at, t.at)
-    end
-    local u = bot
-    local arrive = Tasks.Jobs().runeArriveBy(
-        u,
-        planFor(t)
-    )
-    local walk = 0
-    local from = bot:GetLocation()
-    local ____array_2 = __TS__SparseArrayNew(unpack(t.via or ({})))
-    __TS__SparseArrayPush(____array_2, t.at)
-    for ____, to in ipairs({__TS__SparseArraySpread(____array_2)}) do
-        walk, from = walk + FR.Dist(from, to), to
-    end
-    return arrive - walk * ____exports.SETTINGS.PathFactor / math.max(
-        1,
-        bot:GetCurrentMovementSpeed()
-    )
-end
---- The edge route's waypoints to `team`'s shrine.
-local function edgeVia(team)
-    return __TS__ArrayMap(
-        ____exports.SETTINGS.Edge[team] or ({}),
-        function(____, ____bindingPattern0)
-            local y
-            local x
-            x = ____bindingPattern0[1]
-            y = ____bindingPattern0[2]
-            return Vector(x, y, 256)
-        end
-    )
-end
-local paths = {}
---- Answers PathVia threw away since the hero's last contest line, as `vbad`.
-local rejected = {}
+paths = {}
+rejected = {}
 --- When a contest started waiting for Valve's path at its leave time: [spawn, DotaTime].
 local pathWait = {}
---- CANDIDATE(route): Valve's walking path from the hero to `to`, as waypoints before `to`, legs merged up to RouteStep; undefined
--- until an answer asked within RouteMoved of where the hero is now and at most RouteFresh s ago arrives (an older answer
--- starts from somewhere else: its first leg is a straight line that can cross the lane by a tower). A request that has not
--- answered in a second is sent again. The callback's arguments are (distance, request id, waypoints), not the (distance,
--- waypoints) of Valve's docs, and it runs on a later frame (probe genpath5, 04/11/2026: 10 of 24 requests in one frame
--- called back). Avoidance zones changed no path (genpath5 to genpath7); from the contest's starts in rspchk4 at 6:30,
--- Valve's path is the shortest walk, which passes enemy towers: drill2 (05/11/2026) logged 10 contest paths from lane
--- starts keeping 519-596 from the safe-lane tier-1, inside OHA retreat's 898 (`X.ShouldRun`). An answer that does not run
--- from where it was asked to `to` is dropped (`vbad`; probe v8: 1 of 70 same-frame answers was another hero's).
-function ____exports.PathVia(bot, to)
-    if type(GeneratePath) == "nil" then
-        return nil
-    end
-    local pid = bot:GetPlayerID()
-    local here = bot:GetLocation()
-    local c = paths[pid]
-    local fits = c ~= nil and FR.Dist(c.to, to) <= 1 and FR.Dist(c.from, here) <= ____exports.SETTINGS.RouteMoved and DotaTime() - c.asked <= ____exports.SETTINGS.RouteFresh
-    if not fits or c.via == nil and DotaTime() - c.asked > 1 then
-        local entry = {
-            from = here,
-            asked = DotaTime(),
-            to = to
-        }
-        paths[pid] = entry
-        GeneratePath(
-            here,
-            to,
-            {},
-            function(...)
-                local args = {...}
-                for ____, a in ipairs(args) do
-                    do
-                        local __continue39
-                        repeat
-                            if type(a) ~= "table" then
-                                __continue39 = true
-                                break
-                            end
-                            local wp = a
-                            if #wp > 0 and FR.Dist(wp[1], entry.from) <= ____exports.SETTINGS.RouteEnds and FR.Dist(wp[#wp], to) <= ____exports.SETTINGS.RouteEnds then
-                                entry.via = ____exports.Thin(wp, to)
-                            else
-                                rejected[pid] = (rejected[pid] or 0) + 1
-                            end
-                            __continue39 = true
-                        until true
-                        if not __continue39 then
-                            break
-                        end
-                    end
-                end
-            end
-        )
-        return entry.via
-    end
-    return c.via
-end
 --- The hero's path request is out and has not answered yet, within a second of asking.
 function ____exports.PathPending(bot)
     local c = paths[bot:GetPlayerID()]
     return c ~= nil and c.via == nil and DotaTime() - c.asked <= 1
 end
---- The answer behind PathVia's last route: its age and how far from the hero it was asked.
-local function pathAge(bot)
-    local c = paths[bot:GetPlayerID()]
-    return (c and c.via) ~= nil and ({
-        DotaTime() - c.asked,
-        FR.Dist(
-            c.from,
-            bot:GetLocation()
-        )
-    }) or nil
-end
 local function takeRejected(bot)
     local n = rejected[bot:GetPlayerID()] or 0
     rejected[bot:GetPlayerID()] = 0
     return n
-end
---- The least distance from any tower to the walk from `from` through `legs`.
-function ____exports.Clearance(from, legs, towers)
-    local min = math.huge
-    local a = from
-    for ____, b in ipairs(legs) do
-        for ____, tw in ipairs(towers) do
-            min = math.min(
-                min,
-                FR.Dist(
-                    closestOn(a, b, tw),
-                    tw
-                )
-            )
-        end
-        a = b
-    end
-    return min
-end
-local function tripFor(bot, kind, spawn, host, mine)
-    if kind == "wisdom" then
-        return {
-            kind = kind,
-            spawn = spawn,
-            at = Rotate.ShrineFor(bot:GetTeam()),
-            left = DotaTime(),
-            host = host
-        }
-    end
-    if kind == "contest" then
-        local enemy = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
-        local at = Rotate.ShrineFor(enemy)
-        local towers = FR.TowerSpots(enemy)
-        local here = bot:GetLocation()
-        local path = ____exports.PathVia(bot, at)
-        local edge = edgeVia(enemy)
-        local ____temp_7
-        if path ~= nil then
-            local ____exports_Clearance_6 = ____exports.Clearance
-            local ____array_5 = __TS__SparseArrayNew(unpack(path))
-            __TS__SparseArrayPush(____array_5, at)
-            ____temp_7 = ____exports_Clearance_6(
-                here,
-                {__TS__SparseArraySpread(____array_5)},
-                towers
-            )
-        else
-            ____temp_7 = -1
-        end
-        local pathClear = ____temp_7
-        local ____exports_Clearance_9 = ____exports.Clearance
-        local ____array_8 = __TS__SparseArrayNew(unpack(edge))
-        __TS__SparseArrayPush(____array_8, at)
-        local edgeClear = ____exports_Clearance_9(
-            here,
-            {__TS__SparseArraySpread(____array_8)},
-            towers
-        )
-        local usePath = path ~= nil and (pathClear >= ____exports.SETTINGS.TowerAvoid or pathClear >= edgeClear)
-        local ____kind_11 = kind
-        local ____spawn_12 = spawn
-        local ____at_13 = at
-        local ____temp_14 = usePath and path or edge
-        local ____temp_15 = usePath and "path" or "edge"
-        local ____temp_16 = usePath and pathClear or edgeClear
-        local ____temp_10
-        if path ~= nil then
-            ____temp_10 = pathAge(bot)
-        else
-            ____temp_10 = nil
-        end
-        return {
-            kind = ____kind_11,
-            spawn = ____spawn_12,
-            at = ____at_13,
-            via = ____temp_14,
-            route = ____temp_15,
-            clear = ____temp_16,
-            pathAge = ____temp_10,
-            left = DotaTime(),
-            host = host
-        }
-    end
-    if mine ~= nil then
-        local at = RunePlan.SpotAt(mine)
-        return {
-            kind = kind,
-            spawn = spawn,
-            at = at,
-            rune = mine,
-            side = at.y > 0 and "top" or "bot",
-            left = DotaTime(),
-            host = host,
-            stand = RunePlan.StandFor(bot, at)
-        }
-    end
-    local rune, at = unpack(powerSpot(bot))
-    return {
-        kind = kind,
-        spawn = spawn,
-        at = at,
-        rune = rune,
-        side = at.y > 0 and "top" or "bot",
-        left = DotaTime(),
-        host = host
-    }
 end
 local function log(bot, kind, spawn, fields)
     Telemetry.Event(
@@ -743,9 +855,9 @@ local function finish(bot, t, r, label)
     local function r1(x)
         return x ~= nil and math.floor(x * 10) / 10 or nil
     end
-    local ____log_30 = log
-    local ____array_29 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
-    local ____array_28 = __TS__SparseArrayNew(
+    local ____log_33 = log
+    local ____array_32 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
+    local ____array_31 = __TS__SparseArrayNew(
         {"res", r.success and "ok" or "fail"},
         {"why", why},
         {"label", label},
@@ -770,26 +882,26 @@ local function finish(bot, t, r, label)
         {"idle", t.idle},
         {"phase", t.act}
     )
-    local ____temp_17
+    local ____temp_20
     if t.race ~= nil then
-        ____temp_17 = r1(t.race.ours)
+        ____temp_20 = r1(t.race.ours)
     else
-        ____temp_17 = nil
+        ____temp_20 = nil
     end
-    __TS__SparseArrayPush(____array_28, {"ta", ____temp_17})
-    local ____temp_18
+    __TS__SparseArrayPush(____array_31, {"ta", ____temp_20})
+    local ____temp_21
     if t.race ~= nil and t.race.theirs < math.huge then
-        ____temp_18 = r1(t.race.theirs)
+        ____temp_21 = r1(t.race.theirs)
     else
-        ____temp_18 = nil
+        ____temp_21 = nil
     end
-    __TS__SparseArrayPush(____array_28, {"te", ____temp_18}, {"hid", t.hidden})
-    local ____opt_19 = t.stand
-    __TS__SparseArrayPush(____array_28, {"sh", ____opt_19 and ____opt_19.height})
-    local ____opt_21 = t.stand
+    __TS__SparseArrayPush(____array_31, {"te", ____temp_21}, {"hid", t.hidden})
+    local ____opt_22 = t.stand
+    __TS__SparseArrayPush(____array_31, {"sh", ____opt_22 and ____opt_22.height})
+    local ____opt_24 = t.stand
     __TS__SparseArrayPush(
-        ____array_28,
-        {"sph", ____opt_21 and ____opt_21.spotHeight},
+        ____array_31,
+        {"sph", ____opt_24 and ____opt_24.spotHeight},
         {"via", t.via ~= nil and #t.via or nil},
         {"route", t.route},
         {
@@ -797,15 +909,15 @@ local function finish(bot, t, r, label)
             t.clear ~= nil and math.floor(t.clear) or nil
         }
     )
-    local ____temp_23
+    local ____temp_26
     if t.pathAge ~= nil then
-        ____temp_23 = r1(t.pathAge[1])
+        ____temp_26 = r1(t.pathAge[1])
     else
-        ____temp_23 = nil
+        ____temp_26 = nil
     end
     __TS__SparseArrayPush(
-        ____array_28,
-        {"vage", ____temp_23},
+        ____array_31,
+        {"vage", ____temp_26},
         {
             "voff",
             t.pathAge ~= nil and math.floor(t.pathAge[2]) or nil
@@ -825,15 +937,15 @@ local function finish(bot, t, r, label)
             ) or nil
         }
     )
-    local ____opt_24 = t.play or t.fight
-    __TS__SparseArrayPush(____array_28, {"play", ____opt_24 and ____opt_24.id})
-    local ____opt_26 = t.gank
-    __TS__SparseArrayPush(____array_28, {"gank", ____opt_26 and ____opt_26.id})
+    local ____opt_27 = t.play or t.fight
+    __TS__SparseArrayPush(____array_31, {"play", ____opt_27 and ____opt_27.id})
+    local ____opt_29 = t.gank
+    __TS__SparseArrayPush(____array_31, {"gank", ____opt_29 and ____opt_29.id})
     __TS__SparseArrayPush(
-        ____array_29,
-        {__TS__SparseArraySpread(____array_28)}
+        ____array_32,
+        {__TS__SparseArraySpread(____array_31)}
     )
-    ____log_30(__TS__SparseArraySpread(____array_29))
+    ____log_33(__TS__SparseArraySpread(____array_32))
 end
 --- OHA's own action holds the hero (a queued TP, a cast or channel): the host's Think does not step a job then
 -- (J.CanNotUseAction), so a trip started now ends `never_started` (probe rr2: a pos4 in its fountain with a queued TP).
@@ -860,7 +972,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue73
+            local __continue88
             repeat
                 local mine
                 local function skip(why)
@@ -877,12 +989,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue73 = true
+                    __continue88 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue73 = true
+                        __continue88 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -914,8 +1026,8 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("busy")
                     end
                     if t.route == "edge" and ____exports.PathPending(bot) then
-                        local ____opt_31 = pathWait[pid]
-                        if (____opt_31 and ____opt_31[1]) ~= spawn then
+                        local ____opt_34 = pathWait[pid]
+                        if (____opt_34 and ____opt_34[1]) ~= spawn then
                             pathWait[pid] = {
                                 spawn,
                                 DotaTime()
@@ -951,7 +1063,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue73 then
+            if not __continue88 then
                 break
             end
         end
@@ -995,13 +1107,13 @@ function ____exports.MidWants(bot)
         return false
     end
     if not bot:IsAlive() then
-        local ____temp_33
+        local ____temp_36
         if now >= spawn then
-            ____temp_33 = skip("dead")
+            ____temp_36 = skip("dead")
         else
-            ____temp_33 = false
+            ____temp_36 = false
         end
-        return ____temp_33
+        return ____temp_36
     end
     local t = tripFor(
         bot,
@@ -1016,13 +1128,13 @@ function ____exports.MidWants(bot)
     end
     local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
     if why ~= nil then
-        local ____temp_34
+        local ____temp_37
         if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_34 = skip(why)
+            ____temp_37 = skip(why)
         else
-            ____temp_34 = false
+            ____temp_37 = false
         end
-        return ____temp_34
+        return ____temp_37
     end
     local ok = Tasks.Start(
         bot,
@@ -1048,8 +1160,8 @@ function ____exports.MidStep(bot)
 end
 --- The mode that steps this hero's running trip (the chooser's host, or the rune mode for the mid's 6:00 trip), if any.
 function ____exports.HostOf(bot)
-    local ____opt_35 = running[bot:GetPlayerID()]
-    return ____opt_35 and ____opt_35.host
+    local ____opt_38 = running[bot:GetPlayerID()]
+    return ____opt_38 and ____opt_38.host
 end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
@@ -1095,20 +1207,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue153
+                local __continue168
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue153 = true
+                        __continue168 = true
                         break
                     end
-                    local ____opt_37 = running[m:GetPlayerID()]
-                    if (____opt_37 and ____opt_37.kind) == "wisdom" then
+                    local ____opt_40 = running[m:GetPlayerID()]
+                    if (____opt_40 and ____opt_40.kind) == "wisdom" then
                         return true
                     end
-                    __continue153 = true
+                    __continue168 = true
                 until true
-                if not __continue153 then
+                if not __continue168 then
                     break
                 end
             end

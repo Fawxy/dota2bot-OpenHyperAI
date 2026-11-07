@@ -741,6 +741,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -854,10 +855,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue164
+            local __continue163
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue164 = true
+                    __continue163 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -871,9 +872,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue164 = true
+                __continue163 = true
             until true
-            if not __continue164 then
+            if not __continue163 then
                 break
             end
         end
@@ -983,11 +984,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue194
+            local __continue193
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue194 = true
+                    __continue193 = true
                     break
                 end
                 local name = (string.gsub(
@@ -997,7 +998,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue194 = true
+                    __continue193 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -1007,9 +1008,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue194 = true
+                __continue193 = true
             until true
-            if not __continue194 then
+            if not __continue193 then
                 break
             end
         end
@@ -1173,13 +1174,9 @@ ____exports.SETTINGS = {
 }
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 override = Overrides.Get
---- Overrides.Solo names another hero: this one sits out the game in its fountain. "pos5" keeps both teams' position 5s
--- only (the half-pull harness, slice pull-half).
+--- Overrides.Solo names another hero: this one sits out the game in its fountain.
 function ____exports.Benched(bot)
     local solo = override("Solo")
-    if solo == "pos5" then
-        return LaneConfig.PositionOf(bot) ~= 5
-    end
     if type(solo) == "string" then
         for n in string.gmatch(solo, "%d+") do
             if tonumber(n) == bot:GetPlayerID() then
@@ -1319,19 +1316,19 @@ local POS4_SINGLES = {{x = -8313, y = -553}, {x = 7928, y = -120}}
 local function campAt(team, x, y)
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue31
+            local __continue30
             repeat
                 if s.team ~= team or not near(s.location, x, y) or (Stacking.Window(s.idx)) == nil then
-                    __continue31 = true
+                    __continue30 = true
                     break
                 end
                 local d = Camps.ByIdx(s.idx, s.team)
                 if d ~= nil and d.stack ~= nil then
                     return d
                 end
-                __continue31 = true
+                __continue30 = true
             until true
-            if not __continue31 then
+            if not __continue30 then
                 break
             end
         end
@@ -1374,11 +1371,11 @@ local function carryClears(team, d)
         local i = 1
         while i <= 5 do
             do
-                local __continue40
+                local __continue39
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:GetTeam() ~= team or LaneConfig.PositionOf(u) ~= 1 then
-                        __continue40 = true
+                        __continue39 = true
                         break
                     end
                     return carryClear(
@@ -1387,7 +1384,7 @@ local function carryClears(team, d)
                         Stacking.StackCount(d.a.campIdx) + 1
                     )
                 until true
-                if not __continue40 then
+                if not __continue39 then
                     break
                 end
             end
@@ -1536,15 +1533,15 @@ local function SweepNext(bot)
     local stand
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue66
+            local __continue65
             repeat
                 if s.team ~= bot:GetTeam() or done[s.idx] or list ~= nil and not list[s.idx] or (Stacking.Window(s.idx)) == nil then
-                    __continue66 = true
+                    __continue65 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, s.team)
                 if data == nil or data.stack == nil then
-                    __continue66 = true
+                    __continue65 = true
                     break
                 end
                 local p = ____exports.Stand(s, data)
@@ -1557,9 +1554,9 @@ local function SweepNext(bot)
                 ) then
                     best, stand = data, p
                 end
-                __continue66 = true
+                __continue65 = true
             until true
-            if not __continue66 then
+            if not __continue65 then
                 break
             end
         end
@@ -1603,19 +1600,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue90
+            local __continue89
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue90 = true
+                    __continue89 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue90 = true
+                __continue89 = true
             until true
-            if not __continue90 then
+            if not __continue89 then
                 break
             end
         end
@@ -1686,22 +1683,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue108
+                local __continue107
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue108 = true
+                        __continue107 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue108 = true
+                    __continue107 = true
                 until true
-                if not __continue108 then
+                if not __continue107 then
                     break
                 end
             end
@@ -2225,10 +2222,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue232
+            local __continue231
             repeat
-                if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
-                    __continue232 = true
+                if handled[pid][minute] or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom or now >= (minute + 1) * GameRules.NEUTRAL_EVERY then
+                    __continue231 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2261,6 +2258,15 @@ function ____exports.Wants(bot, blocked, host)
                     gateWhy[pid] = nil
                     log(bot, minute, {{"res", "skip"}, {"why", why}})
                     return false
+                end
+                local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+                if LaneControl.YieldsStack(
+                    bot:GetTeam(),
+                    bot:GetAssignedLane(),
+                    pid,
+                    minute
+                ) then
+                    return skip("lane")
                 end
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
@@ -2380,12 +2386,119 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue232 then
+            if not __continue231 then
                 break
             end
         end
     end
     return false
+end
+--- This bot's stack minutes still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from LookFrom,
+-- leaving at the single stack's hit second less the walk to its stand point and Lead (Wants' own leave; a double leaves
+-- earlier, so this is the latest leave), back at :00 + FarEnd plus the same walk. Tentative: the lane may take the minute
+-- (`skip why=lane`).
+function ____exports.CalendarEntries(bot, now)
+    if not ____exports.Applies(bot) then
+        return {}
+    end
+    local pid = bot:GetPlayerID()
+    local out = {}
+    local a = running[pid]
+    for ____, minute in ipairs(____exports.Minutes()) do
+        do
+            local __continue254
+            repeat
+                local ____end = minute * 60 + 60 + ____exports.SETTINGS.FarEnd
+                if now >= ____end then
+                    __continue254 = true
+                    break
+                end
+                if a ~= nil and a.minute == minute then
+                    out[#out + 1] = {
+                        kind = "stack",
+                        key = minute,
+                        claim = minute * 60 + ____exports.SETTINGS.LookFrom,
+                        leave = a.startedAt,
+                        back = ____end,
+                        fixed = false,
+                        running = true
+                    }
+                    __continue254 = true
+                    break
+                end
+                local ____opt_39 = handled[pid]
+                if (____opt_39 and ____opt_39[minute]) == true or now >= minute * 60 + 60 then
+                    __continue254 = true
+                    break
+                end
+                local data, stand = ____exports.Nearest(
+                    bot:GetTeam(),
+                    bot:GetLocation()
+                )
+                local pos4 = LaneConfig.PositionOf(bot) == 4
+                local ____pos4_41
+                if pos4 then
+                    ____pos4_41 = ____exports.Pos4For(
+                        bot:GetTeam(),
+                        minute
+                    )
+                else
+                    ____pos4_41 = nil
+                end
+                local job = ____pos4_41
+                if pos4 then
+                    data, stand = unpack(job ~= nil and ({
+                        job[1],
+                        ____exports.Stand(
+                            Camps.SpawnerByIdx(job[1].campIdx),
+                            job[1]
+                        )
+                    }) or ({nil, nil}))
+                end
+                if data == nil or stand == nil then
+                    __continue254 = true
+                    break
+                end
+                local walk = travel(bot, stand)
+                local leave = minute * 60 + ____exports.SingleSec(data) - walk - ____exports.SETTINGS.Lead
+                local ____pos4_45
+                if pos4 then
+                    ____pos4_45 = job and job[2]
+                else
+                    local ____Ours_On_result_44
+                    if Ours.On("DoubleStack") then
+                        ____Ours_On_result_44 = ____exports.Partner(data)
+                    else
+                        ____Ours_On_result_44 = nil
+                    end
+                    ____pos4_45 = ____Ours_On_result_44
+                end
+                local fd = ____pos4_45
+                if fd ~= nil and ____exports.Fits(bot, fd) and (pos4 or carryClears(
+                    bot:GetTeam(),
+                    fd
+                )) then
+                    leave = math.min(
+                        leave,
+                        minute * 60 + fd.fsec - travel(bot, fd.stand) - ____exports.SETTINGS.DoubleLead
+                    )
+                end
+                out[#out + 1] = {
+                    kind = "stack",
+                    key = minute,
+                    claim = minute * 60 + ____exports.SETTINGS.LookFrom,
+                    leave = leave,
+                    back = ____end + walk,
+                    fixed = false
+                }
+                __continue254 = true
+            until true
+            if not __continue254 then
+                break
+            end
+        end
+    end
+    return out
 end
 --- True while an attempt runs or a trigger minute is still open for this bot (the job chooser's claim between jobs).
 function ____exports.Pending(bot)
@@ -2398,8 +2511,8 @@ function ____exports.Pending(bot)
     end
     local now = DotaTime()
     for ____, minute in ipairs(____exports.Minutes()) do
-        local ____opt_39 = handled[pid]
-        if (____opt_39 and ____opt_39[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
+        local ____opt_46 = handled[pid]
+        if (____opt_46 and ____opt_46[minute]) ~= true and now >= minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom and now < (minute + 1) * GameRules.NEUTRAL_EVERY then
             return true
         end
     end

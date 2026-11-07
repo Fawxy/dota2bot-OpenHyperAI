@@ -64,7 +64,6 @@ ____exports.DEFAULTS = {
     RuneRotation = true,
     RuneSpawn = true,
     SupportPull = true,
-    SupportHalfPull = true,
     LaneSpot = true,
     SupportHarass = true,
     LaneSpotTower = true,
@@ -73,7 +72,10 @@ ____exports.DEFAULTS = {
     CoreHold = true,
     CoreCampTrip = true,
     SupportPullFarm = true,
-    PreDeny = true
+    PreDeny = true,
+    LaneControl = true,
+    LaneControlDrive = true,
+    CorePull = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

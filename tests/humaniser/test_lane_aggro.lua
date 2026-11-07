@@ -26,7 +26,7 @@ check("no reading: no feed", not A.FeedWanted(nil, 900))
 
 -- The tower move orders just past their creeps, never from inside the tower's reach.
 local x, y = A.TowerPoint(0, 0, 500, 0)
-check("their creeps 500 from the tower: order 900 out on their line", x == 900 and y == 0)
+check("their creeps 500 from the tower: order 924 out on their line (reach 844 + hero 24 + margin 56)", x == 924 and y == 0)
 x, y = A.TowerPoint(0, 0, 0, -800)
 check("their creeps 800 out: order 250 beyond them", x == 0 and y == -1050)
 

@@ -116,6 +116,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function startWatch(bot, verbs, tower, creep, f, lo)
     local pid = bot:GetPlayerID()
     if watches[pid] ~= nil then
@@ -489,7 +490,8 @@ local function consider(bot, me, verbs, tower, target)
     local ____this_1
     ____this_1 = me
     local ____opt_0 = ____this_1.GetSecondsPerAttack
-    local period = ____opt_0 and ____opt_0(____this_1) or 1.7
+    local read = ____opt_0 and ____opt_0(____this_1)
+    local period = read ~= nil and read > 0 and read or WorldFacts.Fallback("attack_period", 1.7)
     local ____this_3
     ____this_3 = me
     local ____opt_2 = ____this_3.GetBaseDamageVariance

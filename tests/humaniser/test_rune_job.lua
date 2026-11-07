@@ -94,6 +94,32 @@ do
 	check("pos4 wisdom: at its own shrine", dist(bot.loc, Vector(-7948, 768)) <= 300, bot.loc.x .. "," .. bot.loc.y)
 end
 
+-- The calendar's leave is the trip's own (review H1, slice lane-control 3; lctl4_C_on_3 t=362 pid 0: a walk to the nearer
+-- power spot put a 7:00 shrine trip's leave 20 s late, a pull fitted before it, and the trip was lost): the pos4's 6:00 trip
+-- starts within a frame of the leave its calendar entry gave at 4:50, and its 7:00 shrine (far from both power spots on
+-- this hero's side) leaves on the shrine walk, not the power spot's.
+do
+	local H = world()
+	local bot = hero(4, 4)
+	local leave, wisdom
+	for _, e in ipairs(H.RuneJob.CalendarEntries(bot, T)) do
+		if e.key == 360 then leave = e.leave elseif e.key == 420 then wisdom = e end
+	end
+	local started
+	capture(function()
+		while T < 359 and started == nil do
+			frame(H, { bot })
+			if H.RuneJob.Running(bot) then started = T end
+		end
+	end)
+	check("calendar: the 6:00 trip starts at the calendar's leave", leave ~= nil and started ~= nil and math.abs(started - leave) <= 0.25, tostring(leave) .. " " .. tostring(started))
+	H = world({ t = 300 })
+	bot = hero(4, 4, Vector(-7000, 1500))
+	for _, e in ipairs(H.RuneJob.CalendarEntries(bot, T)) do if e.key == 420 then wisdom = e end end
+	local walk = dist(bot.loc, Vector(-7948, 768)) * H.RuneJob.SETTINGS.PathFactor / bot:GetCurrentMovementSpeed()
+	check("calendar: the shrine trip's leave is the shrine walk's", wisdom ~= nil and math.abs((420 - wisdom.leave) - walk) <= 6, wisdom and (420 - wisdom.leave) .. " vs " .. walk)
+end
+
 -- The shrine trip marks the shrine as taken for OHA's own wisdom logic while it runs.
 do
 	local H = world({ t = 395 })

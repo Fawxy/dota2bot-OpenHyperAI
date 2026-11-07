@@ -241,8 +241,7 @@ function humanPulling(s: LaneState.LaneSnapshot, human: Unit): boolean {
             if (sp.idx === job.campIdx) spawner = sp;
         }
         if (spawner === undefined || dist2D(Camps.BoxCenter(spawner), loc) > radius) continue;
-        const seconds = [...PullTiming.ForCamp(job, false).seconds, ...PullTiming.ForCamp(job, true).seconds];
-        for (const sec of seconds) if (inWindow(s.cycleSec, sec)) return true;
+        for (const sec of PullTiming.ForCamp(job).seconds) if (inWindow(s.cycleSec, sec)) return true;
     }
     return false;
 }

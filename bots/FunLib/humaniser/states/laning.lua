@@ -574,11 +574,11 @@ local body = __TS__Generator(function(bot, ctx)
                 end
                 local idle = ____temp_19
                 if idle ~= nil then
-                    local prior = idle.kind == "predeny" and (IdleSwing.SpentOn(
+                    local prior = idle.kind ~= "shove" and (IdleSwing.SpentOn(
                         bot:GetPlayerID(),
                         t.creep
                     ) or 0) or nil
-                    if res.success and idle.kind == "predeny" then
+                    if res.success and idle.kind ~= "shove" then
                         IdleSwing.NoteSwing(
                             bot:GetPlayerID(),
                             t.creep
@@ -637,7 +637,15 @@ local body = __TS__Generator(function(bot, ctx)
                     else
                         ____temp_22 = nil
                     end
-                    __TS__SparseArrayPush(____array_25, {"focus", ____temp_22})
+                    __TS__SparseArrayPush(
+                        ____array_25,
+                        {"focus", ____temp_22},
+                        {"hits", idle.hits},
+                        {
+                            "cid",
+                            Telemetry.CreepId(t.creep)
+                        }
+                    )
                     local ____temp_23
                     if IdleSwing.Count(bot, "GetDenies") > idle.denies then
                         ____temp_23 = true

@@ -345,8 +345,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             const idle = t.kind === "prehit" ? IdleSwing.Of(bot.GetPlayerID(), t.creep) : undefined;
             if (idle !== undefined) {
-                const prior = idle.kind === "predeny" ? IdleSwing.SpentOn(bot.GetPlayerID(), t.creep) ?? 0 : undefined;
-                if (res.success && idle.kind === "predeny") IdleSwing.NoteSwing(bot.GetPlayerID(), t.creep);
+                const prior = idle.kind !== "shove" ? IdleSwing.SpentOn(bot.GetPlayerID(), t.creep) ?? 0 : undefined;
+                if (res.success && idle.kind !== "shove") IdleSwing.NoteSwing(bot.GetPlayerID(), t.creep);
                 Telemetry.Event("idle_swing", [
                     ["pid", bot.GetPlayerID()],
                     ["kind", idle.kind],
@@ -363,6 +363,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                     ["kill", idle.kill === undefined || idle.kill === math.huge ? undefined : math.floor(idle.kill * 100) / 100],
                     ["reach", idle.reach === undefined ? undefined : idle.reach === math.huge ? -1 : math.floor(idle.reach * 100) / 100],
                     ["focus", idle.focus === true ? true : undefined],
+                    ["hits", idle.hits],
+                    ["cid", Telemetry.CreepId(t.creep as unknown as Unit)],
                     ["dn", IdleSwing.Count(bot, "GetDenies") > idle.denies ? true : undefined],
                     ["lh", IdleSwing.Count(bot, "GetLastHits") > idle.lastHits ? true : undefined],
                     ["contested", contested],

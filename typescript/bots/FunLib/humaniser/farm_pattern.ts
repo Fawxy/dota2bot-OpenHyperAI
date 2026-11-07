@@ -12,6 +12,7 @@
  * desire (it would only win in retreat's dip and end at once); enemy sightings end a trip after a reaction delay, not
  * on the first frame; pre-emption logs name the mode that won; farm_gate logs why trips do not start.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { BotMode, Lane, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -19,6 +20,7 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
@@ -65,7 +67,7 @@ export const DEFAULTS = {
     LateTolerance: 5,
     // A stack may leave the front this much longer, since its gold arrives on a later trip.
     StackLateExtra: 8,
-    WavePeriod: 30,
+    WavePeriod: GameRules.WAVE_EVERY,
     // Prior seconds to clear a camp at RefLevel, scaled by RefLevel / level within LevelScale, plus StackedClearMul per
     // stack. Each bot then learns how much faster or slower it really is (Learn), within LearnClamp.
     ClearSec: { small: 7, medium: 10, large: 13, ancient: 18 } as Record<string, number>,
@@ -218,7 +220,7 @@ function hpOf(bot: Unit): number {
 }
 
 function currentMinute(now: number): number {
-    return math.floor(now / 60);
+    return math.floor(now / GameRules.NEUTRAL_EVERY);
 }
 
 function clamp(v: number, range: number[]): number {
@@ -231,7 +233,7 @@ export function NextWaveAt(team: number, lane: Lane, front: Vector, now: number)
     const path = PullTiming.LanePath(enemy, lane);
     if (path === undefined || path.length < 2) return undefined;
     const [along] = PullTiming.Along(path, front);
-    const travel = along / LaneConfig.Settings().PullTiming.CreepSpeed;
+    const travel = along / WorldFacts.Latest("lane_creep_speed", LaneConfig.Settings().PullTiming.CreepSpeed);
     const period = Settings().WavePeriod;
     const k = math.max(0, math.ceil((now - travel) / period));
     return k * period + travel;

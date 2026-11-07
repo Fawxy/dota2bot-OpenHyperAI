@@ -15,11 +15,13 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 export const SCHEMA = 2;
 
@@ -677,7 +679,7 @@ const TOWER_TIERS: [number, number][] = [
 ];
 const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
 /** RUNE_RULES power.first (transitions/runes): power spots hold water runes before it. */
-const POWER_FROM = 360;
+const POWER_FROM = Runes.RUNE_RULES.power.first;
 /** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
 const RUNE_TAKER_R = 400;
 /**
@@ -686,7 +688,7 @@ const RUNE_TAKER_R = 400;
  * fastest real pickup seen after a spawn (rspchk2 game 1).
  */
 const RUNE_EXPIRE_FOR = 0.15;
-const RUNE_RESPAWN = 120;
+const RUNE_RESPAWN = Runes.RUNE_RULES.power.every;
 /** judgement: ward cast range 500 plus movement since the cast. */
 const WARD_OWNER_R = 800;
 /** Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this. */
@@ -804,6 +806,47 @@ function trackBuilding(team: number, w: WorldState, kind: string, id: number, u:
         ]);
 }
 
+const worldFactSeen: Record<string, boolean> = {};
+/** Slice world-facts probe: each fact's live value beside the constant, once per fact and team per game; the first fallback of a fact is logged too. */
+function trackWorldFacts(this: void, team: number, bot: Unit): void {
+    const lc = LaneConfig.Settings();
+    const rows = WorldFacts.Probe(bot, {
+        tower: lc.Thresholds.EnemyTowerRange,
+        towerRange: 700,
+        hero: lc.Thresholds.HeroRadius,
+        laneCreep: lc.PullTiming.CreepSpeed,
+        neutral: lc.PullTiming.NeutralSpeed.medium,
+        neutralSeeds: lc.PullTiming.NeutralSpeed as Record<string, number>,
+    });
+    const fell = WorldFacts.Fallbacks();
+    for (const r of rows) {
+        const key = `${team}:${r.fact}`;
+        if (worldFactSeen[key]) continue;
+        worldFactSeen[key] = true;
+        Event("world_fact", [
+            ["team", team],
+            ["fact", r.fact],
+            ["live", r.live],
+            ["constant", r.constant],
+            ["fell", fell[r.fact] ?? 0],
+        ]);
+    }
+    // A fallback of a fact the probe has no row for (a caller's own read, WorldFacts.Fallback): its first use, once per game.
+    for (const f of WorldFacts.UnprobedFallbacks()) {
+        const key = `${team}:fell:${f.fact}`;
+        if (worldFactSeen[key]) continue;
+        worldFactSeen[key] = true;
+        Event("world_fact", [
+            ["team", team],
+            ["fact", f.fact],
+            ["live", -1],
+            ["constant", f.value],
+            ["fell", f.n],
+        ]);
+    }
+}
+const guardedWorldFacts = Guard("Telemetry.WorldFacts", trackWorldFacts);
+
 function trackWorld(this: void, bot: Unit, now: number): void {
     const team = bot.GetTeam();
     if (!firstThisFrame("world", team, now)) return;
@@ -828,6 +871,7 @@ function trackWorld(this: void, bot: Unit, now: number): void {
     w.roshanAt = killedAt;
     guardedFront(team);
     guardedLaneRead(team, now);
+    guardedWorldFacts(team, bot);
 }
 
 /** Smoke, teleport and aegis edges for one hero (bot or human). */
@@ -877,6 +921,21 @@ function trackHero(this: void, unit: Unit, s: BotState, now: number, slow: boole
             ["team", unit.GetTeam()],
         ]);
     s.aegis = aegis;
+}
+
+/** A creep's id in this log: one number per unit handle, first come first numbered (slice lane-control 2b: an idle swing
+ *  joins its creep's death by it, review 2026-11-06-idle-swing-014bae7 F2). Both teams' lines share the numbering only where
+ *  they share a Lua state. */
+const creepIds = new LuaTable<Unit, number>();
+let nextCreepId = 0;
+export function CreepId(u: Unit): number {
+    let id = creepIds.get(u);
+    if (id === undefined) {
+        nextCreepId++;
+        id = nextCreepId;
+        creepIds.set(u, id);
+    }
+    return id;
 }
 
 // Lane creep deaths (BACKLOG 1.12, WO-025): who got each enemy lane creep that died near the team, and what each own core
@@ -1069,6 +1128,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
             ["tw", c.towerOn.get(d.creep) === true],
+            ["cid", CreepId(d.creep)],
         ];
         // The killer's mode when it started the swing that killed (slice 3: a mode switch between swing and death
         // otherwise leaves the snapshot mode wrong).
@@ -1184,6 +1244,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["y", math.floor(d.seen.y)],
             ["hp", d.seen.hp],
             ["by", d.by ?? "none"],
+            ["cid", CreepId(d.creep)],
         ]);
     for (const u of ownList) {
         const kind = creepKind(u.GetUnitName());

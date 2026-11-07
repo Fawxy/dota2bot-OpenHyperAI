@@ -16,6 +16,7 @@ import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
@@ -24,11 +25,14 @@ type Kind = "power" | "wisdom" | "contest";
 // All judgement (slice file, Decisions).
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
-    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [["power", 360], ["contest", 420]] } as Record<number, [Kind, number][]>,
+    Trips: { [4]: [["power", Runes.RUNE_RULES.power.first], ["wisdom", Runes.RUNE_RULES.wisdom.first]], [5]: [["power", Runes.RUNE_RULES.power.first], ["contest", Runes.RUNE_RULES.wisdom.first]] } as Record<number, [Kind, number][]>,
     /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
     ClaimFrom: 60,
+    /** The calendar's estimate of a trip's end: this long after the spawn (banked trips are away about 14 s, `away`), then
+     *  the walk back (slice lane-control 3; `judgement`). */
+    CalendarBack: 10,
     /** A start held back (gate or another job) past its leave time by this much is skipped: it would arrive late. */
     StartSlack: 3,
     /** Walking paths run longer than the straight line (states/rotate's PATH_FACTOR). */
@@ -37,7 +41,7 @@ export const SETTINGS = {
     LateBy: { power: 5, wisdom: 15, contest: 15 } as Record<Kind, number>,
     /** After its spawn, the trip's decision stays ours until that rune's next spawn (power every 2 min, the next shrine at 14:00):
      *  OHA's rune mode does not send the hero there, whether the trip ran or was skipped. */
-    OwnFor: { power: 120, wisdom: 420, contest: 0 } as Record<Kind, number>,
+    OwnFor: { power: Runes.RUNE_RULES.power.every, wisdom: Runes.RUNE_RULES.wisdom.every, contest: 0 } as Record<Kind, number>,
     /** Liquipedia/7.41: stand within 300 of the shrine for 3 s. */
     ShrineChannel: 3,
     ShrineRadius: 300,
@@ -69,7 +73,7 @@ export const SETTINGS = {
     /** An enemy hero within FightNear of the spot at the spawn is a rune-fight chance. */
     FightNear: 700,
     /** The gank or fight stops with its target this near its own tower, or the support under this HP fraction. */
-    StopTower: 700,
+    /** Added to the tower's reach: the gank stops with its target this near its own tower. -144 is the tower's radius, so the distance is its attack range, 700 (judgement; was 700). */
     StopHp: 0.3,
     /** The mid's trip does not start under this HP fraction (the chooser's MinHpFraction for supports' jobs; rspchk2 game 1
      *  started one at 2% HP). */
@@ -156,6 +160,55 @@ function open(bot: Unit): [Kind, number][] {
         if (handled[pid]?.[key(kind, spawn)] !== true && now >= spawn - SETTINGS.ClaimFrom && now < spawn + SETTINGS.LateBy[kind]) out.push([kind, spawn]);
     }
     return out;
+}
+
+/**
+ * This bot's rune trips still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from ClaimFrom
+ * before the spawn, leaving at the spawn less the walk to the nearer power spot (PathFactor on the straight line; the shrine
+ * trips are planned later and sit about as far, so the same estimate), back CalendarBack after the spawn plus the same walk.
+ * Fixed: a rune trip is never traded for lane control (design s5.5 rule 1).
+ */
+export function CalendarEntries(bot: Unit, now: number): { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] {
+    if (!Applies(bot)) return [];
+    const pid = bot.GetPlayerID();
+    const out: { kind: "rune"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] = [];
+    let walk = math.huge;
+    for (const [, at] of powerRunes()) walk = math.min(walk, (GetUnitToLocationDistance(bot, at) * SETTINGS.PathFactor) / math.max(1, bot.GetCurrentMovementSpeed()));
+    const r = running[pid];
+    for (const [kind, spawn] of SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] ?? []) {
+        if (kind === "contest" && !RunePlan.On()) continue;
+        const back = spawn + SETTINGS.CalendarBack + walk;
+        if (r !== undefined && r.kind === kind && r.spawn === spawn) {
+            out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: r.left, back, fixed: true, running: true });
+            continue;
+        }
+        if (handled[pid]?.[key(kind, spawn)] === true || now >= spawn + SETTINGS.LateBy[kind]) continue;
+        const leave = Tasks.Jobs() !== undefined ? calendarLeave(bot, kind, spawn, now) : spawn - walk;
+        if (leave === false) continue;
+        out.push({ kind: "rune", key: spawn, claim: spawn - SETTINGS.ClaimFrom, leave: leave ?? spawn - walk, back, fixed: true });
+    }
+    return out;
+}
+
+/**
+ * The trip's own leave time (`leaveAt`, as `Wants` reads it), for the calendar (review H1, lctl4_C_on_3 t=362 pid 0 and
+ * lctl4_B_on_5 pid 2: the walk to a power spot put the 7:00 contest's leave 20 s late, so a pull fitted before it and the
+ * contest was lost). The contest's route is the edge route (the longer one, so never a later leave; the trip asks Valve's
+ * path only when it starts). A planned power rune: the plan's spot once the plan exists, `false` when the plan gave this
+ * bot none; undefined before the plan (the caller's walk estimate).
+ */
+function calendarLeave(bot: Unit, kind: Kind, spawn: number, now: number): number | false | undefined {
+    if (kind === "contest") {
+        const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+        return leaveAt(bot, { kind, spawn, at: Rotate.ShrineFor(enemy), via: edgeVia(enemy), left: now, host: 0 });
+    }
+    if (planned(kind, spawn)) {
+        if (now < RunePlan.SETTINGS.PlanAt) return undefined;
+        const mine = RunePlan.SpotOf(bot, Busy, now);
+        if (mine === undefined) return false;
+        return leaveAt(bot, tripFor(bot, kind, spawn, 0, mine));
+    }
+    return leaveAt(bot, tripFor(bot, kind, spawn, 0));
 }
 
 /** True while a trip runs or is pending for this bot: lower-ranked jobs wait. */
@@ -538,7 +591,7 @@ function* playFight(bot: Unit, play: Plays.Play, hooks: JobVerbs.JobHooks): Lib.
             commit: () =>
                 FR.HpFraction(bot) < SETTINGS.StopHp
                     ? "hp"
-                    : FR.Alive(target) && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < SETTINGS.StopTower
+                    : FR.Alive(target) && FR.TowerDistance(target.GetTeam(), target.GetLocation()) < LaneConfig.TowerAttackRange()
                       ? "tower"
                       : undefined,
         },

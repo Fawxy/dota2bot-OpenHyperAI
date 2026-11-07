@@ -4,6 +4,7 @@
  * visible heroes plus GetHeroLastSeenInfo), visible creeps and neutrals, and public map data. Each bot notices a
  * signal instance at most once, with a skill-scaled chance; an unnoticed instance is remembered so it is not re-rolled.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
@@ -30,7 +31,6 @@ export interface PullSignalInput {
     campLoc: Vector;
     standLoc: Vector;
     campPullSec: number[];
-    campHalfSec?: number[];
 }
 
 export interface PullExpectedInput {
@@ -42,7 +42,7 @@ export interface PullExpectedInput {
     supportInLane: boolean;
 }
 
-export type SignalKind = "pull" | "half_pull" | "freeze" | "stack" | "mid_missing" | "rune_shove" | "pull_expected";
+export type SignalKind = "pull" | "freeze" | "stack" | "mid_missing" | "rune_shove" | "pull_expected";
 
 export interface Signal {
     kind: SignalKind;
@@ -52,7 +52,7 @@ export interface Signal {
     enemyPid?: number;
     /** pull_expected: when the predicted pull aggros the camp. */
     aggroAt?: number;
-    /** pull / half_pull: their support seen at its camp, last seen there, or our wave's arrival (late or thin). */
+    /** pull: their support seen at its camp, last seen there, or our wave's arrival (late or thin). */
     source?: "seen" | "lastseen" | "wave";
     noticed: boolean;
 }
@@ -181,7 +181,7 @@ export function EnemyPullSuspected(i: PullSignalInput): boolean {
     }
     const period = cfg.Timing.WaveCycle;
     const sec = i.now % period;
-    for (const s of [...i.campPullSec, ...(i.campHalfSec ?? [])]) {
+    for (const s of i.campPullSec) {
         if (circularGap(sec, s % period, period) <= cfg.Timing.CounterPullWindow) return true;
     }
     return false;
@@ -263,7 +263,7 @@ function onNotice(bot: Unit, st: ObserverState, key: string, sig: Signal, s: Lan
     const instance = `${s.team}:${s.lane}:${key}`;
     HDebug.Log("lane", `counter pid=${bot.GetPlayerID()} noticed=${sig.kind} lane=${sig.lane} camp=${sig.campIdx ?? "-"} enemy=${sig.enemyPid ?? "-"}`);
     if (sig.kind === "pull_expected") return;
-    if (sig.kind === "pull" || sig.kind === "half_pull") {
+    if (sig.kind === "pull") {
         say(bot, st, inferred ? "say_lane_their_sup_missing" : `say_lane_they_pull_${LANE_NAME[sig.lane]}`, instance);
     } else if (sig.kind === "freeze") {
         say(bot, st, "say_lane_they_freeze", instance);
@@ -392,8 +392,7 @@ function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy,
             enemySupport: support,
             campLoc: Camps.BoxCenter(spawner),
             standLoc: CampJobs.PullerStand(camp) ?? Camps.BoxCenter(spawner),
-            campPullSec: PullTiming.ForCamp(camp, false).seconds,
-            campHalfSec: PullTiming.ForCamp(camp, true).seconds,
+            campPullSec: PullTiming.ForCamp(camp).seconds,
         };
         if (EnemyPullSuspected(input)) return camp.campIdx;
     }
@@ -405,7 +404,7 @@ function expectedAggro(s: LaneState.LaneSnapshot, camp: Camps.CampJobData, suppo
         now,
         forecastEq: s.forecastEq,
         enemyDesiredEq: LaneState.DesiredEq(LaneState.LaneKindOf(enemyTeamOf(s.team), s.lane), false),
-        pullSec: PullTiming.ForCamp(camp, false).seconds,
+        pullSec: PullTiming.ForCamp(camp).seconds,
         supportInLane: support !== undefined && isLaner(support, s),
     });
 }
@@ -444,9 +443,9 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
     if (anomaly === undefined) return;
     // Their support standing in our lane is not pulling: the wave is only late or partly in sight.
     if (support !== undefined && support.visible && isLaner(support, s)) return;
-    const kind = anomaly === "late" ? "pull" : "half_pull";
-    const sig = { kind, lane: s.lane, at: now, campIdx: camps[0].campIdx, enemyPid: support?.pid, source: "wave" } as Omit<Signal, "noticed">;
-    observe(bot, st, `${kind}:${camps[0].campIdx}:${cycle}`, sig, s, enemies);
+    // Late or thin, the wave was pulled (all or part of it).
+    const sig = { kind: "pull", lane: s.lane, at: now, campIdx: camps[0].campIdx, enemyPid: support?.pid, source: "wave" } as Omit<Signal, "noticed">;
+    observe(bot, st, `pull:${camps[0].campIdx}:${cycle}`, sig, s, enemies);
 }
 
 function freezeSignal(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
@@ -478,7 +477,7 @@ function midSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, ene
 
 function stackSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
     const cfg = settings();
-    const minute = math.floor(now / 60);
+    const minute = math.floor(now / GameRules.NEUTRAL_EVERY);
     const sec = now - minute * 60;
     const watching = sec >= cfg.Timing.StackWatchFrom && sec <= cfg.Timing.StackWatchTo;
     const after = sec <= cfg.Timing.StackOutsideUntil;
@@ -555,7 +554,7 @@ export function Signals(bot: Unit): Signal[] {
 // ---------------------------------------------------------------------------------------------- responses
 
 function towerProtects(bot: Unit, target: LaneState.LaneEnemy): boolean {
-    const range = settings().Thresholds.EnemyTowerRange;
+    const range = LaneConfig.TowerReach();
     for (const t of bot.GetNearbyTowers(1600, true) ?? []) {
         if (t !== null && t !== undefined && dist2D(t.GetLocation(), target.location) <= range) return true;
     }
@@ -643,7 +642,7 @@ function preContest(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: 
 }
 
 function towerGuards(team: number, loc: Vector): boolean {
-    const range = settings().Thresholds.EnemyTowerRange;
+    const range = LaneConfig.TowerReach();
     for (const id of LaneTech.TOWER_IDS) {
         const t = GetTower(team, id);
         if (t !== null && t !== undefined && t.IsAlive() && dist2D(t.GetLocation(), loc) <= range) return true;
@@ -706,7 +705,7 @@ function respondToPull(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, 
             st.preContested = { campIdx: sig.campIdx, cycle: cycleOf(sig.aggroAt) };
             return;
         }
-        if (sig.kind !== "pull" && sig.kind !== "half_pull") continue;
+        if (sig.kind !== "pull") continue;
         if (preContested(st, sig)) {
             st.responded[key] = true;
             continue;
@@ -755,12 +754,12 @@ function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enem
     const cfg = settings();
     if (!LaneConfig.IsOn("CampBlock") || !LaneConfig.InLaningPhase() || !isSupport(bot)) return false;
     if (LaneConfig.SkillOf(bot) <= cfg.Gates.CampBlock) return false;
-    const sec = now % 60;
+    const sec = now % GameRules.NEUTRAL_EVERY;
     if (sec < cfg.Timing.CampBlockFrom || sec > cfg.Timing.CampBlockTo) return false;
     const ward = findWard(bot);
     if (st.campBlockAt !== undefined && now - st.campBlockAt < cfg.Timing.CampBlockCooldown) {
         // Walking to the box to plant: keep the frame until the ward is used or the window closes.
-        return ward !== undefined && math.floor(st.campBlockAt / 60) === math.floor(now / 60);
+        return ward !== undefined && math.floor(st.campBlockAt / GameRules.NEUTRAL_EVERY) === math.floor(now / GameRules.NEUTRAL_EVERY);
     }
     if (ward === undefined) return false;
     let spawner: Camps.Spawner | undefined;

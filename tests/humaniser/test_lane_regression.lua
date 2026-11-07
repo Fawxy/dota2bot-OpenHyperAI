@@ -11,7 +11,7 @@ function UnitMeta:GetMostRecentPing() return self.ping or { time = 0, location =
 local BOT_Y = LANE_Y[Lane.Bot]
 local SMALL = Vector(-1600, -6200)
 
-local ALL_FLAGS = { "Plan", "Block", "FullPull", "HalfPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
+local ALL_FLAGS = { "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
 	"Harass", "Mid", "CounterPlay", "Telegraph", "CampBlock" }
 local function flags(on, keep)
 	local cfg = { Enable = true, OwnLaningThink = "all" }

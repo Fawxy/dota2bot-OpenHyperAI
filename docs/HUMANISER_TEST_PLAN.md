@@ -39,7 +39,7 @@ Each section of HUMANISER_DEV.md has its own checklist, taken from the handoffs:
 Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.md. Launch with `-condebug` and `Debug = true`; work from a lobby with at least one human.
 
 **Data calibration run** (first, so later sessions run on measured data)
-- [ ] For every camp index, run `!hstacktest <idx>` and `!hpulltest <idx>` (and `!hpulltest <idx> half` for the pull camps) with a bot nearby; use `!hcamp` to find the index. Note which fail to start.
+- [ ] For every camp index, run `!hstacktest <idx>` and `!hpulltest <idx>` with a bot nearby; use `!hcamp` to find the index. Note which fail to start.
 - [ ] Copy `console.log` out of the game folder and run `node tools/replay-mining/parse_condebug.js console.log`. Promote entries with a `suggest:` line to `source: "measured"` with `verifiedAt` (dd/mm/yyyy), as described in HUMANISER_DEV.md.
 - [ ] Lane amounts: `LANE_AMOUNT_TEAM_RELATIVE`. For a Dire bot, `!hcamp` and a pull both resolve to the camp near its own lane. Pass: no pull walks to the wrong side; otherwise flip the flag in `camps.ts`.
 - [ ] Spawner data: log `GetNeutralSpawners()` at 0:00. Pass: non-empty, `type` is a string or int (both accepted, note which), table key matches `idx`.
@@ -57,7 +57,7 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 - [ ] Aggro confirmation: a melee support lands the hit from the stand point within `Timing.AggroConfirm`. Pass: no `job-abort ... mistake:no-aggro` lines.
 - [ ] Divert measurement: allied creeps' `GetAttackTarget()` reports the neutral while they fight it. Pass: logged `divert` matches what is seen.
 - [ ] Last-hit yield: a support in a pull does not leave the meet point to last-hit. Pass: no walk-off during `lane_job`.
-- [ ] Seed timings per camp (stack :53-:55 by type, pulls :15/:45, :18/:48, half +2 s) and the `unverified` off-lane hard camp: see the calibration run. Pass: `parse_condebug.js` gives at least 80% ok per camp, or a `suggest:` line to promote.
+- [ ] Seed timings per camp (stack :53-:55 by type, pulls :15/:45, :18/:48) and the `unverified` off-lane hard camp: see the calibration run. Pass: `parse_condebug.js` gives at least 80% ok per camp, or a `suggest:` line to promote.
 - [ ] Stacking: one queued attack at the seed second pulls the camp out before :00; the exit path keeps it out. Pass: `stack` lines grade ok for most attempts.
 - [ ] Stack outcome: the stacked neutrals are back in the box by :05 (`StackOutcomeUntil`) and `StackSight` (1,200) sees the box from the exit path. Pass: `after` exceeds `before` on stacks that visibly worked; few `after=?`.
 - [ ] Stack farm desire: a laning support at :45, and a support after laning, take the stack job; two supports do not both take one camp. Pass: at most one bot in the box.
@@ -85,7 +85,7 @@ Setup and background are in the "Lane management (07)" section of HUMANISER_DEV.
 - [ ] Camp-job pre-emption: let another mode (rune, ward, retreat) win while a pull is due. Pass: `job-abort ... reason=preempted` within about 1 s, the support goes back to last-hitting, and no `mistake:no-camp` from a camp it never reached.
 
 **Scenarios 2-14** (spec numbering; run each at `SkillOverride = 0.9`, then at `0.2` or `0.4` where the spec gives a gate, and compare). The checklist with the exact expectations is in HUMANISER_DEV.md.
-- [ ] 2 Full pull, 3 half pull (never at 0.4), 4 stack pull
+- [ ] 2 Full pull, 4 stack pull
 - [ ] 5 Creep block at 0:00, 6 aggro pull and tower-aggro drop
 - [ ] 7 No pull while the partner is in danger
 - [ ] 8 Harass timing (human goes for 20 last hits: 0.9 punishes most, 0.2 some, at random times)
@@ -165,4 +165,4 @@ Setup and design are in the "Transitions (12)" section of HUMANISER_DEV.md. Laun
 - **Lane `OwnLaningThink = 'all'`:** it gives every bot, the enemy team included, OHA's laning `Think()` for the whole game in place of Valve's C++ laning. Only use it deliberately; compare lane results against `'allies'`.
 - **Camp jobs:** pulls and stacks run at desire 0.7, so supports leave their lane for them (a pull is gated on partner safety, but a stack after laning has no partner). If supports die or vanish more than before, raise `Thresholds.StableEnemyRadius` or turn off `Stack` / the pull flags.
 - **Untrusted seed paths:** pull and stack seconds, paths and the off-lane hard camp come from public guides and derived geometry and have not been measured on this patch (`data=seed` or `unverified` in `job-start`). Bad data means failed pulls and wasted trips, not errors; fix by promoting measured entries.
-- **Replay data:** the Go replay parser is uncompiled and stack-only; half-pull data must be measured in-game.
+- **Replay data:** the Go replay parser is uncompiled and stack-only; pull data must be measured in-game.

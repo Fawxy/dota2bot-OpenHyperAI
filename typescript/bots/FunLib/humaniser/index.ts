@@ -5,6 +5,7 @@
 import { GameState, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -45,6 +46,8 @@ import * as States from "bots/FunLib/humaniser/states/index";
 export { States };
 import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 export { CoreTrade };
+import * as LaneControl from "bots/FunLib/humaniser/lane_control";
+export { LaneControl };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -141,6 +144,7 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    Camps.FeedNeutralSpeeds(bot);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
     Difficulty.Init();
@@ -159,6 +163,8 @@ function tick(this: void, bot: Unit): void {
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     Orders.GetFor(bot);
     Intent.Tick(bot);
+    // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
+    LaneControl.Tick(bot);
     Telemetry.Tick(bot, telemetryContext);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
@@ -219,6 +225,8 @@ if (Telemetry.GuardsEnabled()) {
         DesireFloor: zero,
     });
     Telemetry.GuardModule("Commands", Commands, { ShouldUseOrderedSmoke: no });
+    // A controller error drops that wave's ev=lane_ctl line; no bot action reads it.
+    Telemetry.GuardModule("LaneControl", LaneControl, { Tick: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,
         FilterUnitList: arg1,
