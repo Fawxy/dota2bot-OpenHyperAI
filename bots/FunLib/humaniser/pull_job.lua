@@ -362,6 +362,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -1861,23 +1862,39 @@ function ____exports.Wants(bot, blocked, host)
             bot:GetAssignedLane(),
             ____exports.PulledSpawn(p.slot)
         )
-        if ctl == nil and not isSupport(bot) and LaneControl.Drives() and now < ____exports.PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 and ____exports.PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until then
-            return false
+        local forced = Drill.ForcedAt(
+            "pull",
+            ____exports.PulledSpawn(p.slot)
+        )
+        if forced ~= nil then
+            d = {
+                slot = p.slot,
+                want = forced == "on",
+                reading = reading,
+                gone = gone,
+                hold = hold,
+                rule = forced == "on" and "drill" or nil,
+                drill = true
+            }
+        else
+            if ctl == nil and not isSupport(bot) and LaneControl.Drives() and now < ____exports.PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 and ____exports.PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until then
+                return false
+            end
+            local byCtl = ctl ~= nil and ____exports.CtlWants(ctl, pid)
+            local own = ctl == nil and isSupport(bot)
+            local byNew = own and ____exports.Wanted(gone, tgt)
+            local byOld = own and hold and ____exports.OldWanted(reading, tgt)
+            local rule = byCtl and "ctl" or (byNew and byOld and "both" or (byNew and "new" or (byOld and "old" or nil)))
+            d = {
+                slot = p.slot,
+                want = rule ~= nil,
+                reading = reading,
+                gone = gone,
+                hold = hold,
+                rule = rule,
+                ctl = ctl ~= nil
+            }
         end
-        local byCtl = ctl ~= nil and ____exports.CtlWants(ctl, pid)
-        local own = ctl == nil and isSupport(bot)
-        local byNew = own and ____exports.Wanted(gone, tgt)
-        local byOld = own and hold and ____exports.OldWanted(reading, tgt)
-        local rule = byCtl and "ctl" or (byNew and byOld and "both" or (byNew and "new" or (byOld and "old" or nil)))
-        d = {
-            slot = p.slot,
-            want = rule ~= nil,
-            reading = reading,
-            gone = gone,
-            hold = hold,
-            rule = rule,
-            ctl = ctl ~= nil
-        }
         decided[pid] = d
         gateWhy[pid] = nil
     end
@@ -1897,7 +1914,7 @@ function ____exports.Wants(bot, blocked, host)
     if not d.want then
         done(
             false,
-            d.ctl == true and "ctl" or (not isSupport(bot) and "no_ctl" or (d.reading == nil and "no-read" or "lane"))
+            d.drill == true and "drill" or (d.ctl == true and "ctl" or (not isSupport(bot) and "no_ctl" or (d.reading == nil and "no-read" or "lane")))
         )
         return false
     end

@@ -35,6 +35,9 @@ export interface Entry {
     others: "bench" | "statue" | "laneonly" | "play";
     /** The cast plays lane-only (hold its spot, last-hit, deny; no techniques, harass, trades, spells or items). */
     castLaneOnly?: boolean;
+    /** `statue`: the cast stands as a statue whenever its forced job (`forces`) does not run, so nothing but that job touches
+     *  the lane (a pull drill's puller between pulls). Only the forced job is asked (`ForcedJob`). */
+    castIdle?: "statue";
     /** The rep clock (DotaTime seconds): a rep every `every` from `from`; with `control` n, every nth rep withholds the
      *  input (`input=off`, the control in the same game). */
     rep: { every: number; from: number; control?: number };
@@ -81,6 +84,39 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 60, from: 120 },
         forces: "stack",
         overrides: { StackFar: true, Sweep: true },
+    },
+    // Lane controller drills (slice file lane-controller.md "Drills"). Prediction step 0: nobody acts, every lane's waves meet
+    // untouched; the controller still decides and checks each team-lane wave (rule R1, levers `nobody`), so `@lane_ctl` scores
+    // its plain forecast against the untouched world. No cast, so no rep line: the waves are the reps.
+    "lane-still": { note: "every hero benched; the controller's forecast against untouched waves", cast: {}, others: "bench", rep: { every: 30, from: 0 } },
+    // Pull execution and effect: the Radiant pos5 pulls the wave of each input-on rep (the minute's wave) and is a statue
+    // otherwise; the :30 waves are the control. Only the pull job runs for it; the controller's word is not asked.
+    pull: {
+        note: "Radiant pos5 pulls each minute's wave, a statue otherwise; the :30 wave unpulled (control); everyone else benched",
+        cast: { r: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, control: 2 },
+        forces: "pull",
+    },
+    // Slice 4a's pull: the Radiant offlane pos3 pulls its hard camp on the same reps.
+    "core-pull": {
+        note: "Radiant pos3 pulls its hard camp each minute's wave, a statue otherwise; the :30 wave unpulled; everyone else benched",
+        cast: { r: [3] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, control: 2 },
+        forces: "pull",
+    },
+    // The forced shove (slice 1's harness, slice 4b's crash target): the Radiant safe-lane core alone, lane-only, in mode
+    // `shove`; each wave a rep.
+    shove: {
+        note: "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
+        cast: SAFE_CORE,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceShove: "r:bot" },
     },
 };
 
@@ -143,9 +179,32 @@ const STATUE_BEHIND = -300;
 const STATUE_SWAY = 40;
 const statueSide: Record<number, number> = {};
 
+/** A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
+ *  first and gives this hero the statue's step only when the job neither runs nor starts). */
+export function IdleStatue(bot: Unit): boolean {
+    return Active()?.castIdle === "statue" && RoleOf(bot) === "cast";
+}
+
+/** The one chooser job a cast may run (the forced context, for an entry with `castIdle`), or undefined: every job. */
+export function ForcedJob(bot: Unit): string | undefined {
+    const d = Active();
+    return d !== undefined && d.castIdle !== undefined && RoleOf(bot) === "cast" ? d.forces : undefined;
+}
+
+/** For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
+ *  control rep) or is before the first rep (`none`); undefined when the drill does not force `context`. A pull reads it at
+ *  its pulled wave's spawn second. */
+export function ForcedAt(context: string, t: number): "on" | "off" | "none" | undefined {
+    const d = Active();
+    if (d === undefined || d.forces !== context) return undefined;
+    const n = RepAt(t);
+    if (n === 0) return "none";
+    return controlRep(d, n) ? "off" : "on";
+}
+
 /**
- * The held hero's step: a benched hero walks to its fountain and waits; a statue walks to its lane spot behind its own
- * creeps and sways there. False when the hero is not held.
+ * The held hero's step: a benched hero walks to its fountain and waits; a statue (or an idle-statue cast) walks to its lane
+ * spot behind its own creeps and sways there. False when the hero is not held.
  */
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
@@ -155,7 +214,7 @@ export function Hold(bot: Unit): boolean {
         if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
         return true;
     }
-    if (r !== "statue") return false;
+    if (r !== "statue" && !IdleStatue(bot)) return false;
     const lane = bot.GetAssignedLane() as Lane;
     const spot = GetLaneFrontLocation(bot.GetTeam(), lane, STATUE_BEHIND);
     const pid = bot.GetPlayerID();

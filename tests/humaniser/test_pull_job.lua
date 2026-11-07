@@ -700,4 +700,36 @@ do
 	check("same wave: nothing handled yet", not P.SameWave(nil, 376.4))
 end
 
+-- Drill `pull` (humaniser/drill.ts): the rep of the pulled wave decides, not the controller; a control rep stays (why=drill).
+do
+	local function drilled(o)
+		local w = world({ reading = OUT })
+		local cust = package.loaded["bots/FunLib/custom_loader"]
+		cust.Overrides = { Drill = "pull" }
+		w.H.Drill.ResetCache()
+		local tab = w.H.Drill.TABLE.pull
+		local control = tab.rep.control
+		-- control 1 withholds every rep.
+		if o.off then tab.rep.control = 1 end
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = true, true
+		w.H.LaneControl.ResetCache()
+		local win = w.H.PullJob.Window(w.sup, T)
+		-- The controller's decision names another puller; the drill does not ask it.
+		w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "9" }, cx = 0, cy = 0 })
+		local role = w.H.Drill.RoleOf(w.sup)
+		local out = run(w, 75)
+		tab.rep.control = control
+		cust.Overrides = nil
+		w.H.Drill.ResetCache()
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
+		return role, lines(out, "choice")[1], lines(out, "job")[1]
+	end
+	local role, choice, job = drilled({})
+	check("drill pull: the pos5 is the cast", role == "cast", role)
+	check("drill pull: an input-on rep pulls (rule drill), the controller not asked", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "drill" and job ~= nil, choice)
+	role, choice, job = drilled({ off = true })
+	check("drill pull: a control rep stays (why=drill)", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "drill" and job == nil, choice)
+end
+
 finish()

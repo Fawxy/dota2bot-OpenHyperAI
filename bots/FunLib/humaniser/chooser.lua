@@ -19,6 +19,7 @@ local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -40,7 +41,13 @@ function ____exports.MayStart(bot)
     end
     return nil
 end
-____exports.SETTINGS = {JobDesire = 0.92, MinHpFraction = 0.5, EnemyRadius = 600, HitWithin = 3}
+____exports.SETTINGS = {
+    JobDesire = 0.92,
+    BenchDesire = 1.2,
+    MinHpFraction = 0.5,
+    EnemyRadius = 600,
+    HitWithin = 3
+}
 --- The mode that hosts a running job.
 ____exports.HOST = "farm"
 ____exports.HOST_MODE = BotMode.Farm
@@ -113,10 +120,24 @@ local JOBS = {
 --- The jobs that apply to this hero, highest priority first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}
+    local only = Drill.ForcedJob(bot)
     for ____, j in ipairs(JOBS) do
-        local p = j.Priority(bot)
-        if p ~= nil then
-            out[#out + 1] = {j, p}
+        do
+            local __continue43
+            repeat
+                if only ~= nil and j.name ~= only then
+                    __continue43 = true
+                    break
+                end
+                local p = j.Priority(bot)
+                if p ~= nil then
+                    out[#out + 1] = {j, p}
+                end
+                __continue43 = true
+            until true
+            if not __continue43 then
+                break
+            end
         end
     end
     do
@@ -208,6 +229,9 @@ local function hostDesire(bot)
             i = i + 1
         end
     end
+    if Drill.IdleStatue(bot) then
+        return ____exports.SETTINGS.BenchDesire
+    end
     return nil
 end
 --- A number replaces OHA's desire for `mode`; undefined lets OHA's code run.
@@ -297,7 +321,7 @@ function ____exports.HoldsCasts(bot)
         return true
     end
     if not ____exports.Running(bot) then
-        return false
+        return Drill.IdleStatue(bot)
     end
     return #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) == 0
 end
@@ -312,7 +336,7 @@ function ____exports.HoldsIdle(bot)
     end
     local cur = runningJob(bot)
     if cur == nil then
-        return false
+        return Drill.IdleStatue(bot)
     end
     cur.NoteIdleHeld(bot)
     return true

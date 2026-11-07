@@ -12,11 +12,14 @@ import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
+import * as Drill from "bots/FunLib/humaniser/drill";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
     /** Above OHA's ward (0.83) and laning, below a serious retreat (0.94-1.1); s4 validation game. */
     JobDesire: 0.92,
+    /** A drill's idle-statue cast with no job (BOT_MODE_DESIRE_ABSOLUTE x 1.2, the bench's in mode_farm_generic). */
+    BenchDesire: 1.2,
     MinHpFraction: 0.5,
     /** Lane opponents stand 450-1,200 from a laning pos5 (s4 validation game): only one in reach blocks the start. */
     EnemyRadius: 600,
@@ -119,7 +122,10 @@ const JOBS: Job[] = [STACK, RUNE, PULL, PULLFARM, CAMP];
 /** The jobs that apply to this hero, highest priority first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {
     const out: [Job, number][] = [];
+    // A drill's idle-statue cast runs only its forced job (humaniser/drill.ts ForcedJob).
+    const only = Drill.ForcedJob(bot);
     for (const j of JOBS) {
+        if (only !== undefined && j.name !== only) continue;
         const p = j.Priority(bot);
         if (p !== undefined) out.push([j, p]);
     }
@@ -171,6 +177,9 @@ function hostDesire(bot: Unit): number | undefined {
         };
         if (jobs[i].Wants(bot, blocked, HOST_MODE)) return SETTINGS.JobDesire;
     }
+    // A drill's idle-statue cast with no job to run stands as a statue: the bench's desire (mode_farm_generic), its step in
+    // the host's Think (Bench).
+    if (Drill.IdleStatue(bot)) return SETTINGS.BenchDesire;
     return undefined;
 }
 
@@ -263,7 +272,7 @@ export function HoldsRun(bot: Unit): boolean {
  */
 export function HoldsCasts(bot: Unit): boolean {
     if (StackJob.Benched(bot) || Overrides.LaneOnly(bot)) return true;
-    if (!Running(bot)) return false;
+    if (!Running(bot)) return Drill.IdleStatue(bot);
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }
 
@@ -278,7 +287,7 @@ export function HoldsIdle(bot: Unit): boolean {
     // A drill's benched hero waits in its fountain and a statue sways on its spot: both stand still by design.
     if (StackJob.Benched(bot)) return true;
     const cur = runningJob(bot);
-    if (cur === undefined) return false;
+    if (cur === undefined) return Drill.IdleStatue(bot);
     cur.NoteIdleHeld(bot);
     return true;
 }

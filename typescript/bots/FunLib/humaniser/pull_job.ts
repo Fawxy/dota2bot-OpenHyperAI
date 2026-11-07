@@ -14,6 +14,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -192,6 +193,8 @@ interface Decision {
     rule?: string;
     /** The lane controller decided this wave (slice lane-control 2b): a refusal is `ctl`, not `lane`. */
     ctl?: boolean;
+    /** A drill decided this wave (Drill.ForcedAt): a refusal is `drill`. */
+    drill?: boolean;
 }
 
 interface Trail {
@@ -1022,17 +1025,24 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
         const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
-        // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
-        // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
-        if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
-            return false;
-        const byCtl = ctl !== undefined && CtlWants(ctl, pid);
-        // A core (slice 4a) pulls only on the controller's word.
-        const own = ctl === undefined && isSupport(bot);
-        const byNew = own && Wanted(gone, tgt);
-        const byOld = own && hold && OldWanted(reading, tgt);
-        const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
-        d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
+        // A drill that forces the pull (humaniser/drill.ts `pull`, `core-pull`): the rep of the pulled wave decides, input on
+        // pulls (rule `drill`), a control rep or a wave before the first rep does not (`why=drill`); the controller is not
+        // asked. The pull's own gates below still apply.
+        const forced = Drill.ForcedAt("pull", PulledSpawn(p.slot));
+        if (forced !== undefined) d = { slot: p.slot, want: forced === "on", reading, gone, hold, rule: forced === "on" ? "drill" : undefined, drill: true };
+        else {
+            // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
+            // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
+            if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
+                return false;
+            const byCtl = ctl !== undefined && CtlWants(ctl, pid);
+            // A core (slice 4a) pulls only on the controller's word.
+            const own = ctl === undefined && isSupport(bot);
+            const byNew = own && Wanted(gone, tgt);
+            const byOld = own && hold && OldWanted(reading, tgt);
+            const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
+            d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
+        }
         decided[pid] = d;
         gateWhy[pid] = undefined;
     }
@@ -1043,7 +1053,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
-        done(false, d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
+        done(false, d.drill === true ? "drill" : d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
