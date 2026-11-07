@@ -123,7 +123,7 @@ interface CampState {
     hp: number;
     vis: boolean;
     /** The whole box is in sight (its four corners), not just the origin: fogged neutrals are not returned, so a count read
-     *  with part of the box in fog is a floor (drill pull ldr6: 4 of 9 pulls cancelled `one` a few seconds into the walk,
+     *  with part of the box in fog is a floor (drill pull ldr6: 5 of 9 pulls cancelled `one` a few seconds into the walk,
      *  one full-HP neutral seen, after a cheat spawn of a full camp). Unset in hand-built states. */
     full?: boolean;
     /** The neutrals returned, for the damage estimate. */
@@ -338,8 +338,9 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
     const lo = spawner.min;
     const hi = spawner.max;
     const z = spawner.location.z;
-    const full =
-        IsLocationVisible(Vector(lo.x, lo.y, z)) && IsLocationVisible(Vector(hi.x, lo.y, z)) && IsLocationVisible(Vector(lo.x, hi.y, z)) && IsLocationVisible(Vector(hi.x, hi.y, z));
+    // The corners of the box as counted (BoxMargin beyond it, review 2026-11-08-lane-drills L5).
+    const [x0, y0, x1, y1] = [lo.x - m, lo.y - m, hi.x + m, hi.y + m];
+    const full = IsLocationVisible(Vector(x0, y0, z)) && IsLocationVisible(Vector(x1, y0, z)) && IsLocationVisible(Vector(x0, y1, z)) && IsLocationVisible(Vector(x1, y1, z));
     const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), full, units: [] };
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive()) continue;

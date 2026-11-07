@@ -1046,7 +1046,8 @@ function ____exports.CampStateOf(spawner)
     local lo = spawner.min
     local hi = spawner.max
     local z = spawner.location.z
-    local full = IsLocationVisible(Vector(lo.x, lo.y, z)) and IsLocationVisible(Vector(hi.x, lo.y, z)) and IsLocationVisible(Vector(lo.x, hi.y, z)) and IsLocationVisible(Vector(hi.x, hi.y, z))
+    local x0, y0, x1, y1 = lo.x - m, lo.y - m, hi.x + m, hi.y + m
+    local full = IsLocationVisible(Vector(x0, y0, z)) and IsLocationVisible(Vector(x1, y0, z)) and IsLocationVisible(Vector(x0, y1, z)) and IsLocationVisible(Vector(x1, y1, z))
     local s = {
         n = 0,
         seen = 0,
