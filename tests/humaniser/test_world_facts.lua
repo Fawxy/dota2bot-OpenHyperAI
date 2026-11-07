@@ -57,9 +57,9 @@ do
 	c.neutrals = { unit({ speed = 0 }) }
 	check("only zero readings: the last live value stands, not 0", WF.NeutralSpeed(c, 300) == 290)
 	local u = unit({ name = "npc_dota_creep_goodguys_melee", acq = 600 })
-	check("acquisition live", WF.AcquisitionRange(u, 500, "lane_creep") == 600 and WF.Latest("acquisition_lane_creep", 500) == 600)
+	check("acquisition live", WF.AcquisitionRange(u, 500, "lane_creep") == 600 and WF.Live().acquisition_lane_creep == 600)
 	local ranged = unit({ name = "npc_dota_creep_badguys_ranged", acq = 800 })
-	check("a ranged creep reads its own range and leaves the remembered melee value", WF.AcquisitionRange(ranged, 500, "lane_creep") == 800 and WF.Latest("acquisition_lane_creep", 500) == 600)
+	check("a ranged creep reads its own range and leaves the remembered melee value", WF.AcquisitionRange(ranged, 500, "lane_creep") == 800 and WF.Live().acquisition_lane_creep == 600)
 	WF.Reset()
 	check("a type never sighted falls back, counted once", WF.NeutralSpeedFor("large", 300) == 300 and WF.NeutralSpeedFor("large", 300) == 300 and WF.Fallbacks().neutral_speed_large == 1)
 	check("the feeder is due once a second", WF.FeedDue() == true and WF.FeedDue() == false)
