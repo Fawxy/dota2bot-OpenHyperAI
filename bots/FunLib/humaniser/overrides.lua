@@ -19,15 +19,9 @@ function ____exports.Get(key)
 end
 --- Lane-only (a drill's `castLaneOnly` or `others: "laneonly"`; the old Overrides.LaneOnly is drill `lane-only`): the bot
 -- stays in laning mode through the laning phase and does nothing in it but hold its spot, last-hit and deny: no
--- techniques, harass, trades, spells or items. A harness, not a behaviour. With no bot: whether any hero is lane-only.
+-- techniques, harass, trades, spells or items. A harness, not a behaviour. Per hero: a drill's bench and statues are not.
 function ____exports.LaneOnly(bot)
-    local ____temp_3
-    if bot == nil then
-        ____temp_3 = Drill.AnyLaneOnly()
-    else
-        ____temp_3 = Drill.LaneOnly(bot)
-    end
-    return ____temp_3
+    return Drill.LaneOnly(bot)
 end
 --- Overrides.CampForce (slice core-next-gold, harness games only): an owned core's camp trip starts whenever an open camp is
 -- in reach, without the decision's gates (creeps at the core, the gap to the clash, the return deadline, the least net). The

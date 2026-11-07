@@ -41,6 +41,16 @@ do
 	check("empty name: no drill, no line", H.Drill.Name() == nil and #capture(function() H.Drill.Tick(b) end) == 0)
 end
 
+-- A knob drills replaced is logged once when set, and does nothing.
+do
+	local H, C = world(nil)
+	C.Overrides = { Solo = 5, LaneOnly = false }
+	local b = hero(0, RAD, 1, 3)
+	local lines = capture(function() H.Drill.Tick(b) H.Drill.Tick(b) end)
+	check("removed knob: one line", #lines == 1 and field(lines[1], "ph") == "removed" and field(lines[1], "name") == "Solo", lines[1])
+	check("removed knob: no effect", H.Drill.RoleOf(b) == "play" and not H.Chooser.Benched(hero(5, DIRE, 1, 1)))
+end
+
 -- An unknown name logs once and runs no drill.
 do
 	local H = world("nope")
@@ -58,7 +68,7 @@ do
 	local off = hero(7, DIRE, 3, 3)
 	local mid = hero(6, DIRE, 2, 2)
 	check("cast", H.Drill.RoleOf(core) == "cast" and not H.Drill.Held(core))
-	check("cast lane-only", H.Drill.LaneOnly(core) and H.Overrides.LaneOnly(core) and H.Overrides.LaneOnly())
+	check("cast lane-only", H.Drill.LaneOnly(core) and H.Overrides.LaneOnly(core))
 	check("ally benched", H.Drill.RoleOf(sup) == "bench" and H.Drill.Held(sup) and not H.Drill.LaneOnly(sup))
 	check("enemy pos3 statue", H.Drill.RoleOf(off) == "statue" and H.Drill.Held(off))
 	check("enemy mid benched", H.Drill.RoleOf(mid) == "bench")
@@ -105,7 +115,7 @@ do
 	check("natural reps: input on, no forced context", field(reps[1], "input") == "on" and field(reps[1], "forces") == nil, reps[1])
 end
 
--- stack: forced reps every minute from 2:00; a control setting withholds every nth rep.
+-- stack: forced reps every third minute from 2:00; a control setting withholds every nth rep.
 do
 	local H = world("stack")
 	local t = H.Drill.RepTimes("stack")

@@ -400,7 +400,6 @@ if Telemetry.GuardsEnabled() then
             Held = no,
             Hold = no,
             LaneOnly = no,
-            AnyLaneOnly = no,
             RoleOf = function() return "play" end,
             Implied = none,
             RepTimes = none,

@@ -130,12 +130,6 @@ export function LaneOnly(bot: Unit): boolean {
     return d !== undefined && ((r === "cast" && d.castLaneOnly === true) || r === "laneonly");
 }
 
-/** True while any hero of the active drill is lane-only (the old global LaneOnly, for callers with no bot). */
-export function AnyLaneOnly(): boolean {
-    const d = Active();
-    return d !== undefined && (d.castLaneOnly === true || d.others === "laneonly");
-}
-
 /** An Overrides key the active drill implies, or undefined. */
 export function Implied(key: string): unknown {
     return Active()?.overrides?.[key];
@@ -202,6 +196,9 @@ export function RepAt(t: number): number {
 
 const lastRep: Record<number, number> = {};
 const lastRole: Record<number, string> = {};
+// Knobs drills replaced (08/11/2026): setting one now does nothing, so it is logged once instead of failing silently.
+const REMOVED = ["Solo", "StackEvery", "LaneOnly"];
+let removedLogged = false;
 
 /**
  * Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero. Only
@@ -211,6 +208,13 @@ const lastRole: Record<number, string> = {};
 export function Tick(bot: Unit): void {
     const state = GetGameState();
     if (state !== GameState.PreGame && state !== GameState.GameInProgress) return;
+    if (!removedLogged) {
+        removedLogged = true;
+        for (const k of REMOVED) {
+            const v = overrides()?.[k];
+            if (v !== undefined && v !== false && v !== -1) Telemetry.Event("drill", [["ph", "removed"], ["name", k]]);
+        }
+    }
     const name = Name();
     if (name === undefined) {
         const asked = overrides()?.["Drill"];
@@ -251,4 +255,5 @@ export function ResetCache(): void {
     for (const k of Object.keys(lastRep)) delete lastRep[k as unknown as number];
     for (const k of Object.keys(lastRole)) delete lastRole[k as unknown as number];
     for (const k of Object.keys(statueSide)) delete statueSide[k as unknown as number];
+    removedLogged = false;
 }

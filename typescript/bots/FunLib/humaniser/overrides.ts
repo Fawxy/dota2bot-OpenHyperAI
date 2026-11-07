@@ -18,10 +18,10 @@ export function Get(key: string): unknown {
 /**
  * Lane-only (a drill's `castLaneOnly` or `others: "laneonly"`; the old Overrides.LaneOnly is drill `lane-only`): the bot
  * stays in laning mode through the laning phase and does nothing in it but hold its spot, last-hit and deny: no
- * techniques, harass, trades, spells or items. A harness, not a behaviour. With no bot: whether any hero is lane-only.
+ * techniques, harass, trades, spells or items. A harness, not a behaviour. Per hero: a drill's bench and statues are not.
  */
-export function LaneOnly(bot?: Unit): boolean {
-    return bot === undefined ? Drill.AnyLaneOnly() : Drill.LaneOnly(bot);
+export function LaneOnly(bot: Unit): boolean {
+    return Drill.LaneOnly(bot);
 }
 
 /**

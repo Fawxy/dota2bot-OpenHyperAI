@@ -335,11 +335,6 @@ function ____exports.LaneOnly(bot)
     local d = ____exports.Active()
     return d ~= nil and (r == "cast" and d.castLaneOnly == true or r == "laneonly")
 end
---- True while any hero of the active drill is lane-only (the old global LaneOnly, for callers with no bot).
-function ____exports.AnyLaneOnly()
-    local d = ____exports.Active()
-    return d ~= nil and (d.castLaneOnly == true or d.others == "laneonly")
-end
 --- An Overrides key the active drill implies, or undefined.
 function ____exports.Implied(key)
     local ____opt_6 = ____exports.Active()
@@ -412,6 +407,8 @@ function ____exports.RepAt(t)
 end
 local lastRep = {}
 local lastRole = {}
+local REMOVED = {"Solo", "StackEvery", "LaneOnly"}
+local removedLogged = false
 --- Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero. Only
 -- from the pregame on: strategy time runs its own clock up to 0 before the pregame resets it to -90, so a line logged then
 -- would fall in another game of the log store and fire rep 1 early (drill1, 08/11/2026).
@@ -420,10 +417,20 @@ function ____exports.Tick(bot)
     if state ~= GameState.PreGame and state ~= GameState.GameInProgress then
         return
     end
+    if not removedLogged then
+        removedLogged = true
+        for ____, k in ipairs(REMOVED) do
+            local ____opt_8 = overrides()
+            local v = ____opt_8 and ____opt_8[k]
+            if v ~= nil and v ~= false and v ~= -1 then
+                Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
+            end
+        end
+    end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_8 = overrides()
-        local asked = ____opt_8 and ____opt_8.Drill
+        local ____opt_10 = overrides()
+        local asked = ____opt_10 and ____opt_10.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -489,5 +496,6 @@ function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(statueSide)) do
         __TS__Delete(statueSide, k)
     end
+    removedLogged = false
 end
 return ____exports

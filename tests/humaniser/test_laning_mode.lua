@@ -188,7 +188,7 @@ do
 	check("switch on: a pos1 bot is not taken over", Think == nil)
 end
 
--- Overrides.LaneOnly (slice lane-last-hits): the lane-only harness holds every bot in laning above every other mode and runs
+-- Lane-only (slice lane-last-hits; drill `lane-only`): the lane-only harness holds every bot in laning above every other mode and runs
 -- only the last-hit steps and the position, never the techniques, etiquette or harass.
 do
 	local c = creep({ hp = 400, loc = Vector(100, 0) })

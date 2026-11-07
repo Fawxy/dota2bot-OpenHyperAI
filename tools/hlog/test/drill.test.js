@@ -31,6 +31,8 @@ test('drill: one row per rep and cast hero, with what the hero gained and lost i
         rep(1, 1), rep(31, 2),
         snap(1, 0), snap(10, 0, { hp: 90, lh: 1 }), snap(20, 0, { hp: 95, lh: 2, dn: 1 }), snap(29, 0, { hp: 80, lh: 2, dn: 1 }),
         snap(32, 0, { hp: 80, lh: 3, dn: 1 }), snap(50, 0, { hp: 70, lh: 4, dn: 1 }),
+        // A rep opened as the game stops (under 5 s) is dropped.
+        rep(61, 3), snap(62, 0, { hp: 70, lh: 4, dn: 1 }),
         // The statue's snapshots are not a cast hero's.
         snap(10, 7, { hp: 10 }),
     ], 'drill');
@@ -41,8 +43,8 @@ test('drill: one row per rep and cast hero, with what the hero gained and lost i
     // Drops 100->90 and 95->80; the heal to 95 does not cancel them.
     assert.strictEqual(out[0].hp_lost, 25);
     assert.strictEqual(out[0].results, null);
-    // The last rep ends at the hero's last snapshot.
-    assert.strictEqual(out[1].stop, 50);
+    // The second rep ends at the third's start.
+    assert.strictEqual(out[1].stop, 60);
     assert.strictEqual(out[1].hp_lost, 10);
 });
 

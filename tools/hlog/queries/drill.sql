@@ -1,6 +1,6 @@
 -- Drills (bot humaniser/drill.ts; master docs/proposals/2026-11-08-drills.md): one row per rep and cast hero, in drill games
 -- whose file matches :like (and drill :name when given). A rep runs from its `ev=drill ph=rep` start to the next rep's start
--- (the last ends at the hero's last snapshot). Per rep: input (on, or off for a control rep), the cast hero's last hits,
+-- (the last ends at the hero's last snapshot; a rep cut to under 5 s by the game's end is dropped). Per rep: input (on, or off for a control rep), the cast hero's last hits,
 -- denies and deaths gained, HP-% lost (the sum of drops between 1 s snapshots, so a heal does not hide a hit), and the
 -- forced context's own result lines inside the rep: `results` (ev=stack lines for drill `stack`) and `ok` (those with
 -- res=stacked). A context with no join here reads its own lines over the rep window (`start`, `stop`).
@@ -41,4 +41,5 @@ SELECT rc.game_id, g.file, rc.name, rc.team, rc.pid, rc.pos, rc.rep, rc.input, r
     CASE WHEN rc.forces = 'stack' THEN (SELECT count(*) FROM ev_stack s WHERE s.game_id = rc.game_id AND s.pid = rc.pid
         AND s.t >= rc.start AND s.t < rc.stop AND s.res = 'stacked') END AS ok
 FROM rc JOIN games g ON g.game_id = rc.game_id
+WHERE rc.stop >= rc.start + 5
 ORDER BY rc.game_id, rc.team, rc.pid, rc.rep;
