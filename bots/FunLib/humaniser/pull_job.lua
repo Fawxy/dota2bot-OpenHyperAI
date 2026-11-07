@@ -915,6 +915,7 @@ function ____exports.End(bot, why)
 end
 ____exports.SETTINGS = {
     CampLowHold = 1.5,
+    CampReadNear = 500,
     Priority = 0.9,
     FitPriority = 0.96,
     PriorityEvery = 0.5,
@@ -1990,12 +1991,12 @@ function ____exports.Step(bot, host)
         s.php = bot:GetHealth()
         local now = DotaTime()
         local gate = ____exports.CampGate(s, now, p.hitAt)
-        if gate == nil then
+        if gate == nil or GetUnitToLocationDistance(bot, p.plan.stand) > ____exports.SETTINGS.CampReadNear then
             p.low = nil
         elseif p.low == nil or p.low.why ~= gate then
             p.low = {why = gate, at = now}
         end
-        local why = gate ~= nil and now - p.low.at >= ____exports.SETTINGS.CampLowHold and gate or nil or campDmgGate(bot, s.dmg)
+        local why = p.low ~= nil and now - p.low.at >= ____exports.SETTINGS.CampLowHold and p.low.why or nil or campDmgGate(bot, s.dmg)
         if why ~= nil then
             p.start = s
             ____exports.End(bot, why)
