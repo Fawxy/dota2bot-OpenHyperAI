@@ -4,6 +4,7 @@
  * jmz_func cannot be required from humaniser modules, so J.* helpers arrive through SetHelpers.
  */
 import { Unit } from "bots/ts_libs/dota";
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -97,7 +98,7 @@ export const DEFAULTS = {
     Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },
     Timing: {
         SnapshotRefresh: 0.5,
-        WaveCycle: 30,
+        WaveCycle: GameRules.WAVE_EVERY,
         AggroWindow: 3.0,
         AggroCooldown: 2.3,
         WalkBack: 1.5,
@@ -148,9 +149,8 @@ export const DEFAULTS = {
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,
-        PullPeriod: 60,
-        // Liquipedia: camps first spawn at 1:00 game time, then every minute.
-        NeutralFirstSpawn: 60,
+        PullPeriod: GameRules.NEUTRAL_EVERY,
+        NeutralFirstSpawn: GameRules.NEUTRAL_FIRST,
         HalfPullLater: 2,
         NoCampAfter: 1,
         AggroConfirm: 2,
