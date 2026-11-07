@@ -58,6 +58,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local settings, LaneAhead
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -734,7 +735,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         math.ceil(full / 50)
     )
     local pins = cfg.HalfStand
-    local pin = #pins > 0 and pins[math.floor(c.slot / 30) % #pins + 1] or 0
+    local pin = #pins > 0 and pins[math.floor(c.slot / GameRules.WAVE_EVERY) % #pins + 1] or 0
     do
         local i = n
         while i >= 0 do

@@ -1,6 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local isArray, merge, cached
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
@@ -103,7 +104,7 @@ ____exports.DEFAULTS = {
     },
     Timing = {
         SnapshotRefresh = 0.5,
-        WaveCycle = 30,
+        WaveCycle = GameRules.WAVE_EVERY,
         AggroWindow = 3,
         AggroCooldown = 2.3,
         WalkBack = 1.5,
@@ -147,8 +148,8 @@ ____exports.DEFAULTS = {
         EqSampleAt = 10,
         WatchSec = 8,
         WatchEvery = 0.25,
-        PullPeriod = 60,
-        NeutralFirstSpawn = 60,
+        PullPeriod = GameRules.NEUTRAL_EVERY,
+        NeutralFirstSpawn = GameRules.NEUTRAL_FIRST,
         HalfPullLater = 2,
         NoCampAfter = 1,
         AggroConfirm = 2,

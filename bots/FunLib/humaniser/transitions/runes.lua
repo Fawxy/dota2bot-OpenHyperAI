@@ -2,10 +2,12 @@
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Rune = ____dota.Rune
-____exports.RUNE_RULES = {power = {first = 360, every = 120}, water = {first = 120, every = 120, last = 240}, bounty = {first = 0, every = 240}, wisdom = {first = 420, every = 420}}
+local ____game_rules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
+local RUNE_RULES = ____game_rules.RUNE_RULES
+____exports.RUNE_RULES = RUNE_RULES
 --- The first spawn time at or after `now`, or math.huge once the rune has stopped spawning.
 function ____exports.NextSpawn(kind, now)
-    local rule = ____exports.RUNE_RULES[kind]
+    local rule = RUNE_RULES[kind]
     local t = rule.first
     if now > t then
         t = t + math.ceil((now - t) / rule.every) * rule.every

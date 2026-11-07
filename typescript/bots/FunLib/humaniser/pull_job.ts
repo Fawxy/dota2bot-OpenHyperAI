@@ -4,6 +4,7 @@
  * module reads the lane once per pull slot (`ev=choice kind=pull`), plans the pull from the camp data (`camps`,
  * `pull_timing`), walks it with the job verb `pull` and logs one `ev=pull_job` line per started pull.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Calendar from "bots/FunLib/humaniser/calendar";
@@ -555,7 +556,7 @@ export function CoreToHold(bot: Unit): Unit | undefined {
 
 /** The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn). */
 export function PulledSpawn(slot: number): number {
-    return math.floor((slot - 1) / 30) * 30;
+    return math.floor((slot - 1) / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY;
 }
 
 /** Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined. */
