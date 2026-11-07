@@ -304,6 +304,8 @@ export interface CreepTimer {
     gup?: number;
     clp?: number;
     nowin?: string;
+    /** The window's slack at the last read: the predicted give-up less GiveUpMargin, less the entry (s; negative: closed). */
+    slack?: number;
 }
 
 /**
@@ -320,6 +322,8 @@ export interface OnHero {
     lagExtra: number;
     neutralSpeed: number;
     pass: number;
+    /** Seconds from a neutral's GiveUpFrom line to its give-up at this camp (GiveUpAfterCamp, else GiveUpAfter). */
+    giveUp: number;
 }
 
 /** Slice pull-aggro: the stand margin, lane creep speed x the timing's error (centre distances, as the turn radius was fitted). */
@@ -370,9 +374,10 @@ function ReadOnHero(c: CreepTimer, now: number, h: OnHero): number | undefined {
     c.leave = leave;
     c.heroWalk = walk;
     c.lag = lag;
-    c.gup = leave + h.pass + cfg.GiveUpAfter;
+    c.gup = leave + h.pass + h.giveUp;
     c.clp = Clash(t, creeps, now, v);
-    c.nowin = enter > c.gup - cfg.GiveUpMargin ? "give-up" : c.clp !== undefined && enter > c.clp ? "clash" : undefined;
+    c.slack = c.gup - cfg.GiveUpMargin - enter;
+    c.nowin = c.slack < 0 ? "give-up" : c.clp !== undefined && enter > c.clp ? "clash" : undefined;
     c.waveAt = now + (ta - creeps[creeps.length - 1].along) / v;
     return leave - h.first;
 }

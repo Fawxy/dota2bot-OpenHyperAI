@@ -264,6 +264,7 @@ interface Decision {
      *  at the last frame read (choice nw). */
     pm?: number;
     nw?: string;
+    nws?: number;
 }
 
 interface Trail {
@@ -492,6 +493,7 @@ function heroFor(bot: Unit, p: Plan, timer: PullTiming.CreepTimer, pull?: Pull):
         lagExtra: extra,
         neutralSpeed: nsp,
         pass: math.max(0, cfg.GiveUpFrom - d0) / math.max(1, nsp),
+        giveUp: cfg.GiveUpAfterCamp[p.camp.campIdx] ?? cfg.GiveUpAfter,
     };
 }
 
@@ -524,7 +526,7 @@ function deadlineCause(pull: Pull): string | undefined {
             alive++;
             if (!pull.outAt.has(u) && GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom) pull.outAt.set(u, now);
             const at = pull.outAt.get(u);
-            if (at !== undefined && now - at >= s.PullTiming.GiveUpAfter) gone++;
+            if (at !== undefined && now - at >= (pull.timer.hero?.giveUp ?? s.PullTiming.GiveUpAfter)) gone++;
         }
         if (gone === alive) cause = "give-up";
     }
@@ -829,6 +831,7 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["hm", d.hm],
         ["pm", d.pm],
         ["nw", d.nw],
+        ["nws", d.nws],
         ...campFields(camp),
     ]);
 }
@@ -1562,6 +1565,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     // Slice pull-aggro: no window (the wave enters after the predicted give-up or clash) holds the start like a gate.
     const noWin = timer.hero !== undefined && timer.nowin !== undefined ? "no-window" : undefined;
     d.nw = timer.nowin;
+    d.nws = timer.hero !== undefined && timer.slack !== undefined ? math.floor(timer.slack * 100 + 0.5) / 100 : undefined;
     const why = CampGate(camp, now, hitAt) ?? noWin ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");

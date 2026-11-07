@@ -558,9 +558,10 @@ local function ReadOnHero(c, now, h)
     c.leave = leave
     c.heroWalk = walk
     c.lag = lag
-    c.gup = leave + h.pass + cfg.GiveUpAfter
+    c.gup = leave + h.pass + h.giveUp
     c.clp = Clash(t, creeps, now, v)
-    c.nowin = enter > c.gup - cfg.GiveUpMargin and "give-up" or (c.clp ~= nil and enter > c.clp and "clash" or nil)
+    c.slack = c.gup - cfg.GiveUpMargin - enter
+    c.nowin = c.slack < 0 and "give-up" or (c.clp ~= nil and enter > c.clp and "clash" or nil)
     c.waveAt = now + (ta - creeps[#creeps].along) / v
     return leave - h.first
 end

@@ -1667,6 +1667,8 @@ export const EVENTS = {
         // Slice pull-aggro: nw why the full pull's timing had no window at the last read (give-up: the front creep enters
         // after the predicted give-up less GiveUpMargin; clash: after the predicted clash); go=0 why=no-window when it held.
         nw: "str",
+        // nws the window's slack at that read: the predicted give-up less GiveUpMargin, less the entry (s; negative closed).
+        nws: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).

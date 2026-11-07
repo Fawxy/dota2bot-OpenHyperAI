@@ -362,7 +362,8 @@ ____exports.DEFAULTS = {
         HeroTurnRange = 500,
         GiveUpFrom = 400,
         GiveUpAfter = 3.5,
-        GiveUpMargin = 1,
+        GiveUpAfterCamp = {[1] = 3.8, [26] = 3.7, [18] = 4.8, [2] = 6.6},
+        GiveUpMargin = 0.5,
         HalfAll = false,
         HalfStand = {},
         LanePaths = {}

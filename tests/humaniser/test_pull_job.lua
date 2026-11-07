@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro, HalfHoldOff = o.holdOff, GiveUpAfter = o.giveUpAfter } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro, HalfHoldOff = o.holdOff, GiveUpAfter = o.giveUpAfter, GiveUpAfterCamp = o.giveUpAfter ~= nil and {} or nil } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -349,7 +349,7 @@ do
 	-- A camp that never targets the puller fails at the hit's confirm, before the hold (the hold's own no-aggro: test_job_verbs).
 	local never = livePull({ onHero = true, noTarget = true, giveUpAfter = 20 })
 	check("on hero: a camp that never targets the puller ends at the confirm, no hold", never ~= nil and field(never, "label") == "aggro", never)
-	local _, shut = livePull({ onHero = true, neutralRange = 500 })
+	local _, shut = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 1 })
 	check("on hero: the entry after the predicted give-up holds the start (choice why=no-window nw=give-up), no pull",
 		#lines(shut, "pull_job") == 0 and #lines(shut, "choice") > 0 and field(lines(shut, "choice")[1], "why") == "no-window" and field(lines(shut, "choice")[1], "nw") == "give-up", lines(shut, "choice")[1])
 	local off = livePull({ neutralRange = 500 })

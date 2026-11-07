@@ -421,9 +421,13 @@ export const DEFAULTS = {
         LockFor: 1,
         HeroFirst: 1,
         HeroTurnRange: 500,
+        // GiveUpAfterCamp: the same per camp index where banked pulls fit it (gu - g4 means: 1 3.8 s n 150, 26 3.7 s n 58,
+        // 18 4.8 s n 109, 2 6.6 s n 83); GiveUpAfter for any other camp. GiveUpMargin 0.5 (was 1: the ponh1 smoke game
+        // held 32 of 34 wanted pulls from camps 1, 18 and 2 as no-window on the single 3.5 s).
         GiveUpFrom: 400,
         GiveUpAfter: 3.5,
-        GiveUpMargin: 1,
+        GiveUpAfterCamp: { [1]: 3.8, [26]: 3.7, [18]: 4.8, [2]: 6.6 } as Record<number, number>,
+        GiveUpMargin: 0.5,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,
