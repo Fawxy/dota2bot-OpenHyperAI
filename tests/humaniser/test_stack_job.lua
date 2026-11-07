@@ -509,39 +509,35 @@ do
 	check("busy until 1 s left: skip busy", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "busy", lines[1])
 end
 
--- Diagnosis harness (user 30/10/2026): Overrides.Solo benches every other hero in its fountain; StackEvery tries each minute.
+-- Drill `stack` (was Overrides.Solo + StackEvery): the Radiant pos5 alone, every other hero benched in its fountain, an attempt
+-- each minute from 2:00 (humaniser/drill.ts; test_drill.lua covers the table itself).
 do
 	local H, bot = world()
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
-	check("solo off: nobody benched", not H.Chooser.Benched(bot) and not H.Chooser.Bench(bot))
-	check("solo off: trigger minutes", #H.StackJob.Minutes() == 3 and H.StackJob.Minutes()[1] == 3)
-	Customize.Overrides = { Solo = 5 }
-	check("solo is this hero: not benched", not H.Chooser.Benched(bot))
+	check("no drill: nobody benched", not H.Chooser.Benched(bot) and not H.Chooser.Bench(bot))
+	check("no drill: trigger minutes", #H.StackJob.Minutes() == 3 and H.StackJob.Minutes()[1] == 3)
+	Customize.Overrides = { Drill = "stack" }
+	check("drill stack: the Radiant pos5 is not benched", not H.Chooser.Benched(bot))
 	local other = MakeUnit({ pid = 6, team = 3, loc = Vector(0, 0, 0) })
-	check("another hero: benched", H.Chooser.Benched(other) and H.Chooser.Bench(other))
+	other.pos = 5
+	check("drill stack: the Dire pos5 is benched", H.Chooser.Benched(other) and H.Chooser.Bench(other))
 	local mv = ActionsOf(6, "MoveToLocation")
 	local to = mv[#mv] and mv[#mv].args[1]
 	check("benched: walks to its own fountain", to ~= nil and to.x > 6000 and to.y > 6000, to and (to.x .. "," .. to.y) or "no move")
 	local home = MakeUnit({ pid = 1, team = 2, loc = Vector(-6600, -6300, 0) })
+	home.pos = 1
 	check("benched at the fountain: no move", H.Chooser.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
-	Customize.Overrides = { Solo = 0 }
-	check("solo pid 0 counts", H.Chooser.Benched(bot))
-	Customize.Overrides = { StackEvery = true }
 	local m = H.StackJob.Minutes()
-	check("stack every: from 2:00, each minute", m[1] == 2 and m[2] == 3 and m[3] == 4)
+	check("drill stack: from 2:00, each minute", m[1] == 2 and m[2] == 3 and m[3] == 4)
+	check("drill stack implies StackFar", H.Overrides.Get("StackFar") == true)
+	Customize.Overrides = { Drill = "stack", StackFar = false }
+	check("an explicit override beats the drill's", H.Overrides.Get("StackFar") == false)
+	Customize.Overrides = { Drill = "stack" }
 	T = 4 * 60 + 15
 	local lines = stackLines(capture(function()
 		while T < 4 * 60 + 59 do frame(H, bot) end
 	end))
-	check("stack every: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
-	Customize.Overrides = { StackEvery = 3 }
-	m = H.StackJob.Minutes()
-	check("stack every 3: every third minute from 2:00", m[1] == 2 and m[2] == 5 and m[3] == 8)
-	Customize.Overrides = { Solo = "0,5," }
-	check("solo list: a listed hero plays", not H.Chooser.Benched(bot))
-	check("solo list: an unlisted one is benched", H.Chooser.Benched(other))
-	Customize.Overrides = { Solo = "50," }
-	check("solo list: pid 5 is not 50's 5", H.Chooser.Benched(bot))
+	check("drill stack: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
 	Customize.Overrides = nil
 end
 
@@ -556,7 +552,7 @@ do
 	local think = farm:find('J.Humaniser.Chooser.FarmThink(bot)', 1, true)
 	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
 	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.Chooser.Abort(bot, "run")'))
-	-- A benched hero (Overrides.Solo) wins farm before OHA's run and defend-ping checks, and its Think comes first.
+	-- A drill's benched hero or statue wins farm before OHA's run and defend-ping checks, and its Think comes first.
 	local bench = farm:find('if J.Humaniser.Chooser.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end', 1, true)
 	check('farm: bench desire first', bench ~= nil and bench < farm:find('function GetDesireHelper', 1, true))
 	local benchThink = farm:find('if J.Humaniser.Chooser.Bench(bot) then return end', 1, true)
@@ -872,10 +868,10 @@ do
 	local H, bot = world({ t = 2 * 60 + 15 })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = true, true, true
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar = true, "stack", true
 	for _, s in ipairs(SPAWNERS) do if s.team == RAD then neutrals(s.location, 2) end end
 	local lines = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H, bot) end end))
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar = false, false, false
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar = false, "", false
 	local seen, started, dup = {}, 0, false
 	for _, l in ipairs(lines) do
 		if field(l, "res") ~= "skip" then
@@ -891,9 +887,9 @@ do
 	local only = idxOf("good_5") .. "," .. idxOf("good_9")
 	Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, only
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack", true, only
 	local l2 = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H2, b2) end end))
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, "", false, nil
 	local okCamps, started2 = true, 0
 	for _, l in ipairs(l2) do
 		if field(l, "res") ~= "skip" then
@@ -907,9 +903,9 @@ do
 	local H3, b3 = world({ t = 2 * 60 + 15, at = Vector(6000, 6000) })
 	Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, true, true, tostring(idxOf("good_5")) .. ","
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack", true, tostring(idxOf("good_5")) .. ","
 	local l3 = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H3, b3) end end))
-	Customize.Overrides.Sweep, Customize.Overrides.StackEvery, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, false, false, nil
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, "", false, nil
 	local late = false
 	for _, l in ipairs(l3) do if field(l, "why") == "late" then late = true end end
 	check("sweep: a far camp is walked to, not skipped late", not late and #l3 >= 1 and tonumber(field(l3[1], "camp")) == idxOf("good_5"), table.concat(l3, " | "))
@@ -1049,10 +1045,10 @@ do
 	refused(function(b) MakeUnit({ pid = 10, team = 3, loc = Vector(b.loc.x + 300, b.loc.y) }) end, "enemy-near")
 	refused(function(b) b.mode = dota.BotMode.Attack end, "busy")
 
-	-- A benched hero (Overrides.Solo) stays with farm's own file: no job, its Think runs.
+	-- A drill's benched hero stays with farm's own file: no job, its Think runs.
 	H, bot = world({ t = 3 * 60 + 40 })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
-	Customize.Overrides = { Solo = 0 }
+	Customize.Overrides = { Drill = "lane-spot" }
 	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 	local benchDesire = farmDesire(H, bot, function() return 1.2 end)
 	innerThink = false

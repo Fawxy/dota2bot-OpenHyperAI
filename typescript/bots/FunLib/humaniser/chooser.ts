@@ -258,11 +258,11 @@ export function HoldsRun(bot: Unit): boolean {
  * ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
  * branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
  * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
- * An enemy hero in reach lifts it so the bot can fight or save itself. Benched heroes (Overrides.Solo) never cast, nor does
- * anyone in a lane-only game (Overrides.LaneOnly: spells on creeps would change the last-hit contest under test).
+ * An enemy hero in reach lifts it so the bot can fight or save itself. A drill's benched heroes and statues never cast, nor
+ * does a lane-only hero (spells on creeps would change the last-hit contest under test).
  */
 export function HoldsCasts(bot: Unit): boolean {
-    if (StackJob.Benched(bot) || Overrides.LaneOnly()) return true;
+    if (StackJob.Benched(bot) || Overrides.LaneOnly(bot)) return true;
     if (!Running(bot)) return false;
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }
@@ -272,16 +272,18 @@ export function HoldsCasts(bot: Unit): boolean {
  * under 100 in 3 s gets ClearActions and an attack-move to its lane front. A stack job stands still at its stand point by
  * design, and when the check fell inside the 2 s after the hit order it replaced the attack: all 4 slice 4 `no-aggro` misses
  * (attack-move from the order to the miss, s4 A_on_1 5:55 and 7:53, s4r3 C_on_3 7:54, s4x1 A_on_1 5:55). True while the job
- * runs, counted on the attempt.
+ * runs, counted on the attempt, and always for a drill's benched hero or statue (its attack-move would end the statue).
  */
 export function HoldsIdle(bot: Unit): boolean {
+    // A drill's benched hero waits in its fountain and a statue sways on its spot: both stand still by design.
+    if (StackJob.Benched(bot)) return true;
     const cur = runningJob(bot);
     if (cur === undefined) return false;
     cur.NoteIdleHeld(bot);
     return true;
 }
 
-/** Overrides.Solo (test harness): a benched hero holds farm mode and sits in its fountain. */
+/** A drill's benched hero or statue (humaniser/drill.ts) holds farm mode and takes its step there. */
 export function Benched(bot: Unit): boolean {
     return StackJob.Benched(bot);
 }

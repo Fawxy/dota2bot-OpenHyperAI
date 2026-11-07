@@ -15,6 +15,7 @@ import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -88,39 +89,25 @@ export const SETTINGS = {
     PileEarlierMax: 1.5,
 };
 
-// Test harness for the slice 4 diagnosis (user 30/10/2026), off by default: Customize.Overrides.Solo = <pid> benches the
-// other nine heroes in their fountain, so one pos5 stacks with no lane opponents or fights around it, and
-// Overrides.StackEvery = true tries every minute from 2:00 instead of TriggerMinutes. Overrides.StackFar = true lifts the
-// AwayMax skip and watch cut (slice double-stack, user 31/10/2026: test execution apart from getting there; the pos4 lanes
-// 12-17 s from its pairs). Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriNW = true the Dire
-// triangle pair's north-west walk-off instead of TRI_SE, Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
+// Stack diagnostics (scenario and drill games only, never a verdict). The solo harness (one pos5 alone, an attempt every
+// minute, the neutrals killed at :05 so each attempt meets a fresh camp) is drill `stack` (humaniser/drill.ts; it was
+// Overrides.Solo + StackEvery). Overrides.StackFar = true lifts the AwayMax skip and watch cut (slice double-stack, user
+// 31/10/2026: test execution apart from getting there; the pos4 lanes 12-17 s from its pairs; drill `stack` implies it).
+// Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriNW = true the Dire triangle
+// pair's north-west walk-off instead of TRI_SE, Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
 // (KR S.2a tier 1, 01/11/2026): the pos5 takes each own-side camp once, ancients too, nearest untried first, so every
-// attempt is on a fresh camp (`SweepNext`). Tier 2's fresh doubles: Overrides.Solo = "0,1," keeps several heroes, and
-// Overrides.StackEvery = 3 tries every third minute, and a console kill of all neutrals at :05 of the two minutes between
-// leaves each attempt a fresh camp (a camp found occupied at a :00 respawns only after one empty :00, replays
-// fresh2c/fresh4c 01/11/2026). Scenario games only,
-// never a verdict.
-const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
-
+// attempt is on a fresh camp (`SweepNext`). A camp found occupied at a :00 respawns only after one empty :00 (replays
+// fresh2c/fresh4c 01/11/2026).
 const override = Overrides.Get;
 
-/** Overrides.Solo names another hero: this one sits out the game in its fountain. */
+/** A drill benches this hero or makes it a statue (humaniser/drill.ts). */
 export function Benched(bot: Unit): boolean {
-    const solo = override("Solo");
-    if (typeof solo === "string") {
-        for (const [n] of string.gmatch(solo, "%d+")) if (tonumber(n) === bot.GetPlayerID()) return false;
-        return true;
-    }
-    return typeof solo === "number" && solo >= 0 && bot.GetPlayerID() !== solo;
+    return Drill.Held(bot);
 }
 
-/** A benched hero's step: walk to the fountain and stay. False when the hero is not benched. */
+/** A held hero's step (fountain or statue spot). False when the hero is not held. */
 export function Bench(bot: Unit): boolean {
-    if (!Benched(bot)) return false;
-    const [x, y, z] = FOUNTAIN[bot.GetTeam()];
-    const f = Vector(x, y, z);
-    if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
-    return true;
+    return Drill.Hold(bot);
 }
 
 /** AwayMax, or no limit with Overrides.StackFar (scenario games only). */
@@ -128,13 +115,11 @@ function awayMax(): number {
     return override("StackFar") === true ? math.huge : SETTINGS.AwayMax;
 }
 
-/** The minutes with an attempt: TriggerMinutes, or from 2 every minute (Overrides.StackEvery true) or every nth (a number). */
+/** The minutes with an attempt: TriggerMinutes, or the rep minutes of a drill that forces the stack (drill `stack`). */
 export function Minutes(): number[] {
-    const every = override("StackEvery");
-    if (every !== true && typeof every !== "number") return SETTINGS.TriggerMinutes;
-    const out: number[] = [];
-    for (let m = 2; m <= 60; m += typeof every === "number" ? math.max(1, every) : 1) out.push(m);
-    return out;
+    const reps = Drill.RepTimes("stack");
+    if (reps === undefined) return SETTINGS.TriggerMinutes;
+    return reps.map(t => math.floor(t / 60));
 }
 
 export interface Attempt {
