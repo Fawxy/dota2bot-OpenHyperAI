@@ -34,9 +34,10 @@ export const HORIZON = 6;
 /** Enemy heroes farther than this from the creep are not read (no threat within the horizon at lane speeds). */
 const ENEMY_RADIUS = 1600;
 /** Lane creeps the idle swing can reach: the bot's attack range plus the walk it allows (`LanePick.MAX_WALK` at its current speed),
- *  the same distance the per-creep `walk` test uses, so the scan drops only creeps that test would drop (was a fixed 900). */
+ *  the same distance the per-creep `walk` test uses, capped at the old fixed 900 so the scan only ever shrinks. */
+const CREEP_RADIUS_CAP = 900;
 function creepRadius(bot: Unit): number {
-    return bot.GetAttackRange() + LanePick.MAX_WALK * math.max(100, bot.GetCurrentMovementSpeed());
+    return math.min(CREEP_RADIUS_CAP, bot.GetAttackRange() + LanePick.MAX_WALK * math.max(100, bot.GetCurrentMovementSpeed()));
 }
 /** Setup: our hits to the kill, this swing and the last hit included (`judgement`: "hit a creep twice and get an easy last
  *  hit", user 06/11/2026). */
