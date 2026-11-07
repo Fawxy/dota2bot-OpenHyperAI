@@ -644,14 +644,27 @@ do
 		local kind = Camps.LaneOfKind
 		Camps.LaneOfKind = function(team, k) if k == "off" then return Lane.Bot end return kind(team, k) end
 		w.sup.pos = 3
+		-- 3,250 out (a 13 s walk at 300): the leave falls before the pulled wave's read at 62, the start still in time.
+		if o.decide == "late" then w.sup.loc = Vector(w.stand.x + 3250, w.stand.y) end
 		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = true, true, o.on ~= false
 		w.H.LaneControl.ResetCache()
 		local win = w.H.PullJob.Window(w.sup, T)
-		if o.decide then
-			w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R3", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 })
-		end
+		local d = { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R3", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 }
+		if o.decide == true then w.H.LaneControl.Remember(2, Lane.Bot, d) end
 		local applies = w.H.PullJob.Applies(w.sup)
-		local out = run(w, 75)
+		local out
+		if o.decide == "late" then
+			-- No decision until the pulled wave's read second (its spawn + ReadAt 2), as in game.
+			local readAt = d.wave + w.H.LaneControl.SETTINGS.ReadAt
+			out = capture(function()
+				while T < 75 do
+					if T >= readAt and w.H.LaneControl.DecisionFor(2, Lane.Bot, d.wave) == nil then w.H.LaneControl.Remember(2, Lane.Bot, d) end
+					frame(w)
+				end
+			end)
+		else
+			out = run(w, 75)
+		end
 		Camps.LaneOfKind = kind
 		w.H.LaneControl.ResetCache()
 		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = nil, nil, nil
@@ -662,6 +675,10 @@ do
 		and job ~= nil and field(job, "phase") == "start", choice)
 	applies, choice, job = corePull({})
 	check("core pull: no decision, no pull on the support's triggers", applies and choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "no_ctl" and job == nil, choice)
+	-- lctl8 (~/.dotactl/logs/2026-11-07T03-58-22-lctl8_A_on_1.log, pid 9 from t=449): the pos3's leave falls before the pulled
+	-- wave's read (cycle second 2); it waits for the read and, the decision naming it, still pulls.
+	applies, choice, job = corePull({ decide = "late" })
+	check("core pull: the decision read after the leave time still starts the pull", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl" and job ~= nil, choice)
 	applies, choice, job = corePull({ decide = true, who = "9" })
 	check("core pull: the decision names another puller", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "ctl" and job == nil, choice)
 	applies = corePull({ decide = true, on = false })

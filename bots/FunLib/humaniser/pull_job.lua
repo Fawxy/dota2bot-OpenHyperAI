@@ -1854,6 +1854,9 @@ function ____exports.Wants(bot, blocked, host)
             bot:GetAssignedLane(),
             ____exports.PulledSpawn(p.slot)
         )
+        if ctl == nil and not isSupport(bot) and LaneControl.Drives() and now < ____exports.PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 and ____exports.PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until then
+            return false
+        end
         local byCtl = ctl ~= nil and ____exports.CtlWants(ctl, pid)
         local own = ctl == nil and isSupport(bot)
         local byNew = own and ____exports.Wanted(gone, tgt)

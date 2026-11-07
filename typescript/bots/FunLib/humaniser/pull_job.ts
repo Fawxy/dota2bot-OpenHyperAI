@@ -1012,6 +1012,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
         const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
+        // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
+        // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
+        if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
+            return false;
         const byCtl = ctl !== undefined && CtlWants(ctl, pid);
         // A core (slice 4a) pulls only on the controller's word.
         const own = ctl === undefined && isSupport(bot);
