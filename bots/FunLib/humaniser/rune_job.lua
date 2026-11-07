@@ -132,6 +132,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
 local Team = ____dota.Team
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
@@ -1078,7 +1079,7 @@ local MID_HOST = BotMode.Rune
 -- as it starts (the mode then returns MidDesire and steps it in Think). Not a chooser job: the mid has no other jobs, and
 -- the rune mode is the mode Valve would give a rune walk.
 function ____exports.MidWants(bot)
-    if not RunePlan.On() or not bot:IsBot() or LaneConfig.PositionOf(bot) ~= 2 then
+    if not RunePlan.On() or not bot:IsBot() or LaneConfig.PositionOf(bot) ~= 2 or Drill.Held(bot) or Drill.ForcedJob(bot) ~= nil then
         return false
     end
     local pid = bot:GetPlayerID()
