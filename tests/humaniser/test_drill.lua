@@ -185,6 +185,13 @@ end
 do
 	local H, C = world("shove")
 	check("shove: implies ForceShove", H.Overrides.Get("ForceShove") == "r:bot" and H.Drill.LaneOnly(hero(0, RAD, 1, 3)))
+	-- drill shove ldr4 (~/.dotactl/logs/2026-11-07T18-21-47-drill_shove_ldr4.log): general.lua's default ForceShove = "" hid
+	-- the drill's value; no shove swing ran.
+	C.Overrides.ForceShove = ""
+	check("shove: general.lua's empty default does not shadow the drill", H.Overrides.Get("ForceShove") == "r:bot")
+	C.Overrides.Drill = nil
+	check("shove: no drill, the empty default stays", H.Overrides.Get("ForceShove") == "")
+	C.Overrides.Drill = "shove"
 	C.Overrides.ForceShove = "all"
 	check("shove: --set wins", H.Overrides.Get("ForceShove") == "all")
 end
