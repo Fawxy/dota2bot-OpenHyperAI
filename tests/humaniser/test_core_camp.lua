@@ -420,6 +420,15 @@ do
 	check("missing: long unseen far off is past MissingReachMax", CC.MissingNear(core, SMALL) == 0)
 	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 100 }
 	check("missing: long unseen by the camp counts", CC.MissingNear(core, SMALL) == 1)
+	-- Slice lane-control 4a: a caller's own cap (the pos3 pull's 1,500): last seen 3,000 beyond the camp counts under the
+	-- trips' 4,000 cap, not under 1,500 (+ the 600 margin).
+	local c = core:GetLocation()
+	local dx, dy = SMALL.x - c.x, SMALL.y - c.y
+	local l = math.sqrt(dx * dx + dy * dy)
+	LAST_SEEN[enemy.pid] = { location = Vector(SMALL.x + dx / l * 3000, SMALL.y + dy / l * 3000), time_since_seen = 100 }
+	check("missing: 3,000 past the camp, the default cap counts it", CC.MissingOf(core, SMALL).n == 1)
+	check("missing: 3,000 past the camp, a 1,500 cap does not", CC.MissingOf(core, SMALL, 1500).n == 0)
+	LAST_SEEN[enemy.pid] = { location = Vector(2500, -7000), time_since_seen = 100 }
 	enemy.alive = false
 	check("missing: a dead enemy does not count", CC.MissingNear(core, SMALL) == 0)
 	local out = run(H, core, 302)

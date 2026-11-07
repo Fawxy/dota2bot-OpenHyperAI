@@ -313,7 +313,8 @@ ____exports.SETTINGS = {
     CorePullFrom = 360,
     CorePullWorth = 80,
     CorePullPerNeed = 0.05,
-    PathFactor = 1.2
+    PathFactor = 1.2,
+    CorePullMissingReach = 1500
 }
 --- The lane gold the pos3 may lose to pull: CorePullWorth, plus CorePullPerNeed a unit of need past the band.
 function ____exports.CorePullLimit(n45)
@@ -728,7 +729,7 @@ local function decide(team, lane, now, m)
             }
             coreCand = {
                 pid = coreIn.pid,
-                missing = CoreCamp.MissingOf(u, w.stand).n,
+                missing = CoreCamp.MissingOf(u, w.stand, s.CorePullMissingReach).n,
                 loss = CoreCamp.LossBetween(clash, w.start, w["end"] + back)
             }
         end

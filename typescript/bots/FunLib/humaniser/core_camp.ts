@@ -704,7 +704,8 @@ export interface Missing {
     pids: number[];
 }
 
-export function MissingOf(bot: Unit, at: Vector): Missing {
+/** `reachMax` caps a missing hero's possible run (default MissingReachMax); the lane controller's pos3 pull passes its own. */
+export function MissingOf(bot: Unit, at: Vector, reachMax?: number): Missing {
     const s = SETTINGS;
     const team = bot.GetTeam();
     const here = bot.GetLocation();
@@ -718,7 +719,7 @@ export function MissingOf(bot: Unit, at: Vector): Missing {
         if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
         const info = GetHeroLastSeenInfo(pid)[0];
         if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
-        const run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax);
+        const run = math.min(s.MissingSpeed * info.time_since_seen, reachMax ?? s.MissingReachMax);
         if (distToSegment(info.location, here, at) <= run + s.ThreatMargin) {
             out.n++;
             out.pids.push(pid);

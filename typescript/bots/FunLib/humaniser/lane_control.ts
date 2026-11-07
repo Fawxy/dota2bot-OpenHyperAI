@@ -101,6 +101,11 @@ export const SETTINGS = {
     CorePullPerNeed: 0.05,
     /** Walking paths run longer than the straight line (CoreCamp's and rune_job's PathFactor). */
     PathFactor: 1.2,
+    /** The pos3 pull's missing-hero cap (CoreCamp MissingOf's reachMax; its trips use 4,000): a hero unseen long and last seen
+     *  far off is as likely anywhere. lctl9 (07/11/2026): at 4,000 the gate refused 22 of the 26 offlane waves left with no
+     *  puller, on the enemy side where someone is nearly always unseen; the pos4 pulls the same camp with only the visible
+     *  site check, and the pos3's 18 pulls had no death. `judgement`. */
+    CorePullMissingReach: 1500,
 };
 
 /** One candidate puller: the support (with the calendar's refusal) or the offlane pos3 (with its site and gold reads). */
@@ -413,7 +418,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
             const u = coreIn.unit;
             const back = (math.sqrt((w.stand.x - cx) ** 2 + (w.stand.y - cy) ** 2) * s.PathFactor) / math.max(1, u.GetCurrentMovementSpeed());
             const clash: import("bots/FunLib/humaniser/core_camp").Clash = { t: now, at: Vector(cx, cy, 0), t0: samples[0]?.t ?? now, samples, enemy: team === Team.Radiant ? Team.Dire : Team.Radiant, path, team };
-            coreCand = { pid: coreIn.pid, missing: CoreCamp.MissingOf(u, w.stand).n, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
+            coreCand = { pid: coreIn.pid, missing: CoreCamp.MissingOf(u, w.stand, s.CorePullMissingReach).n, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
         }
     }
     const puller = PullerOf({ now, n45, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });

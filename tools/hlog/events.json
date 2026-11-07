@@ -948,6 +948,10 @@
    "dep": "num",
    "fit": "str",
    "yld": "num",
+   "pby": "str",
+   "cwhy": "str",
+   "cmiss": "num",
+   "closs": "num",
    "away": "bool",
    "why": "str",
    "ms": "num"
@@ -1725,6 +1729,8 @@
    "who": "text",
    "rej": "text",
    "fit": "text",
+   "pby": "text",
+   "cwhy": "text",
    "why": "text"
   },
   "ev_idle_swing": {
