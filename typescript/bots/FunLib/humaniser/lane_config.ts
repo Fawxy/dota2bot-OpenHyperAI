@@ -413,10 +413,9 @@ export const DEFAULTS = {
         // on the puller after the hit while the camp is unseen (pull_job `fb` 1; `judgement`). HeroTurnRange caps each
         // creep's GetAcquisitionRange as the radius it turns in on hits landing on its hero (fitted: walking ranged creeps
         // with landings at 568-593 did not turn, 0 of 5, phagg1/5/6; a siege one at 692). GiveUpFrom: a neutral's give-up
-        // timer starts this far from its camp (EC-084); GiveUpAfter: seconds from there to its give-up (fitted: every
-        // tagged neutral walking home 3.7 s after the first passed 400 on camps 1 and 26, 3.8 s, n 208; 4.8 s camp 18, 6.6 s
-        // camp 2; EC-084 says 5; the earliest camps' value so the deadline never overruns); GiveUpMargin: a pull whose
-        // entry falls later than the predicted give-up less this is not started (`judgement`).
+        // timer starts this far from its camp (EC-084); GiveUpAfter: seconds from the first neutral past it to the camp's
+        // give-up for a camp with no fitted value (judgement, the fitted camps' low end; EC-084 says 5); GiveUpMargin: a
+        // pull whose entry falls later than the predicted give-up less this is not started (`judgement`).
         HeroLandErr: 0.2,
         LockFor: 1,
         HeroFirst: 1,

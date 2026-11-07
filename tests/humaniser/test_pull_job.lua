@@ -352,6 +352,34 @@ do
 	local _, shut = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 1 })
 	check("on hero: the entry after the predicted give-up holds the start (choice why=no-window nw=give-up), no pull",
 		#lines(shut, "pull_job") == 0 and #lines(shut, "choice") > 0 and field(lines(shut, "choice")[1], "why") == "no-window" and field(lines(shut, "choice")[1], "nw") == "give-up", lines(shut, "choice")[1])
+	-- The deadline's causes in the hold (review M1), each after the hit (~73.3 s) and before the leave (~74.8 s): a creep of the
+	-- timed wave fighting theirs ends `deadline:clash`; the camp's neutral dead ends `deadline:dead`.
+	local meet = Vector(-1600, -5000)
+	local placed
+	local clash = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
+		if placed == nil and w.H.PullJob.Running(w.sup) and T >= 74 then
+			placed = true
+			local foe = MakeCreep({ team = 3, x = meet.x + 100, y = meet.y })
+			MakeCreep({ team = 2, x = meet.x, y = meet.y, target = foe })
+		end
+	end })
+	check("on hero: our wave fighting theirs in the hold ends timeout:deadline:clash", field(clash, "why") == "timeout:deadline:clash" and field(clash, "dl") == "clash", clash)
+	CREEPS[2], CREEPS[3] = {}, {}
+	local dead = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
+		if w.H.PullJob.Running(w.sup) and T >= 74 and NEUTRALS[1] ~= nil then NEUTRALS[1].hp = 0 end
+	end })
+	check("on hero: the camp's neutrals dead in the hold ends timeout:deadline:dead", field(dead, "why") == "timeout:deadline:dead", dead)
+	-- The window closing on the walk to the camp (review M1): an enemy creep 1500 short of the meet point puts the clash
+	-- before the entry, so Step cancels the pull before its hit.
+	placed = nil
+	local shutWalk = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
+		if placed == nil and w.H.PullJob.Running(w.sup) then
+			placed = true
+			MakeCreep({ team = 3, x = meet.x - 1500, y = meet.y })
+		end
+	end })
+	check("on hero: the window closed on the walk cancels the pull (cancelled:no-window)", field(shutWalk, "why") == "cancelled:no-window", shutWalk)
+	CREEPS[2], CREEPS[3] = {}, {}
 	local off = livePull({ neutralRange = 500 })
 	check("on hero off: no on-hero fields", off ~= nil and field(off, "ent") == nil and field(off, "lvp") == nil and field(off, "dl") == nil, off)
 end

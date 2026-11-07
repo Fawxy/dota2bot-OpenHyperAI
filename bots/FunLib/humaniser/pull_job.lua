@@ -1,10 +1,62 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__Class(self)
-    local c = {prototype = {}}
-    c.prototype.__index = c.prototype
-    c.prototype.constructor = c
-    return c
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
 
 local __TS__Symbol, Symbol
@@ -64,6 +116,13 @@ do
             return ipairs(iterable)
         end
     end
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
 end
 
 local Map
@@ -213,65 +272,6 @@ local function __TS__New(target, ...)
     return instance
 end
 
-local function __TS__ArraySome(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            return true
-        end
-    end
-    return false
-end
-
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
-
-local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
-    if fromIndex == nil then
-        fromIndex = 0
-    end
-    local len = #self
-    if len == 0 then
-        return -1
-    end
-    if fromIndex >= len then
-        return -1
-    end
-    if fromIndex < 0 then
-        fromIndex = len + fromIndex
-        if fromIndex < 0 then
-            fromIndex = 0
-        end
-    end
-    for i = fromIndex + 1, len do
-        if self[i] == searchElement then
-            return i - 1
-        end
-    end
-    return -1
-end
-
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -348,7 +348,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local campFor, fitsAhead, planFor, safeLane, halfWanted, MeleeSpawn, travel, ourTower, share, creepLines, trackCreeps, landing, laneCreepsNear, onNeutral, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running, handled, campKinds
+local campFor, fitsAhead, planFor, safeLane, halfWanted, MeleeSpawn, onLaneCreep, waveFights, travel, ourTower, share, creepLines, trackCreeps, landing, laneCreepsNear, onNeutral, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running, handled, campKinds
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
@@ -520,6 +520,20 @@ function MeleeSpawn(bot)
         spawner,
         DotaTime()
     ) == false
+end
+function onLaneCreep(c)
+    local t = c:GetAttackTarget()
+    return t ~= nil and t ~= nil and t:GetTeam() ~= c:GetTeam() and t:GetTeam() ~= Team.Neutral and LanePush.IsLaneCreep(t:GetUnitName())
+end
+function waveFights(pull)
+    local early = pull.early or ({})
+    return __TS__ArraySome(
+        laneCreepsNear(
+            pull.plan,
+            LaneConfig.Settings().Radii.MeetWatch
+        ),
+        function(____, c) return __TS__ArrayIndexOf(early, c) < 0 and onLaneCreep(c) end
+    )
 end
 function travel(bot, p)
     return GetUnitToLocationDistance(bot, p.stand) * ____exports.SETTINGS.PathFactor / math.max(
@@ -1460,14 +1474,9 @@ local function heroFor(bot, p, timer, pull)
         giveUp = cfg.GiveUpAfterCamp[p.camp.campIdx] or cfg.GiveUpAfter
     }
 end
---- Our lane creep `c` attacking the other team's lane creep.
-local function onLaneCreep(c)
-    local t = c:GetAttackTarget()
-    return t ~= nil and t ~= nil and t:GetTeam() ~= c:GetTeam() and t:GetTeam() ~= Team.Neutral and LanePush.IsLaneCreep(t:GetUnitName())
-end
---- Slice pull-aggro's deadline (design step 5), read every frame from the confirmed hit and latched: `give-up` every tagged
--- neutral alive has been GiveUpFrom out of the camp for GiveUpAfter s (or none is alive), `clash` one of our lane creeps
--- near the pull fights theirs, `back` the wave's back creep on the lane is past the stand and out of its range, `cap`
+--- Slice pull-aggro's deadline (design step 5), read every frame from the confirmed hit and latched: `give-up` the camp's
+-- GiveUpAfterCamp s after the first tagged neutral passed GiveUpFrom, `dead` every tagged neutral died, `clash` a creep of
+-- the timed wave fights theirs, `back` the wave's back creep on the lane is past the stand and out of its range, `cap`
 -- JobMaxAfterAggro after the hit.
 local function deadlineCause(pull)
     if pull.dl ~= nil then
@@ -1481,10 +1490,8 @@ local function deadlineCause(pull)
     if now >= hat + s.Timing.JobMaxAfterAggro then
         cause = "cap"
     end
-    if cause == nil and pull.tagged ~= nil then
-        pull.outAt = pull.outAt or __TS__New(Map)
+    if cause == nil and pull.tagged ~= nil and #pull.tagged > 0 then
         local alive = 0
-        local gone = 0
         for ____, u in ipairs(pull.tagged) do
             do
                 local __continue62
@@ -1494,18 +1501,8 @@ local function deadlineCause(pull)
                         break
                     end
                     alive = alive + 1
-                    if not pull.outAt:has(u) and GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom then
-                        pull.outAt:set(u, now)
-                    end
-                    local at = pull.outAt:get(u)
-                    local ____temp_7 = at ~= nil
-                    if ____temp_7 then
-                        local ____temp_6 = now - at
-                        local ____opt_4 = pull.timer.hero
-                        ____temp_7 = ____temp_6 >= (____opt_4 and ____opt_4.giveUp or s.PullTiming.GiveUpAfter)
-                    end
-                    if ____temp_7 then
-                        gone = gone + 1
+                    if pull.firstOut == nil and GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom then
+                        pull.firstOut = now
                     end
                     __continue62 = true
                 until true
@@ -1514,14 +1511,21 @@ local function deadlineCause(pull)
                 end
             end
         end
-        if gone == alive then
-            cause = "give-up"
+        if alive == 0 then
+            cause = "dead"
+        else
+            local ____temp_7 = pull.firstOut ~= nil
+            if ____temp_7 then
+                local ____temp_6 = now - pull.firstOut
+                local ____opt_4 = pull.timer.hero
+                ____temp_7 = ____temp_6 >= (____opt_4 and ____opt_4.giveUp or s.PullTiming.GiveUpAfter)
+            end
+            if ____temp_7 then
+                cause = "give-up"
+            end
         end
     end
-    if cause == nil and __TS__ArraySome(
-        laneCreepsNear(p, s.Radii.MeetWatch),
-        function(____, c) return onLaneCreep(c) end
-    ) then
+    if cause == nil and waveFights(pull) then
         cause = "clash"
     end
     if cause == nil and PullTiming.BackPast(pull.timer, p.meet, now) then
@@ -1562,30 +1566,24 @@ local function trackHero(bot, pull)
     if pull.arrAt ~= nil and pull.laga == nil then
         for ____, u in ipairs(pull.tagged or ({})) do
             do
-                local __continue82
+                local __continue83
                 repeat
                     if stale(u) then
-                        __continue82 = true
+                        __continue83 = true
                         break
                     end
                     if GetUnitToUnitDistance(u, bot) <= u:GetAttackRange() + u:GetBoundingRadius() + bot:GetBoundingRadius() then
                         pull.laga = now - pull.arrAt
                     end
-                    __continue82 = true
+                    __continue83 = true
                 until true
-                if not __continue82 then
+                if not __continue83 then
                     break
                 end
             end
         end
     end
-    if pull.cla == nil and __TS__ArraySome(
-        laneCreepsNear(
-            pull.plan,
-            LaneConfig.Settings().Radii.MeetWatch
-        ),
-        function(____, c) return onLaneCreep(c) end
-    ) then
+    if pull.cla == nil and waveFights(pull) then
         pull.cla = now
     end
 end
@@ -2014,6 +2012,8 @@ local function choiceLine(bot, d, slot, go, why, camp)
         {"pm", d.pm},
         {"nw", d.nw},
         {"nws", d.nws},
+        {"ent", d.ent},
+        {"clp", d.clp},
         unpack(campFields(camp))
     )
     ____Telemetry_Event_27(
@@ -2652,6 +2652,8 @@ function ____exports.Wants(bot, blocked, host)
     local noWin = timer.hero ~= nil and timer.nowin ~= nil and "no-window" or nil
     d.nw = timer.nowin
     d.nws = timer.hero ~= nil and timer.slack ~= nil and math.floor(timer.slack * 100 + 0.5) / 100 or nil
+    d.ent = timer.hero ~= nil and timer.ent ~= nil and math.floor(timer.ent * 100 + 0.5) / 100 or nil
+    d.clp = timer.hero ~= nil and timer.clp ~= nil and math.floor(timer.clp * 100 + 0.5) / 100 or nil
     local why = ____exports.CampGate(camp, now, hitAt) or noWin or blocked(bot) or campDmgGate(bot, camp.dmg) or site or ____exports.PartnerThreat(bot) or (acting(bot) and "acting" or nil)
     if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
         done(false, gateWhy[pid] or why or "late")

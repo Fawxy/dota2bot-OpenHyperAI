@@ -1399,6 +1399,8 @@
    "pm": "num",
    "nw": "str",
    "nws": "num",
+   "ent": "num",
+   "clp": "num",
    "pa": "num",
    "ap": "num",
    "ep": "num",

@@ -202,7 +202,7 @@ interface Pull {
      *  arrival at the stand (the watch) and the first tagged neutral within its attack reach of the puller after it (laga);
      *  seconds with a tagged neutral on the puller at the camp and from the lead on (tkc, tks), from the last sample's time;
      *  the first frame our wave fought theirs (cla); the deadline's cause and time (dl); per tagged neutral when it was first
-     *  GiveUpFrom out of the camp; fb 1 when the plan's first landing was the unseen-camp fallback. */
+     *  the first tagged neutral was GiveUpFrom out of the camp (firstOut); fb 1 when the plan's first landing was the unseen-camp fallback. */
     lvp?: number;
     lva?: number;
     arrAt?: number;
@@ -213,7 +213,7 @@ interface Pull {
     cla?: number;
     dl?: string;
     dlAt?: number;
-    outAt?: Map<Unit, number>;
+    firstOut?: number;
     fb?: number;
 }
 
@@ -265,6 +265,8 @@ interface Decision {
     pm?: number;
     nw?: string;
     nws?: number;
+    ent?: number;
+    clp?: number;
 }
 
 interface Trail {
@@ -504,9 +506,9 @@ function onLaneCreep(c: Unit): boolean {
 }
 
 /**
- * Slice pull-aggro's deadline (design step 5), read every frame from the confirmed hit and latched: `give-up` every tagged
- * neutral alive has been GiveUpFrom out of the camp for GiveUpAfter s (or none is alive), `clash` one of our lane creeps
- * near the pull fights theirs, `back` the wave's back creep on the lane is past the stand and out of its range, `cap`
+ * Slice pull-aggro's deadline (design step 5), read every frame from the confirmed hit and latched: `give-up` the camp's
+ * GiveUpAfterCamp s after the first tagged neutral passed GiveUpFrom, `dead` every tagged neutral died, `clash` a creep of
+ * the timed wave fights theirs, `back` the wave's back creep on the lane is past the stand and out of its range, `cap`
  * JobMaxAfterAggro after the hit.
  */
 function deadlineCause(pull: Pull): string | undefined {
@@ -517,26 +519,32 @@ function deadlineCause(pull: Pull): string | undefined {
     const hat = pull.hat ?? now;
     let cause: string | undefined;
     if (now >= hat + s.Timing.JobMaxAfterAggro) cause = "cap";
-    if (cause === undefined && pull.tagged !== undefined) {
-        pull.outAt = pull.outAt ?? new Map();
+    if (cause === undefined && pull.tagged !== undefined && pull.tagged.length > 0) {
+        // Timed from the first neutral past GiveUpFrom, as GiveUpAfterCamp was fitted (gu - g4; review L2); a camp whose
+        // tagged neutrals all died ends `dead` (an empty tag list ends nothing: review L3).
         let alive = 0;
-        let gone = 0;
         for (const u of pull.tagged) {
             if (stale(u)) continue;
             alive++;
-            if (!pull.outAt.has(u) && GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom) pull.outAt.set(u, now);
-            const at = pull.outAt.get(u);
-            if (at !== undefined && now - at >= (pull.timer.hero?.giveUp ?? s.PullTiming.GiveUpAfter)) gone++;
+            if (pull.firstOut === undefined && GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom) pull.firstOut = now;
         }
-        if (gone === alive) cause = "give-up";
+        if (alive === 0) cause = "dead";
+        else if (pull.firstOut !== undefined && now - pull.firstOut >= (pull.timer.hero?.giveUp ?? s.PullTiming.GiveUpAfter)) cause = "give-up";
     }
-    if (cause === undefined && laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onLaneCreep(c))) cause = "clash";
+    if (cause === undefined && waveFights(pull)) cause = "clash";
     if (cause === undefined && PullTiming.BackPast(pull.timer, p.meet, now)) cause = "back";
     if (cause !== undefined) {
         pull.dl = cause;
         pull.dlAt = now;
     }
     return cause;
+}
+
+/** Slice pull-aggro: one of our lane creeps of the timed wave (near the pull, not already at the meet point at the hit:
+ *  `early`, review L1) fights the other team's lane creeps. */
+function waveFights(pull: Pull): boolean {
+    const early = pull.early ?? [];
+    return laneCreepsNear(pull.plan, LaneConfig.Settings().Radii.MeetWatch).some((c) => early.indexOf(c) < 0 && onLaneCreep(c));
 }
 
 /** Slice pull-aggro: a tagged neutral is attacking the puller. */
@@ -563,7 +571,7 @@ function trackHero(bot: Unit, pull: Pull): void {
             if (GetUnitToUnitDistance(u, bot) <= u.GetAttackRange() + u.GetBoundingRadius() + bot.GetBoundingRadius()) pull.laga = now - pull.arrAt;
         }
     }
-    if (pull.cla === undefined && laneCreepsNear(pull.plan, LaneConfig.Settings().Radii.MeetWatch).some((c) => onLaneCreep(c))) pull.cla = now;
+    if (pull.cla === undefined && waveFights(pull)) pull.cla = now;
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -832,6 +840,8 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["pm", d.pm],
         ["nw", d.nw],
         ["nws", d.nws],
+        ["ent", d.ent],
+        ["clp", d.clp],
         ...campFields(camp),
     ]);
 }
@@ -1566,6 +1576,9 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const noWin = timer.hero !== undefined && timer.nowin !== undefined ? "no-window" : undefined;
     d.nw = timer.nowin;
     d.nws = timer.hero !== undefined && timer.slack !== undefined ? math.floor(timer.slack * 100 + 0.5) / 100 : undefined;
+    // Review M2: the entry and the predicted clash the window was judged on.
+    d.ent = timer.hero !== undefined && timer.ent !== undefined ? math.floor(timer.ent * 100 + 0.5) / 100 : undefined;
+    d.clp = timer.hero !== undefined && timer.clp !== undefined ? math.floor(timer.clp * 100 + 0.5) / 100 : undefined;
     const why = CampGate(camp, now, hitAt) ?? noWin ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");

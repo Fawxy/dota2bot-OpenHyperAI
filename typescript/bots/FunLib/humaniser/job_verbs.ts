@@ -57,7 +57,7 @@ const RUNE_LATE_BY = 5;
 const RUNE_GRACE = 2;
 const RUNE_PICKUP_FOR = 10;
 const SHRINE_RADIUS = 300;
-/** Seconds past a held pull's leave time with no neutral on the bot before it fails `no-aggro` (PullPlan aggroFor). */
+/** Default for PullPlan aggroFor (the pull job passes its own, Lane.PullTiming.LockFor). */
 const AGGRO_FOR = 1;
 
 function ok(): Result {
