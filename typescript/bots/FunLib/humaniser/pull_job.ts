@@ -14,11 +14,21 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 // All `judgement` (slice file, Decisions), except where a source is named.
 export const SETTINGS = {
+    /** A camp read `one` or `empty` on the walk ends the pull only once it has held this long (`judgement`): a camp coming into
+     *  sight shows its neutrals over a few frames, since the API returns no fogged ones (drill pull ldr6: 5 of 9 pulls
+     *  cancelled `one` on the first sight of a freshly spawned full camp). A four-corner visibility rule was tried first
+     *  and never read true (ldr11, ldr12: every pull walked into an empty camp). */
+    CampLowHold: 1.5,
+    /** ... and only once the puller is within this of its stand point, so its own vision covers the camp (`judgement`; ldr14:
+     *  3 of 9 pulls on a fresh camp still cancelled `one` after the hold, 3-6 s into the walk). Both values leave about 2 s
+     *  before the slot (ldr17: the empty-camp cancels fell 2.0 s before to 0.8 s after it); the hold never runs past the hit. */
+    CampReadNear: 500,
     /** Rank against the hero's other jobs: below the stack (0.92) and the rune trip (0.85 pos5 / 0.95 pos4 rank above at their
      *  times through their claims). */
     Priority: 0.9,
@@ -121,6 +131,8 @@ interface CampState {
     seen: number;
     hp: number;
     vis: boolean;
+    /** The counted box's four corners are in sight (telemetry `cfv` only: in drills they never all read visible, ldr11). */
+    full?: boolean;
     /** The neutrals returned, for the damage estimate. */
     units: Unit[];
     /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
@@ -144,6 +156,8 @@ interface Plan {
 interface Pull {
     plan: Plan;
     left: number;
+    /** The walk's camp read went `one` or `empty` (why, since when); cleared when it reads full again. */
+    low?: { why: string; at: number };
     host: number;
     label?: string;
     hit?: boolean;
@@ -192,6 +206,8 @@ interface Decision {
     rule?: string;
     /** The lane controller decided this wave (slice lane-control 2b): a refusal is `ctl`, not `lane`. */
     ctl?: boolean;
+    /** A drill decided this wave (Drill.ForcedAt): a refusal is `drill`. */
+    drill?: boolean;
 }
 
 interface Trail {
@@ -330,7 +346,11 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
     const m = LaneConfig.Settings().Radii.BoxMargin;
     const lo = spawner.min;
     const hi = spawner.max;
-    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), units: [] };
+    const z = spawner.location.z;
+    // The corners of the box as counted (BoxMargin beyond it, review 2026-11-08-lane-drills L5).
+    const [x0, y0, x1, y1] = [lo.x - m, lo.y - m, hi.x + m, hi.y + m];
+    const full = IsLocationVisible(Vector(x0, y0, z)) && IsLocationVisible(Vector(x1, y0, z)) && IsLocationVisible(Vector(x0, y1, z)) && IsLocationVisible(Vector(x1, y1, z));
+    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), full, units: [] };
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive()) continue;
         const p = u.GetLocation();
@@ -561,6 +581,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cs", s.seen],
         ["chp", r0(s.hp)],
         ["cv", s.vis ? 1 : 0],
+        ["cfv", s.full === undefined ? undefined : s.full ? 1 : 0],
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
         ["se", r0(s.se)],
@@ -1022,17 +1043,24 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
         const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
-        // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
-        // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
-        if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
-            return false;
-        const byCtl = ctl !== undefined && CtlWants(ctl, pid);
-        // A core (slice 4a) pulls only on the controller's word.
-        const own = ctl === undefined && isSupport(bot);
-        const byNew = own && Wanted(gone, tgt);
-        const byOld = own && hold && OldWanted(reading, tgt);
-        const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
-        d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
+        // A drill that forces the pull (humaniser/drill.ts `pull`, `core-pull`): the rep of the pulled wave decides, input on
+        // pulls (rule `drill`), a control rep or a wave before the first rep does not (`why=drill`); the controller is not
+        // asked. The pull's own gates below still apply.
+        const forced = Drill.ForcedAt("pull", PulledSpawn(p.slot));
+        if (forced !== undefined) d = { slot: p.slot, want: forced === "on", reading, gone, hold, rule: forced === "on" ? "drill" : undefined, drill: true };
+        else {
+            // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
+            // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
+            if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
+                return false;
+            const byCtl = ctl !== undefined && CtlWants(ctl, pid);
+            // A core (slice 4a) pulls only on the controller's word.
+            const own = ctl === undefined && isSupport(bot);
+            const byNew = own && Wanted(gone, tgt);
+            const byOld = own && hold && OldWanted(reading, tgt);
+            const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
+            d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
+        }
         decided[pid] = d;
         gateWhy[pid] = undefined;
     }
@@ -1043,7 +1071,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
-        done(false, d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
+        done(false, d.drill === true ? "drill" : d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
@@ -1082,7 +1110,16 @@ export function Step(bot: Unit, host: number): boolean {
         const s = CampStateOf(p.plan.spawner);
         s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
-        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
+        const now = DotaTime();
+        const gate = CampGate(s, now, p.hitAt);
+        // `one`/`empty` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it comes
+        // into sight); camp damage ends it at once.
+        if (gate === undefined || GetUnitToLocationDistance(bot, p.plan.stand) > SETTINGS.CampReadNear) p.low = undefined;
+        else if (p.low === undefined || p.low.why !== gate) p.low = { why: gate, at: now };
+        // The hold shrinks to the time left before the hit: a puller reaching the ring late still reads the camp before it
+        // hits (review 2026-11-08-lane-drills M3: ldr17's cancels fell 2 s before to 0.8 s after the slot).
+        const hold = math.min(SETTINGS.CampLowHold, p.hitAt - now);
+        const why = (p.low !== undefined && now - p.low.at >= hold ? p.low.why : undefined) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
             // The pull_job line then carries the camp that cancelled it, not the one at the start.
             p.start = s;

@@ -149,4 +149,51 @@ do
 	end
 end
 
+-- pull: the Radiant pos5 is the cast, a statue while no pull runs; only the pull job is asked; the minute's wave carries the
+-- input, the :30 wave is the control.
+do
+	local H = world("pull")
+	local sup = hero(4, RAD, 5, 3)
+	local core = hero(0, RAD, 1, 3)
+	check("pull: pos5 cast, not held", H.Drill.RoleOf(sup) == "cast" and not H.Drill.Held(sup) and not H.Chooser.Benched(sup))
+	check("pull: idle statue, only the pull job", H.Drill.IdleStatue(sup) and H.Drill.ForcedJob(sup) == "pull" and not H.Drill.IdleStatue(core) and H.Drill.ForcedJob(core) == nil)
+	check("pull: the minute's wave on, the :30 off, before the first none", H.Drill.ForcedAt("pull", 60) == "on" and H.Drill.ForcedAt("pull", 90) == "off"
+		and H.Drill.ForcedAt("pull", 120) == "on" and H.Drill.ForcedAt("pull", 30) == "none" and H.Drill.ForcedAt("stack", 60) == nil)
+	check("pull: the idle cast never casts and skips OHA's idle relocation", H.Chooser.HoldsCasts(sup) and H.Chooser.HoldsIdle(sup))
+	sup.loc = Vector(0, 0, 0)
+	check("pull: the idle cast takes the statue's step", H.Drill.Hold(sup) and #ActionsOf(4, "MoveToLocation") > 0)
+	check("pull: with no job, the idle cast holds the bench's desire", H.Chooser.Decide(sup, "farm") == H.Chooser.SETTINGS.BenchDesire, tostring(H.Chooser.Decide(sup, "farm")))
+	check("pull: a cast with no castIdle keeps OHA's desire", world("lane-spot").Chooser.Decide(core, "farm") == nil)
+	-- drill pull ldr1 (~/.dotactl/logs/2026-11-07T18-07-29-drill_pull_ldr1.log, t=360): both benched mids walked to the 6:00 rune.
+	check("pull: a benched mid is never the rune plan's mid", not H.RuneJob.MidWants(hero(2, RAD, 2, 2)))
+	check("pull: no drill, nothing forced", world(nil).Drill.ForcedAt("pull", 60) == nil)
+end
+
+-- lane-still: no cast, every hero benched, no rep line.
+do
+	local H = world("lane-still")
+	local b = hero(0, RAD, 1, 3)
+	check("lane-still: benched", H.Drill.RoleOf(b) == "bench" and H.Drill.RoleOf(hero(9, DIRE, 5, 1)) == "bench")
+	GAME_STATE = 8
+	T = 40
+	local reps = 0
+	for _, l in ipairs(capture(function() H.Drill.Tick(b) end)) do if field(l, "ph") == "rep" then reps = reps + 1 end end
+	check("lane-still: no rep line", reps == 0)
+end
+
+-- shove: the drill implies ForceShove r:bot, an explicit --set wins.
+do
+	local H, C = world("shove")
+	check("shove: implies ForceShove", H.Overrides.Get("ForceShove") == "r:bot" and H.Drill.LaneOnly(hero(0, RAD, 1, 3)))
+	-- drill shove ldr4 (~/.dotactl/logs/2026-11-07T18-21-47-drill_shove_ldr4.log): general.lua's default ForceShove = "" hid
+	-- the drill's value; no shove swing ran.
+	C.Overrides.ForceShove = ""
+	check("shove: general.lua's empty default does not shadow the drill", H.Overrides.Get("ForceShove") == "r:bot")
+	C.Overrides.Drill = nil
+	check("shove: no drill, the empty default stays", H.Overrides.Get("ForceShove") == "")
+	C.Overrides.Drill = "shove"
+	C.Overrides.ForceShove = "all"
+	check("shove: --set wins", H.Overrides.Get("ForceShove") == "all")
+end
+
 finish()

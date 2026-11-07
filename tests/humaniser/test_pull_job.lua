@@ -483,6 +483,9 @@ do
 	local fogged = { n = 1, seen = 1, hp = 300, vis = false, units = {} }
 	check("one neutral, seen: why=one; two: no gate; out of sight or a spawn first: no gate", w.H.PullJob.CampGate(one, 61, 78) == "one"
 		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
+	-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the origin in sight, part of the
+	-- box in fog, one full-HP neutral returned of a freshly spawned camp: the count is a floor, so no `one` or `empty` yet.
+	check("the live read logs full (the test world sees every point)", w.H.PullJob.CampStateOf(w.H.Lane.Camps.SpawnerByIdx(w.H.Lane.Camps.PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
@@ -525,6 +528,46 @@ do
 	local pull = lines(out, "pull_job")[1]
 	check("walk finds a stacked camp: cancelled:camp-dmg before the hit, with the walk's camp", seen ~= nil
 		and field(pull, "why") == "cancelled:camp-dmg" and field(pull, "cn") == "8" and (field(pull, "label") or "travel") ~= "aggro", pull)
+end
+
+-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the walk brings the camp into sight
+-- one neutral at a time; `one` (or `empty`) ends the pull only once it has held CampLowHold s.
+do
+	local function walkIn(more, set)
+		local w = world({ reading = OUT })
+		for k, v in pairs(set or {}) do w.H.PullJob.SETTINGS[k] = v end
+		local seen, ended, added
+		local out = capture(function()
+			while T < 120 and not (seen and not w.H.PullJob.Running(w.sup)) do
+				if not seen and w.H.PullJob.Running(w.sup) then
+					seen = T
+					FOGGED = nil
+					MakeNeutral({ x = SMALL.x, y = SMALL.y })
+				end
+				if seen and more and not added and T >= seen + 0.5 then
+					added = true
+					MakeNeutral({ x = SMALL.x + 30, y = SMALL.y })
+					MakeNeutral({ x = SMALL.x - 30, y = SMALL.y })
+				end
+				frame(w)
+			end
+			ended = T
+		end)
+		return seen, ended, lines(out, "pull_job")[1]
+	end
+	local seen, ended, pull = walkIn(true)
+	check("walk: one neutral seen, two more half a second later: the pull goes on", seen ~= nil and field(pull, "why") ~= "cancelled:one", pull)
+	seen, ended, pull = walkIn(false)
+	local PJ = package.loaded["bots/FunLib/humaniser/pull_job"]
+	local hold = PJ.SETTINGS.CampLowHold
+	check("walk: one neutral that stays: cancelled:one after the hold", seen ~= nil and field(pull, "why") == "cancelled:one" and ended - seen >= hold, (pull or "nil") .. " after " .. tostring(ended and seen and ended - seen))
+	-- Review L6: a low read beyond CampReadNear of the stand never ends the pull (the bot stands still out there).
+	seen, ended, pull = walkIn(false, { CampReadNear = -1 })
+	check("walk: a low read outside the ring does not end the pull", seen ~= nil and field(pull, "why") ~= "cancelled:one", pull)
+	-- Review M3: a puller that reaches the ring under CampLowHold before the hit still reads the camp before it hits.
+	seen, ended, pull = walkIn(false, { CampLowHold = 1000 })
+	check("walk: the hold shrinks to the time before the hit: cancelled:one, never hit", seen ~= nil and field(pull, "why") == "cancelled:one"
+		and (field(pull, "label") or "travel") ~= "aggro", pull)
 end
 
 -- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked
@@ -698,6 +741,38 @@ do
 	check("same wave: a drifted slot", P.SameWave(376.424, 376.359))
 	check("same wave: the camp's other slot is another wave", not P.SameWave(376.4, 346.4))
 	check("same wave: nothing handled yet", not P.SameWave(nil, 376.4))
+end
+
+-- Drill `pull` (humaniser/drill.ts): the rep of the pulled wave decides, not the controller; a control rep stays (why=drill).
+do
+	local function drilled(o)
+		local w = world({ reading = OUT })
+		local cust = package.loaded["bots/FunLib/custom_loader"]
+		cust.Overrides = { Drill = "pull" }
+		w.H.Drill.ResetCache()
+		local tab = w.H.Drill.TABLE.pull
+		local control = tab.rep.control
+		-- control 1 withholds every rep.
+		if o.off then tab.rep.control = 1 end
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = true, true
+		w.H.LaneControl.ResetCache()
+		local win = w.H.PullJob.Window(w.sup, T)
+		-- The controller's decision names another puller; the drill does not ask it.
+		w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "9" }, cx = 0, cy = 0 })
+		local role = w.H.Drill.RoleOf(w.sup)
+		local out = run(w, 75)
+		tab.rep.control = control
+		cust.Overrides = nil
+		w.H.Drill.ResetCache()
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
+		return role, lines(out, "choice")[1], lines(out, "job")[1]
+	end
+	local role, choice, job = drilled({})
+	check("drill pull: the pos5 is the cast", role == "cast", role)
+	check("drill pull: an input-on rep pulls (rule drill), the controller not asked", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "drill" and job ~= nil, choice)
+	role, choice, job = drilled({ off = true })
+	check("drill pull: a control rep stays (why=drill)", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "drill" and job == nil, choice)
 end
 
 finish()

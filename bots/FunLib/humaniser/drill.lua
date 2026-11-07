@@ -192,16 +192,44 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local controlRep
+local overrides, controlRep, Customize
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local GameState = ____dota.GameState
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function overrides()
+    return Customize.Overrides
+end
+--- The active drill's name, or undefined (no drill, or a name the table does not hold).
+function ____exports.Name()
+    local ____opt_0 = overrides()
+    local n = ____opt_0 and ____opt_0.Drill
+    return type(n) == "string" and ____exports.TABLE[n] ~= nil and n or nil
+end
+--- The active drill's entry, or undefined.
+function ____exports.Active()
+    local n = ____exports.Name()
+    local ____temp_2
+    if n == nil then
+        ____temp_2 = nil
+    else
+        ____temp_2 = ____exports.TABLE[n]
+    end
+    return ____temp_2
+end
 function controlRep(d, n)
     return d.rep.control ~= nil and d.rep.control > 0 and n % d.rep.control == 0
 end
-local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
+--- The rep (1-based) that `t` falls in, or 0 before the first.
+function ____exports.RepAt(t)
+    local d = ____exports.Active()
+    if d == nil or t < d.rep.from then
+        return 0
+    end
+    return math.floor((t - d.rep.from) / d.rep.every) + 1
+end
+Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 local SAFE_CORE = {r = {1}}
 local ALL = {r = {
     1,
@@ -263,28 +291,33 @@ ____exports.TABLE = {
         rep = {every = 60, from = 120},
         forces = "stack",
         overrides = {StackFar = true, Sweep = true}
+    },
+    ["lane-still"] = {note = "every hero benched; the controller's forecast against untouched waves", cast = {}, others = "bench", rep = {every = 30, from = 0}},
+    pull = {
+        note = "Radiant pos5 pulls each minute's wave, a statue otherwise; the :30 wave unpulled (control); everyone else benched",
+        cast = {r = {5}},
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, control = 2},
+        forces = "pull"
+    },
+    ["core-pull"] = {
+        note = "Radiant pos3 pulls its hard camp each minute's wave, a statue otherwise; the :30 wave unpulled; everyone else benched",
+        cast = {r = {3}},
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, control = 2},
+        forces = "pull"
+    },
+    shove = {
+        note = "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
+        cast = SAFE_CORE,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceShove = "r:bot"}
     }
 }
-local function overrides()
-    return Customize.Overrides
-end
---- The active drill's name, or undefined (no drill, or a name the table does not hold).
-function ____exports.Name()
-    local ____opt_0 = overrides()
-    local n = ____opt_0 and ____opt_0.Drill
-    return type(n) == "string" and ____exports.TABLE[n] ~= nil and n or nil
-end
---- The active drill's entry, or undefined.
-function ____exports.Active()
-    local n = ____exports.Name()
-    local ____temp_2
-    if n == nil then
-        ____temp_2 = nil
-    else
-        ____temp_2 = ____exports.TABLE[n]
-    end
-    return ____temp_2
-end
 local function listed(s, team, pos)
     if s == nil or pos == nil then
         return false
@@ -345,8 +378,39 @@ local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 637
 local STATUE_BEHIND = -300
 local STATUE_SWAY = 40
 local statueSide = {}
---- The held hero's step: a benched hero walks to its fountain and waits; a statue walks to its lane spot behind its own
--- creeps and sways there. False when the hero is not held.
+--- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
+-- first and gives this hero the statue's step only when the job neither runs nor starts).
+function ____exports.IdleStatue(bot)
+    local ____opt_8 = ____exports.Active()
+    return (____opt_8 and ____opt_8.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
+end
+--- The one chooser job a cast may run (the forced context, for an entry with `castIdle`), or undefined: every job.
+function ____exports.ForcedJob(bot)
+    local d = ____exports.Active()
+    local ____temp_10
+    if d ~= nil and d.castIdle ~= nil and ____exports.RoleOf(bot) == "cast" then
+        ____temp_10 = d.forces
+    else
+        ____temp_10 = nil
+    end
+    return ____temp_10
+end
+--- For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
+-- control rep) or is before the first rep (`none`); undefined when the drill does not force `context`. A pull reads it at
+-- its pulled wave's spawn second.
+function ____exports.ForcedAt(context, t)
+    local d = ____exports.Active()
+    if d == nil or d.forces ~= context then
+        return nil
+    end
+    local n = ____exports.RepAt(t)
+    if n == 0 then
+        return "none"
+    end
+    return controlRep(d, n) and "off" or "on"
+end
+--- The held hero's step: a benched hero walks to its fountain and waits; a statue (or an idle-statue cast) walks to its lane
+-- spot behind its own creeps and sways there. False when the hero is not held.
 function ____exports.Hold(bot)
     local r = ____exports.RoleOf(bot)
     if r == "bench" then
@@ -357,7 +421,7 @@ function ____exports.Hold(bot)
         end
         return true
     end
-    if r ~= "statue" then
+    if r ~= "statue" and not ____exports.IdleStatue(bot) then
         return false
     end
     local lane = bot:GetAssignedLane()
@@ -397,14 +461,6 @@ function ____exports.RepTimes(context)
     end
     return out
 end
---- The rep (1-based) that `t` falls in, or 0 before the first.
-function ____exports.RepAt(t)
-    local d = ____exports.Active()
-    if d == nil or t < d.rep.from then
-        return 0
-    end
-    return math.floor((t - d.rep.from) / d.rep.every) + 1
-end
 local lastRep = {}
 local lastRole = {}
 local REMOVED = {"Solo", "StackEvery", "LaneOnly"}
@@ -420,8 +476,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_8 = overrides()
-            local v = ____opt_8 and ____opt_8[k]
+            local ____opt_11 = overrides()
+            local v = ____opt_11 and ____opt_11[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -429,8 +485,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_10 = overrides()
-        local asked = ____opt_10 and ____opt_10.Drill
+        local ____opt_13 = overrides()
+        local asked = ____opt_13 and ____opt_13.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

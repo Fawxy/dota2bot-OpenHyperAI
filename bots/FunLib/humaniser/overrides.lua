@@ -2,18 +2,24 @@
 local ____exports = {}
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
---- An explicit override, else the value the active drill implies (`Drill.TABLE` entry `overrides`).
+--- An explicit override, else the value the active drill implies (`Drill.TABLE` entry `overrides`), else the default. An
+-- empty string is general.lua's unset default for a string knob (`ForceShove = ""`), so it never shadows a drill's value
+-- (drill shove ldr4: no shove swing ran under the implied `r:bot`).
 function ____exports.Get(key)
     local ____opt_0 = Customize.Overrides
     if ____opt_0 ~= nil then
         ____opt_0 = ____opt_0[key]
     end
     local v = ____opt_0
+    if v ~= nil and v ~= "" then
+        return v
+    end
+    local implied = Drill.Implied(key)
     local ____temp_2
-    if v ~= nil then
-        ____temp_2 = v
+    if implied ~= nil then
+        ____temp_2 = implied
     else
-        ____temp_2 = Drill.Implied(key)
+        ____temp_2 = v
     end
     return ____temp_2
 end

@@ -9,10 +9,14 @@ import { Unit } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-/** An explicit override, else the value the active drill implies (`Drill.TABLE` entry `overrides`). */
+/** An explicit override, else the value the active drill implies (`Drill.TABLE` entry `overrides`), else the default. An
+ *  empty string is general.lua's unset default for a string knob (`ForceShove = ""`), so it never shadows a drill's value
+ *  (drill shove ldr4: no shove swing ran under the implied `r:bot`). */
 export function Get(key: string): unknown {
     const v = (Customize as any).Overrides?.[key];
-    return v !== undefined ? v : Drill.Implied(key);
+    if (v !== undefined && v !== "") return v;
+    const implied = Drill.Implied(key);
+    return implied !== undefined ? implied : v;
 }
 
 /**

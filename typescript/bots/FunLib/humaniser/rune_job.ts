@@ -7,6 +7,7 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Rune, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
@@ -648,7 +649,9 @@ const MID_HOST = BotMode.Rune;
  * the rune mode is the mode Valve would give a rune walk.
  */
 export function MidWants(bot: Unit): boolean {
-    if (!RunePlan.On() || !bot.IsBot() || LaneConfig.PositionOf(bot) !== 2) return false;
+    // A drill's benched hero or statue, or a cast held to its forced job, is never the plan's mid (drill pull ldr1: both benched
+    // mids walked to the 6:00 rune; the rune mode's host then gives the bench's farm mode 0).
+    if (!RunePlan.On() || !bot.IsBot() || LaneConfig.PositionOf(bot) !== 2 || Drill.Held(bot) || Drill.ForcedJob(bot) !== undefined) return false;
     const pid = bot.GetPlayerID();
     Plays.Tick();
     Tasks.Tick(bot);

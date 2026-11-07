@@ -362,6 +362,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -649,8 +650,8 @@ function trackTagged(bot, p)
                     __continue171 = true
                     break
                 end
-                local ____opt_25 = p.starts
-                local s0 = ____opt_25 and ____opt_25:get(u)
+                local ____opt_27 = p.starts
+                local s0 = ____opt_27 and ____opt_27:get(u)
                 if p.nm == nil and s0 ~= nil and GetUnitToLocationDistance(u, s0) >= ____exports.SETTINGS.Moved then
                     p.nm = now
                 end
@@ -819,8 +820,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_31 = Telemetry.Event
-    local ____array_30 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_33 = Telemetry.Event
+    local ____array_32 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -841,22 +842,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_27
+    local ____temp_29
     if best ~= nil then
-        ____temp_27 = r0(nd)
+        ____temp_29 = r0(nd)
     else
-        ____temp_27 = nil
+        ____temp_29 = nil
     end
-    __TS__SparseArrayPush(____array_30, {"nd", ____temp_27})
-    local ____temp_28
+    __TS__SparseArrayPush(____array_32, {"nd", ____temp_29})
+    local ____temp_30
     if best ~= nil then
-        ____temp_28 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_30 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
     else
-        ____temp_28 = nil
+        ____temp_30 = nil
     end
     __TS__SparseArrayPush(
-        ____array_30,
-        {"nh", ____temp_28},
+        ____array_32,
+        {"nh", ____temp_30},
         {
             "nt",
             best ~= nil and targetKind(
@@ -865,21 +866,21 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_29
+    local ____bot_IsAlive_result_31
     if bot:IsAlive() then
-        ____bot_IsAlive_result_29 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_31 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_29 = nil
+        ____bot_IsAlive_result_31 = nil
     end
     __TS__SparseArrayPush(
-        ____array_30,
-        {"pd", ____bot_IsAlive_result_29},
+        ____array_32,
+        {"pd", ____bot_IsAlive_result_31},
         {"shd", p.shs ~= nil and 1 or nil},
         unpack(taggedFields(bot, p, ours))
     )
-    ____Telemetry_Event_31(
+    ____Telemetry_Event_33(
         "pull_watch",
-        {__TS__SparseArraySpread(____array_30)}
+        {__TS__SparseArraySpread(____array_32)}
     )
 end
 function taggedFields(bot, p, ours)
@@ -913,6 +914,8 @@ function ____exports.End(bot, why)
     end
 end
 ____exports.SETTINGS = {
+    CampLowHold = 1.5,
+    CampReadNear = 500,
     Priority = 0.9,
     FitPriority = 0.96,
     PriorityEvery = 0.5,
@@ -1044,11 +1047,15 @@ function ____exports.CampStateOf(spawner)
     local m = LaneConfig.Settings().Radii.BoxMargin
     local lo = spawner.min
     local hi = spawner.max
+    local z = spawner.location.z
+    local x0, y0, x1, y1 = lo.x - m, lo.y - m, hi.x + m, hi.y + m
+    local full = IsLocationVisible(Vector(x0, y0, z)) and IsLocationVisible(Vector(x1, y0, z)) and IsLocationVisible(Vector(x0, y1, z)) and IsLocationVisible(Vector(x1, y1, z))
     local s = {
         n = 0,
         seen = 0,
         hp = 0,
         vis = IsLocationVisible(spawner.location),
+        full = full,
         units = {}
     }
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
@@ -1404,14 +1411,24 @@ local function campFields(s)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    return {
+    local ____array_3 = __TS__SparseArrayNew(
         {"cn", s.n},
         {"cs", s.seen},
         {
             "chp",
             r0(s.hp)
         },
-        {"cv", s.vis and 1 or 0},
+        {"cv", s.vis and 1 or 0}
+    )
+    local ____temp_2
+    if s.full == nil then
+        ____temp_2 = nil
+    else
+        ____temp_2 = s.full and 1 or 0
+    end
+    __TS__SparseArrayPush(
+        ____array_3,
+        {"cfv", ____temp_2},
         {
             "cdmg",
             r0(s.dmg)
@@ -1424,7 +1441,8 @@ local function campFields(s)
             "se",
             r0(s.se)
         }
-    }
+    )
+    return {__TS__SparseArraySpread(____array_3)}
 end
 --- `slot` the plan's hit second, so the line joins its `pull_job` line.
 local function choiceLine(bot, d, slot, go, why, camp)
@@ -1432,8 +1450,8 @@ local function choiceLine(bot, d, slot, go, why, camp)
     local function r1(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_20 = Telemetry.Event
-    local ____array_19 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_22 = Telemetry.Event
+    local ____array_21 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -1467,48 +1485,48 @@ local function choiceLine(bot, d, slot, go, why, camp)
         },
         {"tw", r ~= nil and (r.tower and 1 or 0) or nil}
     )
-    local ____opt_8 = d.gone
-    __TS__SparseArrayPush(
-        ____array_19,
-        {
-            "pa",
-            r1(____opt_8 and ____opt_8.own)
-        }
-    )
     local ____opt_10 = d.gone
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_21,
         {
-            "ap",
-            r1(____opt_10 and ____opt_10.ap)
+            "pa",
+            r1(____opt_10 and ____opt_10.own)
         }
     )
     local ____opt_12 = d.gone
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_21,
         {
-            "ep",
-            r1(____opt_12 and ____opt_12.ep)
+            "ap",
+            r1(____opt_12 and ____opt_12.ap)
         }
     )
     local ____opt_14 = d.gone
-    __TS__SparseArrayPush(____array_19, {"pw", ____opt_14 and ____opt_14.pw})
-    local ____temp_16
+    __TS__SparseArrayPush(
+        ____array_21,
+        {
+            "ep",
+            r1(____opt_14 and ____opt_14.ep)
+        }
+    )
+    local ____opt_16 = d.gone
+    __TS__SparseArrayPush(____array_21, {"pw", ____opt_16 and ____opt_16.pw})
+    local ____temp_18
     if d.hold == nil then
-        ____temp_16 = nil
+        ____temp_18 = nil
     else
-        ____temp_16 = d.hold and 1 or 0
+        ____temp_18 = d.hold and 1 or 0
     end
     __TS__SparseArrayPush(
-        ____array_19,
-        {"hold", ____temp_16},
+        ____array_21,
+        {"hold", ____temp_18},
         {"rule", d.rule},
         {"ms", r and r.ms},
         unpack(campFields(camp))
     )
-    ____Telemetry_Event_20(
+    ____Telemetry_Event_22(
         "choice",
-        {__TS__SparseArraySpread(____array_19)}
+        {__TS__SparseArraySpread(____array_21)}
     )
 end
 local function jobLine(bot, p, phase, why)
@@ -1534,7 +1552,7 @@ local function finish(bot, p, r, label)
     local function r1(x)
         return math.floor(x * 10) / 10
     end
-    local ____array_21 = __TS__SparseArrayNew(
+    local ____array_23 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -1579,7 +1597,7 @@ local function finish(bot, p, r, label)
         unpack(campFields(p.start))
     )
     __TS__SparseArrayPush(
-        ____array_21,
+        ____array_23,
         {
             "sh",
             math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
@@ -1620,7 +1638,7 @@ local function finish(bot, p, r, label)
             p.shh ~= nil and math.floor(p.shh * 100 + 0.5) / 100 or nil
         }
     )
-    local fields = {__TS__SparseArraySpread(____array_21)}
+    local fields = {__TS__SparseArraySpread(____array_23)}
     if not r.success then
         Telemetry.Event("pull_job", fields)
         return
@@ -1649,18 +1667,18 @@ local function trail(bot, flush)
         return
     end
     trailing[pid] = nil
-    local ____Telemetry_Event_23 = Telemetry.Event
-    local ____array_22 = __TS__SparseArrayNew(unpack(tr.fields))
+    local ____Telemetry_Event_25 = Telemetry.Event
+    local ____array_24 = __TS__SparseArrayNew(unpack(tr.fields))
     __TS__SparseArrayPush(
-        ____array_22,
+        ____array_24,
         {
             "dt",
             share(tr.pull)
         }
     )
-    ____Telemetry_Event_23(
+    ____Telemetry_Event_25(
         "pull_job",
-        {__TS__SparseArraySpread(____array_22)}
+        {__TS__SparseArraySpread(____array_24)}
     )
 end
 --- During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
@@ -1739,8 +1757,8 @@ local function tagCamp(bot, p)
     p.early = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
-            local ____p_early_24 = p.early
-            ____p_early_24[#____p_early_24 + 1] = c
+            local ____p_early_26 = p.early
+            ____p_early_26[#____p_early_26 + 1] = c
         end
     end
 end
@@ -1861,23 +1879,39 @@ function ____exports.Wants(bot, blocked, host)
             bot:GetAssignedLane(),
             ____exports.PulledSpawn(p.slot)
         )
-        if ctl == nil and not isSupport(bot) and LaneControl.Drives() and now < ____exports.PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 and ____exports.PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until then
-            return false
+        local forced = Drill.ForcedAt(
+            "pull",
+            ____exports.PulledSpawn(p.slot)
+        )
+        if forced ~= nil then
+            d = {
+                slot = p.slot,
+                want = forced == "on",
+                reading = reading,
+                gone = gone,
+                hold = hold,
+                rule = forced == "on" and "drill" or nil,
+                drill = true
+            }
+        else
+            if ctl == nil and not isSupport(bot) and LaneControl.Drives() and now < ____exports.PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 and ____exports.PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until then
+                return false
+            end
+            local byCtl = ctl ~= nil and ____exports.CtlWants(ctl, pid)
+            local own = ctl == nil and isSupport(bot)
+            local byNew = own and ____exports.Wanted(gone, tgt)
+            local byOld = own and hold and ____exports.OldWanted(reading, tgt)
+            local rule = byCtl and "ctl" or (byNew and byOld and "both" or (byNew and "new" or (byOld and "old" or nil)))
+            d = {
+                slot = p.slot,
+                want = rule ~= nil,
+                reading = reading,
+                gone = gone,
+                hold = hold,
+                rule = rule,
+                ctl = ctl ~= nil
+            }
         end
-        local byCtl = ctl ~= nil and ____exports.CtlWants(ctl, pid)
-        local own = ctl == nil and isSupport(bot)
-        local byNew = own and ____exports.Wanted(gone, tgt)
-        local byOld = own and hold and ____exports.OldWanted(reading, tgt)
-        local rule = byCtl and "ctl" or (byNew and byOld and "both" or (byNew and "new" or (byOld and "old" or nil)))
-        d = {
-            slot = p.slot,
-            want = rule ~= nil,
-            reading = reading,
-            gone = gone,
-            hold = hold,
-            rule = rule,
-            ctl = ctl ~= nil
-        }
         decided[pid] = d
         gateWhy[pid] = nil
     end
@@ -1897,7 +1931,7 @@ function ____exports.Wants(bot, blocked, host)
     if not d.want then
         done(
             false,
-            d.ctl == true and "ctl" or (not isSupport(bot) and "no_ctl" or (d.reading == nil and "no-read" or "lane"))
+            d.drill == true and "drill" or (d.ctl == true and "ctl" or (not isSupport(bot) and "no_ctl" or (d.reading == nil and "no-read" or "lane")))
         )
         return false
     end
@@ -1955,11 +1989,15 @@ function ____exports.Step(bot, host)
         local s = ____exports.CampStateOf(p.plan.spawner)
         s.dmg = ____exports.CampDamage(bot, s, p.plan.spawner.type)
         s.php = bot:GetHealth()
-        local why = ____exports.CampGate(
-            s,
-            DotaTime(),
-            p.hitAt
-        ) or campDmgGate(bot, s.dmg)
+        local now = DotaTime()
+        local gate = ____exports.CampGate(s, now, p.hitAt)
+        if gate == nil or GetUnitToLocationDistance(bot, p.plan.stand) > ____exports.SETTINGS.CampReadNear then
+            p.low = nil
+        elseif p.low == nil or p.low.why ~= gate then
+            p.low = {why = gate, at = now}
+        end
+        local hold = math.min(____exports.SETTINGS.CampLowHold, p.hitAt - now)
+        local why = p.low ~= nil and now - p.low.at >= hold and p.low.why or nil or campDmgGate(bot, s.dmg)
         if why ~= nil then
             p.start = s
             ____exports.End(bot, why)
