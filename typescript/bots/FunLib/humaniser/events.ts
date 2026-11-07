@@ -1022,7 +1022,9 @@ export const EVENTS = {
      * chosen set joined by + (none), who each one's owner (pid, core, sup, both), left the chosen set's predicted clash past
      * the target, short 1 when no set reached the band; rej lever:why for each unusable lever; core sup the present laners'
      * pids; dep seconds to the support's next departure; away 1 when their laners are known dead or elsewhere (R5); why a
-     * decision with no reading; ms the reading's cost.
+     * decision with no reading; ms the reading's cost. Slice 4a: pby who the pull lever went to (sup|core; absent with no
+     * puller), cwhy why the offlane pos3 did not take it (missing|loss|no_plan), cmiss the enemy heroes missing near its walk
+     * to the hard camp (CoreCamp MissingOf), closs the lane gold it would lose while away (CoreCamp LossBetween).
      */
     lane_ctl: {
         team: "num",
@@ -1051,6 +1053,10 @@ export const EVENTS = {
         dep: "num",
         fit: "str",
         yld: "num",
+        pby: "str",
+        cwhy: "str",
+        cmiss: "num",
+        closs: "num",
         away: "bool",
         why: "str",
         ms: "num",

@@ -25,6 +25,7 @@ import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Calendar from "bots/FunLib/humaniser/calendar";
+import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
@@ -88,7 +89,51 @@ export const SETTINGS = {
     /** Fallback only: a tower's reach from its centre along the lane, read live by WorldFacts.Reach (7.41: attack range 700 +
      *  bounding radius 144). `shove` targets their T1's range edge this far short of it; a pull's hold floor is our T1's. */
     TowerRange: 844,
+    /** Slice 4a (design s5.7; user 06/11/2026: the pos3 may pull the hard camp and no other): before this game second the
+     *  offlane's pos4, in lane and able, pulls; from it (the pos4 roams from about 6:00) the pos3 is the first puller. */
+    CorePullFrom: 360,
+    /** The pos3 pulls only when the lane gold it would lose while away (CoreCamp LossBetween on the plain forecast, from the
+     *  walk's start to its walk back) is at most this: two lane creeps at the core's full share. The pull's own worth is the
+     *  reset lane, which the lane advantage layer (s5.8) will price; `judgement` until then, read from `closs`. User 07/11/2026:
+     *  keep the rule order, but the lane's need lifts the limit: plus CorePullPerNeed gold a unit of n45 past the band (a
+     *  clash 2,000 past the target allows about 170). */
+    CorePullWorth: 80,
+    CorePullPerNeed: 0.05,
+    /** Walking paths run longer than the straight line (CoreCamp's and rune_job's PathFactor). */
+    PathFactor: 1.2,
 };
+
+/** One candidate puller: the support (with the calendar's refusal) or the offlane pos3 (with its site and gold reads). */
+export interface PullerInputs {
+    now: number;
+    /** The need the levers are chosen on (the clash 45 s on past the target). */
+    n45?: number;
+    sup?: { pid: number; why?: string };
+    core?: { pid: number; missing: number; loss?: number };
+}
+
+/**
+ * Slice 4a (design s5.7, its rule list `judgement`): who takes the pull lever. Before CorePullFrom an able support pulls. Else
+ * the offlane pos3 pulls when no enemy hero is missing near its walk to the camp (CoreCamp MissingOf) and the lane gold it
+ * loses while away is at most CorePullLimit (the lane's need lifts it); failing that an able support still pulls. `why` the support's refusal (or
+ * `no_sup`) when neither goes; `cwhy` why the core did not.
+ */
+/** The lane gold the pos3 may lose to pull: CorePullWorth, plus CorePullPerNeed a unit of need past the band. */
+export function CorePullLimit(n45: number | undefined): number {
+    return SETTINGS.CorePullWorth + SETTINGS.CorePullPerNeed * math.max(0, (n45 ?? 0) - SETTINGS.Band);
+}
+
+export function PullerOf(i: PullerInputs): { who: string; by?: string; why?: string; cwhy?: string } {
+    const supOk = i.sup !== undefined && i.sup.why === undefined;
+    if (supOk && i.now < SETTINGS.CorePullFrom) return { who: `${i.sup!.pid}`, by: "sup" };
+    let cwhy: string | undefined;
+    if (i.core !== undefined) {
+        cwhy = i.core.missing > 0 ? "missing" : i.core.loss === undefined ? "no_plan" : i.core.loss > CorePullLimit(i.n45) ? "loss" : undefined;
+        if (cwhy === undefined) return { who: `${i.core.pid}`, by: "core" };
+    }
+    if (supOk) return { who: `${i.sup!.pid}`, by: "sup", cwhy };
+    return { who: "", why: i.sup?.why ?? "no_sup", cwhy };
+}
 
 export interface Lever {
     name: string;
@@ -357,6 +402,21 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
             pc = PullCalendar(fit, e, n45, now);
         }
     }
+    // Slice 4a: the offlane pos3 as a puller of its hard camp (the offlane's only pull camp), under Ours.CorePull.
+    let coreCand: { pid: number; missing: number; loss?: number } | undefined;
+    if (coreIn !== undefined && coreIn.bot && coreIn.pos === 3 && rule !== "R6" && lane === Camps.LaneOfKind(team, "off") && Ours.On("CorePull") && samples !== undefined) {
+        const PullJob = require("bots/FunLib/humaniser/pull_job") as typeof import("bots/FunLib/humaniser/pull_job");
+        const CoreCamp = require("bots/FunLib/humaniser/core_camp") as typeof import("bots/FunLib/humaniser/core_camp");
+        const w = PullJob.Window(coreIn.unit, now);
+        if (w === undefined) coreCand = { pid: coreIn.pid, missing: 0 };
+        else {
+            const u = coreIn.unit;
+            const back = (math.sqrt((w.stand.x - cx) ** 2 + (w.stand.y - cy) ** 2) * s.PathFactor) / math.max(1, u.GetCurrentMovementSpeed());
+            const clash: import("bots/FunLib/humaniser/core_camp").Clash = { t: now, at: Vector(cx, cy, 0), t0: samples[0]?.t ?? now, samples, enemy: team === Team.Radiant ? Team.Dire : Team.Radiant, path, team };
+            coreCand = { pid: coreIn.pid, missing: CoreCamp.MissingOf(u, w.stand).n, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
+        }
+    }
+    const puller = PullerOf({ now, n45, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });
     const levers: Lever[] = [];
     const anyIn = coreIn !== undefined || supIn !== undefined;
     levers.push({ name: "predeny", effect: -s.PreDenySize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
@@ -365,8 +425,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         name: "pull",
         effect: pe ?? 0,
         danger: 3,
-        who: supBot !== undefined ? `${supBot.pid}` : "",
-        why: supBot === undefined ? "no_sup" : rule === "R6" ? "r6" : pe === undefined ? "no_clash" : gone !== undefined && gone.pw === 0 ? "no_wave" : pc?.why,
+        who: puller.who,
+        why: puller.by === undefined && puller.why === "no_sup" ? "no_sup" : rule === "R6" ? "r6" : pe === undefined ? "no_clash" : gone !== undefined && gone.pw === 0 ? "no_wave" : puller.by === undefined ? puller.why : undefined,
     });
     levers.push({ name: "setup", effect: s.SetupSize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: mode === "shove" ? "mode" : !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
     levers.push({ name: "shove", effect: s.PreDenySize, danger: 2, who: coreIn !== undefined ? "core" : "sup", why: mode !== "shove" ? "mode" : !anyIn ? "nobody" : undefined });
@@ -385,7 +445,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const chosen = c.levers.map((l) => l.name);
     const who = c.levers.map((l) => l.who);
     let after = tgt + left;
-    if (chosen.includes("pull") && after < reach && coreIn !== undefined) {
+    // Not when the core is the puller: it cannot hold their wave from the camp.
+    if (chosen.includes("pull") && after < reach && coreIn !== undefined && puller.by !== "core") {
         chosen.push("hold");
         who.push(`${coreIn.pid}`);
         after = math.max(after, reach);
@@ -424,6 +485,10 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         ["dep", round(dep)],
         ["fit", pc?.fit],
         ["yld", yields],
+        ["pby", puller.by],
+        ["cwhy", puller.cwhy],
+        ["cmiss", coreCand?.missing],
+        ["closs", round(coreCand?.loss)],
         ["away", away ? true : undefined],
         ["ms", ms],
     ]);

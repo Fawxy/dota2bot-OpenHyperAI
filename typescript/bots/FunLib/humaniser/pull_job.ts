@@ -238,6 +238,15 @@ function pullerOfLane(bot: Unit): boolean {
     return true;
 }
 
+/**
+ * Slice lane-control 4a (design s5.7; user 06/11/2026: the pos3 may pull the hard camp and no other camp): the offlane pos3
+ * under Ours.CorePull. The offlane's only pull camp is the hard camp (camps_data `off_large`). It pulls only when the lane
+ * controller's decision names it (rule `ctl`), never on the support's own triggers.
+ */
+function corePuller(bot: Unit): boolean {
+    return Ours.On("CorePull") && LaneConfig.PositionOf(bot) === 3 && bot.GetAssignedLane() === Camps.LaneOfKind(bot.GetTeam(), "off");
+}
+
 function campFor(bot: Unit): Camps.CampJobData | undefined {
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Bot) return undefined;
@@ -245,7 +254,7 @@ function campFor(bot: Unit): Camps.CampJobData | undefined {
 }
 
 export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
+    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && ((isSupport(bot) && pullerOfLane(bot)) || corePuller(bot)) && campFor(bot) !== undefined;
 }
 
 /**
@@ -266,10 +275,10 @@ export function Priority(bot: Unit): number | undefined {
 }
 
 /** The next pull's walk start, end (the hit second plus Take) and hit second (`key`), or undefined with no plan. */
-export function Window(bot: Unit, now: number): { start: number; end: number; key: number } | undefined {
+export function Window(bot: Unit, now: number): { start: number; end: number; key: number; stand: Vector } | undefined {
     const p = planFor(bot, now);
     if (p === undefined) return undefined;
-    return { start: p.slot - travel(bot, p) - SETTINGS.Early, end: p.slot + SETTINGS.Take, key: p.slot };
+    return { start: p.slot - travel(bot, p) - SETTINGS.Early, end: p.slot + SETTINGS.Take, key: p.slot, stand: p.stand };
 }
 
 function fitsAhead(bot: Unit, now: number): boolean {
@@ -277,7 +286,7 @@ function fitsAhead(bot: Unit, now: number): boolean {
     const pid = bot.GetPlayerID();
     if (!LaneControl.Drives() || running[pid] !== undefined) return false;
     const w = Window(bot, now);
-    if (w === undefined || handled[pid] === w.key) return false;
+    if (w === undefined || SameWave(handled[pid], w.key)) return false;
     const d = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(w.key));
     if (d === undefined || !CtlWants(d, pid)) return false;
     const [fit] = Calendar.FitOf(Calendar.Of(bot, now), w.start, w.end);
@@ -491,6 +500,16 @@ export function CoreToHold(bot: Unit): Unit | undefined {
         if (GetUnitToLocationDistance(m, Vector(x, y, m.GetLocation().z)) <= WaveHold.SETTINGS.Reach) return m;
     }
     return undefined;
+}
+
+/**
+ * Two slots pull the same wave. A slot is a float from the camp's timing, which is re-read at every timing read since the
+ * neutral speed is (neutral-speed-at-order), so the same slot drifts by a fraction of a second between frames; comparing the
+ * floats restarted a cancelled pull on its own slot (lctl9: 11 duplicate pull_job lines in 5 games, none in lctl4). Keyed by
+ * the pulled wave instead.
+ */
+export function SameWave(a: number | undefined, b: number): boolean {
+    return a !== undefined && PulledSpawn(a) === PulledSpawn(b);
 }
 
 /** The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn). */
@@ -982,19 +1001,19 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
     const p = planFor(bot, now);
-    if (p === undefined || handled[pid] === p.slot) return false;
+    if (p === undefined || SameWave(handled[pid], p.slot)) return false;
     const walk = travel(bot, p);
     // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
     // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
     let timer = timers[pid];
-    if (timer === undefined || timer.slot !== p.slot) {
+    if (timer === undefined || !SameWave(timer.slot, p.slot)) {
         timer = PullTiming.Timer(p.timing, p.slot, LaneConfig.Settings().PullTiming.FullPast);
         timers[pid] = timer;
     }
     const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
-    if (d === undefined || d.slot !== p.slot) {
+    if (d === undefined || !SameWave(d.slot, p.slot)) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane());
         const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot), p.slot + SETTINGS.ArriveAfter);
         const tgt = LanePush.TargetOf(bot.GetAssignedLane());
@@ -1003,9 +1022,15 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
         const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
+        // A core (slice 4a) whose walk to the far hard camp starts before the pulled wave's read waits for it rather than
+        // settle the slot with no decision (lctl8: Dire's pos3 refused 11 slots `no_ctl` that way); too late by then is `late`.
+        if (ctl === undefined && !isSupport(bot) && LaneControl.Drives() && now < PulledSpawn(p.slot) + LaneControl.SETTINGS.ReadAt + 1 && PulledSpawn(p.slot) <= LaneControl.SETTINGS.Until)
+            return false;
         const byCtl = ctl !== undefined && CtlWants(ctl, pid);
-        const byNew = ctl === undefined && Wanted(gone, tgt);
-        const byOld = ctl === undefined && hold && OldWanted(reading, tgt);
+        // A core (slice 4a) pulls only on the controller's word.
+        const own = ctl === undefined && isSupport(bot);
+        const byNew = own && Wanted(gone, tgt);
+        const byOld = own && hold && OldWanted(reading, tgt);
         const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
         d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
         decided[pid] = d;
@@ -1018,7 +1043,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
-        done(false, d.ctl === true ? "ctl" : d.reading === undefined ? "no-read" : "lane");
+        done(false, d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
