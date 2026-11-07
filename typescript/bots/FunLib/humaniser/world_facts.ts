@@ -1,10 +1,10 @@
 /**
- * World facts: game numbers (tower reach, unit speeds, acquisition range) read from the Valve API once and shared by every
+ * World facts: game numbers (tower reach, unit speeds) read from the Valve API once and shared by every
  * bot, instead of written as constants in each context (slice world-facts; ROADMAP debt, cause api-first-constants).
  *
  * A reader takes the caller's old constant as `fallback` and returns the live value, or the fallback when the API gives
  * nothing usable. The fallback is counted in Fallbacks() and read by telemetry (ev=world_fact), so it is never silent.
- * Lifetimes: a tower's reach is read once per tower handle (per game); a speed or acquisition range once per type and
+ * Lifetimes: a tower's reach is read once per tower handle (per game); a speed once per type and
  * per second (the first bot to ask in that second reads the API, the others get the stored value).
  * No imports from telemetry or any context: telemetry reads Probe() and Fallbacks(), contexts call the readers.
  */
@@ -214,21 +214,6 @@ export function NeutralSpeedFor(type: string, fb: number, camp?: number): number
     return fb;
 }
 
-/** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
-export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
-    // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
-    // melee creep's (review H1). Other types read directly and are not stored.
-    if (kind === "lane_creep" && !unit.GetUnitName().includes("melee")) {
-        const r = unit.GetAcquisitionRange();
-        return r !== undefined && r > 0 ? r : fb;
-    }
-    const v = perMoment("acquisition_" + kind, unit.GetUnitName(), () => {
-        const r = unit.GetAcquisitionRange();
-        return r !== undefined && r > 0 ? r : undefined;
-    });
-    return v ?? live["acquisition_" + kind] ?? fallback("acquisition_" + kind, fb);
-}
-
 const noReadYet: Record<string, boolean> = {};
 /**
  * The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
@@ -260,9 +245,7 @@ const PROBED: Record<string, boolean> = {
     tower_range: true,
     hero_radius: true,
     lane_creep_speed: true,
-    acquisition_lane_creep: true,
     neutral_speed: true,
-    acquisition_neutral: true,
 };
 
 /** Fallbacks taken for facts the probe has no row for (a caller's own read, `Fallback`): fact, count so far, value used. */
@@ -301,7 +284,7 @@ export interface ProbeRow {
 /** What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game). */
 export function Probe(
     bot: Unit,
-    constants: { tower: number; hero?: number; towerRange: number; laneCreep: number; neutral: number; acquisition: number; neutralSeeds?: Record<string, number> },
+    constants: { tower: number; hero?: number; towerRange: number; laneCreep: number; neutral: number; neutralSeeds?: Record<string, number> },
 ): ProbeRow[] {
     const rows: ProbeRow[] = [];
     const tower = bot.GetNearbyTowers(1600, true)[0] ?? bot.GetNearbyTowers(1600, false)[0];
@@ -315,14 +298,10 @@ export function Probe(
     const creep = creeps[0] ?? mine[0];
     if (creep !== undefined) {
         rows.push({ fact: "lane_creep_speed", live: LaneCreepSpeed(bot, creep.GetTeam(), constants.laneCreep), constant: constants.laneCreep });
-        // The remembered value is the melee creep's (review H1/L5): log the row from a melee creep only.
-        const melee = [...creeps, ...mine].find((c) => c.GetUnitName().includes("melee"));
-        if (melee !== undefined) rows.push({ fact: "acquisition_lane_creep", live: AcquisitionRange(melee, constants.acquisition, "lane_creep"), constant: constants.acquisition });
     }
     const n = bot.GetNearbyNeutralCreeps(1600, true)[0];
     if (n !== undefined) {
         rows.push({ fact: "neutral_speed", live: NeutralSpeed(bot, constants.neutral), constant: constants.neutral });
-        rows.push({ fact: "acquisition_neutral", live: AcquisitionRange(n, constants.acquisition, "neutral"), constant: constants.acquisition });
     }
     for (const type of Object.keys(neutralByType)) {
         rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutralSeeds?.[type] ?? constants.neutral });

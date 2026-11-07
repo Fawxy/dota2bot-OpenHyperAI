@@ -1,15 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__StringIncludes(self, searchString, position)
-    if not position then
-        position = 1
-    else
-        position = position + 1
-    end
-    local index = string.find(self, searchString, position, true)
-    return index ~= nil
-end
-
 local function __TS__ObjectEntries(obj)
     local result = {}
     local len = 0
@@ -18,6 +8,16 @@ local function __TS__ObjectEntries(obj)
         result[len] = {key, obj[key]}
     end
     return result
+end
+
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
 end
 
 local function __TS__New(target, ...)
@@ -174,41 +174,6 @@ local function __TS__ObjectKeys(obj)
         result[len] = key
     end
     return result
-end
-
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
-
-local function __TS__ArrayFind(self, predicate, thisArg)
-    for i = 1, #self do
-        local elem = self[i]
-        if predicate(thisArg, elem, i - 1, self) then
-            return elem
-        end
-    end
-    return nil
 end
 -- End of Lua Library inline imports
 local ____exports = {}
@@ -453,25 +418,6 @@ function ____exports.NeutralSpeedFor(____type, fb, camp)
     end
     return fb
 end
---- Acquisition range of `unit`, keyed by its name (one read per unit type per second).
-function ____exports.AcquisitionRange(unit, fb, kind)
-    if kind == "lane_creep" and not __TS__StringIncludes(
-        unit:GetUnitName(),
-        "melee"
-    ) then
-        local r = unit:GetAcquisitionRange()
-        return r ~= nil and r > 0 and r or fb
-    end
-    local v = perMoment(
-        "acquisition_" .. kind,
-        unit:GetUnitName(),
-        function()
-            local r = unit:GetAcquisitionRange()
-            return r ~= nil and r > 0 and r or nil
-        end
-    )
-    return v or live["acquisition_" .. kind] or fallback("acquisition_" .. kind, fb)
-end
 local noReadYet = {}
 --- The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
 -- (telemetry's world-facts tick reads each moment); before the first read, or with telemetry off, it returns `fb`, counted once.
@@ -500,9 +446,7 @@ local PROBED = {
     tower_range = true,
     hero_radius = true,
     lane_creep_speed = true,
-    acquisition_lane_creep = true,
-    neutral_speed = true,
-    acquisition_neutral = true
+    neutral_speed = true
 }
 --- Fallbacks taken for facts the probe has no row for (a caller's own read, `Fallback`): fact, count so far, value used.
 function ____exports.UnprobedFallbacks()
@@ -590,25 +534,6 @@ function ____exports.Probe(bot, constants)
             ),
             constant = constants.laneCreep
         }
-        local ____array_0 = __TS__SparseArrayNew(unpack(creeps))
-        __TS__SparseArrayPush(
-            ____array_0,
-            unpack(mine)
-        )
-        local melee = __TS__ArrayFind(
-            {__TS__SparseArraySpread(____array_0)},
-            function(____, c) return __TS__StringIncludes(
-                c:GetUnitName(),
-                "melee"
-            ) end
-        )
-        if melee ~= nil then
-            rows[#rows + 1] = {
-                fact = "acquisition_lane_creep",
-                live = ____exports.AcquisitionRange(melee, constants.acquisition, "lane_creep"),
-                constant = constants.acquisition
-            }
-        end
     end
     local n = bot:GetNearbyNeutralCreeps(1600, true)[1]
     if n ~= nil then
@@ -617,17 +542,12 @@ function ____exports.Probe(bot, constants)
             live = ____exports.NeutralSpeed(bot, constants.neutral),
             constant = constants.neutral
         }
-        rows[#rows + 1] = {
-            fact = "acquisition_neutral",
-            live = ____exports.AcquisitionRange(n, constants.acquisition, "neutral"),
-            constant = constants.acquisition
-        }
     end
     for ____, ____type in ipairs(__TS__ObjectKeys(neutralByType)) do
-        local ____temp_3 = "neutral_speed_" .. ____type
-        local ____neutralByType_____type_4 = neutralByType[____type]
-        local ____opt_1 = constants.neutralSeeds
-        rows[#rows + 1] = {fact = ____temp_3, live = ____neutralByType_____type_4, constant = ____opt_1 and ____opt_1[____type] or constants.neutral}
+        local ____temp_2 = "neutral_speed_" .. ____type
+        local ____neutralByType_____type_3 = neutralByType[____type]
+        local ____opt_0 = constants.neutralSeeds
+        rows[#rows + 1] = {fact = ____temp_2, live = ____neutralByType_____type_3, constant = ____opt_0 and ____opt_0[____type] or constants.neutral}
     end
     return rows
 end
