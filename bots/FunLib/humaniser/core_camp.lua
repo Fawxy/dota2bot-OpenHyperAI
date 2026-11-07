@@ -395,8 +395,7 @@ function tripSpawners(bot)
     end
     return out
 end
---- `reachMax` caps a missing hero's possible run (default MissingReachMax); the lane controller's pos3 pull passes its own.
-function ____exports.MissingOf(bot, at, reachMax)
+function ____exports.MissingOf(bot, at)
     local s = ____exports.SETTINGS
     local team = bot:GetTeam()
     local here = bot:GetLocation()
@@ -423,7 +422,7 @@ function ____exports.MissingOf(bot, at, reachMax)
                         __continue149 = true
                         break
                     end
-                    local run = math.min(s.MissingSpeed * info.time_since_seen, reachMax or s.MissingReachMax)
+                    local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
                     if distToSegment(info.location, here, at) <= run + s.ThreatMargin then
                         out.n = out.n + 1
                         local ____out_pids_19 = out.pids
