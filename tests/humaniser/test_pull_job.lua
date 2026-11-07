@@ -689,4 +689,15 @@ do
 	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
 end
 
+-- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
+-- pulled wave, so a cancelled pull does not restart on its own slot (lctl10, ~/.dotactl/logs lctl10_A_on_1, pid 9 slot 376.424
+-- cancelled:one at t=375.3, then slot 376.359 started again and ended ok at t=400.3).
+do
+	local w = world({ reading = OUT })
+	local P = w.H.PullJob
+	check("same wave: a drifted slot", P.SameWave(376.424, 376.359))
+	check("same wave: the camp's other slot is another wave", not P.SameWave(376.4, 346.4))
+	check("same wave: nothing handled yet", not P.SameWave(nil, 376.4))
+end
+
 finish()

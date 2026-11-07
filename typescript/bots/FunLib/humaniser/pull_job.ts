@@ -286,7 +286,7 @@ function fitsAhead(bot: Unit, now: number): boolean {
     const pid = bot.GetPlayerID();
     if (!LaneControl.Drives() || running[pid] !== undefined) return false;
     const w = Window(bot, now);
-    if (w === undefined || handled[pid] === w.key) return false;
+    if (w === undefined || SameWave(handled[pid], w.key)) return false;
     const d = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(w.key));
     if (d === undefined || !CtlWants(d, pid)) return false;
     const [fit] = Calendar.FitOf(Calendar.Of(bot, now), w.start, w.end);
@@ -500,6 +500,16 @@ export function CoreToHold(bot: Unit): Unit | undefined {
         if (GetUnitToLocationDistance(m, Vector(x, y, m.GetLocation().z)) <= WaveHold.SETTINGS.Reach) return m;
     }
     return undefined;
+}
+
+/**
+ * Two slots pull the same wave. A slot is a float from the camp's timing, which is re-read at every timing read since the
+ * neutral speed is (neutral-speed-at-order), so the same slot drifts by a fraction of a second between frames; comparing the
+ * floats restarted a cancelled pull on its own slot (lctl9: 13 duplicate pull_job lines in 5 games, none in lctl4). Keyed by
+ * the pulled wave instead.
+ */
+export function SameWave(a: number | undefined, b: number): boolean {
+    return a !== undefined && PulledSpawn(a) === PulledSpawn(b);
 }
 
 /** The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn). */
@@ -991,19 +1001,19 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
     const p = planFor(bot, now);
-    if (p === undefined || handled[pid] === p.slot) return false;
+    if (p === undefined || SameWave(handled[pid], p.slot)) return false;
     const walk = travel(bot, p);
     // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
     // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
     let timer = timers[pid];
-    if (timer === undefined || timer.slot !== p.slot) {
+    if (timer === undefined || !SameWave(timer.slot, p.slot)) {
         timer = PullTiming.Timer(p.timing, p.slot, LaneConfig.Settings().PullTiming.FullPast);
         timers[pid] = timer;
     }
     const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
-    if (d === undefined || d.slot !== p.slot) {
+    if (d === undefined || !SameWave(d.slot, p.slot)) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane());
         const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot), p.slot + SETTINGS.ArriveAfter);
         const tgt = LanePush.TargetOf(bot.GetAssignedLane());
