@@ -4,6 +4,7 @@
  * the neutrals' walk from the spawner origin along the lead path, minus a lead so the neutrals are there first.
  * Camps whose meet point is not on our lane's chain (another map, a moved camp) keep their data-table seconds.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { Lane, Team, UnitType, Vector } from "bots/ts_libs/dota";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -486,7 +487,7 @@ export function StepIn(c: CreepTimer, origin: Vector, stand: Vector, meet: Vecto
     const full = len + (crossClear ? cfg.HalfStepOver : 0);
     const n = math.max(1, math.ceil(full / 50));
     const pins = cfg.HalfStand;
-    const pin = pins.length > 0 ? pins[math.floor(c.slot / 30) % pins.length] : 0;
+    const pin = pins.length > 0 ? pins[math.floor(c.slot / GameRules.WAVE_EVERY) % pins.length] : 0;
     for (let i = n; i >= 0; i--) {
         const x = back.x + ux * ((full * i) / n);
         const y = back.y + uy * ((full * i) / n);

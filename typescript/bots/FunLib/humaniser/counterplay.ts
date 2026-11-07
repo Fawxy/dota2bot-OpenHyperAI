@@ -4,6 +4,7 @@
  * visible heroes plus GetHeroLastSeenInfo), visible creeps and neutrals, and public map data. Each bot notices a
  * signal instance at most once, with a skill-scaled chance; an unnoticed instance is remembered so it is not re-rolled.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
@@ -478,7 +479,7 @@ function midSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, ene
 
 function stackSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
     const cfg = settings();
-    const minute = math.floor(now / 60);
+    const minute = math.floor(now / GameRules.NEUTRAL_EVERY);
     const sec = now - minute * 60;
     const watching = sec >= cfg.Timing.StackWatchFrom && sec <= cfg.Timing.StackWatchTo;
     const after = sec <= cfg.Timing.StackOutsideUntil;
@@ -755,12 +756,12 @@ function campBlock(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enem
     const cfg = settings();
     if (!LaneConfig.IsOn("CampBlock") || !LaneConfig.InLaningPhase() || !isSupport(bot)) return false;
     if (LaneConfig.SkillOf(bot) <= cfg.Gates.CampBlock) return false;
-    const sec = now % 60;
+    const sec = now % GameRules.NEUTRAL_EVERY;
     if (sec < cfg.Timing.CampBlockFrom || sec > cfg.Timing.CampBlockTo) return false;
     const ward = findWard(bot);
     if (st.campBlockAt !== undefined && now - st.campBlockAt < cfg.Timing.CampBlockCooldown) {
         // Walking to the box to plant: keep the frame until the ward is used or the window closes.
-        return ward !== undefined && math.floor(st.campBlockAt / 60) === math.floor(now / 60);
+        return ward !== undefined && math.floor(st.campBlockAt / GameRules.NEUTRAL_EVERY) === math.floor(now / GameRules.NEUTRAL_EVERY);
     }
     if (ward === undefined) return false;
     let spawner: Camps.Spawner | undefined;

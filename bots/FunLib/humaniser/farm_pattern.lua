@@ -168,6 +168,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local merge, dist2D, speedOf, currentMinute, clamp, learnPace, aliveUnits, anyNear, campNeutrals, allyInBox, claimedByAlly, markCleared, knownEmpty, mateJobCamp, campOpen, stackRoll, stackPlan, fmt, log, adopt, releaseClaims, toReturn, nextOrReturn, pickTarget, step, cached, trips, cleared, stackRolls, paceFactor, gateLogged, MAX_STEPS
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -231,7 +232,7 @@ function speedOf(bot)
     )
 end
 function currentMinute(now)
-    return math.floor(now / 60)
+    return math.floor(now / GameRules.NEUTRAL_EVERY)
 end
 function clamp(v, range)
     return math.max(
@@ -729,7 +730,7 @@ ____exports.DEFAULTS = {
     MaxCampDist = 3800,
     LateTolerance = 5,
     StackLateExtra = 8,
-    WavePeriod = 30,
+    WavePeriod = GameRules.WAVE_EVERY,
     ClearSec = {small = 7, medium = 10, large = 13, ancient = 18},
     RefLevel = 8,
     LevelScale = {0.6, 1.6},

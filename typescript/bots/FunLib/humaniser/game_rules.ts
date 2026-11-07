@@ -21,6 +21,6 @@ export const RUNE_RULES: Record<RuneKind, { first: number; every: number; last?:
  */
 export const WAVE_EVERY = 30;
 
-/** Neutral camps first spawn at 1:00 game time, then refill every minute (Liquipedia; no patch change 7.38 to 7.41f). */
+/** Neutral camps first spawn at 1:00 game time, then refill every minute (Liquipedia "Neutral Creeps" page as cited before this module, not re-read 08/11/2026; no patch change 7.38 to 7.41f). */
 export const NEUTRAL_FIRST = 60;
 export const NEUTRAL_EVERY = 60;

@@ -13,6 +13,7 @@ local function __TS__ArraySort(self, compareFn)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -21,7 +22,7 @@ local UnitType = ____dota.UnitType
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneGeom = require(GetScriptDirectory().."/FunLib/humaniser/lane_geom")
-____exports.WAVE_CYCLE = 30
+____exports.WAVE_CYCLE = GameRules.WAVE_EVERY
 local TEAM_SLOTS = 5
 local LANES = {Lane.Top, Lane.Mid, Lane.Bot}
 local TOWER_IDS = {[Lane.Top] = {Tower.Top1, Tower.Top2, Tower.Top3}, [Lane.Mid] = {Tower.Mid1, Tower.Mid2, Tower.Mid3}, [Lane.Bot] = {Tower.Bot1, Tower.Bot2, Tower.Bot3}}
