@@ -190,8 +190,8 @@ local RUNE_LATE_BY = 5
 local RUNE_GRACE = 2
 local RUNE_PICKUP_FOR = 10
 local SHRINE_RADIUS = 300
---- Seconds a pull waits after its hit for the camp to lock on (PullPlan lockOn).
-local LOCK_FOR = 2
+--- Seconds past a held pull's leave time with no neutral on the bot before it fails `no-aggro` (PullPlan aggroFor).
+local AGGRO_FOR = 1
 local function ok()
     return {success = true, reason = "ok"}
 end
@@ -548,8 +548,8 @@ local stepBack = __TS__Generator(function(bot, p, h)
     return fail("interrupted", "bail")
 end)
 --- Pull (full, half, double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
--- error for the whole job), with `lockOn` wait for the camp to lock on, lead it along `lead` to the meet point, then watch
--- there. Labels `travel`, `wait`, `aggro` (twice for a double), `lock`, `lead`, `watch`; urgent until the lead is done.
+-- error for the whole job), with `holdUntil` hold there taking the camp's hits until the leave time, lead it along `lead` to the
+-- meet point, then watch there. Labels `travel`, `wait`, `aggro` (twice for a double), `hold`, `lead`, `watch`; urgent until the lead is done.
 -- Grading the divert is the host's.
 ____exports.pull = __TS__Generator(function(bot, p, h)
     if h == nil then
@@ -584,29 +584,48 @@ ____exports.pull = __TS__Generator(function(bot, p, h)
     if not r.success then
         return r
     end
-    if p.lockOn ~= nil then
-        local ____opt_36 = h.label
-        if ____opt_36 ~= nil then
-            ____opt_36("lock")
+    local seen = false
+    local function held()
+        if p.holdUntil == nil then
+            return nil
         end
-        local ____until = now() + (p.lockFor or LOCK_FOR)
-        while not p.lockOn() do
+        if not seen and p.aggroed ~= nil and p.aggroed() then
+            seen = true
+        end
+        if not seen and p.aggroed ~= nil and now() >= p.holdUntil() + (p.aggroFor or AGGRO_FOR) then
+            return fail("timeout", "no-aggro")
+        end
+        local ____opt_36 = p.deadline
+        local cause = ____opt_36 and ____opt_36()
+        return cause ~= nil and fail("timeout", "deadline:" .. cause) or nil
+    end
+    if p.holdUntil ~= nil then
+        local ____opt_38 = h.label
+        if ____opt_38 ~= nil then
+            ____opt_38("hold")
+        end
+        while now() < p.holdUntil() do
             if not bot:IsAlive() then
                 return fail("dead")
             end
-            if now() >= ____until then
-                return fail("timeout", "lock")
+            local ____end = held()
+            if ____end ~= nil then
+                return ____end
             end
-            hold(bot, "job_lock")
+            if p.bail ~= nil and p.bail() ~= nil then
+                return __TS__DelegatedYield(stepBack(bot, p, h))
+            end
+            hold(bot, "job_hold")
             coroutine.yield()
         end
     end
-    local ____opt_38 = h.label
-    if ____opt_38 ~= nil then
-        ____opt_38("lead")
+    local ____opt_40 = h.label
+    if ____opt_40 ~= nil then
+        ____opt_40("lead")
     end
     local arrive = p.arrive or ARRIVE
     if #p.lead > 0 then
+        local ended
         local led = __TS__DelegatedYield(E().Verbs.walkPath(
             bot,
             p.lead,
@@ -615,9 +634,15 @@ ____exports.pull = __TS__Generator(function(bot, p, h)
                 timeout = math.huge,
                 stuckSecs = 3,
                 deadline = p.leadDeadline or p.aggroAt + err + LEAD_MAX_AFTER_AGGRO,
-                interruptIf = p.bail ~= nil and (function() return p.bail() ~= nil end) or nil
+                interruptIf = (p.bail ~= nil or p.holdUntil ~= nil) and (function()
+                    ended = held()
+                    return ended ~= nil or p.bail ~= nil and p.bail() ~= nil
+                end) or nil
             }
         ))
+        if not led.success and led.reason == "interrupted" and ended ~= nil then
+            return ended
+        end
         if not led.success and led.reason == "interrupted" and p.bail ~= nil then
             return __TS__DelegatedYield(stepBack(bot, p, h))
         end
@@ -625,13 +650,13 @@ ____exports.pull = __TS__Generator(function(bot, p, h)
             return fail(led.reason, "lead")
         end
     end
-    local ____opt_40 = h.urgent
-    if ____opt_40 ~= nil then
-        ____opt_40(false)
-    end
-    local ____opt_42 = h.label
+    local ____opt_42 = h.urgent
     if ____opt_42 ~= nil then
-        ____opt_42("watch")
+        ____opt_42(false)
+    end
+    local ____opt_44 = h.label
+    if ____opt_44 ~= nil then
+        ____opt_44("watch")
     end
     local spot = #p.lead > 0 and p.lead[#p.lead] or bot:GetLocation()
     local least = now() + (p.watchSec or WATCH_SEC)
@@ -639,21 +664,21 @@ ____exports.pull = __TS__Generator(function(bot, p, h)
         if not bot:IsAlive() then
             return fail("dead")
         end
-        local ____temp_44
+        local ____temp_46
         if type(p.watchUntil) == "function" then
-            ____temp_44 = p.watchUntil()
+            ____temp_46 = p.watchUntil()
         else
-            ____temp_44 = p.watchUntil
+            ____temp_46 = p.watchUntil
         end
-        local w = ____temp_44
+        local w = ____temp_46
         if now() >= math.max(least, w or 0) then
             return ok()
         end
         if p.bail ~= nil and p.bail() ~= nil then
             return __TS__DelegatedYield(stepBack(bot, p, h))
         end
-        local ____opt_45 = p.watchAt
-        local at = ____opt_45 and ____opt_45()
+        local ____opt_47 = p.watchAt
+        local at = ____opt_47 and ____opt_47()
         local to = at or spot
         if dist(
             bot:GetLocation(),
@@ -683,13 +708,13 @@ function ____exports.runeArriveBy(bot, p)
 end
 --- When to start `runeRun` to arrive by `runeArriveBy`, from the straight-line walk at the current speed.
 function ____exports.runeLeaveAt(bot, p)
-    local ____math_max_49 = math.max
-    local ____this_48
-    ____this_48 = bot
-    local ____opt_47 = ____this_48.GetCurrentMovementSpeed
-    local speed = ____math_max_49(
+    local ____math_max_51 = math.max
+    local ____this_50
+    ____this_50 = bot
+    local ____opt_49 = ____this_50.GetCurrentMovementSpeed
+    local speed = ____math_max_51(
         1,
-        ____opt_47 and ____opt_47(____this_48) or 300
+        ____opt_49 and ____opt_49(____this_50) or 300
     )
     return ____exports.runeArriveBy(bot, p) - dist(
         bot:GetLocation(),
@@ -705,13 +730,13 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
         h = {}
     end
     local tolerance = p.tolerance or 150
-    local ____opt_50 = h.label
-    if ____opt_50 ~= nil then
-        ____opt_50("travel")
+    local ____opt_52 = h.label
+    if ____opt_52 ~= nil then
+        ____opt_52("travel")
     end
-    local ____array_52 = __TS__SparseArrayNew(unpack(p.via or ({})))
-    __TS__SparseArrayPush(____array_52, p.at)
-    local legs = {__TS__SparseArraySpread(____array_52)}
+    local ____array_54 = __TS__SparseArrayNew(unpack(p.via or ({})))
+    __TS__SparseArrayPush(____array_54, p.at)
+    local legs = {__TS__SparseArraySpread(____array_54)}
     do
         local i = 0
         while i < #legs do
@@ -722,9 +747,9 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
             i = i + 1
         end
     end
-    local ____opt_53 = h.label
-    if ____opt_53 ~= nil then
-        ____opt_53("wait")
+    local ____opt_55 = h.label
+    if ____opt_55 ~= nil then
+        ____opt_55("wait")
     end
     local go = math.max(
         p.spawnAt,
@@ -746,9 +771,9 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
     end
     local giveUp = p.spawnAt + (p.pickupFor or RUNE_PICKUP_FOR)
     if p.channel ~= nil then
-        local ____opt_55 = h.label
-        if ____opt_55 ~= nil then
-            ____opt_55("channel")
+        local ____opt_57 = h.label
+        if ____opt_57 ~= nil then
+            ____opt_57("channel")
         end
         local radius = p.radius or SHRINE_RADIUS
         local from
@@ -757,8 +782,8 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
                 return fail("dead")
             end
             local t = now()
-            local ____opt_57 = p.confirmed
-            if (____opt_57 and ____opt_57()) == true then
+            local ____opt_59 = p.confirmed
+            if (____opt_59 and ____opt_59()) == true then
                 return ok()
             end
             if dist(
@@ -785,9 +810,9 @@ ____exports.runeRun = __TS__Generator(function(bot, p, h)
     if p.rune == nil then
         return fail("no_target", "no rune")
     end
-    local ____opt_59 = h.label
-    if ____opt_59 ~= nil then
-        ____opt_59("pickup")
+    local ____opt_61 = h.label
+    if ____opt_61 ~= nil then
+        ____opt_61("pickup")
     end
     local graceUntil = go + RUNE_GRACE
     while true do
@@ -820,25 +845,25 @@ ____exports.runeSpawnRun = __TS__Generator(function(bot, p, h)
         h = {}
     end
     local function speed()
-        local ____math_max_63 = math.max
-        local ____this_62
-        ____this_62 = bot
-        local ____opt_61 = ____this_62.GetCurrentMovementSpeed
-        return ____math_max_63(
+        local ____math_max_65 = math.max
+        local ____this_64
+        ____this_64 = bot
+        local ____opt_63 = ____this_64.GetCurrentMovementSpeed
+        return ____math_max_65(
             1,
-            ____opt_61 and ____opt_61(____this_62) or 300
+            ____opt_63 and ____opt_63(____this_64) or 300
         )
     end
     local function walkInAt()
         return p.spawnAt - p.early - dist(p.stand, p.at) / speed()
     end
-    local ____opt_64 = h.label
-    if ____opt_64 ~= nil then
-        ____opt_64("stand")
-    end
-    local ____opt_66 = p.phase
+    local ____opt_66 = h.label
     if ____opt_66 ~= nil then
         ____opt_66("stand")
+    end
+    local ____opt_68 = p.phase
+    if ____opt_68 ~= nil then
+        ____opt_68("stand")
     end
     local stood = __TS__DelegatedYield(E().Verbs.walkTo(
         bot,
@@ -854,13 +879,13 @@ ____exports.runeSpawnRun = __TS__Generator(function(bot, p, h)
         return stood
     end
     if stood.success then
-        local ____opt_68 = h.label
-        if ____opt_68 ~= nil then
-            ____opt_68("hide")
-        end
-        local ____opt_70 = p.phase
+        local ____opt_70 = h.label
         if ____opt_70 ~= nil then
             ____opt_70("hide")
+        end
+        local ____opt_72 = p.phase
+        if ____opt_72 ~= nil then
+            ____opt_72("hide")
         end
         while now() < walkInAt() do
             if not bot:IsAlive() then
@@ -877,13 +902,13 @@ ____exports.runeSpawnRun = __TS__Generator(function(bot, p, h)
             coroutine.yield()
         end
     end
-    local ____opt_72 = h.label
-    if ____opt_72 ~= nil then
-        ____opt_72("walk")
-    end
-    local ____opt_74 = p.phase
+    local ____opt_74 = h.label
     if ____opt_74 ~= nil then
         ____opt_74("walk")
+    end
+    local ____opt_76 = p.phase
+    if ____opt_76 ~= nil then
+        ____opt_76("walk")
     end
     local walked = __TS__DelegatedYield(E().Verbs.walkTo(bot, p.at, {tolerance = 150, timeout = math.huge, stuckSecs = math.huge, deadline = p.spawnAt + RUNE_LATE_BY}))
     if not walked.success then
@@ -900,9 +925,9 @@ ____exports.runeSpawnRun = __TS__Generator(function(bot, p, h)
         hold(bot, "rune_wait")
         coroutine.yield()
     end
-    local ____opt_76 = h.label
-    if ____opt_76 ~= nil then
-        ____opt_76("decide")
+    local ____opt_78 = h.label
+    if ____opt_78 ~= nil then
+        ____opt_78("decide")
     end
     local act = "none"
     local ____until = now() + (p.decideFor or RUNE_GRACE)
@@ -917,30 +942,30 @@ ____exports.runeSpawnRun = __TS__Generator(function(bot, p, h)
         hold(bot, "rune_wait")
         coroutine.yield()
     end
-    local ____opt_78 = p.phase
-    if ____opt_78 ~= nil then
-        ____opt_78("decide", act)
+    local ____opt_80 = p.phase
+    if ____opt_80 ~= nil then
+        ____opt_80("decide", act)
     end
     if act == "take" or act == "cross" then
-        local ____opt_80 = h.label
-        if ____opt_80 ~= nil then
-            ____opt_80("pickup")
+        local ____opt_82 = h.label
+        if ____opt_82 ~= nil then
+            ____opt_82("pickup")
         end
         local rune = act == "take" and p.rune or p.otherRune
         return __TS__DelegatedYield(E().Verbs.pickUpRune(bot, rune, {at = act == "take" and p.at or p.otherAt, timeout = RUNE_PICKUP_FOR}))
     end
     if act == "deny" then
-        local ____opt_82 = h.label
-        if ____opt_82 ~= nil then
-            ____opt_82("deny")
+        local ____opt_84 = h.label
+        if ____opt_84 ~= nil then
+            ____opt_84("deny")
         end
         local ____end = now() + (p.denyFor or 3)
         while now() < ____end do
             if not bot:IsAlive() then
                 return fail("dead")
             end
-            local ____opt_84 = p.denyResult
-            local r = ____opt_84 and ____opt_84()
+            local ____opt_86 = p.denyResult
+            local r = ____opt_86 and ____opt_86()
             if r == "gone" then
                 return ok()
             end
@@ -975,24 +1000,24 @@ local function campOf(bot, p)
     local r = p.radius or CLEAR_RADIUS
     for ____, n in ipairs(bot:GetNearbyNeutralCreeps(p.search or CLEAR_SEARCH) or ({})) do
         do
-            local __continue118
+            local __continue124
             repeat
-                local ____opt_86 = n.IsNull
-                local ____temp_88 = ____opt_86 and ____opt_86(n)
-                if ____temp_88 == nil then
-                    ____temp_88 = false
+                local ____opt_88 = n.IsNull
+                local ____temp_90 = ____opt_88 and ____opt_88(n)
+                if ____temp_90 == nil then
+                    ____temp_90 = false
                 end
-                local ____temp_92 = ____temp_88 or not n:IsAlive()
-                if not ____temp_92 then
-                    local ____opt_89 = n.CanBeSeen
-                    local ____temp_91 = ____opt_89 and ____opt_89(n)
-                    if ____temp_91 == nil then
-                        ____temp_91 = true
+                local ____temp_94 = ____temp_90 or not n:IsAlive()
+                if not ____temp_94 then
+                    local ____opt_91 = n.CanBeSeen
+                    local ____temp_93 = ____opt_91 and ____opt_91(n)
+                    if ____temp_93 == nil then
+                        ____temp_93 = true
                     end
-                    ____temp_92 = not ____temp_91
+                    ____temp_94 = not ____temp_93
                 end
-                if ____temp_92 then
-                    __continue118 = true
+                if ____temp_94 then
+                    __continue124 = true
                     break
                 end
                 if dist(
@@ -1001,9 +1026,9 @@ local function campOf(bot, p)
                 ) <= r then
                     out[#out + 1] = n
                 end
-                __continue118 = true
+                __continue124 = true
             until true
-            if not __continue118 then
+            if not __continue124 then
                 break
             end
         end
@@ -1042,13 +1067,13 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
     local seen = {}
     local targetAt
     local plain = {}
-    local ____opt_93 = h.label
-    if ____opt_93 ~= nil then
-        ____opt_93("go")
+    local ____opt_95 = h.label
+    if ____opt_95 ~= nil then
+        ____opt_95("go")
     end
     while true do
         do
-            local __continue128
+            local __continue134
             repeat
                 if not bot:IsAlive() then
                     return fail("dead")
@@ -1061,45 +1086,45 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 local kept = {}
                 for ____, e in ipairs(seen) do
                     do
-                        local __continue131
+                        local __continue137
                         repeat
-                            local ____this_96
-                            ____this_96 = e.n
-                            local ____opt_95 = ____this_96.IsNull
-                            local ____temp_97 = ____opt_95 and ____opt_95(____this_96)
-                            if ____temp_97 == nil then
-                                ____temp_97 = false
+                            local ____this_98
+                            ____this_98 = e.n
+                            local ____opt_97 = ____this_98.IsNull
+                            local ____temp_99 = ____opt_97 and ____opt_97(____this_98)
+                            if ____temp_99 == nil then
+                                ____temp_99 = false
                             end
-                            local alive = not ____temp_97 and e.n:IsAlive()
+                            local alive = not ____temp_99 and e.n:IsAlive()
                             if not alive then
-                                __continue131 = true
+                                __continue137 = true
                                 break
                             end
                             local inCamp = __TS__ArrayIndexOf(camp, e.n) >= 0
-                            local ____inCamp_101 = inCamp
-                            if not ____inCamp_101 then
-                                local ____this_99
-                                ____this_99 = e.n
-                                local ____opt_98 = ____this_99.CanBeSeen
-                                local ____temp_100 = ____opt_98 and ____opt_98(____this_99)
-                                if ____temp_100 == nil then
-                                    ____temp_100 = true
+                            local ____inCamp_103 = inCamp
+                            if not ____inCamp_103 then
+                                local ____this_101
+                                ____this_101 = e.n
+                                local ____opt_100 = ____this_101.CanBeSeen
+                                local ____temp_102 = ____opt_100 and ____opt_100(____this_101)
+                                if ____temp_102 == nil then
+                                    ____temp_102 = true
                                 end
-                                ____inCamp_101 = ____temp_100
+                                ____inCamp_103 = ____temp_102
                             end
-                            local visibleNow = ____inCamp_101
+                            local visibleNow = ____inCamp_103
                             local at = visibleNow and t or e.at
                             if t - at > CLEAR_LOST then
-                                __continue131 = true
+                                __continue137 = true
                                 break
                             end
                             if not inCamp and visibleNow then
                                 camp[#camp + 1] = e.n
                             end
                             kept[#kept + 1] = {n = e.n, at = at}
-                            __continue131 = true
+                            __continue137 = true
                         until true
-                        if not __continue131 then
+                        if not __continue137 then
                             break
                         end
                     end
@@ -1115,9 +1140,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 seen = kept
                 if target ~= nil and __TS__ArrayIndexOf(camp, target) < 0 then
                     if targetAt ~= nil then
-                        local ____opt_102 = p.onGone
-                        if ____opt_102 ~= nil then
-                            ____opt_102(target, targetAt, #camp)
+                        local ____opt_104 = p.onGone
+                        if ____opt_104 ~= nil then
+                            ____opt_104(target, targetAt, #camp)
                         end
                     end
                     target = nil
@@ -1141,7 +1166,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                         hold(bot, "camp_look")
                     end
                     coroutine.yield()
-                    __continue128 = true
+                    __continue134 = true
                     break
                 end
                 emptySince = nil
@@ -1149,20 +1174,20 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                 if t < nextOrderAt then
                     hold(bot, "camp_react")
                     coroutine.yield()
-                    __continue128 = true
+                    __continue134 = true
                     break
                 end
-                local ____target_105 = target
-                if ____target_105 == nil then
-                    local ____temp_104
+                local ____target_107 = target
+                if ____target_107 == nil then
+                    local ____temp_106
                     if p.pick ~= nil then
-                        ____temp_104 = p.pick(camp)
+                        ____temp_106 = p.pick(camp)
                     else
-                        ____temp_104 = nil
+                        ____temp_106 = nil
                     end
-                    ____target_105 = ____temp_104
+                    ____target_107 = ____temp_106
                 end
-                local next = ____target_105 or lowestHp(camp)
+                local next = ____target_107 or lowestHp(camp)
                 local fresh = next ~= target
                 target = next
                 targetAt = next:GetLocation()
@@ -1171,21 +1196,21 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     next:GetLocation()
                 ) <= bot:GetAttackRange() + ENGAGE_SLACK then
                     engaged = true
-                    local ____opt_106 = h.label
-                    if ____opt_106 ~= nil then
-                        ____opt_106("farm")
-                    end
-                    local ____opt_108 = p.onEngage
+                    local ____opt_108 = h.label
                     if ____opt_108 ~= nil then
-                        ____opt_108(t)
+                        ____opt_108("farm")
+                    end
+                    local ____opt_110 = p.onEngage
+                    if ____opt_110 ~= nil then
+                        ____opt_110(t)
                     end
                 end
                 if p.lastHit ~= nil and __TS__ArrayIndexOf(plain, next) < 0 and p.lastHit(next, camp) then
                     local campN = #camp
                     local r = __TS__DelegatedYield(E().Verbs.lastHit(bot, {target = next, maxWait = CLEAR_LH_WAIT, deadline = p.deadline, hold = "camp_lasthit"}))
-                    local ____opt_110 = p.onLastHit
-                    if ____opt_110 ~= nil then
-                        ____opt_110(next, r, campN)
+                    local ____opt_112 = p.onLastHit
+                    if ____opt_112 ~= nil then
+                        ____opt_112(next, r, campN)
                     end
                     if not r.success and (r.reason == "etiquette" or r.reason == "unsupported") then
                         plain[#plain + 1] = next
@@ -1194,7 +1219,7 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     if r.reason == "unsupported" or r.reason == "etiquette" then
                         coroutine.yield()
                     end
-                    __continue128 = true
+                    __continue134 = true
                     break
                 end
                 if fresh or t - orderedAt >= (p.reorder or CLEAR_REORDER) then
@@ -1202,9 +1227,9 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
                     orderedAt = t
                 end
                 coroutine.yield()
-                __continue128 = true
+                __continue134 = true
             until true
-            if not __continue128 then
+            if not __continue134 then
                 break
             end
         end
@@ -1215,29 +1240,29 @@ local GANK_LOST_GRACE = 2
 local GANK_ENGAGE_FOR = 8
 local GANK_REORDER = 1
 local function visible(t)
-    local ____temp_115 = t ~= nil
-    if ____temp_115 then
-        local ____this_113
-        ____this_113 = t
-        local ____opt_112 = ____this_113.IsNull
-        local ____temp_114 = ____opt_112 and ____opt_112(____this_113)
-        if ____temp_114 == nil then
-            ____temp_114 = false
+    local ____temp_117 = t ~= nil
+    if ____temp_117 then
+        local ____this_115
+        ____this_115 = t
+        local ____opt_114 = ____this_115.IsNull
+        local ____temp_116 = ____opt_114 and ____opt_114(____this_115)
+        if ____temp_116 == nil then
+            ____temp_116 = false
         end
-        ____temp_115 = not ____temp_114
+        ____temp_117 = not ____temp_116
     end
-    local ____temp_119 = ____temp_115 and t:IsAlive()
-    if ____temp_119 then
-        local ____this_117
-        ____this_117 = t
-        local ____opt_116 = ____this_117.CanBeSeen
-        local ____temp_118 = ____opt_116 and ____opt_116(____this_117)
-        if ____temp_118 == nil then
-            ____temp_118 = true
+    local ____temp_121 = ____temp_117 and t:IsAlive()
+    if ____temp_121 then
+        local ____this_119
+        ____this_119 = t
+        local ____opt_118 = ____this_119.CanBeSeen
+        local ____temp_120 = ____opt_118 and ____opt_118(____this_119)
+        if ____temp_120 == nil then
+            ____temp_120 = true
         end
-        ____temp_119 = ____temp_118
+        ____temp_121 = ____temp_120
     end
-    return ____temp_119
+    return ____temp_121
 end
 local function pathLeft(from, path, i, ____end)
     local d = 0
@@ -1263,13 +1288,13 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
     end
     local range = p.engageRange or GANK_ENGAGE
     local function speed()
-        local ____math_max_122 = math.max
-        local ____this_121
-        ____this_121 = bot
-        local ____opt_120 = ____this_121.GetCurrentMovementSpeed
-        return ____math_max_122(
+        local ____math_max_124 = math.max
+        local ____this_123
+        ____this_123 = bot
+        local ____opt_122 = ____this_123.GetCurrentMovementSpeed
+        return ____math_max_124(
             1,
-            ____opt_120 and ____opt_120(____this_121) or 300
+            ____opt_122 and ____opt_122(____this_123) or 300
         )
     end
     local wp = 0
@@ -1279,31 +1304,31 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
     local engagedAt
     local attackAt
     local orderedAt = -math.huge
-    local ____opt_123 = h.label
-    if ____opt_123 ~= nil then
-        ____opt_123("travel")
+    local ____opt_125 = h.label
+    if ____opt_125 ~= nil then
+        ____opt_125("travel")
     end
     while true do
         if not bot:IsAlive() then
             return fail("dead")
         end
         local t = now()
-        local ____opt_125 = p.commit
-        local why = ____opt_125 and ____opt_125()
+        local ____opt_127 = p.commit
+        local why = ____opt_127 and ____opt_127()
         if why ~= nil then
             return fail("interrupted", why)
         end
         local target = p.target()
-        local ____temp_130 = target ~= nil
-        if ____temp_130 then
-            local ____opt_127 = target.IsNull
-            local ____temp_129 = ____opt_127 and ____opt_127(target)
-            if ____temp_129 == nil then
-                ____temp_129 = false
+        local ____temp_132 = target ~= nil
+        if ____temp_132 then
+            local ____opt_129 = target.IsNull
+            local ____temp_131 = ____opt_129 and ____opt_129(target)
+            if ____temp_131 == nil then
+                ____temp_131 = false
             end
-            ____temp_130 = not ____temp_129
+            ____temp_132 = not ____temp_131
         end
-        if ____temp_130 and not target:IsAlive() then
+        if ____temp_132 and not target:IsAlive() then
             return {success = true, reason = "ok", message = "kill"}
         end
         if visible(target) then
@@ -1343,17 +1368,17 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
             if engagedAt == nil then
                 engagedAt = t
                 attackAt = t + E().Skill.react(bot)
-                local ____opt_131 = h.label
-                if ____opt_131 ~= nil then
-                    ____opt_131("engage")
-                end
-                local ____opt_133 = h.urgent
+                local ____opt_133 = h.label
                 if ____opt_133 ~= nil then
-                    ____opt_133(true)
+                    ____opt_133("engage")
                 end
-                local ____opt_135 = p.onEngage
+                local ____opt_135 = h.urgent
                 if ____opt_135 ~= nil then
-                    ____opt_135(t)
+                    ____opt_135(true)
+                end
+                local ____opt_137 = p.onEngage
+                if ____opt_137 ~= nil then
+                    ____opt_137(t)
                 end
             end
             if t >= attackAt and t - orderedAt >= (p.reorder or GANK_REORDER) then

@@ -292,160 +292,111 @@ export interface CreepTimer {
     first?: number;
     readAt?: number;
     reads: number;
-    /** Slice pull-aggro (Ours.PullOnHero): the puller's side of the timing; set, Read times the hit on the hits landing on it. */
+    /** Slice pull-aggro (Ours.PullOnHero, full pulls): the puller's side of the timing; set, Read times the hit on it. */
     hero?: OnHero;
-    /** At the last on-hero read: when the aimed creep comes within its acquisition range of the point where the puller is
-     *  hit (`ent`), the puller's walk from the hit point to the stand (s), and a half pull's step from the stand (s). */
+    /** At the last on-hero read: when the aimed creep comes within its turn radius of the stand (`ent`), when the puller
+     *  leaves the camp (`leave`), its walk to the stand (s), the neutrals' lag behind it (s), the predicted give-up and
+     *  clash (game time; clash undefined with no enemy wave seen), and why no window opens (`give-up`, `clash`). */
     ent?: number;
+    leave?: number;
     heroWalk?: number;
-    heroStep?: number;
-    /** A half pull's step-in point, once the step has begun (it keeps to it). */
-    stepTo?: Vector;
-    /** Frames a due step-in was held because a front creep would be in its range of the step point too. */
-    stepHeld?: number;
+    lag?: number;
+    gup?: number;
+    clp?: number;
+    nowin?: string;
 }
 
 /**
- * Slice pull-aggro: what the puller brings to the hit second. The hit goes out so the puller, locked on `lock` s after it,
- * walks from `from` along `route` (ending at the meet point; a half pull's end is replaced by its stand off the lane) at
- * `speed` and stands there `arrive` s (one attack of the camp's neutrals: the next landing) before the aimed creep is within
- * its own acquisition range of where the puller is hit: full pulls the meet point and the front creep, half pulls the
- * step-in point and creep `keep`.
+ * Slice pull-aggro (design 08/11/2026): the puller hits from `from`, holds there taking the camp's hits until it leaves,
+ * then walks `route` (ending at the stand by the lane) at `speed` with the neutrals behind it. `first`: seconds from the
+ * hit order to the first landing on the puller at the camp; `lagExtra` a melee neutral's attack point (0 for a ranged
+ * spawn); `neutralSpeed` the camp's; `pass` seconds from the leave until the first neutral is GiveUpFrom out of its camp.
  */
 export interface OnHero {
     from: Vector;
     route: Vector[];
     speed: number;
-    /** Seconds from the hit to the first landing on the puller (a ranged spawn: 0, it lands during the walk). */
-    lock: number;
-    arrive: number;
+    first: number;
+    lagExtra: number;
+    neutralSpeed: number;
+    pass: number;
 }
 
-/**
- * Slice pull-aggro: the stand and step-in margin, lane creep speed x the landing prediction's error (centre distances, as
- * the turn radius was fitted: no hulls).
- */
+/** Slice pull-aggro: the stand margin, lane creep speed x the timing's error (centre distances, as the turn radius was fitted). */
 export function HeroMargin(): number {
     const cfg = settings();
     return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr;
 }
 
-/** The point `off` from the lane path on the line from `stand` to its nearest lane point (`stand` itself when nearer). */
-function TowardLane(path: number[][], stand: Vector, off: number): Vector {
-    const [a, o] = Along(path, stand);
-    if (o <= off) return stand;
-    const [lx, ly] = PathPoint(path, a);
-    const f = off / math.max(1, o);
-    return Vector(lx + (stand.x - lx) * f, ly + (stand.y - ly) * f, stand.z);
+/** Slice pull-aggro: the predicted clash of `creeps` (ours on the timing's lane path, front first) with the other team's
+ *  nearest lane creep ahead of the front on that path, both at lane creep speed `v`; undefined with none seen. */
+function Clash(t: PullTiming, creeps: WaveCreep[], now: number, v: number): number | undefined {
+    const path = t.lanePath;
+    if (path === undefined || creeps.length === 0) return undefined;
+    const ours = t.team === undefined || t.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
+    const kind = ours === UnitType.AlliedCreeps ? UnitType.EnemyCreeps : UnitType.AlliedCreeps;
+    const front = creeps[0].along;
+    let near: number | undefined;
+    for (const c of GetUnitList(kind) ?? []) {
+        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        const [along, off] = Along(path, c.GetLocation());
+        if (off > settings().LiveMaxOffset || along < front) continue;
+        if (near === undefined || along < near) near = along;
+    }
+    return near !== undefined ? now + (near - front) / (2 * v) : undefined;
 }
 
-/** Read's on-hero branch: the hit second for `h`, or undefined until the aimed creep and one behind it are read. */
+/** Read's on-hero branch: the hit second (`leave` less `first`), or undefined until the aimed creep and one behind it are read. */
 function ReadOnHero(c: CreepTimer, now: number, h: OnHero): number | undefined {
     const t = c.timing;
     const path = t.lanePath;
-    const meet = h.route[h.route.length - 1];
-    if (path === undefined || meet === undefined) return undefined;
+    const stand = h.route[h.route.length - 1];
+    if (path === undefined || stand === undefined) return undefined;
     const cfg = settings();
     const creeps = WaveCreeps(t, c.slot, now);
     c.n = creeps.length;
-    const aim = c.keep > 0 ? c.keep : c.index;
-    const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
-    // A half pull stands farther from the lane than any of the wave's creeps reaches (plus the margin) and is hit at the
-    // point on its way to the lane within the aimed creep's range less the margin.
-    const margin = HeroMargin();
-    let route = h.route;
-    let trigger = meet;
-    let step = 0;
-    if (c.keep > 0 && t.origin !== undefined) {
-        let reach = creeps.length > 0 ? 0 : cfg.HeroStandAcq;
-        for (const k of creeps) reach = math.max(reach, k.acq);
-        const stand = StepBackPoint(t.origin, meet, path, 0, reach + margin);
-        c.stand = stand;
-        route = [...h.route];
-        route[route.length - 1] = stand;
-        if (creeps.length > aim) {
-            trigger = TowardLane(path, stand, math.max(0, creeps[aim].acq - margin));
-            step = hypot(stand.x, stand.y, trigger.x, trigger.y) / math.max(1, h.speed);
-        }
-    }
+    const aim = c.index;
     if (creeps.length < aim + 2) return undefined;
-    const [ta, to] = Along(path, trigger);
-    const r = creeps[aim].acq;
+    const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
+    const [ta, to] = Along(path, stand);
+    const r = math.max(0, creeps[aim].acq - HeroMargin());
     const inside = to < r ? math.sqrt(r * r - to * to) : 0;
     const enter = now + (ta - inside - creeps[aim].along) / v;
-    const walk = WalkLength(h.from, route) / math.max(1, h.speed);
+    const len = WalkLength(h.from, h.route);
+    const walk = len / math.max(1, h.speed);
+    const lag = math.max(0, len * (1 / math.max(1, h.neutralSpeed) - 1 / math.max(1, h.speed))) + h.lagExtra;
+    const leave = enter - walk - lag;
     c.ent = enter;
+    c.leave = leave;
     c.heroWalk = walk;
-    c.heroStep = step;
-    c.waveAt = now + (Along(path, meet)[0] - creeps[creeps.length - 1].along) / v;
-    return enter - h.arrive - step - walk - h.lock;
+    c.lag = lag;
+    c.gup = leave + h.pass + cfg.GiveUpAfter;
+    c.clp = Clash(t, creeps, now, v);
+    c.nowin = enter > c.gup - cfg.GiveUpMargin ? "give-up" : c.clp !== undefined && enter > c.clp ? "clash" : undefined;
+    c.waveAt = now + (ta - creeps[creeps.length - 1].along) / v;
+    return leave - h.first;
+}
+
+/** Slice pull-aggro: when the puller leaves the camp: the last on-hero read's, else the hit second plus the first landing. */
+export function Leave(c: CreepTimer): number | undefined {
+    if (c.leave !== undefined) return c.leave;
+    return c.hero !== undefined ? (c.hit ?? c.slot) + c.hero.first : undefined;
 }
 
 /**
- * Slice pull-aggro: a half pull's step-in on the puller's hits. The puller waits at `stand` (out of every creep's range) and
- * steps to a point (user 07/11/2026: the aim is a point, not a creep) within some creep's acquisition range (less HeroMargin)
- * at the next landing with every creep ahead of it outside its own range plus the margin, leaving when that landing (`landIn` s from
- * now) comes after its walk there by at most STEP_SLACK. The cut is tried from creep `keep` back to the last; it holds while no cut has such a
- * point. Once it steps it keeps to that point; once `engaged`, where it is.
+ * Slice pull-aggro's deadline (design step 5), "back": the back creep of the timed wave still on the lane path is past
+ * `stand` along it and beyond its turn radius of it. False with none of the wave on the path (all turned, or none read).
  */
-/** Step-in candidates per cut from the stand's side of its creep round to behind it, beyond the first. */
-const STEP_TRIES = 8;
-/** Seconds a stepping puller may stand at its point before the landing it steps for (above a bot's think interval at 8x). */
-const STEP_SLACK = 0.4;
-
-export function StepInOnHero(c: CreepTimer, stand: Vector, here: Vector, now: number, landIn: number | undefined, speed: number, engaged: boolean): Vector {
-    if (engaged) return c.stepTo ?? here;
-    if (c.stepTo !== undefined) return c.stepTo;
+export function BackPast(c: CreepTimer, stand: Vector, now: number): boolean {
     const path = c.timing.lanePath;
-    if (path === undefined || landIn === undefined) return stand;
+    if (path === undefined) return false;
     const creeps = WaveCreeps(c.timing, c.slot, now);
-    if (creeps.length < c.keep + 1) return stand;
-    const v = WorldFacts.Latest("lane_creep_speed", settings().CreepSpeed);
-    const margin = HeroMargin();
-    let near: number | undefined;
-    // Each cut j (the first creep drawn, from `keep` back to the last): candidates within creep j's range less the margin of
-    // where it is at the landing, blended from the stand's side round to behind it (up the lane), nearest the stand first;
-    // the first with every creep ahead of j beyond its own range plus the margin is the step point.
-    for (let j = c.keep; j < creeps.length; j++) {
-        const at = creeps[j].along + v * landIn;
-        const [bx, by] = PathPoint(path, at);
-        const [ux, uy] = PathPoint(path, at - 100);
-        const r = math.max(0, creeps[j].acq - margin);
-        const d = hypot(stand.x, stand.y, bx, by);
-        const sx = (stand.x - bx) / math.max(1, d);
-        const sy = (stand.y - by) / math.max(1, d);
-        const ul = math.max(1, hypot(ux, uy, bx, by));
-        const qx = (ux - bx) / ul;
-        const qy = (uy - by) / ul;
-        for (let i = 0; i <= STEP_TRIES; i++) {
-            const f = i / STEP_TRIES;
-            let dx = sx * (1 - f) + qx * f;
-            let dy = sy * (1 - f) + qy * f;
-            const dl = math.sqrt(dx * dx + dy * dy);
-            if (dl < 0.05) continue;
-            dx /= dl;
-            dy /= dl;
-            const rr = i === 0 ? math.min(r, d) : r;
-            const to = Vector(bx + dx * rr, by + dy * rr, stand.z);
-            const walk = hypot(here.x, here.y, to.x, to.y) / math.max(1, speed);
-            // The landing must come after the puller is there (else the next one, an attack later, finds the creeps
-            // elsewhere: phagg4, lr 0 at each step) and not more than STEP_SLACK after.
-            if (landIn < walk) continue;
-            if (near === undefined || walk < near) near = walk;
-            let clear = true;
-            for (let k = 0; k < j && clear; k++) {
-                const [fx, fy] = PathPoint(path, creeps[k].along + v * landIn);
-                if (hypot(to.x, to.y, fx, fy) <= creeps[k].acq + margin) clear = false;
-            }
-            if (!clear) continue;
-            if (landIn > walk + STEP_SLACK) return stand;
-            c.stepTo = to;
-            return to;
-        }
-    }
-    // A due landing passed up because a creep ahead of every cut would turn too (pull_job shd).
-    if (near !== undefined && landIn <= near + STEP_SLACK) c.stepHeld = (c.stepHeld ?? 0) + 1;
-    return stand;
+    const back = creeps[creeps.length - 1];
+    if (back === undefined) return false;
+    const [sa] = Along(path, stand);
+    if (back.along <= sa) return false;
+    const [bx, by] = PathPoint(path, back.along);
+    return hypot(stand.x, stand.y, bx, by) > back.acq;
 }
 
 export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0, heroSpeed?: number): CreepTimer {
@@ -599,15 +550,14 @@ function Clearance(t: PullTiming, alongs: number[], keep: number, now: number, c
  * from the lane path, so the wave walks past out of reach of the puller and the neutrals hitting it (phhar4: 300 behind a
  * meet point on the lane, camp 1 took the whole wave 5 of 5 while the puller waited). At most the origin.
  */
-export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | undefined, minBack?: number, holdOff?: number): Vector {
+export function StepBackPoint(origin: Vector, stand: Vector, path: number[][] | undefined): Vector {
     const cfg = settings();
     const ox = stand.x - origin.x;
     const oy = stand.y - origin.y;
     const ol = math.max(1, math.sqrt(ox * ox + oy * oy));
-    let b = math.min(minBack ?? cfg.HalfStepBack, ol);
-    const off = holdOff ?? cfg.HalfHoldOff;
+    let b = math.min(cfg.HalfStepBack, ol);
     const at = (d: number) => Vector(stand.x - (ox / ol) * d, stand.y - (oy / ol) * d, stand.z);
-    if (path !== undefined) while (b < ol && Along(path, at(b))[1] < off) b = math.min(ol, b + 50);
+    if (path !== undefined) while (b < ol && Along(path, at(b))[1] < cfg.HalfHoldOff) b = math.min(ol, b + 50);
     return at(b);
 }
 

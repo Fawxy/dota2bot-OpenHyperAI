@@ -407,19 +407,23 @@ export const DEFAULTS = {
         // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
         // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
         HalfStepNeutrals: false,
-        // Slice pull-aggro (Ours.PullOnHero; slice file "Facts the behaviour needs"). HeroLandErr: the landing prediction's
-        // error in seconds; the stand and step-in margins are lane creep speed x it plus both hulls (`judgement` until the
-        // per-step-in `se` is measured). LockFor: seconds after the confirmed hit to wait for the first landing before the
-        // lead (`judgement`). Fallbacks while the camp is unseen (logged as `hf` sources on pull_job): HeroLockMelee the melee
-        // camp's first landing, HeroArrive one neutral attack period, HeroStandAcq the largest turn radius until the wave
-        // is read. HeroTurnRange caps each creep's GetAcquisitionRange as the radius it turns in on hits landing on its
-        // hero (fitted: a melee creep turned at 231, ranged ones at 586-593 and a siege one at 692 did not; phagg1, phagg5).
+        // Slice pull-aggro (Ours.PullOnHero, full pulls; slice file "Facts the behaviour needs"). HeroLandErr: the timing's
+        // error in seconds; the stand margin is lane creep speed x it (`judgement`). LockFor: seconds past the leave time
+        // with no tagged neutral on the puller before the pull ends `no-aggro` (`judgement`). HeroFirst: the first landing
+        // on the puller after the hit while the camp is unseen (pull_job `fb` 1; `judgement`). HeroTurnRange caps each
+        // creep's GetAcquisitionRange as the radius it turns in on hits landing on its hero (fitted: walking ranged creeps
+        // with landings at 568-593 did not turn, 0 of 5, phagg1/5/6; a siege one at 692). GiveUpFrom: a neutral's give-up
+        // timer starts this far from its camp (EC-084); GiveUpAfter: seconds from there to its give-up (fitted: every
+        // tagged neutral walking home 3.7 s after the first passed 400 on camps 1 and 26, 3.8 s, n 208; 4.8 s camp 18, 6.6 s
+        // camp 2; EC-084 says 5; the earliest camps' value so the deadline never overruns); GiveUpMargin: a pull whose
+        // entry falls later than the predicted give-up less this is not started (`judgement`).
         HeroLandErr: 0.2,
-        LockFor: 2,
-        HeroLockMelee: 1,
-        HeroArrive: 1.5,
-        HeroStandAcq: 500,
+        LockFor: 1,
+        HeroFirst: 1,
         HeroTurnRange: 500,
+        GiveUpFrom: 400,
+        GiveUpAfter: 3.5,
+        GiveUpMargin: 1,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,
