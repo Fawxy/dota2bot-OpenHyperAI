@@ -16,6 +16,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 /** Seconds of forecast: two pre-hits and the kill (about 0.7 s to the first landing, then two attack cycles of 1.4-1.7 s). `judgement`. */
 export const HORIZON = 4.5;
@@ -149,7 +150,8 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
     const towers: number[] = [];
     for (const h of f.hits) if (h.by === "tower") towers.push(h.t);
     const first = walk + verbs.ownHitTime(me, creep);
-    const period = me.GetSecondsPerAttack?.() ?? 1.7;
+    const read = me.GetSecondsPerAttack?.();
+    const period = read !== undefined && read > 0 ? read : WorldFacts.Fallback("attack_period", 1.7);
     const variance = me.GetBaseDamageVariance?.() ?? 0;
     const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
     const mean = target.GetActualIncomingDamage(bot.GetAttackDamage(), DamageType.Physical);

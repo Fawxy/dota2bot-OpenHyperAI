@@ -20,8 +20,14 @@ ____exports.DENY_FRACTION = 0.5
 ____exports.HORIZON = 6
 --- Enemy heroes farther than this from the creep are not read (no threat within the horizon at lane speeds).
 local ENEMY_RADIUS = 1600
---- Own lane creeps within this of the bot are pre-deny candidates (attack range plus a MAX_WALK walk is the real bound).
-local CREEP_RADIUS = 900
+--- Lane creeps the idle swing can reach: the bot's attack range plus the walk it allows (`LanePick.MAX_WALK` at its current speed),
+-- the same distance the per-creep `walk` test uses, so the scan drops only creeps that test would drop (was a fixed 900).
+local function creepRadius(bot)
+    return bot:GetAttackRange() + LanePick.MAX_WALK * math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+end
 --- Setup: our hits to the kill, this swing and the last hit included (`judgement`: "hit a creep twice and get an easy last
 -- hit", user 06/11/2026).
 ____exports.SETUP_HITS = 3
@@ -78,7 +84,7 @@ function ____exports.ForcedIn(spec, team, lane)
     local names = {top = Lane.Top, mid = Lane.Mid, bot = Lane.Bot}
     for raw in string.gmatch(spec, "[^,]+") do
         do
-            local __continue11
+            local __continue12
             repeat
                 local tok = __TS__StringTrim(string.lower(raw))
                 local side
@@ -89,15 +95,15 @@ function ____exports.ForcedIn(spec, team, lane)
                     name = rest
                 end
                 if side ~= nil and side ~= team then
-                    __continue11 = true
+                    __continue12 = true
                     break
                 end
                 if name == "all" or names[name] == lane then
                     return true
                 end
-                __continue11 = true
+                __continue12 = true
             until true
-            if not __continue11 then
+            if not __continue12 then
                 break
             end
         end
@@ -186,10 +192,10 @@ local function enemyReach(bot, creep)
     local best = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(ENEMY_RADIUS, true, 0) or ({})) do
         do
-            local __continue35
+            local __continue36
             repeat
                 if not usable(h) then
-                    __continue35 = true
+                    __continue36 = true
                     break
                 end
                 local speed = math.max(
@@ -207,9 +213,9 @@ local function enemyReach(bot, creep)
                 if t < best then
                     best = t
                 end
-                __continue35 = true
+                __continue36 = true
             until true
-            if not __continue35 then
+            if not __continue36 then
                 break
             end
         end
@@ -220,18 +226,18 @@ end
 local function needed(me, verbs, busy, creep, mine)
     for ____, o in ipairs(verbs.laneTargets(me, {within = busy})) do
         do
-            local __continue40
+            local __continue41
             repeat
                 if o.creep == creep or mine ~= nil and not mine(o) then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 if LanePick.Reachable(o) and o.eta <= busy then
                     return true
                 end
-                __continue40 = true
+                __continue41 = true
             until true
-            if not __continue40 then
+            if not __continue41 then
                 break
             end
         end
@@ -264,19 +270,19 @@ local function focused(bot)
     local out = {}
     for ____, h in ipairs(bot:GetNearbyHeroes(ALLY_RADIUS, false, 0) or ({})) do
         do
-            local __continue46
+            local __continue47
             repeat
                 if not usable(h) or h == bot then
-                    __continue46 = true
+                    __continue47 = true
                     break
                 end
                 local t = h:GetAttackTarget()
                 if t ~= nil and t ~= nil then
                     out[t] = true
                 end
-                __continue46 = true
+                __continue47 = true
             until true
-            if not __continue46 then
+            if not __continue47 then
                 break
             end
         end
@@ -302,18 +308,21 @@ local function findPreDeny(bot, me, verbs)
     local best
     local bestKey
     local bestNote
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_RADIUS, false) or ({})) do
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(
+        creepRadius(bot),
+        false
+    ) or ({})) do
         do
-            local __continue55
+            local __continue56
             repeat
                 if not usable(c) or c:GetTeam() ~= bot:GetTeam() then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local max = c:GetMaxHealth()
                 local hp = c:GetHealth()
                 if max <= 0 or hp >= max * ____exports.DENY_FRACTION then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local walk = math.max(
@@ -324,7 +333,7 @@ local function findPreDeny(bot, me, verbs)
                     bot:GetCurrentMovementSpeed()
                 )
                 if walk > LanePick.MAX_WALK then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local tc = c
@@ -335,7 +344,7 @@ local function findPreDeny(bot, me, verbs)
                     DamageType.Physical
                 )
                 if verbs.forecastHp(f, first) <= mean then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local kill = ____exports.KillTime(
@@ -346,12 +355,12 @@ local function findPreDeny(bot, me, verbs)
                     ____exports.HORIZON
                 )
                 if kill == ____exports.RACE_LOST then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local reach = enemyReach(bot, c)
                 if not ____exports.SafeFromEnemy(kill, reach) then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local key = {
@@ -378,9 +387,9 @@ local function findPreDeny(bot, me, verbs)
                         lastHits = 0
                     }
                 end
-                __continue55 = true
+                __continue56 = true
             until true
-            if not __continue55 then
+            if not __continue56 then
                 break
             end
         end
@@ -413,18 +422,21 @@ local function findSetup(bot, me, verbs)
     local best
     local bestKey
     local bestNote
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_RADIUS, true) or ({})) do
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(
+        creepRadius(bot),
+        true
+    ) or ({})) do
         do
-            local __continue74
+            local __continue75
             repeat
                 if not usable(c) then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local max = c:GetMaxHealth()
                 local hp = c:GetHealth()
                 if max <= 0 then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local walk = math.max(
@@ -435,7 +447,7 @@ local function findSetup(bot, me, verbs)
                     bot:GetCurrentMovementSpeed()
                 )
                 if walk > LanePick.MAX_WALK or nearEnemyTower(bot, c) then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local tc = c
@@ -446,7 +458,7 @@ local function findSetup(bot, me, verbs)
                     DamageType.Physical
                 )
                 if verbs.forecastHp(f, first) <= mean then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local kill = ____exports.KillTime(
@@ -457,17 +469,17 @@ local function findSetup(bot, me, verbs)
                     ____exports.HORIZON
                 )
                 if kill == ____exports.RACE_LOST or kill == math.huge then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local hits = ____exports.HitsTo(kill, first, period)
                 if hits > ____exports.SETUP_HITS then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local reach = enemyReach(bot, c)
                 if not ____exports.SafeFromEnemy(kill, reach) then
-                    __continue74 = true
+                    __continue75 = true
                     break
                 end
                 local key = {
@@ -494,9 +506,9 @@ local function findSetup(bot, me, verbs)
                         lastHits = 0
                     }
                 end
-                __continue74 = true
+                __continue75 = true
             until true
-            if not __continue74 then
+            if not __continue75 then
                 break
             end
         end
@@ -510,12 +522,15 @@ local function findShove(bot)
         100,
         bot:GetCurrentMovementSpeed()
     )
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_RADIUS, true) or ({})) do
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(
+        creepRadius(bot),
+        true
+    ) or ({})) do
         do
-            local __continue86
+            local __continue87
             repeat
                 if not usable(c) then
-                    __continue86 = true
+                    __continue87 = true
                     break
                 end
                 if math.max(
@@ -524,9 +539,9 @@ local function findShove(bot)
                 ) / speed <= LanePick.MAX_WALK then
                     near[#near + 1] = c
                 end
-                __continue86 = true
+                __continue87 = true
             until true
-            if not __continue86 then
+            if not __continue87 then
                 break
             end
         end
