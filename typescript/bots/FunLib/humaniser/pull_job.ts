@@ -26,7 +26,8 @@ export const SETTINGS = {
      *  and never read true (ldr11, ldr12: every pull walked into an empty camp). */
     CampLowHold: 1.5,
     /** ... and only once the puller is within this of its stand point, so its own vision covers the camp (`judgement`; ldr14:
-     *  3 of 9 pulls on a fresh camp still cancelled `one` after the hold, 3-6 s into the walk). */
+     *  3 of 9 pulls on a fresh camp still cancelled `one` after the hold, 3-6 s into the walk). Both values leave about 2 s
+     *  before the slot (ldr17: the empty-camp cancels fell 2.0 s before to 0.8 s after it); the hold never runs past the hit. */
     CampReadNear: 500,
     /** Rank against the hero's other jobs: below the stack (0.92) and the rune trip (0.85 pos5 / 0.95 pos4 rank above at their
      *  times through their claims). */
@@ -1115,7 +1116,10 @@ export function Step(bot: Unit, host: number): boolean {
         // into sight); camp damage ends it at once.
         if (gate === undefined || GetUnitToLocationDistance(bot, p.plan.stand) > SETTINGS.CampReadNear) p.low = undefined;
         else if (p.low === undefined || p.low.why !== gate) p.low = { why: gate, at: now };
-        const why = (p.low !== undefined && now - p.low.at >= SETTINGS.CampLowHold ? p.low.why : undefined) ?? campDmgGate(bot, s.dmg);
+        // The hold shrinks to the time left before the hit: a puller reaching the ring late still reads the camp before it
+        // hits (review 2026-11-08-lane-drills M3: ldr17's cancels fell 2 s before to 0.8 s after the slot).
+        const hold = math.min(SETTINGS.CampLowHold, p.hitAt - now);
+        const why = (p.low !== undefined && now - p.low.at >= hold ? p.low.why : undefined) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
             // The pull_job line then carries the camp that cancelled it, not the one at the start.
             p.start = s;

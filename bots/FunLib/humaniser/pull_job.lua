@@ -1996,7 +1996,8 @@ function ____exports.Step(bot, host)
         elseif p.low == nil or p.low.why ~= gate then
             p.low = {why = gate, at = now}
         end
-        local why = p.low ~= nil and now - p.low.at >= ____exports.SETTINGS.CampLowHold and p.low.why or nil or campDmgGate(bot, s.dmg)
+        local hold = math.min(____exports.SETTINGS.CampLowHold, p.hitAt - now)
+        local why = p.low ~= nil and now - p.low.at >= hold and p.low.why or nil or campDmgGate(bot, s.dmg)
         if why ~= nil then
             p.start = s
             ____exports.End(bot, why)

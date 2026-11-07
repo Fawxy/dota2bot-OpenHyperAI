@@ -533,8 +533,9 @@ end
 -- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the walk brings the camp into sight
 -- one neutral at a time; `one` (or `empty`) ends the pull only once it has held CampLowHold s.
 do
-	local function walkIn(more)
+	local function walkIn(more, set)
 		local w = world({ reading = OUT })
+		for k, v in pairs(set or {}) do w.H.PullJob.SETTINGS[k] = v end
 		local seen, ended, added
 		local out = capture(function()
 			while T < 120 and not (seen and not w.H.PullJob.Running(w.sup)) do
@@ -557,8 +558,16 @@ do
 	local seen, ended, pull = walkIn(true)
 	check("walk: one neutral seen, two more half a second later: the pull goes on", seen ~= nil and field(pull, "why") ~= "cancelled:one", pull)
 	seen, ended, pull = walkIn(false)
-	local hold = package.loaded["bots/FunLib/humaniser/pull_job"].SETTINGS.CampLowHold
+	local PJ = package.loaded["bots/FunLib/humaniser/pull_job"]
+	local hold = PJ.SETTINGS.CampLowHold
 	check("walk: one neutral that stays: cancelled:one after the hold", seen ~= nil and field(pull, "why") == "cancelled:one" and ended - seen >= hold, (pull or "nil") .. " after " .. tostring(ended and seen and ended - seen))
+	-- Review L6: a low read beyond CampReadNear of the stand never ends the pull (the bot stands still out there).
+	seen, ended, pull = walkIn(false, { CampReadNear = -1 })
+	check("walk: a low read outside the ring does not end the pull", seen ~= nil and field(pull, "why") ~= "cancelled:one", pull)
+	-- Review M3: a puller that reaches the ring under CampLowHold before the hit still reads the camp before it hits.
+	seen, ended, pull = walkIn(false, { CampLowHold = 1000 })
+	check("walk: the hold shrinks to the time before the hit: cancelled:one, never hit", seen ~= nil and field(pull, "why") == "cancelled:one"
+		and (field(pull, "label") or "travel") ~= "aggro", pull)
 end
 
 -- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked
