@@ -98,7 +98,7 @@ do
 	-- with 14 false; the old rule (800 of the box, any time if visible, 6 s if not) caught 29 with 81 false.
 	local STAND = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 400)
 	local function input(now, unseen, loc, visible)
-		return { now = now, campLoc = THEIR_SMALL, standLoc = STAND, campPullSec = { 15, 45 }, campHalfSec = { 17, 47 },
+		return { now = now, campLoc = THEIR_SMALL, standLoc = STAND, campPullSec = { 15, 45 },
 			enemySupport = { pid = 15, visible = visible == true, location = loc, timeSinceSeen = unseen } }
 	end
 	local lastSeen = Vector(STAND.x, STAND.y - 700)
@@ -124,7 +124,7 @@ end
 
 do
 	-- The wave anomaly against real waves: `sizes` enemy creeps reach our front at :05 of successive cycles from 1:00.
-	-- console.9057072982: one stacked cycle (8) made the next normal waves (4) read as thin, 73 half_pulls and no pull.
+	-- console.9057072982: one stacked cycle (8) made the next normal waves (4) read as thin, 73 thin-wave signals and no pull.
 	local function anomalies(sizes, supportInLane)
 		local H, support, _, _, esup = world(1, { telemetry = { Enable = true } })
 		local lines = {}
@@ -145,7 +145,7 @@ do
 		RANDOM_FRACTION = nil
 		local n = 0
 		for _, l in ipairs(lines) do
-			if l:find(" ev=lane_signal ", 1, true) and (l:find("kind=half_pull", 1, true) or l:find("kind=pull ", 1, true)) then n = n + 1 end
+			if l:find(" ev=lane_signal ", 1, true) and l:find("kind=pull ", 1, true) then n = n + 1 end
 		end
 		return n
 	end
@@ -226,20 +226,20 @@ end
 
 do
 	-- The enemy's pull seconds come from their wave (pull_timing) when their camp is wave-timed, as ours do: with a Dire
-	-- creep path along the stub top lane their small camp pulls at :18.3 (half :21.4), so a support unseen by it at :22
-	-- reads as pulling; on the :15/:17 seeds it does not (5 s off, CounterPullWindow 3).
+	-- creep path along the stub top lane their small camp pulls at :18.3, so a support unseen by it at :21 reads as
+	-- pulling; on the :15 seed it does not (6 s off, CounterPullWindow 3).
 	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
-	local function at22(cfg)
+	local function at21(cfg)
 		local H, support, _, _, esup = world(1, { cfg = cfg })
-		tick(H, support, 81)
+		tick(H, support, 80)
 		hide(esup, 4)
 		LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
-		tick(H, support, 82)
+		tick(H, support, 81)
 		LAST_SEEN[15] = nil
 		return #signalsOf(H, support, "pull")
 	end
-	check("seed seconds: unseen support at :22 not suspected", at22(nil) == 0)
-	check("wave-timed seconds: unseen support at :22 suspected", at22(WAVE) == 1)
+	check("seed seconds: unseen support at :21 not suspected", at21(nil) == 0)
+	check("wave-timed seconds: unseen support at :21 suspected", at21(WAVE) == 1)
 end
 
 do
@@ -311,10 +311,10 @@ do
 
 	local WAVE = { Enable = true, PullTiming = { LanePaths = { dire_top = { { 9400, 5000 }, { -7000, 5000 } } }, WaveAhead = { safe = 0, off = 0 } } }
 	local H, support, _, _, esup = world(1, { cfg = WAVE })
-	tick(H, support, 81)
+	tick(H, support, 80)
 	hide(esup, 4)
 	LAST_SEEN[15] = { location = Vector(THEIR_SMALL.x, THEIR_SMALL.y - 500), time_since_seen = 5 }
-	tick(H, support, 82)
+	tick(H, support, 81)
 	LAST_SEEN[15] = nil
 	check("precondition: an unseen-support pull", #signalsOf(H, support, "pull") == 1)
 	H.Lane.Counter.Think(support, {})
@@ -331,11 +331,11 @@ do
 		for t = c0, c0 + 29.5, 0.5 do
 			if t == c0 + 5 then for i = 1, n do MakeCreep({ team = 3, x = 100 + i * 20, y = 5000 }) end end
 			tick(H, support, t)
-			if #signalsOf(H, support, "half_pull") > 0 then break end
+			if #signalsOf(H, support, "pull") > 0 then break end
 		end
 	end
 	RANDOM_FRACTION = nil
-	check("precondition: a thin-wave signal", #signalsOf(H, support, "half_pull") == 1)
+	check("precondition: a thin-wave signal", #signalsOf(H, support, "pull") == 1)
 	H.Lane.Counter.Think(support, {})
 	check("a thin wave starts no contest", H.Lane.CampJobs.Current(support) == nil)
 end

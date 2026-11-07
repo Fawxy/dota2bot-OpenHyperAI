@@ -217,7 +217,7 @@ export function NeutralSpeedFor(type: string, fb: number, camp?: number): number
 /** Acquisition range of `unit`, keyed by its name (one read per unit type per second). */
 export function AcquisitionRange(unit: Unit, fb: number, kind: "lane_creep" | "neutral"): number {
     // Lane creeps differ by type (melee 500, ranged 600, siege 800 per lane_push KINDS): the remembered "lane_creep" value is the
-    // melee creep's, the one the pull timing's clearance is written for (review H1). Other types read directly and are not stored.
+    // melee creep's (review H1). Other types read directly and are not stored.
     if (kind === "lane_creep" && !unit.GetUnitName().includes("melee")) {
         const r = unit.GetAcquisitionRange();
         return r !== undefined && r > 0 ? r : fb;
@@ -234,7 +234,7 @@ const noReadYet: Record<string, boolean> = {};
  * The latest live value of a fact, for code with no unit in hand (pure timing and simulation functions). Fed by the readers above
  * (telemetry's world-facts tick reads each moment); before the first read, or with telemetry off, it returns `fb`, counted once.
  */
-export function Latest(fact: "lane_creep_speed" | "acquisition_lane_creep", fb: number): number {
+export function Latest(fact: "lane_creep_speed", fb: number): number {
     const v = live[fact];
     if (v !== undefined) return v;
     if (noReadYet[fact] !== true) {

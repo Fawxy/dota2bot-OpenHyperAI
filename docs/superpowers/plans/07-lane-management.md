@@ -1,5 +1,7 @@
 # Implementation plan: task 07, lane management
 
+> Historical plan. Half pulls were dropped from the feature set (user 07/11/2026); its half-pull rows no longer describe the code.
+
 **Spec (binding authority):** `/Users/cbyatt/Documents/Projects/dota-bots-humaniser/handoffs/07-lane-management.md`
 Also binding: `handoffs/00-README.md` (conventions), `handoffs/04-ally-last-hit-etiquette.md` ("Scope of the takeover"), `handoffs/02-humaniser-core.md`.
 Worktree: `/Users/cbyatt/Documents/Projects/dota-bots-humaniser/oha-h07`, branch `h-07-lane`. All paths below are relative to it.

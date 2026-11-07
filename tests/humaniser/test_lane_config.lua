@@ -8,7 +8,6 @@ local function bounds(tech, below, at)
 end
 bounds("block", 0.29, 0.3)
 bounds("full_pull", 0.29, 0.3)
-bounds("half_pull", 0.59, 0.6)
 bounds("stack_pull", 0.74, 0.75)
 bounds("aggro_pull", 0.49, 0.5)
 bounds("freeze", 0.69, 0.7)
@@ -19,16 +18,16 @@ do
 end
 
 do
-	local C = LaneFresh({ HalfPull = false }).Lane.Config
-	check("flag off hides half_pull", not C.Knows("half_pull", 1.0))
-	check("other techniques unaffected", C.Knows("full_pull", 1.0))
+	local C = LaneFresh({ FullPull = false }).Lane.Config
+	check("flag off hides full_pull", not C.Knows("full_pull", 1.0))
+	check("other techniques unaffected", C.Knows("stack_pull", 1.0))
 end
 
 do
 	local C = LaneFresh({ Enable = true }).Lane.Config
 	check("positive control: block known by default", C.Knows("block", 1.0))
 	C = LaneFresh({ Enable = false }).Lane.Config
-	for _, t in ipairs({ "block", "full_pull", "half_pull", "stack_pull", "aggro_pull", "freeze", "shove", "stack" }) do
+	for _, t in ipairs({ "block", "full_pull", "stack_pull", "aggro_pull", "freeze", "shove", "stack" }) do
 		check("lane disabled hides " .. t, not C.Knows(t, 1.0))
 	end
 	check("lane disabled hides flags", not C.IsOn("Stack"))
@@ -39,7 +38,7 @@ end
 
 do
 	local off = { Enable = true }
-	for _, f in ipairs({ "Plan", "Block", "FullPull", "HalfPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
+	for _, f in ipairs({ "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
 		"Harass", "Mid", "CounterPlay", "CampBlock" }) do off[f] = false end
 	off.Telegraph = true
 	check("telegraph alone is not active", not LaneFresh(off).Lane.Config.IsActive())

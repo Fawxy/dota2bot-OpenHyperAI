@@ -59,9 +59,6 @@ function ____exports.Choose(i)
     end
     local campOk = i.pullCamp and plan.pullAllowed and i.mayRunCampJob and i.partnerSafe
     if plan.plan == "FREEZE" then
-        if i.laneScore <= bands.SmallDriftBelow and i.allyCreeps >= i.enemyCreeps + bands.LargeWaveMargin and campOk and knows("half_pull") then
-            return pick("half_pull", "freeze: thin large wave")
-        end
         if not supportish and i.eqPos > i.desiredEq + cfg.Thresholds.FreezeDriftMargin and knows("aggro_pull") then
             return pick("aggro_pull", "freeze: drag back")
         end
@@ -79,9 +76,6 @@ function ____exports.Choose(i)
             if knows("full_pull") then
                 return pick("full_pull", plan.pullForced and "pull ordered" or "wave pushed out")
             end
-        end
-        if score <= bands.SmallDriftBelow and campOk and knows("half_pull") then
-            return pick("half_pull", "small drift")
         end
     end
     if score <= bands.AggroCorrectBelow and knows("aggro_pull") then
@@ -114,18 +108,18 @@ local function humanCoreIn(bot, s)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue31
+            local __continue29
             repeat
                 if h.pid == pid or h.isBot or not h.alive or not h.assigned then
-                    __continue31 = true
+                    __continue29 = true
                     break
                 end
                 if h.position ~= nil and h.position >= 1 and h.position <= 3 then
                     return true
                 end
-                __continue31 = true
+                __continue29 = true
             until true
-            if not __continue31 then
+            if not __continue29 then
                 break
             end
         end
@@ -154,8 +148,6 @@ local function buildInput(bot, s, now)
         laneScore = view.laneScore,
         forecastScore = view.forecastScore,
         eqPos = s.eqPos,
-        allyCreeps = s.ally.count,
-        enemyCreeps = s.enemy.count,
         enemyLaners = LanePlan.EnemyLaners(bot, s),
         pullCamp = #camps > 0,
         stackedPullCamp = stacked,
@@ -168,7 +160,7 @@ local function buildInput(bot, s, now)
         override = LaneHooks.TechniqueOverride(bot)
     }
 end
-local ORDERED_BY_PULL = {full_pull = true, stack_pull = true, half_pull = true}
+local ORDERED_BY_PULL = {full_pull = true, stack_pull = true}
 local function gate(bot, i, choice)
     local tech = choice.tech
     if tech == "none" or tech == "hold" then

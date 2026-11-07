@@ -1,30 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
-
 local function __TS__ObjectAssign(target, ...)
     local sources = {...}
     for i = 1, #sources do
@@ -372,12 +347,7 @@ function ____exports.EnemyPullSuspected(i)
     end
     local period = cfg.Timing.WaveCycle
     local sec = i.now % period
-    local ____array_0 = __TS__SparseArrayNew(unpack(i.campPullSec))
-    __TS__SparseArrayPush(
-        ____array_0,
-        unpack(i.campHalfSec or ({}))
-    )
-    for ____, s in ipairs({__TS__SparseArraySpread(____array_0)}) do
+    for ____, s in ipairs(i.campPullSec) do
         if circularGap(sec, s % period, period) <= cfg.Timing.CounterPullWindow then
             return true
         end
@@ -475,7 +445,7 @@ local function onNotice(bot, st, key, sig, s, enemies, inferred)
     if sig.kind == "pull_expected" then
         return
     end
-    if sig.kind == "pull" or sig.kind == "half_pull" then
+    if sig.kind == "pull" then
         say(bot, st, inferred and "say_lane_their_sup_missing" or "say_lane_they_pull_" .. LANE_NAME[sig.lane], instance)
     elseif sig.kind == "freeze" then
         say(bot, st, "say_lane_they_freeze", instance)
@@ -673,8 +643,7 @@ local function suspectedCamp(camps, support, now)
                     enemySupport = support,
                     campLoc = Camps.BoxCenter(spawner),
                     standLoc = CampJobs.PullerStand(camp) or Camps.BoxCenter(spawner),
-                    campPullSec = PullTiming.ForCamp(camp, false).seconds,
-                    campHalfSec = PullTiming.ForCamp(camp, true).seconds
+                    campPullSec = PullTiming.ForCamp(camp).seconds
                 }
                 if ____exports.EnemyPullSuspected(input) then
                     return camp.campIdx
@@ -699,7 +668,7 @@ local function expectedAggro(s, camp, support, now)
             ),
             false
         ),
-        pullSec = PullTiming.ForCamp(camp, false).seconds,
+        pullSec = PullTiming.ForCamp(camp).seconds,
         supportInLane = support ~= nil and isLaner(support, s)
     })
 end
@@ -739,13 +708,13 @@ local function pullSignals(bot, st, s, enemies, now)
     end
     local cycle = cycleOf(now)
     local support = laneRoleOf(s, enemies, "support")
-    local ____temp_3
+    local ____temp_2
     if support ~= nil then
-        ____temp_3 = suspectedCamp(camps, support, now)
+        ____temp_2 = suspectedCamp(camps, support, now)
     else
-        ____temp_3 = nil
+        ____temp_2 = nil
     end
-    local suspected = ____temp_3
+    local suspected = ____temp_2
     if support ~= nil and suspected ~= nil then
         local source = support.visible and "seen" or "lastseen"
         local sig = {
@@ -795,9 +764,8 @@ local function pullSignals(bot, st, s, enemies, now)
     if support ~= nil and support.visible and isLaner(support, s) then
         return
     end
-    local kind = anomaly == "late" and "pull" or "half_pull"
     local sig = {
-        kind = kind,
+        kind = "pull",
         lane = s.lane,
         at = now,
         campIdx = camps[1].campIdx,
@@ -807,7 +775,7 @@ local function pullSignals(bot, st, s, enemies, now)
     observe(
         bot,
         st,
-        (((kind .. ":") .. tostring(camps[1].campIdx)) .. ":") .. tostring(cycle),
+        (("pull:" .. tostring(camps[1].campIdx)) .. ":") .. tostring(cycle),
         sig,
         s,
         enemies
@@ -1008,13 +976,13 @@ local function live(st, now)
                     __continue135 = true
                     break
                 end
-                local ____temp_10
+                local ____temp_9
                 if sig.kind == "pull_expected" and sig.aggroAt ~= nil then
-                    ____temp_10 = now <= sig.aggroAt
+                    ____temp_9 = now <= sig.aggroAt
                 else
-                    ____temp_10 = now - sig.at <= ttl
+                    ____temp_9 = now - sig.at <= ttl
                 end
-                local alive = ____temp_10
+                local alive = ____temp_9
                 if alive then
                     result[#result + 1] = {key, sig}
                 end
@@ -1223,13 +1191,13 @@ local function takeBlock(bot, s, sig, enemies)
     if s.enemy.count > cfg.Thresholds.TakePullLaneCreeps then
         return "lane-creeps"
     end
-    local ____temp_11
+    local ____temp_10
     if sig.campIdx ~= nil then
-        ____temp_11 = Camps.SpawnerByIdx(sig.campIdx)
+        ____temp_10 = Camps.SpawnerByIdx(sig.campIdx)
     else
-        ____temp_11 = nil
+        ____temp_10 = nil
     end
-    local spawner = ____temp_11
+    local spawner = ____temp_10
     if spawner == nil then
         return "no-camp"
     end
@@ -1330,7 +1298,7 @@ local function respondToPull(bot, st, s, enemies, now)
                     }
                     return
                 end
-                if sig.kind ~= "pull" and sig.kind ~= "half_pull" then
+                if sig.kind ~= "pull" then
                     __continue195 = true
                     break
                 end
@@ -1353,13 +1321,13 @@ local function respondToPull(bot, st, s, enemies, now)
                     __continue195 = true
                     break
                 end
-                local ____stronger_result_12
+                local ____stronger_result_11
                 if stronger(bot) then
-                    ____stronger_result_12 = remainingLaner(s, enemies, sig.enemyPid)
+                    ____stronger_result_11 = remainingLaner(s, enemies, sig.enemyPid)
                 else
-                    ____stronger_result_12 = nil
+                    ____stronger_result_11 = nil
                 end
-                local laner = ____stronger_result_12
+                local laner = ____stronger_result_11
                 if laner ~= nil then
                     st.responded[key] = true
                     st.punish = {pid = laner.pid, startAt = now}
@@ -1638,15 +1606,15 @@ function ____exports.PreferStackedCamp(bot, camps)
         do
             local __continue263
             repeat
-                local ____opt_result_17
+                local ____opt_result_16
                 if camp ~= nil then
-                    ____opt_result_17 = camp.cattr
+                    ____opt_result_16 = camp.cattr
                 end
-                local ____opt_result_18
-                if ____opt_result_17 ~= nil then
-                    ____opt_result_18 = ____opt_result_17.location
+                local ____opt_result_17
+                if ____opt_result_16 ~= nil then
+                    ____opt_result_17 = ____opt_result_16.location
                 end
-                local loc = ____opt_result_18
+                local loc = ____opt_result_17
                 if loc == nil then
                     __continue263 = true
                     break

@@ -24,7 +24,6 @@ const Exec = CampJobs.Exec;
 const STATE_OF: Partial<Record<CampJobs.JobKind, string>> = {
     stack: STACK,
     full_pull: PULL,
-    half_pull: PULL,
     stack_pull: PULL,
     double_pull: PULL,
 };

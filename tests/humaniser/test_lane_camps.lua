@@ -84,11 +84,7 @@ do
 	local C = world({})
 	local meet = C.DeriveMeetPoint(RAD, Lane.Bot, Vector(-1600, -4400, 0))
 	check("meet on lane", near(meet.y, LANE_Y[Lane.Bot]) and math.abs(meet.x + 1600) < 100, meet.x)
-	local half = C.DeriveHalfMeetPoint(RAD, Lane.Bot, meet)
-	check("radiant half meet 500 further +x", math.abs(half.x - meet.x - 500) < 1 and near(half.y, LANE_Y[Lane.Bot]), half.x - meet.x)
 	local dm = C.DeriveMeetPoint(DIRE, Lane.Top, Vector(2000, 4500, 0))
-	local dh = C.DeriveHalfMeetPoint(DIRE, Lane.Top, dm)
-	check("dire half meet 500 further -x", math.abs(dm.x - dh.x - 500) < 1, dm.x - dh.x)
 	-- A negative shift walks back towards the team's own base: Radiant -x on the bot lane, Dire +x on the top lane.
 	local rb = C.ShiftAlongLane(RAD, Lane.Bot, meet, -600)
 	local db = C.ShiftAlongLane(DIRE, Lane.Top, dm, -600)
@@ -239,8 +235,6 @@ withMapLanes(function()
 	-- north of the nearest lane point (about y -3830).
 	local m = direOffJob and direOffJob.pull.meetPoint
 	check("dire off meet point where dire's wave walks", m and m.x > 6100 and m.x < 6300 and m.y > -3600 and m.y < -2900, m and (m.x .. "," .. m.y))
-	local h = direOffJob and direOffJob.pull.halfMeetPoint
-	check("dire off half meet further toward the radiant base", h and m and h.y < m.y - 400, h and h.y)
 	local path = direOffJob and direOffJob.pull.path
 	check("dire off pull path ends at the meet point", path and path[#path] == m)
 	check("7.41 radiant safe small still resolved", campNamesFor(C, names, RAD, Lane.Bot):find("good_1=radiant_safe_small", 1, true) ~= nil)
@@ -261,11 +255,6 @@ withMapLanes(function()
 	check("shared camp: dire job is dire_safe_large", dire and dire.key == "dire_safe_large" and dire.team == DIRE, dire and dire.key)
 	check("shared camp: radiant job is radiant_off_large", rad and rad.key == "radiant_off_large" and rad.team == RAD, rad and rad.key)
 	check("shared camp: no team falls back to the spawner's team", C.ByIdx(idx) == dire)
-	-- Each team's half meet point is further along its own wave's walk: Dire's south, Radiant's north.
-	local dm, dh = dire.pull.meetPoint, dire.pull.halfMeetPoint
-	local rm, rh = rad.pull.meetPoint, rad.pull.halfMeetPoint
-	check("shared camp: dire half meet toward radiant", dh.y < dm.y - 400, dh.y - dm.y)
-	check("shared camp: radiant half meet toward dire", rh.y > rm.y + 400, rh.y - rm.y)
 	local count = 0
 	for _, job in ipairs(C.Resolve()) do if job.campIdx == idx then count = count + 1 end end
 	check("shared camp listed once per team", count == 2, count)
@@ -386,12 +375,6 @@ asDireCaller(function(H)
 	local C = H.Lane.Camps
 	check("dire caller: own amounts already in dire frame", near(C.ToTeamAmount(DIRE, 0.3), 0.3) and near(C.ToAbsAmount(DIRE, 0.3), 0.3))
 	check("dire caller: radiant amounts mirrored", near(C.ToTeamAmount(RAD, 0.3), 0.7))
-	local dm = C.DeriveMeetPoint(DIRE, Lane.Top, Vector(2000, 4500, 0))
-	local dh = C.DeriveHalfMeetPoint(DIRE, Lane.Top, dm)
-	check("dire caller: dire half meet 500 toward radiant (-x)", math.abs(dm.x - dh.x - 500) < 1, dh.x - dm.x)
-	local rm = C.DeriveMeetPoint(RAD, Lane.Bot, Vector(-1600, -4400, 0))
-	local rh = C.DeriveHalfMeetPoint(RAD, Lane.Bot, rm)
-	check("dire caller: radiant half meet 500 toward dire (+x)", math.abs(rh.x - rm.x - 500) < 1, rh.x - rm.x)
 	-- Team-frame tower amounts as lane_state stores them for Dire: own T1 0.3, enemy T1 0.7 (world x 2800 / -2800).
 	local hold = H.Lane.LaneTech.HoldPoint(DIRE, Lane.Bot, -1, 0.3, 0.7, 0)
 	check("dire caller: hold at eq -1 is at dire's own T1", math.abs(hold.x - 2800) < 1, hold.x)

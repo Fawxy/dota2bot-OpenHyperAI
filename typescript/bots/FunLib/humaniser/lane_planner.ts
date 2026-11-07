@@ -22,8 +22,6 @@ export interface PlannerInput {
     laneScore: number;
     forecastScore?: number;
     eqPos: number;
-    allyCreeps: number;
-    enemyCreeps: number;
     enemyLaners: number;
     pullCamp: boolean;
     stackedPullCamp: boolean;
@@ -87,9 +85,6 @@ export function Choose(i: PlannerInput): Choice {
     const campOk = i.pullCamp && plan.pullAllowed && i.mayRunCampJob && i.partnerSafe;
 
     if (plan.plan === "FREEZE") {
-        if (i.laneScore <= bands.SmallDriftBelow && i.allyCreeps >= i.enemyCreeps + bands.LargeWaveMargin && campOk && knows("half_pull")) {
-            return pick("half_pull", "freeze: thin large wave");
-        }
         if (!supportish && i.eqPos > i.desiredEq + cfg.Thresholds.FreezeDriftMargin && knows("aggro_pull")) {
             return pick("aggro_pull", "freeze: drag back");
         }
@@ -104,7 +99,6 @@ export function Choose(i: PlannerInput): Choice {
             if (i.stackedPullCamp && knows("stack_pull") && i.enemyLaners > 0) return pick("stack_pull", "deny: stacked camp");
             if (knows("full_pull")) return pick("full_pull", plan.pullForced ? "pull ordered" : "wave pushed out");
         }
-        if (score <= bands.SmallDriftBelow && campOk && knows("half_pull")) return pick("half_pull", "small drift");
     }
 
     if (score <= bands.AggroCorrectBelow && knows("aggro_pull")) return pick("aggro_pull", "small correction");
@@ -160,8 +154,6 @@ function buildInput(bot: Unit, s: LaneState.LaneSnapshot, now: number): PlannerI
         laneScore: view.laneScore,
         forecastScore: view.forecastScore,
         eqPos: s.eqPos,
-        allyCreeps: s.ally.count,
-        enemyCreeps: s.enemy.count,
         enemyLaners: LanePlan.EnemyLaners(bot, s),
         pullCamp: camps.length > 0,
         stackedPullCamp: stacked,
@@ -176,7 +168,7 @@ function buildInput(bot: Unit, s: LaneState.LaneSnapshot, now: number): PlannerI
 }
 
 // Only the technique a human ordered skips the attempt roll; anything else chosen meanwhile still rolls.
-const ORDERED_BY_PULL: Record<string, boolean> = { full_pull: true, stack_pull: true, half_pull: true };
+const ORDERED_BY_PULL: Record<string, boolean> = { full_pull: true, stack_pull: true };
 
 function gate(bot: Unit, i: PlannerInput, choice: Choice): Choice {
     const tech = choice.tech;

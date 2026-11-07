@@ -92,14 +92,10 @@ end
 
 do
 	local H, _, support, data = jobWorld(1)
-	local s = H.Lane.CampJobs.AggroSecondsFor("half_pull", data)
-	check("half pull uses the half seconds", #s == 2 and s[1] == 17 and s[2] == 47)
 	check("full pull uses the pull seconds", H.Lane.CampJobs.AggroSecondsFor("full_pull", data)[1] == 15)
-	H.Lane.CampJobs.Start(support, { kind = "half_pull", campIdx = 1 })
+	H.Lane.CampJobs.Start(support, { kind = "full_pull", campIdx = 1 })
 	local job = H.Lane.CampJobs.Current(support)
-	local half, full = data.pull.halfMeetPoint, data.pull.meetPoint
-	check("half pull planned on :17", job.plannedSec == 17, job.plannedSec)
-	check("half pull meets at the half meet point", dist(job.meet, half) < 1e-6 and dist(half, full) > 400)
+	check("full pull meets at the meet point", dist(job.meet, data.pull.meetPoint) < 1e-6)
 end
 
 do
@@ -110,12 +106,9 @@ do
 	for i = 1, 4 do table.insert(list, MakeCreep({ team = 2, x = 0, y = 0, target = neutral })) end
 	table.insert(list, MakeCreep({ team = 2, x = 0, y = 0, target = enemyCreep }))
 	check("4 of 5 on neutrals diverts 0.8", near(J.MeasureDivert(list, 5), 0.8))
-	check("full at exactly 0.8 is weak", J.Grade("full_pull", 0.8) == "mistake:weak-pull")
-	check("full at 0.85 is ok", J.Grade("full_pull", 0.85) == "ok")
-	check("full with nothing diverted", J.Grade("full_pull", 0) == "mistake:no-divert")
-	check("half at 0.45 is ok", J.Grade("half_pull", 0.45) == "ok")
-	check("half at 0.7 pulled the whole wave", J.Grade("half_pull", 0.7) == "mistake:half->full")
-	check("half at 0.2 is weak", J.Grade("half_pull", 0.2) == "mistake:weak-pull")
+	check("full at exactly 0.8 is weak", J.Grade(0.8) == "mistake:weak-pull")
+	check("full at 0.85 is ok", J.Grade(0.85) == "ok")
+	check("full with nothing diverted", J.Grade(0) == "mistake:no-divert")
 end
 
 do
@@ -342,7 +335,7 @@ do
 	unit({ pid = 0, bot = false, lane = Lane.Top, loc = Vector(5000, 5000) })
 	local said = {}
 	H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
-	H.Lane.CampJobs.Start(support, { kind = "half_pull", campIdx = 1 })
+	H.Lane.CampJobs.Start(support, { kind = "full_pull", campIdx = 1 })
 	local job = H.Lane.CampJobs.Current(support)
 	T = job.aggroAt - 6
 	H.Lane.CampJobThink(support)
@@ -351,7 +344,7 @@ do
 	H.Lane.CampJobThink(support)
 	T = job.aggroAt - 4
 	H.Lane.CampJobThink(support)
-	check("half pull telegraphed once 5 s before", #said == 1 and said[1] == "say_lane_half_pull", said[1])
+	check("pull telegraphed once 5 s before", #said == 1 and said[1] == "say_lane_pulling_in_5", said[1])
 end
 
 do
@@ -424,9 +417,6 @@ do
 	local job = H.Lane.CampJobs.Current(support)
 	check("hpulltest forces a full pull on the nearest bot", job ~= nil and job.forced == true and job.kind == "full_pull")
 	check("hpulltest leaves the other bots", H.Lane.CampJobs.Current(far) == nil)
-	H, support = pullChat(true, "!hpulltest 1 half")
-	job = H.Lane.CampJobs.Current(support)
-	check("hpulltest half", job ~= nil and job.kind == "half_pull")
 end
 
 do
@@ -691,14 +681,20 @@ do
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 	H.Lane.LanePlanner.Commit(support, "aggro_pull")
 	for t = 70, 76, 0.5 do T = t H.Lane.CampJobDesire(support) end
-	local plans = hev(lines, "lane_plan")
-	check("one lane_plan in the cycle", #plans == 1, #plans)
+	-- The planner's verdict once per cycle (other gates, such as late once the :15 window closes, log their own line).
+	local function planner()
+		local r = {}
+		for _, l in ipairs(hev(lines, "lane_plan")) do if field(l, "gate") == "planner" then table.insert(r, l) end end
+		return r
+	end
+	local plans = planner()
+	check("one planner lane_plan in the cycle", #plans == 1, #plans)
 	check("lane_plan names the planner's choice and reason",
 		field(plans[1], "gate") == "planner" and field(plans[1], "tech") == "none" and field(plans[1], "reason") == "one per cycle (aggro_pull)", plans[1])
 	check("lane_plan carries the score inputs", tonumber(field(plans[1], "score")) ~= nil and tonumber(field(plans[1], "front")) ~= nil
 		and field(plans[1], "owner") == "ok" and field(plans[1], "partner") == "1", plans[1])
 	for t = 100, 103, 0.5 do T = t H.Lane.CampJobDesire(support) end
-	plans = hev(lines, "lane_plan")
+	plans = planner()
 	check("next cycle: a second lane_plan, now a pull", #plans == 2 and field(plans[2], "tech") == "full_pull", plans[2])
 	check("lane_plan carries the meet amount", tonumber(field(plans[1], "meet")) ~= nil and tonumber(field(plans[2], "meet")) ~= nil, plans[1])
 	local starts = hev(lines, "lane_job_start")

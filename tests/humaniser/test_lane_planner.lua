@@ -15,7 +15,7 @@ end
 local function input(over)
 	local i = {
 		skill = 0.9, role = "support", isMid = false, now = 100, dotaTime = 100, plan = view(), laneScore = 0,
-		eqPos = -0.7, allyCreeps = 4, enemyCreeps = 4, enemyLaners = 1, pullCamp = true, stackedPullCamp = false,
+		eqPos = -0.7, enemyLaners = 1, pullCamp = true, stackedPullCamp = false,
 		mayRunCampJob = true, partnerSafe = true, coverAbsentCore = false, rotationPlanned = false,
 		humanCoreInLane = false, desiredEq = -0.7,
 	}
@@ -28,11 +28,10 @@ local function choose(over) return P.Choose(input(over)) end
 local function desc(c) return c.tech .. " (" .. c.reason .. ")" end
 
 do
-	check("half pull at 0.9 on small drift", choose({ laneScore = -0.3 }).tech == "half_pull", desc(choose({ laneScore = -0.3 })))
-	local c = choose({ laneScore = -0.3, skill = 0.55 })
-	check("below the half-pull gate falls back to aggro pull", c.tech == "aggro_pull", desc(c))
+	local c = choose({ laneScore = -0.3 })
+	check("small drift is an aggro pull", c.tech == "aggro_pull", desc(c))
 	c = choose({ laneScore = -0.3, skill = 0.4 })
-	check("below both gates does nothing", c.tech == "none", desc(c))
+	check("below the aggro-pull gate does nothing", c.tech == "none", desc(c))
 end
 
 do
@@ -44,7 +43,7 @@ do
 	local c = choose({ laneScore = -1.6 })
 	check("full pull when pushed to the enemy T1", c.tech == "full_pull", desc(c))
 	c = choose({ laneScore = -1.6, partnerSafe = false })
-	check("no pull while the partner is in danger", c.tech ~= "full_pull" and c.tech ~= "half_pull", desc(c))
+	check("no pull while the partner is in danger", c.tech ~= "full_pull", desc(c))
 	c = choose({ laneScore = -1.6, mayRunCampJob = false })
 	check("non-owner corrects with an aggro pull instead", c.tech == "aggro_pull", desc(c))
 end
@@ -52,10 +51,8 @@ end
 do
 	local c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -1.0 })
 	check("support freezes instead of full-pulling under FREEZE", c.tech == "freeze", desc(c))
-	c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -0.3, allyCreeps = 7, enemyCreeps = 4 })
-	check("large wave under FREEZE is thinned with a half pull", c.tech == "half_pull" and c.reason == "freeze: thin large wave", desc(c))
-	c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -0.3, allyCreeps = 5, enemyCreeps = 4 })
-	check("wave not large enough under FREEZE keeps freezing", c.tech == "freeze", desc(c))
+	c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -0.3 })
+	check("small drift under FREEZE keeps freezing", c.tech == "freeze", desc(c))
 	c = choose({ plan = view({ plan = "HOLD" }), laneScore = -1.6 })
 	check("full pull allowed under HOLD", c.tech == "full_pull", desc(c))
 end
@@ -285,7 +282,7 @@ end
 
 do
 	check("forecast score drives the full pull", choose({ laneScore = -0.4, forecastScore = -0.62 }).tech == "full_pull")
-	check("forecast score can hold back a full pull", choose({ laneScore = -0.6, forecastScore = -0.38 }).tech == "half_pull")
+	check("forecast score can hold back a full pull", choose({ laneScore = -0.6, forecastScore = -0.38 }).tech == "aggro_pull")
 	local c = choose({ plan = view({ plan = "FREEZE" }), laneScore = -1.0, forecastScore = -0.1 })
 	check("freeze branch ignores the forecast", c.tech == "freeze", desc(c))
 end
@@ -293,7 +290,7 @@ end
 do
 	-- Plan through buildInput and ScoreFor: eight enemy creeps (two ranged) against none of ours at the front give
 	-- imbalance about -0.9, so the forecast eq is about -0.36. At skill 0.9 the forecast score is then about -0.48
-	-- (half pull) where laneScore alone, -0.8, is a full pull.
+	-- (aggro pull) where laneScore alone, -0.8, is a full pull.
 	local H, _, support, P = planWorld(0.9)
 	for i = 1, 8 do
 		MakeCreep({ team = 3, x = 50 * i, y = -5000, name = i <= 2 and "npc_dota_creep_badguys_ranged" or nil })
@@ -306,7 +303,7 @@ do
 	for k, v in pairs(i) do raw[k] = v end
 	raw.forecastScore = nil
 	check("control: laneScore alone would full-pull", P.Choose(raw).tech == "full_pull", desc(P.Choose(raw)))
-	check("Plan reads the forecast: half pull", c.tech == "half_pull", desc(c) .. " fscore=" .. tostring(i.forecastScore))
+	check("Plan reads the forecast: aggro pull", c.tech == "aggro_pull", desc(c) .. " fscore=" .. tostring(i.forecastScore))
 end
 
 do

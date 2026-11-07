@@ -54,11 +54,9 @@ function buildEntry(a) {
     if (a.meetPoint) f.push(`laneKind: "${laneKindFor(a.team, a.meetPoint)}"`);
     f.push(`near: ${vec(a)}`);
     if (a.aggroSec !== undefined) f.push(`pullAggroSec: ${pair(a.aggroSec)}`);
-    if (a.halfAggroSec !== undefined) f.push(`halfAggroSec: ${pair(a.halfAggroSec)}`);
     if (a.stackAggroSec !== undefined) f.push(`stackAggroSec: ${num(a.stackAggroSec)}`);
     if (a.pullPath) f.push(`pullPath: ${vecs(a.pullPath)}`);
     if (a.meetPoint) f.push(`meetPoint: ${vec(a.meetPoint)}`);
-    if (a.halfMeetPoint) f.push(`halfMeetPoint: ${vec(a.halfMeetPoint)}`);
     if (a.stackExitPath) f.push(`stackExitPath: ${vecs(a.stackExitPath)}`);
     f.push('source: "replay"');
     return `    { ${f.join(', ')} },`;
@@ -77,8 +75,8 @@ function run(aggPath = DEFAULT_AGG, dataPath = DEFAULT_DATA) {
     const head = text.slice(0, b + BEGIN.length);
     const tail = text.slice(text.lastIndexOf('\n', e) + 1);
     fs.writeFileSync(dataPath, `${head}\n${lines.map((l) => `${l}\n`).join('')}${tail}`);
-    const totals = aggregates.reduce((t, a) => ({ stacks: t.stacks + a.samples.stacks, pulls: t.pulls + a.samples.pulls, half: t.half + a.samples.half }), { stacks: 0, pulls: 0, half: 0 });
-    console.log(`camps covered: ${lines.length}; samples: ${totals.pulls} pulls, ${totals.half} half pulls, ${totals.stacks} stacks`);
+    const totals = aggregates.reduce((t, a) => ({ stacks: t.stacks + a.samples.stacks, pulls: t.pulls + a.samples.pulls }), { stacks: 0, pulls: 0 });
+    console.log(`camps covered: ${lines.length}; samples: ${totals.pulls} pulls, ${totals.stacks} stacks`);
     return { covered: lines.length, ...totals };
 }
 

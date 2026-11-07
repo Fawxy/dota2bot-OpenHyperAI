@@ -212,7 +212,7 @@ function UnitMeta:GetNearbyHeroes(r, enemy)
 	return out
 end
 -- Like GetUnitToLocationDistance, on the raw position: in the game the call returns a number for a unit out of vision whose
--- GetLocation is nil (phhar8: pull_creep dn to a tagged neutral in the frame the watch's GetLocation read errored); whether
+-- GetLocation is nil (phhar8: a creep's distance to a tagged neutral in the frame the watch's GetLocation read errored); whether
 -- that number is the true distance the log does not show.
 function GetUnitToUnitDistance(a, b)
 	local dx, dy = a.loc.x - b.loc.x, a.loc.y - b.loc.y

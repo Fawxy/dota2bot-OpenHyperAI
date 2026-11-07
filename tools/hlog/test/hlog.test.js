@@ -453,7 +453,6 @@ test('summary reports take-pull outcomes and swings', () => {
             '[HEV] t=114 ev=lane_job_end pid=0 kind=contest camp=2 reason=low-hp pre=0 take=1 swings=0',
             '[HEV] t=115 ev=lane_job_end pid=0 kind=contest camp=2 reason=lane-wave pre=0 take=1 swings=0',
             '[HEV] t=116 ev=lane_signal pid=0 kind=pull lane=3 camp=2 enemy=8 noticed=1 inferred=0',
-            '[HEV] t=116.5 ev=lane_signal pid=0 kind=half_pull lane=3 camp=2 enemy=-1 noticed=0 inferred=0',
             '[HEV] t=117 ev=lane_signal pid=4 kind=stack lane=3 camp=5 enemy=8 noticed=1 inferred=0',
             '[HEV] t=117.5 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
             '[HEV] t=118 ev=lane_take_skip pid=0 kind=pull camp=2 reason=lane-creeps',
@@ -467,7 +466,7 @@ test('summary reports take-pull outcomes and swings', () => {
     )[0];
     const text = report.summary(game);
     assert.match(text, /take-pull: started 3 swings 4 no-creeps 1 timeout 0 outnumbered 1 low-hp 1 lane-wave 1 aborted 1/);
-    assert.match(text, /pull signals: 2 noticed 1; take skipped: lane-creeps 2 owner 1/);
+    assert.match(text, /pull signals: 1 noticed 1; take skipped: lane-creeps 2 owner 1/);
     assert.match(text, /enemy roles read by rad: mid mid=lina\[9\], bot support=lion\[8\] \(1 changes\)/);
     assert.doesNotMatch(text, /enemy roles read by dire/);
     assert.doesNotMatch(text, /pre-contest:/);

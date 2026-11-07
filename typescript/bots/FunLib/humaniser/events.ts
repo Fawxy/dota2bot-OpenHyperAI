@@ -1482,30 +1482,18 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
-        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads (slice pull-half;
-        // before it, the wave body's shift and LiveRead's readings).
+        // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads. The hit is
+        // timed on the wave's front creep (pull_timing CreepTimer): hr geo (timed on it) or plan (never read), hc creeps
+        // read, hn the creep after the front one and hb the back creep: predicted distance past the meet point at the
+        // neutrals' arrival.
         sh: "num",
         lv: "num",
         s0: "num",
-        // Slice pull-half: the pull's kind (full or half); its creep-timed hit (pull_timing CreepTimer) at the order: hr geo
-        // (timed on the aimed creep: a full pull's front one, a half pull's second) or plan (never read), hc creeps read, hn
-        // the creep after the aimed one and hb the back creep: predicted distance past the meet point at the neutrals' arrival.
-        // A half pull's clearance search on that hit: hf the nearest the front two creeps come to an aggro source (the
-        // neutrals, or the hit puller in HalfAcquire's frame), hu the nearest the third comes, hm the smaller of hf - 500 and
-        // 500 - hu (negative: no hit keeps the front two out and turns the third), hs how far short of the meet point the
-        // puller stands (HalfStandBack); hi the live step-in's offset from that point towards the meet point when the wave
-        // engaged (negative: back towards the camp).
-        pk: "str",
         nsp: "num",
         hr: "str",
         hc: "num",
         hn: "num",
         hb: "num",
-        hf: "num",
-        hu: "num",
-        hm: "num",
-        hs: "num",
-        hi: "num",
         ht: "num",
         g4: "num",
         gh: "num",
@@ -1520,75 +1508,6 @@ export const EVENTS = {
         // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
         shs: "num",
         shh: "num",
-        // Slice pull-aggro (EC-064: a lane creep turns when a neutral's attack lands on its hero within the creep's aggro
-        // range): a landing is a frame after the hit where the puller's HP fell while a tagged neutral had it as its attack
-        // target and no enemy hero or lane creep did. fl the first landing (game time), lc landings to the trail's end, la
-        // the first landing with one of our lane creeps within its own acquisition range (GetAcquisitionRange) of the
-        // puller, nar the largest attack range among the tagged neutrals at the hit.
-        fl: "num",
-        lc: "num",
-        la: "num",
-        nar: "num",
-        // Slice pull-aggro (Ours.PullOnHero, full pulls; unset otherwise; design 08/11/2026): ent the predicted game time
-        // the front creep comes within its turn radius (GetAcquisitionRange capped at HeroTurnRange, less the margin) of the
-        // stand, at the last read; lvp the leave time planned at the hit, lva the lead's actual start; fst the predicted
-        // first landing on the puller (s after the hit order) and fl1 the first seen (s after the confirmed hit); lag the
-        // neutrals' predicted lag behind the puller at the stand (s) and laga the measured one (the first tagged neutral
-        // within its attack reach of the puller after its arrival); gup and clp the predicted give-up and clash (game time;
-        // clp unset with no enemy wave seen), cla the first frame our wave fought theirs; tkc and tks tank seconds (a
-        // tagged neutral attacking the puller) at the camp and from the lead on; dl the deadline that ended the watch or
-        // the job (give-up, clash, back, cap); fb 1 when the first landing was the unseen-camp fallback.
-        ent: "num",
-        lvp: "num",
-        lva: "num",
-        fst: "num",
-        fl1: "num",
-        lag: "num",
-        laga: "num",
-        gup: "num",
-        clp: "num",
-        cla: "num",
-        tkc: "num",
-        tks: "num",
-        dl: "str",
-        fb: "num",
-    },
-    // Slice pull-half (the half-pull harness): one line per lane creep of ours seen near the watch after the hit, written
-    // with the pull's pull_job line. ci its order of appearance (0 first, about the front), rg ranged (1|0), tr 1 when its
-    // attack target became one of the camp's neutrals before the line was written, else 0. The rest are read at the turn
-    // (tr 1) or at its nearest approach to the puller (tr 0): tt seconds after the hit (ht), dp its distance to the puller,
-    // dn to the nearest tagged neutral alive, ph 1 when a tagged neutral had the puller as its attack target, pv the puller's
-    // speed over the last frame (0 standing), po the puller's distance off the lane path, ca the creep's distance along the
-    // lane past the meet point (negative: short of it). The measurement behind HalfHeroAggro (EC-090: no written rule).
-    // The creep's decision frame, before its target shows: lt seconds after the hit its distance off the lane path first
-    // rose PullJob Leave above its own least so far (it left the lane), ld its distance to the puller and ln to the nearest
-    // tagged neutral then; unset when it never left.
-    pull_creep: {
-        pid: "num",
-        slot: "num",
-        camp: "num",
-        ci: "num",
-        rg: "num",
-        tr: "num",
-        tt: "num",
-        dp: "num",
-        dn: "num",
-        ph: "num",
-        pv: "num",
-        po: "num",
-        ca: "num",
-        lt: "num",
-        ld: "num",
-        ln: "num",
-        // Slice pull-aggro, at the neutral landings on the puller (pull_job fl): ar the creep's own acquisition range, hk
-        // landings while it was within ar of the puller (to its turn for tr 1), hl seconds from the last landing to its turn
-        // (tr 1 only), hd its distance to the puller and hn to the nearest tagged neutral at that landing (tr 1) or at the
-        // landing it was nearest the puller (tr 0); unset when no landing came while it was tracked.
-        ar: "num",
-        hk: "num",
-        hl: "num",
-        hd: "num",
-        hn: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -1658,20 +1577,6 @@ export const EVENTS = {
         cdmg: "num",
         php: "num",
         se: "num",
-        // Slice pull-half: the pull's kind for kind=pull (full or half); hm a half pull's clearance margin when it stayed for
-        // want of one (why=half-geo; pull_job hm).
-        pk: "str",
-        hm: "num",
-        // Slice pull-aggro: pm 1 when a wanted half pull was refused (or turned into the full one) for a melee spawn.
-        pm: "num",
-        // Slice pull-aggro: nw why the full pull's timing had no window at the last read (give-up: the front creep enters
-        // after the predicted give-up less GiveUpMargin; clash: after the predicted clash); go=0 why=no-window when it held.
-        nw: "str",
-        // nws the window's slack at that read: the predicted give-up less GiveUpMargin, less the entry (s; negative closed).
-        nws: "num",
-        // ent and clp: the entry and the predicted clash (game time) at that read, as on pull_job (review M2).
-        ent: "num",
-        clp: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).
