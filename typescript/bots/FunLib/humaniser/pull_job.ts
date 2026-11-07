@@ -122,6 +122,10 @@ interface CampState {
     seen: number;
     hp: number;
     vis: boolean;
+    /** The whole box is in sight (its four corners), not just the origin: fogged neutrals are not returned, so a count read
+     *  with part of the box in fog is a floor (drill pull ldr6: 4 of 9 pulls cancelled `one` a few seconds into the walk,
+     *  one full-HP neutral seen, after a cheat spawn of a full camp). Unset in hand-built states. */
+    full?: boolean;
     /** The neutrals returned, for the damage estimate. */
     units: Unit[];
     /** At a decision: the camp's expected damage on the puller (CampDamage) and the puller's HP. */
@@ -333,7 +337,10 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
     const m = LaneConfig.Settings().Radii.BoxMargin;
     const lo = spawner.min;
     const hi = spawner.max;
-    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), units: [] };
+    const z = spawner.location.z;
+    const full =
+        IsLocationVisible(Vector(lo.x, lo.y, z)) && IsLocationVisible(Vector(hi.x, lo.y, z)) && IsLocationVisible(Vector(lo.x, hi.y, z)) && IsLocationVisible(Vector(hi.x, hi.y, z));
+    const s: CampState = { n: 0, seen: 0, hp: 0, vis: IsLocationVisible(spawner.location), full, units: [] };
     for (const u of GetUnitList(UnitType.NeutralCreeps)) {
         if (!u.IsAlive()) continue;
         const p = u.GetLocation();
@@ -348,7 +355,7 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
 }
 
 /**
- * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
+ * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's whole box, and no
  * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
  * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
  * neutral left: too little to hold a wave (banked `ok` pulls with one neutral seen at the start diverted 26 of 56, two or
@@ -356,7 +363,7 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
     const period = LaneConfig.Settings().Timing.PullPeriod;
-    if (!s.vis || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
+    if (!s.vis || s.full === false || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
     if (s.n === 0) return "empty";
     if (s.n === 1) return "one";
     return undefined;
@@ -564,6 +571,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cs", s.seen],
         ["chp", r0(s.hp)],
         ["cv", s.vis ? 1 : 0],
+        ["cfv", s.full === undefined ? undefined : s.full ? 1 : 0],
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
         ["se", r0(s.se)],

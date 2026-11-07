@@ -1501,6 +1501,7 @@ export const EVENTS = {
         cs: "num",
         chp: "num",
         cv: "num",
+        cfv: "num",
         cdmg: "num",
         php: "num",
         se: "num",
@@ -1572,7 +1573,7 @@ export const EVENTS = {
     // point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs
     // before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
-    // camp's origin visible (1|0), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
+    // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
     // hero to the stand or meet point, within PullJob SiteEnemy).
     choice: {
@@ -1596,6 +1597,7 @@ export const EVENTS = {
         cs: "num",
         chp: "num",
         cv: "num",
+        cfv: "num",
         cdmg: "num",
         php: "num",
         se: "num",

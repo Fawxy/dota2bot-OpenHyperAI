@@ -483,6 +483,13 @@ do
 	local fogged = { n = 1, seen = 1, hp = 300, vis = false, units = {} }
 	check("one neutral, seen: why=one; two: no gate; out of sight or a spawn first: no gate", w.H.PullJob.CampGate(one, 61, 78) == "one"
 		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
+	-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the origin in sight, part of the
+	-- box in fog, one full-HP neutral returned of a freshly spawned camp: the count is a floor, so no `one` or `empty` yet.
+	local part = { n = 1, seen = 1, hp = 400, vis = true, full = false, units = {} }
+	local whole = { n = 1, seen = 1, hp = 400, vis = true, full = true, units = {} }
+	check("part of the box in fog: no gate; the whole box in sight: why=one", w.H.PullJob.CampGate(part, 61, 78) == nil
+		and w.H.PullJob.CampGate(whole, 61, 78) == "one" and w.H.PullJob.CampGate({ n = 0, seen = 0, hp = 0, vis = true, full = false, units = {} }, 61, 78) == nil)
+	check("the live read sets full (the test world sees every point)", w.H.PullJob.CampStateOf(w.H.Lane.Camps.SpawnerByIdx(w.H.Lane.Camps.PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
