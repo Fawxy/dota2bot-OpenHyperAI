@@ -1239,8 +1239,7 @@ local function trackWorldFacts(team, bot)
         hero = lc.Thresholds.HeroRadius,
         laneCreep = lc.PullTiming.CreepSpeed,
         neutral = lc.PullTiming.NeutralSpeed.medium,
-        neutralSeeds = lc.PullTiming.NeutralSpeed,
-        acquisition = 500
+        neutralSeeds = lc.PullTiming.NeutralSpeed
     })
     local fell = WorldFacts.Fallbacks()
     for ____, r in ipairs(rows) do
