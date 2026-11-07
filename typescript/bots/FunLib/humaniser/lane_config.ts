@@ -409,6 +409,26 @@ export const DEFAULTS = {
         // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
         // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
         HalfStepNeutrals: false,
+        // Slice pull-aggro (Ours.PullOnHero, full pulls; slice file "Facts the behaviour needs"). HeroLandErr: the timing's
+        // error in seconds; the stand margin is lane creep speed x it (`judgement`). LockFor: seconds past the leave time
+        // with no tagged neutral on the puller before the pull ends `no-aggro` (`judgement`). HeroFirst: the first landing
+        // on the puller after the hit while the camp is unseen (pull_job `fb` 1; `judgement`). HeroTurnRange caps each
+        // creep's GetAcquisitionRange as the radius it turns in on hits landing on its hero (fitted: walking ranged creeps
+        // with landings at 568-593 did not turn, 0 of 5, phagg1/5/6; a siege one at 692). GiveUpFrom: a neutral's give-up
+        // timer starts this far from its camp (EC-084); GiveUpAfter: seconds from the first neutral past it to the camp's
+        // give-up for a camp with no fitted value (judgement, the fitted camps' low end; EC-084 says 5); GiveUpMargin: a
+        // pull whose entry falls later than the predicted give-up less this is not started (`judgement`).
+        HeroLandErr: 0.2,
+        LockFor: 1,
+        HeroFirst: 1,
+        HeroTurnRange: 500,
+        // GiveUpAfterCamp: the same per camp index where banked pulls fit it (gu - g4 means: 1 3.8 s n 150, 26 3.7 s n 58,
+        // 18 4.8 s n 109, 2 6.6 s n 83); GiveUpAfter for any other camp. GiveUpMargin 0.5 (was 1: the ponh1 smoke game
+        // held 32 of 34 wanted pulls from camps 1, 18 and 2 as no-window on the single 3.5 s).
+        GiveUpFrom: 400,
+        GiveUpAfter: 3.5,
+        GiveUpAfterCamp: { [1]: 3.8, [26]: 3.7, [18]: 4.8, [2]: 6.6 } as Record<number, number>,
+        GiveUpMargin: 0.5,
         // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
         HalfAll: false,
         // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,

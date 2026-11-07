@@ -218,7 +218,18 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
  * meet point. Empty without a wave model.
  */
 export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): number[] {
-    const out: number[] = [];
+    return WaveCreeps(timing, aggroAt, now).map((c) => c.along);
+}
+
+/** One creep of the timed wave: its distance along the lane path and its own acquisition range (GetAcquisitionRange). */
+export interface WaveCreep {
+    along: number;
+    acq: number;
+}
+
+/** WaveAlongs with each creep's acquisition range (slice pull-aggro: the trigger radius is the creep's own). */
+export function WaveCreeps(timing: PullTiming, aggroAt: number, now: number): WaveCreep[] {
+    const out: WaveCreep[] = [];
     if (timing.source !== "wave" || timing.waveAfter === undefined || timing.waveTravel === undefined || timing.lanePath === undefined) return out;
     const cfg = settings();
     const spawnAt = aggroAt + timing.waveAfter - timing.waveTravel;
@@ -228,9 +239,12 @@ export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): nu
     for (const c of GetUnitList(kind) ?? []) {
         if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
-        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push(along);
+        // The radius a creep turns in on hits landing on its hero: GetAcquisitionRange capped at HeroTurnRange (ranged at
+        // 586-593 and siege at 692 inside their 600 and 800 did not turn, phagg1 and phagg5).
+        if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window)
+            out.push({ along, acq: math.min(c.GetAcquisitionRange(), cfg.HeroTurnRange) });
     }
-    out.sort((a, b) => b - a);
+    out.sort((a, b) => b.along - a.along);
     return out;
 }
 
@@ -279,6 +293,116 @@ export interface CreepTimer {
     first?: number;
     readAt?: number;
     reads: number;
+    /** Slice pull-aggro (Ours.PullOnHero, full pulls): the puller's side of the timing; set, Read times the hit on it. */
+    hero?: OnHero;
+    /** At the last on-hero read: when the aimed creep comes within its turn radius of the stand (`ent`), when the puller
+     *  leaves the camp (`leave`), its walk to the stand (s), the neutrals' lag behind it (s), the predicted give-up and
+     *  clash (game time; clash undefined with no enemy wave seen), and why no window opens (`give-up`, `clash`). */
+    ent?: number;
+    leave?: number;
+    heroWalk?: number;
+    lag?: number;
+    gup?: number;
+    clp?: number;
+    nowin?: string;
+    /** The window's slack at the last read: the predicted give-up less GiveUpMargin, less the entry (s; negative: closed). */
+    slack?: number;
+}
+
+/**
+ * Slice pull-aggro (design 08/11/2026): the puller hits from `from`, holds there taking the camp's hits until it leaves,
+ * then walks `route` (ending at the stand by the lane) at `speed` with the neutrals behind it. `first`: seconds from the
+ * hit order to the first landing on the puller at the camp; `lagExtra` a melee neutral's attack point (0 for a ranged
+ * spawn); `neutralSpeed` the camp's; `pass` seconds from the leave until the first neutral is GiveUpFrom out of its camp.
+ */
+export interface OnHero {
+    from: Vector;
+    route: Vector[];
+    speed: number;
+    first: number;
+    lagExtra: number;
+    neutralSpeed: number;
+    pass: number;
+    /** Seconds from a neutral's GiveUpFrom line to its give-up at this camp (GiveUpAfterCamp, else GiveUpAfter). */
+    giveUp: number;
+}
+
+/** Slice pull-aggro: the stand margin, lane creep speed x the timing's error (centre distances, as the turn radius was fitted). */
+export function HeroMargin(): number {
+    const cfg = settings();
+    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr;
+}
+
+/** Slice pull-aggro: the predicted clash of `creeps` (ours on the timing's lane path, front first) with the other team's
+ *  nearest lane creep ahead of the front on that path, both at lane creep speed `v`; undefined with none seen. */
+function Clash(t: PullTiming, creeps: WaveCreep[], now: number, v: number): number | undefined {
+    const path = t.lanePath;
+    if (path === undefined || creeps.length === 0) return undefined;
+    const ours = t.team === undefined || t.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
+    const kind = ours === UnitType.AlliedCreeps ? UnitType.EnemyCreeps : UnitType.AlliedCreeps;
+    const front = creeps[0].along;
+    let near: number | undefined;
+    for (const c of GetUnitList(kind) ?? []) {
+        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        const [along, off] = Along(path, c.GetLocation());
+        if (off > settings().LiveMaxOffset || along < front) continue;
+        if (near === undefined || along < near) near = along;
+    }
+    return near !== undefined ? now + (near - front) / (2 * v) : undefined;
+}
+
+/** Read's on-hero branch: the hit second (`leave` less `first`), or undefined until the aimed creep and one behind it are read. */
+function ReadOnHero(c: CreepTimer, now: number, h: OnHero): number | undefined {
+    const t = c.timing;
+    const path = t.lanePath;
+    const stand = h.route[h.route.length - 1];
+    if (path === undefined || stand === undefined) return undefined;
+    const cfg = settings();
+    const creeps = WaveCreeps(t, c.slot, now);
+    c.n = creeps.length;
+    const aim = c.index;
+    if (creeps.length < aim + 2) return undefined;
+    const v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed);
+    const [ta, to] = Along(path, stand);
+    const r = math.max(0, creeps[aim].acq - HeroMargin());
+    const inside = to < r ? math.sqrt(r * r - to * to) : 0;
+    const enter = now + (ta - inside - creeps[aim].along) / v;
+    const len = WalkLength(h.from, h.route);
+    const walk = len / math.max(1, h.speed);
+    const lag = math.max(0, len * (1 / math.max(1, h.neutralSpeed) - 1 / math.max(1, h.speed))) + h.lagExtra;
+    const leave = enter - walk - lag;
+    c.ent = enter;
+    c.leave = leave;
+    c.heroWalk = walk;
+    c.lag = lag;
+    c.gup = leave + h.pass + h.giveUp;
+    c.clp = Clash(t, creeps, now, v);
+    c.slack = c.gup - cfg.GiveUpMargin - enter;
+    c.nowin = c.slack < 0 ? "give-up" : c.clp !== undefined && enter > c.clp ? "clash" : undefined;
+    c.waveAt = now + (ta - creeps[creeps.length - 1].along) / v;
+    return leave - h.first;
+}
+
+/** Slice pull-aggro: when the puller leaves the camp: the last on-hero read's, else the hit second plus the first landing. */
+export function Leave(c: CreepTimer): number | undefined {
+    if (c.leave !== undefined) return c.leave;
+    return c.hero !== undefined ? (c.hit ?? c.slot) + c.hero.first : undefined;
+}
+
+/**
+ * Slice pull-aggro's deadline (design step 5), "back": the back creep of the timed wave still on the lane path is past
+ * `stand` along it and beyond its turn radius of it. False with none of the wave on the path (all turned, or none read).
+ */
+export function BackPast(c: CreepTimer, stand: Vector, now: number): boolean {
+    const path = c.timing.lanePath;
+    if (path === undefined) return false;
+    const creeps = WaveCreeps(c.timing, c.slot, now);
+    const back = creeps[creeps.length - 1];
+    if (back === undefined) return false;
+    const [sa] = Along(path, stand);
+    if (back.along <= sa) return false;
+    const [bx, by] = PathPoint(path, back.along);
+    return hypot(stand.x, stand.y, bx, by) > back.acq;
 }
 
 export function Timer(timing: PullTiming, slot: number, index: number, past: number, keep = 0, heroSpeed?: number): CreepTimer {
@@ -514,6 +638,15 @@ export function Read(c: CreepTimer, now: number): number {
     const walk = t.walk;
     if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && walk !== undefined) {
         c.readAt = now;
+        if (c.hero !== undefined) {
+            const hit = ReadOnHero(c, now, c.hero);
+            if (hit !== undefined) {
+                c.hit = hit;
+                c.reads += 1;
+                if (c.first === undefined) c.first = hit - c.slot;
+            }
+            return c.hit ?? c.slot;
+        }
         const alongs = WaveAlongs(t, c.slot, now);
         c.n = alongs.length;
         if (alongs.length >= math.max(c.index, c.keep) + 2) {

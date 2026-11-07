@@ -278,6 +278,41 @@ do
 end
 
 do
+    -- Hold on the camp (slice pull-aggro, design 08/11/2026): after the confirmed hit the verb holds where it hit until the
+    -- host's leave time (8 s) whether or not a landing came, then leads; the aggro read latches from the hit.
+    local sim, bot = world()
+    local n = sim:addNeutral{ x = 700, y = 0, hp = 500 }
+    local at79
+    sim:at(7.9, function() at79 = Sim.dist(bot.loc, { x = 600, y = 0 }) end)
+    start(bot, function(ctx)
+        return job.pull(ctx, pullPlan{ watchSec = 0.5, holdUntil = function() return 8 end, aggroed = function() return sim.t >= 5.5 and sim.t < 6 end,
+            deadline = function() return nil end })
+    end, nil)
+    local r, _, labels = run(sim, bot, { n })
+    T.eq("pull hold: ok", r.reason, "ok")
+    T.eq("pull hold: phases", table.concat(labels, ","), "travel,wait,aggro,hold,lead,watch")
+    T.check("pull hold: the hold posted", holdsOf(sim).job_hold)
+    T.check("pull hold: still at the camp at 7.9 s, the aggro latched at 5.5-6 s", at79 ~= nil and at79 <= 150, at79)
+    -- No neutral on the bot by leave + aggroFor: fails timeout no-aggro on the lead, not before the leave.
+    local sim2, bot2 = world()
+    local n2 = sim2:addNeutral{ x = 700, y = 0, hp = 500 }
+    start(bot2, function(ctx) return job.pull(ctx, pullPlan{ holdUntil = function() return 7 end, aggroFor = 1, aggroed = function() return false end }) end)
+    local r2, t2 = run(sim2, bot2, { n2 })
+    T.check("pull hold: no aggro fails timeout no-aggro at leave + aggroFor", not r2.success and r2.reason == "timeout" and r2.message == "no-aggro"
+        and t2 >= 8 - 1e-9 and t2 <= 8 + 2 * DT, tostring(r2.reason) .. ":" .. tostring(r2.message) .. " " .. t2)
+    -- A deadline cause during the hold ends the job there.
+    local sim3, bot3 = world()
+    local n3 = sim3:addNeutral{ x = 700, y = 0, hp = 500 }
+    start(bot3, function(ctx)
+        return job.pull(ctx, pullPlan{ holdUntil = function() return 9 end, aggroed = function() return true end,
+            deadline = function() return sim3.t >= 7 and "clash" or nil end })
+    end)
+    local r3, t3, l3 = run(sim3, bot3, { n3 })
+    T.check("pull hold: a deadline in the hold fails deadline:clash", not r3.success and r3.message == "deadline:clash" and t3 < 9 and l3[#l3] == "hold",
+        tostring(r3.message) .. " " .. t3)
+end
+
+do
     -- Lead blocked: the camp is chasing a bot that cannot reach the meet point -> fails with message "lead".
     local sim, bot = world()
     sim:addNeutral{ x = 700, y = 0, hp = 500 }

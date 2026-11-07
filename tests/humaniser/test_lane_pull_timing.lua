@@ -366,4 +366,75 @@ do
 	CREEPS[2], CREEPS[3] = {}, {}
 end
 
+do
+	-- Slice pull-aggro (Ours.PullOnHero, design 08/11/2026): with the puller's side set (timer.hero) the leave time is the
+	-- front creep's entry into its turn radius (less the margin) of the stand, less the puller's walk and the neutrals' lag;
+	-- the hit is the leave less the first landing. The lane runs along y = -5000; the camp straight below the meet point.
+	-- HeroTurnRange 1000 keeps the ranges uncapped; the margin is 105 (HeroLandErr 105 / 325).
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 },
+		HeroTurnRange = 1000, HeroLandErr = 105 / 325, GiveUpMargin = 1 } }).Lane.PullTiming
+	CURRENT_TEAM = 2
+	CREEPS[2], CREEPS[3] = {}, {}
+	local meet = Vector(-1600, -5000)
+	local origin = Vector(-1600, -6200)
+	local from = Vector(-1600, -6000)
+	local timing = PT.For(2, Lane.Bot, origin, "small", { meet }, false, { 15, 45 })
+	local slot = timing.seconds[1] + 60
+	local m = timing.meetAlong
+	T = slot + timing.waveAfter - timing.waveTravel - AHEAD + (m - 1000) / 325
+	local wave = {}
+	for k = 0, 3 do wave[k + 1] = MakeCreep({ team = 2, x = PATH[1][1] + m - 1000 - 150 * k, y = -5000 }) end
+	-- A melee camp: first landing 1.2 s after the hit, wind-up 0.4 s; neutrals at 250 behind a puller at 300 over the 1000 walk.
+	local full = PT.Timer(timing, slot, 0, 100)
+	full.hero = { from = from, route = { meet }, speed = 300, first = 1.2, lagExtra = 0.4, neutralSpeed = 250, pass = 0, giveUp = 3.5 }
+	local enter = T + (1000 - 395) / 325
+	local lag = 1000 * (1 / 250 - 1 / 300) + 0.4
+	local leave = enter - 1000 / 300 - lag
+	local hit = PT.Read(full, T)
+	check("on hero, melee: the hit is the leave less the first landing", within(hit, leave - 1.2, 1e-6), hit - (leave - 1.2))
+	check("on hero, melee: ent, leave and lag logged", within(full.ent, enter, 1e-6) and within(PT.Leave(full), leave, 1e-6) and within(full.lag, lag, 1e-6), full.lag)
+	-- A ranged camp at the puller's speed: no lag, the first landing 0.5 s.
+	local ranged = PT.Timer(timing, slot, 0, 100)
+	ranged.hero = { from = from, route = { meet }, speed = 300, first = 0.5, lagExtra = 0, neutralSpeed = 300, pass = 0, giveUp = 3.5 }
+	local rhit = PT.Read(ranged, T)
+	check("on hero, ranged: no lag, hit = entry - walk - first", within(rhit, enter - 1000 / 300 - 0.5, 1e-6) and within(ranged.lag, 0, 1e-9), rhit)
+	wave[1].acq = 600
+	ranged.readAt = nil
+	check("on hero: a front creep with 600 acquisition enters 100 sooner", within(PT.Read(ranged, T), enter - 100 / 325 - 1000 / 300 - 0.5, 1e-6))
+	wave[1].acq = nil
+	-- The window: the walk (3.33 s) plus lag (1.07 s) against the give-up 3.5 s after the neutrals pass 400 (pass 0) less 1.
+	check("on hero, melee: the entry after the predicted give-up is no-window give-up", full.nowin == "give-up" and within(full.gup, leave + 3.5, 1e-6), full.nowin)
+	local short = PT.Timer(timing, slot, 0, 100)
+	short.hero = { from = Vector(-1600, -5600), route = { meet }, speed = 300, first = 0.5, lagExtra = 0, neutralSpeed = 300, pass = 0, giveUp = 3.5 }
+	PT.Read(short, T)
+	check("on hero: a 600 walk (2 s) opens the window", short.nowin == nil and short.clp == nil, short.nowin)
+	-- An enemy creep 1000 ahead of our front on the lane: the clash 1000 / 650 s on, before the entry (605 / 325): no window.
+	local foe = MakeCreep({ team = 3, x = PATH[1][1] + m - 1000 + 1000, y = -5000 })
+	short.readAt = nil
+	PT.Read(short, T)
+	check("on hero: the predicted clash from the enemy's front", within(short.clp, T + 1000 / 650, 1e-6), short.clp and short.clp - T)
+	check("on hero: the entry after the clash is no-window clash", short.nowin == "clash", short.nowin)
+	CREEPS[3] = {}
+	-- The deadline's back creep: past the stand along the lane and beyond its range of it.
+	check("back past: the wave short of the stand is not past", not PT.BackPast(short, meet, T))
+	CREEPS[2] = {}
+	local T3 = T + 2000 / 325
+	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + 1200 - 150 * k, y = -5000 }) end
+	check("back past: every creep 750 or more past the stand is past", PT.BackPast(short, meet, T3))
+	CREEPS[2] = {}
+	for k = 0, 3 do MakeCreep({ team = 2, x = meet.x + 900 - 150 * k, y = -5000 }) end
+	check("back past: the back creep 450 past is still in range", not PT.BackPast(short, meet, T3))
+	CREEPS[2], CREEPS[3] = {}, {}
+	-- The default HeroTurnRange (500) caps a ranged creep's 600.
+	local PD = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	local td = PD.For(2, Lane.Bot, origin, "small", { meet }, false, { 15, 45 })
+	CURRENT_TEAM = 2
+	T = slot + td.waveAfter - td.waveTravel - AHEAD + (td.meetAlong - 1000) / 325
+	local u = MakeCreep({ team = 2, x = PATH[1][1] + td.meetAlong - 1000, y = -5000 })
+	u.acq = 600
+	local wc = PD.WaveCreeps(td, slot, T)
+	check("turn radius: a ranged creep's 600 read as 500 (HeroTurnRange)", #wc == 1 and wc[1].acq == 500, tostring(#wc) .. " " .. tostring(wc[1] and wc[1].acq) .. " " .. tostring(td.source))
+	CREEPS[2], CREEPS[3] = {}, {}
+end
+
 finish()

@@ -257,6 +257,9 @@ Customize.Humaniser = {
 -- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
 -- SupportHalfPull (slice pull-half): with SupportPull on, the safe-lane pos5 half-pulls when the lane holds on their half (the
 -- neutrals reach the meet point after the wave's body, Lane.PullTiming.HalfLag) and full-pulls when it pushes out. Off: full pulls only.
+-- PullOnHero (slice pull-aggro): with SupportPull on, a full pull takes the camp's first hits at the camp and leaves on the wave
+-- clock, ending on a wave-bound deadline (EC-064); half pulls keep the old timing, from ranged spawns only. Off: the neutrals'
+-- walk to the meet point (Lane.PullTiming.NeutralSpeed).
 -- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: enemy heroes' reach and creep
 -- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny and SupportHarass on pos4-5 too.
 -- Off: OHA's PositionTarget (cores) and PositionThink (supports).
@@ -284,7 +287,7 @@ Customize.Humaniser = {
 -- ev=lane_ctl. Off: no reading and no line.
 -- LaneControlDrive (slice lane-control 2b): under LaneControl, the decision drives the levers (the idle swing's mode and setup,
 -- lane aggro's feed, the support's pull), each keeping its own gates. Off: shadow, each lever on its own trigger.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportHalfPull = true, PullOnHero = true, LaneSpot = true, LaneSpotTower = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

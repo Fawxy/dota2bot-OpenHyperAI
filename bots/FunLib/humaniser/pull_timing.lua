@@ -57,7 +57,7 @@ local function __TS__ArraySlice(self, first, last)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local settings, LaneAhead
+local settings, hypot, LaneAhead, PathPoint
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -70,6 +70,38 @@ local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 function settings()
     return LaneConfig.Settings().PullTiming
 end
+function hypot(ax, ay, bx, by)
+    local dx = ax - bx
+    local dy = ay - by
+    return math.sqrt(dx * dx + dy * dy)
+end
+--- Distance along `path` (from its first point) to the nearest point on it, and how far `p` is from that point.
+function ____exports.Along(path, p)
+    local acc = 0
+    local bestAlong = 0
+    local bestOff = math.huge
+    do
+        local i = 0
+        while i + 1 < #path do
+            local ax, ay = unpack(path[i + 1])
+            local bx, by = unpack(path[i + 1 + 1])
+            local len = hypot(ax, ay, bx, by)
+            local t = len > 0 and ((p.x - ax) * (bx - ax) + (p.y - ay) * (by - ay)) / (len * len) or 0
+            t = math.max(
+                0,
+                math.min(1, t)
+            )
+            local off = hypot(p.x, p.y, ax + (bx - ax) * t, ay + (by - ay) * t)
+            if off < bestOff then
+                bestOff = off
+                bestAlong = acc + t * len
+            end
+            acc = acc + len
+            i = i + 1
+        end
+    end
+    return bestAlong, bestOff
+end
 function LaneAhead(team, lane)
     local ahead = settings().WaveAhead
     if lane == Lane.Mid then
@@ -77,6 +109,72 @@ function LaneAhead(team, lane)
     end
     local safe = team == Team.Radiant == (lane == Lane.Bot)
     return safe and ahead.safe or ahead.off
+end
+--- WaveAlongs with each creep's acquisition range (slice pull-aggro: the trigger radius is the creep's own).
+function ____exports.WaveCreeps(timing, aggroAt, now)
+    local out = {}
+    if timing.source ~= "wave" or timing.waveAfter == nil or timing.waveTravel == nil or timing.lanePath == nil then
+        return out
+    end
+    local cfg = settings()
+    local spawnAt = aggroAt + timing.waveAfter - timing.waveTravel
+    local expected = (now - spawnAt + (timing.ahead or 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
+    local window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
+    local kind = (timing.team == nil or timing.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
+    for ____, c in ipairs(GetUnitList(kind) or ({})) do
+        do
+            local __continue46
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue46 = true
+                    break
+                end
+                local along, off = ____exports.Along(
+                    timing.lanePath,
+                    c:GetLocation()
+                )
+                if off <= cfg.LiveMaxOffset and math.abs(along - expected) <= window then
+                    out[#out + 1] = {
+                        along = along,
+                        acq = math.min(
+                            c:GetAcquisitionRange(),
+                            cfg.HeroTurnRange
+                        )
+                    }
+                end
+                __continue46 = true
+            until true
+            if not __continue46 then
+                break
+            end
+        end
+    end
+    __TS__ArraySort(
+        out,
+        function(____, a, b) return b.along - a.along end
+    )
+    return out
+end
+function PathPoint(path, along)
+    local acc = 0
+    do
+        local i = 0
+        while i + 1 < #path do
+            local ax, ay = unpack(path[i + 1])
+            local bx, by = unpack(path[i + 1 + 1])
+            local len = hypot(ax, ay, bx, by)
+            if along <= acc + len or i + 2 == #path then
+                local f = len > 0 and math.max(
+                    0,
+                    math.min(1, (along - acc) / len)
+                ) or 0
+                return {ax + (bx - ax) * f, ay + (by - ay) * f}
+            end
+            acc = acc + len
+            i = i + 1
+        end
+    end
+    return {path[1][1], path[1][2]}
 end
 --- 7.41 lane creep paths from maps/dota.vpk (entity lump, 22/10/2026): each team's npc_dota_spawner_<team>_<lane>
 -- origin (the melee spawner), then the path_corner chain from its NPCFirstWaypoint. The first corner lies ~150-540
@@ -163,11 +261,6 @@ local LANE_PATHS = {
     }
 }
 local LANE_NAME = {[Lane.Top] = "top", [Lane.Mid] = "mid", [Lane.Bot] = "bot"}
-local function hypot(ax, ay, bx, by)
-    local dx = ax - bx
-    local dy = ay - by
-    return math.sqrt(dx * dx + dy * dy)
-end
 function ____exports.LanePath(team, lane)
     local name = LANE_NAME[lane]
     if name == nil or team ~= Team.Radiant and team ~= Team.Dire then
@@ -175,33 +268,6 @@ function ____exports.LanePath(team, lane)
     end
     local key = ((team == Team.Radiant and "radiant" or "dire") .. "_") .. name
     return settings().LanePaths[key] or LANE_PATHS[key]
-end
---- Distance along `path` (from its first point) to the nearest point on it, and how far `p` is from that point.
-function ____exports.Along(path, p)
-    local acc = 0
-    local bestAlong = 0
-    local bestOff = math.huge
-    do
-        local i = 0
-        while i + 1 < #path do
-            local ax, ay = unpack(path[i + 1])
-            local bx, by = unpack(path[i + 1 + 1])
-            local len = hypot(ax, ay, bx, by)
-            local t = len > 0 and ((p.x - ax) * (bx - ax) + (p.y - ay) * (by - ay)) / (len * len) or 0
-            t = math.max(
-                0,
-                math.min(1, t)
-            )
-            local off = hypot(p.x, p.y, ax + (bx - ax) * t, ay + (by - ay) * t)
-            if off < bestOff then
-                bestOff = off
-                bestAlong = acc + t * len
-            end
-            acc = acc + len
-            i = i + 1
-        end
-    end
-    return bestAlong, bestOff
 end
 function ____exports.WalkLength(from, path)
     local d = 0
@@ -406,46 +472,125 @@ end
 -- LiveWindow of where the wave should be at `now` for a hit at `aggroAt`, as LiveRead reads them, without its stop at the
 -- meet point. Empty without a wave model.
 function ____exports.WaveAlongs(timing, aggroAt, now)
-    local out = {}
-    if timing.source ~= "wave" or timing.waveAfter == nil or timing.waveTravel == nil or timing.lanePath == nil then
-        return out
-    end
-    local cfg = settings()
-    local spawnAt = aggroAt + timing.waveAfter - timing.waveTravel
-    local expected = (now - spawnAt + (timing.ahead or 0)) * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
-    local window = cfg.LiveWindow * WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
-    local kind = (timing.team == nil or timing.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
-    for ____, c in ipairs(GetUnitList(kind) or ({})) do
-        do
-            local __continue44
-            repeat
-                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue44 = true
-                    break
-                end
-                local along, off = ____exports.Along(
-                    timing.lanePath,
-                    c:GetLocation()
-                )
-                if off <= cfg.LiveMaxOffset and math.abs(along - expected) <= window then
-                    out[#out + 1] = along
-                end
-                __continue44 = true
-            until true
-            if not __continue44 then
-                break
-            end
-        end
-    end
-    __TS__ArraySort(
-        out,
-        function(____, a, b) return b - a end
+    return __TS__ArrayMap(
+        ____exports.WaveCreeps(timing, aggroAt, now),
+        function(____, c) return c.along end
     )
-    return out
 end
 function ____exports.LiveShift(timing, aggroAt, now)
     local ____opt_1 = ____exports.LiveRead(timing, aggroAt, now)
     return ____opt_1 and ____opt_1.shift
+end
+--- Slice pull-aggro: the stand margin, lane creep speed x the timing's error (centre distances, as the turn radius was fitted).
+function ____exports.HeroMargin()
+    local cfg = settings()
+    return WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) * cfg.HeroLandErr
+end
+--- Slice pull-aggro: the predicted clash of `creeps` (ours on the timing's lane path, front first) with the other team's
+-- nearest lane creep ahead of the front on that path, both at lane creep speed `v`; undefined with none seen.
+local function Clash(t, creeps, now, v)
+    local path = t.lanePath
+    if path == nil or #creeps == 0 then
+        return nil
+    end
+    local ours = (t.team == nil or t.team == GetTeam()) and UnitType.AlliedCreeps or UnitType.EnemyCreeps
+    local kind = ours == UnitType.AlliedCreeps and UnitType.EnemyCreeps or UnitType.AlliedCreeps
+    local front = creeps[1].along
+    local near
+    for ____, c in ipairs(GetUnitList(kind) or ({})) do
+        do
+            local __continue55
+            repeat
+                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue55 = true
+                    break
+                end
+                local along, off = ____exports.Along(
+                    path,
+                    c:GetLocation()
+                )
+                if off > settings().LiveMaxOffset or along < front then
+                    __continue55 = true
+                    break
+                end
+                if near == nil or along < near then
+                    near = along
+                end
+                __continue55 = true
+            until true
+            if not __continue55 then
+                break
+            end
+        end
+    end
+    return near ~= nil and now + (near - front) / (2 * v) or nil
+end
+--- Read's on-hero branch: the hit second (`leave` less `first`), or undefined until the aimed creep and one behind it are read.
+local function ReadOnHero(c, now, h)
+    local t = c.timing
+    local path = t.lanePath
+    local stand = h.route[#h.route]
+    if path == nil or stand == nil then
+        return nil
+    end
+    local cfg = settings()
+    local creeps = ____exports.WaveCreeps(t, c.slot, now)
+    c.n = #creeps
+    local aim = c.index
+    if #creeps < aim + 2 then
+        return nil
+    end
+    local v = WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed)
+    local ta, to = ____exports.Along(path, stand)
+    local r = math.max(
+        0,
+        creeps[aim + 1].acq - ____exports.HeroMargin()
+    )
+    local inside = to < r and math.sqrt(r * r - to * to) or 0
+    local enter = now + (ta - inside - creeps[aim + 1].along) / v
+    local len = ____exports.WalkLength(h.from, h.route)
+    local walk = len / math.max(1, h.speed)
+    local lag = math.max(
+        0,
+        len * (1 / math.max(1, h.neutralSpeed) - 1 / math.max(1, h.speed))
+    ) + h.lagExtra
+    local leave = enter - walk - lag
+    c.ent = enter
+    c.leave = leave
+    c.heroWalk = walk
+    c.lag = lag
+    c.gup = leave + h.pass + h.giveUp
+    c.clp = Clash(t, creeps, now, v)
+    c.slack = c.gup - cfg.GiveUpMargin - enter
+    c.nowin = c.slack < 0 and "give-up" or (c.clp ~= nil and enter > c.clp and "clash" or nil)
+    c.waveAt = now + (ta - creeps[#creeps].along) / v
+    return leave - h.first
+end
+--- Slice pull-aggro: when the puller leaves the camp: the last on-hero read's, else the hit second plus the first landing.
+function ____exports.Leave(c)
+    if c.leave ~= nil then
+        return c.leave
+    end
+    return c.hero ~= nil and (c.hit or c.slot) + c.hero.first or nil
+end
+--- Slice pull-aggro's deadline (design step 5), "back": the back creep of the timed wave still on the lane path is past
+-- `stand` along it and beyond its turn radius of it. False with none of the wave on the path (all turned, or none read).
+function ____exports.BackPast(c, stand, now)
+    local path = c.timing.lanePath
+    if path == nil then
+        return false
+    end
+    local creeps = ____exports.WaveCreeps(c.timing, c.slot, now)
+    local back = creeps[#creeps]
+    if back == nil then
+        return false
+    end
+    local sa = ____exports.Along(path, stand)
+    if back.along <= sa then
+        return false
+    end
+    local bx, by = unpack(PathPoint(path, back.along))
+    return hypot(stand.x, stand.y, bx, by) > back.acq
 end
 function ____exports.Timer(timing, slot, index, past, keep, heroSpeed)
     if keep == nil then
@@ -461,28 +606,6 @@ function ____exports.Timer(timing, slot, index, past, keep, heroSpeed)
         n = 0,
         reads = 0
     }
-end
---- The point `along` down `path` (clamped to its ends).
-local function PathPoint(path, along)
-    local acc = 0
-    do
-        local i = 0
-        while i + 1 < #path do
-            local ax, ay = unpack(path[i + 1])
-            local bx, by = unpack(path[i + 1 + 1])
-            local len = hypot(ax, ay, bx, by)
-            if along <= acc + len or i + 2 == #path then
-                local f = len > 0 and math.max(
-                    0,
-                    math.min(1, (along - acc) / len)
-                ) or 0
-                return {ax + (bx - ax) * f, ay + (by - ay) * f}
-            end
-            acc = acc + len
-            i = i + 1
-        end
-    end
-    return {path[1][1], path[1][2]}
 end
 --- Where a walker of the lead path is `s` seconds after the hit: down it from the origin, then at the meet point.
 local function NeutralAt(origin, lead, speed, s)
@@ -740,7 +863,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
         local i = n
         while i >= 0 do
             do
-                local __continue93
+                local __continue112
                 repeat
                     local x = back.x + ux * (full * i / n)
                     local y = back.y + uy * (full * i / n)
@@ -754,7 +877,7 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                         ) >= pin then
                             return Vector(x, y, stand.z)
                         end
-                        __continue93 = true
+                        __continue112 = true
                         break
                     end
                     local clear = true
@@ -780,9 +903,9 @@ function ____exports.StepIn(c, origin, stand, meet, now, engaged, at, neutrals, 
                     if clear then
                         return Vector(x, y, stand.z)
                     end
-                    __continue93 = true
+                    __continue112 = true
                 until true
-                if not __continue93 then
+                if not __continue112 then
                     break
                 end
             end
@@ -798,6 +921,17 @@ function ____exports.Read(c, now)
     local walk = t.walk
     if (c.readAt == nil or now - c.readAt >= settings().LiveEvery) and meet ~= nil and walk ~= nil then
         c.readAt = now
+        if c.hero ~= nil then
+            local hit = ReadOnHero(c, now, c.hero)
+            if hit ~= nil then
+                c.hit = hit
+                c.reads = c.reads + 1
+                if c.first == nil then
+                    c.first = hit - c.slot
+                end
+            end
+            return c.hit or c.slot
+        end
         local alongs = ____exports.WaveAlongs(t, c.slot, now)
         c.n = #alongs
         if #alongs >= math.max(c.index, c.keep) + 2 then
