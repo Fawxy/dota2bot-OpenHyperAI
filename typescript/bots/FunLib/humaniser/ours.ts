@@ -121,13 +121,22 @@ export function Describe(): string {
 }
 
 /**
- * Customize.Ours.Team (head-to-head scope): "radiant" or "dire" confines every switch to that team, so the other team plays
- * OHA's own decisions; any other value or none: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
+ * Customize.Ours.Team (head-to-head scope): "radiant" or "dire" (any case) or 2 or 3 turns every Ours switch off on the other
+ * team, whose contexts then run OHA's path. It scopes the Ours switches only: the older humaniser features under
+ * Customize.Humaniser still run on both teams, so the other side is OHA as hosted with those on (eval-run, "Stage-close
+ * head-to-head"). Unset or any other value: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
  */
-function OtherTeamScoped(): boolean {
+function ScopedTeam(): number | undefined {
     const scope = (Customize.Ours as unknown as { Team?: unknown } | undefined)?.Team;
-    if (scope !== "radiant" && scope !== "dire") return false;
-    return GetTeam() !== (scope === "radiant" ? 2 : 3);
+    if (scope === 2 || scope === 3) return scope;
+    if (typeof scope !== "string") return undefined;
+    const name = scope.toLowerCase();
+    return name === "radiant" ? 2 : name === "dire" ? 3 : undefined;
+}
+
+function OtherTeamScoped(): boolean {
+    const team = ScopedTeam();
+    return team !== undefined && GetTeam() !== team;
 }
 
 export function On(feature: Feature): boolean {

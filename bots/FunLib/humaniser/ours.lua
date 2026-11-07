@@ -21,14 +21,22 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local OtherTeamScoped, Customize
-function OtherTeamScoped()
+local ScopedTeam, OtherTeamScoped, Customize
+function ScopedTeam()
     local ____opt_0 = Customize.Ours
     local scope = ____opt_0 and ____opt_0.Team
-    if scope ~= "radiant" and scope ~= "dire" then
-        return false
+    if scope == 2 or scope == 3 then
+        return scope
     end
-    return GetTeam() ~= (scope == "radiant" and 2 or 3)
+    if type(scope) ~= "string" then
+        return nil
+    end
+    local name = string.lower(scope)
+    return name == "radiant" and 2 or (name == "dire" and 3 or nil)
+end
+function OtherTeamScoped()
+    local team = ScopedTeam()
+    return team ~= nil and GetTeam() ~= team
 end
 function ____exports.On(feature)
     if Customize.Enable == false then

@@ -20,6 +20,15 @@ CURRENT_TEAM = 2
 check("ours: Team=dire turns every switch off for Radiant", not Ours.Describe():find(":1", 1, true), Ours.Describe())
 Customize.Ours = { Team = "both" }
 check("ours: any other Team value scopes nothing", Ours.On("CoreLastHit"))
+Customize.Ours = { Team = "Radiant" }
+CURRENT_TEAM = 3
+check("ours: Team is case-insensitive", not Ours.On("CoreLastHit"))
+Customize.Ours = { Team = 3 }
+check("ours: Team=3 leaves Dire on", Ours.On("CoreLastHit"))
+CURRENT_TEAM = 2
+check("ours: Team=3 turns Radiant off", not Ours.On("CoreLastHit"))
+Customize.Ours = { Team = "dire", CoreLastHit = true }
+check("ours: the scope wins over an explicit switch value", not Ours.On("CoreLastHit"))
 Customize.Ours = {}
 Customize.Enable = false
 check("ours: Customize.Enable = false turns every switch off", not Ours.Describe():find(":1", 1, true), Ours.Describe())
