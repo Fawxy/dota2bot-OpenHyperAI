@@ -120,8 +120,28 @@ export function Describe(): string {
     return names.map((n) => `${n}:${On(n as Feature) ? 1 : 0}`).join(",");
 }
 
+/**
+ * Customize.Ours.Team (head-to-head scope): "radiant" or "dire" (any case) or 2 or 3 turns every Ours switch off on the other
+ * team, whose contexts then run OHA's path. It scopes the Ours switches only: the older humaniser features under
+ * Customize.Humaniser still run on both teams, so the other side is OHA as hosted with those on (eval-run, "Stage-close
+ * head-to-head"). Unset or any other value: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
+ */
+function ScopedTeam(): number | undefined {
+    const scope = (Customize.Ours as unknown as { Team?: unknown } | undefined)?.Team;
+    if (scope === 2 || scope === 3) return scope;
+    if (typeof scope !== "string") return undefined;
+    const name = scope.toLowerCase();
+    return name === "radiant" ? 2 : name === "dire" ? 3 : undefined;
+}
+
+function OtherTeamScoped(): boolean {
+    const team = ScopedTeam();
+    return team !== undefined && GetTeam() !== team;
+}
+
 export function On(feature: Feature): boolean {
     if (Customize.Enable === false) return false;
+    if (OtherTeamScoped()) return false;
     const value = Customize.Ours?.[feature];
     if (value === undefined || value === null) return DEFAULTS[feature];
     return value === true;
