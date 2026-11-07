@@ -1,30 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
-
 local function __TS__ObjectAssign(target, ...)
     local sources = {...}
     for i = 1, #sources do
@@ -275,13 +250,7 @@ local function humanPulling(s, human)
                     __continue47 = true
                     break
                 end
-                local ____array_0 = __TS__SparseArrayNew(unpack(PullTiming.ForCamp(job, false).seconds))
-                __TS__SparseArrayPush(
-                    ____array_0,
-                    unpack(PullTiming.ForCamp(job, true).seconds)
-                )
-                local seconds = {__TS__SparseArraySpread(____array_0)}
-                for ____, sec in ipairs(seconds) do
+                for ____, sec in ipairs(PullTiming.ForCamp(job).seconds) do
                     if inWindow(s.cycleSec, sec) then
                         return true
                     end

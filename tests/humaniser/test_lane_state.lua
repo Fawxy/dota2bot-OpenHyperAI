@@ -268,7 +268,7 @@ do
 end
 
 do
-	local flags = { "Plan", "Block", "FullPull", "HalfPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack", "Harass", "Mid", "CounterPlay", "CampBlock" }
+	local flags = { "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack", "Harass", "Mid", "CounterPlay", "CampBlock" }
 	local allOff = { Enable = true }
 	for _, f in ipairs(flags) do allOff[f] = false end
 	for name, cfg in pairs({ disabled = { Enable = false }, ["no consumers"] = allOff }) do
@@ -322,7 +322,7 @@ do
 	local function fscore(eq, imb, skill) return S.ForecastScore(-0.7, eq, S.ForecastEq(eq, imb), S.ForesightOf(skill), 0) end
 	check("skill 0 reads the lane as today", near(fscore(-0.3, 0.6, 0), S.LaneScore(-0.7, -0.3, 0)))
 	check("skill 0.9, winning clash: full-pull score", fscore(-0.3, 0.6, 0.9) <= -0.5, fscore(-0.3, 0.6, 0.9))
-	check("skill 0.3, same lane: still half-pull score", fscore(-0.3, 0.6, 0.3) > -0.5, fscore(-0.3, 0.6, 0.3))
+	check("skill 0.3, same lane: still a small-drift score", fscore(-0.3, 0.6, 0.3) > -0.5, fscore(-0.3, 0.6, 0.3))
 	check("skill 0.9, losing clash: no longer a full-pull score", fscore(-0.1, -0.6, 0.9) > -0.5, fscore(-0.1, -0.6, 0.9))
 end
 

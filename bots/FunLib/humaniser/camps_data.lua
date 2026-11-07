@@ -8,7 +8,6 @@ ____exports.CAMP_DATA = {
         type = "small",
         laneKind = "safe",
         pullAggroSec = {15, 45},
-        halfAggroSec = {17, 47},
         source = "seed"
     },
     {
@@ -17,7 +16,6 @@ ____exports.CAMP_DATA = {
         type = "small",
         laneKind = "safe",
         pullAggroSec = {15, 45},
-        halfAggroSec = {17, 47},
         source = "seed"
     },
     {
@@ -26,7 +24,6 @@ ____exports.CAMP_DATA = {
         type = "large",
         laneKind = "safe",
         pullAggroSec = {18, 48},
-        halfAggroSec = {20, 50},
         source = "seed"
     },
     {
@@ -35,7 +32,6 @@ ____exports.CAMP_DATA = {
         type = "large",
         laneKind = "safe",
         pullAggroSec = {18, 48},
-        halfAggroSec = {20, 50},
         source = "seed"
     },
     {
@@ -47,7 +43,6 @@ ____exports.CAMP_DATA = {
         maxTowerDist = 2800,
         meetBack = 600,
         pullAggroSec = {18, 48},
-        halfAggroSec = {20, 50},
         source = "seed",
         unverified = true
     },
@@ -60,7 +55,6 @@ ____exports.CAMP_DATA = {
         maxTowerDist = 2800,
         meetBack = 600,
         pullAggroSec = {18, 48},
-        halfAggroSec = {20, 50},
         source = "seed",
         unverified = true
     }

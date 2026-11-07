@@ -31,7 +31,7 @@ test('leave_ready: the lane at a support departure and one wave on', () => {
         // Stack at 215: read at 212 sat 100 past the target (ready), 30 s on 400 past (not); the reset wave read at 182 (R2)
         // and this support's ok pull at slot 197 come before it.
         line(182, wave(180, 1600, 'R2', 5)),
-        line(200, 'pull_job pid=5 pos=5 lane=3 camp=1 slot=197 pk=full res=ok why=ok'),
+        line(200, 'pull_job pid=5 pos=5 lane=3 camp=1 slot=197 res=ok why=ok'),
         line(212, wave(210, 1000, 'R1', 5)),
         line(215, start('stack', 5)),
         line(242, wave(240, 1300, 'R3', '')),

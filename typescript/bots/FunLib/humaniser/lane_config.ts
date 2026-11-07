@@ -13,7 +13,6 @@ export type LaneFlag =
     | "Plan"
     | "Block"
     | "FullPull"
-    | "HalfPull"
     | "StackPull"
     | "AggroPull"
     | "Freeze"
@@ -27,7 +26,7 @@ export type LaneFlag =
     | "Forecast"
     | "PreContest"
     | "TakePull";
-export type Technique = "block" | "full_pull" | "half_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
+export type Technique = "block" | "full_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
     | "AttemptRate"
@@ -47,7 +46,6 @@ export const DEFAULTS = {
     Plan: true,
     Block: true,
     FullPull: true,
-    HalfPull: true,
     StackPull: true,
     AggroPull: true,
     Freeze: true,
@@ -67,7 +65,6 @@ export const DEFAULTS = {
     Gates: {
         Block: 0.3,
         FullPull: 0.3,
-        HalfPull: 0.6,
         StackPull: 0.75,
         AggroPull: 0.5,
         Freeze: 0.7,
@@ -95,7 +92,7 @@ export const DEFAULTS = {
         SureCommit: [0.5, 1],
     } as Record<string, number[]>,
     Eq: { Safe: -0.7, Off: -0.7, Mid: -0.1, MidPreRune: 0.15, XpDenyWeight: 0.2 },
-    Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },
+    Planner: { FullPullBelow: -0.5, AggroCorrectBelow: -0.15, AggroStepEq: 0.15 },
     Timing: {
         SnapshotRefresh: 0.5,
         WaveCycle: GameRules.WAVE_EVERY,
@@ -151,7 +148,6 @@ export const DEFAULTS = {
         WatchEvery: 0.25,
         PullPeriod: GameRules.NEUTRAL_EVERY,
         NeutralFirstSpawn: GameRules.NEUTRAL_FIRST,
-        HalfPullLater: 2,
         NoCampAfter: 1,
         AggroConfirm: 2,
         // Order-to-hit estimate when J.GetAttackProDelayTime is not injected; the order goes this early.
@@ -233,8 +229,6 @@ export const DEFAULTS = {
         StableSeenWithin: 3,
         StableMinHP: 0.5,
         FullPullMin: 0.8,
-        HalfPullMin: 0.3,
-        HalfPullMax: 0.6,
         HarassExtraRange: 100,
         AggroDanceCreeps: 3,
         AggroDanceRadius: 500,
@@ -332,7 +326,7 @@ export const DEFAULTS = {
         ApproachExtrapolate: 0.5,
     },
     Infer: { ShoveHits: 4, FreezeDenies: 2, FreezeEqMax: -0.5, HoldSignals: 2, ShoveHitDamageMult: 1.3 },
-    Camps: { HalfMeetOffset: 500, PullCampMaxTowerDist: 2500, PullCampMaxLaneDist: 2400, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
+    Camps: { PullCampMaxTowerDist: 2500, PullCampMaxLaneDist: 2400, ReplayMatchRadius: 600, LaneSampleStep: 0.005 },
     // Pull aggro from wave arrival (pull_timing.ts); FromWave false keeps the camp data seconds.
     PullTiming: {
         FromWave: true,
@@ -359,82 +353,10 @@ export const DEFAULTS = {
         // Live re-timing (slice pull-live): the wave is read again this often from the leave time to the meet point.
         LiveEvery: 0.25,
         WatchAfterWave: 3,
-        // The hit is timed on the wave's creeps (pull_timing CreepTimer, slice pull-half): the neutrals reach the meet point as
-        // a full pull's front creep is FullPast beyond it (plv2's pace aimed them 0.5 s before the wave's body, the front creep
-        // running 0.5-1 s ahead of the body: about 100 past) and a half pull's second creep HalfClear beyond it (lane creep
-        // acquisition about 500, EC-053), so the front two walk on and the back ones turn. Both `judgement`.
+        // The hit is timed on the wave's creeps (pull_timing CreepTimer): the neutrals reach the meet point as the front creep
+        // is FullPast beyond it (plv2's pace aimed them 0.5 s before the wave's body, the front creep running 0.5-1 s ahead
+        // of the body: about 100 past). `judgement`.
         FullPast: 100,
-        HalfClear: 500,
-        // A half pull's clearance search (CreepTimer): candidate hits every HalfStep s over HalfSearch s around the HalfClear
-        // aim; the neutrals stand at the meet point to HalfHold s past their arrival; HalfAcquire is lane creep acquisition
-        // (EC-053). `judgement` but the 500.
-        HalfAcquire: 500,
-        HalfSearch: [-3, 6] as number[],
-        HalfStep: 0.2,
-        HalfHold: 2,
-        // Lane creeps within this of their hero while neutrals hit it turn onto the neutrals (EC-090: no written rule). The
-        // phchk2 replays (11 half pulls, 0.2 s samples): creeps that turned with the neutrals out of range had the hit puller
-        // 138-418 off; three passed 462-490 off and walked on.
-        HalfHeroAggro: 450,
-        // The search's puller and neutrals (phchk2 replays, 11 half pulls): the puller hits from 360-440 off the camp and the
-        // neutrals start 0.4-2.3 s after the hit (camp 1 0.6-1.4); the puller may stand short of the meet point by any of
-        // HalfStandBack on the lead's last leg. `judgement`.
-        HalfHeroStart: 400,
-        // The neutrals hit the puller within this of it (the search's turn on the puller; `judgement`: melee neutrals reach
-        // about 100-150, the camps' ranged ones 300-500).
-        HalfHitReach: 350,
-        HalfNeutralDelay: 1,
-        HalfStandBack: [0, 150, 300, 450] as number[],
-        // The live step-in (PullTiming.StepIn): the puller may stand up to HalfStepBack behind the search's stand point, and
-        // steps towards the meet point only while the front creeps, now and HalfStepAhead s on, stay HalfStepBuffer outside
-        // HalfHeroAggro of it. `judgement`.
-        HalfStepIn: true,
-        HalfStepBack: 300,
-        HalfStepAhead: 0.5,
-        HalfStepBuffer: 50,
-        // With the step-in, the hit goes out HalfNeutralDelay + HalfStepEarly before the HalfClear aim (the clearance search
-        // runs only without it). `judgement`: the neutrals' start spread 0.4-2.1 s; phhar4 at 1 s had the puller wait under
-        // the camp's hits until retreat took it (6 of 12 on camp 26).
-        HalfStepEarly: 0.5,
-        // A stepping-in half pull waits at least this far off the lane path (HalfHeroAggro + HalfStepBuffer). `judgement`.
-        HalfHoldOff: 550,
-        // The step-in's line runs this far past the meet point across the lane, so neutrals trailing the puller (camp 26's
-        // ranged ones hit from 400-500 behind it, phhar7) can still be brought within HalfAcquire of the back creeps.
-        // `judgement`.
-        HalfStepOver: 400,
-        // A tagged neutral with at least this attack range is ranged: only then does the step-in run HalfStepOver past the
-        // meet point (melee neutrals 100-150, ranged 400-600 in the game data). `judgement`.
-        HalfRangedFrom: 250,
-        // Off: the step-in holds HalfHeroAggro from the kept creeps (phhar5: split 7 of 16, whole 1). On: it places the
-        // tagged neutrals' current offsets instead; measured worse twice (phhar9 whole 4 of 9, phhar10 whole 6 of 9),
-        // because the neutrals keep closing once the puller stands and reach the creeps. Open item: Support lane.
-        HalfStepNeutrals: false,
-        // Slice pull-aggro (Ours.PullOnHero, full pulls; slice file "Facts the behaviour needs"). HeroLandErr: the timing's
-        // error in seconds; the stand margin is lane creep speed x it (`judgement`). LockFor: seconds past the leave time
-        // with no tagged neutral on the puller before the pull ends `no-aggro` (`judgement`). HeroFirst: the first landing
-        // on the puller after the hit while the camp is unseen (pull_job `fb` 1; `judgement`). HeroTurnRange caps each
-        // creep's GetAcquisitionRange as the radius it turns in on hits landing on its hero (fitted: walking ranged creeps
-        // with landings at 568-593 did not turn, 0 of 5, phagg1/5/6; a siege one at 692). GiveUpFrom: a neutral's give-up
-        // timer starts this far from its camp (EC-084); GiveUpAfter: seconds from the first neutral past it to the camp's
-        // give-up for a camp with no fitted value (judgement, the fitted camps' low end; EC-084 says 5); GiveUpMargin: a
-        // pull whose entry falls later than the predicted give-up less this is not started (`judgement`).
-        HeroLandErr: 0.2,
-        LockFor: 1,
-        HeroFirst: 1,
-        HeroTurnRange: 500,
-        // GiveUpAfterCamp: the same per camp index where banked pulls fit it (gu - g4 means: 1 3.8 s n 150, 26 3.7 s n 58,
-        // 18 4.8 s n 109, 2 6.6 s n 83); GiveUpAfter for any other camp. GiveUpMargin 0.5 (was 1: the ponh1 smoke game
-        // held 32 of 34 wanted pulls from camps 1, 18 and 2 as no-window on the single 3.5 s).
-        GiveUpFrom: 400,
-        GiveUpAfter: 3.5,
-        GiveUpAfterCamp: { [1]: 3.8, [26]: 3.7, [18]: 4.8, [2]: 6.6 } as Record<number, number>,
-        GiveUpMargin: 0.5,
-        // Harness only: every slot of the half-pulling support is a wanted half pull, whatever the lane reading.
-        HalfAll: false,
-        // Harness only (empty: off): the step-in holds at the point of its line this far off the lane path and never nearer,
-        // the offsets taken in turn by slot (floor(slot / 30)), so one game passes the wave by a standing, hit puller at each
-        // offset and ev=pull_creep measures what turns (EC-090's radius).
-        HalfStand: [] as number[],
         // Per `<radiant|dire>_<top|mid|bot>`, [x, y] points from the lane spawner; overrides pull_timing's 7.41 paths.
         LanePaths: {} as Record<string, number[][]>,
     },
@@ -448,7 +370,6 @@ export type LaneSettings = typeof DEFAULTS;
 const FLAG_OF: Record<Technique, LaneFlag> = {
     block: "Block",
     full_pull: "FullPull",
-    half_pull: "HalfPull",
     stack_pull: "StackPull",
     aggro_pull: "AggroPull",
     freeze: "Freeze",
@@ -459,7 +380,6 @@ const FLAG_OF: Record<Technique, LaneFlag> = {
 const GATE_OF: Record<Technique, string | undefined> = {
     block: "Block",
     full_pull: "FullPull",
-    half_pull: "HalfPull",
     stack_pull: "StackPull",
     aggro_pull: "AggroPull",
     freeze: "Freeze",
@@ -472,7 +392,6 @@ const CONSUMER_FLAGS: LaneFlag[] = [
     "Plan",
     "Block",
     "FullPull",
-    "HalfPull",
     "StackPull",
     "AggroPull",
     "Freeze",

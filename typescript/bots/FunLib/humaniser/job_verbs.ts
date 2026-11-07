@@ -1,5 +1,5 @@
 /**
- * Job verbs: camp stack, pull (full, half, double), rune or shrine run, camp clear and gank, each one task body that
+ * Job verbs: camp stack, pull (full, double), rune or shrine run, camp clear and gank, each one task body that
  * executes a plan the caller made. Bot code since slice 0b (moved out of the engine's `jobs`, unchanged): the engine
  * keeps the atomic verbs, `Skill` and the hit-timing facts these bodies are built from. The engine is reached through
  * the loaded bundle (`Bind`, from humaniser/tasks), never a static require, so a bundle that fails to load cannot
@@ -57,8 +57,6 @@ const RUNE_LATE_BY = 5;
 const RUNE_GRACE = 2;
 const RUNE_PICKUP_FOR = 10;
 const SHRINE_RADIUS = 300;
-/** Default for PullPlan aggroFor (the pull job passes its own, Lane.PullTiming.LockFor). */
-const AGGRO_FOR = 1;
 
 function ok(): Result {
     return { success: true, reason: "ok" };
@@ -340,7 +338,7 @@ export function* stack(bot: TaskUnit, p: StackPlan, h: JobHooks = {}): TaskBody 
 export interface PullPlan extends AggroOpts {
     /** The camp whose hit is graded (a double's small camp). */
     camp: Camp;
-    /** When its hit should land (the camp's full or half pull second, e.g. :15/:45 or :17/:47). */
+    /** When its hit should land (the camp's pull second, e.g. :15/:45). */
     aggroAt: number;
     /** Walked after the hit, to the meet point with the wave (last point). */
     lead: Vec[];
@@ -358,18 +356,8 @@ export interface PullPlan extends AggroOpts {
     bail?: (this: void) => Vec | undefined;
     /** Default 6. */
     bailFor?: number;
-    /** Read every frame of the watch: where to stand now instead of the lead's end (a half pull's step-in), within 30. */
+    /** Read every frame of the watch: where to stand now instead of the lead's end (the pull job's shed), within 30. */
     watchAt?: (this: void) => Vec | undefined;
-    /** Slice pull-aggro: read every frame after the confirmed hit: the game time the bot leaves the camp. Until then it
-     *  holds where it hit, taking the camp's hits (label `hold`); it never waits past it for a landing. */
-    holdUntil?: (this: void) => number;
-    /** With `holdUntil`: read every frame from the hit, latched once true (a camp neutral targets the bot). Not true by
-     *  holdUntil() + `aggroFor` s (default 1): fails `timeout` "no-aggro". */
-    aggroed?: (this: void) => boolean;
-    aggroFor?: number;
-    /** With `holdUntil`: read every frame of the hold and the lead; a cause there fails `timeout` "deadline:<cause>". The
-     *  watch's own end is `watchUntil`'s. */
-    deadline?: (this: void) => string | undefined;
 }
 
 function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
@@ -386,9 +374,9 @@ function* stepBack(bot: TaskUnit, p: PullPlan, h: JobHooks): TaskBody {
 }
 
 /**
- * Pull (full, half, double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
- * error for the whole job), with `holdUntil` hold there taking the camp's hits until the leave time, lead it along `lead` to the
- * meet point, then watch there. Labels `travel`, `wait`, `aggro` (twice for a double), `hold`, `lead`, `watch`; urgent until the lead is done.
+ * Pull (full or double: the kind is in the data). Aggro the camp so the hit lands on its second (+ one skill
+ * error for the whole job), lead it along `lead` to the meet point as soon as the hit is confirmed, then watch there.
+ * Labels `travel`, `wait`, `aggro` (twice for a double), `lead`, `watch`; urgent until the lead is done.
  * Grading the divert is the host's.
  */
 export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
@@ -401,45 +389,16 @@ export function* pull(bot: TaskUnit, p: PullPlan, h: JobHooks = {}): TaskBody {
     const r = yield* aggroCamp(bot, p.camp, p.aggroAt, err, p, h);
     if (!r.success) return r;
 
-    // Slice pull-aggro: hold at the hit until the leave time, the aggro read from the hit; both checks run on the lead too.
-    let seen = false;
-    const held = (): Result | undefined => {
-        if (p.holdUntil === undefined) return undefined;
-        if (!seen && p.aggroed !== undefined && p.aggroed()) seen = true;
-        if (!seen && p.aggroed !== undefined && now() >= p.holdUntil() + (p.aggroFor ?? AGGRO_FOR)) return fail("timeout", "no-aggro");
-        const cause = p.deadline?.();
-        return cause !== undefined ? fail("timeout", `deadline:${cause}`) : undefined;
-    };
-    if (p.holdUntil !== undefined) {
-        h.label?.("hold");
-        while (now() < p.holdUntil()) {
-            if (!bot.IsAlive()) return fail("dead");
-            const end = held();
-            if (end !== undefined) return end;
-            if (p.bail !== undefined && p.bail() !== undefined) return yield* stepBack(bot, p, h);
-            hold(bot, "job_hold");
-            yield;
-        }
-    }
-
     h.label?.("lead");
     const arrive = p.arrive ?? ARRIVE;
     if (p.lead.length > 0) {
-        let ended: Result | undefined;
         const led = yield* E().Verbs.walkPath(bot, p.lead, {
             tolerance: arrive,
             timeout: math.huge,
             stuckSecs: 3,
             deadline: p.leadDeadline ?? p.aggroAt + err + LEAD_MAX_AFTER_AGGRO,
-            interruptIf:
-                p.bail !== undefined || p.holdUntil !== undefined
-                    ? () => {
-                          ended = held();
-                          return ended !== undefined || (p.bail !== undefined && p.bail() !== undefined);
-                      }
-                    : undefined,
+            interruptIf: p.bail !== undefined ? () => p.bail!() !== undefined : undefined,
         });
-        if (!led.success && led.reason === "interrupted" && ended !== undefined) return ended;
         if (!led.success && led.reason === "interrupted" && p.bail !== undefined) return yield* stepBack(bot, p, h);
         if (!led.success) return fail(led.reason, "lead");
     }

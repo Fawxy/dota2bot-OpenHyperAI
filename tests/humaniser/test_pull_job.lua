@@ -32,7 +32,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery, HalfClear = o.halfClear, HalfAll = o.halfAll, HalfStepIn = o.stepIn, HalfHeroAggro = o.heroAggro, HalfHoldOff = o.holdOff, GiveUpAfter = o.giveUpAfter, GiveUpAfterCamp = o.giveUpAfter ~= nil and {} or nil } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
@@ -43,15 +43,12 @@ local function world(o)
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	H.Lane.Camps.ResetCache()
 	H.PullJob.ResetCache()
-	package.loaded["bots/FunLib/custom_loader"].Ours.SupportHalfPull = o.half
-	-- Slice pull-aggro: these worlds test the job's flow on the switch-off timing (the neutrals' walk); `onHero` worlds test Ours.PullOnHero.
-	package.loaded["bots/FunLib/custom_loader"].Ours.PullOnHero = o.onHero == true
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
-	-- Slice pull-aggro's first landing reads the puller's wind-up (GetAttackPoint, on this unit only: the shared stub's
-	-- absence keeps the stack verb's default aggro lead in test_stack_job).
+	-- The pull verb's hit lead reads the puller's wind-up (GetAttackPoint, on this unit only: the shared stub's absence
+	-- keeps the stack verb's default aggro lead in test_stack_job).
 	sup.GetAttackPoint = function() return 0.4 end
 	local core = MakeUnit({ pid = 1, team = 2, loc = Vector(0, -5000), hp = o.coreHp })
 	core.lane, core.pos = Lane.Bot, 1
@@ -285,21 +282,12 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0, halfClear = o.halfClear, stepIn = o.stepIn, heroAggro = o.heroAggro, holdOff = o.holdOff, onHero = o.onHero, giveUpAfter = o.giveUpAfter })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0 })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = o.noTarget ~= true and w.sup or nil
-	kobold.range = o.neutralRange
 	local fn = o.alongs or waveBehind(function() return 0 end)
-	-- The on-hero timing reads WaveCreeps (alongs with each creep's acquisition range, here 500).
-	local PT = package.loaded["bots/FunLib/humaniser/pull_timing"]
-	local creeps = PT.WaveCreeps
-	PT.WaveCreeps = function(t, a, now)
-		local r = {}
-		for i, x in ipairs(fn(t, a, now)) do r[i] = { along = x, acq = 500 } end
-		return r
-	end
 	local ok, out = pcall(stubAlongs, fn, function()
 		return capture(function()
 			while T < 120 do
@@ -308,7 +296,6 @@ local function livePull(o)
 			end
 		end)
 	end)
-	PT.WaveCreeps = creeps
 	if not ok then error(out, 0) end
 	return lines(out, "pull_job")[1], out
 end
@@ -330,73 +317,6 @@ do
 		and field(steady, "hb") == "-350", steady)
 	local plan = livePull({ alongs = function() return {} end })
 	check("creep hit: no creeps read, the plan's slot (hr=plan)", field(plan, "hr") == "plan" and field(plan, "sh") == "0", plan)
-end
-
--- Slice pull-aggro (Ours.PullOnHero, design 08/11/2026): a full pull holds at the camp to its planned leave time, leads, and
--- its watch ends on the deadline (here the wave's back creep past the stand: the stub wave walks on, the neutral never
--- leaves its camp); the entry after the predicted give-up holds the start; a melee camp's first landing comes later than a
--- ranged one's (the walk into reach); with the switch off none of the fields.
-do
-	-- The test camp's walk to the meet point is long: the give-up 20 s out keeps the window open (one test below closes it).
-	local ranged = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20 })
-	local lvp, lva = tonumber(field(ranged, "lvp")), tonumber(field(ranged, "lva"))
-	check("on hero: the pull logs ent, the leave planned and taken, a deadline", ranged ~= nil and field(ranged, "ent") ~= nil and lvp ~= nil and lva ~= nil
-		and field(ranged, "dl") ~= nil, ranged)
-	check("on hero: the lead starts at the planned leave, not before", lva ~= nil and lvp ~= nil and lva >= lvp - 0.05 and lva <= lvp + 0.5, ranged)
-	check("on hero: the watch ends on the back creep", field(ranged, "dl") == "back" and field(ranged, "why") == "ok", ranged)
-	local melee = livePull({ onHero = true, giveUpAfter = 20 })
-	check("on hero: a melee camp's first landing is later than a ranged camp's", tonumber(field(melee, "fst")) > tonumber(field(ranged, "fst")), melee)
-	-- A camp that never targets the puller fails at the hit's confirm, before the hold (the hold's own no-aggro: test_job_verbs).
-	local never = livePull({ onHero = true, noTarget = true, giveUpAfter = 20 })
-	check("on hero: a camp that never targets the puller ends at the confirm, no hold", never ~= nil and field(never, "label") == "aggro", never)
-	local _, shut = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 1 })
-	check("on hero: the entry after the predicted give-up holds the start (choice why=no-window nw=give-up), no pull",
-		#lines(shut, "pull_job") == 0 and #lines(shut, "choice") > 0 and field(lines(shut, "choice")[1], "why") == "no-window" and field(lines(shut, "choice")[1], "nw") == "give-up", lines(shut, "choice")[1])
-	-- The deadline's causes in the hold (review M1), each after the hit (~73.3 s) and before the leave (~74.8 s): a creep of the
-	-- timed wave fighting theirs ends `deadline:clash`; the camp's neutral dead ends `deadline:dead`.
-	local meet = Vector(-1600, -5000)
-	local placed
-	local clash = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
-		if placed == nil and w.H.PullJob.Running(w.sup) and T >= 74 then
-			placed = true
-			local foe = MakeCreep({ team = 3, x = meet.x + 100, y = meet.y })
-			MakeCreep({ team = 2, x = meet.x, y = meet.y, target = foe })
-		end
-	end })
-	check("on hero: our wave fighting theirs in the hold ends timeout:deadline:clash", field(clash, "why") == "timeout:deadline:clash" and field(clash, "dl") == "clash", clash)
-	CREEPS[2], CREEPS[3] = {}, {}
-	local dead = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
-		if w.H.PullJob.Running(w.sup) and T >= 74 and NEUTRALS[1] ~= nil then NEUTRALS[1].hp = 0 end
-	end })
-	check("on hero: the camp's neutrals dead in the hold ends timeout:deadline:dead", field(dead, "why") == "timeout:deadline:dead", dead)
-	-- The window closing on the walk to the camp (review M1): an enemy creep 1500 short of the meet point puts the clash
-	-- before the entry, so Step cancels the pull before its hit.
-	placed = nil
-	local shutWalk = livePull({ onHero = true, neutralRange = 500, giveUpAfter = 20, onFrame = function(w)
-		if placed == nil and w.H.PullJob.Running(w.sup) then
-			placed = true
-			MakeCreep({ team = 3, x = meet.x - 1500, y = meet.y })
-		end
-	end })
-	check("on hero: the window closed on the walk cancels the pull (cancelled:no-window)", field(shutWalk, "why") == "cancelled:no-window", shutWalk)
-	CREEPS[2], CREEPS[3] = {}, {}
-	local off = livePull({ neutralRange = 500 })
-	check("on hero off: no on-hero fields", off ~= nil and field(off, "ent") == nil and field(off, "lvp") == nil and field(off, "dl") == nil, off)
-end
-
--- A half pull only from a ranged spawn (user 07/11/2026): seen melee, the safe-lane pos5 full-pulls a HOLD; ranged, it halves.
-do
-	local HOLDR = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
-	local w = world({ reading = HOLDR, onHero = true, visible = true })
-	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
-	check("on hero: a melee spawn refuses the half", w.H.PullJob.KindFor(w.sup, HOLDR) == "full")
-	kobold.range = 500
-	check("on hero: a ranged spawn half-pulls", w.H.PullJob.KindFor(w.sup, HOLDR) == "half")
-	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
-	check("on hero: the camp unseen keeps the last seen spawn's kind", w.H.PullJob.KindFor(w.sup, HOLDR) == "half")
-	local w2 = world({ reading = HOLDR, visible = true })
-	MakeNeutral({ x = SMALL.x, y = SMALL.y })
-	check("on hero off: a melee spawn still half-pulls", w2.H.PullJob.KindFor(w2.sup, HOLDR) == "half")
 end
 
 -- The lane comes in (or holds short of the target): no pull; the slot is decided once, not re-read every frame.
@@ -496,112 +416,6 @@ do
 	check("Wants: WaveGoneNow gets our team, the lane, the pulled wave's spawn and slot + 12", args ~= nil and args[1] == 2
 		and args[2] == Lane.Bot and args[3] == math.floor((slot - 1) / 30) * 30 and math.abs(args[4] - slot - 12) < 0.01
 		and field(c, "pw") == "1", c)
-end
-
--- Slice pull-half. The safe-lane pos5 half-pulls a lane that holds on their half: the same wave, decided once at the full
--- pull's leave time, hit HalfPullLater (2 s) later; with the switch off it full-pulls. A pushing lane is still a full pull.
-local HOLD = { state = "HOLD", clash = 9500, move = 50, q = 0.62, own = 2800, tower = false }
-do
-	local function pull(o)
-		local w = world(o)
-		local out = run(w, 80)
-		return lines(out, "choice")[1], lines(out, "job")[1], w
-	end
-	local full = pull({ reading = OUT })
-	local half, job, w = pull({ reading = HOLD })
-	local off = pull({ reading = HOLD, half = false })
-	local d = tonumber(field(half, "slot")) - tonumber(field(full, "slot"))
-	check("half: HOLD on their half gets pk=half, its slot 2 s after the full pull's", field(half, "pk") == "half" and field(half, "go") == "1"
-		and math.abs(d - 2) < 0.01 and job ~= nil, half)
-	check("half: the lane read once for the wave", w.reads == 1, w.reads)
-	check("half: OUT gets a full pull", field(full, "pk") == "full", full)
-	check("half: switch off, HOLD gets a full pull on the full slot", field(off, "pk") == "full" and field(off, "slot") == field(full, "slot"), off)
-end
-
--- The half-pull harness (HalfAll): a lane that wants no pull (IN on our half) still gets a half pull from the safe-lane
--- pos5, so the hit and the step-in are read every slot; without it the slot stays (why=lane).
-do
-	local IN = { state = "IN", clash = 7000, move = -350, q = 0.3, own = 1350, tower = false }
-	local function first(o)
-		local out = run(world(o), 80)
-		return lines(out, "choice")[1], lines(out, "job")[1]
-	end
-	local harness, hjob = first({ reading = IN, halfAll = true })
-	local plain, pjob = first({ reading = IN })
-	check("harness: IN still half-pulls", field(harness, "go") == "1" and field(harness, "pk") == "half" and hjob ~= nil, harness)
-	check("harness: off, IN stays", field(plain, "go") == "0" and field(plain, "why") == "lane" and pjob == nil, plain)
-end
-
--- Only the safe-lane pos5: an off-lane support (Radiant top) or a pos4 full-pulls the same reading.
-do
-	local w = world({ reading = HOLD })
-	check("half: safe-lane pos5 half-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "half")
-	w.sup.lane = Lane.Top
-	check("half: off-lane pos5 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
-	w.sup.lane, w.sup.pos = Lane.Bot, 4
-	check("half: pos4 full-pulls", w.H.PullJob.KindFor(w.sup, HOLD) == "full")
-end
-
--- The half pull's hit is timed on the creeps by the clearance search (pull_timing CreepTimer): with four creeps read it is
--- creep-timed and logs the search (hf, hu, hm); with none read the plan's second stands.
-do
-	local function wave(t, aggroAt, now)
-		if t.meetAlong == nil or t.walk == nil then return {} end
-		local a2 = t.meetAlong + 500 - 325 * (aggroAt + 1.5 + t.walk - now)
-		return { a2 + 150, a2, a2 - 150, a2 - 300 }
-	end
-	-- The clearance search runs without the live step-in; the puller's own aggro is left out (HalfHeroAggro 0) so this
-	-- wave has a clean hit to log.
-	local function half(o)
-		o.reading = HOLD
-		o.stepIn = false
-		o.heroAggro = 0
-		return livePull(o)
-	end
-	local near = half({ alongs = wave })
-	local plan = half({ alongs = function() return {} end })
-	check("half hit: pk=half, timed on the creeps (hr=geo, hc=4) with the search logged", field(near, "pk") == "half" and field(near, "hr") == "geo"
-		and field(near, "hc") == "4" and field(near, "hm") ~= nil and field(near, "hf") ~= nil and field(near, "hu") ~= nil, near)
-	check("half hit: the creep hit moves off the plan's", math.abs(tonumber(field(near, "ht")) - tonumber(field(plan, "ht"))) >= 0.2, near)
-	check("half hit: no creeps read, the plan's second (hr=plan, no search)", field(plan, "hr") == "plan" and field(plan, "hm") == nil, plan)
-	-- With the step-in on, the tagged neutral drops out of vision after the hit: alive with no location (phhar8 05/11/2026,
-	-- every watch errored in watchAt reading it). The watch goes on without it.
-	local hitAt
-	local fogged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
-		if hitAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then hitAt = T end
-		if hitAt ~= nil and T >= hitAt + 0.5 then for _, u in ipairs(NEUTRALS) do u.unseen = true end end
-	end })
-	check("half step-in: a tagged neutral out of vision mid-watch raises no error", hitAt ~= nil and fogged ~= nil
-		and field(fogged, "why") ~= nil and not field(fogged, "why"):find("error", 1, true), fogged)
-	-- hi: the puller's offset off the lane path when a creep engages the neutrals (review 2026-11-05-pull-half M1: it
-	-- measured along a zero vector and logged 0 always). A creep engages while the puller is still 300 out of the camp,
-	-- well off the lane: hi is that frame's offset, read from the same path.
-	local offAt
-	local engaged = livePull({ reading = HOLD, alongs = wave, stepIn = true, onFrame = function(w)
-		if offAt == nil and w.H.PullJob.Running(w.sup) and w.sup.loc.y > SMALL.y + 300 then
-			local _, off = w.H.Lane.PullTiming.Along(PATH, w.sup.loc)
-			offAt = off
-			local meetAt = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
-			MakeCreep({ team = 2, x = meetAt.x, y = meetAt.y, target = NEUTRALS[1] })
-		end
-	end })
-	local hi = tonumber(field(engaged, "hi"))
-	check("half step-in: hi is the puller's offset off the lane path at engagement (not 0 along a zero vector)", offAt ~= nil
-		and hi ~= nil and hi > 200 and math.abs(hi - offAt) <= 60, tostring(hi) .. " at " .. tostring(offAt))
-end
-
--- A wave bunched on one point has no hit that keeps the front two out and turns the third: the half stays (why=half-geo,
--- the margin logged) rather than starting what would be a full pull from a lane that wanted none.
-do
-	local function bunched(t, aggroAt, now)
-		if t.meetAlong == nil or t.walk == nil then return {} end
-		local a = t.meetAlong - 325 * (aggroAt + t.walk - now)
-		return { a, a, a, a }
-	end
-	local job, out = livePull({ reading = HOLD, alongs = bunched, stepIn = false })
-	local stay = lines(out, "choice")[1]
-	check("half geo: no split, no pull started, why=half-geo with hm <= 0", job == nil and stay ~= nil and field(stay, "go") == "0"
-		and field(stay, "why") == "half-geo" and field(stay, "hm") ~= nil and tonumber(field(stay, "hm")) <= 0, stay)
 end
 
 -- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.

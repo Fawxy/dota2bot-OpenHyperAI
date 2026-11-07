@@ -542,13 +542,6 @@ do
 	check("solo list: an unlisted one is benched", H.Chooser.Benched(other))
 	Customize.Overrides = { Solo = "50," }
 	check("solo list: pid 5 is not 50's 5", H.Chooser.Benched(bot))
-	-- The half-pull harness (slice pull-half): only position 5s play.
-	Customize.Overrides = { Solo = "pos5" }
-	local core = MakeUnit({ pid = 7, team = 3, loc = Vector(0, 0, 0) })
-	local five = MakeUnit({ pid = 8, team = 3, loc = Vector(0, 0, 0) })
-	core.pos, five.pos = 1, 5
-	check("solo pos5: a pos 5 plays, a pos 1 is benched", not H.Chooser.Benched(five) and H.Chooser.Benched(core),
-		tostring(H.Chooser.Benched(five)) .. " " .. tostring(H.Chooser.Benched(core)))
 	Customize.Overrides = nil
 end
 

@@ -231,7 +231,7 @@ function forecastSection(game) {
         });
         out.push('', `enemy roles read by ${team === 2 ? 'rad' : 'dire'}: ${list.join(', ')}`);
     }
-    const pullSignals = game.events.filter(e => e.ev === 'lane_signal' && (e.kind === 'pull' || e.kind === 'half_pull'));
+    const pullSignals = game.events.filter(e => e.ev === 'lane_signal' && e.kind === 'pull');
     const skips = game.events.filter(e => e.ev === 'lane_take_skip');
     if (pullSignals.length > 0 || skips.length > 0) {
         const byReason = new Map();

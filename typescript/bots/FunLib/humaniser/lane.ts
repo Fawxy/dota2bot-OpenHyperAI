@@ -210,11 +210,11 @@ function nearestBot(team: number, issuer: Unit): Unit | undefined {
     return best;
 }
 
-// !hpulltest <idx> [half]: the issuer's nearest bot runs that pull, bypassing the planner and the owner check.
+// !hpulltest <idx>: the issuer's nearest bot runs that pull, bypassing the planner and the owner check.
 LaneDebug.Register("hpulltest", (team, issuer, args) => {
     const campIdx = tonumber(args[0]);
     if (campIdx === undefined) {
-        HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]");
+        HDebug.Log("lane", "hpulltest usage: !hpulltest <idx>");
         return;
     }
     const best = nearestBot(team, issuer);
@@ -222,7 +222,7 @@ LaneDebug.Register("hpulltest", (team, issuer, args) => {
         HDebug.Log("lane", "hpulltest no bot");
         return;
     }
-    const kind: CampJobs.JobKind = args[1] === "half" ? "half_pull" : "full_pull";
+    const kind: CampJobs.JobKind = "full_pull";
     const ok = CampJobs.Start(best, { kind, campIdx, forced: true });
     HDebug.Log("lane", `hpulltest pid=${best.GetPlayerID()} camp=${campIdx} kind=${kind} started=${tostring(ok)}`);
 });

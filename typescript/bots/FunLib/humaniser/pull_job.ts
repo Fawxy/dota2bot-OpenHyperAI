@@ -76,8 +76,6 @@ export const SETTINGS = {
     HomeMargin: 150,
     /** A tagged neutral has started (`nm`) once it is this far from where it stood at the hit. */
     Moved: 50,
-    /** A lane creep has left the lane (pull_creep lt) once it is this far off the lane path above its own least. */
-    Leave: 100,
     /** The start check (`why=camp-dmg`, also run on the walk): the camp's damage on the puller for HitSeconds must leave it
      *  StartReserve of its max HP. The window is a constant, not a share of the lead (user 06/11/2026: "when we're pulling
      *  the damage checks need to loosen. it's our creeps tanking that damage, not us, and we don't take much damage
@@ -132,19 +130,14 @@ interface CampState {
     se?: number;
 }
 
-export type Kind = "full" | "half";
-
 interface Plan {
-    kind: Kind;
-    /** The full pull's hit second for this wave: the slot the lane is read and decided for, whatever the kind. */
-    key: number;
     camp: Camps.CampJobData;
     spawner: Camps.Spawner;
     stand: Vector;
     lead: Vector[];
     meet: Vector;
     timing: PullTiming.PullTiming;
-    /** The planned hit second (no skill error). */
+    /** The planned hit second (no skill error): the slot the lane is read and decided for. */
     slot: number;
 }
 
@@ -164,8 +157,6 @@ interface Pull {
     /** The hit second as last read (the live wave up to the order), and the shift it had at the start. */
     hitAt: number;
     timer: PullTiming.CreepTimer;
-    /** A half pull's step-in: the puller's offset from the stand point towards the meet point when the wave engaged (hi). */
-    stepIn?: number;
     start: CampState;
     /** Slice pull-diag: hit confirmed at, the camp's neutrals tagged then, and what they did (pull_job sh..wa). */
     hat?: number;
@@ -184,73 +175,15 @@ interface Pull {
     /** Where each tagged neutral stood at the hit, and when the first was 50 from it (nm). */
     starts?: Map<Unit, Vector>;
     nm?: number;
-    /** The half-pull harness's per-creep record (ev=pull_creep), and the puller's last place and time for its speed. */
-    creeps?: Map<Unit, CreepTrack>;
-    creepN?: number;
-    pAt?: Vector;
-    pT?: number;
     /** The shed (SETTINGS ShedMargin): when it began, the puller's HP share then, and the point it last walked to. */
     shs?: number;
     shh?: number;
     shedTo?: Vector;
-    /** Slice pull-aggro: the neutrals' landings on the puller (pull_job fl lc la nar), from its HP each frame. */
-    lastHp?: number;
-    fl?: number;
-    lc?: number;
-    la?: number;
-    nar?: number;
-    /** Slice pull-aggro (Ours.PullOnHero, full pulls): the leave time read at the hit and when the lead began (lvp, lva);
-     *  arrival at the stand (the watch) and the first tagged neutral within its attack reach of the puller after it (laga);
-     *  seconds with a tagged neutral on the puller at the camp and from the lead on (tkc, tks), from the last sample's time;
-     *  the first frame our wave fought theirs (cla); the deadline's cause and time (dl); per tagged neutral when it was first
-     *  the first tagged neutral was GiveUpFrom out of the camp (firstOut); fb 1 when the plan's first landing was the unseen-camp fallback. */
-    lvp?: number;
-    lva?: number;
-    arrAt?: number;
-    laga?: number;
-    tkc?: number;
-    tks?: number;
-    tkT?: number;
-    cla?: number;
-    dl?: string;
-    dlAt?: number;
-    firstOut?: number;
-    fb?: number;
-}
-
-/** One lane creep of ours near the watch after the hit (ev=pull_creep): read at its turn onto a neutral, else at its
- *  nearest approach to the puller so far. */
-interface CreepTrack {
-    ci: number;
-    rg: number;
-    tr: number;
-    tt?: number;
-    dp?: number;
-    dn?: number;
-    ph?: number;
-    pv?: number;
-    po?: number;
-    ca?: number;
-    /** Least distance off the lane path so far, and the frame it rose Leave above it (the creep left the lane). */
-    off0?: number;
-    lt?: number;
-    ld?: number;
-    ln?: number;
-    /** Slice pull-aggro: its acquisition range, landings on the puller within it, and the landing kept (pull_creep ar..hn). */
-    ar?: number;
-    hk?: number;
-    hAt?: number;
-    lastD?: number;
-    lastN?: number;
-    bestD?: number;
-    bestN?: number;
-    hl?: number;
 }
 
 interface Decision {
     slot: number;
     want: boolean;
-    kind: Kind;
     reading?: LanePush.Reading;
     /** The lane with the pulled wave gone (Wanted's input). */
     gone?: LanePush.WaveGone;
@@ -259,15 +192,6 @@ interface Decision {
     rule?: string;
     /** The lane controller decided this wave (slice lane-control 2b): a refusal is `ctl`, not `lane`. */
     ctl?: boolean;
-    /** A half pull's clearance margin when it stayed for want of one (choice why=half-geo). */
-    hm?: number;
-    /** Slice pull-aggro: 1 when a wanted half pull was refused for a melee spawn (choice pm); the timer's no-window cause
-     *  at the last frame read (choice nw). */
-    pm?: number;
-    nw?: string;
-    nws?: number;
-    ent?: number;
-    clp?: number;
 }
 
 interface Trail {
@@ -284,8 +208,6 @@ const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 const ended: Record<number, Ended | undefined> = {};
 const priorities: Record<number, { at: number; p: number } | undefined> = {};
-/** Slice pull-aggro: per camp, whether its last seen spawn held a ranged unit (CampRanged). */
-const campKinds: Record<number, { spawn: number; ranged: boolean } | undefined> = {};
 
 /** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
 interface Ended {
@@ -295,7 +217,7 @@ interface Ended {
 }
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities, campKinds] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended, priorities] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
     Calendar.ResetCache();
 }
 
@@ -343,11 +265,11 @@ export function Priority(bot: Unit): number | undefined {
     return p;
 }
 
-/** The next full pull's walk start, end (the hit second plus Take) and hit second (`key`), or undefined with no plan. */
+/** The next pull's walk start, end (the hit second plus Take) and hit second (`key`), or undefined with no plan. */
 export function Window(bot: Unit, now: number): { start: number; end: number; key: number } | undefined {
-    const p = planFor(bot, now, "full");
+    const p = planFor(bot, now);
     if (p === undefined) return undefined;
-    return { start: p.key - travel(bot, p) - SETTINGS.Early, end: p.key + SETTINGS.Take, key: p.key };
+    return { start: p.slot - travel(bot, p) - SETTINGS.Early, end: p.slot + SETTINGS.Take, key: p.slot };
 }
 
 function fitsAhead(bot: Unit, now: number): boolean {
@@ -374,205 +296,21 @@ export function NextSlot(from: number, seconds: number[], period: number): numbe
     return best;
 }
 
-/**
- * The next wave's pull of `kind`. A half pull is the same wave and the same meet point hit HalfPullLater after the full
- * pull's second (pull_timing's half timing), so its slot is the first half second at or after the full one; `key` stays
- * the full slot, so one wave is read and decided once whatever the kind.
- */
-function planFor(bot: Unit, now: number, kind: Kind): Plan | undefined {
+/** The next wave's pull: its hit second from the wave plan (pull_timing), stand, lead and meet point. */
+function planFor(bot: Unit, now: number): Plan | undefined {
     const camp = campFor(bot);
     const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
     if (camp === undefined || camp.pull === undefined || spawner === undefined) return undefined;
     const t = LaneConfig.Settings().Timing;
-    const full = PullTiming.ForCamp(camp, false);
-    if (full.seconds.length === 0) return undefined;
-    const key = NextSlot(now - t.JobStartLate, full.seconds, t.PullPeriod);
-    // Camps hold neutrals for a whole minute only from their first spawn on (camp_jobs' CampsUp).
-    if (math.floor(key / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
-    const meet = camp.pull.meetPoint;
-    const timing = kind === "half" ? PullTiming.ForCamp(camp, true, meet) : full;
+    const timing = PullTiming.ForCamp(camp);
     if (timing.seconds.length === 0) return undefined;
-    const slot = kind === "half" ? NextSlot(key, timing.seconds, t.PullPeriod) : key;
+    const slot = NextSlot(now - t.JobStartLate, timing.seconds, t.PullPeriod);
+    // Camps hold neutrals for a whole minute only from their first spawn on (camp_jobs' CampsUp).
+    if (math.floor(slot / t.PullPeriod) * t.PullPeriod < t.NeutralFirstSpawn) return undefined;
+    const meet = camp.pull.meetPoint;
     const lead = PullTiming.LeadPath(camp.pull, meet);
     const stand = Camps.StandPoint(spawner, lead[0], LaneConfig.Settings().Radii.StandOffset);
-    return { kind, key, camp, spawner, stand, lead, meet, timing, slot };
-}
-
-/** The safe lane of `bot`'s team (pull_timing's LaneAhead rule). */
-function safeLane(bot: Unit): boolean {
-    const lane = bot.GetAssignedLane();
-    return lane !== Lane.Mid && (bot.GetTeam() === Team.Radiant) === (lane === Lane.Bot);
-}
-
-/**
- * Which pull a wanted slot gets: the safe-lane pos5 half-pulls when a wanted lane holds (it is out a little: slow
- * and thin the wave rather than reset it; banked full pulls from there took the clash to -0.66 in 30 s and back to +0.07
- * in 60, partial ones to -0.13 and -0.15, slice file Decisions), and full-pulls when it pushes out. Everyone else full.
- */
-export function KindFor(bot: Unit, r: LanePush.Reading | undefined): Kind {
-    return halfWanted(bot, r) && !MeleeSpawn(bot) ? "half" : "full";
-}
-
-function halfWanted(bot: Unit, r: LanePush.Reading | undefined): boolean {
-    if (!Ours.On("SupportHalfPull") || LaneConfig.PositionOf(bot) !== 5 || !safeLane(bot)) return false;
-    if (LaneConfig.Settings().PullTiming.HalfAll === true) return true;
-    return r !== undefined && r.state === "HOLD";
-}
-
-/**
- * Slice pull-aggro (user 07/11/2026: no half pulls from melee-only camps): whether `camp`'s spawn holds a ranged unit
- * (GetAttackRange >= HalfRangedFrom), read per spawn from the units seen in its box (camp 1 spawned melee and ranged sets,
- * phagg1); unseen, the last seen spawn's; undefined never seen.
- */
-export function CampRanged(camp: Camps.CampJobData, spawner: Camps.Spawner, now: number): boolean | undefined {
-    const s = CampStateOf(spawner);
-    if (s.units.length > 0) {
-        const from = LaneConfig.Settings().PullTiming.HalfRangedFrom;
-        let ranged = false;
-        for (const u of s.units) if (u.GetAttackRange() >= from) ranged = true;
-        campKinds[camp.campIdx] = { spawn: math.floor(now / LaneConfig.Settings().Timing.PullPeriod), ranged };
-    }
-    return campKinds[camp.campIdx]?.ranged;
-}
-
-/** With Ours.PullOnHero: `bot`'s pull camp's spawn is known melee only. */
-function MeleeSpawn(bot: Unit): boolean {
-    if (!Ours.On("PullOnHero")) return false;
-    const camp = campFor(bot);
-    const spawner = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
-    return camp !== undefined && spawner !== undefined && CampRanged(camp, spawner, DotaTime()) === false;
-}
-
-type Attacker = Unit & { GetAttackPoint(): number; GetAttackProjectileSpeed(): number };
-
-/** An attack's wind-up in seconds: GetAttackPoint over the unit's attack speed, as the old lock-on read it. */
-function windup(u: Unit): number {
-    return (u as Attacker).GetAttackPoint() / math.max(0.1, u.GetAttackSpeed());
-}
-
-/** A ranged attack's flight over `d` (GetAttackProjectileSpeed; 0 for a unit with none, a melee one). */
-function flight(u: Unit, d: number): number {
-    const v = (u as Attacker).GetAttackProjectileSpeed();
-    return v > 0 ? d / v : 0;
-}
-
-/**
- * Slice pull-aggro (design 08/11/2026): with Ours.PullOnHero, a full pull's puller side (PullTiming.OnHero). `first`: the
- * puller's wind-up and projectile flight to its attack range, then the soonest neutral landing: a melee one walks the
- * puller's attack range less its own reach and winds up, a ranged one winds up and its projectile flies the puller's range
- * (HeroFirst while the camp is unseen, fb 1). `lagExtra`: the slowest melee neutral's wind-up (0 for an all-ranged camp).
- * `pass`: the neutrals' walk from the camp stand to GiveUpFrom from the camp. Half pulls keep the existing timing.
- */
-function heroFor(bot: Unit, p: Plan, timer: PullTiming.CreepTimer, pull?: Pull): void {
-    if (!Ours.On("PullOnHero") || timer.keep > 0) {
-        timer.hero = undefined;
-        return;
-    }
-    const cfg = LaneConfig.Settings().PullTiming;
-    const range = bot.GetAttackRange();
-    const own = windup(bot) + (range >= cfg.HalfRangedFrom ? flight(bot, range) : 0);
-    let soonest: number | undefined;
-    let extra = 0;
-    for (const u of CampStateOf(p.spawner).units) {
-        const r = u.GetAttackRange();
-        let l: number;
-        if (r >= cfg.HalfRangedFrom) l = windup(u) + flight(u, range);
-        else {
-            l = math.max(0, range - r) / math.max(1, u.GetCurrentMovementSpeed()) + windup(u);
-            extra = math.max(extra, windup(u));
-        }
-        soonest = math.min(soonest ?? math.huge, l);
-    }
-    if (pull !== undefined) pull.fb = soonest === undefined ? 1 : undefined;
-    // The camp's speed comes with every wave timing; with none the read gives no hit, so the puller's own (no lag) only fills the slot.
-    const nsp = p.timing.neutralSpeed ?? bot.GetCurrentMovementSpeed();
-    const o = p.spawner.location;
-    const d0 = math.sqrt((p.stand.x - o.x) ** 2 + (p.stand.y - o.y) ** 2);
-    timer.hero = {
-        from: p.stand,
-        route: p.lead,
-        speed: bot.GetCurrentMovementSpeed(),
-        first: soonest !== undefined ? own + soonest : cfg.HeroFirst,
-        lagExtra: extra,
-        neutralSpeed: nsp,
-        pass: math.max(0, cfg.GiveUpFrom - d0) / math.max(1, nsp),
-        giveUp: cfg.GiveUpAfterCamp[p.camp.campIdx] ?? cfg.GiveUpAfter,
-    };
-}
-
-/** Our lane creep `c` attacking the other team's lane creep. */
-function onLaneCreep(c: Unit): boolean {
-    const t = c.GetAttackTarget();
-    return t !== undefined && t !== null && t.GetTeam() !== c.GetTeam() && t.GetTeam() !== Team.Neutral && LanePush.IsLaneCreep(t.GetUnitName());
-}
-
-/**
- * Slice pull-aggro's deadline (design step 5), read every frame from the confirmed hit and latched: `give-up` the camp's
- * GiveUpAfterCamp s after the first tagged neutral passed GiveUpFrom, `dead` every tagged neutral died, `clash` a creep of
- * the timed wave fights theirs, `back` the wave's back creep on the lane is past the stand and out of its range, `cap`
- * JobMaxAfterAggro after the hit.
- */
-function deadlineCause(pull: Pull): string | undefined {
-    if (pull.dl !== undefined) return pull.dl;
-    const now = DotaTime();
-    const s = LaneConfig.Settings();
-    const p = pull.plan;
-    const hat = pull.hat ?? now;
-    let cause: string | undefined;
-    if (now >= hat + s.Timing.JobMaxAfterAggro) cause = "cap";
-    if (cause === undefined && pull.tagged !== undefined && pull.tagged.length > 0) {
-        // Timed from the first neutral past GiveUpFrom, as GiveUpAfterCamp was fitted (gu - g4; review L2); a camp whose
-        // tagged neutrals all died ends `dead` (an empty tag list ends nothing: review L3).
-        let alive = 0;
-        for (const u of pull.tagged) {
-            if (stale(u)) continue;
-            alive++;
-            if (pull.firstOut === undefined && GetUnitToLocationDistance(u, p.spawner.location) > s.PullTiming.GiveUpFrom) pull.firstOut = now;
-        }
-        if (alive === 0) cause = "dead";
-        else if (pull.firstOut !== undefined && now - pull.firstOut >= (pull.timer.hero?.giveUp ?? s.PullTiming.GiveUpAfter)) cause = "give-up";
-    }
-    if (cause === undefined && waveFights(pull)) cause = "clash";
-    if (cause === undefined && PullTiming.BackPast(pull.timer, p.meet, now)) cause = "back";
-    if (cause !== undefined) {
-        pull.dl = cause;
-        pull.dlAt = now;
-    }
-    return cause;
-}
-
-/** Slice pull-aggro: one of our lane creeps of the timed wave (near the pull, not already at the meet point at the hit:
- *  `early`, review L1) fights the other team's lane creeps. */
-function waveFights(pull: Pull): boolean {
-    const early = pull.early ?? [];
-    return laneCreepsNear(pull.plan, LaneConfig.Settings().Radii.MeetWatch).some((c) => early.indexOf(c) < 0 && onLaneCreep(c));
-}
-
-/** Slice pull-aggro: a tagged neutral is attacking the puller. */
-function onPuller(bot: Unit, pull: Pull): boolean {
-    for (const u of pull.tagged ?? []) if (!stale(u) && u.GetAttackTarget() === bot) return true;
-    return false;
-}
-
-/** Slice pull-aggro: per frame from the hit, the tank seconds (tkc at the camp, tks from the lead on), the neutrals' lag at
- *  the stand (laga) and the first frame our wave fought theirs (cla). */
-function trackHero(bot: Unit, pull: Pull): void {
-    if (pull.timer.hero === undefined || pull.hat === undefined) return;
-    const now = DotaTime();
-    const on = onPuller(bot, pull);
-    if (pull.tkT !== undefined && on) {
-        const dt = now - pull.tkT;
-        if (pull.label === "hold") pull.tkc = (pull.tkc ?? 0) + dt;
-        else pull.tks = (pull.tks ?? 0) + dt;
-    }
-    pull.tkT = now;
-    if (pull.arrAt !== undefined && pull.laga === undefined) {
-        for (const u of pull.tagged ?? []) {
-            if (stale(u)) continue;
-            if (GetUnitToUnitDistance(u, bot) <= u.GetAttackRange() + u.GetBoundingRadius() + bot.GetBoundingRadius()) pull.laga = now - pull.arrAt;
-        }
-    }
-    if (pull.cla === undefined && waveFights(pull)) pull.cla = now;
+    return { camp, spawner, stand, lead, meet, timing, slot };
 }
 
 function travel(bot: Unit, p: Plan): number {
@@ -810,7 +548,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
     ];
 }
 
-/** `slot` the plan's hit second (a half pull's, not the wave's `key`), so the line joins its `pull_job` line. */
+/** `slot` the plan's hit second, so the line joins its `pull_job` line. */
 function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
@@ -836,40 +574,8 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["hold", d.hold === undefined ? undefined : d.hold ? 1 : 0],
         ["rule", d.rule],
         ["ms", r?.ms],
-        ["pk", d.want ? d.kind : undefined],
-        ["hm", d.hm],
-        ["pm", d.pm],
-        ["nw", d.nw],
-        ["nws", d.nws],
-        ["ent", d.ent],
-        ["clp", d.clp],
         ...campFields(camp),
     ]);
-}
-
-/** Slice pull-aggro's pull_job fields (LOGGING "Pulls"); none without Ours.PullOnHero on a full pull. */
-function heroFields(p: Pull): Telemetry.Fields<"pull_job"> {
-    const t = p.timer;
-    const h = t.hero;
-    if (h === undefined) return [];
-    const r2 = (x: number | undefined) => (x !== undefined ? math.floor(x * 100 + 0.5) / 100 : undefined);
-    const since = (x: number | undefined) => (x !== undefined && p.hat !== undefined ? r2(x - p.hat) : undefined);
-    return [
-        ["ent", r2(t.ent)],
-        ["lvp", r2(p.lvp)],
-        ["lva", r2(p.lva)],
-        ["fst", r2(h.first)],
-        ["fl1", since(p.fl)],
-        ["lag", r2(t.lag)],
-        ["laga", r2(p.laga)],
-        ["gup", r2(t.gup)],
-        ["clp", r2(t.clp)],
-        ["cla", r2(p.cla)],
-        ["tkc", r2(p.tkc)],
-        ["tks", r2(p.tks)],
-        ["dl", p.dl],
-        ["fb", p.fb],
-    ];
 }
 
 function jobLine(bot: Unit, p: Pull, phase: string, why: string): void {
@@ -894,7 +600,6 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["lane", bot.GetAssignedLane()],
         ["camp", p.plan.camp.campIdx],
         ["slot", p.plan.slot],
-        ["pk", p.plan.kind],
         ["res", r.success ? "ok" : "fail"],
         ["why", why],
         ["label", label ?? p.label],
@@ -916,11 +621,6 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["hc", p.timer.n],
         ["hn", p.timer.next],
         ["hb", p.timer.back],
-        ["hf", p.timer.clear],
-        ["hu", p.timer.turn],
-        ["hm", p.timer.margin],
-        ["hs", p.timer.standBack],
-        ["hi", p.stepIn],
         ["ht", p.hat],
         ["g4", p.g4],
         ["gh", p.gh !== undefined ? math.floor(p.gh + 0.5) : undefined],
@@ -931,14 +631,8 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["nm", p.nm],
         ["shs", p.shs !== undefined ? math.floor(p.shs * 10 + 0.5) / 10 : undefined],
         ["shh", p.shh !== undefined ? math.floor(p.shh * 100 + 0.5) / 100 : undefined],
-        ["fl", p.fl !== undefined ? math.floor(p.fl * 100 + 0.5) / 100 : undefined],
-        ["lc", p.lc],
-        ["la", p.la !== undefined ? math.floor(p.la * 100 + 0.5) / 100 : undefined],
-        ["nar", p.nar],
-        ...heroFields(p),
     ];
     if (!r.success) {
-        creepLines(bot, p);
         Telemetry.Event("pull_job", fields);
         return;
     }
@@ -962,158 +656,12 @@ function trail(bot: Unit, flush: boolean): void {
         return;
     }
     trailing[pid] = undefined;
-    creepLines(bot, tr.pull);
     Telemetry.Event("pull_job", [...tr.fields, ["dt", share(tr.pull)]]);
-}
-
-/** The harness's per-creep lines (ev=pull_creep), written once with the pull's own line. */
-function creepLines(bot: Unit, p: Pull): void {
-    if (p.creeps === undefined) return;
-    const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10 + 0.5) / 10 : undefined);
-    const r0 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
-    for (const [, c] of p.creeps) {
-        Telemetry.Event("pull_creep", [
-            ["pid", bot.GetPlayerID()],
-            ["slot", p.plan.slot],
-            ["camp", p.plan.camp.campIdx],
-            ["ci", c.ci],
-            ["rg", c.rg],
-            ["tr", c.tr],
-            ["tt", r1(c.tt)],
-            ["dp", r0(c.dp)],
-            ["dn", r0(c.dn)],
-            ["ph", c.ph],
-            ["pv", r0(c.pv)],
-            ["po", r0(c.po)],
-            ["ca", r0(c.ca)],
-            ["lt", r1(c.lt)],
-            ["ld", r0(c.ld)],
-            ["ln", r0(c.ln)],
-            ["ar", r0(c.ar)],
-            ["hk", c.hk],
-            ["hl", c.hl !== undefined ? math.floor(c.hl * 100 + 0.5) / 100 : undefined],
-            ["hd", r0(c.tr === 1 ? c.lastD : c.bestD)],
-            ["hn", r0(c.tr === 1 ? c.lastN : c.bestN)],
-        ]);
-    }
-    p.creeps = undefined;
-}
-
-/**
- * Every frame after the hit: each lane creep of ours near the watch is read at the frame its attack target becomes a
- * neutral, else at its nearest approach to the puller so far (CreepTrack). What the puller was doing is read in the same
- * frame: hit by a tagged neutral or not, moving or standing, how far off the lane.
- */
-function trackCreeps(bot: Unit, p: Pull): void {
-    if (p.hat === undefined) return;
-    const now = DotaTime();
-    const at = bot.GetLocation();
-    let pv = 0;
-    if (p.pAt !== undefined && p.pT !== undefined && now > p.pT) pv = GetUnitToLocationDistance(bot, p.pAt) / (now - p.pT);
-    p.pAt = at;
-    p.pT = now;
-    if (p.creeps === undefined) p.creeps = new Map();
-    const path = p.plan.timing.lanePath;
-    const meetAlong = p.plan.timing.meetAlong;
-    let ph = 0;
-    const alive: Unit[] = [];
-    for (const u of p.tagged ?? []) {
-        if (stale(u)) continue;
-        alive.push(u);
-        if (u.GetAttackTarget() === bot) ph = 1;
-    }
-    const po = path !== undefined ? PullTiming.Along(path, at)[1] : undefined;
-    const landed = landing(bot, p, ph === 1);
-    for (const c of laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch)) {
-        let t = p.creeps.get(c);
-        if (t === undefined) {
-            t = { ci: p.creepN ?? 0, rg: string.find(c.GetUnitName(), "ranged")[0] !== undefined ? 1 : 0, tr: 0 };
-            p.creepN = (p.creepN ?? 0) + 1;
-            p.creeps.set(c, t);
-        }
-        if (t.tr === 1) continue;
-        const dp = GetUnitToUnitDistance(c, bot);
-        const nearest = () => {
-            let dn: number | undefined;
-            for (const u of alive) {
-                const d = GetUnitToUnitDistance(c, u);
-                if (dn === undefined || d < dn) dn = d;
-            }
-            return dn;
-        };
-        if (landed) {
-            if (t.ar === undefined) t.ar = c.GetAcquisitionRange();
-            const ar = t.ar ?? 0;
-            if (dp <= ar) {
-                t.hk = (t.hk ?? 0) + 1;
-                if (p.la === undefined) p.la = now;
-            }
-            // The latest landing (written for a turn) and the one nearest the puller (written for a creep that never turns).
-            const dn = nearest();
-            t.hAt = now;
-            t.lastD = dp;
-            t.lastN = dn;
-            if (t.bestD === undefined || dp < t.bestD) {
-                t.bestD = dp;
-                t.bestN = dn;
-            }
-        }
-        if (path !== undefined && t.lt === undefined) {
-            const off = PullTiming.Along(path, c.GetLocation())[1];
-            if (t.off0 === undefined || off < t.off0) t.off0 = off;
-            else if (off > t.off0 + SETTINGS.Leave) {
-                t.lt = now - p.hat;
-                t.ld = dp;
-                t.ln = nearest();
-            }
-        }
-        const turned = onNeutral(c);
-        if (!turned && t.dp !== undefined && dp >= t.dp) continue;
-        const dn = nearest();
-        t.tr = turned ? 1 : 0;
-        if (turned && t.hAt !== undefined) t.hl = now - t.hAt;
-        t.tt = now - p.hat;
-        t.dp = dp;
-        t.dn = dn;
-        t.ph = ph;
-        t.pv = pv;
-        t.po = po;
-        if (path !== undefined && meetAlong !== undefined) t.ca = PullTiming.Along(path, c.GetLocation())[0] - meetAlong;
-    }
-}
-
-/**
- * Slice pull-aggro: true on a frame where a tagged neutral's attack landed on the puller: its HP fell since the last frame
- * while a tagged neutral had it as its attack target (`onPuller`) and no enemy hero or lane creep within 1,600 did (their
- * damage would look the same). Counts fl, lc for the pull line.
- */
-function landing(bot: Unit, p: Pull, onPuller: boolean): boolean {
-    const hp = bot.GetHealth();
-    const prev = p.lastHp;
-    p.lastHp = hp;
-    if (prev === undefined || hp >= prev || !onPuller) return false;
-    for (const kind of [UnitType.EnemyHeroes, UnitType.EnemyCreeps]) {
-        for (const e of GetUnitList(kind)) {
-            if (e.IsAlive() && GetUnitToUnitDistance(e, bot) <= 1600 && e.GetAttackTarget() === bot) return false;
-        }
-    }
-    const now = DotaTime();
-    if (p.fl === undefined) p.fl = now;
-    p.lc = (p.lc ?? 0) + 1;
-    return true;
 }
 
 /** Our lane creeps within `radius` of the meet point or of the camp origin: a wave the neutrals walk back from follows them
  *  into the camp and fights there (pw1: the Radiant safe small camp sits about 1100 from its meet point, so a watch of the
  *  meet point alone logged those waves as never diverted). */
-/** How far `at` is from `stand` towards the meet point (negative: back towards the camp). */
-function stepped(p: Plan, stand: Vector, at: Vector): number {
-    const dx = p.meet.x - stand.x;
-    const dy = p.meet.y - stand.y;
-    const l = math.max(1, math.sqrt(dx * dx + dy * dy));
-    return math.floor(((at.x - stand.x) * dx + (at.y - stand.y) * dy) / l + 0.5);
-}
-
 function laneCreepsNear(p: Plan, radius: number): Unit[] {
     const out: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
@@ -1131,10 +679,8 @@ function onNeutral(c: Unit): boolean {
 /** During lead and watch: our wave's largest diverted share (camp_jobs' sample: the wave is counted once the first of it
  *  is seen on a neutral). */
 function sample(bot: Unit, p: Pull): void {
-    if (p.label !== "hold" && p.label !== "lead" && p.label !== "watch") return;
+    if (p.label !== "lead" && p.label !== "watch") return;
     watchLine(bot, p, p.label);
-    diag(bot, p, trackCreeps);
-    diag(bot, p, trackHero);
     const now = DotaTime();
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
@@ -1153,7 +699,6 @@ function sample(bot: Unit, p: Pull): void {
 
 function sampleWave(bot: Unit, p: Pull): void {
     const now = DotaTime();
-    diag(bot, p, trackCreeps);
     if (p.sampledAt !== undefined && now - p.sampledAt < SETTINGS.WatchEvery) return;
     p.sampledAt = now;
     countDiverted(p);
@@ -1182,8 +727,6 @@ function tagCamp(bot: Unit, p: Pull): void {
     for (const u of tagged) {
         const l = u.GetLocation();
         if (l !== undefined && l !== null) p.starts.set(u, l);
-        const r = u.GetAttackRange();
-        if (p.nar === undefined || r > p.nar) p.nar = r;
     }
     p.early = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
@@ -1386,76 +929,20 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     const p = pull.plan;
     const s = LaneConfig.Settings();
     const camp = verbCamp(p);
-    // A half pull's search also picks where the puller stands: the lead's end, which the verb walks after the hit (with the
-    // step-in, HalfStepBack behind it, stepping in during the watch).
-    const lead = [...p.lead];
-    // Slice pull-aggro: a full pull timed on the puller (PullTiming.OnHero) holds at the camp until its leave time.
-    const onHero = pull.timer.hero !== undefined;
-    const stepIn = pull.timer.keep > 0 && s.PullTiming.HalfStepIn === true;
-    if (stepIn && lead.length > 0) lead[lead.length - 1] = PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand ?? p.meet, p.timing.lanePath);
     // The hit follows the wave until the order goes out (the verb reads `earlier` every frame of the wait).
     camp.earlier = () => {
-        if (onHero) heroFor(bot, p, pull.timer, pull);
         pull.hitAt = PullTiming.Read(pull.timer, DotaTime());
-        if (pull.timer.stand !== undefined && lead.length > 0)
-            lead[lead.length - 1] = stepIn ? PullTiming.StepBackPoint(p.spawner.location, pull.timer.stand, p.timing.lanePath) : pull.timer.stand;
         return aggroAt - pull.hitAt;
     };
-    const stepAt = stepIn
-        ? () => {
-              const end = pull.timer.stand ?? p.meet;
-              const engaged = laneCreepsNear(p, s.Radii.MeetWatch).some((c) => onNeutral(c));
-              const here = bot.GetLocation();
-              // The camp's neutrals as offsets from the puller: they follow it, so a step moves them too.
-              const offs: Vector[] = [];
-              let ranged = false;
-              for (const u of pull.tagged ?? []) {
-                  if (stale(u)) continue;
-                  // A tagged neutral out of vision is alive with no location (phhar8: every watch errored on it).
-                  const l = u.GetLocation();
-                  if (l === undefined || l === null) continue;
-                  offs.push(Vector(l.x - here.x, l.y - here.y, 0));
-                  if (u.GetAttackRange() >= s.PullTiming.HalfRangedFrom) ranged = true;
-              }
-              const byNeutrals = s.PullTiming.HalfStepNeutrals === true;
-              const at = PullTiming.StepIn(pull.timer, p.spawner.location, end, p.meet, DotaTime(), engaged, here, byNeutrals ? offs : undefined, byNeutrals && ranged);
-              // hi: the puller's offset off the lane path when the creeps engage (with the step-in `end` is the meet point,
-              // so a measure along end-to-meet would be 0: review 2026-11-05-pull-half M1).
-              if (engaged && pull.stepIn === undefined) {
-                  const path = p.timing.lanePath;
-                  pull.stepIn = path !== undefined ? math.floor(PullTiming.Along(path, here)[1] + 0.5) : stepped(p, end, here);
-              }
-              return at as unknown as Lib.Vec;
-              }
-        : undefined;
-    // Slice pull-aggro: the leave time follows the wave through the hold (the hit's read goes on); the deadline is read
-    // through the hold, the lead and the watch, which ends WatchAfterWave after it.
-    const holdUntil = onHero
-        ? () => {
-              PullTiming.Read(pull.timer, DotaTime());
-              const leave = PullTiming.Leave(pull.timer) ?? DotaTime();
-              if (pull.lvp === undefined) pull.lvp = leave;
-              return leave;
-          }
-        : undefined;
     return {
-        holdUntil,
-        aggroed: onHero ? () => onPuller(bot, pull) : undefined,
-        aggroFor: s.PullTiming.LockFor,
-        deadline: onHero ? () => deadlineCause(pull) : undefined,
         bail: () => bailPoint(bot) as unknown as Lib.Vec | undefined,
         bailFor: SETTINGS.BailFor,
         camp,
         aggroAt,
-        lead: lead as unknown as Lib.Vec[],
-        watchAt: () => {
-            const step = stepAt?.();
-            const shed = shedPoint(bot, pull);
-            return (shed ?? step) as unknown as Lib.Vec | undefined;
-        },
+        lead: p.lead as unknown as Lib.Vec[],
+        watchAt: () => shedPoint(bot, pull) as unknown as Lib.Vec | undefined,
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
-            if (onHero) return deadlineCause(pull) !== undefined ? pull.dlAt! + s.PullTiming.WatchAfterWave : math.huge;
             const w = PullTiming.WaveAt(pull.timer);
             return w !== undefined ? w + s.PullTiming.WatchAfterWave : undefined;
         },
@@ -1474,9 +961,7 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
             ctx.label(l);
             p.label = l;
             // Diagnostics only: an error here must not end the pull (review 2026-11-04-pull-diag L3).
-            if ((l === "hold" || l === "lead") && p.hat === undefined) diag(bot, p, tagCamp);
-            if (l === "lead" && p.lva === undefined && p.hat !== undefined) p.lva = DotaTime();
-            if (l === "watch" && p.arrAt === undefined) p.arrAt = DotaTime();
+            if (l === "lead" && p.hat === undefined) diag(bot, p, tagCamp);
         },
         urgent: ctx.urgent,
     };
@@ -1496,91 +981,50 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
     const now = DotaTime();
-    const full = planFor(bot, now, "full");
-    if (full === undefined || handled[pid] === full.key) return false;
-    // A wave decided a half pull waits for the half's own (later) leave time.
-    const kind = decided[pid]?.slot === full.key ? decided[pid]!.kind : "full";
-    const half = kind === "half" ? planFor(bot, now, "half") : undefined;
-    // No half plan for this camp: the full plan runs and the decision says so, so choice and pull_job agree on pk.
-    if (kind === "half" && half === undefined && decided[pid] !== undefined) decided[pid]!.kind = "full";
-    const p = half ?? full;
+    const p = planFor(bot, now);
+    if (p === undefined || handled[pid] === p.slot) return false;
     const walk = travel(bot, p);
     // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
     // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
     let timer = timers[pid];
     if (timer === undefined || timer.slot !== p.slot) {
-        const cfg = LaneConfig.Settings().PullTiming;
-        timer =
-            p.kind === "half"
-                ? PullTiming.Timer(p.timing, p.slot, 1, cfg.HalfClear, 2, bot.GetCurrentMovementSpeed())
-                : PullTiming.Timer(p.timing, p.slot, 0, cfg.FullPast);
+        timer = PullTiming.Timer(p.timing, p.slot, LaneConfig.Settings().PullTiming.FullPast);
         timers[pid] = timer;
     }
-    heroFor(bot, p, timer);
     const hitAt = PullTiming.Read(timer, now);
     if (now < hitAt - walk - SETTINGS.Early) return false;
     let d = decided[pid];
-    if (d === undefined || d.slot !== p.key) {
+    if (d === undefined || d.slot !== p.slot) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane());
-        // The half-pull harness (HalfAll) wants every slot of the half-pulling support, so the hit and step-in get read
-        // many times a game; the lane reading's trigger is checked in normal games.
-        const harness = LaneConfig.Settings().PullTiming.HalfAll === true && KindFor(bot, reading) === "half";
-        const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key), p.key + SETTINGS.ArriveAfter);
+        const gone = LanePush.WaveGoneNow(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot), p.slot + SETTINGS.ArriveAfter);
         const tgt = LanePush.TargetOf(bot.GetAssignedLane());
         const hold = CoreToHold(bot) !== undefined;
         // Slice lane-control 2b: the lane controller's decision for the pulled wave says whether to pull (rule `ctl`); the
         // pull keeps its own gates below. With no decision for that wave, the pull's own triggers decide.
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
-        const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.key));
+        const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
         const byCtl = ctl !== undefined && CtlWants(ctl, pid);
         const byNew = ctl === undefined && Wanted(gone, tgt);
         const byOld = ctl === undefined && hold && OldWanted(reading, tgt);
         const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
-        const want = rule !== undefined || harness;
-        d = { slot: p.key, want, kind: want ? KindFor(bot, reading) : "full", reading, gone, hold, rule, ctl: ctl !== undefined };
-        if (want && d.kind === "full" && halfWanted(bot, reading) && MeleeSpawn(bot)) d.pm = 1;
+        d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
         decided[pid] = d;
         gateWhy[pid] = undefined;
-        if (d.kind === "half") return false;
     }
     const camp = CampStateOf(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
-        handled[pid] = p.key;
+        handled[pid] = p.slot;
         gateWhy[pid] = undefined;
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
-    // Slice pull-aggro: a half whose spawn is seen melee before the hit becomes the full pull while its second is still
-    // ahead, else stays (half-melee: a coverage count, not a miss).
-    if (d.want && d.kind === "half" && MeleeSpawn(bot)) {
-        d.pm = 1;
-        if (now < full.slot - travel(bot, full)) {
-            d.kind = "full";
-            return false;
-        }
-        done(false, "half-melee");
-        return false;
-    }
     if (!d.want) {
         done(false, d.ctl === true ? "ctl" : d.reading === undefined ? "no-read" : "lane");
-        return false;
-    }
-    // No hit splits the wave: a half that takes all four is the full pull the lane reading turned down.
-    if (d.kind === "half" && timer.margin !== undefined && timer.margin <= 0) {
-        d.hm = timer.margin;
-        done(false, "half-geo");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
     const site = siteThreat(p, camp);
-    // Slice pull-aggro: no window (the wave enters after the predicted give-up or clash) holds the start like a gate.
-    const noWin = timer.hero !== undefined && timer.nowin !== undefined ? "no-window" : undefined;
-    d.nw = timer.nowin;
-    d.nws = timer.hero !== undefined && timer.slack !== undefined ? math.floor(timer.slack * 100 + 0.5) / 100 : undefined;
-    // Review M2: the entry and the predicted clash the window was judged on.
-    d.ent = timer.hero !== undefined && timer.ent !== undefined ? math.floor(timer.ent * 100 + 0.5) / 100 : undefined;
-    d.clp = timer.hero !== undefined && timer.clp !== undefined ? math.floor(timer.clp * 100 + 0.5) / 100 : undefined;
-    const why = CampGate(camp, now, hitAt) ?? noWin ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -1613,8 +1057,7 @@ export function Step(bot: Unit, host: number): boolean {
         const s = CampStateOf(p.plan.spawner);
         s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
-        // Slice pull-aggro: the wave read on the walk may close the window (the entry after the predicted give-up or clash).
-        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg) ?? (p.timer.hero !== undefined && p.timer.nowin !== undefined ? "no-window" : undefined);
+        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
             // The pull_job line then carries the camp that cancelled it, not the one at the start.
             p.start = s;

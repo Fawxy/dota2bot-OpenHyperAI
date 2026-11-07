@@ -279,17 +279,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue274
+            local __continue270
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue274 = true
+                    __continue270 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue274 = true
+                    __continue270 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -300,9 +300,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue274 = true
+                __continue270 = true
             until true
-            if not __continue274 then
+            if not __continue270 then
                 break
             end
         end
@@ -544,11 +544,10 @@ local executor
 function ____exports.SetExecutor(e)
     executor = e
 end
-local PULL_KINDS = {full_pull = true, half_pull = true, stack_pull = true, double_pull = true}
-local PULL_TECHS = {full_pull = "full_pull", half_pull = "half_pull", stack_pull = "stack_pull"}
+local PULL_KINDS = {full_pull = true, stack_pull = true, double_pull = true}
+local PULL_TECHS = {full_pull = "full_pull", stack_pull = "stack_pull"}
 LOG_KIND = {
     full_pull = "full",
-    half_pull = "half",
     stack_pull = "stackpull",
     double_pull = "double",
     stack = "stack",
@@ -556,13 +555,12 @@ LOG_KIND = {
 }
 local FLAG_OF = {
     full_pull = "FullPull",
-    half_pull = "HalfPull",
     stack_pull = "StackPull",
     double_pull = "FullPull",
     stack = "Stack",
     contest = "CounterPlay"
 }
-local JOB_FLAGS = {"FullPull", "HalfPull", "StackPull"}
+local JOB_FLAGS = {"FullPull", "StackPull"}
 local RANGED_ATTACK_RANGE = 326
 local EXIT_GRACE_SDK = 0.5
 local jobs = {}
@@ -608,7 +606,7 @@ function ____exports.AggroSecondsFor(kind, data)
     if kind == "stack" or kind == "contest" then
         return data.stack ~= nil and ({Stacking.AggroSec(data)}) or ({})
     end
-    return data.pull ~= nil and PullTiming.SeedSeconds(data.pull, kind == "half_pull") or ({})
+    return data.pull ~= nil and data.pull.aggroSec or ({})
 end
 function ____exports.NextAggroTime(dotaTime, seconds, period)
     local base = math.floor(dotaTime / period) * period
@@ -664,17 +662,8 @@ function ____exports.MeasureDivert(allyCreeps, waveSize)
         n / math.max(waveSize, 1)
     )
 end
-function ____exports.Grade(kind, divert)
+function ____exports.Grade(divert)
     local t = settings().Thresholds
-    if kind == "half_pull" then
-        if divert > t.HalfPullMax then
-            return "mistake:half->full"
-        end
-        if divert < t.HalfPullMin then
-            return "mistake:weak-pull"
-        end
-        return "ok"
-    end
     if divert > t.FullPullMin then
         return "ok"
     end
@@ -703,9 +692,6 @@ function ____exports.PullerStand(data)
         leadPath(data.pull, data.pull.meetPoint)[1]
     )
 end
-local function timingFor(kind, data, meet)
-    return PullTiming.ForCamp(data, kind == "half_pull", meet)
-end
 --- The classic double pull: hit the hard camp from its side facing the small camp, walk to the small camp's stand, hit
 -- it on its own second and lead both; the hard camp follows and must reach the meet point by DoublePullJoin after the
 -- wave. The reverse (the hard camp led in once the small one engaged) cannot fit on 7.41: evil_1 / good_2 are 6-9 s of
@@ -717,7 +703,7 @@ function ____exports.DoubleGeometry(small, hard, speed)
     if small.pull == nil or smallSp == nil or hardSp == nil then
         return {why = "no-camp", before = 0, late = 0, gap = 0}
     end
-    local timing = timingFor("full_pull", small)
+    local timing = PullTiming.ForCamp(small)
     if timing.waveAfter == nil then
         return {why = "no-wave", before = 0, late = 0, gap = 0}
     end
@@ -971,7 +957,7 @@ function ____exports.Start(bot, req)
     if data == nil or data.pull == nil or spawner == nil then
         return false
     end
-    local timing = timingFor(req.kind, data)
+    local timing = PullTiming.ForCamp(data)
     local seconds = timing.seconds
     if #seconds == 0 then
         return false
@@ -981,7 +967,7 @@ function ____exports.Start(bot, req)
     local now = DotaTime()
     local period = cfg.Timing.PullPeriod
     local jitter = LaneConfig.Jitter(skill)
-    local meet = req.kind == "half_pull" and (data.pull.halfMeetPoint or data.pull.meetPoint) or data.pull.meetPoint
+    local meet = data.pull.meetPoint
     local noise = LaneConfig.Curve("PathNoise", skill)
     local exact = leadPath(data.pull, meet)
     local stand = noisy(
@@ -1656,7 +1642,7 @@ local function keepGoing(bot, job)
                 bot,
                 job,
                 "return",
-                ____exports.Grade(job.kind, job.peakDivert)
+                ____exports.Grade(job.peakDivert)
             )
         else
             abort(bot, job, "timeout")
@@ -1714,9 +1700,9 @@ local function pullCampFor(tech, camps)
     end
     return camps[1]
 end
---- Travel to the camp's stand point when the start window of its next full or half pull would be open now for a bot
+--- Travel to the camp's stand point when the start window of its next pull would be open now for a bot
 -- within MaxTravel, else undefined. A result above MaxTravel means only the distance keeps the window shut.
-local function windowTravel(bot, data, kind, now)
+local function windowTravel(bot, data, now)
     local spawner = Camps.SpawnerByIdx(data.campIdx)
     if spawner == nil or data.pull == nil then
         return nil
@@ -1724,7 +1710,7 @@ local function windowTravel(bot, data, kind, now)
     local t = settings().Timing
     local base = ____exports.NextAggroTime(
         now - t.JobStartLate,
-        timingFor(kind, data).seconds,
+        PullTiming.ForCamp(data).seconds,
         t.PullPeriod
     )
     if not ____exports.CampsUp(base) then
@@ -1744,15 +1730,15 @@ local function windowTravel(bot, data, kind, now)
     ) and travel or nil
 end
 --- In reach, and still able to stand at the camp by the late tolerance: a later start would only end as `late`.
-local function windowFor(bot, data, kind, now)
+local function windowFor(bot, data, now)
     local t = settings().Timing
-    local travel = windowTravel(bot, data, kind, now)
+    local travel = windowTravel(bot, data, now)
     if travel == nil or travel > t.MaxTravel then
         return false
     end
     return now + travel <= ____exports.NextAggroTime(
         now - t.JobStartLate,
-        timingFor(kind, data).seconds,
+        PullTiming.ForCamp(data).seconds,
         t.PullPeriod
     ) + t.JobStartLate
 end
@@ -1820,7 +1806,7 @@ local function doubleFor(bot, camps, now)
     local t = settings().Timing
     local base = ____exports.NextAggroTime(
         now - t.JobStartLate,
-        timingFor("full_pull", camps[1]).seconds,
+        PullTiming.ForCamp(camps[1]).seconds,
         t.PullPeriod
     )
     local hardAt = base - g.before
@@ -1850,15 +1836,15 @@ local function schedule(bot)
     end
     local double = doubleFor(bot, camps, now)
     local doubleOpen = double ~= nil and double.open
-    if not doubleOpen and not windowFor(bot, camps[1], "full_pull", now) and not windowFor(bot, camps[1], "half_pull", now) then
+    if not doubleOpen and not windowFor(bot, camps[1], now) then
         local any = false
         for ____, c in ipairs(camps) do
-            if LaneHooks.IsStacked(c.campIdx) and windowFor(bot, c, "stack_pull", now) then
+            if LaneHooks.IsStacked(c.campIdx) and windowFor(bot, c, now) then
                 any = true
             end
         end
         if not any then
-            local travel = windowTravel(bot, camps[1], "full_pull", now)
+            local travel = windowTravel(bot, camps[1], now)
             if travel ~= nil then
                 notePlan(
                     bot,
@@ -1873,7 +1859,7 @@ local function schedule(bot)
                         {"travel", travel},
                         {
                             "timing",
-                            timingFor("full_pull", camps[1]).source
+                            PullTiming.ForCamp(camps[1]).source
                         }
                     }
                 )
@@ -1893,7 +1879,7 @@ local function schedule(bot)
             {"camp", camps[1].campIdx},
             {
                 "timing",
-                timingFor("full_pull", camps[1]).source
+                PullTiming.ForCamp(camps[1]).source
             },
             {"tech", choice.tech},
             {"reason", choice.reason},
@@ -1924,12 +1910,12 @@ local function schedule(bot)
     if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
         return false
     end
-    if not asDouble and not windowFor(bot, camp, kind, now) then
+    if not asDouble and not windowFor(bot, camp, now) then
         return false
     end
     local base = ____exports.NextAggroTime(
         now - settings().Timing.JobStartLate,
-        timingFor(kind, camp).seconds,
+        PullTiming.ForCamp(camp).seconds,
         settings().Timing.PullPeriod
     )
     if skipped[pid] == base then
@@ -2043,7 +2029,7 @@ function ____exports.Desire(bot)
                     bot,
                     job,
                     "return",
-                    ____exports.Grade(job.kind, job.peakDivert)
+                    ____exports.Grade(job.peakDivert)
                 )
             else
                 abort(bot, job, "preempted", true)
@@ -2139,7 +2125,7 @@ local function telegraph(bot, job, now)
     end
     Orders.Say(
         bot,
-        job.kind == "half_pull" and "say_lane_half_pull" or "say_lane_pulling_in_5",
+        "say_lane_pulling_in_5",
         settings().Timing.PullTelegraphCooldown
     )
 end
@@ -2185,10 +2171,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue302
+            local __continue298
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue302 = true
+                    __continue298 = true
                     break
                 end
                 if dist2D(
@@ -2197,9 +2183,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue302 = true
+                __continue298 = true
             until true
-            if not __continue302 then
+            if not __continue298 then
                 break
             end
         end
@@ -2238,10 +2224,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue311
+            local __continue307
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue311 = true
+                    __continue307 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2251,9 +2237,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue311 = true
+                __continue307 = true
             until true
-            if not __continue311 then
+            if not __continue307 then
                 break
             end
         end
@@ -2294,19 +2280,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue326
+            local __continue322
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue326 = true
+                    __continue322 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue326 = true
+                __continue322 = true
             until true
-            if not __continue326 then
+            if not __continue322 then
                 break
             end
         end
@@ -2672,7 +2658,7 @@ local function step(bot, job)
                 bot,
                 job,
                 "done",
-                ____exports.Grade(job.kind, job.peakDivert)
+                ____exports.Grade(job.peakDivert)
             )
             return false
         end
@@ -2737,7 +2723,7 @@ ____exports.Exec = {
         bot,
         job,
         "done",
-        ____exports.Grade(job.kind, job.peakDivert)
+        ____exports.Grade(job.peakDivert)
     ) end,
     EndStack = endStack,
     NoteStackAggro = noteStackAggro,

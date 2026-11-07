@@ -13,10 +13,8 @@ export type LaneKind = "safe" | "off" | "mid";
 
 export interface PullData {
     aggroSec: number[];
-    halfAggroSec?: number[];
     path: Vector[];
     meetPoint: Vector;
-    halfMeetPoint?: Vector;
 }
 
 export interface CampJobData {
@@ -190,10 +188,6 @@ export function NearestLaneAmount(lane: Lane, loc: Vector): number {
 
 export function DeriveMeetPoint(_team: number, lane: Lane, campLoc: Vector): Vector {
     return GetLocationAlongLane(lane, NearestLaneAmount(lane, campLoc));
-}
-
-export function DeriveHalfMeetPoint(team: number, lane: Lane, meet: Vector): Vector {
-    return ShiftAlongLane(team, lane, meet, camps().HalfMeetOffset);
 }
 
 /** The lane point `offset` along the lane from `meet` the way `team`'s wave walks (negative: back towards its base). */
@@ -377,7 +371,7 @@ export function Resolve(): CampJobData[] {
             unverified: entry.unverified,
         };
         if (lane !== undefined && entry.pullAggroSec !== undefined && entry.pullPath !== undefined && entry.meetPoint !== undefined) {
-            job.pull = { aggroSec: entry.pullAggroSec, halfAggroSec: entry.halfAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint, halfMeetPoint: entry.halfMeetPoint };
+            job.pull = { aggroSec: entry.pullAggroSec, path: entry.pullPath, meetPoint: entry.meetPoint };
         }
         jobs[entry.team][s.idx] = job;
     }
@@ -411,10 +405,8 @@ export function Resolve(): CampJobData[] {
             stack: stackFor(best, entry),
             pull: {
                 aggroSec: entry.pullAggroSec,
-                halfAggroSec: entry.halfAggroSec,
                 path: DerivePullPath(best, meet),
                 meetPoint: meet,
-                halfMeetPoint: DeriveHalfMeetPoint(entry.team, lane, meet),
             },
             source: entry.source,
             type: best.type,

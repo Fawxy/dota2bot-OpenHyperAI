@@ -1,5 +1,5 @@
 /**
- * Camp-job executor (task 07): full, half and double pulls, stacks and counter-play camp contests run from
+ * Camp-job executor (task 07): full and double pulls, stacks and counter-play camp contests run from
  * mode_farm_generic as timed jobs.
  * The job window only gates a job's start (PF2); once started the job keeps its desire until it is done or
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
@@ -25,7 +25,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
 
-export type JobKind = "full_pull" | "half_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
+export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
 export interface JobRequest {
     kind: JobKind;
@@ -144,12 +144,11 @@ interface PendingStack {
     type: Camps.CampType;
 }
 
-const PULL_KINDS: Record<string, boolean> = { full_pull: true, half_pull: true, stack_pull: true, double_pull: true };
-const PULL_TECHS: Record<string, JobKind> = { full_pull: "full_pull", half_pull: "half_pull", stack_pull: "stack_pull" };
-// The console parser reads `kind=%w+` and treats `half` as the half-pull timing.
+const PULL_KINDS: Record<string, boolean> = { full_pull: true, stack_pull: true, double_pull: true };
+const PULL_TECHS: Record<string, JobKind> = { full_pull: "full_pull", stack_pull: "stack_pull" };
+// The console parser reads `kind=%w+`.
 const LOG_KIND: Record<JobKind, string> = {
     full_pull: "full",
-    half_pull: "half",
     stack_pull: "stackpull",
     double_pull: "double",
     stack: "stack",
@@ -157,13 +156,12 @@ const LOG_KIND: Record<JobKind, string> = {
 };
 const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
     full_pull: "FullPull",
-    half_pull: "HalfPull",
     stack_pull: "StackPull",
     double_pull: "FullPull",
     stack: "Stack",
     contest: "CounterPlay",
 };
-const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "HalfPull", "StackPull"];
+const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "StackPull"];
 // jmz_func's melee/ranged split for attack timing.
 const RANGED_ATTACK_RANGE = 326;
 const EXIT_GRACE_SDK = 0.5;
@@ -217,7 +215,7 @@ function commitTech(kind: JobKind): LaneConfig.Technique | "contest" {
 
 export function AggroSecondsFor(kind: JobKind, data: Camps.CampJobData): number[] {
     if (kind === "stack" || kind === "contest") return data.stack !== undefined ? [Stacking.AggroSec(data)] : [];
-    return data.pull !== undefined ? PullTiming.SeedSeconds(data.pull, kind === "half_pull") : [];
+    return data.pull !== undefined ? data.pull.aggroSec : [];
 }
 
 export function NextAggroTime(dotaTime: number, seconds: number[], period: number): number {
@@ -270,13 +268,8 @@ export function MeasureDivert(allyCreeps: Unit[], waveSize: number): number {
     return math.min(1, n / math.max(waveSize, 1));
 }
 
-export function Grade(kind: JobKind, divert: number): string {
+export function Grade(divert: number): string {
     const t = settings().Thresholds;
-    if (kind === "half_pull") {
-        if (divert > t.HalfPullMax) return "mistake:half->full";
-        if (divert < t.HalfPullMin) return "mistake:weak-pull";
-        return "ok";
-    }
     if (divert > t.FullPullMin) return "ok";
     return divert > 0 ? "mistake:weak-pull" : "mistake:no-divert";
 }
@@ -301,10 +294,6 @@ export function PullerStand(data: Camps.CampJobData): Vector | undefined {
     return standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]);
 }
 
-function timingFor(kind: JobKind, data: Camps.CampJobData, meet?: Vector): PullTiming.PullTiming {
-    return PullTiming.ForCamp(data, kind === "half_pull", meet);
-}
-
 interface DoubleGeometry {
     why?: string;
     /** The hard camp's hit lands this long before the small camp's. */
@@ -327,7 +316,7 @@ export function DoubleGeometry(small: Camps.CampJobData, hard: Camps.CampJobData
     const smallSp = Camps.SpawnerByIdx(small.campIdx);
     const hardSp = Camps.SpawnerByIdx(hard.campIdx);
     if (small.pull === undefined || smallSp === undefined || hardSp === undefined) return { why: "no-camp", before: 0, late: 0, gap: 0 };
-    const timing = timingFor("full_pull", small);
+    const timing = PullTiming.ForCamp(small);
     if (timing.waveAfter === undefined) return { why: "no-wave", before: 0, late: 0, gap: 0 };
     const cfg = settings();
     const exact = leadPath(small.pull, small.pull.meetPoint);
@@ -514,7 +503,7 @@ export function Start(bot: Unit, req: JobRequest): boolean {
     const data = Camps.ByIdx(req.campIdx, bot.GetTeam());
     const spawner = Camps.SpawnerByIdx(req.campIdx);
     if (data === undefined || data.pull === undefined || spawner === undefined) return false;
-    const timing = timingFor(req.kind, data);
+    const timing = PullTiming.ForCamp(data);
     const seconds = timing.seconds;
     if (seconds.length === 0) return false;
     const cfg = settings();
@@ -524,7 +513,7 @@ export function Start(bot: Unit, req: JobRequest): boolean {
 
     // Draw order (PF10): Gauss (2) for the jitter, then one RandomVector per stand and lead waypoint (a double's hard stand last).
     const jitter = LaneConfig.Jitter(skill);
-    const meet = req.kind === "half_pull" ? data.pull.halfMeetPoint ?? data.pull.meetPoint : data.pull.meetPoint;
+    const meet = data.pull.meetPoint;
     const noise = LaneConfig.Curve("PathNoise", skill);
     const exact = leadPath(data.pull, meet);
     const stand = noisy(standFor(spawner, exact[0]), noise);
@@ -1006,7 +995,7 @@ function keepGoing(bot: Unit, job: Job): boolean {
     }
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
-        if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
+        if (job.phase === "watch") close(bot, job, "return", Grade(job.peakDivert));
         else abort(bot, job, "timeout");
         return false;
     }
@@ -1051,25 +1040,25 @@ function pullCampFor(tech: JobKind, camps: Camps.CampJobData[]): Camps.CampJobDa
 }
 
 /**
- * Travel to the camp's stand point when the start window of its next full or half pull would be open now for a bot
+ * Travel to the camp's stand point when the start window of its next pull would be open now for a bot
  * within MaxTravel, else undefined. A result above MaxTravel means only the distance keeps the window shut.
  */
-function windowTravel(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): number | undefined {
+function windowTravel(bot: Unit, data: Camps.CampJobData, now: number): number | undefined {
     const spawner = Camps.SpawnerByIdx(data.campIdx);
     if (spawner === undefined || data.pull === undefined) return undefined;
     const t = settings().Timing;
-    const base = NextAggroTime(now - t.JobStartLate, timingFor(kind, data).seconds, t.PullPeriod);
+    const base = NextAggroTime(now - t.JobStartLate, PullTiming.ForCamp(data).seconds, t.PullPeriod);
     if (!CampsUp(base)) return undefined;
     const travel = travelTo(bot, standFor(spawner, leadPath(data.pull, data.pull.meetPoint)[0]));
     return WindowOpen(now, base, math.min(travel, t.MaxTravel)) ? travel : undefined;
 }
 
 /** In reach, and still able to stand at the camp by the late tolerance: a later start would only end as `late`. */
-function windowFor(bot: Unit, data: Camps.CampJobData, kind: JobKind, now: number): boolean {
+function windowFor(bot: Unit, data: Camps.CampJobData, now: number): boolean {
     const t = settings().Timing;
-    const travel = windowTravel(bot, data, kind, now);
+    const travel = windowTravel(bot, data, now);
     if (travel === undefined || travel > t.MaxTravel) return false;
-    return now + travel <= NextAggroTime(now - t.JobStartLate, timingFor(kind, data).seconds, t.PullPeriod) + t.JobStartLate;
+    return now + travel <= NextAggroTime(now - t.JobStartLate, PullTiming.ForCamp(data).seconds, t.PullPeriod) + t.JobStartLate;
 }
 
 /**
@@ -1112,7 +1101,7 @@ function doubleFor(bot: Unit, camps: Camps.CampJobData[], now: number): { open: 
     const g = DoubleGeometry(camps[0], camps[1], bot.GetCurrentMovementSpeed());
     if (g.why !== undefined || g.hardStand === undefined) return { open: false, why: g.why, g };
     const t = settings().Timing;
-    const base = NextAggroTime(now - t.JobStartLate, timingFor("full_pull", camps[0]).seconds, t.PullPeriod);
+    const base = NextAggroTime(now - t.JobStartLate, PullTiming.ForCamp(camps[0]).seconds, t.PullPeriod);
     const hardAt = base - g.before;
     const travel = travelTo(bot, g.hardStand);
     if (!CampsUp(base) || travel > t.MaxTravel || now + travel > hardAt) return { open: false, why: "reach", g };
@@ -1132,18 +1121,18 @@ function schedule(bot: Unit): boolean {
     }
     const double = doubleFor(bot, camps, now);
     const doubleOpen = double !== undefined && double.open;
-    if (!doubleOpen && !windowFor(bot, camps[0], "full_pull", now) && !windowFor(bot, camps[0], "half_pull", now)) {
+    if (!doubleOpen && !windowFor(bot, camps[0], now)) {
         // A stack pull may use a later camp than the first one.
         let any = false;
-        for (const c of camps) if (LaneHooks.IsStacked(c.campIdx) && windowFor(bot, c, "stack_pull", now)) any = true;
+        for (const c of camps) if (LaneHooks.IsStacked(c.campIdx) && windowFor(bot, c, now)) any = true;
         if (!any) {
-            const travel = windowTravel(bot, camps[0], "full_pull", now);
+            const travel = windowTravel(bot, camps[0], now);
             if (travel !== undefined)
                 notePlan(bot, s, now, [
                     ["gate", travel > settings().Timing.MaxTravel ? "far" : "late"],
                     ["camp", camps[0].campIdx],
                     ["travel", travel],
-                    ["timing", timingFor("full_pull", camps[0]).source],
+                    ["timing", PullTiming.ForCamp(camps[0]).source],
                 ]);
             return false;
         }
@@ -1154,7 +1143,7 @@ function schedule(bot: Unit): boolean {
     notePlan(bot, s, now, [
         ["gate", "planner"],
         ["camp", camps[0].campIdx],
-        ["timing", timingFor("full_pull", camps[0]).source],
+        ["timing", PullTiming.ForCamp(camps[0]).source],
         ["tech", choice.tech],
         ["reason", choice.reason],
         ["score", input?.laneScore],
@@ -1180,8 +1169,8 @@ function schedule(bot: Unit): boolean {
     const asDouble = kind === "full_pull" && doubleOpen;
     // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
     if (kind === "full_pull" && double !== undefined && !double.open && double.why === undefined) return false;
-    if (!asDouble && !windowFor(bot, camp, kind, now)) return false;
-    const base = NextAggroTime(now - settings().Timing.JobStartLate, timingFor(kind, camp).seconds, settings().Timing.PullPeriod);
+    if (!asDouble && !windowFor(bot, camp, now)) return false;
+    const base = NextAggroTime(now - settings().Timing.JobStartLate, PullTiming.ForCamp(camp).seconds, settings().Timing.PullPeriod);
     if (skipped[pid] === base) return false;
     const req: JobRequest = { kind, campIdx: camp.campIdx };
     if (asDouble) {
@@ -1260,7 +1249,7 @@ export function Desire(bot: Unit): number {
         }
         if (preempted(bot, job, now)) {
             // The camp was never reached on time, so its stack state says nothing about the box.
-            if (job.phase === "watch") close(bot, job, "return", Grade(job.kind, job.peakDivert));
+            if (job.phase === "watch") close(bot, job, "return", Grade(job.peakDivert));
             else abort(bot, job, "preempted", true);
             return 0;
         }
@@ -1317,7 +1306,7 @@ function telegraph(bot: Unit, job: Job, now: number): void {
     if (job.telegraphed || job.stage !== 1 || now < job.aggroAt - settings().Timing.PullTelegraphLead) return;
     job.telegraphed = true;
     if (!LaneConfig.IsOn("Telegraph") || !Difficulty.IsAllyOfHuman(bot)) return;
-    Orders.Say(bot, job.kind === "half_pull" ? "say_lane_half_pull" : "say_lane_pulling_in_5", settings().Timing.PullTelegraphCooldown);
+    Orders.Say(bot, "say_lane_pulling_in_5", settings().Timing.PullTelegraphCooldown);
 }
 
 function campNeutral(bot: Unit, job: Job): Unit | undefined {
@@ -1809,7 +1798,7 @@ function step(bot: Unit, job: Job): boolean {
     if (job.phase === "watch") {
         sample(bot, job, now);
         if (now - (job.watchFrom ?? now) >= cfg.Timing.WatchSec && (job.waveAt === undefined || now >= job.waveAt + cfg.PullTiming.WatchAfterWave)) {
-            close(bot, job, "done", Grade(job.kind, job.peakDivert));
+            close(bot, job, "done", Grade(job.peakDivert));
             return false;
         }
         const last = job.path[job.path.length - 1];
@@ -1882,7 +1871,7 @@ function modeEndFields(bot: Unit, job: Job): Telemetry.Fields<"lane_job_abort"> 
 export const Exec = {
     IsLive: isLive,
     Abort: (bot: Unit, job: Job, reason: string, keepStack = false): void => abort(bot, job, reason, keepStack),
-    Close: (bot: Unit, job: Job): void => close(bot, job, "done", Grade(job.kind, job.peakDivert)),
+    Close: (bot: Unit, job: Job): void => close(bot, job, "done", Grade(job.peakDivert)),
     EndStack: endStack,
     NoteStackAggro: noteStackAggro,
     NeutralsInBox: neutralsInBox,

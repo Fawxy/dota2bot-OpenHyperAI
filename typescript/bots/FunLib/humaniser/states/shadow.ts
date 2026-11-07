@@ -23,7 +23,7 @@ export const FARM = 0.4;
  */
 export const LINGER = 1;
 
-const PULL_KINDS: Record<string, boolean> = { full_pull: true, half_pull: true, stack_pull: true, double_pull: true, contest: true };
+const PULL_KINDS: Record<string, boolean> = { full_pull: true, stack_pull: true, double_pull: true, contest: true };
 
 const seen: Record<string, number | undefined> = {};
 
@@ -46,7 +46,7 @@ function liveJob(bot: Unit): CampJobs.Job | undefined {
     return CampJobs.Active(bot) ? CampJobs.Current(bot) : undefined;
 }
 
-/** Pulls (full, half, stack, double) and pull contests: a camp job OHA's scheduler started this cycle. */
+/** Pulls (full, stack, double) and pull contests: a camp job OHA's scheduler started this cycle. */
 export function PullScore(bot: Unit): number | undefined {
     const job = liveJob(bot);
     return lingering(bot, "pull", job !== undefined && PULL_KINDS[job.kind] === true, JOB);

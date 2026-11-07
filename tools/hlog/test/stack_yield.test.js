@@ -21,7 +21,7 @@ function run(lines) {
     return out;
 }
 
-const pull = (pid, slot, res) => `pull_job pid=${pid} pos=5 lane=3 camp=1 slot=${slot} pk=full res=${res} why=${res === 'ok' ? 'ok' : 'cancelled:empty'}`;
+const pull = (pid, slot, res) => `pull_job pid=${pid} pos=5 lane=3 camp=1 slot=${slot} res=${res} why=${res === 'ok' ? 'ok' : 'cancelled:empty'}`;
 const choice = (pid, slot, why) => `choice pid=${pid} kind=pull go=0 want=1 why=${why} src=own lane=3 slot=${slot}`;
 
 test('stack_yield: what the pull did with each minute the stack gave it', () => {

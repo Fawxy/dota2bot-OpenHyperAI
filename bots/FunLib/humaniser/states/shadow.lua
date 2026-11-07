@@ -228,13 +228,7 @@ ____exports.FARM = 0.4
 --- Seconds a job scorer keeps its score after its source went false. The layer leaves an unowned job the moment
 -- its scorer stops (no dwell for jobs), so one-frame gaps in a source would otherwise count as two switches.
 ____exports.LINGER = 1
-local PULL_KINDS = {
-    full_pull = true,
-    half_pull = true,
-    stack_pull = true,
-    double_pull = true,
-    contest = true
-}
+local PULL_KINDS = {full_pull = true, stack_pull = true, double_pull = true, contest = true}
 local seen = {}
 function ____exports.ResetCache()
     for k in pairs(seen) do
@@ -260,7 +254,7 @@ local function liveJob(bot)
     end
     return ____CampJobs_Active_result_0
 end
---- Pulls (full, half, stack, double) and pull contests: a camp job OHA's scheduler started this cycle.
+--- Pulls (full, stack, double) and pull contests: a camp job OHA's scheduler started this cycle.
 function ____exports.PullScore(bot)
     local job = liveJob(bot)
     return lingering(bot, "pull", job ~= nil and PULL_KINDS[job.kind] == true, ____exports.JOB)

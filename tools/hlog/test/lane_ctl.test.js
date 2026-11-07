@@ -29,7 +29,7 @@ test('lane_ctl: decisions joined to their check, the pull term only on a pulled 
         line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
         // Wave 90: pull chosen and pulled (slot 106): the controller predicts m45 + pe = 1600 - 700 = 900; it ended at 1000.
         line(92, wave(92, 90, 'm45=1600 p45=433 pe=-700 n45=700 intent=back lever=pull who=5 left=0 rej=')),
-        line(110, 'pull_job pid=5 pos=5 lane=3 camp=1 slot=106 pk=full res=ok why=ok'),
+        line(110, 'pull_job pid=5 pos=5 lane=3 camp=1 slot=106 res=ok why=ok'),
         line(137, chk(137, 90, 1000)),
         // Wave 120: no pull: the controller's prediction is the plain forecast, 1000 against 1200.
         line(122, wave(122, 120, 'm45=1000 n45=100 intent=hold lever=none who= left=100 rej=')),

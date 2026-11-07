@@ -288,7 +288,7 @@ LaneDebug.Register(
     function(team, issuer, args)
         local campIdx = tonumber(args[1])
         if campIdx == nil then
-            HDebug.Log("lane", "hpulltest usage: !hpulltest <idx> [half]")
+            HDebug.Log("lane", "hpulltest usage: !hpulltest <idx>")
             return
         end
         local best = nearestBot(team, issuer)
@@ -296,7 +296,7 @@ LaneDebug.Register(
             HDebug.Log("lane", "hpulltest no bot")
             return
         end
-        local kind = args[2] == "half" and "half_pull" or "full_pull"
+        local kind = "full_pull"
         local ok = CampJobs.Start(best, {kind = kind, campIdx = campIdx, forced = true})
         HDebug.Log(
             "lane",

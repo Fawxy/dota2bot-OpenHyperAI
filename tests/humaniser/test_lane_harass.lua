@@ -297,7 +297,7 @@ do
 		return H.Lane.SupersedesHarass(bot)
 	end
 	local allOff = { Enable = true }
-	for _, f in ipairs({ "Plan", "Block", "FullPull", "HalfPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
+	for _, f in ipairs({ "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
 		"Harass", "Mid", "CounterPlay", "Telegraph", "CampBlock" }) do allOff[f] = false end
 	check("Harass on: supersedes", sup({ Enable = true, Harass = true }) == true)
 	check("Harass off: 04 keeps its harass", sup({ Enable = true, Harass = false }) == false)

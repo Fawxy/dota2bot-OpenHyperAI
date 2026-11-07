@@ -1,9 +1,8 @@
 'use strict';
 
 // Pure detection functions over parsed replay events (see parser/main.go for the event schema).
-// Divert (and so half-pull detection) needs `srcEnt` on lane-creep dmg events plus {"k":"creep",...} samples.
-// The Go parser cannot attribute lane-creep damage to a unique entity, so it omits both; pulls then have
-// divert === undefined, half === false, and aggregate treats them as full pulls.
+// Divert needs `srcEnt` on lane-creep dmg events plus {"k":"creep",...} samples. The Go parser cannot attribute
+// lane-creep damage to a unique entity, so it omits both; pulls then have divert === undefined.
 
 const BOX_MARGIN = 300;
 const DEFAULT_HALF_EXTENT = 150;
@@ -242,7 +241,6 @@ function detectPulls(events, camps) {
             meet: meetPt,
             path: heroPath(idx, slot, ev.t, first.t),
             divert,
-            half: divert !== undefined && divert < 0.6 && divert > 0,
         });
     });
     return pulls;
@@ -258,20 +256,15 @@ function closestBy(items, target, secOf) {
     return best;
 }
 
-function medianPoint(points) {
-    if (points.length === 0) return undefined;
-    return { x: median(points.map((p) => p.x)), y: median(points.map((p) => p.y)) };
-}
-
 function aggregate(stacks, pulls) {
     const groups = new Map();
     const group = (camp, team) => {
         const key = `${round50(camp.x)},${round50(camp.y)},${team}`;
-        if (!groups.has(key)) groups.set(key, { key, camp, team, stacks: [], full: [], half: [] });
+        if (!groups.has(key)) groups.set(key, { key, camp, team, stacks: [], full: [] });
         return groups.get(key);
     };
     for (const s of stacks) group(s.camp, s.team).stacks.push(s);
-    for (const p of pulls) group(p.camp, p.team)[p.half ? 'half' : 'full'].push(p);
+    for (const p of pulls) group(p.camp, p.team).full.push(p);
 
     const mod30 = (p) => ((p.aggroSec % 30) + 30) % 30;
     const out = [];
@@ -282,17 +275,13 @@ function aggregate(stacks, pulls) {
             type: g.camp.type,
             x: g.camp.x,
             y: g.camp.y,
-            samples: { stacks: g.stacks.length, pulls: g.full.length, half: g.half.length },
+            samples: { stacks: g.stacks.length, pulls: g.full.length },
         };
         if (g.full.length > 0) {
             entry.aggroSec = median(g.full.map(mod30));
             const rep = closestBy(g.full, entry.aggroSec, mod30);
             entry.pullPath = rep.path;
             entry.meetPoint = rep.meet;
-        }
-        if (g.half.length > 0) {
-            entry.halfAggroSec = median(g.half.map(mod30));
-            entry.halfMeetPoint = medianPoint(g.half.map((p) => p.meet));
         }
         if (g.stacks.length > 0) {
             entry.stackAggroSec = median(g.stacks.map((s) => s.aggroSec));
