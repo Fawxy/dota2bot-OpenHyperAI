@@ -206,7 +206,8 @@ function ____exports.For(team, lane, origin, ____type, leadPath, seed, campIdx)
     local t = LaneConfig.Settings().Timing
     local ahead = LaneAhead(team, lane)
     local waveTravel = meetAlong / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) - ahead
-    local walk = ____exports.WalkLength(origin, leadPath) / neutralSpeed
+    local walkLen = ____exports.WalkLength(origin, leadPath)
+    local walk = walkLen / neutralSpeed
     local waveAfter = walk + cfg.Lead
     local seconds = __TS__ArrayMap(
         cfg.WaveSlots,
@@ -226,7 +227,11 @@ function ____exports.For(team, lane, origin, ____type, leadPath, seed, campIdx)
         ahead = ahead,
         team = team,
         walk = walk,
-        neutralSpeed = neutralSpeed
+        neutralSpeed = neutralSpeed,
+        walkLen = walkLen,
+        type = ____type,
+        seedSpeed = seedSpeed,
+        campIdx = campIdx
     }
 end
 --- The camp's lead waypoints with its own meet point replaced by `meet`.
@@ -406,9 +411,14 @@ end
 function ____exports.Read(c, now)
     local t = c.timing
     local meet = t.meetAlong
-    local walk = t.walk
-    if (c.readAt == nil or now - c.readAt >= settings().LiveEvery) and meet ~= nil and walk ~= nil then
+    if (c.readAt == nil or now - c.readAt >= settings().LiveEvery) and meet ~= nil and t.walk ~= nil then
         c.readAt = now
+        if t.walkLen ~= nil and t.type ~= nil and t.seedSpeed ~= nil then
+            local sp = WorldFacts.NeutralSpeedFor(t.type, t.seedSpeed, t.campIdx)
+            t.neutralSpeed = sp
+            t.walk = t.walkLen / sp
+        end
+        local walk = t.walk
         local alongs = ____exports.WaveAlongs(t, c.slot, now)
         c.n = #alongs
         if #alongs >= 2 then

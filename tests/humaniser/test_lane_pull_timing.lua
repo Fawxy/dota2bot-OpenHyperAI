@@ -183,6 +183,22 @@ do
 	check("no re-read inside LiveEvery", within(PT.Read(full, T + 0.1), at, 1e-6))
 	check("a wave 1 s slower moves the full hit 1 s later", within(PT.Read(full, T + 0.3), at + 1, 1e-6), PT.Read(full, T + 0.3) - at)
 
+	-- The neutrals' speed is read again at every read (user 08/11/2026): a camp re-fed with faster neutrals shortens the walk,
+	-- so the hit goes out later (the neutrals arrive sooner) by exactly the walk's change.
+	local WF = require("bots/FunLib/humaniser/world_facts")
+	local tm = PT.For(2, Lane.Bot, SMALL, "small", { meet }, { 15, 45 }, 7)
+	local ct = PT.Timer(tm, slot, 100)
+	T = spawnAt - AHEAD + (m - 1000) / 325
+	local u = { IsNull = function() return false end, GetBaseMovementSpeed = function() return 400 end, IsAlive = function() return true end }
+	CREEPS[2], CREEPS[3] = {}, {}
+	MakeCreep({ team = 2, x = PATH[1][1] + m - 1000, y = -5000 })
+	MakeCreep({ team = 2, x = PATH[1][1] + m - 1150, y = -5000 })
+	local before = PT.Read(ct, T)
+	WF.FeedNeutral("small", { u }, 7)
+	ct.readAt = nil
+	local after = PT.Read(ct, T)
+	check("a faster pack read at the order shortens the walk and moves the hit later", within(after - before, tm.walkLen / 290 - tm.walkLen / 400, 1e-6) and tm.neutralSpeed == 400, tostring(after - before) .. " " .. tostring(tm.neutralSpeed))
+
 	-- The other team's wave on the same lane geometry: its creeps are read, ours ignored.
 	CREEPS[2], CREEPS[3] = {}, {}
 	local theirs = PT.For(3, Lane.Bot, SMALL, "small", { meet }, { 15, 45 })

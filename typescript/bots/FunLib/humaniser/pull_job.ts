@@ -616,7 +616,7 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         ["sh", math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10],
         ["s0", p.timer.first !== undefined ? math.floor(p.timer.first * 10 + 0.5) / 10 : undefined],
         ["lv", p.timer.reads],
-        ["nsp", p.plan.timing.neutralSpeed !== undefined ? math.floor(p.plan.timing.neutralSpeed + 0.5) : undefined],
+        ["nsp", p.timer.timing.neutralSpeed !== undefined ? math.floor(p.timer.timing.neutralSpeed + 0.5) : undefined],
         ["hr", p.timer.hit !== undefined ? "geo" : "plan"],
         ["hc", p.timer.n],
         ["hn", p.timer.next],
