@@ -109,13 +109,13 @@ end
 do
 	local H = world("stack")
 	local t = H.Drill.RepTimes("stack")
-	check("stack reps from 120 every 60", t[1] == 120 and t[2] == 180 and t[3] == 240)
+	check("stack reps from 120 every 180", t[1] == 120 and t[2] == 300 and t[3] == 480)
 	check("another context is not forced", H.Drill.RepTimes("pull") == nil)
 	H.Drill.TABLE.stack.rep.control = 3
 	t = H.Drill.RepTimes("stack")
-	check("control 3: the third rep withheld", t[1] == 120 and t[2] == 180 and t[3] == 300, t[3])
+	check("control 3: the third rep withheld", t[1] == 120 and t[2] == 300 and t[3] == 660, t[3])
 	local b = hero(4, RAD, 5, 3)
-	T = 245
+	T = 485
 	local lines = capture(function() H.Drill.Tick(b) end)
 	local rep
 	for _, l in ipairs(lines) do if field(l, "ph") == "rep" then rep = l end end

@@ -3,7 +3,7 @@
 -- (the last ends at the hero's last snapshot). Per rep: input (on, or off for a control rep), the cast hero's last hits,
 -- denies and deaths gained, HP-% lost (the sum of drops between 1 s snapshots, so a heal does not hide a hit), and the
 -- forced context's own result lines inside the rep: `results` (ev=stack lines for drill `stack`) and `ok` (those with
--- res=ok). A context with no join here reads its own lines over the rep window (`start`, `stop`).
+-- res=stacked). A context with no join here reads its own lines over the rep window (`start`, `stop`).
 -- ensure: ev_drill(ph, name, pid, team, pos, role, rep, input, start, forces)
 -- ensure: ev_stack(pid, min, res, why)
 WITH
@@ -39,6 +39,6 @@ SELECT rc.game_id, g.file, rc.name, rc.team, rc.pid, rc.pos, rc.rep, rc.input, r
     CASE WHEN rc.forces = 'stack' THEN (SELECT count(*) FROM ev_stack s WHERE s.game_id = rc.game_id AND s.pid = rc.pid
         AND s.t >= rc.start AND s.t < rc.stop) END AS results,
     CASE WHEN rc.forces = 'stack' THEN (SELECT count(*) FROM ev_stack s WHERE s.game_id = rc.game_id AND s.pid = rc.pid
-        AND s.t >= rc.start AND s.t < rc.stop AND s.res = 'ok') END AS ok
+        AND s.t >= rc.start AND s.t < rc.stop AND s.res = 'stacked') END AS ok
 FROM rc JOIN games g ON g.game_id = rc.game_id
 ORDER BY rc.game_id, rc.team, rc.pid, rc.rep;

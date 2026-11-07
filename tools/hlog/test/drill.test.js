@@ -52,7 +52,7 @@ test('drill: a stack drill counts the stack lines in each rep, control reps mark
         line(120.2, 'drill ph=rep name=stack team=2 rep=1 input=on start=120 forces=stack'),
         line(180.1, 'drill ph=rep name=stack team=2 rep=2 input=off start=180 forces=stack'),
         snap(121, 4), snap(240, 4),
-        line(173, 'stack pid=4 min=2 res=ok why=ok'),
+        line(173, 'stack pid=4 min=2 res=stacked why=ok'),
         line(233, 'stack pid=4 min=3 res=miss why=early'),
     ], 'drill', { name: 'stack' });
     assert.deepStrictEqual(out.map(r => [r.rep, r.input, r.results, r.ok]), [[1, 'on', 1, 1], [2, 'off', 1, 0]]);

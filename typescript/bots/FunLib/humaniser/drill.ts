@@ -67,9 +67,21 @@ export const TABLE: Record<string, Entry> = {
     "lane-spot-duel": { note: "Radiant pos1 and Dire pos3 lane-only, everyone else benched", cast: { r: [1], d: [3] }, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
-    // The old Overrides.Solo + StackEvery harness (slice 4, double-stack): the Radiant pos5 alone stacks every minute from
-    // 2:00 (dotactl kills the neutrals at :05 so each attempt meets a fresh camp), with no 25 s away skip (StackFar).
-    stack: { note: "Radiant pos5 alone, a stack attempt every minute from 2:00", cast: { r: [5] }, others: "bench", rep: { every: 60, from: 120 }, forces: "stack", overrides: { StackFar: true } },
+    // The old Overrides.Solo + StackEvery = 3 harness (slice 4, double-stack): the Radiant pos5 alone stacks every third
+    // minute from 2:00, with no 25 s away skip (StackFar). dotactl kills the neutrals at :05 of the two minutes between, so
+    // each attempt meets a fresh camp: a kill in the attempt's own minute empties the camp it needs at :53 (drill2,
+    // 08/11/2026: every-minute reps with a kill each :05 failed 7 of 7 `no-camp`).
+    stack: { note: "Radiant pos5 alone, a stack attempt every third minute from 2:00", cast: { r: [5] }, others: "bench", rep: { every: 180, from: 120 }, forces: "stack", overrides: { StackFar: true } },
+    // The sweep (KR S.2a tier 1, Overrides.Sweep; was Sweep + StackEvery): the Radiant pos5 alone takes each own-side camp
+    // once, nearest untried first, an attempt every minute from 2:00; each attempt is on a fresh camp, so no reset.
+    "stack-sweep": {
+        note: "Radiant pos5 alone, an attempt every minute from 2:00 on the nearest own-side camp not tried yet",
+        cast: { r: [5] },
+        others: "bench",
+        rep: { every: 60, from: 120 },
+        forces: "stack",
+        overrides: { StackFar: true, Sweep: true },
+    },
 };
 
 function overrides(): Record<string, unknown> | undefined {

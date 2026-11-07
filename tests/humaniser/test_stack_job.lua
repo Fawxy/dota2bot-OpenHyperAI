@@ -528,16 +528,16 @@ do
 	home.pos = 1
 	check("benched at the fountain: no move", H.Chooser.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
 	local m = H.StackJob.Minutes()
-	check("drill stack: from 2:00, each minute", m[1] == 2 and m[2] == 3 and m[3] == 4)
+	check("drill stack: from 2:00, every third minute", m[1] == 2 and m[2] == 5 and m[3] == 8)
 	check("drill stack implies StackFar", H.Overrides.Get("StackFar") == true)
 	Customize.Overrides = { Drill = "stack", StackFar = false }
 	check("an explicit override beats the drill's", H.Overrides.Get("StackFar") == false)
 	Customize.Overrides = { Drill = "stack" }
-	T = 4 * 60 + 15
+	T = 5 * 60 + 15
 	local lines = stackLines(capture(function()
-		while T < 4 * 60 + 59 do frame(H, bot) end
+		while T < 5 * 60 + 59 do frame(H, bot) end
 	end))
-	check("drill stack: minute 4 gets an attempt", #lines >= 1 and field(lines[1], "min") == "4", lines[1])
+	check("drill stack: minute 5 gets an attempt", #lines >= 1 and field(lines[1], "min") == "5", lines[1])
 	Customize.Overrides = nil
 end
 
@@ -868,7 +868,7 @@ do
 	local H, bot = world({ t = 2 * 60 + 15 })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar = true, "stack", true
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar = true, "stack-sweep", true
 	for _, s in ipairs(SPAWNERS) do if s.team == RAD then neutrals(s.location, 2) end end
 	local lines = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H, bot) end end))
 	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar = false, "", false
@@ -887,7 +887,7 @@ do
 	local only = idxOf("good_5") .. "," .. idxOf("good_9")
 	Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack", true, only
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack-sweep", true, only
 	local l2 = stackLines(capture(function() while T < 6 * 60 + 8 do frame(H2, b2) end end))
 	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, "", false, nil
 	local okCamps, started2 = true, 0
@@ -903,7 +903,7 @@ do
 	local H3, b3 = world({ t = 2 * 60 + 15, at = Vector(6000, 6000) })
 	Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
-	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack", true, tostring(idxOf("good_5")) .. ","
+	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = true, "stack-sweep", true, tostring(idxOf("good_5")) .. ","
 	local l3 = stackLines(capture(function() while T < 4 * 60 + 8 do frame(H3, b3) end end))
 	Customize.Overrides.Sweep, Customize.Overrides.Drill, Customize.Overrides.StackFar, Customize.Overrides.SweepCamps = false, "", false, nil
 	local late = false

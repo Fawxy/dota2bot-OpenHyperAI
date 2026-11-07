@@ -249,12 +249,20 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0}
     },
     stack = {
-        note = "Radiant pos5 alone, a stack attempt every minute from 2:00",
+        note = "Radiant pos5 alone, a stack attempt every third minute from 2:00",
+        cast = {r = {5}},
+        others = "bench",
+        rep = {every = 180, from = 120},
+        forces = "stack",
+        overrides = {StackFar = true}
+    },
+    ["stack-sweep"] = {
+        note = "Radiant pos5 alone, an attempt every minute from 2:00 on the nearest own-side camp not tried yet",
         cast = {r = {5}},
         others = "bench",
         rep = {every = 60, from = 120},
         forces = "stack",
-        overrides = {StackFar = true}
+        overrides = {StackFar = true, Sweep = true}
     }
 }
 local function overrides()
