@@ -16,6 +16,7 @@ import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
@@ -24,7 +25,7 @@ type Kind = "power" | "wisdom" | "contest";
 // All judgement (slice file, Decisions).
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
-    Trips: { [4]: [["power", 360], ["wisdom", 420]], [5]: [["power", 360], ["contest", 420]] } as Record<number, [Kind, number][]>,
+    Trips: { [4]: [["power", Runes.RUNE_RULES.power.first], ["wisdom", Runes.RUNE_RULES.wisdom.first]], [5]: [["power", Runes.RUNE_RULES.power.first], ["contest", Runes.RUNE_RULES.wisdom.first]] } as Record<number, [Kind, number][]>,
     /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
     Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
@@ -40,7 +41,7 @@ export const SETTINGS = {
     LateBy: { power: 5, wisdom: 15, contest: 15 } as Record<Kind, number>,
     /** After its spawn, the trip's decision stays ours until that rune's next spawn (power every 2 min, the next shrine at 14:00):
      *  OHA's rune mode does not send the hero there, whether the trip ran or was skipped. */
-    OwnFor: { power: 120, wisdom: 420, contest: 0 } as Record<Kind, number>,
+    OwnFor: { power: Runes.RUNE_RULES.power.every, wisdom: Runes.RUNE_RULES.wisdom.every, contest: 0 } as Record<Kind, number>,
     /** Liquipedia/7.41: stand within 300 of the shrine for 3 s. */
     ShrineChannel: 3,
     ShrineRadius: 300,

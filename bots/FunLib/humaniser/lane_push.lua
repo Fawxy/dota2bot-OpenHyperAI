@@ -130,6 +130,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local nearerLane
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -422,7 +423,7 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
     do
         local t = from
         while t <= ____until + 1e-9 do
-            if math.abs(t % 30) < dt / 2 and not (init ~= nil and t < from + dt / 2) then
+            if math.abs(t % GameRules.WAVE_EVERY) < dt / 2 and not (init ~= nil and t < from + dt / 2) then
                 local ts = math.floor(t + 0.5)
                 if (skip and skip.team) ~= R or skip.t ~= ts then
                     for ____, u in ipairs(____exports.WaveAt(R, ts, lane.spawnR)) do
@@ -625,8 +626,8 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
     end
     local spawnE = e == R and lane.spawnR or lane.spawnD
     do
-        local ts = math.floor(t0 / 30) * 30
-        while ts >= t0 - 90 and ts >= 0 do
+        local ts = math.floor(t0 / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY
+        while ts >= t0 - 3 * GameRules.WAVE_EVERY and ts >= 0 do
             do
                 local __continue93
                 repeat
@@ -660,7 +661,7 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                     break
                 end
             end
-            ts = ts - 30
+            ts = ts - GameRules.WAVE_EVERY
         end
     end
     return init
@@ -792,7 +793,7 @@ function ____exports.NextArrival(lane, team, s, now)
     local travel = math.abs(s - spawn) / speed()
     local k = math.max(
         0,
-        math.ceil((now - travel) / 30)
+        math.ceil((now - travel) / GameRules.WAVE_EVERY)
     )
     return k * 30 + travel
 end

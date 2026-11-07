@@ -53,6 +53,7 @@ local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 function logPlan(team, p)
     local ____Telemetry_Event_5 = Telemetry.Event
     local ____array_4 = __TS__SparseArrayNew({"team", team})
@@ -81,8 +82,8 @@ function logPlan(team, p)
     )
 end
 ____exports.SETTINGS = {
-    Spawn = 360,
-    PlanAt = 360 - 40,
+    Spawn = Runes.RUNE_RULES.power.first,
+    PlanAt = Runes.RUNE_RULES.power.first - 40,
     StandRadii = {550, 750, 950},
     StandAngles = 16,
     LowPenalty = 1500,

@@ -741,6 +741,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, LANE_NEAR, SEEN_SCAN, probe
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -2227,7 +2228,7 @@ function ____exports.Wants(bot, blocked, host)
         do
             local __continue232
             repeat
-                if handled[pid][minute] or now < minute * 60 + ____exports.SETTINGS.LookFrom or now >= minute * 60 + 60 then
+                if handled[pid][minute] or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom or now >= (minute + 1) * GameRules.NEUTRAL_EVERY then
                     __continue232 = true
                     break
                 end
@@ -2515,7 +2516,7 @@ function ____exports.Pending(bot)
     local now = DotaTime()
     for ____, minute in ipairs(____exports.Minutes()) do
         local ____opt_46 = handled[pid]
-        if (____opt_46 and ____opt_46[minute]) ~= true and now >= minute * 60 + ____exports.SETTINGS.LookFrom and now < minute * 60 + 60 then
+        if (____opt_46 and ____opt_46[minute]) ~= true and now >= minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom and now < (minute + 1) * GameRules.NEUTRAL_EVERY then
             return true
         end
     end

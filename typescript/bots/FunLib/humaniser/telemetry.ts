@@ -21,6 +21,7 @@ import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
+import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 export const SCHEMA = 2;
 
@@ -678,7 +679,7 @@ const TOWER_TIERS: [number, number][] = [
 ];
 const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
 /** RUNE_RULES power.first (transitions/runes): power spots hold water runes before it. */
-const POWER_FROM = 360;
+const POWER_FROM = Runes.RUNE_RULES.power.first;
 /** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
 const RUNE_TAKER_R = 400;
 /**
@@ -687,7 +688,7 @@ const RUNE_TAKER_R = 400;
  * fastest real pickup seen after a spawn (rspchk2 game 1).
  */
 const RUNE_EXPIRE_FOR = 0.15;
-const RUNE_RESPAWN = 120;
+const RUNE_RESPAWN = Runes.RUNE_RULES.power.every;
 /** judgement: ward cast range 500 plus movement since the cast. */
 const WARD_OWNER_R = 800;
 /** Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this. */
@@ -812,6 +813,7 @@ function trackWorldFacts(this: void, team: number, bot: Unit): void {
     const rows = WorldFacts.Probe(bot, {
         tower: lc.Thresholds.EnemyTowerRange,
         towerRange: 700,
+        hero: lc.Thresholds.HeroRadius,
         laneCreep: lc.PullTiming.CreepSpeed,
         neutral: lc.PullTiming.NeutralSpeed.medium,
         neutralSeeds: lc.PullTiming.NeutralSpeed as Record<string, number>,

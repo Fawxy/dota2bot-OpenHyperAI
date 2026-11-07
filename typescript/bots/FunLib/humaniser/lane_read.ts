@@ -6,12 +6,13 @@
  * GetUnitList and GetTeamMember answer for that team only, so Read(team) must run from a script of that team.
  * Not gated by LaneConfig.IsActive (the old claims-based plan flags), so it outlives them; it imports nothing that logs.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import { Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneGeom from "bots/FunLib/humaniser/lane_geom";
 
-export const WAVE_CYCLE = 30;
+export const WAVE_CYCLE = GameRules.WAVE_EVERY;
 const TEAM_SLOTS = 5;
 
 export interface Creeps {

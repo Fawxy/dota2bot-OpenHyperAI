@@ -214,6 +214,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local settings, dist2D, visibleEnemy, isLaner, runStackAttack
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -867,7 +868,7 @@ local function midSignals(bot, st, s, enemies, now)
 end
 local function stackSignals(bot, st, s, enemies, now)
     local cfg = settings()
-    local minute = math.floor(now / 60)
+    local minute = math.floor(now / GameRules.NEUTRAL_EVERY)
     local sec = now - minute * 60
     local watching = sec >= cfg.Timing.StackWatchFrom and sec <= cfg.Timing.StackWatchTo
     local after = sec <= cfg.Timing.StackOutsideUntil
@@ -1437,13 +1438,13 @@ local function campBlock(bot, st, s, enemies, now)
     if LaneConfig.SkillOf(bot) <= cfg.Gates.CampBlock then
         return false
     end
-    local sec = now % 60
+    local sec = now % GameRules.NEUTRAL_EVERY
     if sec < cfg.Timing.CampBlockFrom or sec > cfg.Timing.CampBlockTo then
         return false
     end
     local ward = findWard(bot)
     if st.campBlockAt ~= nil and now - st.campBlockAt < cfg.Timing.CampBlockCooldown then
-        return ward ~= nil and math.floor(st.campBlockAt / 60) == math.floor(now / 60)
+        return ward ~= nil and math.floor(st.campBlockAt / GameRules.NEUTRAL_EVERY) == math.floor(now / GameRules.NEUTRAL_EVERY)
     end
     if ward == nil then
         return false

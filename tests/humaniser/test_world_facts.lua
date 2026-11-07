@@ -149,4 +149,17 @@ do
 	WF.Reset()
 end
 
+do
+	WF.Reset()
+	local saved = GetTeamMember
+	GetTeamMember = function(i) if i == 2 then return unit({ radius = 24 }) end return nil end
+	check("hero radius is the first hero's bounding radius", WF.HeroRadius(30) == 24)
+	GetTeamMember = function() return unit({ radius = 99 }) end
+	check("hero radius is read once per game", WF.HeroRadius(30) == 24)
+	WF.Reset()
+	GetTeamMember = function() return nil end
+	check("no hero answers: the constant, counted", WF.HeroRadius(30) == 30 and WF.Fallbacks().hero_radius == 1)
+	GetTeamMember = saved
+end
+
 finish()

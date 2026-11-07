@@ -142,6 +142,7 @@ local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
@@ -627,14 +628,14 @@ function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
 ____exports.SETTINGS = {
-    Trips = {[4] = {{"power", 360}, {"wisdom", 420}}, [5] = {{"power", 360}, {"contest", 420}}},
+    Trips = {[4] = {{"power", Runes.RUNE_RULES.power.first}, {"wisdom", Runes.RUNE_RULES.wisdom.first}}, [5] = {{"power", Runes.RUNE_RULES.power.first}, {"contest", Runes.RUNE_RULES.wisdom.first}}},
     Priority = {[4] = 0.95, [5] = 0.85},
     ClaimFrom = 60,
     CalendarBack = 10,
     StartSlack = 3,
     PathFactor = 1.2,
     LateBy = {power = 5, wisdom = 15, contest = 15},
-    OwnFor = {power = 120, wisdom = 420, contest = 0},
+    OwnFor = {power = Runes.RUNE_RULES.power.every, wisdom = Runes.RUNE_RULES.wisdom.every, contest = 0},
     ShrineChannel = 3,
     ShrineRadius = 300,
     GankReach = 4000,

@@ -349,6 +349,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local campFor, fitsAhead, planFor, safeLane, halfWanted, MeleeSpawn, onLaneCreep, waveFights, travel, ourTower, share, creepLines, trackCreeps, landing, laneCreepsNear, onNeutral, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, running, handled, campKinds
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
@@ -613,7 +614,7 @@ function ____exports.CtlWants(d, pid)
 end
 --- The wave a slot pulls: ours spawned on the last 30 s at or before the slot (aggro comes after the spawn).
 function ____exports.PulledSpawn(slot)
-    return math.floor((slot - 1) / 30) * 30
+    return math.floor((slot - 1) / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY
 end
 function share(p)
     return p.wave > 0 and math.floor(p.peak / p.wave * 100 + 0.5) / 100 or 0

@@ -5,6 +5,7 @@
  * One `ev=stack` line per trigger minute: the attempt's result, or `res=skip` with the reason no job started.
  * When to stack, and who, is S.2b: it replaces TRIGGER_MINUTES and keeps the job and its result line.
  */
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -1183,7 +1184,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const now = DotaTime();
     handled[pid] = handled[pid] ?? {};
     for (const minute of Minutes()) {
-        if (handled[pid][minute] || now < minute * 60 + SETTINGS.LookFrom || now >= minute * 60 + 60) continue;
+        if (handled[pid][minute] || now < minute * GameRules.NEUTRAL_EVERY + SETTINGS.LookFrom || now >= (minute + 1) * GameRules.NEUTRAL_EVERY) continue;
         // The pos4 stacks only its listed camps (camp B of the minute's pair, or a single camp); the pos5 its nearest camp,
         // with its partner if any.
         const pos4 = LaneConfig.PositionOf(bot) === 4;
@@ -1305,7 +1306,7 @@ export function Pending(bot: Unit): boolean {
     if (running[pid] !== undefined) return true;
     const now = DotaTime();
     for (const minute of Minutes()) {
-        if (handled[pid]?.[minute] !== true && now >= minute * 60 + SETTINGS.LookFrom && now < minute * 60 + 60) return true;
+        if (handled[pid]?.[minute] !== true && now >= minute * GameRules.NEUTRAL_EVERY + SETTINGS.LookFrom && now < (minute + 1) * GameRules.NEUTRAL_EVERY) return true;
     }
     return false;
 }

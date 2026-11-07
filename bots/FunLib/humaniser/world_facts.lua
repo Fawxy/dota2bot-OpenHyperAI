@@ -227,7 +227,7 @@ end
 function valid(u)
     return u ~= nil and u ~= nil and u:IsNull() ~= true
 end
---- Reach of a tower's attack to a target's centre: its attack range plus its own bounding radius. Per game, per tower.
+--- Reach of a tower's attack to a point (a target of no size): its attack range plus its own bounding radius. Per game, per tower.
 function ____exports.TowerReach(tower, fb)
     local known = towers[tower]
     if known ~= nil then
@@ -321,22 +321,46 @@ function ____exports.Reach(fb)
     end
     return fallback("tower_reach", fb)
 end
+local gameHero
+--- A hero's bounding radius (24 for most heroes), read once per game from the script's own team. Attack range is where the two
+-- edges meet (user 08/11/2026), so a hero's centre is hit from the tower's reach (range + tower radius) plus this.
+function ____exports.HeroRadius(fb)
+    if gameHero ~= nil then
+        return gameHero
+    end
+    do
+        local i = 1
+        while i <= 5 do
+            local h = GetTeamMember(i)
+            if h ~= nil and h ~= nil and valid(h) then
+                local r = h:GetBoundingRadius()
+                if r ~= nil and r > 0 then
+                    gameHero = r
+                    live.hero_radius = r
+                    return r
+                end
+            end
+            i = i + 1
+        end
+    end
+    return fallback("hero_radius", fb)
+end
 local function speedOf(units)
     for ____, u in ipairs(units or ({})) do
         do
-            local __continue28
+            local __continue33
             repeat
                 if not valid(u) then
-                    __continue28 = true
+                    __continue33 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
                 if s ~= nil and s > 0 then
                     return s
                 end
-                __continue28 = true
+                __continue33 = true
             until true
-            if not __continue28 then
+            if not __continue33 then
                 break
             end
         end
@@ -385,10 +409,10 @@ function ____exports.FeedNeutral(____type, units, camp)
     local n = 0
     for ____, u in ipairs(units) do
         do
-            local __continue39
+            local __continue44
             repeat
                 if not valid(u) then
-                    __continue39 = true
+                    __continue44 = true
                     break
                 end
                 local s = u:GetBaseMovementSpeed()
@@ -396,9 +420,9 @@ function ____exports.FeedNeutral(____type, units, camp)
                     sum = sum + s
                     n = n + 1
                 end
-                __continue39 = true
+                __continue44 = true
             until true
-            if not __continue39 then
+            if not __continue44 then
                 break
             end
         end
@@ -474,6 +498,7 @@ end
 local PROBED = {
     tower_reach = true,
     tower_range = true,
+    hero_radius = true,
     lane_creep_speed = true,
     acquisition_lane_creep = true,
     neutral_speed = true,
@@ -527,6 +552,7 @@ function ____exports.Reset()
     towers = newTowers()
     gameReach = nil
     gameRange = nil
+    gameHero = nil
 end
 --- What `bot` can read this moment beside the constants the contexts hold (slice world-facts probe; telemetry logs each once per game).
 function ____exports.Probe(bot, constants)
@@ -542,6 +568,13 @@ function ____exports.Probe(bot, constants)
             fact = "tower_range",
             live = ____exports.TowerAttackRange(constants.towerRange),
             constant = constants.towerRange
+        }
+    end
+    if constants.hero ~= nil then
+        rows[#rows + 1] = {
+            fact = "hero_radius",
+            live = ____exports.HeroRadius(constants.hero),
+            constant = constants.hero
         }
     end
     local creeps = bot:GetNearbyLaneCreeps(1600, true)

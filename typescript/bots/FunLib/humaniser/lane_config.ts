@@ -4,6 +4,7 @@
  * jmz_func cannot be required from humaniser modules, so J.* helpers arrive through SetHelpers.
  */
 import { Unit } from "bots/ts_libs/dota";
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -97,7 +98,7 @@ export const DEFAULTS = {
     Planner: { FullPullBelow: -0.5, SmallDriftBelow: -0.2, AggroCorrectBelow: -0.15, LargeWaveMargin: 2, AggroStepEq: 0.15 },
     Timing: {
         SnapshotRefresh: 0.5,
-        WaveCycle: 30,
+        WaveCycle: GameRules.WAVE_EVERY,
         AggroWindow: 3.0,
         AggroCooldown: 2.3,
         WalkBack: 1.5,
@@ -148,9 +149,8 @@ export const DEFAULTS = {
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,
-        PullPeriod: 60,
-        // Liquipedia: camps first spawn at 1:00 game time, then every minute.
-        NeutralFirstSpawn: 60,
+        PullPeriod: GameRules.NEUTRAL_EVERY,
+        NeutralFirstSpawn: GameRules.NEUTRAL_FIRST,
         HalfPullLater: 2,
         NoCampAfter: 1,
         AggroConfirm: 2,
@@ -240,8 +240,10 @@ export const DEFAULTS = {
         AggroDanceRadius: 500,
         HarassTowerLevel: 6,
         HarassTowerTargetHP: 0.3,
-        // Fallback only: the tower's reach is read live (TowerReach(), world_facts; 844 in 7.41 = attack range 700 + radius 144).
-        EnemyTowerRange: 850,
+        // Fallback only: the tower's reach to a point is read live (world_facts; 844 in 7.41 = attack range 700 + tower radius 144).
+        EnemyTowerRange: 844,
+        // Fallback only: a hero's bounding radius (24), added to the tower's reach for a hero's centre (edges meet, user 08/11/2026).
+        HeroRadius: 24,
         // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
         TakePullLaneCreeps: 1,
         TakePullDangerEnemies: 2,
@@ -499,9 +501,13 @@ function merge(defaults: any, overrides: any): any {
 
 let cached: LaneSettings | undefined;
 
-/** The enemy tower's attack reach: read from the game (world_facts), the Thresholds.EnemyTowerRange constant when the read fails. */
+/**
+ * How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
+ * (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
+ */
 export function TowerReach(): number {
-    return WorldFacts.Reach(Settings().Thresholds.EnemyTowerRange);
+    const t = Settings().Thresholds;
+    return WorldFacts.Reach(t.EnemyTowerRange) + WorldFacts.HeroRadius(t.HeroRadius);
 }
 
 /** The enemy tower's attack range alone (read from the game; 700 when the read fails). */

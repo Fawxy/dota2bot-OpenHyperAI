@@ -170,6 +170,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local settings, dist2D, currentMinute, records
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -193,7 +194,7 @@ function dist2D(a, b)
     return math.sqrt(dx * dx + dy * dy)
 end
 function currentMinute()
-    return math.floor(DotaTime() / 60)
+    return math.floor(DotaTime() / GameRules.NEUTRAL_EVERY)
 end
 --- Safety off a laning snapshot: HP and no visible enemy close. After laning, and a core's stack (FarmPattern).
 function ____exports.SafeAway(bot, enemies)
