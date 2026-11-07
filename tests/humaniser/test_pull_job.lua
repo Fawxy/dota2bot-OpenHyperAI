@@ -485,11 +485,7 @@ do
 		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
 	-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the origin in sight, part of the
 	-- box in fog, one full-HP neutral returned of a freshly spawned camp: the count is a floor, so no `one` or `empty` yet.
-	local part = { n = 1, seen = 1, hp = 400, vis = true, full = false, units = {} }
-	local whole = { n = 1, seen = 1, hp = 400, vis = true, full = true, units = {} }
-	check("part of the box in fog: no gate; the whole box in sight: why=one", w.H.PullJob.CampGate(part, 61, 78) == nil
-		and w.H.PullJob.CampGate(whole, 61, 78) == "one" and w.H.PullJob.CampGate({ n = 0, seen = 0, hp = 0, vis = true, full = false, units = {} }, 61, 78) == nil)
-	check("the live read sets full (the test world sees every point)", w.H.PullJob.CampStateOf(w.H.Lane.Camps.SpawnerByIdx(w.H.Lane.Camps.PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
+	check("the live read logs full (the test world sees every point)", w.H.PullJob.CampStateOf(w.H.Lane.Camps.SpawnerByIdx(w.H.Lane.Camps.PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
@@ -532,6 +528,37 @@ do
 	local pull = lines(out, "pull_job")[1]
 	check("walk finds a stacked camp: cancelled:camp-dmg before the hit, with the walk's camp", seen ~= nil
 		and field(pull, "why") == "cancelled:camp-dmg" and field(pull, "cn") == "8" and (field(pull, "label") or "travel") ~= "aggro", pull)
+end
+
+-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the walk brings the camp into sight
+-- one neutral at a time; `one` (or `empty`) ends the pull only once it has held CampLowHold s.
+do
+	local function walkIn(more)
+		local w = world({ reading = OUT })
+		local seen, ended, added
+		local out = capture(function()
+			while T < 120 and not (seen and not w.H.PullJob.Running(w.sup)) do
+				if not seen and w.H.PullJob.Running(w.sup) then
+					seen = T
+					FOGGED = nil
+					MakeNeutral({ x = SMALL.x, y = SMALL.y })
+				end
+				if seen and more and not added and T >= seen + 0.5 then
+					added = true
+					MakeNeutral({ x = SMALL.x + 30, y = SMALL.y })
+					MakeNeutral({ x = SMALL.x - 30, y = SMALL.y })
+				end
+				frame(w)
+			end
+			ended = T
+		end)
+		return seen, ended, lines(out, "pull_job")[1]
+	end
+	local seen, ended, pull = walkIn(true)
+	check("walk: one neutral seen, two more half a second later: the pull goes on", seen ~= nil and field(pull, "why") ~= "cancelled:one", pull)
+	seen, ended, pull = walkIn(false)
+	local hold = package.loaded["bots/FunLib/humaniser/pull_job"].SETTINGS.CampLowHold
+	check("walk: one neutral that stays: cancelled:one after the hold", seen ~= nil and field(pull, "why") == "cancelled:one" and ended - seen >= hold, (pull or "nil") .. " after " .. tostring(ended and seen and ended - seen))
 end
 
 -- After the hit (slot 78.5) a neutral hits the puller from T=79 at `dps` while it has `hp` of 600. Returns whether it walked

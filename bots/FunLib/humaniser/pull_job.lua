@@ -914,6 +914,7 @@ function ____exports.End(bot, why)
     end
 end
 ____exports.SETTINGS = {
+    CampLowHold = 1.5,
     Priority = 0.9,
     FitPriority = 0.96,
     PriorityEvery = 0.5,
@@ -1089,14 +1090,14 @@ function ____exports.CampStateOf(spawner)
     end
     return s
 end
---- `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's whole box, and no
+--- `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
 -- spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
 -- nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
 -- neutral left: too little to hold a wave (banked `ok` pulls with one neutral seen at the start diverted 26 of 56, two or
 -- more 243 of 385; user 04/11/2026: skip it). Stacking it instead is the stack job's call, not this one's.
 function ____exports.CampGate(s, now, hitAt)
     local period = LaneConfig.Settings().Timing.PullPeriod
-    if not s.vis or s.full == false or math.floor(hitAt / period) > math.floor(now / period) then
+    if not s.vis or math.floor(hitAt / period) > math.floor(now / period) then
         return nil
     end
     if s.n == 0 then
@@ -1987,11 +1988,14 @@ function ____exports.Step(bot, host)
         local s = ____exports.CampStateOf(p.plan.spawner)
         s.dmg = ____exports.CampDamage(bot, s, p.plan.spawner.type)
         s.php = bot:GetHealth()
-        local why = ____exports.CampGate(
-            s,
-            DotaTime(),
-            p.hitAt
-        ) or campDmgGate(bot, s.dmg)
+        local now = DotaTime()
+        local gate = ____exports.CampGate(s, now, p.hitAt)
+        if gate == nil then
+            p.low = nil
+        elseif p.low == nil or p.low.why ~= gate then
+            p.low = {why = gate, at = now}
+        end
+        local why = gate ~= nil and now - p.low.at >= ____exports.SETTINGS.CampLowHold and gate or nil or campDmgGate(bot, s.dmg)
         if why ~= nil then
             p.start = s
             ____exports.End(bot, why)

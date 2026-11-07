@@ -20,6 +20,11 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 // All `judgement` (slice file, Decisions), except where a source is named.
 export const SETTINGS = {
+    /** A camp read `one` or `empty` on the walk ends the pull only once it has held this long (`judgement`): a camp coming into
+     *  sight shows its neutrals over a few frames, since the API returns no fogged ones (drill pull ldr6: 5 of 9 pulls
+     *  cancelled `one` on the first sight of a freshly spawned full camp). A four-corner visibility rule was tried first
+     *  and never read true (ldr11, ldr12: every pull walked into an empty camp). */
+    CampLowHold: 1.5,
     /** Rank against the hero's other jobs: below the stack (0.92) and the rune trip (0.85 pos5 / 0.95 pos4 rank above at their
      *  times through their claims). */
     Priority: 0.9,
@@ -122,9 +127,7 @@ interface CampState {
     seen: number;
     hp: number;
     vis: boolean;
-    /** The whole box is in sight (its four corners), not just the origin: fogged neutrals are not returned, so a count read
-     *  with part of the box in fog is a floor (drill pull ldr6: 5 of 9 pulls cancelled `one` a few seconds into the walk,
-     *  one full-HP neutral seen, after a cheat spawn of a full camp). Unset in hand-built states. */
+    /** The counted box's four corners are in sight (telemetry `cfv` only: in drills they never all read visible, ldr11). */
     full?: boolean;
     /** The neutrals returned, for the damage estimate. */
     units: Unit[];
@@ -149,6 +152,8 @@ interface Plan {
 interface Pull {
     plan: Plan;
     left: number;
+    /** The walk's camp read went `one` or `empty` (why, since when); cleared when it reads full again. */
+    low?: { why: string; at: number };
     host: number;
     label?: string;
     hit?: boolean;
@@ -356,7 +361,7 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
 }
 
 /**
- * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's whole box, and no
+ * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
  * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
  * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
  * neutral left: too little to hold a wave (banked `ok` pulls with one neutral seen at the start diverted 26 of 56, two or
@@ -364,7 +369,7 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
     const period = LaneConfig.Settings().Timing.PullPeriod;
-    if (!s.vis || s.full === false || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
+    if (!s.vis || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
     if (s.n === 0) return "empty";
     if (s.n === 1) return "one";
     return undefined;
@@ -1101,7 +1106,12 @@ export function Step(bot: Unit, host: number): boolean {
         const s = CampStateOf(p.plan.spawner);
         s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
-        const why = CampGate(s, DotaTime(), p.hitAt) ?? campDmgGate(bot, s.dmg);
+        const now = DotaTime();
+        const gate = CampGate(s, now, p.hitAt);
+        // `one`/`empty` must hold CampLowHold s (the camp fills in as it comes into sight); camp damage ends it at once.
+        if (gate === undefined) p.low = undefined;
+        else if (p.low === undefined || p.low.why !== gate) p.low = { why: gate, at: now };
+        const why = (gate !== undefined && now - p.low!.at >= SETTINGS.CampLowHold ? gate : undefined) ?? campDmgGate(bot, s.dmg);
         if (why !== undefined) {
             // The pull_job line then carries the camp that cancelled it, not the one at the start.
             p.start = s;
