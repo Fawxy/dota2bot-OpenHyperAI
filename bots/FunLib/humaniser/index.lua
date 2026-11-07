@@ -34,6 +34,7 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
@@ -68,6 +69,7 @@ ____exports.PullFarm = PullFarm
 ____exports.CampClaims = CampClaims
 ____exports.Chooser = Chooser
 ____exports.Overrides = Overrides
+____exports.Drill = Drill
 ____exports.CoreCamp = CoreCamp
 ____exports.Tasks = Tasks
 ____exports.States = States
@@ -255,6 +257,7 @@ local function tick(bot)
         )
     end
     logStart(bot)
+    Drill.Tick(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
@@ -387,6 +390,22 @@ if Telemetry.GuardsEnabled() then
             Benched = no,
             Bench = no,
             Minutes = function() return StackJob.SETTINGS.TriggerMinutes end
+        }
+    )
+    Telemetry.GuardModule(
+        "Drill",
+        Drill,
+        {
+            Tick = none,
+            Held = no,
+            Hold = no,
+            LaneOnly = no,
+            RoleOf = function() return "play" end,
+            Implied = none,
+            RepTimes = none,
+            RepAt = zero,
+            Name = none,
+            Active = none
         }
     )
     Telemetry.GuardModule("Chooser", Chooser, {

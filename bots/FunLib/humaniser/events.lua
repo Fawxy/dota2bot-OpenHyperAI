@@ -523,6 +523,18 @@ ____exports.EVENTS = {
         stacked = "bool",
         assumed = "bool"
     },
+    drill = {
+        ph = "str",
+        name = "str",
+        pid = "num",
+        team = "num",
+        pos = "num",
+        role = "str",
+        rep = "num",
+        input = "str",
+        start = "num",
+        forces = "str"
+    },
     job = {
         pid = "num",
         job = "str",

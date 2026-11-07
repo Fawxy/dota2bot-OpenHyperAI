@@ -677,6 +677,22 @@ export const EVENTS = {
         assumed: "bool",
     },
     // Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran.
+    /** Drills (humaniser/drill.ts): `ph=role` per hero when its role is known or changes (`role` cast, bench, statue,
+     *  laneonly, play); `ph=rep` once per rep per team with a cast (`input` on or off: off is a control rep; `start` the rep's
+     *  clock; `forces` the forced context, absent for natural reps); `ph=unknown` once when Overrides.Drill names no entry; `ph=removed` once per knob drills replaced (Solo,
+     *  StackEvery, LaneOnly; `name` the key) still set, which now does nothing. */
+    drill: {
+        ph: "str",
+        name: "str",
+        pid: "num",
+        team: "num",
+        pos: "num",
+        role: "str",
+        rep: "num",
+        input: "str",
+        start: "num",
+        forces: "str",
+    },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
         pid: "num",

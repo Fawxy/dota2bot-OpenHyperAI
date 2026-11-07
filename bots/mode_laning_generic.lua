@@ -109,9 +109,9 @@ function GetDesire()
 	if GetGameMode() == 23 then currentTime = currentTime * 1.65 end
 	if currentTime < 0 then return BOT_ACTION_DESIRE_NONE end
 
-	-- Overrides.LaneOnly (slice lane-last-hits, scenario games): the bot stays in lane through the laning phase and does nothing
-	-- but hold, last-hit and deny (Think below). Above every other mode, as the Overrides.Solo bench in mode_farm_generic.
-	if bOwnsThink and J.Humaniser.Overrides.LaneOnly() and J.IsInLaningPhase() then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
+	-- A lane-only drill hero (humaniser/drill.ts): the bot stays in lane through the laning phase and does nothing but hold,
+	-- last-hit and deny (Think below). Above every other mode, as a drill's bench in mode_farm_generic.
+	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
 
 	-- if DotaTime() > 20 and DotaTime() - skipLaningState.lastCheckTime < skipLaningState.checkGap then
 	-- 	if skipLaningState.count > 6 then
@@ -358,8 +358,8 @@ if bOwnsThink then
 		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
 		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, its lane hits first) come before every step below.
 		if States.SupportStep(bot) then return end
-		-- Overrides.LaneOnly: only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
-		if J.Humaniser.Overrides.LaneOnly() then
+		-- Lane-only (a drill): only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
+		if J.Humaniser.Overrides.LaneOnly(bot) then
 			if not States.BodyLastHits(bot) then
 				if not States.BodySupportLastHits(bot) and LastHitThink() then return end
 				if not States.BodySupportHits(bot) and DenyThink() then return end

@@ -291,15 +291,14 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
 -- RoleByHero: all-bot teams take positions by hero weight, not slot order (dota_bot_populate lineups; hero_selection.lua).
--- Solo (pid, -1 = off): every other hero sits in its fountain, so one pos5 stacks alone; StackEvery: the stack job tries every
--- minute from 2:00 (slice 4 diagnosis, scenario games only; StackJob.Bench, StackJob.Minutes); StackFar: no 25 s away skip
--- (slice double-stack: execution apart from getting there; scenario games only). LaneOnly: every bot stays in laning mode
--- through the laning phase and only holds its spot, last-hits and denies (no techniques, harass, trades, spells or items):
--- the last-hit check harness (slice lane-last-hits, scenario games only; humaniser/overrides.ts). CampForce: an owned core's
+-- Drill (name, "" = off): a drill from humaniser/drill.ts's table (who plays, who is benched in the fountain, a statue in
+-- lane or lane-only, the reps and the forced context; dotactl --drill <name> sets it; drills replaced the old Solo,
+-- StackEvery and LaneOnly knobs). StackFar: no 25 s away skip (slice double-stack: execution apart from getting there;
+-- scenario and drill games only; drill stack implies it). CampForce: an owned core's
 -- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only).
 -- ForceShove: lanes whose owned laners shove (idle swing on enemy creeps outside their tower) instead of pre-denying, as
 -- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Solo = -1, StackEvery = false, StackFar = false, LaneOnly = false, CampForce = false, ForceShove = "" }
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", CampForce = false, ForceShove = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

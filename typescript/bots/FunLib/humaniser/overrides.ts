@@ -1,21 +1,27 @@
 /**
- * Customize.Overrides: test-harness knobs written per turn by dotactl (`--set Overrides.<Key>=<value>`), read where a
- * scenario changes what a bot does. Readers: stack_job (Solo, StackEvery, StackFar), chooser and mode_laning_generic
- * (LaneOnly), core_camp (CampForce), states/idle_swing (ForceShove: the lanes whose laners shove, `bot`, `r:bot`, `all`).
+ * Customize.Overrides: test-harness knobs written per turn by dotactl (`--set Overrides.<Key>=<value>`, or `--drill <name>`,
+ * which sets `Overrides.Drill`), read where a drill or scenario changes what a bot does. Readers: drill (Drill: who plays,
+ * benches, stands as a statue or plays lane-only, and the reps), stack_job (StackFar, ShrineLane, Sweep and the other
+ * stack diagnostics), core_camp (CampForce), states/idle_swing (ForceShove: the lanes whose laners shove, `bot`, `r:bot`,
+ * `all`).
  */
+import { Unit } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
+import * as Drill from "bots/FunLib/humaniser/drill";
 
+/** An explicit override, else the value the active drill implies (`Drill.TABLE` entry `overrides`). */
 export function Get(key: string): unknown {
-    return (Customize as any).Overrides?.[key];
+    const v = (Customize as any).Overrides?.[key];
+    return v !== undefined ? v : Drill.Implied(key);
 }
 
 /**
- * Overrides.LaneOnly (slice lane-last-hits, scenario games only): every bot stays in laning mode through the laning phase
- * and does nothing in it but hold its spot, last-hit and deny: no techniques, harass, trades, spells or items. A check
- * harness for the last-hit model (many attempts per game, no trade or retreat deaths), not a behaviour.
+ * Lane-only (a drill's `castLaneOnly` or `others: "laneonly"`; the old Overrides.LaneOnly is drill `lane-only`): the bot
+ * stays in laning mode through the laning phase and does nothing in it but hold its spot, last-hit and deny: no
+ * techniques, harass, trades, spells or items. A harness, not a behaviour. Per hero: a drill's bench and statues are not.
  */
-export function LaneOnly(): boolean {
-    return Get("LaneOnly") === true;
+export function LaneOnly(bot: Unit): boolean {
+    return Drill.LaneOnly(bot);
 }
 
 /**
