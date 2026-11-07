@@ -498,7 +498,7 @@ function ____exports.CtlWants(d, pid)
 end
 --- Two slots pull the same wave. A slot is a float from the camp's timing, which is re-read at every timing read since the
 -- neutral speed is (neutral-speed-at-order), so the same slot drifts by a fraction of a second between frames; comparing the
--- floats restarted a cancelled pull on its own slot (lctl9: 13 duplicate pull_job lines in 5 games, none in lctl4). Keyed by
+-- floats restarted a cancelled pull on its own slot (lctl9: 11 duplicate pull_job lines in 5 games, none in lctl4). Keyed by
 -- the pulled wave instead.
 function ____exports.SameWave(a, b)
     return a ~= nil and ____exports.PulledSpawn(a) == ____exports.PulledSpawn(b)
