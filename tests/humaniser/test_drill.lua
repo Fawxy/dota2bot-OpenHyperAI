@@ -83,6 +83,11 @@ do
 	check("statue never attacks", #ActionsOf(7, "AttackUnit") == 0)
 	check("cast is not held", not H.Drill.Hold(core))
 
+	-- Nothing is logged before the pregame (strategy time's clock reaches 0 before the pregame resets it to -90).
+	GAME_STATE = 5
+	T = 0
+	check("no lines before the pregame", #capture(function() H.Drill.Tick(core) H.Drill.Tick(off) end) == 0)
+	GAME_STATE = 8
 	-- Role lines once per hero; rep lines once per rep from the team with a cast (Radiant), none from Dire.
 	T = 1
 	local lines = capture(function()

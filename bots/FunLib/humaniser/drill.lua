@@ -194,6 +194,7 @@ end
 local ____exports = {}
 local controlRep
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local GameState = ____dota.GameState
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -403,8 +404,14 @@ function ____exports.RepAt(t)
 end
 local lastRep = {}
 local lastRole = {}
---- Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero.
+--- Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero. Only
+-- from the pregame on: strategy time runs its own clock up to 0 before the pregame resets it to -90, so a line logged then
+-- would fall in another game of the log store and fire rep 1 early (drill1, 08/11/2026).
 function ____exports.Tick(bot)
+    local state = GetGameState()
+    if state ~= GameState.PreGame and state ~= GameState.GameInProgress then
+        return
+    end
     local name = ____exports.Name()
     if name == nil then
         local ____opt_8 = overrides()

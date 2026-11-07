@@ -10,7 +10,7 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { Lane, Team, Unit } from "bots/ts_libs/dota";
+import { GameState, Lane, Team, Unit } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -191,8 +191,14 @@ export function RepAt(t: number): number {
 const lastRep: Record<number, number> = {};
 const lastRole: Record<number, string> = {};
 
-/** Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero. */
+/**
+ * Per hero per frame: the role line when it changes, and the team's rep line once per rep from its first cast hero. Only
+ * from the pregame on: strategy time runs its own clock up to 0 before the pregame resets it to -90, so a line logged then
+ * would fall in another game of the log store and fire rep 1 early (drill1, 08/11/2026).
+ */
 export function Tick(bot: Unit): void {
+    const state = GetGameState();
+    if (state !== GameState.PreGame && state !== GameState.GameInProgress) return;
     const name = Name();
     if (name === undefined) {
         const asked = overrides()?.["Drill"];
